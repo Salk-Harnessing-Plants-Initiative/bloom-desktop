@@ -77,6 +77,7 @@ npm run format:check
 This project is migrating code from the pilot repository in phases:
 
 **Pilot structure → New structure:**
+
 ```
 Pilot:                          New:
 ├── app/                     → ├── src/
