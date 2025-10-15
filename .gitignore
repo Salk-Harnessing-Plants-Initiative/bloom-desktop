@@ -1,36 +1,54 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# General OS generated files #
+###########################
+.DS_Store               # macOS folder custom attributes
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db             # Windows generated images thumbnails
+Thumbs.db
+Desktop.ini             # Windows folder settings
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.js
+# Editor directories and files #
+################################
+.vscode/                 # Visual Studio Code
+.idea/                   # IntelliJ, PyCharm, etc
+*.sublime-workspace      # Sublime Text
+*.sublime-project        # Sublime Text
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.bak
 
-# testing
-/coverage
+# Logs and databases #
+######################
+*.log
+*.sqlite
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# local env files
-.env*.local
+# Environment files #
+#####################
 .env
+.env.local
+.env.*.local
 
-# vercel
-.vercel
+# Ignore all markdown files except README
+# *.md
+# !README.md
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Other common ignores #
+#######################
+/coverage                # Coverage reports
+/.vs                    # Visual Studio state files
+/.history
+*.tmp
+*.temp
+
+# Exclude specific files or directories (examples) #
+####################################################
+# /path/to/file.txt      # Exclude a specific file
+# /some_temp_directory/  # Exclude a specific directory
+/app/script/upload_metadata.js
+/.serena
+/.claude
