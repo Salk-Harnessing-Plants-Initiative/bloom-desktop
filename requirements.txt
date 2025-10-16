@@ -1,4 +1,0 @@
-numpy
-pypylon
-imageio
-nidaqmx
