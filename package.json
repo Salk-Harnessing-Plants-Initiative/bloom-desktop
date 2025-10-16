@@ -12,6 +12,7 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "build:python": "node scripts/build-python.js",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\""
