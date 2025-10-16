@@ -2,9 +2,11 @@
 import { URL } from 'url';
 import path from 'path';
 
+const DEFAULT_DEV_PORT = 1212;
+
 export function resolveHtmlPath(htmlFileName: string) {
   if (process.env.NODE_ENV === 'development') {
-    const port = process.env.PORT || 1212;
+    const port = process.env.PORT || DEFAULT_DEV_PORT;
     const url = new URL(`http://localhost:${port}`);
     url.pathname = htmlFileName;
     return url.href;
