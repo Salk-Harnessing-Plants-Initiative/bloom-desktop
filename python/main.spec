@@ -1,12 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import copy_metadata, collect_data_files
+
 block_cipher = None
+
+# Copy package metadata to fix importlib.metadata.version() calls
+# nidaqmx uses importlib.metadata.version(__name__) in __init__.py
+# which requires the .dist-info directory to be bundled
+datas = []
+datas += copy_metadata('nidaqmx')
+
+# Optional: Include nidaqmx data files (like _installer_metadata.json)
+# This is used by the nidaqmx.installdriver() CLI command
+datas += collect_data_files('nidaqmx', include_py_files=False)
 
 a = Analysis(
     ['main.py'],
     pathex=['./python'],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=[
         'numpy',
         'pypylon',
