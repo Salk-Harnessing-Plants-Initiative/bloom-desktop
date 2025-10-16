@@ -44,6 +44,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Electron / Webpack build artifacts #
+######################################
+.webpack/               # Webpack build output
+out/                    # Electron Forge output
+dist/                   # Distribution builds
+
 # Other common ignores #
 #######################
 /coverage                # Coverage reports
