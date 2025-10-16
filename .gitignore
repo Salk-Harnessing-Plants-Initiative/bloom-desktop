@@ -77,6 +77,8 @@ wheels/
 .ruff_cache/
 .uv/
 uv.lock
+.coverage
+htmlcov/
 
 # Other common ignores #
 #######################
