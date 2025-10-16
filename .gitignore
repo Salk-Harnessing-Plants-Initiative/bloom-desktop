@@ -39,10 +39,16 @@ Desktop.ini             # Windows folder settings
 
 # Node.js #
 ###########
-node_modules/           # npm dependencies
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Electron / Webpack build artifacts #
+######################################
+.webpack/
+out/
+dist/
 
 # Other common ignores #
 #######################
