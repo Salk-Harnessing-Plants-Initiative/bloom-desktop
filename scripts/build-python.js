@@ -41,7 +41,7 @@ try {
   });
 
   console.log('[SUCCESS] Python executable built successfully!');
-  console.log('[INFO] Output: dist-python/');
+  console.log('[INFO] Output: dist/');
 } catch (error) {
   console.error('[ERROR] Failed to build Python executable');
   process.exit(1);
