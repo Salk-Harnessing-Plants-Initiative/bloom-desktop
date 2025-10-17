@@ -1,6 +1,7 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
@@ -21,9 +22,15 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
+    // Windows installer (Squirrel)
     new MakerSquirrel({}),
+    // macOS DMG installer (drag to Applications)
+    new MakerDMG({}, ['darwin']),
+    // macOS ZIP (alternative to DMG, smaller file)
     new MakerZIP({}, ['darwin']),
+    // Linux RPM package (Fedora, RHEL, CentOS)
     new MakerRpm({}),
+    // Linux DEB package (Debian, Ubuntu)
     new MakerDeb({}),
   ],
   plugins: [
