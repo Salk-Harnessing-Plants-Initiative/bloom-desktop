@@ -16,7 +16,9 @@ const mockPythonAPI = {
   onError: vi.fn(),
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (global as any).window = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ...(global as any).window,
   electron: {
     python: mockPythonAPI,
