@@ -1,5 +1,7 @@
 name: PR Checks
 
+# Runs on every PR and push to main
+# Checks: linting, formatting, compilation, tests (Python + integration)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -8,10 +10,20 @@ on:
       - main
 
 permissions:
-  contents: read
-  pull-requests: write
+  contents: read       # Read repository contents
+  pull-requests: write # Write PR comments (for future coverage reports)
 
 jobs:
+  # ==============================================================================
+  # This workflow runs 5 parallel jobs + 1 summary job:
+  # 1. lint-node: ESLint + Prettier for TypeScript/JavaScript
+  # 2. lint-python: black + ruff + mypy for Python
+  # 3. compile-typescript: Type checking with tsc
+  # 4. test-python: pytest with 80% coverage requirement
+  # 5. test-integration: IPC communication tests (Node.js ↔ Python)
+  # 6. all-checks-passed: Summary job (only runs if all 5 pass)
+  # ==============================================================================
+
   # Lint and format check for Node.js/TypeScript
   lint-node:
     name: Lint - Node.js
@@ -50,6 +62,7 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync --all-extras
+        # Installs both regular and dev dependencies (black, ruff, mypy)
 
       - name: Check black formatting
         run: uv run black --check python/
@@ -98,10 +111,11 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync --all-extras
+        # Required for pytest, pytest-cov, and other test dependencies
 
       - name: Run Python tests with coverage
         run: npm run test:python
-        # Note: pytest.ini or pyproject.toml enforces 80% coverage minimum
+        # Enforces 80% minimum coverage (configured in pyproject.toml)
 
   # Integration tests
   test-integration:
@@ -129,9 +143,11 @@ jobs:
 
       - name: Build Python executable
         run: npm run build:python
+        # Creates dist/bloom-hardware executable with PyInstaller
 
       - name: Run IPC integration tests
         run: npm run test:ipc
+        # Tests stdin/stdout JSON communication between Node.js and Python
 
   # Summary job - requires all checks to pass
   all-checks-passed:
