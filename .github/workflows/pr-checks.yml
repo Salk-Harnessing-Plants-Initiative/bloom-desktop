@@ -48,6 +48,9 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
 
+      - name: Install Python dependencies
+        run: uv sync --all-extras
+
       - name: Check black formatting
         run: uv run black --check python/
 
