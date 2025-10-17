@@ -13,6 +13,9 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+// Timeout for IPC command responses (in milliseconds)
+const IPC_TIMEOUT_MS = 5000;
+
 // Color codes for output
 const colors = {
   reset: '\x1b[0m',
@@ -42,7 +45,7 @@ async function testPackagedApp() {
       '..',
       '..',
       'out',
-      'Bloom Desktop-darwin-arm64',
+      `Bloom Desktop-darwin-${process.arch}`,
       'Bloom Desktop.app'
     );
     pythonExecutablePath = path.join(
@@ -277,13 +280,13 @@ async function testPythonCommand(
     // Send command
     pythonProcess.stdin?.write(`${JSON.stringify({ command })}\n`);
 
-    // Timeout after 5 seconds
+    // Timeout after configured duration
     setTimeout(() => {
       if (!dataReceived) {
         pythonProcess.kill();
         resolve({ success: false, error: 'Timeout waiting for response' });
       }
-    }, 5000);
+    }, IPC_TIMEOUT_MS);
   });
 }
 
