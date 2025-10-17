@@ -47,7 +47,9 @@ describe('Home Component', () => {
     );
 
     expect(screen.getByText('Architecture')).toBeInTheDocument();
-    expect(screen.getByText(/Frontend: Electron \+ React/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Frontend: Electron \+ React/i)
+    ).toBeInTheDocument();
     expect(screen.getByText(/Backend: Python/i)).toBeInTheDocument();
   });
 
