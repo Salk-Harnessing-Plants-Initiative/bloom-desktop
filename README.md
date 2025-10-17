@@ -33,17 +33,31 @@ See [Issue #1](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-deskto
 ```
 bloom-desktop/
 ├── src/
-│   ├── main/             # Electron main process (future)
-│   └── renderer/         # React renderer/UI (future)
-├── prisma/               # Database schema & migrations (future)
-├── python/               # Python hardware interfaces (future)
-│   ├── pylon/           # Camera interface
-│   └── daq/             # DAQ interface
-├── tests/                # Test files (future)
-├── scripts/              # Build scripts (future)
-├── package.json          # Node.js dependencies
-├── requirements.txt      # Python dependencies (temporary - will migrate to pyproject.toml)
-├── tsconfig.json         # TypeScript configuration
+│   ├── main/             # Electron main process
+│   │   ├── python-process.ts   # Python subprocess manager
+│   │   ├── python-paths.ts     # Path resolution for Python executable
+│   │   └── preload.ts          # Preload script
+│   ├── renderer/         # React renderer/UI
+│   └── types/            # TypeScript type definitions
+├── python/               # Python hardware backend
+│   ├── main.py          # Entry point (--ipc or interactive mode)
+│   ├── ipc_handler.py   # IPC command routing
+│   ├── hardware/        # Hardware interfaces (camera, DAQ)
+│   ├── tests/           # Python unit tests (pytest)
+│   └── main.spec        # PyInstaller build configuration
+├── tests/
+│   ├── integration/     # Integration tests
+│   │   ├── test-ipc.ts        # Python ↔ TypeScript IPC test
+│   │   └── test-package.ts    # Packaged app verification
+│   └── unit/            # TypeScript unit tests
+├── scripts/
+│   └── build-python.js  # Python executable build script
+├── out/                 # Packaged applications (generated)
+├── dist/                # Python executable (generated)
+├── package.json         # Node.js dependencies
+├── pyproject.toml       # Python dependencies (uv)
+├── forge.config.ts      # Electron Forge configuration
+├── tsconfig.json        # TypeScript configuration
 └── README.md
 ```
 
@@ -61,7 +75,11 @@ npm install
 
 ### 2. Available Scripts
 
+#### Development
 ```bash
+# Start development server
+npm start
+
 # Lint TypeScript/JavaScript files
 npm run lint
 
@@ -71,6 +89,48 @@ npm run format
 # Check formatting without modifying
 npm run format:check
 ```
+
+#### Python Backend
+```bash
+# Build Python executable (PyInstaller)
+npm run build:python
+
+# Run Python unit tests
+npm run test:python
+```
+
+#### Testing
+```bash
+# Test Python IPC communication (builds Python if needed)
+npm run test:ipc
+
+# Test packaged app (run after npm run package)
+npm run test:package
+```
+
+#### Packaging & Distribution
+```bash
+# Package app for distribution (includes Python executable)
+npm run package
+
+# Create installers (includes Python executable)
+npm run make
+```
+
+### 3. Script Details
+
+| Script | Description | Prerequisites |
+|--------|-------------|---------------|
+| `npm start` | Launch Electron app in development mode | None |
+| `npm run build:python` | Build Python executable with PyInstaller | uv installed |
+| `npm run test:python` | Run Python unit tests with pytest (80%+ coverage) | uv installed |
+| `npm run test:ipc` | Integration test for Python ↔ TypeScript IPC | Python built |
+| `npm run test:package` | Verify Python bundled in packaged app | Package created |
+| `npm run package` | Create distributable app bundle | Python built |
+| `npm run make` | Create platform-specific installers | Python built |
+| `npm run lint` | Check TypeScript/JavaScript code style | None |
+| `npm run format` | Auto-format code with Prettier | None |
+| `npm run format:check` | Check code formatting | None |
 
 ## Migration from Pilot
 
@@ -92,7 +152,49 @@ Pilot:                          New:
 
 ## Testing
 
-Testing infrastructure will be added in Phase 1.2. Target coverage: 80%+
+### Test Coverage
+
+- **Python Unit Tests**: 84% coverage (23 tests)
+- **Integration Tests**: Python ↔ TypeScript IPC, packaged app verification
+- **Target**: 80%+ coverage for all code
+
+### Running Tests
+
+```bash
+# Python unit tests (pytest)
+npm run test:python
+
+# Integration: Test IPC communication
+npm run test:ipc
+
+# Integration: Verify packaged app
+npm run package
+npm run test:package
+```
+
+### Test Output Examples
+
+**Python Tests:**
+```
+============================= 23 passed =============================
+coverage: 84% (python)
+```
+
+**IPC Test:**
+```
+[PASS] Python process started successfully
+[PASS] Ping test passed
+[PASS] Version test passed
+[PASS] Hardware check test passed
+```
+
+**Package Test:**
+```
+[PASS] Package found
+[PASS] Python executable found
+[PASS] Python executable has correct permissions
+[PASS] IPC commands functional: 3/3 tested
+```
 
 ## Contributing
 
