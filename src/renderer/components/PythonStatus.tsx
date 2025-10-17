@@ -124,7 +124,9 @@ export function PythonStatus() {
                     [WARN] Library installed, no devices found
                   </span>
                 ) : (
-                  <span className="text-red-600">[ERROR] Library not installed</span>
+                  <span className="text-red-600">
+                    [ERROR] Library not installed
+                  </span>
                 )}
               </div>
               {/* DAQ status */}
@@ -139,7 +141,9 @@ export function PythonStatus() {
                     [WARN] Library installed, no devices found
                   </span>
                 ) : (
-                  <span className="text-red-600">[ERROR] Library not installed</span>
+                  <span className="text-red-600">
+                    [ERROR] Library not installed
+                  </span>
                 )}
               </div>
             </div>

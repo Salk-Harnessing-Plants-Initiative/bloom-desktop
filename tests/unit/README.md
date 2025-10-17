@@ -5,15 +5,18 @@ This directory contains unit tests for TypeScript/React components and utilities
 ## Current Test Coverage
 
 ### ✅ Passing Tests
+
 - **Layout.test.tsx** - Navigation and layout structure (3 tests)
 
 ### ❌ Removed Tests (Require E2E Testing)
+
 The following tests were removed because they require integration testing with IPC:
 
 - **App.test.tsx** - Removed (tests full app with IPC)
 - **Home.test.tsx** - Removed (includes PythonStatus with async IPC)
 
 **Why removed?**
+
 - These components use `window.electron.python` API with async `useEffect` hooks
 - React 18 concurrent rendering + async effects = difficult to unit test
 - Testing IPC communication is better suited for E2E tests
@@ -24,6 +27,7 @@ The following tests were removed because they require integration testing with I
 When implementing Playwright E2E tests, prioritize:
 
 ### 1. Python IPC Communication
+
 - [ ] App launches and Python subprocess starts
 - [ ] Python version displays correctly in PythonStatus component
 - [ ] "Check Hardware" button queries devices and shows status
@@ -32,12 +36,14 @@ When implementing Playwright E2E tests, prioritize:
 - [ ] Status updates appear in real-time
 
 ### 2. App Integration
+
 - [ ] App component renders Layout + Home together
 - [ ] Navigation between routes works
 - [ ] PythonStatus component displays in Home page
 - [ ] IPC events propagate to UI correctly
 
 ### 3. Hardware Detection Display
+
 - [ ] Shows "[OK] N device(s) found" when devices present
 - [ ] Shows "[WARN] Library installed, no devices found" when no devices
 - [ ] Shows "[ERROR] Library not installed" when library missing
@@ -78,12 +84,14 @@ unit/
 ## Writing New Tests
 
 ### Good Candidates for Unit Tests
+
 - Pure components without IPC/async effects
 - Utility functions
 - Type transformations
 - Synchronous state management
 
 ### Should Use E2E Tests Instead
+
 - Components using `window.electron` API
 - Components with async `useEffect` hooks calling IPC
 - Full page/route integration
@@ -108,5 +116,6 @@ describe('MyComponent', () => {
 ## Integration Tests
 
 End-to-end integration tests belong in:
+
 - `tests/integration/` - Node.js/Python IPC tests
 - `tests/e2e/` (future) - Playwright browser automation tests
