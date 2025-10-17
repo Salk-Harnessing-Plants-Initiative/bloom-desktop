@@ -57,14 +57,12 @@ def check_hardware() -> Dict[str, bool]:
     Returns:
         Dictionary with hardware availability status
     """
-    hardware_status = {
-        "camera": False,
-        "daq": False
-    }
+    hardware_status = {"camera": False, "daq": False}
 
     # Check PyPylon (camera)
     try:
         import pypylon
+
         hardware_status["camera"] = True
     except ImportError:
         pass
@@ -72,6 +70,7 @@ def check_hardware() -> Dict[str, bool]:
     # Check NI-DAQmx
     try:
         import nidaqmx
+
         hardware_status["daq"] = True
     except ImportError:
         pass

@@ -12,6 +12,7 @@ rules.push({
       loader: 'postcss-loader',
       options: {
         postcssOptions: {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
           plugins: [require('tailwindcss'), require('autoprefixer')],
         },
       },

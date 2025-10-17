@@ -214,10 +214,10 @@ async function testPackagedApp() {
 /**
  * Test a Python IPC command
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function testPythonCommand(
   pythonPath: string,
   command: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   return new Promise((resolve) => {
     const pythonProcess = spawn(pythonPath, ['--ipc'], {

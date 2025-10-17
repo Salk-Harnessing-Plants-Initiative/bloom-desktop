@@ -8,7 +8,6 @@ Can run in two modes:
   2. Interactive mode (default): Human-friendly CLI for testing
 """
 
-import sys
 import platform
 import argparse
 
@@ -24,19 +23,22 @@ def interactive_mode():
     # Test imports
     try:
         import numpy as np
+
         print(f"[OK] NumPy {np.__version__}")
     except ImportError as e:
         print(f"[FAIL] NumPy: {e}")
 
     try:
         import pypylon
-        print(f"[OK] PyPylon available")
+
+        print("[OK] PyPylon available")
     except ImportError as e:
         print(f"[FAIL] PyPylon: {e}")
 
     try:
         import nidaqmx
-        print(f"[OK] NI-DAQmx available")
+
+        print("[OK] NI-DAQmx available")
     except ImportError as e:
         print(f"[FAIL] NI-DAQmx: {e}")
 
@@ -48,12 +50,12 @@ def interactive_mode():
     while True:
         try:
             cmd = input("> ").strip()
-            if cmd.lower() in ('exit', 'quit'):
+            if cmd.lower() in ("exit", "quit"):
                 print("Shutting down...")
                 break
-            elif cmd.lower() == 'help':
+            elif cmd.lower() == "help":
                 print("Available commands: help, exit, version")
-            elif cmd.lower() == 'version':
+            elif cmd.lower() == "version":
                 print(f"Python {platform.python_version()}")
             else:
                 print(f"Unknown command: {cmd}")
@@ -76,9 +78,7 @@ def main():
     """Main entry point - routes to interactive or IPC mode."""
     parser = argparse.ArgumentParser(description="Bloom Hardware Interface")
     parser.add_argument(
-        "--ipc",
-        action="store_true",
-        help="Run in IPC mode for Electron communication"
+        "--ipc", action="store_true", help="Run in IPC mode for Electron communication"
     )
     args = parser.parse_args()
 
