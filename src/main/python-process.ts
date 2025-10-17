@@ -17,6 +17,10 @@ import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import path from 'path';
 
+// Timeout configuration
+const STARTUP_TIMEOUT_MS = 5000; // Time to wait for Python process to become ready
+const COMMAND_TIMEOUT_MS = 30000; // Time to wait for command response
+
 /**
  * Events emitted by PythonProcess:
  *   - 'status': (message: string) => void - Status update from Python
@@ -92,11 +96,11 @@ export class PythonProcess extends EventEmitter {
         };
         this.on('status', readyHandler);
 
-        // Timeout if not ready in 5 seconds
+        // Timeout if not ready
         setTimeout(() => {
           this.removeListener('status', readyHandler);
           reject(new Error('Python process startup timeout'));
-        }, 5000);
+        }, STARTUP_TIMEOUT_MS);
       } catch (error) {
         reject(error);
       }
@@ -154,12 +158,12 @@ export class PythonProcess extends EventEmitter {
       const commandJson = JSON.stringify(command);
       this.process.stdin!.write(`${commandJson}\n`);
 
-      // Timeout after 30 seconds
+      // Timeout for command response
       setTimeout(() => {
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);
         reject(new Error('Command timeout'));
-      }, 30000);
+      }, COMMAND_TIMEOUT_MS);
     });
   }
 

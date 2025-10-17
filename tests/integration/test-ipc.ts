@@ -83,14 +83,14 @@ async function testIPC() {
 
     // Success!
     console.log('='.repeat(60));
-    console.log('✅ All tests passed!');
+    console.log('[PASS] All tests passed!');
     console.log('='.repeat(60));
 
     // Clean up
     pythonProcess.stop();
     process.exit(0);
   } catch (error) {
-    console.error('\n❌ Test failed:', error);
+    console.error('\n[FAIL] Test failed:', error);
     pythonProcess.stop();
     process.exit(1);
   }
