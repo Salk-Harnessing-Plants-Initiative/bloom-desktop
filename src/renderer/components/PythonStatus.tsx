@@ -116,30 +116,30 @@ export function PythonStatus() {
               <div className="flex items-center gap-2">
                 <span className="font-medium">Camera:</span>
                 {hardware.camera.available ? (
-                  <span className="text-green-600">
-                    ✓ {hardware.camera.devices_found} device(s) found
+                  <span className="text-green-600 font-semibold">
+                    [OK] {hardware.camera.devices_found} device(s) found
                   </span>
                 ) : hardware.camera.library_available ? (
                   <span className="text-yellow-600">
-                    ⚠ Library installed, no devices found
+                    [WARN] Library installed, no devices found
                   </span>
                 ) : (
-                  <span className="text-red-600">✗ Library not installed</span>
+                  <span className="text-red-600">[ERROR] Library not installed</span>
                 )}
               </div>
               {/* DAQ status */}
               <div className="flex items-center gap-2">
                 <span className="font-medium">DAQ:</span>
                 {hardware.daq.available ? (
-                  <span className="text-green-600">
-                    ✓ {hardware.daq.devices_found} device(s) found
+                  <span className="text-green-600 font-semibold">
+                    [OK] {hardware.daq.devices_found} device(s) found
                   </span>
                 ) : hardware.daq.library_available ? (
                   <span className="text-yellow-600">
-                    ⚠ Library installed, no devices found
+                    [WARN] Library installed, no devices found
                   </span>
                 ) : (
-                  <span className="text-red-600">✗ Library not installed</span>
+                  <span className="text-red-600">[ERROR] Library not installed</span>
                 )}
               </div>
             </div>
