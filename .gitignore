@@ -82,7 +82,7 @@ htmlcov/
 
 # Other common ignores #
 #######################
-/coverage                # Coverage reports
+coverage/                # Coverage reports (TypeScript/JavaScript)
 /.vs                    # Visual Studio state files
 /.history
 *.tmp
