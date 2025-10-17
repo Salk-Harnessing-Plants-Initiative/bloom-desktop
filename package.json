@@ -10,8 +10,8 @@
   },
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
+    "package": "npm run build:python && electron-forge package",
+    "make": "npm run build:python && electron-forge make",
     "build:python": "node scripts/build-python.js",
     "test:python": "uv run pytest python/tests -v --cov=python --cov-report=term --cov-report=html",
     "test:ipc": "npm run build:python && ts-node tests/integration/test-ipc.ts",

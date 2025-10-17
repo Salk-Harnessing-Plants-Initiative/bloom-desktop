@@ -12,6 +12,12 @@ import { rendererConfig } from "./webpack.renderer.config";
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    extraResource: [
+      // Include Python executable in packaged app
+      process.platform === 'win32'
+        ? './dist/bloom-hardware.exe'
+        : './dist/bloom-hardware'
+    ],
   },
   rebuildConfig: {},
   makers: [
