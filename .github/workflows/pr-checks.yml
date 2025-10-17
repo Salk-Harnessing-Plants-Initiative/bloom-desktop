@@ -1,7 +1,7 @@
 name: PR Checks
 
 # Runs on every PR and push to main
-# Checks: linting, formatting, compilation, tests (Python + integration)
+# Checks: linting, formatting, compilation, tests (TypeScript + Python + integration)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -15,13 +15,14 @@ permissions:
 
 jobs:
   # ==============================================================================
-  # This workflow runs 5 parallel jobs + 1 summary job:
+  # This workflow runs 6 parallel jobs + 1 summary job:
   # 1. lint-node: ESLint + Prettier for TypeScript/JavaScript
   # 2. lint-python: black + ruff + mypy for Python
   # 3. compile-typescript: Type checking with tsc
-  # 4. test-python: pytest with 80% coverage requirement
-  # 5. test-integration: IPC communication tests (Node.js ↔ Python)
-  # 6. all-checks-passed: Summary job (only runs if all 5 pass)
+  # 4. test-unit: Vitest unit tests with 50% coverage requirement
+  # 5. test-python: pytest with 80% coverage requirement
+  # 6. test-integration: IPC communication tests (Node.js ↔ Python)
+  # 7. all-checks-passed: Summary job (only runs if all 6 pass)
   # ==============================================================================
 
   # Lint and format check for Node.js/TypeScript
@@ -94,6 +95,28 @@ jobs:
       - name: Compile TypeScript
         run: npx tsc --noEmit
 
+  # TypeScript unit tests with coverage
+  test-unit:
+    name: Test - TypeScript Unit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Vitest unit tests with coverage
+        run: npm run test:unit:coverage
+        # Enforces 50% minimum coverage (configured in vitest.config.ts)
+
   # Python tests with coverage
   test-python:
     name: Test - Python
@@ -157,6 +180,7 @@ jobs:
       - lint-node
       - lint-python
       - compile-typescript
+      - test-unit
       - test-python
       - test-integration
 
