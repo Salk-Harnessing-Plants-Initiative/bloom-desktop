@@ -25,9 +25,20 @@ export interface PythonAPI {
 
   /**
    * Check hardware availability
-   * @returns Promise resolving to hardware status
+   * @returns Promise resolving to hardware status with detailed info
    */
-  checkHardware: () => Promise<{ camera: boolean; daq: boolean }>;
+  checkHardware: () => Promise<{
+    camera: {
+      library_available: boolean;
+      devices_found: number;
+      available: boolean;
+    };
+    daq: {
+      library_available: boolean;
+      devices_found: number;
+      available: boolean;
+    };
+  }>;
 
   /**
    * Restart the Python subprocess

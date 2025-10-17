@@ -5,14 +5,24 @@
  * of Python IPC communication.
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+
+interface HardwareStatus {
+  camera: {
+    library_available: boolean;
+    devices_found: number;
+    available: boolean;
+  };
+  daq: {
+    library_available: boolean;
+    devices_found: number;
+    available: boolean;
+  };
+}
 
 export function PythonStatus() {
   const [version, setVersion] = useState<string>('');
-  const [hardware, setHardware] = useState<{
-    camera: boolean;
-    daq: boolean;
-  } | null>(null);
+  const [hardware, setHardware] = useState<HardwareStatus | null>(null);
   const [status, setStatus] = useState<string>('Checking...');
   const [error, setError] = useState<string>('');
 
@@ -99,12 +109,40 @@ export function PythonStatus() {
 
         {/* Hardware status */}
         {hardware && (
-          <div className="flex items-center gap-2">
-            <span className="font-medium">Hardware:</span>
-            <span className="text-gray-700">
-              Camera: {hardware.camera ? '✓' : '✗'} | DAQ:{' '}
-              {hardware.daq ? '✓' : '✗'}
-            </span>
+          <div className="space-y-2">
+            <div className="font-medium">Hardware:</div>
+            <div className="ml-4 space-y-1 text-sm">
+              {/* Camera status */}
+              <div className="flex items-center gap-2">
+                <span className="font-medium">Camera:</span>
+                {hardware.camera.available ? (
+                  <span className="text-green-600">
+                    ✓ {hardware.camera.devices_found} device(s) found
+                  </span>
+                ) : hardware.camera.library_available ? (
+                  <span className="text-yellow-600">
+                    ⚠ Library installed, no devices found
+                  </span>
+                ) : (
+                  <span className="text-red-600">✗ Library not installed</span>
+                )}
+              </div>
+              {/* DAQ status */}
+              <div className="flex items-center gap-2">
+                <span className="font-medium">DAQ:</span>
+                {hardware.daq.available ? (
+                  <span className="text-green-600">
+                    ✓ {hardware.daq.devices_found} device(s) found
+                  </span>
+                ) : hardware.daq.library_available ? (
+                  <span className="text-yellow-600">
+                    ⚠ Library installed, no devices found
+                  </span>
+                ) : (
+                  <span className="text-red-600">✗ Library not installed</span>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

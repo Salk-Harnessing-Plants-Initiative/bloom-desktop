@@ -51,27 +51,55 @@ def send_data(data: Dict[str, Any]) -> None:
     print(f"DATA:{json.dumps(data)}", flush=True)
 
 
-def check_hardware() -> Dict[str, bool]:
-    """Check availability of hardware dependencies.
+def check_hardware() -> Dict[str, Any]:
+    """Check availability of hardware dependencies and connected devices.
 
     Returns:
-        Dictionary with hardware availability status
+        Dictionary with hardware availability status including:
+        - library_available: whether the Python library is installed
+        - devices_found: number of physical devices detected
+        - available: True if library is installed AND devices are found
     """
-    hardware_status = {"camera": False, "daq": False}
+    hardware_status = {
+        "camera": {"library_available": False, "devices_found": 0, "available": False},
+        "daq": {"library_available": False, "devices_found": 0, "available": False},
+    }
 
-    # Check PyPylon (camera)
+    # Check PyPylon (Basler cameras)
     try:
-        import pypylon
+        import pypylon.pylon as pylon
 
-        hardware_status["camera"] = True
+        hardware_status["camera"]["library_available"] = True
+
+        # Try to enumerate cameras
+        try:
+            tlFactory = pylon.TlFactory.GetInstance()
+            devices = tlFactory.EnumerateDevices()
+            num_cameras = len(devices)
+            hardware_status["camera"]["devices_found"] = num_cameras
+            hardware_status["camera"]["available"] = num_cameras > 0
+        except Exception:
+            # Library available but can't enumerate devices
+            pass
     except ImportError:
         pass
 
     # Check NI-DAQmx
     try:
-        import nidaqmx
+        import nidaqmx.system
 
-        hardware_status["daq"] = True
+        hardware_status["daq"]["library_available"] = True
+
+        # Try to enumerate DAQ devices
+        try:
+            system = nidaqmx.system.System.local()
+            devices = system.devices
+            num_devices = len(devices)
+            hardware_status["daq"]["devices_found"] = num_devices
+            hardware_status["daq"]["available"] = num_devices > 0
+        except Exception:
+            # Library available but can't enumerate devices
+            pass
     except ImportError:
         pass
 
