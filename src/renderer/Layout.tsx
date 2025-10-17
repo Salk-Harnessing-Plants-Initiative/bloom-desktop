@@ -42,7 +42,9 @@ export function Layout() {
               end
               className={({ isActive }) =>
                 `flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors ${
-                  isActive ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600' : ''
+                  isActive
+                    ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'
+                    : ''
                 }`
               }
             >

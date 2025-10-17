@@ -41,11 +41,13 @@ python/
 ```
 
 **Key Files:**
+
 - `main.py` - Supports two modes: `--ipc` (for Electron) and interactive CLI
 - `ipc_handler.py` - Routes commands from Electron to hardware modules
 - `main.spec` - PyInstaller config, excludes tests from bundle
 
 **Testing:**
+
 ```bash
 npm run test:python              # Run Python unit tests
 ```
@@ -80,6 +82,7 @@ src/
 ```
 
 **Key Files:**
+
 - `main/main.ts` - Electron app lifecycle, window management
 - `main/preload.ts` - Exposes `window.electron` API to renderer
 - `main/python-process.ts` - Manages Python subprocess, IPC protocol parsing
@@ -101,6 +104,7 @@ tests/
 ```
 
 **Running Tests:**
+
 ```bash
 npm run test:ipc                 # Integration test (builds Python + runs E2E)
 npm run test:unit                # Unit tests (future - Jest)
@@ -116,6 +120,7 @@ scripts/
 ```
 
 **Usage:**
+
 ```bash
 npm run build:python             # Build Python → dist/bloom-hardware
 ```
@@ -123,10 +128,12 @@ npm run build:python             # Build Python → dist/bloom-hardware
 ## Configuration Files
 
 ### Python Configuration
+
 - `pyproject.toml` - Python dependencies, test config, linting (Black, Ruff, mypy)
 - `uv.lock` - Locked Python dependencies (managed by uv)
 
 ### TypeScript/Node Configuration
+
 - `package.json` - npm scripts, Node dependencies
 - `package-lock.json` - Locked npm dependencies
 - `tsconfig.json` - TypeScript compiler options
@@ -134,6 +141,7 @@ npm run build:python             # Build Python → dist/bloom-hardware
 - `.prettierrc.json` - Prettier formatting rules
 
 ### Electron Forge
+
 - `forge.config.ts` - Electron Forge packaging configuration
 - `webpack.main.config.ts` - Webpack config for main process
 - `webpack.renderer.config.ts` - Webpack config for renderer process
@@ -141,6 +149,7 @@ npm run build:python             # Build Python → dist/bloom-hardware
 - `webpack.plugins.ts` - Webpack plugins
 
 ### Styling
+
 - `tailwind.config.js` - Tailwind CSS configuration
 - `postcss.config.js` - PostCSS configuration
 
@@ -164,6 +173,7 @@ htmlcov/                         # Python test coverage report
 ## Development Workflow
 
 ### 1. Install Dependencies
+
 ```bash
 # Node dependencies
 npm install
@@ -173,6 +183,7 @@ npm run build:python
 ```
 
 ### 2. Development Mode
+
 ```bash
 # Start Electron in dev mode
 npm start
@@ -182,6 +193,7 @@ npm run build:python
 ```
 
 ### 3. Run Tests
+
 ```bash
 # Python tests
 npm run test:python
@@ -194,6 +206,7 @@ npm run test:unit
 ```
 
 ### 4. Build for Production
+
 ```bash
 # Build Python executable
 npm run build:python
@@ -208,22 +221,26 @@ npm run make
 ## Phase Roadmap
 
 ### ✅ Phase 1: Foundation (Complete)
+
 - Project structure
 - Electron + React shell
 - Python environment + PyInstaller
 
 ### ✅ Phase 2: IPC Foundation (Issue #12 Complete)
+
 - Python IPC handler
 - TypeScript PythonProcess manager
 - Basic protocol (ping, get_version, check_hardware)
 
 ### 🚧 Phase 2-3: Next Steps
+
 - Issue #13: Bundle Python with Electron installers
 - Issue #14: IPC handlers in main.ts + preload bridge
 - Issue #15: Camera interface migration
 - Issue #16: DAQ interface migration
 
 ### 📋 Phase 4+: UI & Features (Future)
+
 - Camera control UI components
 - DAQ control UI components
 - Scanning workflow
@@ -232,14 +249,14 @@ npm run make
 
 ## File Naming Conventions
 
-| Type | Convention | Example |
-|------|-----------|---------|
-| **Python** | snake_case | `camera_mock.py` |
-| **Python tests** | `test_*.py` | `test_camera.py` |
-| **TypeScript** | kebab-case | `camera-process.ts` |
-| **TypeScript tests** | `*.test.ts` | `camera-process.test.ts` |
-| **React components** | PascalCase.tsx | `CameraControl.tsx` |
-| **Type definitions** | kebab-case.ts | `camera-types.ts` |
+| Type                 | Convention     | Example                  |
+| -------------------- | -------------- | ------------------------ |
+| **Python**           | snake_case     | `camera_mock.py`         |
+| **Python tests**     | `test_*.py`    | `test_camera.py`         |
+| **TypeScript**       | kebab-case     | `camera-process.ts`      |
+| **TypeScript tests** | `*.test.ts`    | `camera-process.test.ts` |
+| **React components** | PascalCase.tsx | `CameraControl.tsx`      |
+| **Type definitions** | kebab-case.ts  | `camera-types.ts`        |
 
 ## Contributing
 
