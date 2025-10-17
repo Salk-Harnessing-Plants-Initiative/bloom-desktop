@@ -13,6 +13,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "build:python": "node scripts/build-python.js",
+    "test:python": "uv run pytest python/tests -v --cov=python --cov-report=term --cov-report=html",
+    "test:ipc": "npm run build:python && ts-node tests/integration/test-ipc.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\""
