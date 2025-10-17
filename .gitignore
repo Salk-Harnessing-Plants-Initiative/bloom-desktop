@@ -95,3 +95,4 @@ htmlcov/
 /app/script/upload_metadata.js
 /.serena
 /.claude
+.DS_Store
