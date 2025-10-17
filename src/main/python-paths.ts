@@ -80,7 +80,7 @@ export function validatePythonExecutable(): void {
   if (process.platform !== 'win32') {
     try {
       fs.accessSync(pythonPath, fs.constants.X_OK);
-    } catch (error) {
+    } catch {
       throw new Error(
         `Python executable found but not executable: ${pythonPath}\n` +
           `Run: chmod +x "${pythonPath}"`

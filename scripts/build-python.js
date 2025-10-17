@@ -9,7 +9,9 @@ try {
   execSync('uv --version', { stdio: 'inherit' });
 } catch (error) {
   console.error('[ERROR] uv is not installed.');
-  console.error('Install it from: https://docs.astral.sh/uv/getting-started/installation/');
+  console.error(
+    'Install it from: https://docs.astral.sh/uv/getting-started/installation/'
+  );
   process.exit(1);
 }
 
@@ -25,7 +27,7 @@ console.log('[INFO] Installing dependencies...');
 try {
   execSync('uv sync --extra dev', {
     stdio: 'inherit',
-    cwd: path.join(__dirname, '..')
+    cwd: path.join(__dirname, '..'),
   });
 } catch (error) {
   console.error('[ERROR] Failed to sync dependencies');
@@ -37,7 +39,7 @@ console.log('[INFO] Running PyInstaller...');
 try {
   execSync('uv run pyinstaller python/main.spec', {
     stdio: 'inherit',
-    cwd: path.join(__dirname, '..')
+    cwd: path.join(__dirname, '..'),
   });
 
   console.log('[SUCCESS] Python executable built successfully!');

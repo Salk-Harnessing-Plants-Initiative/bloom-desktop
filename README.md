@@ -76,6 +76,7 @@ npm install
 ### 2. Available Scripts
 
 #### Development
+
 ```bash
 # Start development server
 npm start
@@ -91,6 +92,7 @@ npm run format:check
 ```
 
 #### Python Backend
+
 ```bash
 # Build Python executable (PyInstaller)
 npm run build:python
@@ -100,6 +102,7 @@ npm run test:python
 ```
 
 #### Testing
+
 ```bash
 # Test Python IPC communication (builds Python if needed)
 npm run test:ipc
@@ -109,6 +112,7 @@ npm run test:package
 ```
 
 #### Packaging & Distribution
+
 ```bash
 # Package app for distribution (includes Python executable)
 npm run package
@@ -119,18 +123,18 @@ npm run make
 
 ### 3. Script Details
 
-| Script | Description | Prerequisites |
-|--------|-------------|---------------|
-| `npm start` | Launch Electron app in development mode | None |
-| `npm run build:python` | Build Python executable with PyInstaller | uv installed |
-| `npm run test:python` | Run Python unit tests with pytest (80%+ coverage) | uv installed |
-| `npm run test:ipc` | Integration test for Python ↔ TypeScript IPC | Python built |
-| `npm run test:package` | Verify Python bundled in packaged app | Package created |
-| `npm run package` | Create distributable app bundle | Python built |
-| `npm run make` | Create platform-specific installers | Python built |
-| `npm run lint` | Check TypeScript/JavaScript code style | None |
-| `npm run format` | Auto-format code with Prettier | None |
-| `npm run format:check` | Check code formatting | None |
+| Script                 | Description                                       | Prerequisites   |
+| ---------------------- | ------------------------------------------------- | --------------- |
+| `npm start`            | Launch Electron app in development mode           | None            |
+| `npm run build:python` | Build Python executable with PyInstaller          | uv installed    |
+| `npm run test:python`  | Run Python unit tests with pytest (80%+ coverage) | uv installed    |
+| `npm run test:ipc`     | Integration test for Python ↔ TypeScript IPC     | Python built    |
+| `npm run test:package` | Verify Python bundled in packaged app             | Package created |
+| `npm run package`      | Create distributable app bundle                   | Python built    |
+| `npm run make`         | Create platform-specific installers               | Python built    |
+| `npm run lint`         | Check TypeScript/JavaScript code style            | None            |
+| `npm run format`       | Auto-format code with Prettier                    | None            |
+| `npm run format:check` | Check code formatting                             | None            |
 
 ## Migration from Pilot
 
@@ -175,12 +179,14 @@ npm run test:package
 ### Test Output Examples
 
 **Python Tests:**
+
 ```
 ============================= 23 passed =============================
 coverage: 84% (python)
 ```
 
 **IPC Test:**
+
 ```
 [PASS] Python process started successfully
 [PASS] Ping test passed
@@ -189,6 +195,7 @@ coverage: 84% (python)
 ```
 
 **Package Test:**
+
 ```
 [PASS] Package found
 [PASS] Python executable found

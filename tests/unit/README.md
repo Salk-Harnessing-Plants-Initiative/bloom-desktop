@@ -31,6 +31,7 @@ npm run test:unit -- --coverage
 ## Test Framework
 
 We use Jest for TypeScript testing:
+
 - **Jest**: Test runner and assertion library
 - **@testing-library/react**: React component testing (for renderer tests)
 - **Mock subprocess**: Use Jest mocks for `child_process.spawn`

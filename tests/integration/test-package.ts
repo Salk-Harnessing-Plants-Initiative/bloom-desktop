@@ -83,10 +83,7 @@ async function testPackagedApp() {
   // Test 1: Check if package exists
   log('[TEST] Checking if packaged app exists...', colors.yellow);
   if (!fs.existsSync(packagePath)) {
-    log(
-      `[FAIL] Packaged app not found at: ${packagePath}`,
-      colors.red
-    );
+    log(`[FAIL] Packaged app not found at: ${packagePath}`, colors.red);
     log(
       '\nRun "npm run package" first to create the packaged app.',
       colors.yellow
@@ -114,15 +111,9 @@ async function testPackagedApp() {
     try {
       fs.accessSync(pythonExecutablePath, fs.constants.X_OK);
       log('[PASS] Python executable has correct permissions', colors.green);
-    } catch (error) {
-      log(
-        '[FAIL] Python executable is not executable',
-        colors.red
-      );
-      log(
-        `Run: chmod +x "${pythonExecutablePath}"`,
-        colors.yellow
-      );
+    } catch {
+      log('[FAIL] Python executable is not executable', colors.red);
+      log(`Run: chmod +x "${pythonExecutablePath}"`, colors.yellow);
       process.exit(1);
     }
     console.log('');
@@ -161,7 +152,10 @@ async function testPackagedApp() {
     const result = await testPythonCommand(pythonExecutablePath, test.command);
 
     if (!result.success) {
-      log(`[FAIL] Command "${test.command}" failed: ${result.error}`, colors.red);
+      log(
+        `[FAIL] Command "${test.command}" failed: ${result.error}`,
+        colors.red
+      );
       process.exit(1);
     }
 
@@ -217,6 +211,7 @@ async function testPackagedApp() {
 /**
  * Test a Python IPC command
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function testPythonCommand(
   pythonPath: string,
   command: string
@@ -243,7 +238,7 @@ async function testPythonCommand(
             pythonProcess.kill();
             resolve({ success: true, data });
             return;
-          } catch (error) {
+          } catch {
             resolve({
               success: false,
               error: `Invalid JSON: ${jsonStr}`,
