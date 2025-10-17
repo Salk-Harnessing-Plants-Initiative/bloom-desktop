@@ -131,6 +131,7 @@ export class PythonProcess extends EventEmitter {
    * @param command - Command object to send as JSON
    * @returns Promise that resolves with the response data
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async sendCommand(command: object): Promise<any> {
     if (!this.process || !this.process.stdin) {
       throw new Error('Process not started');
@@ -138,6 +139,7 @@ export class PythonProcess extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       // Set up one-time listeners for response
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dataHandler = (data: any) => {
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);

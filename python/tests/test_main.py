@@ -1,7 +1,6 @@
 """Tests for main.py entry point and command loop."""
+
 from unittest.mock import patch
-import pytest
-import sys
 
 from python.main import main
 
@@ -9,8 +8,8 @@ from python.main import main
 def test_main_prints_header(capsys):
     """Test that main() prints the startup header."""
     # Simulate immediate exit
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', side_effect=EOFError):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", side_effect=EOFError):
             main()
 
     captured = capsys.readouterr()
@@ -21,8 +20,8 @@ def test_main_prints_header(capsys):
 
 def test_main_handles_exit_command(capsys):
     """Test that 'exit' command shuts down cleanly."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', return_value='exit'):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", return_value="exit"):
             main()
 
     captured = capsys.readouterr()
@@ -31,8 +30,8 @@ def test_main_handles_exit_command(capsys):
 
 def test_main_handles_quit_command(capsys):
     """Test that 'quit' command shuts down cleanly."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', return_value='quit'):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", return_value="quit"):
             main()
 
     captured = capsys.readouterr()
@@ -41,8 +40,8 @@ def test_main_handles_quit_command(capsys):
 
 def test_main_handles_help_command(capsys):
     """Test that 'help' command shows available commands."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', side_effect=['help', 'exit']):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", side_effect=["help", "exit"]):
             main()
 
     captured = capsys.readouterr()
@@ -51,8 +50,8 @@ def test_main_handles_help_command(capsys):
 
 def test_main_handles_version_command(capsys):
     """Test that 'version' command shows Python version."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', side_effect=['version', 'exit']):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", side_effect=["version", "exit"]):
             main()
 
     captured = capsys.readouterr()
@@ -61,8 +60,8 @@ def test_main_handles_version_command(capsys):
 
 def test_main_handles_unknown_command(capsys):
     """Test that unknown commands show error message."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', side_effect=['foobar', 'exit']):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", side_effect=["foobar", "exit"]):
             main()
 
     captured = capsys.readouterr()
@@ -71,8 +70,8 @@ def test_main_handles_unknown_command(capsys):
 
 def test_main_handles_keyboard_interrupt(capsys):
     """Test that Ctrl+C shuts down gracefully."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', side_effect=KeyboardInterrupt):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", side_effect=KeyboardInterrupt):
             main()
 
     captured = capsys.readouterr()
@@ -81,8 +80,8 @@ def test_main_handles_keyboard_interrupt(capsys):
 
 def test_main_handles_eof(capsys):
     """Test that EOF (Ctrl+D) shuts down gracefully."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', side_effect=EOFError):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", side_effect=EOFError):
             main()
 
     captured = capsys.readouterr()
@@ -91,8 +90,8 @@ def test_main_handles_eof(capsys):
 
 def test_main_prints_import_status(capsys):
     """Test that import status is printed for dependencies."""
-    with patch('sys.argv', ['bloom-hardware']):
-        with patch('builtins.input', side_effect=EOFError):
+    with patch("sys.argv", ["bloom-hardware"]):
+        with patch("builtins.input", side_effect=EOFError):
             main()
 
     captured = capsys.readouterr()

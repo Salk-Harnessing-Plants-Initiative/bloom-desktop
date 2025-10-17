@@ -1,9 +1,6 @@
 """Tests for IPC handler module."""
+
 import json
-import io
-import sys
-from unittest.mock import patch, MagicMock
-import pytest
 
 from python.ipc_handler import (
     send_status,

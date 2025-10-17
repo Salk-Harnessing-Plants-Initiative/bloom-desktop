@@ -14,6 +14,7 @@ export interface PythonAPI {
    * @param command - Command object to send
    * @returns Promise resolving to the response data
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sendCommand: (command: object) => Promise<any>;
 
   /**
