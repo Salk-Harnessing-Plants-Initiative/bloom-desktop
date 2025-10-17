@@ -22,7 +22,9 @@ import path from 'path';
  *   - 'status': (message: string) => void - Status update from Python
  *   - 'error': (error: string) => void - Error from Python
  *   - 'data': (data: any) => void - JSON data response from Python
+ *   - 'image': (dataUri: string) => void - Base64-encoded image (data:image/png;base64,...)
  *   - 'exit': (code: number | null) => void - Process exited
+ *   - 'raw': (line: string) => void - Unrecognized output line
  */
 export class PythonProcess extends EventEmitter {
   private process: ChildProcess | null = null;
