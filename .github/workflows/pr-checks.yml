@@ -96,9 +96,12 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
+      - name: Install Python dependencies
+        run: uv sync --all-extras
+
       - name: Run Python tests with coverage
         run: npm run test:python
-        # Note: pytest.ini or pyproject.toml should enforce 80% coverage minimum
+        # Note: pytest.ini or pyproject.toml enforces 80% coverage minimum
 
   # Integration tests
   test-integration:
