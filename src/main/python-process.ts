@@ -15,7 +15,6 @@
 
 import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
-import path from 'path';
 
 // Timeout configuration
 const STARTUP_TIMEOUT_MS = 5000; // Time to wait for Python process to become ready
@@ -214,7 +213,7 @@ export class PythonProcess extends EventEmitter {
       try {
         const data = JSON.parse(jsonStr);
         this.emit('data', data);
-      } catch (error) {
+      } catch {
         this.emit('error', `Invalid JSON: ${jsonStr}`);
       }
     } else if (line.startsWith('IMAGE:')) {

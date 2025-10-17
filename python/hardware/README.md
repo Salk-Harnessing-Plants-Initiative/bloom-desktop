@@ -19,7 +19,9 @@ hardware/
 ## Modules
 
 ### Camera Interface (`camera.py`)
+
 Controls Basler GigE cameras via PyPylon:
+
 - Connect to camera by IP address
 - Configure camera settings (exposure, gain, brightness, etc.)
 - Capture single images
@@ -29,7 +31,9 @@ Controls Basler GigE cameras via PyPylon:
 **Migrated from pilot**: `pylon/pylon.py`, `pylon/pylon_stream.py`
 
 ### Camera Mock (`camera_mock.py`)
+
 Mock camera implementation for testing without hardware:
+
 - Same API as real camera
 - Generates test pattern images
 - No PyPylon dependency required
@@ -37,7 +41,9 @@ Mock camera implementation for testing without hardware:
 **Migrated from pilot**: `pylon/pylon_fake.py`, `pylon/pylon_stream_fake.py`
 
 ### DAQ Interface (`daq.py`)
+
 Controls National Instruments DAQ for rotation:
+
 - Initialize NI-DAQ device
 - Control stepper motor for rotation stage
 - Rotate by degrees or steps
@@ -46,7 +52,9 @@ Controls National Instruments DAQ for rotation:
 **Migrated from pilot**: `daq/` directory
 
 ### DAQ Mock (`daq_mock.py`)
+
 Mock DAQ implementation for testing without hardware:
+
 - Same API as real DAQ
 - Simulates rotation timing
 - No NI-DAQmx dependency required
@@ -54,6 +62,7 @@ Mock DAQ implementation for testing without hardware:
 ## Usage Example
 
 ### Camera
+
 ```python
 from python.hardware.camera import Camera
 
@@ -72,6 +81,7 @@ if camera.connect():
 ```
 
 ### DAQ
+
 ```python
 from python.hardware.daq import DAQ
 
@@ -133,10 +143,12 @@ def handle_command(cmd: Dict[str, Any]) -> None:
 ## Testing
 
 Tests for hardware modules are in `python/tests/hardware/`:
+
 - `test_camera.py` - Camera interface tests (uses mock)
 - `test_daq.py` - DAQ interface tests (uses mock)
 
 Run hardware tests:
+
 ```bash
 # Run all tests (uses mocks)
 npm run test:python
@@ -160,6 +172,7 @@ BLOOM_USE_REAL_CAMERA=true BLOOM_CAMERA_IP=10.0.0.45 npm run test:python
 ### Mock Implementation Requirements
 
 Mock implementations must:
+
 - Match the exact API of real hardware
 - Use same function signatures
 - Return same data types

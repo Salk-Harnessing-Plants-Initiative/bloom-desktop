@@ -29,10 +29,12 @@ components/
 ## Component Guidelines
 
 ### Naming Convention
+
 - Use PascalCase for component files: `CameraControl.tsx`
 - Match file name to component name
 
 ### Structure
+
 ```tsx
 // Good component structure
 import React from 'react';
@@ -48,6 +50,7 @@ export const ComponentName: React.FC<ComponentProps> = ({ prop1, prop2 }) => {
 ```
 
 ### Using window.electron API
+
 ```tsx
 import { useEffect, useState } from 'react';
 
@@ -56,10 +59,9 @@ export const CameraControl: React.FC = () => {
 
   useEffect(() => {
     // Call Python backend
-    window.electron.python.checkHardware()
-      .then(result => {
-        setStatus(result.camera ? 'Connected' : 'Disconnected');
-      });
+    window.electron.python.checkHardware().then((result) => {
+      setStatus(result.camera ? 'Connected' : 'Disconnected');
+    });
   }, []);
 
   return <div>Camera: {status}</div>;
@@ -67,4 +69,5 @@ export const CameraControl: React.FC = () => {
 ```
 
 ## Testing
+
 Component tests will go in `tests/unit/components/`
