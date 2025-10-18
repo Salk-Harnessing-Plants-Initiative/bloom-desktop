@@ -71,7 +71,7 @@ def check_hardware() -> Dict[str, Any]:
         # Suppress stderr during import to avoid "globbing failed" errors on systems
         # without Pylon SDK runtime libraries (common in CI environments)
         stderr_fd = sys.stderr.fileno()
-        with open(os.devnull, 'w') as devnull:
+        with open(os.devnull, "w") as devnull:
             old_stderr = os.dup(stderr_fd)
             os.dup2(devnull.fileno(), stderr_fd)
             try:
