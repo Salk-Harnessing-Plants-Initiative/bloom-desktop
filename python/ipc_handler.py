@@ -83,12 +83,21 @@ def check_hardware() -> Dict[str, Any]:
         hardware_status["camera"]["library_available"] = True
 
         # Try to enumerate cameras
+        # Also suppress stderr here as TlFactory.GetInstance() can also emit errors
         try:
-            tlFactory = pylon.TlFactory.GetInstance()
-            devices = tlFactory.EnumerateDevices()
-            num_cameras = len(devices)
-            hardware_status["camera"]["devices_found"] = num_cameras
-            hardware_status["camera"]["available"] = num_cameras > 0
+            stderr_fd = sys.stderr.fileno()
+            with open(os.devnull, "w") as devnull:
+                old_stderr = os.dup(stderr_fd)
+                os.dup2(devnull.fileno(), stderr_fd)
+                try:
+                    tlFactory = pylon.TlFactory.GetInstance()
+                    devices = tlFactory.EnumerateDevices()
+                    num_cameras = len(devices)
+                    hardware_status["camera"]["devices_found"] = num_cameras
+                    hardware_status["camera"]["available"] = num_cameras > 0
+                finally:
+                    os.dup2(old_stderr, stderr_fd)
+                    os.close(old_stderr)
         except Exception:
             # Library available but can't enumerate devices
             # This can happen if:
