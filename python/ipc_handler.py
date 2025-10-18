@@ -15,6 +15,7 @@ Protocol:
 
 import json
 import sys
+import os
 from typing import Any, Dict
 
 # Import version from package
@@ -67,7 +68,17 @@ def check_hardware() -> Dict[str, Any]:
 
     # Check PyPylon (Basler cameras)
     try:
-        import pypylon.pylon as pylon
+        # Suppress stderr during import to avoid "globbing failed" errors on systems
+        # without Pylon SDK runtime libraries (common in CI environments)
+        stderr_fd = sys.stderr.fileno()
+        with open(os.devnull, 'w') as devnull:
+            old_stderr = os.dup(stderr_fd)
+            os.dup2(devnull.fileno(), stderr_fd)
+            try:
+                import pypylon.pylon as pylon
+            finally:
+                os.dup2(old_stderr, stderr_fd)
+                os.close(old_stderr)
 
         hardware_status["camera"]["library_available"] = True
 
@@ -80,8 +91,14 @@ def check_hardware() -> Dict[str, Any]:
             hardware_status["camera"]["available"] = num_cameras > 0
         except Exception:
             # Library available but can't enumerate devices
+            # This can happen if:
+            # - Pylon runtime libraries not fully installed
+            # - No camera hardware present
+            # - Permission issues
             pass
-    except ImportError:
+    except Exception:
+        # Catch all exceptions including ImportError and runtime errors
+        # pypylon may fail to import or initialize on systems without Pylon SDK
         pass
 
     # Check NI-DAQmx
