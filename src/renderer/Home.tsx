@@ -1,4 +1,4 @@
-import React from 'react';
+import { PythonStatus } from './components/PythonStatus';
 
 export function Home() {
   return (
@@ -36,10 +36,16 @@ export function Home() {
           <ul className="text-gray-600 space-y-2">
             <li>[OK] Application shell</li>
             <li>[OK] Navigation</li>
+            <li>[OK] IPC Communication</li>
             <li>[TODO] Hardware integration</li>
             <li>[TODO] Database setup</li>
           </ul>
         </div>
+      </div>
+
+      {/* Python Backend Status */}
+      <div className="mt-8">
+        <PythonStatus />
       </div>
     </div>
   );
