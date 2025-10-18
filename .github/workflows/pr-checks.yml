@@ -15,14 +15,14 @@ permissions:
 
 jobs:
   # ==============================================================================
-  # This workflow runs 6 parallel jobs + 1 summary job:
-  # 1. lint-node: ESLint + Prettier for TypeScript/JavaScript
-  # 2. lint-python: black + ruff + mypy for Python
-  # 3. compile-typescript: Type checking with tsc
-  # 4. test-unit: Vitest unit tests with 50% coverage requirement
-  # 5. test-python: pytest with 80% coverage requirement
-  # 6. test-integration: IPC communication tests (Node.js ↔ Python)
-  # 7. all-checks-passed: Summary job (only runs if all 6 pass)
+  # This workflow runs multiple jobs across different operating systems:
+  # 1. lint-node: ESLint + Prettier for TypeScript/JavaScript (Linux only)
+  # 2. lint-python: black + ruff + mypy for Python (Linux only)
+  # 3. compile-typescript: Type checking with tsc (Linux only)
+  # 4. test-unit: Vitest unit tests (Linux only)
+  # 5. test-python: pytest with 80% coverage (Linux only)
+  # 6. test-integration: IPC communication tests across Linux, macOS, Windows
+  # 7. all-checks-passed: Summary job (only runs if all pass)
   # ==============================================================================
 
   # Lint and format check for Node.js/TypeScript
@@ -142,14 +142,18 @@ jobs:
 
   # Integration tests
   test-integration:
-    name: Test - Integration
-    runs-on: ubuntu-latest
+    name: Test - Integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Install system dependencies for pypylon
+      - name: Install system dependencies for pypylon (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libusb-1.0-0-dev libglib2.0-dev
@@ -171,11 +175,9 @@ jobs:
 
       - name: Build Python executable
         run: npm run build:python
-        # Creates dist/bloom-hardware executable with PyInstaller
 
       - name: Run IPC integration tests
         run: npm run test:ipc
-        # Tests stdin/stdout JSON communication between Node.js and Python
 
   # Summary job - requires all checks to pass
   all-checks-passed:
