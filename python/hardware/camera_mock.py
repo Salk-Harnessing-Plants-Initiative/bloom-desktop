@@ -17,7 +17,10 @@ from typing import Dict, List, Any
 import imageio.v2 as iio
 import numpy as np
 
-from .camera_types import CameraSettings
+try:
+    from .camera_types import CameraSettings
+except ImportError:
+    from camera_types import CameraSettings
 
 
 # Test images directory (relative to project root)

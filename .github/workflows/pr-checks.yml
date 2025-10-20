@@ -23,6 +23,11 @@ jobs:
   # 5. test-python: pytest with 80% coverage (Linux only)
   # 6. test-integration: IPC communication tests across Linux, macOS, Windows
   # 7. all-checks-passed: Summary job (only runs if all pass)
+  #
+  # NOTE: Camera integration tests (test:camera) are not yet included due to
+  # stderr handling issues causing timeouts. Camera functionality is verified
+  # via manual testing (npm run test:camera:manual). See docs/CAMERA_TESTING.md
+  # TODO: Fix PythonProcess stderr handling and add camera tests to CI
   # ==============================================================================
 
   # Lint and format check for Node.js/TypeScript

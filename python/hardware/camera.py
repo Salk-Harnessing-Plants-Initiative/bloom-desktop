@@ -19,7 +19,10 @@ import numpy as np
 from PIL import Image
 from pypylon import pylon
 
-from .camera_types import CameraSettings
+try:
+    from .camera_types import CameraSettings
+except ImportError:
+    from camera_types import CameraSettings
 
 
 # Optional DAQ support - only import if available

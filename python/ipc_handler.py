@@ -26,12 +26,14 @@ except ImportError:
 
 # Import camera modules
 try:
-    from python.hardware.camera import Camera
-    from python.hardware.camera_mock import MockCamera
-    from python.hardware.camera_types import CameraSettings
+    from hardware.camera import Camera
+    from hardware.camera_mock import MockCamera
+    from hardware.camera_types import CameraSettings
 
     CAMERA_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    # Print import error for debugging
+    print(f"DEBUG: Failed to import camera modules: {e}", file=sys.stderr, flush=True)
     CAMERA_AVAILABLE = False
     Camera = None
     MockCamera = None
