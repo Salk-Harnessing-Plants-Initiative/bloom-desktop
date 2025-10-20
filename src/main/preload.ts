@@ -7,7 +7,9 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 // eslint-disable-next-line import/no-unresolved
-import { PythonAPI } from '../types/electron';
+import { PythonAPI, CameraAPI } from '../types/electron';
+// eslint-disable-next-line import/no-unresolved
+import { CameraSettings, CapturedImage } from '../types/camera';
 
 /**
  * Python backend API exposed to renderer
@@ -29,8 +31,31 @@ const pythonAPI: PythonAPI = {
 };
 
 /**
+ * Camera API exposed to renderer
+ */
+const cameraAPI: CameraAPI = {
+  connect: (settings: CameraSettings) =>
+    ipcRenderer.invoke('camera:connect', settings),
+  disconnect: () => ipcRenderer.invoke('camera:disconnect'),
+  configure: (settings: Partial<CameraSettings>) =>
+    ipcRenderer.invoke('camera:configure', settings),
+  capture: (settings?: Partial<CameraSettings>) =>
+    ipcRenderer.invoke('camera:capture', settings),
+  getStatus: () => ipcRenderer.invoke('camera:get-status'),
+  onTrigger: (callback: () => void) => {
+    ipcRenderer.on('camera:trigger', () => callback());
+  },
+  onImageCaptured: (callback: (image: CapturedImage) => void) => {
+    ipcRenderer.on('camera:image-captured', (_event, image: CapturedImage) =>
+      callback(image)
+    );
+  },
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
   python: pythonAPI,
+  camera: cameraAPI,
 });
