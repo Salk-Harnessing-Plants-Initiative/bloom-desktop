@@ -25,6 +25,31 @@ except ImportError:
     __version__ = "0.1.0"
 
 
+class SuppressStderr:
+    """Context manager to temporarily suppress stderr output.
+
+    Useful for suppressing C++ library errors that bypass Python's sys.stderr.
+    This is commonly needed for libraries like pypylon that write directly to
+    the stderr file descriptor when initialization fails on systems without
+    full SDK support.
+    """
+
+    def __enter__(self):
+        """Redirect stderr to /dev/null."""
+        self.stderr_fd = sys.stderr.fileno()
+        self.devnull = open(os.devnull, "w")
+        self.old_stderr = os.dup(self.stderr_fd)
+        os.dup2(self.devnull.fileno(), self.stderr_fd)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Restore stderr to original state."""
+        os.dup2(self.old_stderr, self.stderr_fd)
+        os.close(self.old_stderr)
+        self.devnull.close()
+        return False  # Don't suppress exceptions
+
+
 def send_status(message: str) -> None:
     """Send a status message to stdout.
 
@@ -70,34 +95,20 @@ def check_hardware() -> Dict[str, Any]:
     try:
         # Suppress stderr during import to avoid "globbing failed" errors on systems
         # without Pylon SDK runtime libraries (common in CI environments)
-        stderr_fd = sys.stderr.fileno()
-        with open(os.devnull, "w") as devnull:
-            old_stderr = os.dup(stderr_fd)
-            os.dup2(devnull.fileno(), stderr_fd)
-            try:
-                import pypylon.pylon as pylon
-            finally:
-                os.dup2(old_stderr, stderr_fd)
-                os.close(old_stderr)
+        with SuppressStderr():
+            import pypylon.pylon as pylon
 
         hardware_status["camera"]["library_available"] = True
 
         # Try to enumerate cameras
         # Also suppress stderr here as TlFactory.GetInstance() can also emit errors
         try:
-            stderr_fd = sys.stderr.fileno()
-            with open(os.devnull, "w") as devnull:
-                old_stderr = os.dup(stderr_fd)
-                os.dup2(devnull.fileno(), stderr_fd)
-                try:
-                    tlFactory = pylon.TlFactory.GetInstance()
-                    devices = tlFactory.EnumerateDevices()
-                    num_cameras = len(devices)
-                    hardware_status["camera"]["devices_found"] = num_cameras
-                    hardware_status["camera"]["available"] = num_cameras > 0
-                finally:
-                    os.dup2(old_stderr, stderr_fd)
-                    os.close(old_stderr)
+            with SuppressStderr():
+                tlFactory = pylon.TlFactory.GetInstance()
+                devices = tlFactory.EnumerateDevices()
+                num_cameras = len(devices)
+                hardware_status["camera"]["devices_found"] = num_cameras
+                hardware_status["camera"]["available"] = num_cameras > 0
         except Exception:
             # Library available but can't enumerate devices
             # This can happen if:
