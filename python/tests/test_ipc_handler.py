@@ -39,14 +39,30 @@ def test_send_data(capsys):
 
 
 def test_check_hardware():
-    """Test that check_hardware returns status dict."""
+    """Test that check_hardware returns detailed status dict."""
     status = check_hardware()
 
     assert isinstance(status, dict)
     assert "camera" in status
     assert "daq" in status
-    assert isinstance(status["camera"], bool)
-    assert isinstance(status["daq"], bool)
+
+    # Check camera status structure
+    assert isinstance(status["camera"], dict)
+    assert "library_available" in status["camera"]
+    assert "devices_found" in status["camera"]
+    assert "available" in status["camera"]
+    assert isinstance(status["camera"]["library_available"], bool)
+    assert isinstance(status["camera"]["devices_found"], int)
+    assert isinstance(status["camera"]["available"], bool)
+
+    # Check DAQ status structure
+    assert isinstance(status["daq"], dict)
+    assert "library_available" in status["daq"]
+    assert "devices_found" in status["daq"]
+    assert "available" in status["daq"]
+    assert isinstance(status["daq"]["library_available"], bool)
+    assert isinstance(status["daq"]["devices_found"], int)
+    assert isinstance(status["daq"]["available"], bool)
 
 
 def test_handle_command_ping(capsys):
