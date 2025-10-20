@@ -1,20 +1,18 @@
-# General OS generated files #
-###########################
-.DS_Store               # macOS folder custom attributes
+# General OS generated files
+.DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db             # Windows generated images thumbnails
+ehthumbs.db
 Thumbs.db
-Desktop.ini             # Windows folder settings
+Desktop.ini
 
-# Editor directories and files #
-################################
-.vscode/                 # Visual Studio Code
-.idea/                   # IntelliJ, PyCharm, etc
-*.sublime-workspace      # Sublime Text
-*.sublime-project        # Sublime Text
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
 *.suo
 *.ntvs*
 *.njsproj
@@ -82,16 +80,14 @@ htmlcov/
 
 # Other common ignores #
 #######################
-coverage/                # Coverage reports (TypeScript/JavaScript)
-/.vs                    # Visual Studio state files
+coverage/
+/.vs
 /.history
 *.tmp
 *.temp
 
 # Exclude specific files or directories (examples) #
 ####################################################
-# /path/to/file.txt      # Exclude a specific file
-# /some_temp_directory/  # Exclude a specific directory
 /app/script/upload_metadata.js
 /.serena
 /.claude
