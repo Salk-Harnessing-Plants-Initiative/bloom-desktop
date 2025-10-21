@@ -41,11 +41,11 @@ Expected output:
 ```
 STATUS:IPC handler ready
 STATUS:Using mock camera
-WARNING: Test images directory not found at .../test/sample_scan
-Generating synthetic test patterns instead
 STATUS:Mock camera opened
 DATA:{"success": true, "connected": true}
 ```
+
+Note: In development mode, the mock camera automatically loads real plant scan images from `tests/fixtures/sample_scan/`. No warnings should appear.
 
 ### 3. Capture an Image
 
@@ -67,34 +67,34 @@ You should see a base64-encoded PNG image in the output.
 Once the Electron app is running, you can test the camera from the renderer process:
 
 ```javascript
-// In the browser console of the Electron app
+// Quick test script - paste into browser console
+(async () => {
+  // Connect to camera
+  await window.electron.camera.connect({
+    exposure_time: 5000,
+    gain: 10,
+    gamma: 1.0
+  });
 
-// Check camera status
-const status = await window.electron.camera.getStatus();
-console.log('Camera status:', status);
-// Expected: {connected: false, mock: true, available: true}
+  // Capture and display
+  const image = await window.electron.camera.capture();
+  const img = document.createElement('img');
+  img.src = image.dataUri;
+  img.style.maxWidth = '80%';
+  img.style.border = '3px solid #4CAF50';
+  img.style.margin = '20px';
+  img.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+  document.body.appendChild(img);
 
-// Connect to camera
-const settings = {
-  camera_ip_address: '10.0.0.23',
-  exposure_time: 5000,
-  gain: 10,
-  gamma: 1.0,
-};
+  console.log(`✅ Captured ${image.width}x${image.height} image`);
+  // Expected: ✅ Captured 2048x1080 image (real plant scan)
+})();
+```
 
-const connected = await window.electron.camera.connect(settings);
-console.log('Connected:', connected);
-// Expected: {success: true}
-
-// Capture an image
-const image = await window.electron.camera.capture();
-console.log('Captured image:', image);
-// Expected: {dataUri: 'data:image/png;base64,...', timestamp: ..., width: ..., height: ...}
-
-// Display the image
-const img = document.createElement('img');
-img.src = image.dataUri;
-document.body.appendChild(img);
+**What you'll see:**
+- A real plant scan image displayed on the page
+- Dimensions: 2048x1080 pixels (real images) vs 640x480 (synthetic)
+- Image size: ~2-3MB (real) vs ~400KB (synthetic)
 ```
 
 ## Environment Variables
@@ -123,6 +123,24 @@ The mock camera simulates a Basler camera by:
 ### Test Images
 
 The repository includes a complete set of 72 real plant scan images in `tests/fixtures/sample_scan/` (1.png through 72.png). These images are used by the mock camera to provide realistic test data.
+
+### Image Loading Behavior
+
+The mock camera automatically detects its execution environment:
+
+**Development mode** (`npm start` or `npm run test:camera`):
+- ✅ Loads real plant scan images from `tests/fixtures/sample_scan/`
+- 📐 Images: 2048x1080 pixels, ~2.2MB each
+- 📸 72 images total (5° rotation increments for full 360° scan)
+
+**Source execution** (Python tests with `pytest`):
+- ✅ Loads real images from fixtures directory
+- ✅ Full test coverage with realistic data
+
+**Production bundle** (if images not found):
+- ⚠️ Falls back to synthetic gradient patterns
+- 📐 Images: 640x480 pixels, minimal size
+- ✅ Still functional, just not realistic
 
 To add your own test images:
 

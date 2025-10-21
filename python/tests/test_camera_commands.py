@@ -478,3 +478,45 @@ class TestCameraUnavailable:
         )
         captured = capsys.readouterr()
         assert "ERROR:Camera module not available" in captured.out
+
+
+class TestMockCameraPathResolution:
+    """Test mock camera path resolution in different environments."""
+
+    def test_get_test_images_dir_from_source(self):
+        """Test that path resolution works when running from source."""
+        from python.hardware.camera_mock import _get_test_images_dir
+        import pathlib
+
+        test_dir = _get_test_images_dir()
+
+        # Should resolve to actual fixtures directory
+        assert test_dir.exists(), f"Test images directory not found: {test_dir}"
+        assert test_dir.name == "sample_scan"
+        assert (test_dir / "1.png").exists()
+
+    def test_get_test_images_dir_bundled_mode(self, monkeypatch):
+        """Test path resolution when running from PyInstaller bundle."""
+        import sys
+        import pathlib
+        from importlib import reload
+        import python.hardware.camera_mock as camera_mock_module
+
+        # Simulate PyInstaller environment
+        monkeypatch.setattr(sys, "_MEIPASS", "/tmp/_MEITEST", raising=False)
+
+        # Mock sys.executable to point to dist/
+        project_root = pathlib.Path(__file__).parent.parent.parent
+        fake_exe = project_root / "dist" / "bloom-hardware"
+        monkeypatch.setattr(sys, "executable", str(fake_exe))
+
+        # Reload module to pick up new path
+        reload(camera_mock_module)
+        test_dir = camera_mock_module._get_test_images_dir()
+
+        # Should find project root and locate fixtures
+        expected = project_root / "tests" / "fixtures" / "sample_scan"
+        assert test_dir == expected
+
+        # Clean up by reloading module (monkeypatch will auto-cleanup _MEIPASS)
+        reload(camera_mock_module)

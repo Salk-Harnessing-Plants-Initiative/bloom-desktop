@@ -23,8 +23,40 @@ except ImportError:
     from camera_types import CameraSettings  # type: ignore[no-redef]
 
 
+def _get_test_images_dir() -> pathlib.Path:
+    """Get test images directory, handling both source and bundled execution.
+
+    Returns:
+        Path to test images directory. May not exist (triggers synthetic pattern fallback).
+    """
+    # Check if running from PyInstaller bundle
+    if getattr(sys, "_MEIPASS", None):
+        # Running from PyInstaller bundle
+        # Try to find project root (for development builds in dist/)
+        # Look for the project root by going up from the executable location
+        if hasattr(sys, "executable"):
+            exe_dir = pathlib.Path(sys.executable).parent
+            # From dist/bloom-hardware -> project root
+            project_root = exe_dir.parent
+            test_images_path = project_root / "tests" / "fixtures" / "sample_scan"
+
+            if test_images_path.exists():
+                return test_images_path
+
+        # Fallback: return non-existent path (will trigger synthetic patterns)
+        return pathlib.Path("/nonexistent/test/images")
+    else:
+        # Running from source - use relative path from this file
+        return (
+            pathlib.Path(__file__).parent.parent.parent
+            / "tests"
+            / "fixtures"
+            / "sample_scan"
+        )
+
+
 # Test images directory (relative to project root)
-TEST_IMAGES_DIR = pathlib.Path(__file__).parent.parent.parent / "tests" / "fixtures" / "sample_scan"
+TEST_IMAGES_DIR = _get_test_images_dir()
 
 
 class MockCamera:
