@@ -80,7 +80,7 @@ async function testCamera() {
     // Test 2: Connect to mock camera
     console.log('[TEST 2] Connecting to mock camera...');
     const cameraSettings: CameraSettings = {
-      camera_ip_address: '10.0.0.23', // Mock doesn't use this but required by API
+      // camera_ip_address is optional for mock camera
       exposure_time: 5000,
       gain: 10,
       gamma: 1.0,

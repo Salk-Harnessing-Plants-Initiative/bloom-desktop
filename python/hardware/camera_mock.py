@@ -60,6 +60,16 @@ class MockCamera:
             return self._generate_test_patterns()
 
         image_files = glob.glob(str(TEST_IMAGES_DIR / "*.png"))
+
+        # Validate that all image filenames have numeric stems before sorting
+        for img_file in image_files:
+            stem = pathlib.Path(img_file).stem
+            if not stem.isdigit():
+                raise ValueError(
+                    f"Test image filename '{img_file}' does not have a numeric stem. "
+                    "Filenames must be of the form '1.png', '2.png', etc."
+                )
+
         image_files.sort(key=lambda x: int(pathlib.Path(x).stem))
 
         if not image_files:

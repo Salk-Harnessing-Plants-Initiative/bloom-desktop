@@ -10,14 +10,14 @@
  * Note: Uses snake_case to match Python backend convention
  */
 export interface CameraSettings {
-  /** Camera IP address (e.g., "10.0.0.45") */
-  camera_ip_address: string;
-
   /** Exposure time in microseconds */
   exposure_time: number;
 
   /** Gain (raw value) */
   gain: number;
+
+  /** Camera IP address (e.g., "10.0.0.45"). Optional for mock camera. */
+  camera_ip_address?: string;
 
   /** Brightness (0.0 - 1.0, optional) */
   brightness?: number;

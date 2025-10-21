@@ -32,8 +32,9 @@ try:
 
     CAMERA_AVAILABLE = True
 except ImportError as e:
-    # Print import error for debugging
-    print(f"DEBUG: Failed to import camera modules: {e}", file=sys.stderr, flush=True)
+    # Report import error using protocol-compliant error reporting
+    # Note: send_error not yet defined, so use print directly
+    print(f"ERROR:Failed to import camera modules: {e}", flush=True)
     CAMERA_AVAILABLE = False
     Camera = None
     MockCamera = None
@@ -280,6 +281,7 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             is_connected = _camera_instance is not None and _camera_instance.is_open
             send_data(
                 {
+                    "success": True,
                     "connected": is_connected,
                     "mock": _use_mock_camera,
                     "available": CAMERA_AVAILABLE,
@@ -290,7 +292,7 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             send_error(f"Unknown camera action: {action}")
 
     except Exception as e:
-        send_error(f"Camera command error: {e}")
+        # Send error via DATA protocol for consistent response handling
         send_data({"success": False, "error": str(e)})
 
 

@@ -39,12 +39,12 @@ def setup_camera_mocks(monkeypatch):
         def _configure_camera(self):
             pass
 
-    # Create CameraSettings class
+    # Create CameraSettings class with optional camera_ip_address
     class MockCameraSettings:
-        def __init__(self, camera_ip_address, exposure_time, gain, **kwargs):
-            self.camera_ip_address = camera_ip_address
+        def __init__(self, exposure_time, gain, camera_ip_address=None, **kwargs):
             self.exposure_time = exposure_time
             self.gain = gain
+            self.camera_ip_address = camera_ip_address
             for key, value in kwargs.items():
                 setattr(self, key, value)
 
@@ -148,8 +148,11 @@ class TestCameraConnect:
         handle_command({"command": "camera", "action": "connect", "settings": {}})
         captured = capsys.readouterr()
 
-        # Should get an error about missing required fields
-        assert "ERROR:" in captured.out
+        # Should get an error about missing required fields (via DATA protocol now)
+        data = extract_json_data(captured.out)
+        assert data is not None
+        assert data["success"] is False
+        assert "error" in data
 
 
 class TestCameraDisconnect:
@@ -227,9 +230,12 @@ class TestCameraCapture:
         handle_command({"command": "camera", "action": "capture"})
         captured = capsys.readouterr()
 
-        # Should get an error
-        assert "ERROR:" in captured.out
-        assert "not connected" in captured.out.lower()
+        # Should get an error (via DATA protocol now)
+        data = extract_json_data(captured.out)
+        assert data is not None
+        assert data["success"] is False
+        assert "error" in data
+        assert "not connected" in data["error"].lower()
 
     def test_capture_with_settings_auto_connects(self, capsys, mock_camera_settings):
         """Test that capture with settings auto-connects."""
@@ -295,9 +301,12 @@ class TestCameraConfigure:
         )
         captured = capsys.readouterr()
 
-        # Should get an error
-        assert "ERROR:" in captured.out
-        assert "not connected" in captured.out.lower()
+        # Should get an error (via DATA protocol now)
+        data = extract_json_data(captured.out)
+        assert data is not None
+        assert data["success"] is False
+        assert "error" in data
+        assert "not connected" in data["error"].lower()
 
     def test_configure_updates_settings(self, mock_camera_settings):
         """Test that configure updates camera settings."""

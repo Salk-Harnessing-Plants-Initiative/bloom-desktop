@@ -11,9 +11,9 @@ import { PythonProcess } from './python-process';
  * Camera settings interface
  */
 export interface CameraSettings {
-  camera_ip_address: string;
   exposure_time: number; // microseconds
   gain: number;
+  camera_ip_address?: string; // Optional for mock camera
   gamma?: number;
   num_frames?: number;
   seconds_per_rot?: number;

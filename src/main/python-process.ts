@@ -17,7 +17,7 @@ import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
 
 // Timeout configuration
-const STARTUP_TIMEOUT_MS = 15000; // Time to wait for Python process to become ready (PyInstaller can be slow)
+const STARTUP_TIMEOUT_MS = 15000; // Time to wait for initial "ready" signal from Python process (startup only, not for command responses; PyInstaller can be slow)
 const COMMAND_TIMEOUT_MS = 30000; // Time to wait for command response
 
 /**

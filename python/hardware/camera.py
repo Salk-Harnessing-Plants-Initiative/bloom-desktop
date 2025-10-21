@@ -33,7 +33,7 @@ try:
     DAQ_AVAILABLE = True
 except ImportError:
     DAQ_AVAILABLE = False
-    print("WARNING:NI-DAQmx not available, DAQ synchronization disabled", flush=True)
+    print("STATUS:NI-DAQmx not available, DAQ synchronization disabled", flush=True)
 
 
 class Camera:
@@ -214,9 +214,13 @@ class Camera:
             raise RuntimeError("Camera is not open")
 
         num_frames = self.settings.num_frames
-        if num_frames != 72:
+
+        # Standard full rotation scan uses 72 frames (5° between frames)
+        # DAQ timing calculations work with any frame count that divides evenly into 360°
+        if 360 % num_frames != 0:
             print(
-                f"WARNING:DAQ synchronization designed for 72 frames, got {num_frames}",
+                f"STATUS:Frame count {num_frames} does not divide evenly into 360°. "
+                f"Standard values: 72 (5°), 36 (10°), 24 (15°), 18 (20°)",
                 flush=True,
             )
 
@@ -290,13 +294,22 @@ class Camera:
                     task.start()
 
                     # Wait for DAQ task to complete
+                    # Add retry limit to prevent infinite loop if DAQ hardware fails
+                    max_retries = 1000  # 1000 retries * 0.005s = 5 second timeout
+                    retry_count = 0
                     done = False
-                    while not done:
+                    while not done and retry_count < max_retries:
                         try:
                             task.wait_until_done(timeout=0.005)
                             done = True
-                        except Exception:  # noqa: S110
-                            continue
+                        except nidaqmx.errors.DaqError:
+                            # DAQ task not yet complete, retry
+                            retry_count += 1
+
+                    if not done:
+                        raise TimeoutError(
+                            f"DAQ task did not complete after {max_retries} retries (5s timeout)"
+                        )
 
                     # Trigger camera
                     print("TRIGGER_CAMERA", flush=True)
