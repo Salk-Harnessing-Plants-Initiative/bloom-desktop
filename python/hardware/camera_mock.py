@@ -24,8 +24,7 @@ except ImportError:
 
 
 # Test images directory (relative to project root)
-# TODO: Create test/sample_scan directory with test images
-TEST_IMAGES_DIR = pathlib.Path(__file__).parent.parent.parent / "test" / "sample_scan"
+TEST_IMAGES_DIR = pathlib.Path(__file__).parent.parent.parent / "tests" / "fixtures" / "sample_scan"
 
 
 class MockCamera:

@@ -98,6 +98,11 @@ tests/
 │   ├── test-camera.ts           # Camera integration test
 │   ├── test-package.ts          # Package verification test
 │   └── test-capture.png         # Test image output
+├── fixtures/                    # Test data and assets
+│   └── sample_scan/             # Mock camera test images (72 plant scan images)
+│       ├── 1.png
+│       ├── 2.png
+│       └── ...
 └── unit/                        # TypeScript unit tests (future)
     ├── README.md                # Testing guidelines
     └── setup.ts                 # Test setup

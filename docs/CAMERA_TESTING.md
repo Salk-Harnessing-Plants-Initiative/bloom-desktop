@@ -117,19 +117,19 @@ export BLOOM_CAMERA_IP=10.0.0.23
 The mock camera simulates a Basler camera by:
 
 1. **Generating synthetic test patterns** if no test images are available
-2. **Loading test images** from `test/sample_scan/` if they exist
+2. **Loading test images** from `tests/fixtures/sample_scan/` if they exist
 3. **Providing the same API** as the real camera
 
-### Creating Test Images
+### Test Images
 
-To use real test images instead of synthetic patterns:
+The repository includes a complete set of 72 real plant scan images in `tests/fixtures/sample_scan/` (1.png through 72.png). These images are used by the mock camera to provide realistic test data.
+
+To add your own test images:
 
 ```bash
-# Create the test images directory
-mkdir -p test/sample_scan
-
-# Add PNG images (named 1.png, 2.png, etc.)
-# The mock camera will cycle through these images
+# Add PNG images to the fixtures directory (named 1.png, 2.png, etc.)
+# The mock camera will load them automatically
+cp your-images/*.png tests/fixtures/sample_scan/
 ```
 
 ## Troubleshooting
