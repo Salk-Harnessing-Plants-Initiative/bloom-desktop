@@ -87,6 +87,7 @@ class MockCamera:
             except Exception as e:
                 print(f"WARNING: Failed to load {img_file}: {e}", flush=True)
 
+        # Type ignore needed: imageio.imread() has imprecise type hints that don't match np.ndarray
         return images if images else self._generate_test_patterns()  # type: ignore[return-value]
 
     def _generate_test_patterns(self, count: int = 72) -> List[np.ndarray]:

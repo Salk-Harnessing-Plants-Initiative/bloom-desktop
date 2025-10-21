@@ -444,3 +444,37 @@ class TestCameraWorkflow:
         data = extract_json_data(captured.out)
         assert data is not None
         assert data["connected"] is False
+
+
+class TestCameraUnavailable:
+    """Test camera commands when camera module is unavailable."""
+
+    def test_camera_commands_when_unavailable(self, capsys, monkeypatch):
+        """Test that camera commands return proper errors when module unavailable."""
+        import python.ipc_handler as ipc
+
+        # Simulate camera module not available
+        monkeypatch.setattr("python.ipc_handler.CAMERA_AVAILABLE", False)
+        monkeypatch.setattr("python.ipc_handler.Camera", None)
+        monkeypatch.setattr("python.ipc_handler.MockCamera", None)
+        ipc._camera_instance = None
+
+        # Try status command - should return error since module unavailable
+        handle_command({"command": "camera", "action": "status"})
+        captured = capsys.readouterr()
+        assert "ERROR:Camera module not available" in captured.out
+
+        # Try connect command - should return error
+        handle_command(
+            {
+                "command": "camera",
+                "action": "connect",
+                "settings": {
+                    "camera_ip_address": "10.0.0.23",
+                    "exposure_time": 5000,
+                    "gain": 10,
+                },
+            }
+        )
+        captured = capsys.readouterr()
+        assert "ERROR:Camera module not available" in captured.out

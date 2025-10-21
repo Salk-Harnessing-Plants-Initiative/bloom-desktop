@@ -10,6 +10,9 @@ import type { CameraSettings } from '../../src/main/camera-process';
 import path from 'path';
 import fs from 'fs';
 
+// Pattern to identify warning messages vs actual errors
+const WARNING_MESSAGE_PATTERN = /\b(warn|warning|deprecationwarning)\b/i;
+
 async function testCamera() {
   console.log('='.repeat(60));
   console.log('Testing Camera Interface (Mock Camera)');
@@ -37,9 +40,7 @@ async function testCamera() {
 
   cameraProcess.on('error', (error: string) => {
     // Ignore warnings, only log actual errors
-    // Use case-insensitive regex to match various warning formats
-    const warningPattern = /\b(warn|warning|deprecationwarning)\b/i;
-    if (!warningPattern.test(error)) {
+    if (!WARNING_MESSAGE_PATTERN.test(error)) {
       console.error(`[ERROR] ${error}`);
     }
   });

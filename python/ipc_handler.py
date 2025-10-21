@@ -37,7 +37,7 @@ try:
     CAMERA_AVAILABLE = True
 except ImportError as e:
     # Report import error using protocol-compliant error reporting
-    # Note: send_error not yet defined, so use print directly
+    # Use print directly since send_error() is defined later in this file
     print(f"ERROR:Failed to import camera modules: {e}", flush=True)
     CAMERA_AVAILABLE = False
     Camera = None

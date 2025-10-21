@@ -36,6 +36,15 @@ except ImportError:
     print("STATUS:NI-DAQmx not available, DAQ synchronization disabled", flush=True)
 
 
+# DAQ timeout configuration
+DAQ_RETRY_MAX_ATTEMPTS = 1000  # Maximum retry attempts for DAQ wait_until_done
+DAQ_RETRY_TIMEOUT_MS = 5  # Milliseconds per retry attempt
+# Total timeout: 1000 * 5ms = 5 seconds
+
+# NI-DAQmx error codes
+DAQ_ERROR_TIMEOUT = -200563  # Wait operation timed out
+
+
 class Camera:
     """Basler camera control using PyPylon."""
 
@@ -299,24 +308,23 @@ class Camera:
 
                     # Wait for DAQ task to complete
                     # Add retry limit to prevent infinite loop if DAQ hardware fails
-                    max_retries = 1000  # 1000 retries * 0.005s = 5 second timeout
                     retry_count = 0
                     done = False
-                    while not done and retry_count < max_retries:
+                    while not done and retry_count < DAQ_RETRY_MAX_ATTEMPTS:
                         try:
-                            task.wait_until_done(timeout=0.005)
+                            task.wait_until_done(timeout=DAQ_RETRY_TIMEOUT_MS / 1000)
                             done = True
                         except nidaqmx.errors.DaqError as e:
-                            # Only retry for timeout errors (-200563)
+                            # Only retry for timeout errors
                             # Other DAQ errors indicate hardware failures that won't resolve with retries
-                            if getattr(e, "error_code", None) == -200563:
+                            if getattr(e, "error_code", None) == DAQ_ERROR_TIMEOUT:
                                 retry_count += 1
                             else:
                                 raise
 
                     if not done:
                         raise TimeoutError(
-                            f"DAQ task did not complete after {max_retries} retries (5s timeout)"
+                            f"DAQ task did not complete after {DAQ_RETRY_MAX_ATTEMPTS} retries (5s timeout)"
                         )
 
                     # Trigger camera
