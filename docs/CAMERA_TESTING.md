@@ -73,7 +73,7 @@ Once the Electron app is running, you can test the camera from the renderer proc
   await window.electron.camera.connect({
     exposure_time: 5000,
     gain: 10,
-    gamma: 1.0
+    gamma: 1.0,
   });
 
   // Capture and display
@@ -92,10 +92,12 @@ Once the Electron app is running, you can test the camera from the renderer proc
 ```
 
 **What you'll see:**
+
 - A real plant scan image displayed on the page
 - Dimensions: 2048x1080 pixels (real images) vs 640x480 (synthetic)
 - Image size: ~2-3MB (real) vs ~400KB (synthetic)
-```
+
+````
 
 ## Environment Variables
 
@@ -110,7 +112,7 @@ export BLOOM_USE_MOCK_CAMERA=true
 # Use real PyPylon camera
 export BLOOM_USE_MOCK_CAMERA=false
 export BLOOM_CAMERA_IP=10.0.0.23
-```
+````
 
 ## Understanding the Mock Camera
 
@@ -129,15 +131,18 @@ The repository includes a complete set of 72 real plant scan images in `tests/fi
 The mock camera automatically detects its execution environment:
 
 **Development mode** (`npm start` or `npm run test:camera`):
+
 - ✅ Loads real plant scan images from `tests/fixtures/sample_scan/`
 - 📐 Images: 2048x1080 pixels, ~2.2MB each
 - 📸 72 images total (5° rotation increments for full 360° scan)
 
 **Source execution** (Python tests with `pytest`):
+
 - ✅ Loads real images from fixtures directory
 - ✅ Full test coverage with realistic data
 
 **Production bundle** (if images not found):
+
 - ⚠️ Falls back to synthetic gradient patterns
 - 📐 Images: 640x480 pixels, minimal size
 - ✅ Still functional, just not realistic

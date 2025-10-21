@@ -1,6 +1,6 @@
 """Tests for test fixture integrity."""
+
 import pathlib
-import pytest
 from PIL import Image
 
 

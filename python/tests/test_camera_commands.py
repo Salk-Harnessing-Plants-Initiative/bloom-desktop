@@ -486,7 +486,6 @@ class TestMockCameraPathResolution:
     def test_get_test_images_dir_from_source(self):
         """Test that path resolution works when running from source."""
         from python.hardware.camera_mock import _get_test_images_dir
-        import pathlib
 
         test_dir = _get_test_images_dir()
 
