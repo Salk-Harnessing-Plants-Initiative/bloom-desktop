@@ -9,6 +9,8 @@
 
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { PythonProcess } from './python-process';
+import { CameraProcess } from './camera-process';
+import type { CameraSettings } from './camera-process';
 import {
   getPythonExecutablePath,
   validatePythonExecutable,
@@ -28,6 +30,7 @@ if (require('electron-squirrel-startup')) {
 
 let mainWindow: BrowserWindow | null = null;
 let pythonProcess: PythonProcess | null = null;
+let cameraProcess: CameraProcess | null = null;
 
 const createWindow = (): void => {
   // Create the browser window.
@@ -179,6 +182,145 @@ ipcMain.handle('python:restart', async () => {
 });
 
 // =============================================================================
+// IPC Handlers for Camera Communication
+// =============================================================================
+
+/**
+ * Initialize camera subprocess if not already initialized
+ */
+async function ensureCameraProcess(): Promise<CameraProcess> {
+  if (!cameraProcess) {
+    const pythonPath = getPythonExecutablePath();
+    cameraProcess = new CameraProcess(pythonPath, ['--ipc']);
+
+    // Forward camera events to renderer
+    cameraProcess.on('camera-trigger', () => {
+      mainWindow?.webContents.send('camera:trigger');
+    });
+
+    cameraProcess.on('image-captured', (dataUri: string) => {
+      mainWindow?.webContents.send('camera:image-captured', {
+        dataUri,
+        timestamp: Date.now(),
+      });
+    });
+
+    cameraProcess.on('status', (status: string) => {
+      console.log('Camera status:', status);
+    });
+
+    cameraProcess.on('error', (error: string) => {
+      console.error('Camera error:', error);
+      mainWindow?.webContents.send('camera:error', error);
+    });
+
+    cameraProcess.on('exit', (code: number | null) => {
+      console.log(`Camera process exited with code ${code}`);
+      cameraProcess = null;
+    });
+
+    await cameraProcess.start();
+  }
+
+  return cameraProcess;
+}
+
+/**
+ * Handle camera:connect - Connect to camera
+ */
+ipcMain.handle('camera:connect', async (_event, settings: CameraSettings) => {
+  try {
+    const camera = await ensureCameraProcess();
+    const success = await camera.connect(settings);
+    return { success };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('camera:connect error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Handle camera:disconnect - Disconnect from camera
+ */
+ipcMain.handle('camera:disconnect', async () => {
+  try {
+    if (!cameraProcess) {
+      return { success: true }; // Already disconnected
+    }
+    const success = await cameraProcess.disconnect();
+    return { success };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('camera:disconnect error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Handle camera:configure - Configure camera settings
+ */
+ipcMain.handle(
+  'camera:configure',
+  async (_event, settings: Partial<CameraSettings>) => {
+    try {
+      const camera = await ensureCameraProcess();
+      const success = await camera.configure(settings);
+      return { success };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error('camera:configure error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+);
+
+/**
+ * Handle camera:capture - Capture a single frame
+ */
+ipcMain.handle(
+  'camera:capture',
+  async (_event, settings?: Partial<CameraSettings>) => {
+    try {
+      const camera = await ensureCameraProcess();
+      const response = await camera.capture(settings);
+
+      if (response.success && response.image) {
+        return {
+          dataUri: response.image,
+          timestamp: Date.now(),
+          width: response.width || 0,
+          height: response.height || 0,
+        };
+      } else {
+        throw new Error(response.error || 'Capture failed');
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error('camera:capture error:', error);
+      throw error;
+    }
+  }
+);
+
+/**
+ * Handle camera:get-status - Get camera status
+ */
+ipcMain.handle('camera:get-status', async () => {
+  try {
+    if (!cameraProcess) {
+      return { connected: false, mock: true, available: false };
+    }
+    const status = await cameraProcess.getStatus();
+    return status;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('camera:get-status error:', error);
+    return { connected: false, mock: true, available: false };
+  }
+});
+
+// =============================================================================
 // App Lifecycle
 // =============================================================================
 
@@ -207,11 +349,15 @@ app.on('activate', () => {
   }
 });
 
-// Clean up Python process when app quits
+// Clean up processes when app quits
 app.on('quit', () => {
   if (pythonProcess) {
     console.log('Stopping Python process...');
     pythonProcess.stop();
+  }
+  if (cameraProcess) {
+    console.log('Stopping camera process...');
+    cameraProcess.stop();
   }
 });
 

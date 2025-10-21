@@ -13,16 +13,41 @@ Protocol:
     - DATA:<json> - JSON data responses
 """
 
+import base64
 import json
-import sys
 import os
-from typing import Any, Dict
+import sys
+from io import BytesIO
+from typing import Any, Dict, Optional
+
+from PIL import Image
 
 # Import version from package
 try:
     from python import __version__
 except ImportError:
     __version__ = "0.1.0"
+
+# Import camera modules
+try:
+    from hardware.camera import Camera  # type: ignore[import-not-found]
+    from hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
+    from hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
+
+    CAMERA_AVAILABLE = True
+except ImportError as e:
+    # Report import error using protocol-compliant error reporting
+    # Use print directly since send_error() is defined later in this file
+    print(f"ERROR:Failed to import camera modules: {e}", flush=True)
+    CAMERA_AVAILABLE = False
+    Camera = None
+    MockCamera = None
+    CameraSettings = None
+
+
+# Global camera instance
+_camera_instance: Optional[Any] = None
+_use_mock_camera = os.environ.get("BLOOM_USE_MOCK_CAMERA", "true").lower() == "true"
 
 
 def send_status(message: str) -> None:
@@ -132,6 +157,145 @@ def check_hardware() -> Dict[str, Any]:
     return hardware_status
 
 
+def get_camera_instance(settings: Dict[str, Any]) -> Any:
+    """Get or create camera instance.
+
+    Args:
+        settings: Camera settings dictionary
+
+    Returns:
+        Camera or MockCamera instance
+
+    Raises:
+        RuntimeError: If camera module is not available
+    """
+    global _camera_instance
+
+    if not CAMERA_AVAILABLE:
+        raise RuntimeError("Camera module not available")
+
+    # Create settings object
+    camera_settings = CameraSettings(**settings)
+
+    # Create new camera instance if needed
+    if _camera_instance is None:
+        if _use_mock_camera:
+            send_status("Using mock camera")
+            _camera_instance = MockCamera(camera_settings)
+        else:
+            send_status("Using real camera")
+            _camera_instance = Camera(camera_settings)
+    else:
+        # Update settings on existing instance
+        _camera_instance.settings = camera_settings
+
+    return _camera_instance
+
+
+def close_camera() -> None:
+    """Close the camera instance if it exists."""
+    global _camera_instance
+
+    if _camera_instance is not None:
+        try:
+            _camera_instance.close()
+        except Exception as e:
+            send_error(f"Error closing camera: {e}")
+        finally:
+            _camera_instance = None
+
+
+def handle_camera_command(cmd: Dict[str, Any]) -> None:
+    """Handle camera-specific commands.
+
+    Args:
+        cmd: Command dictionary with camera parameters
+    """
+    if not CAMERA_AVAILABLE:
+        send_error("Camera module not available")
+        return
+
+    action = cmd.get("action")
+    settings = cmd.get("settings", {})
+
+    try:
+        if action == "connect":
+            camera = get_camera_instance(settings)
+            success = camera.open()
+            send_data({"success": success, "connected": True})
+
+        elif action == "disconnect":
+            close_camera()
+            send_data({"success": True, "connected": False})
+
+        elif action == "capture":
+            # Use existing camera if already connected, otherwise create/connect
+            if _camera_instance is not None and _camera_instance.is_open:
+                camera = _camera_instance
+            elif settings:
+                camera = get_camera_instance(settings)
+                if not camera.is_open:
+                    camera.open()
+            else:
+                raise RuntimeError(
+                    "Camera not connected. Call connect() first or provide settings."
+                )
+
+            # Capture single frame
+            frame = camera.grab_frame()
+            # Convert to base64 for transmission
+            buffer = BytesIO()
+            pil_img = Image.fromarray(frame)
+            pil_img.save(buffer, format="PNG", compress_level=0)
+            img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+            send_data(
+                {
+                    "success": True,
+                    "image": f"data:image/png;base64,{img_base64}",
+                    "width": frame.shape[1],
+                    "height": frame.shape[0],
+                }
+            )
+
+        elif action == "configure":
+            # Update camera settings - only works if camera exists
+            if _camera_instance is None:
+                raise RuntimeError("Camera not connected. Call connect() first.")
+
+            # Update only the provided settings
+            for key, value in settings.items():
+                if hasattr(_camera_instance.settings, key):
+                    setattr(_camera_instance.settings, key, value)
+
+            # Re-configure if camera is open
+            if _camera_instance.is_open and hasattr(
+                _camera_instance, "_configure_camera"
+            ):
+                _camera_instance._configure_camera()
+
+            send_data({"success": True, "configured": True})
+
+        elif action == "status":
+            # Get camera status
+            is_connected = _camera_instance is not None and _camera_instance.is_open
+            send_data(
+                {
+                    "success": True,
+                    "connected": is_connected,
+                    "mock": _use_mock_camera,
+                    "available": CAMERA_AVAILABLE,
+                }
+            )
+
+        else:
+            send_error(f"Unknown camera action: {action}")
+
+    except Exception as e:
+        # Send error via DATA protocol for consistent response handling
+        send_data({"success": False, "error": str(e)})
+
+
 def handle_command(cmd: Dict[str, Any]) -> None:
     """Route and handle incoming commands.
 
@@ -149,6 +313,9 @@ def handle_command(cmd: Dict[str, Any]) -> None:
     elif command == "check_hardware":
         hardware_status = check_hardware()
         send_data(hardware_status)
+
+    elif command == "camera":
+        handle_camera_command(cmd)
 
     else:
         send_error(f"Unknown command: {command}")

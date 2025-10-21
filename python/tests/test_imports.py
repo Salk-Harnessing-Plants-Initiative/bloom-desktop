@@ -44,6 +44,21 @@ def test_import_imageio():
     assert hasattr(imageio, "__version__")
 
 
+def test_import_camera_modules():
+    """Test that camera modules can be imported."""
+    try:
+        from python.hardware.camera import Camera
+        from python.hardware.camera_mock import MockCamera
+        from python.hardware.camera_types import CameraSettings
+
+        # Verify classes are available
+        assert Camera is not None
+        assert MockCamera is not None
+        assert CameraSettings is not None
+    except ImportError as e:
+        pytest.fail(f"Camera modules should be importable: {e}")
+
+
 def test_package_version():
     """Test that package __init__ defines version."""
     import python

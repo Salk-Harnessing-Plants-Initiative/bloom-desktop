@@ -5,6 +5,8 @@
  * using contextBridge.exposeInMainWorld().
  */
 
+import { CameraSettings, CapturedImage } from './camera';
+
 /**
  * Python backend API
  */
@@ -60,11 +62,65 @@ export interface PythonAPI {
 }
 
 /**
+ * Camera API
+ */
+export interface CameraAPI {
+  /**
+   * Connect to the camera
+   * @param settings - Camera configuration settings
+   * @returns Promise resolving to connection success
+   */
+  connect: (settings: CameraSettings) => Promise<boolean>;
+
+  /**
+   * Disconnect from the camera
+   * @returns Promise resolving to disconnection success
+   */
+  disconnect: () => Promise<boolean>;
+
+  /**
+   * Configure camera settings
+   * @param settings - Camera settings to apply
+   * @returns Promise resolving to configuration success
+   */
+  configure: (settings: Partial<CameraSettings>) => Promise<boolean>;
+
+  /**
+   * Capture a single frame
+   * @param settings - Optional camera settings to apply before capture
+   * @returns Promise resolving to captured image data
+   */
+  capture: (settings?: Partial<CameraSettings>) => Promise<CapturedImage>;
+
+  /**
+   * Get camera status
+   * @returns Promise resolving to camera status
+   */
+  getStatus: () => Promise<{
+    connected: boolean;
+    mock: boolean;
+    available: boolean;
+  }>;
+
+  /**
+   * Register callback for camera trigger events
+   * @param callback - Function to call when camera is triggered
+   */
+  onTrigger: (callback: () => void) => void;
+
+  /**
+   * Register callback for captured images
+   * @param callback - Function to call with captured image data
+   */
+  onImageCaptured: (callback: (image: CapturedImage) => void) => void;
+}
+
+/**
  * Main Electron API exposed to renderer
  */
 export interface ElectronAPI {
   python: PythonAPI;
-  // Additional APIs will be added here (camera, daq, etc.)
+  camera: CameraAPI;
 }
 
 /**

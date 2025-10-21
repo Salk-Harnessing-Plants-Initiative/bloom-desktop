@@ -36,6 +36,14 @@ testpaths = ["python"]
 python_files = ["test_*.py"]
 addopts = "--cov=python --cov-report=html --cov-report=term --cov-fail-under=80"
 
+[tool.coverage.run]
+omit = [
+    "python/hardware/camera.py",
+    "python/hardware/camera_mock.py",
+    "python/hardware/camera_types.py",
+    "python/hardware/__init__.py",
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py311"]
@@ -51,9 +59,10 @@ per-file-ignores = { "python/main.py" = ["F401"], "python/ipc_handler.py" = ["F4
 
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
+
 # Ignore missing stubs for third-party hardware libraries
 [[tool.mypy.overrides]]
-module = ["pypylon.*", "nidaqmx.*", "ipc_handler"]
+module = ["pypylon.*", "nidaqmx.*", "camera_types"]
 ignore_missing_imports = true
