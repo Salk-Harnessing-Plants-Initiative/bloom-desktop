@@ -285,8 +285,6 @@ class Camera:
 
                 # Capture loop
                 for i in range(num_frames):
-                    t0 = time.time()
-
                     # Write DAQ data (stepper motor pulses)
                     task.write(data=data, auto_start=False)
                     task.start()
@@ -297,7 +295,7 @@ class Camera:
                         try:
                             task.wait_until_done(timeout=0.005)
                             done = True
-                        except:
+                        except Exception:  # noqa: S110
                             continue
 
                     # Trigger camera
@@ -322,8 +320,6 @@ class Camera:
 
                     # Stop DAQ task
                     task.stop()
-
-                    dt = time.time() - t0
 
                 dt_all = time.time() - t0_all
                 print(
@@ -366,7 +362,6 @@ def run_camera_capture(output_dir: str, camera_settings: Dict[str, Any]) -> List
     Returns:
         List of output file paths
     """
-    import json
     import os
 
     # Convert dict to CameraSettings object

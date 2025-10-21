@@ -1,9 +1,8 @@
 """Tests for camera command handling in IPC handler."""
 
 import json
-import os
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock
 import sys
 import numpy as np
 
@@ -12,7 +11,7 @@ sys.modules["hardware.camera"] = MagicMock()
 sys.modules["hardware.camera_mock"] = MagicMock()
 sys.modules["hardware.camera_types"] = MagicMock()
 
-from python.ipc_handler import handle_command
+from python.ipc_handler import handle_command  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
