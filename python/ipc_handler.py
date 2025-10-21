@@ -29,34 +29,54 @@ except ImportError:
     __version__ = "0.1.0"
 
 # Import camera modules
+# Try both import paths for compatibility with bundled and development environments
 try:
+    # First try bundled app import path
     from hardware.camera import Camera  # type: ignore[import-not-found]
     from hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
     from hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
 
     CAMERA_AVAILABLE = True
-except ImportError as e:
-    # Report import error using protocol-compliant error reporting
-    # Use print directly since send_error() is defined later in this file
-    print(f"ERROR:Failed to import camera modules: {e}", flush=True)
-    CAMERA_AVAILABLE = False
-    Camera = None
-    MockCamera = None
-    CameraSettings = None
+except ImportError:
+    try:
+        # Fall back to development/test import path
+        from python.hardware.camera import Camera  # type: ignore[import-not-found]
+        from python.hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
+        from python.hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
+
+        CAMERA_AVAILABLE = True
+    except ImportError as e:
+        # Report import error using protocol-compliant error reporting
+        # Use print directly since send_error() is defined later in this file
+        print(f"ERROR:Failed to import camera modules: {e}", flush=True)
+        CAMERA_AVAILABLE = False
+        Camera = None
+        MockCamera = None
+        CameraSettings = None
 
 # Import DAQ modules
+# Try both import paths for compatibility with bundled and development environments
 try:
+    # First try bundled app import path
     from hardware.daq import DAQ  # type: ignore[import-not-found]
     from hardware.daq_mock import MockDAQ  # type: ignore[import-not-found]
     from hardware.daq_types import DAQSettings  # type: ignore[import-not-found]
 
     DAQ_AVAILABLE = True
-except ImportError as e:
-    print(f"ERROR:Failed to import DAQ modules: {e}", flush=True)
-    DAQ_AVAILABLE = False
-    DAQ = None
-    MockDAQ = None
-    DAQSettings = None
+except ImportError:
+    try:
+        # Fall back to development/test import path
+        from python.hardware.daq import DAQ  # type: ignore[import-not-found]
+        from python.hardware.daq_mock import MockDAQ  # type: ignore[import-not-found]
+        from python.hardware.daq_types import DAQSettings  # type: ignore[import-not-found]
+
+        DAQ_AVAILABLE = True
+    except ImportError as e:
+        print(f"ERROR:Failed to import DAQ modules: {e}", flush=True)
+        DAQ_AVAILABLE = False
+        DAQ = None
+        MockDAQ = None
+        DAQSettings = None
 
 
 # Global camera instance
