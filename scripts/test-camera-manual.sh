@@ -22,9 +22,9 @@ echo "Testing camera connect..."
 echo '{"command":"camera","action":"connect","settings":{"camera_ip_address":"10.0.0.23","exposure_time":5000,"gain":10,"gamma":1.0}}' | $PYTHON_EXE --ipc
 echo ""
 
-echo "Testing camera capture..."
-echo '{"command":"camera","action":"capture","settings":{"camera_ip_address":"10.0.0.23","exposure_time":5000,"gain":10}}' | $PYTHON_EXE --ipc | head -5
-echo "(image data truncated...)"
+echo "Note: Image capture test skipped in manual script"
+echo "      (requires persistent IPC connection)"
+echo "      For full testing, use the Electron app or see docs/CAMERA_TESTING.md"
 echo ""
 
 echo "============================================================"

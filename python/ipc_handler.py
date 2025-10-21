@@ -224,9 +224,15 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             send_data({"success": True, "connected": False})
 
         elif action == "capture":
-            camera = get_camera_instance(settings)
-            if not camera.is_open:
-                camera.open()
+            # Use existing camera if already connected, otherwise create/connect
+            if _camera_instance is not None and _camera_instance.is_open:
+                camera = _camera_instance
+            elif settings:
+                camera = get_camera_instance(settings)
+                if not camera.is_open:
+                    camera.open()
+            else:
+                raise RuntimeError("Camera not connected. Call connect() first or provide settings.")
 
             # Capture single frame
             frame = camera.grab_frame()

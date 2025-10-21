@@ -17,7 +17,7 @@ import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
 
 // Timeout configuration
-const STARTUP_TIMEOUT_MS = 5000; // Time to wait for Python process to become ready
+const STARTUP_TIMEOUT_MS = 15000; // Time to wait for Python process to become ready (PyInstaller can be slow)
 const COMMAND_TIMEOUT_MS = 30000; // Time to wait for command response
 
 /**
@@ -57,6 +57,22 @@ export class PythonProcess extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       try {
+        // Set up ready handler BEFORE spawning to avoid race condition
+        const readyHandler = (message: string) => {
+          if (message.includes('ready')) {
+            this.removeListener('status', readyHandler);
+            clearTimeout(timeoutId);
+            resolve();
+          }
+        };
+        this.on('status', readyHandler);
+
+        // Timeout if not ready
+        const timeoutId = setTimeout(() => {
+          this.removeListener('status', readyHandler);
+          reject(new Error('Python process startup timeout'));
+        }, STARTUP_TIMEOUT_MS);
+        
         // Spawn Python process
         this.process = spawn(this.pythonPath, this.scriptArgs, {
           stdio: ['pipe', 'pipe', 'pipe'],
@@ -83,23 +99,10 @@ export class PythonProcess extends EventEmitter {
 
         // Handle process errors
         this.process.on('error', (error: Error) => {
+          clearTimeout(timeoutId);
+          this.removeListener('status', readyHandler);
           reject(error);
         });
-
-        // Wait for ready status
-        const readyHandler = (message: string) => {
-          if (message.includes('ready')) {
-            this.removeListener('status', readyHandler);
-            resolve();
-          }
-        };
-        this.on('status', readyHandler);
-
-        // Timeout if not ready
-        setTimeout(() => {
-          this.removeListener('status', readyHandler);
-          reject(new Error('Python process startup timeout'));
-        }, STARTUP_TIMEOUT_MS);
       } catch (error) {
         reject(error);
       }
