@@ -4,15 +4,14 @@ This guide explains how to test the camera interface functionality with the mock
 
 ## Quick Test
 
-The fastest way to test the camera functionality is using the manual test script:
+The fastest way to test the camera functionality is using the integration test:
 
 ```bash
-# Build the Python executable
-npm run build:python
-
-# Run the manual camera test
-./test-camera-manual.sh
+# Run the full integration test
+npm run test:camera
 ```
+
+This tests the complete camera workflow: status, connect, capture, configure, and disconnect.
 
 ## Manual Command-Line Testing
 

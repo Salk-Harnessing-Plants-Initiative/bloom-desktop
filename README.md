@@ -107,14 +107,14 @@ npm run test:python
 # Test Python IPC communication (builds Python if needed)
 npm run test:ipc
 
-# Test camera interface with mock camera
-npm run test:camera:manual
+# Test camera integration with mock camera
+npm run test:camera
 
 # Test packaged app (run after npm run package)
 npm run test:package
 ```
 
-**Camera Testing**: See [docs/CAMERA_TESTING.md](docs/CAMERA_TESTING.md) for detailed camera testing instructions, including mock camera usage and testing without hardware.
+**Camera Testing**: See [docs/CAMERA_TESTING.md](docs/CAMERA_TESTING.md) for detailed camera testing instructions, including interactive testing in the Electron app.
 
 #### Packaging & Distribution
 

@@ -20,7 +20,6 @@
     "test:unit:watch": "vitest watch",
     "test:ipc": "npm run build:python && ts-node tests/integration/test-ipc.ts",
     "test:camera": "npm run build:python && ts-node tests/integration/test-camera.ts",
-    "test:camera:manual": "npm run build:python && bash scripts/test-camera-manual.sh",
     "test:package": "ts-node tests/integration/test-package.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
