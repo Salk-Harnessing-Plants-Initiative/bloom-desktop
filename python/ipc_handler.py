@@ -13,10 +13,14 @@ Protocol:
     - DATA:<json> - JSON data responses
 """
 
+import base64
 import json
-import sys
 import os
+import sys
+from io import BytesIO
 from typing import Any, Dict, Optional
+
+from PIL import Image
 
 # Import version from package
 try:
@@ -240,10 +244,6 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             # Capture single frame
             frame = camera.grab_frame()
             # Convert to base64 for transmission
-            import base64
-            from io import BytesIO
-            from PIL import Image
-
             buffer = BytesIO()
             pil_img = Image.fromarray(frame)
             pil_img.save(buffer, format="PNG", compress_level=0)

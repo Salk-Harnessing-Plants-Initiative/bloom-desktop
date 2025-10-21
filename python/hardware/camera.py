@@ -66,6 +66,10 @@ class Camera:
             tl = tlf.CreateTl("BaslerGigE")
 
             # Set camera IP address
+            if self.settings.camera_ip_address is None:
+                raise ValueError(
+                    "Camera IP address must be provided for real camera connection"
+                )
             cam_info = tl.CreateDeviceInfo()
             cam_info.SetIpAddress(self.settings.camera_ip_address)
 
@@ -302,9 +306,13 @@ class Camera:
                         try:
                             task.wait_until_done(timeout=0.005)
                             done = True
-                        except nidaqmx.errors.DaqError:
-                            # DAQ task not yet complete, retry
-                            retry_count += 1
+                        except nidaqmx.errors.DaqError as e:
+                            # Only retry for timeout errors (-200563)
+                            # Other DAQ errors indicate hardware failures that won't resolve with retries
+                            if getattr(e, "error_code", None) == -200563:
+                                retry_count += 1
+                            else:
+                                raise
 
                     if not done:
                         raise TimeoutError(

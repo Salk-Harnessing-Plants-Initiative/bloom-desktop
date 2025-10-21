@@ -37,7 +37,9 @@ async function testCamera() {
 
   cameraProcess.on('error', (error: string) => {
     // Ignore warnings, only log actual errors
-    if (!error.toLowerCase().includes('warning')) {
+    // Use case-insensitive regex to match various warning formats
+    const warningPattern = /\b(warn|warning|deprecationwarning)\b/i;
+    if (!warningPattern.test(error)) {
       console.error(`[ERROR] ${error}`);
     }
   });
