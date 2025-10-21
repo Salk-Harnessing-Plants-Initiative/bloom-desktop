@@ -82,7 +82,7 @@ const settings = {
 
 const connected = await window.electron.camera.connect(settings);
 console.log('Connected:', connected);
-// Expected: true
+// Expected: {success: true}
 
 // Capture an image
 const image = await window.electron.camera.capture();
@@ -144,13 +144,36 @@ ls python/hardware/
 npm run build:python
 ```
 
-### TypeScript Integration Test Timeout
+### "Python process startup timeout" in Development Mode
 
-The integration test in `tests/integration/test-camera.ts` may timeout due to stderr output from the Python process. This is a known issue and doesn't affect functionality.
+If `npm start` shows timeout errors, the Python executable may be taking >5s to start (common with PyInstaller on macOS).
 
-**Workaround**: Use the manual test script or test directly in the Electron app.
+**Fixed in latest version**: Timeout increased to 15s. Update to latest code:
+```bash
+git pull
+npm start
+```
 
-### No Images Captured
+### "Camera command error: missing required arguments"
+
+This happens if you call `capture()` or `configure()` before connecting to the camera.
+
+**Solution**: Always connect before capturing:
+```javascript
+// ✅ Correct workflow
+await window.electron.camera.connect(settings);
+const image = await window.electron.camera.capture();
+```
+
+### Camera capture returns error in integration test
+
+If you're writing custom tests, ensure the camera instance persists between commands. The Python IPC handler maintains camera state between calls, so you must:
+
+1. Connect once: `{"command":"camera","action":"connect",...}`
+2. Capture using same process: `{"command":"camera","action":"capture"}`
+3. Don't create new process between commands
+
+### No Images Captured / Blank Images
 
 Make sure the camera is connected before capturing:
 
@@ -161,6 +184,16 @@ const image = await window.electron.camera.capture();
 // ✅ Correct - connect first
 await window.electron.camera.connect(settings);
 const image = await window.electron.camera.capture();
+```
+
+### Integration Test Works But Dev Mode Fails
+
+This is usually a webpack bundling issue. Try:
+
+```bash
+# Clean rebuild
+rm -rf .webpack node_modules/.cache
+npm start
 ```
 
 ## Next Steps
