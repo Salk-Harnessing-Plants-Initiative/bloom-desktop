@@ -65,7 +65,10 @@ async function testCamera() {
     console.log('[TEST 1] Getting camera status...');
     const statusResponse = await cameraProcess.getStatus();
     console.log(`[RESPONSE] ${JSON.stringify(statusResponse)}`);
-    if (statusResponse.available !== undefined && statusResponse.mock !== undefined) {
+    if (
+      statusResponse.available !== undefined &&
+      statusResponse.mock !== undefined
+    ) {
       console.log('[PASS] Status test passed');
       console.log(`  - Mock camera: ${statusResponse.mock}`);
       console.log(`  - Available: ${statusResponse.available}`);

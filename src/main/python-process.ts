@@ -72,7 +72,7 @@ export class PythonProcess extends EventEmitter {
           this.removeListener('status', readyHandler);
           reject(new Error('Python process startup timeout'));
         }, STARTUP_TIMEOUT_MS);
-        
+
         // Spawn Python process
         this.process = spawn(this.pythonPath, this.scriptArgs, {
           stdio: ['pipe', 'pipe', 'pipe'],

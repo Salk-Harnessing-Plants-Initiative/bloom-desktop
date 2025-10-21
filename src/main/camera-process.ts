@@ -134,7 +134,7 @@ export class CameraProcess extends PythonProcess {
    * @returns Promise that resolves with the captured image data
    */
   async capture(
-    settings?: Partial<CameraSettings>,
+    settings?: Partial<CameraSettings>
   ): Promise<CameraCaptureResponse> {
     const response = await this.sendCommand({
       command: 'camera',

@@ -24,6 +24,7 @@ echo '{"command":"camera","action":"status"}' | ./dist/bloom-hardware --ipc
 ```
 
 Expected output:
+
 ```
 STATUS:IPC handler ready
 DATA:{"connected": false, "mock": true, "available": true}
@@ -36,6 +37,7 @@ echo '{"command":"camera","action":"connect","settings":{"camera_ip_address":"10
 ```
 
 Expected output:
+
 ```
 STATUS:IPC handler ready
 STATUS:Using mock camera
@@ -77,7 +79,7 @@ const settings = {
   camera_ip_address: '10.0.0.23',
   exposure_time: 5000,
   gain: 10,
-  gamma: 1.0
+  gamma: 1.0,
 };
 
 const connected = await window.electron.camera.connect(settings);
@@ -149,6 +151,7 @@ npm run build:python
 If `npm start` shows timeout errors, the Python executable may be taking >5s to start (common with PyInstaller on macOS).
 
 **Fixed in latest version**: Timeout increased to 15s. Update to latest code:
+
 ```bash
 git pull
 npm start
@@ -159,6 +162,7 @@ npm start
 This happens if you call `capture()` or `configure()` before connecting to the camera.
 
 **Solution**: Always connect before capturing:
+
 ```javascript
 // ✅ Correct workflow
 await window.electron.camera.connect(settings);
@@ -205,6 +209,7 @@ npm start
 ## Camera API Reference
 
 See the TypeScript definitions in:
+
 - `src/types/camera.ts` - Camera settings and image types
 - `src/types/electron.d.ts` - Electron API interface
 - `src/main/camera-process.ts` - Camera process implementation

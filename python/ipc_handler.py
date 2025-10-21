@@ -232,7 +232,9 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                 if not camera.is_open:
                     camera.open()
             else:
-                raise RuntimeError("Camera not connected. Call connect() first or provide settings.")
+                raise RuntimeError(
+                    "Camera not connected. Call connect() first or provide settings."
+                )
 
             # Capture single frame
             frame = camera.grab_frame()
@@ -259,16 +261,18 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             # Update camera settings - only works if camera exists
             if _camera_instance is None:
                 raise RuntimeError("Camera not connected. Call connect() first.")
-            
+
             # Update only the provided settings
             for key, value in settings.items():
                 if hasattr(_camera_instance.settings, key):
                     setattr(_camera_instance.settings, key, value)
-            
+
             # Re-configure if camera is open
-            if _camera_instance.is_open and hasattr(_camera_instance, '_configure_camera'):
+            if _camera_instance.is_open and hasattr(
+                _camera_instance, "_configure_camera"
+            ):
                 _camera_instance._configure_camera()
-            
+
             send_data({"success": True, "configured": True})
 
         elif action == "status":
