@@ -23,6 +23,8 @@ jobs:
   # 5. test-python: pytest with 80% coverage (Linux only)
   # 6. test-integration: IPC communication tests across Linux, macOS, Windows
   # 7. all-checks-passed: Summary job (only runs if all pass)
+  #
+  # Camera integration tests are now included in the test-integration job
   # ==============================================================================
 
   # Lint and format check for Node.js/TypeScript
@@ -178,6 +180,9 @@ jobs:
 
       - name: Run IPC integration tests
         run: npm run test:ipc
+
+      - name: Run camera integration tests
+        run: npm run test:camera
 
   # Summary job - requires all checks to pass
   all-checks-passed:

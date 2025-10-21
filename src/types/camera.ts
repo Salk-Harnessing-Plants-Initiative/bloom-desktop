@@ -7,27 +7,37 @@
 
 /**
  * Camera settings for Basler cameras
+ * Note: Uses snake_case to match Python backend convention
  */
 export interface CameraSettings {
-  /** Camera IP address (e.g., "10.0.0.45") */
-  ipAddress: string;
-
   /** Exposure time in microseconds */
-  exposure: number;
+  exposure_time: number;
 
-  /** Gain in dB */
+  /** Gain (raw value) */
   gain: number;
 
-  /** Brightness (0.0 - 1.0) */
+  /** Camera IP address (e.g., "10.0.0.45"). Optional for mock camera. */
+  camera_ip_address?: string;
+
+  /** Brightness (0.0 - 1.0, optional) */
   brightness?: number;
 
   /** Gamma correction (typically 0.5 - 2.0) */
   gamma?: number;
 
-  /** Image width in pixels */
+  /** Number of frames to capture */
+  num_frames?: number;
+
+  /** Time for one complete rotation in seconds (for scanning) */
+  seconds_per_rot?: number;
+
+  /** Contrast (optional, not supported on all cameras) */
+  contrast?: number;
+
+  /** Image width in pixels (optional) */
   width?: number;
 
-  /** Image height in pixels */
+  /** Image height in pixels (optional) */
   height?: number;
 }
 

@@ -35,9 +35,8 @@ python/
     ├── test_imports.py          # Dependency import tests
     ├── test_ipc_handler.py      # IPC protocol tests
     ├── test_main.py             # Main entry point tests
-    └── hardware/                # Hardware module tests
-        ├── test_camera.py       # Camera tests (with mocks)
-        └── test_daq.py          # DAQ tests (with mocks)
+    ├── test_camera_commands.py  # Camera command handler tests
+    └── hardware/                # Hardware module tests (future)
 ```
 
 **Key Files:**
@@ -95,18 +94,26 @@ TypeScript tests organized by type.
 ```
 tests/
 ├── integration/                 # End-to-end integration tests
-│   └── test-ipc.ts              # Python ↔ TypeScript IPC test
-└── unit/                        # TypeScript unit tests
+│   ├── test-ipc.ts              # Python ↔ TypeScript IPC test
+│   ├── test-camera.ts           # Camera integration test
+│   ├── test-package.ts          # Package verification test
+│   └── test-capture.png         # Test image output
+├── fixtures/                    # Test data and assets
+│   └── sample_scan/             # Mock camera test images (72 plant scan images)
+│       ├── 1.png
+│       ├── 2.png
+│       └── ...
+└── unit/                        # TypeScript unit tests (future)
     ├── README.md                # Testing guidelines
-    └── main/                    # Main process tests (future)
-        ├── python-process.test.ts
-        └── python-paths.test.ts
+    └── setup.ts                 # Test setup
 ```
 
 **Running Tests:**
 
 ```bash
-npm run test:ipc                 # Integration test (builds Python + runs E2E)
+npm run test:ipc                 # Python ↔ TypeScript IPC test
+npm run test:camera              # Camera integration test
+npm run test:package             # Package verification test
 npm run test:unit                # Unit tests (future - Jest)
 ```
 
@@ -199,7 +206,9 @@ npm run build:python
 npm run test:python
 
 # Integration tests
-npm run test:ipc
+npm run test:ipc                 # IPC communication
+npm run test:camera              # Camera functionality
+npm run test:package             # Packaged app verification
 
 # (Future) TypeScript unit tests
 npm run test:unit
@@ -232,11 +241,15 @@ npm run make
 - TypeScript PythonProcess manager
 - Basic protocol (ping, get_version, check_hardware)
 
-### 🚧 Phase 2-3: Next Steps
+### ✅ Phase 3: Hardware Interfaces (Issues #14, #15 Complete)
+
+- IPC handlers in main.ts + preload bridge
+- Camera interface migration (PyPylon + Mock)
+- Comprehensive testing (unit + integration)
+
+### 🚧 Phase 3-4: Next Steps
 
 - Issue #13: Bundle Python with Electron installers
-- Issue #14: IPC handlers in main.ts + preload bridge
-- Issue #15: Camera interface migration
 - Issue #16: DAQ interface migration
 
 ### 📋 Phase 4+: UI & Features (Future)
@@ -266,15 +279,14 @@ See `README.md` for development setup and contribution guidelines.
 
 - `README.md` - Project overview and setup
 - `STRUCTURE.md` (this file) - Codebase organization
-- `python/hardware/README.md` - Hardware modules guide
-- `src/renderer/components/README.md` - Component guidelines
+- `docs/CAMERA_TESTING.md` - Camera testing guide
 - `tests/unit/README.md` - Testing guidelines
 
 ## Related Issues
 
 - Issue #1 - EPIC: Migration plan
 - Issue #12 - Python Process Manager & IPC Protocol ✅
-- Issue #13 - Bundle Python with Electron
-- Issue #14 - IPC Handlers & Preload Bridge
-- Issue #15 - Camera Interface Migration
-- Issue #16 - DAQ Interface Migration
+- Issue #14 - IPC Handlers & Preload Bridge ✅
+- Issue #15 - Camera Interface Migration ✅
+- Issue #13 - Bundle Python with Electron (in progress)
+- Issue #16 - DAQ Interface Migration (planned)
