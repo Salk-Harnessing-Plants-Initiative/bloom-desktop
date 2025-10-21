@@ -22,7 +22,7 @@ from pypylon import pylon
 try:
     from .camera_types import CameraSettings
 except ImportError:
-    from camera_types import CameraSettings
+    from camera_types import CameraSettings  # type: ignore[no-redef]
 
 
 # Optional DAQ support - only import if available
@@ -138,7 +138,7 @@ class Camera:
             if grab_result.GrabSucceeded():
                 img = grab_result.Array.copy()
                 grab_result.Release()
-                return img
+                return img  # type: ignore[return-value]
             else:
                 grab_result.Release()
                 raise RuntimeError("Frame grab failed")
@@ -147,7 +147,7 @@ class Camera:
             if self.camera.IsGrabbing():
                 self.camera.StopGrabbing()
 
-    def grab_frames(self, num_frames: int = None) -> List[np.ndarray]:
+    def grab_frames(self, num_frames: Optional[int] = None) -> List[np.ndarray]:
         """Grab multiple frames from the camera.
 
         Args:
@@ -237,7 +237,7 @@ class Camera:
         half_samples_per_microstep = int(samples_per_microstep / 2)
 
         # Generate DAQ output pattern (step pulses)
-        samples = []
+        samples: List[float] = []
         for i in range(microsteps_betw_photos):
             samples = samples + half_samples_per_microstep * [0.0]
             samples = samples + half_samples_per_microstep * [1.0]

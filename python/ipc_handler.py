@@ -26,9 +26,9 @@ except ImportError:
 
 # Import camera modules
 try:
-    from hardware.camera import Camera
-    from hardware.camera_mock import MockCamera
-    from hardware.camera_types import CameraSettings
+    from hardware.camera import Camera  # type: ignore[import-not-found]
+    from hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
+    from hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
 
     CAMERA_AVAILABLE = True
 except ImportError as e:

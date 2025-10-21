@@ -70,7 +70,7 @@ def ipc_mode():
         from python.ipc_handler import run_ipc_loop
     except ModuleNotFoundError:
         # When running as PyInstaller bundle, try direct import
-        from ipc_handler import run_ipc_loop
+        from ipc_handler import run_ipc_loop  # type: ignore[import-not-found]
     run_ipc_loop()
 
 

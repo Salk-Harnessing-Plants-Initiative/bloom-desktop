@@ -12,7 +12,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 import imageio.v2 as iio
 import numpy as np
@@ -20,7 +20,7 @@ import numpy as np
 try:
     from .camera_types import CameraSettings
 except ImportError:
-    from camera_types import CameraSettings
+    from camera_types import CameraSettings  # type: ignore[no-redef]
 
 
 # Test images directory (relative to project root)
@@ -77,7 +77,7 @@ class MockCamera:
             except Exception as e:
                 print(f"WARNING: Failed to load {img_file}: {e}", flush=True)
 
-        return images if images else self._generate_test_patterns()
+        return images if images else self._generate_test_patterns()  # type: ignore[return-value]
 
     def _generate_test_patterns(self, count: int = 72) -> List[np.ndarray]:
         """Generate synthetic test pattern images.
@@ -136,7 +136,7 @@ class MockCamera:
         frame_idx = int(time.time() * 10) % len(self.test_images)
         return self.test_images[frame_idx].copy()
 
-    def grab_frames(self, num_frames: int = None) -> List[np.ndarray]:
+    def grab_frames(self, num_frames: Optional[int] = None) -> List[np.ndarray]:
         """Grab multiple frames from the mock camera.
 
         Args:
