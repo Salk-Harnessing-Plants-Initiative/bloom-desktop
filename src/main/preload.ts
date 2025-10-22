@@ -7,9 +7,11 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 // eslint-disable-next-line import/no-unresolved
-import { PythonAPI, CameraAPI } from '../types/electron';
+import { PythonAPI, CameraAPI, DAQAPI } from '../types/electron';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
+// eslint-disable-next-line import/no-unresolved
+import { DAQSettings } from '../types/daq';
 
 /**
  * Python backend API exposed to renderer
@@ -53,9 +55,39 @@ const cameraAPI: CameraAPI = {
 };
 
 /**
+ * DAQ API exposed to renderer
+ */
+const daqAPI: DAQAPI = {
+  initialize: (settings: DAQSettings) =>
+    ipcRenderer.invoke('daq:initialize', settings),
+  cleanup: () => ipcRenderer.invoke('daq:cleanup'),
+  rotate: (degrees: number) => ipcRenderer.invoke('daq:rotate', degrees),
+  step: (numSteps: number, direction?: 1 | -1) =>
+    ipcRenderer.invoke('daq:step', numSteps, direction),
+  home: () => ipcRenderer.invoke('daq:home'),
+  getStatus: () => ipcRenderer.invoke('daq:get-status'),
+  onInitialized: (callback: () => void) => {
+    ipcRenderer.on('daq:initialized', () => callback());
+  },
+  onPositionChanged: (callback: (position: number) => void) => {
+    ipcRenderer.on(
+      'daq:position-changed',
+      (_event, data: { position: number }) => callback(data.position)
+    );
+  },
+  onHome: (callback: () => void) => {
+    ipcRenderer.on('daq:home', () => callback());
+  },
+  onError: (callback: (error: string) => void) => {
+    ipcRenderer.on('daq:error', (_event, error: string) => callback(error));
+  },
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
   python: pythonAPI,
   camera: cameraAPI,
+  daq: daqAPI,
 });

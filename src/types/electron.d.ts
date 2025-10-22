@@ -6,6 +6,15 @@
  */
 
 import { CameraSettings, CapturedImage } from './camera';
+import {
+  DAQSettings,
+  DAQInitializeResponse,
+  DAQCleanupResponse,
+  DAQRotateResponse,
+  DAQStepResponse,
+  DAQHomeResponse,
+  DAQStatusResponse,
+} from './daq';
 
 /**
  * Python backend API
@@ -116,11 +125,81 @@ export interface CameraAPI {
 }
 
 /**
+ * DAQ API
+ */
+export interface DAQAPI {
+  /**
+   * Initialize DAQ with settings
+   * @param settings - DAQ configuration settings
+   * @returns Promise resolving to initialization response
+   */
+  initialize: (settings: DAQSettings) => Promise<DAQInitializeResponse>;
+
+  /**
+   * Clean up DAQ resources
+   * @returns Promise resolving to cleanup response
+   */
+  cleanup: () => Promise<DAQCleanupResponse>;
+
+  /**
+   * Rotate turntable by degrees
+   * @param degrees - Degrees to rotate (positive = clockwise, negative = counter-clockwise)
+   * @returns Promise resolving to rotation response with new position
+   */
+  rotate: (degrees: number) => Promise<DAQRotateResponse>;
+
+  /**
+   * Execute specific number of stepper motor steps
+   * @param numSteps - Number of steps to execute
+   * @param direction - Direction (1 = clockwise, -1 = counter-clockwise)
+   * @returns Promise resolving to step response with new position
+   */
+  step: (numSteps: number, direction?: 1 | -1) => Promise<DAQStepResponse>;
+
+  /**
+   * Return turntable to home position (0 degrees)
+   * @returns Promise resolving to home response
+   */
+  home: () => Promise<DAQHomeResponse>;
+
+  /**
+   * Get DAQ status
+   * @returns Promise resolving to DAQ status
+   */
+  getStatus: () => Promise<DAQStatusResponse>;
+
+  /**
+   * Register callback for DAQ initialization events
+   * @param callback - Function to call when DAQ is initialized
+   */
+  onInitialized: (callback: () => void) => void;
+
+  /**
+   * Register callback for position change events
+   * @param callback - Function to call with new position in degrees
+   */
+  onPositionChanged: (callback: (position: number) => void) => void;
+
+  /**
+   * Register callback for home events
+   * @param callback - Function to call when turntable reaches home position
+   */
+  onHome: (callback: () => void) => void;
+
+  /**
+   * Register callback for DAQ errors
+   * @param callback - Function to call with error messages
+   */
+  onError: (callback: (error: string) => void) => void;
+}
+
+/**
  * Main Electron API exposed to renderer
  */
 export interface ElectronAPI {
   python: PythonAPI;
   camera: CameraAPI;
+  daq: DAQAPI;
 }
 
 /**
