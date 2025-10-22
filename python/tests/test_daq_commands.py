@@ -1,7 +1,6 @@
 """Tests for DAQ IPC command handling."""
 
 import json
-import os
 from io import StringIO
 
 import pytest
@@ -11,7 +10,6 @@ from python.ipc_handler import (
     cleanup_daq,
     get_daq_instance,
     handle_command,
-    handle_daq_command,
 )
 
 
@@ -64,7 +62,7 @@ class TestDAQStatus:
         handle_command(cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -95,7 +93,7 @@ class TestDAQStatus:
         handle_command(status_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -120,7 +118,7 @@ class TestDAQInitialize:
         handle_command(cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -143,7 +141,7 @@ class TestDAQInitialize:
         handle_command(cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -175,7 +173,7 @@ class TestDAQCleanup:
         handle_command(cleanup_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -190,7 +188,7 @@ class TestDAQCleanup:
         handle_command(cleanup_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -235,7 +233,7 @@ class TestDAQRotate:
         handle_command(rotate_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -250,7 +248,7 @@ class TestDAQRotate:
         handle_command(rotate_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is False
@@ -278,7 +276,7 @@ class TestDAQRotate:
         handle_command(rotate_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is False
@@ -306,7 +304,7 @@ class TestDAQRotate:
         handle_command(rotate_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -334,11 +332,16 @@ class TestDAQStep:
         output.seek(0)
 
         # Step
-        step_cmd = {"command": "daq", "action": "step", "num_steps": 100, "direction": 1}
+        step_cmd = {
+            "command": "daq",
+            "action": "step",
+            "num_steps": 100,
+            "direction": 1,
+        }
         handle_command(step_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -353,7 +356,7 @@ class TestDAQStep:
         handle_command(step_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is False
@@ -381,7 +384,7 @@ class TestDAQStep:
         handle_command(step_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is False
@@ -414,7 +417,7 @@ class TestDAQStep:
         handle_command(step_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -451,7 +454,7 @@ class TestDAQHome:
         handle_command(home_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is True
@@ -466,7 +469,7 @@ class TestDAQHome:
         handle_command(home_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
 
         assert response["success"] is False
@@ -485,7 +488,7 @@ class TestDAQErrorHandling:
         handle_command(cmd)
 
         lines = output.getvalue().strip().split("\n")
-        error_line = [l for l in lines if l.startswith("ERROR:")][0]
+        error_line = [line for line in lines if line.startswith("ERROR:")][0]
 
         assert "Unknown DAQ action" in error_line
 
@@ -520,7 +523,7 @@ class TestDAQWorkflow:
 
         # Verify all succeeded
         lines = output.getvalue().strip().split("\n")
-        data_lines = [l for l in lines if l.startswith("DATA:")]
+        data_lines = [line for line in lines if line.startswith("DATA:")]
 
         assert len(data_lines) == 4
         for line in data_lines:
@@ -537,7 +540,7 @@ class TestDAQWorkflow:
         handle_command(status_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
         assert response["initialized"] is False
 
@@ -557,7 +560,7 @@ class TestDAQWorkflow:
         handle_command(status_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
         assert response["initialized"] is True
         assert response["position"] == 0.0
@@ -574,7 +577,7 @@ class TestDAQWorkflow:
         handle_command(status_cmd)
 
         lines = output.getvalue().strip().split("\n")
-        data_line = [l for l in lines if l.startswith("DATA:")][0]
+        data_line = [line for line in lines if line.startswith("DATA:")][0]
         response = json.loads(data_line[5:])
         assert response["position"] == 45.0
 
@@ -597,7 +600,7 @@ class TestDAQUnavailable:
         handle_command(cmd)
 
         lines = output.getvalue().strip().split("\n")
-        error_line = [l for l in lines if l.startswith("ERROR:")][0]
+        error_line = [line for line in lines if line.startswith("ERROR:")][0]
 
         assert "DAQ module not available" in error_line
 

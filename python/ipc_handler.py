@@ -444,10 +444,8 @@ def handle_daq_command(cmd: Dict[str, Any]) -> None:
 
         elif action == "status":
             # Get DAQ status
-            is_initialized = (
-                _daq_instance is not None and _daq_instance.is_initialized
-            )
-            position = _daq_instance.get_position() if is_initialized else 0.0
+            is_initialized = _daq_instance is not None and _daq_instance.is_initialized
+            position = _daq_instance.get_position() if is_initialized else 0.0  # type: ignore[union-attr]
             send_data(
                 {
                     "success": True,

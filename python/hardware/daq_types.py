@@ -5,7 +5,6 @@ Defines the data structures for DAQ configuration and operation.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -33,7 +32,9 @@ class DAQSettings:
     def __post_init__(self):
         """Validate DAQ settings values."""
         if self.sampling_rate <= 0:
-            raise ValueError(f"sampling_rate must be positive, got {self.sampling_rate}")
+            raise ValueError(
+                f"sampling_rate must be positive, got {self.sampling_rate}"
+            )
 
         if self.steps_per_revolution <= 0:
             raise ValueError(

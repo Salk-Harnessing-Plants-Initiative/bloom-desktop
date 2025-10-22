@@ -4,14 +4,13 @@ NI-DAQmx implementation for turntable control.
 Controls stepper motor via NI-DAQ digital output for 360° plant scanning.
 """
 
-import time
 from typing import Optional
 import numpy as np
 
 try:
     from .daq_types import DAQSettings
 except ImportError:
-    from daq_types import DAQSettings  # type: ignore[no-redef]
+    from daq_types import DAQSettings  # type: ignore[import-not-found,no-redef]
 
 # Optional NI-DAQmx support
 try:
@@ -303,6 +302,7 @@ class DAQ:
             if self.task:
                 try:
                     self.task.stop()
-                except:
+                except Exception:  # noqa: S110
+                    # Ignore errors during emergency stop
                     pass
             raise RuntimeError(f"DAQ execution failed: {e}")

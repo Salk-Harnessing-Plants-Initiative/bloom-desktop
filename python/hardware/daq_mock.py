@@ -5,12 +5,11 @@ Simulates NI-DAQmx turntable control for development and testing.
 """
 
 import time
-from typing import Optional
 
 try:
     from .daq_types import DAQSettings
 except ImportError:
-    from daq_types import DAQSettings  # type: ignore[no-redef]
+    from daq_types import DAQSettings  # type: ignore[import-not-found,no-redef]
 
 
 class MockDAQ:
@@ -68,7 +67,8 @@ class MockDAQ:
         direction = 1 if degrees >= 0 else -1
 
         print(
-            f"STATUS:Mock DAQ rotating {degrees:.2f}° ({steps_needed} steps)", flush=True
+            f"STATUS:Mock DAQ rotating {degrees:.2f}° ({steps_needed} steps)",
+            flush=True,
         )
 
         # Simulate rotation time based on steps
@@ -140,9 +140,6 @@ class MockDAQ:
             raise RuntimeError("DAQ not initialized. Call initialize() first.")
 
         print("STATUS:Mock DAQ homing to 0°", flush=True)
-
-        # Calculate degrees to home
-        degrees_to_home = -self.current_position
 
         # Simulate homing time
         time.sleep(0.2)
