@@ -33,7 +33,23 @@ export interface DAQSettings {
 }
 
 /**
- * Default DAQ settings matching Python backend defaults
+ * Default DAQ settings matching Python backend defaults.
+ *
+ * These are the standard settings for the Bloom desktop turntable system.
+ * Exported for use in tests, documentation, and as a reference for consumers
+ * of the DAQ API.
+ *
+ * @example
+ * ```typescript
+ * // Use defaults directly
+ * await window.electron.daq.initialize(DEFAULT_DAQ_SETTINGS);
+ *
+ * // Or override specific settings
+ * await window.electron.daq.initialize({
+ *   ...DEFAULT_DAQ_SETTINGS,
+ *   num_frames: 36,  // Use 36 frames instead of 72
+ * });
+ * ```
  */
 export const DEFAULT_DAQ_SETTINGS: DAQSettings = {
   device_name: 'cDAQ1Mod1',

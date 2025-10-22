@@ -76,7 +76,9 @@ Once the Electron app is running, you can test the DAQ from the renderer process
   const status1 = await window.electron.daq.getStatus();
   console.log('Initial status:', status1);
 
-  // 2. Initialize DAQ
+  // 2. Initialize DAQ with default settings
+  // Note: You can import DEFAULT_DAQ_SETTINGS from src/types/daq.ts
+  // For browser console, we'll use the values directly:
   await window.electron.daq.initialize({
     device_name: 'cDAQ1Mod1',
     sampling_rate: 40000,

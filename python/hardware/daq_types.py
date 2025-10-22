@@ -50,7 +50,11 @@ class DAQSettings:
             )
 
         if self.step_pin < 0 or self.dir_pin < 0:
-            raise ValueError("step_pin and dir_pin must be non-negative")
+            raise ValueError(
+                f"step_pin and dir_pin must be non-negative, got step_pin={self.step_pin}, dir_pin={self.dir_pin}"
+            )
 
         if self.step_pin == self.dir_pin:
-            raise ValueError("step_pin and dir_pin must be different")
+            raise ValueError(
+                f"step_pin and dir_pin must be different, both are {self.step_pin}"
+            )
