@@ -87,30 +87,6 @@ _use_mock_camera = os.environ.get("BLOOM_USE_MOCK_CAMERA", "true").lower() == "t
 _daq_instance: Optional[Any] = None
 _use_mock_daq = os.environ.get("BLOOM_USE_MOCK_DAQ", "true").lower() == "true"
 
-# Import Scanner modules
-# Try both import paths for compatibility with bundled and development environments
-try:
-    # First try bundled app import path
-    from hardware.scanner import Scanner  # type: ignore[import-not-found]
-    from hardware.scanner_types import ScannerSettings  # type: ignore[import-not-found]
-
-    SCANNER_AVAILABLE = True
-except ImportError:
-    try:
-        # Fall back to development/test import path
-        from python.hardware.scanner import Scanner  # type: ignore[import-not-found]
-        from python.hardware.scanner_types import ScannerSettings  # type: ignore[import-not-found]
-
-        SCANNER_AVAILABLE = True
-    except ImportError as e:
-        print(f"ERROR:Failed to import Scanner modules: {e}", flush=True)
-        SCANNER_AVAILABLE = False
-        Scanner = None
-        ScannerSettings = None
-
-# Global scanner instance
-_scanner_instance: Optional[Any] = None
-
 
 def send_status(message: str) -> None:
     """Send a status message to stdout.
@@ -488,113 +464,6 @@ def handle_daq_command(cmd: Dict[str, Any]) -> None:
         send_data({"success": False, "error": str(e)})
 
 
-def get_scanner_instance(settings: Dict[str, Any]) -> Any:
-    """Get or create scanner instance.
-
-    Args:
-        settings: Scanner settings dictionary with 'camera' and 'daq' subdicts
-
-    Returns:
-        Scanner instance
-
-    Raises:
-        RuntimeError: If scanner module is not available
-    """
-    global _scanner_instance
-
-    if not SCANNER_AVAILABLE:
-        raise RuntimeError("Scanner module not available")
-
-    # Create settings object
-    camera_settings = CameraSettings(**settings["camera"])
-    daq_settings = DAQSettings(**settings["daq"])
-    scanner_settings = ScannerSettings(
-        camera=camera_settings,
-        daq=daq_settings,
-        num_frames=settings.get("num_frames", 72),
-        output_path=settings.get("output_path", "./scans"),
-    )
-
-    # Create new scanner instance if needed
-    if _scanner_instance is None:
-        send_status("Creating scanner instance")
-        _scanner_instance = Scanner(scanner_settings)
-    else:
-        # Update settings on existing instance
-        _scanner_instance.settings = scanner_settings
-
-    return _scanner_instance
-
-
-def cleanup_scanner() -> None:
-    """Clean up the scanner instance if it exists."""
-    global _scanner_instance
-
-    if _scanner_instance is not None:
-        try:
-            _scanner_instance.cleanup()
-        except Exception as e:
-            send_error(f"Error cleaning up scanner: {e}")
-        finally:
-            _scanner_instance = None
-
-
-def handle_scanner_command(cmd: Dict[str, Any]) -> None:
-    """Handle scanner-specific commands.
-
-    Args:
-        cmd: Command dictionary with scanner parameters
-    """
-    if not SCANNER_AVAILABLE:
-        send_error("Scanner module not available")
-        return
-
-    action = cmd.get("action")
-    settings = cmd.get("settings", {})
-
-    try:
-        if action == "initialize":
-            scanner = get_scanner_instance(settings)
-            success = scanner.initialize()
-            send_data({"success": success, "initialized": True})
-
-        elif action == "cleanup":
-            cleanup_scanner()
-            send_data({"success": True, "initialized": False})
-
-        elif action == "start_scan":
-            # Start scan
-            if _scanner_instance is None or not _scanner_instance.is_initialized:
-                raise RuntimeError("Scanner not initialized. Call initialize() first.")
-
-            # Perform the scan
-            result = _scanner_instance.perform_scan()
-            send_data(result.to_dict())
-
-        elif action == "status":
-            # Get scanner status
-            if _scanner_instance is not None:
-                status = _scanner_instance.get_status()
-                send_data({"success": True, **status})
-            else:
-                send_data(
-                    {
-                        "success": True,
-                        "initialized": False,
-                        "camera_initialized": False,
-                        "daq_initialized": False,
-                        "use_mock": True,
-                    }
-                )
-
-        else:
-            send_error(f"Unknown scanner action: {action}")
-
-    except Exception as e:
-        # Send error via DATA protocol for consistent response handling
-        send_data({"success": False, "error": str(e)})
-
-
 def handle_command(cmd: Dict[str, Any]) -> None:
     """Route and handle incoming commands.
 
@@ -618,9 +487,6 @@ def handle_command(cmd: Dict[str, Any]) -> None:
 
     elif command == "daq":
         handle_daq_command(cmd)
-
-    elif command == "scanner":
-        handle_scanner_command(cmd)
 
     else:
         send_error(f"Unknown command: {command}")
