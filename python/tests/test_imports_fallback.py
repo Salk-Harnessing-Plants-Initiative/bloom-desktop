@@ -1,15 +1,14 @@
 """Tests for hardware module import fallback mechanism."""
 
 
-
 def test_camera_imports_bundled_path():
     """Test that camera modules can import from bundled path (hardware.*)."""
     # This test verifies the first import path works
     try:
         # If we're in dev environment, this will fail (expected)
-        from hardware.camera import Camera
-        from hardware.camera_mock import MockCamera
-        from hardware.camera_types import CameraSettings
+        from hardware.camera import Camera  # type: ignore[import-not-found]
+        from hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
+        from hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
 
         # If we get here, we're in a bundled environment
         assert Camera is not None
@@ -35,9 +34,9 @@ def test_camera_imports_development_path():
 def test_daq_imports_bundled_path():
     """Test that DAQ modules can import from bundled path (hardware.*)."""
     try:
-        from hardware.daq import DAQ
-        from hardware.daq_mock import MockDAQ
-        from hardware.daq_types import DAQSettings
+        from hardware.daq import DAQ  # type: ignore[import-not-found]
+        from hardware.daq_mock import MockDAQ  # type: ignore[import-not-found]
+        from hardware.daq_types import DAQSettings  # type: ignore[import-not-found]
 
         # If we get here, we're in a bundled environment
         assert DAQ is not None
