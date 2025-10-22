@@ -21,10 +21,10 @@ jobs:
   # 3. compile-typescript: Type checking with tsc (Linux only)
   # 4. test-unit: Vitest unit tests (Linux only)
   # 5. test-python: pytest with 80% coverage (Linux only)
-  # 6. test-integration: IPC communication tests across Linux, macOS, Windows
+  # 6. test-integration: IPC, camera, and DAQ tests across Linux, macOS, Windows
   # 7. all-checks-passed: Summary job (only runs if all pass)
   #
-  # Camera integration tests are now included in the test-integration job
+  # Camera and DAQ integration tests are included in the test-integration job
   # ==============================================================================
 
   # Lint and format check for Node.js/TypeScript
@@ -183,6 +183,9 @@ jobs:
 
       - name: Run camera integration tests
         run: npm run test:camera
+
+      - name: Run DAQ integration tests
+        run: npm run test:daq
 
   # Summary job - requires all checks to pass
   all-checks-passed:
