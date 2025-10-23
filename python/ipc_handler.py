@@ -375,6 +375,8 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
     Args:
         cmd: Command dictionary with camera parameters
     """
+    global _streaming_thread
+
     if not CAMERA_AVAILABLE:
         send_error("Camera module not available")
         return
@@ -442,8 +444,6 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
 
         elif action == "start_stream":
             # Start streaming frames in background thread
-            global _streaming_thread
-
             with _streaming_lock:
                 # Check if already streaming
                 if _streaming_active.is_set():
@@ -467,8 +467,6 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
 
         elif action == "stop_stream":
             # Stop streaming thread
-            global _streaming_thread
-
             with _streaming_lock:
                 if not _streaming_active.is_set():
                     send_data({"success": True, "streaming": False, "message": "Not streaming"})
