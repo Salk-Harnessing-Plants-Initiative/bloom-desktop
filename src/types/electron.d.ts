@@ -130,7 +130,9 @@ export interface CameraAPI {
    * @param settings - Optional camera settings to apply before streaming
    * @returns Promise resolving to streaming start success
    */
-  startStream: (settings?: Partial<CameraSettings>) => Promise<{ success: boolean; error?: string }>;
+  startStream: (
+    settings?: Partial<CameraSettings>
+  ) => Promise<{ success: boolean; error?: string }>;
 
   /**
    * Stop streaming frames from the camera

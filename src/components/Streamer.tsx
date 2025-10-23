@@ -199,7 +199,11 @@ export const Streamer: React.FC<StreamerProps> = ({
             width: '8px',
             height: '8px',
             borderRadius: '50%',
-            backgroundColor: error ? '#f44336' : isStreaming ? '#4caf50' : '#ff9800',
+            backgroundColor: error
+              ? '#f44336'
+              : isStreaming
+                ? '#4caf50'
+                : '#ff9800',
             marginRight: '6px',
           }}
         />
