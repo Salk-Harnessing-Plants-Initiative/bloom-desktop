@@ -5,7 +5,7 @@ Defines the data structures for scanner configuration, progress, and results.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union, Any
 
 from .camera_types import CameraSettings
 from .daq_types import DAQSettings
@@ -22,13 +22,20 @@ class ScannerSettings:
         output_path: Directory path for saving captured images (default: "./scans")
     """
 
-    camera: CameraSettings
-    daq: DAQSettings
+    camera: Union[CameraSettings, Any]
+    daq: Union[DAQSettings, Any]
     num_frames: int = 72
     output_path: str = "./scans"
 
     def __post_init__(self):
-        """Validate scanner settings values."""
+        """Validate scanner settings values and convert dicts to proper types."""
+        # Convert dicts to dataclass instances if needed
+        if isinstance(self.camera, dict):
+            self.camera = CameraSettings(**self.camera)
+
+        if isinstance(self.daq, dict):
+            self.daq = DAQSettings(**self.daq)
+
         if self.num_frames <= 0:
             raise ValueError(f"num_frames must be positive, got {self.num_frames}")
 

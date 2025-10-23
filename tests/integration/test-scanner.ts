@@ -26,15 +26,14 @@ const TEST_TIMEOUT = 30000;
 // Mock camera and DAQ settings for scanner test
 const SCANNER_SETTINGS = {
   camera: {
-    serial_number: null,
     exposure_time: 10000,
     gain: 0.0,
+    camera_ip_address: null as string | null,
     gamma: 1.0,
+    num_frames: 72,
+    seconds_per_rot: 36.0,
     width: 640,
     height: 480,
-    pixel_format: 'Mono8',
-    trigger_mode: 'software',
-    num_frames: 72,
   },
   daq: {
     device_name: 'cDAQ1Mod1',
