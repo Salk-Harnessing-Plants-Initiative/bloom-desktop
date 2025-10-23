@@ -15,6 +15,7 @@ import {
   DAQHomeResponse,
   DAQStatusResponse,
 } from './daq';
+import { ScannerAPI } from './scanner';
 
 /**
  * Python backend API
@@ -200,6 +201,7 @@ export interface ElectronAPI {
   python: PythonAPI;
   camera: CameraAPI;
   daq: DAQAPI;
+  scanner: ScannerAPI;
 }
 
 /**

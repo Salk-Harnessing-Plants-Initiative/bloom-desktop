@@ -13,6 +13,8 @@ import { CameraProcess } from './camera-process';
 import type { CameraSettings } from './camera-process';
 import { DAQProcess } from './daq-process';
 import type { DAQSettings } from '../types/daq';
+import { ScannerProcess } from './scanner-process';
+import type { ScannerSettings } from '../types/scanner';
 import {
   getPythonExecutablePath,
   validatePythonExecutable,
@@ -34,6 +36,7 @@ let mainWindow: BrowserWindow | null = null;
 let pythonProcess: PythonProcess | null = null;
 let cameraProcess: CameraProcess | null = null;
 let daqProcess: DAQProcess | null = null;
+let scannerProcess: ScannerProcess | null = null;
 
 const createWindow = (): void => {
   // Create the browser window.
@@ -479,6 +482,133 @@ ipcMain.handle('daq:get-status', async () => {
       position: 0,
       mock: true,
       available: false,
+      error: error.message,
+    };
+  }
+});
+
+// =============================================================================
+// IPC Handlers for Scanner Communication
+// =============================================================================
+
+/**
+ * Initialize Scanner subprocess if not already initialized
+ */
+async function ensureScannerProcess(): Promise<ScannerProcess> {
+  if (!scannerProcess) {
+    // Scanner uses the same Python process as other hardware
+    if (!pythonProcess) {
+      throw new Error('Python process not initialized');
+    }
+
+    scannerProcess = new ScannerProcess(pythonProcess);
+
+    // Forward scanner events to renderer
+    scannerProcess.on('initialized', () => {
+      mainWindow?.webContents.send('scanner:initialized');
+    });
+
+    scannerProcess.on('progress', (progress) => {
+      mainWindow?.webContents.send('scanner:progress', progress);
+    });
+
+    scannerProcess.on('complete', (result) => {
+      mainWindow?.webContents.send('scanner:complete', result);
+    });
+
+    scannerProcess.on('error', (error: string) => {
+      console.error('Scanner error:', error);
+      mainWindow?.webContents.send('scanner:error', error);
+    });
+  }
+
+  return scannerProcess;
+}
+
+/**
+ * Handle scanner:initialize - Initialize scanner with camera and DAQ settings
+ */
+ipcMain.handle(
+  'scanner:initialize',
+  async (_event, settings: ScannerSettings) => {
+    try {
+      const scanner = await ensureScannerProcess();
+      const response = await scanner.initialize(settings);
+      return response;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error('scanner:initialize error:', error);
+      return { success: false, initialized: false, error: error.message };
+    }
+  }
+);
+
+/**
+ * Handle scanner:cleanup - Clean up scanner resources
+ */
+ipcMain.handle('scanner:cleanup', async () => {
+  try {
+    if (!scannerProcess) {
+      return { success: true, initialized: false }; // Already cleaned up
+    }
+    const response = await scannerProcess.cleanup();
+    return response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('scanner:cleanup error:', error);
+    return { success: false, initialized: false, error: error.message };
+  }
+});
+
+/**
+ * Handle scanner:scan - Perform a complete scan
+ */
+ipcMain.handle('scanner:scan', async () => {
+  try {
+    if (!scannerProcess) {
+      throw new Error('Scanner not initialized. Call initialize() first.');
+    }
+    const response = await scannerProcess.scan();
+    return response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('scanner:scan error:', error);
+    return {
+      success: false,
+      frames_captured: 0,
+      output_path: '',
+      error: error.message,
+    };
+  }
+});
+
+/**
+ * Handle scanner:get-status - Get scanner status
+ */
+ipcMain.handle('scanner:get-status', async () => {
+  try {
+    if (!scannerProcess) {
+      return {
+        success: true,
+        initialized: false,
+        camera_status: 'unknown',
+        daq_status: 'unknown',
+        position: 0,
+        mock: true,
+      };
+    }
+    const status = await scannerProcess.getStatus();
+    return status;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('scanner:get-status error:', error);
+    return {
+      success: false,
+      initialized: false,
+      camera_status: 'unknown',
+      daq_status: 'unknown',
+      position: 0,
+      mock: true,
       error: error.message,
     };
   }

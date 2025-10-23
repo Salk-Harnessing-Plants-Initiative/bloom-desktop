@@ -12,6 +12,13 @@ import { PythonAPI, CameraAPI, DAQAPI } from '../types/electron';
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
 import { DAQSettings } from '../types/daq';
+// eslint-disable-next-line import/no-unresolved
+import {
+  ScannerAPI,
+  ScannerSettings,
+  ScanProgress,
+  ScanResult,
+} from '../types/scanner';
 
 /**
  * Python backend API exposed to renderer
@@ -84,10 +91,35 @@ const daqAPI: DAQAPI = {
 };
 
 /**
+ * Scanner API exposed to renderer
+ */
+const scannerAPI: ScannerAPI = {
+  initialize: (settings: ScannerSettings) =>
+    ipcRenderer.invoke('scanner:initialize', settings),
+  cleanup: () => ipcRenderer.invoke('scanner:cleanup'),
+  scan: () => ipcRenderer.invoke('scanner:scan'),
+  getStatus: () => ipcRenderer.invoke('scanner:get-status'),
+  onProgress: (callback: (progress: ScanProgress) => void) => {
+    ipcRenderer.on('scanner:progress', (_event, progress: ScanProgress) =>
+      callback(progress)
+    );
+  },
+  onComplete: (callback: (result: ScanResult) => void) => {
+    ipcRenderer.on('scanner:complete', (_event, result: ScanResult) =>
+      callback(result)
+    );
+  },
+  onError: (callback: (error: string) => void) => {
+    ipcRenderer.on('scanner:error', (_event, error: string) => callback(error));
+  },
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
   python: pythonAPI,
   camera: cameraAPI,
   daq: daqAPI,
+  scanner: scannerAPI,
 });
