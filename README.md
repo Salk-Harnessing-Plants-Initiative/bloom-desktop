@@ -118,6 +118,7 @@ npm run test:package
 ```
 
 **Hardware Testing Documentation**:
+
 - **Camera**: See [docs/CAMERA_TESTING.md](docs/CAMERA_TESTING.md) for camera testing instructions
 - **DAQ**: See [docs/DAQ_TESTING.md](docs/DAQ_TESTING.md) for DAQ turntable testing instructions
 
