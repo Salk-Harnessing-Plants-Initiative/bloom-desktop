@@ -211,6 +211,13 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
       });
     });
 
+    cameraProcess.on('frame', (dataUri: string) => {
+      mainWindow?.webContents.send('camera:frame', {
+        dataUri,
+        timestamp: Date.now(),
+      });
+    });
+
     cameraProcess.on('status', (status: string) => {
       console.log('Camera status:', status);
     });
@@ -323,6 +330,41 @@ ipcMain.handle('camera:get-status', async () => {
   } catch (error: any) {
     console.error('camera:get-status error:', error);
     return { connected: false, mock: true, available: false };
+  }
+});
+
+/**
+ * Handle camera:start-stream - Start streaming frames from camera
+ */
+ipcMain.handle(
+  'camera:start-stream',
+  async (_event, settings?: Partial<CameraSettings>) => {
+    try {
+      const camera = await ensureCameraProcess();
+      const success = await camera.startStream(settings);
+      return { success };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error('camera:start-stream error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+);
+
+/**
+ * Handle camera:stop-stream - Stop streaming frames from camera
+ */
+ipcMain.handle('camera:stop-stream', async () => {
+  try {
+    if (!cameraProcess) {
+      return { success: true }; // Already stopped
+    }
+    const success = await cameraProcess.stopStream();
+    return { success };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('camera:stop-stream error:', error);
+    return { success: false, error: error.message };
   }
 });
 

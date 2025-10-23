@@ -47,6 +47,7 @@ export interface CameraCaptureResponse {
  * Camera process events:
  *   - 'camera-trigger': () => void - Camera was triggered
  *   - 'image-captured': (dataUri: string) => void - Image was captured
+ *   - 'frame': (dataUri: string) => void - Streaming frame received
  *   - Plus all PythonProcess events (status, error, data, etc.)
  */
 export class CameraProcess extends PythonProcess {
@@ -61,6 +62,10 @@ export class CameraProcess extends PythonProcess {
     // Handle camera-specific protocol messages
     if (line.startsWith('TRIGGER_CAMERA')) {
       this.emit('camera-trigger');
+    } else if (line.startsWith('FRAME:')) {
+      // Streaming frame: "FRAME:data:image/png;base64,..."
+      const dataUri = line.substring(6); // Remove "FRAME:" prefix
+      this.emit('frame', dataUri);
     } else if (line.startsWith('IMAGE ')) {
       // Image data: "IMAGE data:image/png;base64,..."
       const dataUri = line.substring(6); // Remove "IMAGE " prefix
@@ -161,28 +166,32 @@ export class CameraProcess extends PythonProcess {
 
   /**
    * Start streaming images from the camera.
-   * Images will be emitted via 'image-captured' events.
-   *
-   * Note: This is a placeholder for future streaming implementation.
-   * Currently not implemented in the Python backend.
+   * Frames will be emitted via 'frame' events at ~30 FPS.
    *
    * @param settings - Camera settings for streaming
+   * @returns Promise that resolves when streaming starts
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async startStream(_settings: CameraSettings): Promise<void> {
-    // Future implementation
-    // This will require modifications to the Python backend to support
-    // continuous streaming mode with DAQ synchronization
-    throw new Error('Streaming not yet implemented');
+  async startStream(settings?: Partial<CameraSettings>): Promise<boolean> {
+    const response = await this.sendCommand({
+      command: 'camera',
+      action: 'start_stream',
+      settings: settings || {},
+    });
+
+    return response.success === true;
   }
 
   /**
    * Stop streaming images from the camera.
    *
-   * Note: This is a placeholder for future streaming implementation.
+   * @returns Promise that resolves when streaming stops
    */
-  async stopStream(): Promise<void> {
-    // Future implementation
-    throw new Error('Streaming not yet implemented');
+  async stopStream(): Promise<boolean> {
+    const response = await this.sendCommand({
+      command: 'camera',
+      action: 'stop_stream',
+    });
+
+    return response.success === true;
   }
 }

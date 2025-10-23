@@ -123,6 +123,26 @@ export interface CameraAPI {
    * @param callback - Function to call with captured image data
    */
   onImageCaptured: (callback: (image: CapturedImage) => void) => void;
+
+  /**
+   * Start streaming frames from the camera
+   * Frames will be delivered via onFrame callback at ~30 FPS
+   * @param settings - Optional camera settings to apply before streaming
+   * @returns Promise resolving to streaming start success
+   */
+  startStream: (settings?: Partial<CameraSettings>) => Promise<{ success: boolean; error?: string }>;
+
+  /**
+   * Stop streaming frames from the camera
+   * @returns Promise resolving to streaming stop success
+   */
+  stopStream: () => Promise<{ success: boolean; error?: string }>;
+
+  /**
+   * Register callback for streaming frames
+   * @param callback - Function to call with each frame (called at ~30 FPS during streaming)
+   */
+  onFrame: (callback: (image: CapturedImage) => void) => void;
 }
 
 /**

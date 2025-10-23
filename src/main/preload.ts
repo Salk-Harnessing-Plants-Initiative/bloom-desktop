@@ -59,6 +59,14 @@ const cameraAPI: CameraAPI = {
       callback(image)
     );
   },
+  startStream: (settings?: Partial<CameraSettings>) =>
+    ipcRenderer.invoke('camera:start-stream', settings),
+  stopStream: () => ipcRenderer.invoke('camera:stop-stream'),
+  onFrame: (callback: (image: CapturedImage) => void) => {
+    ipcRenderer.on('camera:frame', (_event, image: CapturedImage) =>
+      callback(image)
+    );
+  },
 };
 
 /**

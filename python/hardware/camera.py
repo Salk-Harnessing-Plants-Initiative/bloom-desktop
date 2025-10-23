@@ -182,6 +182,23 @@ class Camera:
 
         return frames
 
+    def grab_frame_base64(self) -> str:
+        """Grab a single frame and return as base64-encoded PNG.
+
+        This method is optimized for streaming use cases where frames need
+        to be transmitted over IPC as base64 data URIs.
+
+        Returns:
+            Base64-encoded PNG string with data URI prefix
+            Format: "data:image/png;base64,{encoded_data}"
+
+        Raises:
+            RuntimeError: If camera is not open or grab fails
+        """
+        img = self.grab_frame()
+        base64_data = self._img_to_base64(img)
+        return f"data:image/png;base64,{base64_data}"
+
     @staticmethod
     def _img_to_base64(img: np.ndarray) -> str:
         """Convert image array to base64-encoded PNG.
