@@ -11,6 +11,8 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './camera-process';
 import type { CameraSettings } from './camera-process';
+import { DAQProcess } from './daq-process';
+import type { DAQSettings } from '../types/daq';
 import {
   getPythonExecutablePath,
   validatePythonExecutable,
@@ -31,6 +33,7 @@ if (require('electron-squirrel-startup')) {
 let mainWindow: BrowserWindow | null = null;
 let pythonProcess: PythonProcess | null = null;
 let cameraProcess: CameraProcess | null = null;
+let daqProcess: DAQProcess | null = null;
 
 const createWindow = (): void => {
   // Create the browser window.
@@ -321,6 +324,167 @@ ipcMain.handle('camera:get-status', async () => {
 });
 
 // =============================================================================
+// IPC Handlers for DAQ Communication
+// =============================================================================
+
+/**
+ * Initialize DAQ subprocess if not already initialized
+ */
+async function ensureDAQProcess(): Promise<DAQProcess> {
+  if (!daqProcess) {
+    const pythonPath = getPythonExecutablePath();
+    daqProcess = new DAQProcess(pythonPath, ['--ipc']);
+
+    // Forward DAQ events to renderer
+    daqProcess.on('daq-initialized', () => {
+      mainWindow?.webContents.send('daq:initialized');
+    });
+
+    daqProcess.on('daq-position-changed', (position: number) => {
+      mainWindow?.webContents.send('daq:position-changed', { position });
+    });
+
+    daqProcess.on('daq-home', () => {
+      mainWindow?.webContents.send('daq:home');
+    });
+
+    daqProcess.on('status', (status: string) => {
+      console.log('DAQ status:', status);
+    });
+
+    daqProcess.on('error', (error: string) => {
+      console.error('DAQ error:', error);
+      mainWindow?.webContents.send('daq:error', error);
+    });
+
+    daqProcess.on('exit', (code: number | null) => {
+      console.log(`DAQ process exited with code ${code}`);
+      daqProcess = null;
+    });
+
+    await daqProcess.start();
+  }
+
+  return daqProcess;
+}
+
+/**
+ * Handle daq:initialize - Initialize DAQ with settings
+ */
+ipcMain.handle('daq:initialize', async (_event, settings: DAQSettings) => {
+  try {
+    const daq = await ensureDAQProcess();
+    const response = await daq.initialize(settings);
+    return response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('daq:initialize error:', error);
+    return { success: false, initialized: false, error: error.message };
+  }
+});
+
+/**
+ * Handle daq:cleanup - Clean up DAQ resources
+ */
+ipcMain.handle('daq:cleanup', async () => {
+  try {
+    if (!daqProcess) {
+      return { success: true, initialized: false }; // Already cleaned up
+    }
+    const response = await daqProcess.cleanup();
+    return response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('daq:cleanup error:', error);
+    return { success: false, initialized: false, error: error.message };
+  }
+});
+
+/**
+ * Handle daq:rotate - Rotate turntable by degrees
+ */
+ipcMain.handle('daq:rotate', async (_event, degrees: number) => {
+  try {
+    if (!daqProcess) {
+      throw new Error('DAQ not initialized. Call initialize() first.');
+    }
+    const response = await daqProcess.rotate(degrees);
+    return response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('daq:rotate error:', error);
+    return { success: false, position: 0, error: error.message };
+  }
+});
+
+/**
+ * Handle daq:step - Execute specific number of steps
+ */
+ipcMain.handle(
+  'daq:step',
+  async (_event, numSteps: number, direction: 1 | -1 = 1) => {
+    try {
+      if (!daqProcess) {
+        throw new Error('DAQ not initialized. Call initialize() first.');
+      }
+      const response = await daqProcess.step(numSteps, direction);
+      return response;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error('daq:step error:', error);
+      return { success: false, position: 0, error: error.message };
+    }
+  }
+);
+
+/**
+ * Handle daq:home - Return turntable to home position
+ */
+ipcMain.handle('daq:home', async () => {
+  try {
+    if (!daqProcess) {
+      throw new Error('DAQ not initialized. Call initialize() first.');
+    }
+    const response = await daqProcess.home();
+    return response;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('daq:home error:', error);
+    return { success: false, position: 0, error: error.message };
+  }
+});
+
+/**
+ * Handle daq:get-status - Get DAQ status
+ */
+ipcMain.handle('daq:get-status', async () => {
+  try {
+    if (!daqProcess) {
+      return {
+        success: true,
+        initialized: false,
+        position: 0,
+        mock: true,
+        available: false,
+      };
+    }
+    const status = await daqProcess.getStatus();
+    return status;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('daq:get-status error:', error);
+    return {
+      success: false,
+      initialized: false,
+      position: 0,
+      mock: true,
+      available: false,
+      error: error.message,
+    };
+  }
+});
+
+// =============================================================================
 // App Lifecycle
 // =============================================================================
 
@@ -358,6 +522,10 @@ app.on('quit', () => {
   if (cameraProcess) {
     console.log('Stopping camera process...');
     cameraProcess.stop();
+  }
+  if (daqProcess) {
+    console.log('Stopping DAQ process...');
+    daqProcess.stop();
   }
 });
 

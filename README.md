@@ -110,11 +110,17 @@ npm run test:ipc
 # Test camera integration with mock camera
 npm run test:camera
 
+# Test DAQ integration with mock DAQ
+npm run test:daq
+
 # Test packaged app (run after npm run package)
 npm run test:package
 ```
 
-**Camera Testing**: See [docs/CAMERA_TESTING.md](docs/CAMERA_TESTING.md) for detailed camera testing instructions, including interactive testing in the Electron app.
+**Hardware Testing Documentation**:
+
+- **Camera**: See [docs/CAMERA_TESTING.md](docs/CAMERA_TESTING.md) for camera testing instructions
+- **DAQ**: See [docs/DAQ_TESTING.md](docs/DAQ_TESTING.md) for DAQ turntable testing instructions
 
 #### Packaging & Distribution
 
@@ -134,6 +140,8 @@ npm run make
 | `npm run build:python` | Build Python executable with PyInstaller          | uv installed    |
 | `npm run test:python`  | Run Python unit tests with pytest (80%+ coverage) | uv installed    |
 | `npm run test:ipc`     | Integration test for Python ↔ TypeScript IPC     | Python built    |
+| `npm run test:camera`  | Integration test for camera interface (mock)      | Python built    |
+| `npm run test:daq`     | Integration test for DAQ interface (mock)         | Python built    |
 | `npm run test:package` | Verify Python bundled in packaged app             | Package created |
 | `npm run package`      | Create distributable app bundle                   | Python built    |
 | `npm run make`         | Create platform-specific installers               | Python built    |
@@ -163,8 +171,8 @@ Pilot:                          New:
 
 ### Test Coverage
 
-- **Python Unit Tests**: 84% coverage (23 tests)
-- **Integration Tests**: Python ↔ TypeScript IPC, packaged app verification
+- **Python Unit Tests**: 84.5% coverage (78 tests)
+- **Integration Tests**: Python ↔ TypeScript IPC, camera, DAQ, packaged app verification
 - **Target**: 80%+ coverage for all code
 
 ### Running Tests
@@ -176,6 +184,12 @@ npm run test:python
 # Integration: Test IPC communication
 npm run test:ipc
 
+# Integration: Test camera interface
+npm run test:camera
+
+# Integration: Test DAQ interface
+npm run test:daq
+
 # Integration: Verify packaged app
 npm run package
 npm run test:package
@@ -186,8 +200,9 @@ npm run test:package
 **Python Tests:**
 
 ```
-============================= 23 passed =============================
-coverage: 84% (python)
+============================= 78 passed, 6 warnings in 6.25s ========================
+Coverage HTML written to dir htmlcov
+Required test coverage of 80% reached. Total coverage: 84.50%
 ```
 
 **IPC Test:**

@@ -29,25 +29,63 @@ except ImportError:
     __version__ = "0.1.0"
 
 # Import camera modules
+# Try both import paths for compatibility with bundled and development environments
 try:
+    # First try bundled app import path
     from hardware.camera import Camera  # type: ignore[import-not-found]
     from hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
     from hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
 
     CAMERA_AVAILABLE = True
-except ImportError as e:
-    # Report import error using protocol-compliant error reporting
-    # Use print directly since send_error() is defined later in this file
-    print(f"ERROR:Failed to import camera modules: {e}", flush=True)
-    CAMERA_AVAILABLE = False
-    Camera = None
-    MockCamera = None
-    CameraSettings = None
+except ImportError:
+    try:
+        # Fall back to development/test import path
+        from python.hardware.camera import Camera  # type: ignore[import-not-found]
+        from python.hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
+        from python.hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
+
+        CAMERA_AVAILABLE = True
+    except ImportError as e:
+        # Report import error using protocol-compliant error reporting
+        # Use print directly since send_error() is defined later in this file
+        print(f"ERROR:Failed to import camera modules: {e}", flush=True)
+        CAMERA_AVAILABLE = False
+        Camera = None
+        MockCamera = None
+        CameraSettings = None
+
+# Import DAQ modules
+# Try both import paths for compatibility with bundled and development environments
+try:
+    # First try bundled app import path
+    from hardware.daq import DAQ  # type: ignore[import-not-found]
+    from hardware.daq_mock import MockDAQ  # type: ignore[import-not-found]
+    from hardware.daq_types import DAQSettings  # type: ignore[import-not-found]
+
+    DAQ_AVAILABLE = True
+except ImportError:
+    try:
+        # Fall back to development/test import path
+        from python.hardware.daq import DAQ  # type: ignore[import-not-found]
+        from python.hardware.daq_mock import MockDAQ  # type: ignore[import-not-found]
+        from python.hardware.daq_types import DAQSettings  # type: ignore[import-not-found]
+
+        DAQ_AVAILABLE = True
+    except ImportError as e:
+        print(f"ERROR:Failed to import DAQ modules: {e}", flush=True)
+        DAQ_AVAILABLE = False
+        DAQ = None
+        MockDAQ = None
+        DAQSettings = None
 
 
 # Global camera instance
 _camera_instance: Optional[Any] = None
 _use_mock_camera = os.environ.get("BLOOM_USE_MOCK_CAMERA", "true").lower() == "true"
+
+# Global DAQ instance
+_daq_instance: Optional[Any] = None
+_use_mock_daq = os.environ.get("BLOOM_USE_MOCK_DAQ", "true").lower() == "true"
 
 
 def send_status(message: str) -> None:
@@ -205,6 +243,54 @@ def close_camera() -> None:
             _camera_instance = None
 
 
+def get_daq_instance(settings: Dict[str, Any]) -> Any:
+    """Get or create DAQ instance.
+
+    Args:
+        settings: DAQ settings dictionary
+
+    Returns:
+        DAQ or MockDAQ instance
+
+    Raises:
+        RuntimeError: If DAQ module is not available
+    """
+    global _daq_instance
+
+    if not DAQ_AVAILABLE:
+        raise RuntimeError("DAQ module not available")
+
+    # Create settings object
+    daq_settings = DAQSettings(**settings)
+
+    # Create new DAQ instance if needed
+    if _daq_instance is None:
+        if _use_mock_daq:
+            send_status("Using mock DAQ")
+            _daq_instance = MockDAQ(daq_settings)
+        else:
+            send_status("Using real DAQ")
+            _daq_instance = DAQ(daq_settings)
+    else:
+        # Update settings on existing instance
+        _daq_instance.settings = daq_settings
+
+    return _daq_instance
+
+
+def cleanup_daq() -> None:
+    """Clean up the DAQ instance if it exists."""
+    global _daq_instance
+
+    if _daq_instance is not None:
+        try:
+            _daq_instance.cleanup()
+        except Exception as e:
+            send_error(f"Error cleaning up DAQ: {e}")
+        finally:
+            _daq_instance = None
+
+
 def handle_camera_command(cmd: Dict[str, Any]) -> None:
     """Handle camera-specific commands.
 
@@ -296,6 +382,88 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
         send_data({"success": False, "error": str(e)})
 
 
+def handle_daq_command(cmd: Dict[str, Any]) -> None:
+    """Handle DAQ-specific commands.
+
+    Args:
+        cmd: Command dictionary with DAQ parameters
+    """
+    if not DAQ_AVAILABLE:
+        send_error("DAQ module not available")
+        return
+
+    action = cmd.get("action")
+    settings = cmd.get("settings", {})
+
+    try:
+        if action == "initialize":
+            daq = get_daq_instance(settings)
+            success = daq.initialize()
+            send_data({"success": success, "initialized": True})
+
+        elif action == "cleanup":
+            cleanup_daq()
+            send_data({"success": True, "initialized": False})
+
+        elif action == "rotate":
+            # Rotate by specified degrees
+            if _daq_instance is None or not _daq_instance.is_initialized:
+                raise RuntimeError("DAQ not initialized. Call initialize() first.")
+
+            degrees = cmd.get("degrees")
+            if degrees is None:
+                raise ValueError("degrees parameter required for rotate action")
+
+            success = _daq_instance.rotate(degrees)
+            position = _daq_instance.get_position()
+            send_data({"success": success, "position": position})
+
+        elif action == "step":
+            # Execute specific number of steps
+            if _daq_instance is None or not _daq_instance.is_initialized:
+                raise RuntimeError("DAQ not initialized. Call initialize() first.")
+
+            num_steps = cmd.get("num_steps")
+            direction = cmd.get("direction", 1)
+
+            if num_steps is None:
+                raise ValueError("num_steps parameter required for step action")
+
+            success = _daq_instance.step(num_steps, direction)
+            position = _daq_instance.get_position()
+            send_data({"success": success, "position": position})
+
+        elif action == "home":
+            # Return to zero position
+            if _daq_instance is None or not _daq_instance.is_initialized:
+                raise RuntimeError("DAQ not initialized. Call initialize() first.")
+
+            success = _daq_instance.home()
+            position = _daq_instance.get_position()
+            send_data({"success": success, "position": position})
+
+        elif action == "status":
+            # Get DAQ status
+            is_initialized = _daq_instance is not None and _daq_instance.is_initialized
+            position = _daq_instance.get_position() if is_initialized else 0.0  # type: ignore[union-attr]
+            send_data(
+                {
+                    "success": True,
+                    "initialized": is_initialized,
+                    "position": position,
+                    "mock": _use_mock_daq,
+                    "available": DAQ_AVAILABLE,
+                }
+            )
+
+        else:
+            send_error(f"Unknown DAQ action: {action}")
+
+    except Exception as e:
+        # Send error via DATA protocol for consistent response handling
+        send_data({"success": False, "error": str(e)})
+
+
 def handle_command(cmd: Dict[str, Any]) -> None:
     """Route and handle incoming commands.
 
@@ -316,6 +484,9 @@ def handle_command(cmd: Dict[str, Any]) -> None:
 
     elif command == "camera":
         handle_camera_command(cmd)
+
+    elif command == "daq":
+        handle_daq_command(cmd)
 
     else:
         send_error(f"Unknown command: {command}")
