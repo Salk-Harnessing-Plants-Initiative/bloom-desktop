@@ -28,7 +28,7 @@ const SCANNER_SETTINGS = {
   camera: {
     exposure_time: 10000,
     gain: 0.0,
-    camera_ip_address: null as string | null,
+    camera_ip_address: '192.168.1.100',
     gamma: 1.0,
     num_frames: 72,
     seconds_per_rot: 36.0,

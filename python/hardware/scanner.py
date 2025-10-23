@@ -7,7 +7,7 @@ Coordinates camera and DAQ for automated cylinder scanning workflow.
 import os
 import sys
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from .camera import Camera
 from .camera_mock import MockCamera
@@ -40,9 +40,10 @@ class Scanner:
             settings: Scanner configuration including camera and DAQ settings
         """
         self.settings = settings
-        self.camera: Optional[Camera | MockCamera] = None
-        self.daq: Optional[DAQ | MockDAQ] = None
+        self.camera: Optional[Union[Camera, MockCamera]] = None
+        self.daq: Optional[Union[DAQ, MockDAQ]] = None
         self.is_initialized = False
+        self.is_scanning = False
 
         # Determine if we should use mock hardware
         self._use_mock = os.getenv("BLOOM_USE_MOCK_HARDWARE", "true").lower() == "true"
@@ -90,7 +91,14 @@ class Scanner:
             raise RuntimeError(error_msg)
 
     def cleanup(self) -> None:
-        """Cleanup camera and DAQ resources."""
+        """Cleanup camera and DAQ resources.
+
+        Raises:
+            RuntimeError: If cleanup attempted during active scan
+        """
+        if self.is_scanning:
+            raise RuntimeError("Cannot cleanup during active scan")
+
         try:
             if self.camera is not None:
                 self.camera.close()
@@ -140,10 +148,13 @@ class Scanner:
             ScanResult with success status, frames captured, and output path
 
         Raises:
-            RuntimeError: If scanner not initialized or scan fails
+            RuntimeError: If scanner not initialized, scan already in progress, or scan fails
         """
         if not self.is_initialized:
             raise RuntimeError("Scanner not initialized. Call initialize() first.")
+
+        if self.is_scanning:
+            raise RuntimeError("Scan already in progress")
 
         if self.camera is None or self.daq is None:
             raise RuntimeError("Scanner hardware not available")
@@ -152,6 +163,7 @@ class Scanner:
         output_path = self.settings.output_path
         frames_captured = 0
 
+        self.is_scanning = True
         try:
             # Calculate rotation per frame
             degrees_per_frame = 360.0 / num_frames
@@ -242,6 +254,9 @@ class Scanner:
                 output_path=output_path,
                 error=error_msg,
             )
+
+        finally:
+            self.is_scanning = False
 
     def get_status(self) -> dict:
         """Get current scanner status.

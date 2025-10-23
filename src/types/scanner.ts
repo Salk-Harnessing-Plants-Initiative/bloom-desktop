@@ -139,13 +139,13 @@ export interface ScannerAPI {
 }
 
 /**
- * Default scanner settings matching Python backend defaults.
+ * Default scanner settings (partial).
  *
- * These are the standard settings for the Bloom desktop scanning system.
+ * These are the standard default values for the Bloom desktop scanning system.
+ * Camera and DAQ settings must be provided by the caller based on hardware configuration.
+ *
  * Exported for use in tests, documentation, and as a reference for consumers
  * of the Scanner API.
- *
- * Note: Camera and DAQ settings should be provided based on hardware configuration.
  *
  * @example
  * ```typescript
@@ -153,12 +153,14 @@ export interface ScannerAPI {
  * import { DEFAULT_DAQ_SETTINGS } from './daq';
  * import { DEFAULT_SCANNER_SETTINGS } from './scanner';
  *
- * // Use defaults directly
- * await window.electron.scanner.initialize({
+ * // Combine with camera and DAQ settings
+ * const settings: ScannerSettings = {
  *   ...DEFAULT_SCANNER_SETTINGS,
  *   camera: DEFAULT_CAMERA_SETTINGS,
  *   daq: DEFAULT_DAQ_SETTINGS,
- * });
+ * };
+ *
+ * await window.electron.scanner.initialize(settings);
  *
  * // Or override specific settings
  * await window.electron.scanner.initialize({
@@ -170,7 +172,7 @@ export interface ScannerAPI {
  * });
  * ```
  */
-export const DEFAULT_SCANNER_SETTINGS = {
+export const DEFAULT_SCANNER_SETTINGS: Partial<ScannerSettings> = {
   num_frames: 72,
   output_path: './scans',
 };
