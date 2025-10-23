@@ -127,7 +127,10 @@ class TestScannerSettings:
         daq_settings = DAQSettings(**scanner_settings["daq"])
 
         settings = ScannerSettings(
-            camera=camera_settings, daq=daq_settings, num_frames=36, output_path="./scans"
+            camera=camera_settings,
+            daq=daq_settings,
+            num_frames=36,
+            output_path="./scans",
         )
 
         assert settings.camera == camera_settings
