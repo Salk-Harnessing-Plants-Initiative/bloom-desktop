@@ -17,8 +17,9 @@ import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
 
 // Timeout configuration
-// Windows requires longer timeout due to antivirus scanning and DLL loading of PyInstaller executables
-const STARTUP_TIMEOUT_MS = process.platform === 'win32' ? 30000 : 15000; // Time to wait for initial "ready" signal from Python process (startup only, not for command responses)
+// Windows requires much longer timeout due to antivirus scanning and DLL loading of PyInstaller executables
+// CI evidence shows Windows can take 30+ seconds to start the Python process
+const STARTUP_TIMEOUT_MS = process.platform === 'win32' ? 60000 : 15000; // Time to wait for initial "ready" signal from Python process (startup only, not for command responses)
 const COMMAND_TIMEOUT_MS = 30000; // Time to wait for command response
 
 /**
