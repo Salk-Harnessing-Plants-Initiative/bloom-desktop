@@ -4,7 +4,7 @@ Scanner type definitions for Bloom hardware interface.
 Defines the data structures for scanner configuration, progress, and results.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional, Union, Any
 
 from .camera_types import CameraSettings
@@ -44,10 +44,10 @@ class ScannerSettings:
 
         # Ensure camera and daq num_frames match
         if self.camera.num_frames != self.num_frames:
-            self.camera.num_frames = self.num_frames
+            self.camera = replace(self.camera, num_frames=self.num_frames)
 
         if self.daq.num_frames != self.num_frames:
-            self.daq.num_frames = self.num_frames
+            self.daq = replace(self.daq, num_frames=self.num_frames)
 
 
 @dataclass

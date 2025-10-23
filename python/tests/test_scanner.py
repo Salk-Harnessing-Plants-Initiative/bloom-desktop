@@ -119,7 +119,7 @@ class TestScannerSettings:
         assert settings.daq.num_frames == 36
 
     def test_scanner_settings_accepts_camera_dataclass(self, scanner_settings):
-        """Test that ScannerSettings accepts CameraSettings objects."""
+        """Test that ScannerSettings accepts CameraSettings objects and syncs num_frames."""
         from python.hardware.camera_types import CameraSettings
         from python.hardware.daq_types import DAQSettings
 
@@ -133,8 +133,12 @@ class TestScannerSettings:
             output_path="./scans",
         )
 
-        assert settings.camera == camera_settings
-        assert settings.daq == daq_settings
+        # After ScannerSettings initialization, camera and daq num_frames should be synced to 36
+        assert settings.camera.num_frames == 36
+        assert settings.daq.num_frames == 36
+        # Other settings should match original
+        assert settings.camera.exposure_time == camera_settings.exposure_time
+        assert settings.daq.device_name == daq_settings.device_name
 
 
 class TestScannerInitialization:
