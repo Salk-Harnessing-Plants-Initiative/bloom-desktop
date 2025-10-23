@@ -510,7 +510,7 @@ def get_scanner_instance(settings: Dict[str, Any]) -> Any:
     # Create settings object
     scanner_settings = ScannerSettings(**settings)
 
-    # Create new scanner instance if needed
+    # Create new scanner instance if needed, or if settings have changed
     if _scanner_instance is None:
         if _use_mock_hardware:
             send_status("Using mock scanner")
@@ -519,8 +519,21 @@ def get_scanner_instance(settings: Dict[str, Any]) -> Any:
             send_status("Using real scanner")
             _scanner_instance = Scanner(scanner_settings)
     else:
-        # Update settings on existing instance
-        _scanner_instance.settings = scanner_settings
+        # Check if scan is in progress
+        if hasattr(_scanner_instance, "is_scanning") and _scanner_instance.is_scanning:
+            raise RuntimeError("Cannot change settings during active scan")
+
+        # If settings changed, recreate scanner instance
+        if _scanner_instance.settings != scanner_settings:
+            send_status("Settings changed, reinitializing scanner")
+            cleanup_scanner()
+            if _use_mock_hardware:
+                send_status("Using mock scanner")
+                _scanner_instance = MockScanner(scanner_settings)
+            else:
+                send_status("Using real scanner")
+                _scanner_instance = Scanner(scanner_settings)
+        # Else: settings unchanged, reuse existing instance
 
     return _scanner_instance
 
