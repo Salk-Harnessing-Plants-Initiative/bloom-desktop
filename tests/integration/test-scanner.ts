@@ -187,7 +187,10 @@ async function runTest(): Promise<void> {
       throw new Error(`Scanner initialization failed: ${initResult.error}`);
     }
 
-    const initData = initResult.data as { success: boolean; initialized: boolean };
+    const initData = initResult.data as {
+      success: boolean;
+      initialized: boolean;
+    };
     if (!initData.success || !initData.initialized) {
       throw new Error('Scanner initialization returned unsuccessful result');
     }
@@ -221,7 +224,9 @@ async function runTest(): Promise<void> {
 
     // Test 4: Perform scan (this is the main test)
     console.log('Test 4: Performing complete scan...');
-    console.log('  Note: This will simulate 72 frames with rotation and capture');
+    console.log(
+      '  Note: This will simulate 72 frames with rotation and capture'
+    );
     const scanResult = await sendCommand(pythonProcess, {
       command: 'scanner',
       action: 'scan',
@@ -241,9 +246,7 @@ async function runTest(): Promise<void> {
       throw new Error(`Scan unsuccessful: ${scanData.error}`);
     }
     if (scanData.frames_captured !== 72) {
-      throw new Error(
-        `Expected 72 frames, got ${scanData.frames_captured}`
-      );
+      throw new Error(`Expected 72 frames, got ${scanData.frames_captured}`);
     }
     console.log('[PASS] Scan completed successfully');
     console.log(`  - Frames captured: ${scanData.frames_captured}/72`);
@@ -267,7 +270,9 @@ async function runTest(): Promise<void> {
         `Scanner should be at home position, but is at ${status3.position}°`
       );
     }
-    console.log(`[PASS] Scanner returned to home position: ${status3.position}°\n`);
+    console.log(
+      `[PASS] Scanner returned to home position: ${status3.position}°\n`
+    );
 
     // Test 6: Cleanup scanner
     console.log('Test 6: Cleaning up scanner...');

@@ -7,7 +7,12 @@
 
 import { EventEmitter } from 'events';
 import { PythonProcess } from './python-process';
-import type { ScannerSettings, ScanResult, ScannerStatus, ScanProgress } from '../types/scanner';
+import type {
+  ScannerSettings,
+  ScanResult,
+  ScannerStatus,
+  ScanProgress,
+} from '../types/scanner';
 
 /**
  * Scanner process manager for coordinated scanning operations.
@@ -28,7 +33,9 @@ export class ScannerProcess extends EventEmitter {
    * @param settings - Scanner configuration
    * @returns Promise resolving to initialization result
    */
-  async initialize(settings: ScannerSettings): Promise<{ success: boolean; initialized: boolean }> {
+  async initialize(
+    settings: ScannerSettings
+  ): Promise<{ success: boolean; initialized: boolean }> {
     const result = await this.pythonProcess.sendCommand({
       command: 'scanner',
       action: 'initialize',

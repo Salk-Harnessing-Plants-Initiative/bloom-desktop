@@ -528,17 +528,20 @@ async function ensureScannerProcess(): Promise<ScannerProcess> {
 /**
  * Handle scanner:initialize - Initialize scanner with camera and DAQ settings
  */
-ipcMain.handle('scanner:initialize', async (_event, settings: ScannerSettings) => {
-  try {
-    const scanner = await ensureScannerProcess();
-    const response = await scanner.initialize(settings);
-    return response;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    console.error('scanner:initialize error:', error);
-    return { success: false, initialized: false, error: error.message };
+ipcMain.handle(
+  'scanner:initialize',
+  async (_event, settings: ScannerSettings) => {
+    try {
+      const scanner = await ensureScannerProcess();
+      const response = await scanner.initialize(settings);
+      return response;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error('scanner:initialize error:', error);
+      return { success: false, initialized: false, error: error.message };
+    }
   }
-});
+);
 
 /**
  * Handle scanner:cleanup - Clean up scanner resources

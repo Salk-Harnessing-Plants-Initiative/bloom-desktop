@@ -91,7 +91,9 @@ export interface ScannerAPI {
    * @param settings - Scanner configuration settings
    * @returns Promise resolving to success status
    */
-  initialize: (settings: ScannerSettings) => Promise<{ success: boolean; initialized: boolean }>;
+  initialize: (
+    settings: ScannerSettings
+  ) => Promise<{ success: boolean; initialized: boolean }>;
 
   /**
    * Cleanup scanner resources.

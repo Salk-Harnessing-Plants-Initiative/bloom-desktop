@@ -13,7 +13,12 @@ import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
 import { DAQSettings } from '../types/daq';
 // eslint-disable-next-line import/no-unresolved
-import { ScannerAPI, ScannerSettings, ScanProgress, ScanResult } from '../types/scanner';
+import {
+  ScannerAPI,
+  ScannerSettings,
+  ScanProgress,
+  ScanResult,
+} from '../types/scanner';
 
 /**
  * Python backend API exposed to renderer
