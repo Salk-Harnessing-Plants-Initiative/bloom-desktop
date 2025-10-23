@@ -15,6 +15,9 @@ from .daq import DAQ
 from .daq_mock import MockDAQ
 from .scanner_types import ScannerSettings, ScanResult
 
+# Time to wait after rotation for turntable to settle before capturing image
+STABILIZATION_WAIT_SECONDS = 0.05  # 50ms
+
 
 class Scanner:
     """Coordinates camera and DAQ for automated scanning.
@@ -135,7 +138,7 @@ class Scanner:
         1. Home turntable to 0°
         2. For each frame:
            - Rotate to position
-           - Wait for stabilization (50ms)
+           - Wait for stabilization (STABILIZATION_WAIT_SECONDS)
            - Capture image
            - Call progress callback
         3. Return to home position
@@ -183,7 +186,7 @@ class Scanner:
                 self.daq.rotate(degrees_per_frame)
 
                 # Wait for stabilization
-                time.sleep(0.05)
+                time.sleep(STABILIZATION_WAIT_SECONDS)
 
                 # Get current position
                 position = self.daq.get_position()

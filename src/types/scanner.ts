@@ -17,11 +17,17 @@ export interface ScannerSettings {
   /** DAQ configuration settings */
   daq: DAQSettings;
 
-  /** Number of frames to capture during full rotation (default: 72) */
-  num_frames: number;
+  /**
+   * Number of frames to capture during full rotation.
+   * Optional - defaults to 72 if not specified.
+   */
+  num_frames?: number;
 
-  /** Directory path for saving captured images (default: "./scans") */
-  output_path: string;
+  /**
+   * Directory path for saving captured images.
+   * Optional - defaults to "./scans" if not specified.
+   */
+  output_path?: string;
 }
 
 /**
@@ -144,6 +150,9 @@ export interface ScannerAPI {
  * These are the standard default values for the Bloom desktop scanning system.
  * Camera and DAQ settings must be provided by the caller based on hardware configuration.
  *
+ * Note: num_frames and output_path are optional in ScannerSettings and will default
+ * to these values if not specified. The Python backend handles these defaults.
+ *
  * Exported for use in tests, documentation, and as a reference for consumers
  * of the Scanner API.
  *
@@ -151,24 +160,19 @@ export interface ScannerAPI {
  * ```typescript
  * import { DEFAULT_CAMERA_SETTINGS } from './camera';
  * import { DEFAULT_DAQ_SETTINGS } from './daq';
- * import { DEFAULT_SCANNER_SETTINGS } from './scanner';
  *
- * // Combine with camera and DAQ settings
- * const settings: ScannerSettings = {
- *   ...DEFAULT_SCANNER_SETTINGS,
- *   camera: DEFAULT_CAMERA_SETTINGS,
- *   daq: DEFAULT_DAQ_SETTINGS,
- * };
- *
- * await window.electron.scanner.initialize(settings);
- *
- * // Or override specific settings
+ * // Minimal settings - num_frames and output_path use defaults
  * await window.electron.scanner.initialize({
- *   ...DEFAULT_SCANNER_SETTINGS,
  *   camera: DEFAULT_CAMERA_SETTINGS,
  *   daq: DEFAULT_DAQ_SETTINGS,
- *   num_frames: 36,  // Use 36 frames instead of 72
- *   output_path: './my-scans',
+ * });
+ *
+ * // Or override default values
+ * await window.electron.scanner.initialize({
+ *   camera: DEFAULT_CAMERA_SETTINGS,
+ *   daq: DEFAULT_DAQ_SETTINGS,
+ *   num_frames: 36,  // Override default of 72
+ *   output_path: './my-scans',  // Override default of './scans'
  * });
  * ```
  */
