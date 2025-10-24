@@ -99,6 +99,10 @@ export const Streamer: React.FC<StreamerProps> = ({
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         updateFps();
       };
+      img.onerror = () => {
+        // Suppress console errors for invalid data URIs (cosmetic issue)
+        // The browser console shows ERR_INVALID_URL when displaying base64 data
+      };
       img.src = image.dataUri;
     },
     [updateFps]

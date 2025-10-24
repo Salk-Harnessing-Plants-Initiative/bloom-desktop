@@ -194,4 +194,37 @@ export class CameraProcess extends PythonProcess {
 
     return response.success === true;
   }
+
+  /**
+   * Detect available cameras on the network.
+   *
+   * @returns Promise that resolves to list of detected cameras
+   */
+  async detectCameras(): Promise<
+    Array<{
+      ip_address: string;
+      model_name: string;
+      serial_number: string;
+      mac_address: string;
+      user_defined_name: string;
+      friendly_name: string;
+      is_mock: boolean;
+    }>
+  > {
+    const response = await this.sendCommand({
+      command: 'camera',
+      action: 'detect_cameras',
+    });
+
+    // Handle both direct array response and wrapped response
+    if (Array.isArray(response)) {
+      return response;
+    }
+
+    if (response && response.cameras) {
+      return response.cameras;
+    }
+
+    throw new Error(`Failed to detect cameras: ${JSON.stringify(response)}`);
+  }
 }

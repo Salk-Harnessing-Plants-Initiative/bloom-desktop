@@ -368,6 +368,21 @@ ipcMain.handle('camera:stop-stream', async () => {
   }
 });
 
+/**
+ * Handle camera:detect-cameras - Detect available cameras on network
+ */
+ipcMain.handle('camera:detect-cameras', async () => {
+  try {
+    const camera = await ensureCameraProcess();
+    const cameras = await camera.detectCameras();
+    return { success: true, cameras };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('camera:detect-cameras error:', error);
+    return { success: false, error: error.message, cameras: [] };
+  }
+});
+
 // =============================================================================
 // IPC Handlers for DAQ Communication
 // =============================================================================
@@ -685,18 +700,58 @@ app.on('activate', () => {
   }
 });
 
-// Clean up processes when app quits
+// Clean up processes before app quits (synchronously)
+app.on('before-quit', async (event) => {
+  console.log('App is quitting, cleaning up processes...');
+
+  // Prevent immediate quit to allow cleanup
+  event.preventDefault();
+
+  try {
+    // Stop camera streaming first
+    if (cameraProcess) {
+      console.log('Stopping camera streaming...');
+      try {
+        await cameraProcess.stopStream();
+      } catch (err) {
+        console.error('Error stopping camera stream:', err);
+      }
+    }
+
+    // Stop all processes
+    if (pythonProcess) {
+      console.log('Stopping Python process...');
+      pythonProcess.stop();
+    }
+    if (cameraProcess) {
+      console.log('Stopping camera process...');
+      cameraProcess.stop();
+    }
+    if (daqProcess) {
+      console.log('Stopping DAQ process...');
+      daqProcess.stop();
+    }
+    // Scanner process cleanup removed - not needed
+
+    // Give processes a moment to clean up
+    await new Promise(resolve => setTimeout(resolve, 500));
+  } catch (err) {
+    console.error('Error during cleanup:', err);
+  }
+
+  // Now allow the quit
+  app.quit();
+});
+
+// Clean up processes when app quits (fallback)
 app.on('quit', () => {
   if (pythonProcess) {
-    console.log('Stopping Python process...');
     pythonProcess.stop();
   }
   if (cameraProcess) {
-    console.log('Stopping camera process...');
     cameraProcess.stop();
   }
   if (daqProcess) {
-    console.log('Stopping DAQ process...');
     daqProcess.stop();
   }
 });
