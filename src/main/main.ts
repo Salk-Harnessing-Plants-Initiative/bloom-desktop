@@ -78,19 +78,25 @@ async function initializePythonProcess(): Promise<void> {
 
     // Forward Python status events to renderer
     pythonProcess.on('status', (status: string) => {
-      mainWindow?.webContents.send('python:status', status);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('python:status', status);
+      }
     });
 
     // Forward Python errors to renderer
     pythonProcess.on('error', (error: string) => {
       console.error('Python error:', error);
-      mainWindow?.webContents.send('python:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('python:error', error);
+      }
     });
 
     // Handle Python process exit
     pythonProcess.on('exit', (code: number | null) => {
       console.log(`Python process exited with code ${code}`);
-      mainWindow?.webContents.send('python:status', `Process exited: ${code}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('python:status', `Process exited: ${code}`);
+      }
     });
 
     // Start the Python process
@@ -406,15 +412,21 @@ async function ensureDAQProcess(): Promise<DAQProcess> {
 
     // Forward DAQ events to renderer
     daqProcess.on('daq-initialized', () => {
-      mainWindow?.webContents.send('daq:initialized');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:initialized');
+      }
     });
 
     daqProcess.on('daq-position-changed', (position: number) => {
-      mainWindow?.webContents.send('daq:position-changed', { position });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:position-changed', { position });
+      }
     });
 
     daqProcess.on('daq-home', () => {
-      mainWindow?.webContents.send('daq:home');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:home');
+      }
     });
 
     daqProcess.on('status', (status: string) => {
@@ -423,7 +435,9 @@ async function ensureDAQProcess(): Promise<DAQProcess> {
 
     daqProcess.on('error', (error: string) => {
       console.error('DAQ error:', error);
-      mainWindow?.webContents.send('daq:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:error', error);
+      }
     });
 
     daqProcess.on('exit', (code: number | null) => {
@@ -571,20 +585,28 @@ async function ensureScannerProcess(): Promise<ScannerProcess> {
 
     // Forward scanner events to renderer
     scannerProcess.on('initialized', () => {
-      mainWindow?.webContents.send('scanner:initialized');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:initialized');
+      }
     });
 
     scannerProcess.on('progress', (progress) => {
-      mainWindow?.webContents.send('scanner:progress', progress);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:progress', progress);
+      }
     });
 
     scannerProcess.on('complete', (result) => {
-      mainWindow?.webContents.send('scanner:complete', result);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:complete', result);
+      }
     });
 
     scannerProcess.on('error', (error: string) => {
       console.error('Scanner error:', error);
-      mainWindow?.webContents.send('scanner:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:error', error);
+      }
     });
   }
 
