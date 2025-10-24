@@ -5,7 +5,7 @@
  * Settings are applied to streaming and persist to backend.
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
 import type { CameraSettings } from '../types/camera';
@@ -33,6 +33,17 @@ export function CameraSettings() {
       JSON.stringify(currentSettings) !== JSON.stringify(editedSettings);
     setIsDirty(changed);
   }, [currentSettings, editedSettings]);
+
+  // Cleanup: Stop streaming when unmounting
+  useEffect(() => {
+    return () => {
+      if (showPreview) {
+        window.electron.camera.stopStream().catch((err) => {
+          console.error('Failed to stop stream on unmount:', err);
+        });
+      }
+    };
+  }, [showPreview]);
 
   const handleApply = async () => {
     try {
