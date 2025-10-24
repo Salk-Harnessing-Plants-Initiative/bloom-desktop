@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "electron-forge start",
+    "dev": "npm run build:python && electron-forge start",
     "package": "npm run build:python && electron-forge package",
     "make": "npm run build:python && electron-forge make",
     "build:python": "node scripts/build-python.js",
