@@ -5,13 +5,9 @@ to verify the camera streaming feature works correctly.
 """
 
 import base64
-import json
-import threading
 import time
 from io import BytesIO
-from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 from PIL import Image
 

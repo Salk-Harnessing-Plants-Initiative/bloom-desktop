@@ -447,7 +447,13 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             with _streaming_lock:
                 # Check if already streaming
                 if _streaming_active.is_set():
-                    send_data({"success": True, "streaming": True, "message": "Already streaming"})
+                    send_data(
+                        {
+                            "success": True,
+                            "streaming": True,
+                            "message": "Already streaming",
+                        }
+                    )
                     return
 
                 # Ensure camera is connected
@@ -456,11 +462,15 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                         camera = get_camera_instance(settings)
                         camera.open()
                     else:
-                        raise RuntimeError("Camera not connected. Call connect() first or provide settings.")
+                        raise RuntimeError(
+                            "Camera not connected. Call connect() first or provide settings."
+                        )
 
                 # Start streaming thread
                 _streaming_active.set()
-                _streaming_thread = threading.Thread(target=streaming_worker, daemon=True)
+                _streaming_thread = threading.Thread(
+                    target=streaming_worker, daemon=True
+                )
                 _streaming_thread.start()
 
             send_data({"success": True, "streaming": True})
@@ -469,7 +479,13 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             # Stop streaming thread
             with _streaming_lock:
                 if not _streaming_active.is_set():
-                    send_data({"success": True, "streaming": False, "message": "Not streaming"})
+                    send_data(
+                        {
+                            "success": True,
+                            "streaming": False,
+                            "message": "Not streaming",
+                        }
+                    )
                     return
 
                 # Signal thread to stop
