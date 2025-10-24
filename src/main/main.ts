@@ -724,13 +724,26 @@ app.on('before-quit', async (event) => {
   event.preventDefault();
 
   try {
-    // Stop camera streaming first
+    // Stop camera streaming first with timeout
     if (cameraProcess) {
       console.log('Stopping camera streaming...');
       try {
-        await cameraProcess.stopStream();
+        // Add timeout to prevent hanging
+        await Promise.race([
+          cameraProcess.stopStream(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Stop stream timeout')), 2000)
+          )
+        ]);
+        console.log('Camera stream stopped successfully');
       } catch (err) {
         console.error('Error stopping camera stream:', err);
+        // Force stop the process if stream stop fails
+        try {
+          cameraProcess.stop();
+        } catch (stopErr) {
+          console.error('Error force-stopping camera process:', stopErr);
+        }
       }
     }
 
@@ -738,23 +751,29 @@ app.on('before-quit', async (event) => {
     if (pythonProcess) {
       console.log('Stopping Python process...');
       pythonProcess.stop();
+      console.log('Python process stopped');
     }
     if (cameraProcess) {
       console.log('Stopping camera process...');
       cameraProcess.stop();
+      console.log('Camera process stopped');
     }
     if (daqProcess) {
       console.log('Stopping DAQ process...');
       daqProcess.stop();
+      console.log('DAQ process stopped');
     }
 
     // Give processes a moment to clean up
+    console.log('Waiting 500ms for processes to clean up...');
     await new Promise(resolve => setTimeout(resolve, 500));
+    console.log('Cleanup wait complete');
   } catch (err) {
     console.error('Error during cleanup:', err);
   }
 
   // Now allow the quit - use exit instead of quit to avoid triggering before-quit again
+  console.log('Calling app.exit(0)...');
   app.exit(0);
 });
 
