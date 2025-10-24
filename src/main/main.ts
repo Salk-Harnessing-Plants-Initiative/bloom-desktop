@@ -709,9 +709,16 @@ app.on('activate', () => {
   }
 });
 
-// Clean up processes before app quits (synchronously)
+// Clean up processes before app quits
+let isQuitting = false;
 app.on('before-quit', async (event) => {
+  // Prevent infinite loop - only run cleanup once
+  if (isQuitting) {
+    return;
+  }
+
   console.log('App is quitting, cleaning up processes...');
+  isQuitting = true;
 
   // Prevent immediate quit to allow cleanup
   event.preventDefault();
@@ -740,7 +747,6 @@ app.on('before-quit', async (event) => {
       console.log('Stopping DAQ process...');
       daqProcess.stop();
     }
-    // Scanner process cleanup removed - not needed
 
     // Give processes a moment to clean up
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -748,8 +754,8 @@ app.on('before-quit', async (event) => {
     console.error('Error during cleanup:', err);
   }
 
-  // Now allow the quit
-  app.quit();
+  // Now allow the quit - use exit instead of quit to avoid triggering before-quit again
+  app.exit(0);
 });
 
 // Clean up processes when app quits (fallback)
