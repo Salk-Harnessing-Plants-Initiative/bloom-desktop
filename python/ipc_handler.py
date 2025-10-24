@@ -306,7 +306,8 @@ def detect_cameras() -> list[Dict[str, Any]]:
                             cameras.append(camera_info)
                         except Exception as e:
                             print(
-                                f"WARNING:Failed to get info for camera: {e}", flush=True
+                                f"WARNING:Failed to get info for camera: {e}",
+                                flush=True,
                             )
 
             finally:
