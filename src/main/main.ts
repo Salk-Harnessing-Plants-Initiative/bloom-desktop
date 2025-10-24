@@ -342,7 +342,7 @@ ipcMain.handle(
     try {
       const camera = await ensureCameraProcess();
       const success = await camera.startStream(settings);
-      return { success };
+      return { success: success };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error('camera:start-stream error:', error);
@@ -360,7 +360,7 @@ ipcMain.handle('camera:stop-stream', async () => {
       return { success: true }; // Already stopped
     }
     const success = await cameraProcess.stopStream();
-    return { success };
+    return { success: success };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error('camera:stop-stream error:', error);

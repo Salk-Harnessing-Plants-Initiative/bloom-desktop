@@ -48,12 +48,16 @@ async function testStreaming() {
   cameraProcess.on('frame', (dataUri: string) => {
     frameCount++;
     if (frameCount === 1) {
-      console.log(`[EVENT] First frame received! (${dataUri.substring(0, 50)}...)`);
+      console.log(
+        `[EVENT] First frame received! (${dataUri.substring(0, 50)}...)`
+      );
     }
     if (frameCount % 30 === 0) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const fps = (frameCount / parseFloat(elapsed)).toFixed(1);
-      console.log(`[PROGRESS] Frame ${frameCount} at ${elapsed}s - FPS: ${fps}`);
+      console.log(
+        `[PROGRESS] Frame ${frameCount} at ${elapsed}s - FPS: ${fps}`
+      );
     }
   });
 
@@ -97,8 +101,8 @@ async function testStreaming() {
       );
 
       // Verify FPS is reasonable (5-40 FPS range for mock camera)
-      // Note: Mock camera uses large 2048x1080 PNG images which limits FPS
-      // Real Basler camera will achieve higher FPS
+      // Note: PNG encoding/decoding overhead limits FPS
+      // Real Basler camera will achieve higher FPS with raw image data
       const fpsNum = parseFloat(fps);
       if (fpsNum >= 5 && fpsNum <= 40) {
         console.log('[PASS] FPS within expected range (5-40)\n');

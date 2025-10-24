@@ -143,8 +143,9 @@ export interface CameraAPI {
   /**
    * Register callback for streaming frames
    * @param callback - Function to call with each frame (called at ~30 FPS during streaming)
+   * @returns Cleanup function to remove the listener
    */
-  onFrame: (callback: (image: CapturedImage) => void) => void;
+  onFrame: (callback: (image: CapturedImage) => void) => () => void;
 }
 
 /**

@@ -173,9 +173,8 @@ class MockCamera:
         if not self.is_open:
             raise RuntimeError("Camera is not open")
 
-        # No artificial delay for streaming performance
-        # Real Basler camera trigger time is ~1-5ms (negligible)
-        # grab_frames() has its own delays for realistic batch capture
+        # No artificial delay needed: real Basler camera trigger time is ~1-5ms (negligible)
+        # For batch captures, grab_frames() adds realistic delays (0.1s per frame)
 
         # Cycle through available test images
         # Use a simple counter based on time to simulate different frames

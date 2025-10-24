@@ -5,6 +5,7 @@ to verify the camera streaming feature works correctly.
 """
 
 import base64
+import json
 import time
 from io import BytesIO
 
@@ -13,6 +14,22 @@ from PIL import Image
 
 from python.hardware.camera_mock import MockCamera
 from python.hardware.camera_types import CameraSettings
+
+
+def parse_data_response(captured_output: str) -> dict:
+    """Parse DATA: response from captured stdout.
+
+    Args:
+        captured_output: Captured stdout string
+
+    Returns:
+        Parsed JSON dictionary from DATA: line
+    """
+    for line in captured_output.split("\n"):
+        if line.startswith("DATA:"):
+            json_str = line.split("DATA:", 1)[1].strip()
+            return json.loads(json_str)
+    raise ValueError("No DATA: line found in output")
 
 
 class TestGrabFrameBase64:
@@ -155,9 +172,9 @@ class TestStreamingIPCActions:
         captured = self.capsys.readouterr()
 
         # Should send success response
-        assert "DATA:" in captured.out
-        assert '"success": true' in captured.out or '"success":true' in captured.out
-        assert '"streaming": true' in captured.out or '"streaming":true' in captured.out
+        data = parse_data_response(captured.out)
+        assert data["success"] is True
+        assert data["streaming"] is True
 
         # Thread should be running
         assert self.ipc._streaming_thread is not None
@@ -246,11 +263,9 @@ class TestStreamingIPCActions:
         captured = self.capsys.readouterr()
 
         # Should send success response
-        assert "DATA:" in captured.out
-        assert '"success": true' in captured.out or '"success":true' in captured.out
-        assert (
-            '"streaming": false' in captured.out or '"streaming":false' in captured.out
-        )
+        data = parse_data_response(captured.out)
+        assert data["success"] is True
+        assert data["streaming"] is False
 
         # Thread should be stopped
         assert not self.ipc._streaming_active.is_set()
@@ -265,8 +280,8 @@ class TestStreamingIPCActions:
         captured = self.capsys.readouterr()
 
         # Should still return success
-        assert "DATA:" in captured.out
-        assert '"success": true' in captured.out or '"success":true' in captured.out
+        data = parse_data_response(captured.out)
+        assert data["success"] is True
 
     def test_start_stream_idempotent(self):
         """Verify calling start_stream twice returns success both times."""
@@ -286,12 +301,14 @@ class TestStreamingIPCActions:
         # First call
         handle_command(command)
         captured = self.capsys.readouterr()
-        assert '"success": true' in captured.out or '"success":true' in captured.out
+        data = parse_data_response(captured.out)
+        assert data["success"] is True
 
         # Second call - should return success with "already streaming" message
         handle_command(command)
         captured = self.capsys.readouterr()
-        assert '"success": true' in captured.out or '"success":true' in captured.out
+        data = parse_data_response(captured.out)
+        assert data["success"] is True
 
 
 class TestStreamingWorkflow:

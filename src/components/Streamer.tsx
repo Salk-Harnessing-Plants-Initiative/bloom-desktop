@@ -134,12 +134,13 @@ export const Streamer: React.FC<StreamerProps> = ({
 
     startStreaming();
 
-    // Register frame callback
-    window.electron.camera.onFrame(handleFrame);
+    // Register frame callback and get cleanup function
+    const removeFrameListener = window.electron.camera.onFrame(handleFrame);
 
-    // Cleanup: stop streaming on unmount
+    // Cleanup: stop streaming and remove listener on unmount
     return () => {
       mounted = false;
+      removeFrameListener(); // Remove frame listener to prevent memory leak
       window.electron.camera.stopStream().then(() => {
         setIsStreaming(false);
         onStreamStop?.();
