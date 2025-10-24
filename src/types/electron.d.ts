@@ -5,7 +5,7 @@
  * using contextBridge.exposeInMainWorld().
  */
 
-import { CameraSettings, CapturedImage } from './camera';
+import { CameraSettings, CapturedImage, DetectedCamera } from './camera';
 import {
   DAQSettings,
   DAQInitializeResponse,
@@ -146,6 +146,16 @@ export interface CameraAPI {
    * @returns Cleanup function to remove the listener
    */
   onFrame: (callback: (image: CapturedImage) => void) => () => void;
+
+  /**
+   * Detect available cameras on the network
+   * @returns Promise resolving to list of detected cameras
+   */
+  detectCameras: () => Promise<{
+    success: boolean;
+    cameras: DetectedCamera[];
+    error?: string;
+  }>;
 }
 
 /**

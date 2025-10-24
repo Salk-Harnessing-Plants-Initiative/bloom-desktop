@@ -68,6 +68,7 @@ const cameraAPI: CameraAPI = {
     // Return cleanup function to remove listener
     return () => ipcRenderer.removeListener('camera:frame', listener);
   },
+  detectCameras: () => ipcRenderer.invoke('camera:detect-cameras'),
 };
 
 /**

@@ -238,6 +238,89 @@ def check_hardware() -> Dict[str, Any]:
     return hardware_status
 
 
+def detect_cameras() -> list[Dict[str, Any]]:
+    """Detect all available Basler GigE cameras on the network.
+
+    Always includes mock camera as first option. Then enumerates real cameras
+    using pypylon if available.
+
+    Returns:
+        List of dictionaries with camera information:
+        - ip_address: Camera IP address (or "mock" for mock camera)
+        - model_name: Camera model
+        - serial_number: Camera serial number
+        - mac_address: MAC address (empty for mock)
+        - user_defined_name: User-defined camera name (if set)
+        - friendly_name: Display name (e.g., "Basler acA1920 (192.168.1.100)")
+        - is_mock: Boolean indicating if this is the mock camera
+    """
+    cameras = []
+
+    # Always include mock camera as first option
+    cameras.append(
+        {
+            "ip_address": "mock",
+            "model_name": "Mock Camera",
+            "serial_number": "MOCK-001",
+            "mac_address": "",
+            "user_defined_name": "",
+            "friendly_name": "Mock Camera (for testing)",
+            "is_mock": True,
+        }
+    )
+
+    # Try to enumerate real cameras if pypylon available
+    try:
+        # Suppress stderr during import and enumeration
+        stderr_fd = sys.stderr.fileno()
+        with open(os.devnull, "w") as devnull:
+            old_stderr = os.dup(stderr_fd)
+            os.dup2(devnull.fileno(), stderr_fd)
+            try:
+                import pypylon.pylon as pylon
+
+                tl_factory = pylon.TlFactory.GetInstance()
+                devices = tl_factory.EnumerateDevices()
+
+                for dev_info in devices:
+                    # Only include GigE cameras (network cameras)
+                    if dev_info.GetDeviceClass() == "BaslerGigE":
+                        try:
+                            camera_info = {
+                                "ip_address": dev_info.GetIpAddress(),
+                                "model_name": dev_info.GetModelName(),
+                                "serial_number": dev_info.GetSerialNumber(),
+                                "mac_address": dev_info.GetMacAddress(),
+                                "user_defined_name": dev_info.GetUserDefinedName(),
+                                "is_mock": False,
+                            }
+
+                            # Create friendly display name
+                            user_name = camera_info.get("user_defined_name", "")
+                            if user_name:
+                                friendly_name = f"{user_name} - {camera_info['model_name']} ({camera_info['ip_address']})"
+                            else:
+                                friendly_name = f"{camera_info['model_name']} ({camera_info['ip_address']})"
+
+                            camera_info["friendly_name"] = friendly_name
+                            cameras.append(camera_info)
+                        except Exception as e:
+                            print(
+                                f"WARNING:Failed to get info for camera: {e}", flush=True
+                            )
+
+            finally:
+                os.dup2(old_stderr, stderr_fd)
+                os.close(old_stderr)
+
+    except Exception as e:
+        # Failed to import pypylon or enumerate devices
+        # This is expected on systems without Pylon SDK or cameras
+        print(f"INFO:Camera enumeration not available: {e}", flush=True)
+
+    return cameras
+
+
 def get_camera_instance(settings: Dict[str, Any]) -> Any:
     """Get or create camera instance.
 
@@ -509,6 +592,11 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                     "available": CAMERA_AVAILABLE,
                 }
             )
+
+        elif action == "detect_cameras":
+            # Detect available cameras on network
+            cameras = detect_cameras()
+            send_data({"cameras": cameras, "count": len(cameras)})
 
         else:
             send_error(f"Unknown camera action: {action}")
