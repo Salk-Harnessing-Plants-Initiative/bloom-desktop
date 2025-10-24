@@ -201,21 +201,28 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
 
     // Forward camera events to renderer
     cameraProcess.on('camera-trigger', () => {
-      mainWindow?.webContents.send('camera:trigger');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:trigger');
+      }
     });
 
     cameraProcess.on('image-captured', (dataUri: string) => {
-      mainWindow?.webContents.send('camera:image-captured', {
-        dataUri,
-        timestamp: Date.now(),
-      });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:image-captured', {
+          dataUri,
+          timestamp: Date.now(),
+        });
+      }
     });
 
     cameraProcess.on('frame', (dataUri: string) => {
-      mainWindow?.webContents.send('camera:frame', {
-        dataUri,
-        timestamp: Date.now(),
-      });
+      // Check if window still exists and hasn't been destroyed
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:frame', {
+          dataUri,
+          timestamp: Date.now(),
+        });
+      }
     });
 
     cameraProcess.on('status', (status: string) => {
@@ -224,7 +231,9 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
 
     cameraProcess.on('error', (error: string) => {
       console.error('Camera error:', error);
-      mainWindow?.webContents.send('camera:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:error', error);
+      }
     });
 
     cameraProcess.on('exit', (code: number | null) => {
