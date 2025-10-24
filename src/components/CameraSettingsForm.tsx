@@ -85,10 +85,7 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
     }
   };
 
-  const handleSliderChange = (
-    field: keyof CameraSettings,
-    value: number
-  ) => {
+  const handleSliderChange = (field: keyof CameraSettings, value: number) => {
     onChange({ ...settings, [field]: value });
   };
 

@@ -753,9 +753,9 @@ app.on('before-quit', async (event) => {
         // Add timeout to prevent hanging
         await Promise.race([
           cameraProcess.stopStream(),
-          new Promise((_, reject) => 
+          new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Stop stream timeout')), 2000)
-          )
+          ),
         ]);
         console.log('Camera stream stopped successfully');
       } catch (err) {
@@ -788,7 +788,7 @@ app.on('before-quit', async (event) => {
 
     // Give processes a moment to clean up
     console.log('Waiting 500ms for processes to clean up...');
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
     console.log('Cleanup wait complete');
   } catch (err) {
     console.error('Error during cleanup:', err);

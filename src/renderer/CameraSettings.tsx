@@ -135,7 +135,10 @@ export function CameraSettings() {
               />
             </div>
           ) : (
-            <div className="flex items-center justify-center bg-gray-100 rounded-lg" style={{ width: 800, height: 600 }}>
+            <div
+              className="flex items-center justify-center bg-gray-100 rounded-lg"
+              style={{ width: 800, height: 600 }}
+            >
               <div className="text-center p-8">
                 <svg
                   className="mx-auto h-16 w-16 text-gray-400 mb-4"
@@ -154,7 +157,8 @@ export function CameraSettings() {
                   No Preview Active
                 </p>
                 <p className="text-sm text-gray-500">
-                  Configure camera settings and click "Apply Settings" to start live preview
+                  Configure camera settings and click "Apply Settings" to start
+                  live preview
                 </p>
               </div>
             </div>
