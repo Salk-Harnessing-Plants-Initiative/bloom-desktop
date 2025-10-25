@@ -32,6 +32,9 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+// Configuration constants
+const STOP_STREAM_TIMEOUT_MS = 2000; // Timeout for stopping camera stream during quit
+
 let mainWindow: BrowserWindow | null = null;
 let pythonProcess: PythonProcess | null = null;
 let cameraProcess: CameraProcess | null = null;
@@ -357,7 +360,7 @@ ipcMain.handle(
     try {
       const camera = await ensureCameraProcess();
       const success = await camera.startStream(settings);
-      return { success: success };
+      return { success };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error('camera:start-stream error:', error);
@@ -375,7 +378,7 @@ ipcMain.handle('camera:stop-stream', async () => {
       return { success: true }; // Already stopped
     }
     const success = await cameraProcess.stopStream();
-    return { success: success };
+    return { success };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error('camera:stop-stream error:', error);
@@ -749,18 +752,20 @@ app.on('before-quit', async (event) => {
     // Stop camera streaming first with timeout
     if (cameraProcess) {
       console.log('Stopping camera streaming...');
-      try {
-        // Add timeout to prevent hanging
-        await Promise.race([
-          cameraProcess.stopStream(),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Stop stream timeout')), 2000)
-          ),
-        ]);
+      let stopStreamCompleted = false;
+      const stopStreamPromise = cameraProcess.stopStream().then(() => {
+        stopStreamCompleted = true;
+      });
+      await Promise.race([
+        stopStreamPromise,
+        new Promise((resolve) => setTimeout(resolve, STOP_STREAM_TIMEOUT_MS)),
+      ]);
+      if (stopStreamCompleted) {
         console.log('Camera stream stopped successfully');
-      } catch (err) {
-        console.error('Error stopping camera stream:', err);
-        // Force stop the process if stream stop fails
+      } else {
+        console.warn(
+          'Camera stream stop timed out, force-stopping camera process...'
+        );
         try {
           cameraProcess.stop();
         } catch (stopErr) {
