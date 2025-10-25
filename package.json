@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "electron-forge start",
+    "dev": "npm run build:python && electron-forge start",
     "package": "npm run build:python && electron-forge package",
     "make": "npm run build:python && electron-forge make",
     "build:python": "node scripts/build-python.js",
@@ -19,7 +20,8 @@
     "test:unit:coverage": "vitest run --coverage",
     "test:unit:watch": "vitest watch",
     "test:ipc": "npm run build:python && ts-node tests/integration/test-ipc.ts",
-    "test:camera": "npm run build:python && ts-node tests/integration/test-camera.ts",
+    "test:camera": "npm run build:python && ts-node tests/integration/test-streaming.ts",
+    "test:streaming": "npm run build:python && ts-node tests/integration/test-streaming.ts",
     "test:daq": "npm run build:python && ts-node tests/integration/test-daq.ts",
     "test:scanner": "npm run build:python && ts-node tests/integration/test-scanner.ts",
     "test:package": "ts-node tests/integration/test-package.ts",

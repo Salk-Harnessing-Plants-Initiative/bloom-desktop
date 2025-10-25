@@ -74,3 +74,37 @@ export interface CapturedImage {
   /** Image height in pixels */
   height: number;
 }
+
+/**
+ * Detected camera information
+ */
+export interface DetectedCamera {
+  /** IP address or "mock" for mock camera */
+  ip_address: string;
+
+  /** Camera model name */
+  model_name: string;
+
+  /** Camera serial number */
+  serial_number: string;
+
+  /** MAC address (empty for mock) */
+  mac_address: string;
+
+  /** User-defined name (if set) */
+  user_defined_name: string;
+
+  /** Display-friendly name */
+  friendly_name: string;
+
+  /** Whether this is the mock camera */
+  is_mock: boolean;
+}
+
+/**
+ * Camera detection response
+ */
+export interface CameraDetectionResponse {
+  cameras: DetectedCamera[];
+  count: number;
+}

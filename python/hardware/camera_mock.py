@@ -6,8 +6,10 @@ Useful for development and testing without requiring actual camera hardware.
 """
 
 import asyncio
+import base64
 from concurrent.futures import ThreadPoolExecutor
 import glob
+from io import BytesIO
 import os
 import pathlib
 import sys
@@ -16,6 +18,7 @@ from typing import Dict, List, Any, Optional
 
 import imageio.v2 as iio
 import numpy as np
+from PIL import Image
 
 try:
     from .camera_types import CameraSettings
@@ -170,8 +173,8 @@ class MockCamera:
         if not self.is_open:
             raise RuntimeError("Camera is not open")
 
-        # Simulate camera trigger delay
-        time.sleep(0.1)
+        # No artificial delay needed: real Basler camera trigger time is ~1-5ms (negligible)
+        # For batch captures, grab_frames() adds realistic delays (0.1s per frame)
 
         # Cycle through available test images
         # Use a simple counter based on time to simulate different frames
@@ -206,6 +209,29 @@ class MockCamera:
             frames.append(self.test_images[i].copy())
 
         return frames
+
+    def grab_frame_base64(self) -> str:
+        """Grab a single frame and return as base64-encoded PNG.
+
+        This method is optimized for streaming use cases where frames need
+        to be transmitted over IPC as base64 data URIs.
+
+        Returns:
+            Base64-encoded PNG string with data URI prefix
+            Format: "data:image/png;base64,{encoded_data}"
+
+        Raises:
+            RuntimeError: If camera is not open or grab fails
+        """
+        img = self.grab_frame()
+
+        # Convert numpy array to PIL Image and encode as PNG
+        buffer = BytesIO()
+        pil_img = Image.fromarray(img)
+        pil_img.save(buffer, format="PNG", compress_level=0)
+        base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        return f"data:image/png;base64,{base64_data}"
 
 
 async def save_image_async(
