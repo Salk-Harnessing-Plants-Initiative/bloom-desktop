@@ -11,12 +11,15 @@ Protocol:
     - STATUS:<message> - Status updates
     - ERROR:<message> - Error messages
     - DATA:<json> - JSON data responses
+    - FRAME:<base64_data_uri> - Streaming frame data (base64-encoded PNG)
 """
 
 import base64
 import json
 import os
 import sys
+import threading
+import time
 from io import BytesIO
 from typing import Any, Dict, Optional
 
@@ -113,6 +116,11 @@ _use_mock_daq = os.environ.get("BLOOM_USE_MOCK_DAQ", "true").lower() == "true"
 _scanner_instance: Optional[Any] = None
 _use_mock_hardware = os.environ.get("BLOOM_USE_MOCK_HARDWARE", "true").lower() == "true"
 
+# Global streaming state
+_streaming_thread: Optional[threading.Thread] = None
+_streaming_active = threading.Event()
+_streaming_lock = threading.Lock()
+
 
 def send_status(message: str) -> None:
     """Send a status message to stdout.
@@ -139,6 +147,15 @@ def send_data(data: Dict[str, Any]) -> None:
         data: Dictionary to send as JSON
     """
     print(f"DATA:{json.dumps(data)}", flush=True)
+
+
+def send_frame(frame_data: str) -> None:
+    """Send a frame to stdout for streaming.
+
+    Args:
+        frame_data: Base64-encoded image data with data URI prefix
+    """
+    print(f"FRAME:{frame_data}", flush=True)
 
 
 def check_hardware() -> Dict[str, Any]:
@@ -221,6 +238,90 @@ def check_hardware() -> Dict[str, Any]:
     return hardware_status
 
 
+def detect_cameras() -> list[Dict[str, Any]]:
+    """Detect all available Basler GigE cameras on the network.
+
+    Always includes mock camera as first option. Then enumerates real cameras
+    using pypylon if available.
+
+    Returns:
+        List of dictionaries with camera information:
+        - ip_address: Camera IP address (or "mock" for mock camera)
+        - model_name: Camera model
+        - serial_number: Camera serial number
+        - mac_address: MAC address (empty for mock)
+        - user_defined_name: User-defined camera name (if set)
+        - friendly_name: Display name (e.g., "Basler acA1920 (192.168.1.100)")
+        - is_mock: Boolean indicating if this is the mock camera
+    """
+    cameras = []
+
+    # Always include mock camera as first option
+    cameras.append(
+        {
+            "ip_address": "mock",
+            "model_name": "Mock Camera",
+            "serial_number": "MOCK-001",
+            "mac_address": "",
+            "user_defined_name": "",
+            "friendly_name": "Mock Camera (for testing)",
+            "is_mock": True,
+        }
+    )
+
+    # Try to enumerate real cameras if pypylon available
+    try:
+        # Suppress stderr during import and enumeration
+        stderr_fd = sys.stderr.fileno()
+        with open(os.devnull, "w") as devnull:
+            old_stderr = os.dup(stderr_fd)
+            os.dup2(devnull.fileno(), stderr_fd)
+            try:
+                import pypylon.pylon as pylon
+
+                tl_factory = pylon.TlFactory.GetInstance()
+                devices = tl_factory.EnumerateDevices()
+
+                for dev_info in devices:
+                    # Only include GigE cameras (network cameras)
+                    if dev_info.GetDeviceClass() == "BaslerGigE":
+                        try:
+                            camera_info = {
+                                "ip_address": dev_info.GetIpAddress(),
+                                "model_name": dev_info.GetModelName(),
+                                "serial_number": dev_info.GetSerialNumber(),
+                                "mac_address": dev_info.GetMacAddress(),
+                                "user_defined_name": dev_info.GetUserDefinedName(),
+                                "is_mock": False,
+                            }
+
+                            # Create friendly display name
+                            user_name = camera_info.get("user_defined_name", "")
+                            if user_name:
+                                friendly_name = f"{user_name} - {camera_info['model_name']} ({camera_info['ip_address']})"
+                            else:
+                                friendly_name = f"{camera_info['model_name']} ({camera_info['ip_address']})"
+
+                            camera_info["friendly_name"] = friendly_name
+                            cameras.append(camera_info)
+                        except Exception as e:
+                            print(
+                                f"WARNING: Failed to get info for camera: {e}",
+                                flush=True,
+                            )
+
+            finally:
+                os.dup2(old_stderr, stderr_fd)
+                os.close(old_stderr)
+
+    except Exception as e:
+        # Failed to import pypylon or enumerate devices
+        # This is expected on systems without Pylon SDK or cameras
+        print(f"INFO:Camera enumeration not available: {e}", flush=True)
+
+    return cameras
+
+
 def get_camera_instance(settings: Dict[str, Any]) -> Any:
     """Get or create camera instance.
 
@@ -267,6 +368,41 @@ def close_camera() -> None:
             send_error(f"Error closing camera: {e}")
         finally:
             _camera_instance = None
+
+
+def streaming_worker() -> None:
+    """Background thread worker for camera streaming.
+
+    Continuously captures frames from the camera and sends them via FRAME: protocol
+    while _streaming_active is set. Targets ~30 FPS (33ms per frame).
+    """
+    target_fps = 30
+    frame_interval = 1.0 / target_fps
+
+    send_status("Streaming worker started")
+
+    while _streaming_active.is_set():
+        try:
+            if _camera_instance is None or not _camera_instance.is_open:
+                send_error("Camera not available during streaming")
+                break
+
+            # Capture frame using base64 method
+            frame_start = time.time()
+            frame_data = _camera_instance.grab_frame_base64()
+            send_frame(frame_data)
+
+            # Maintain target FPS
+            elapsed = time.time() - frame_start
+            sleep_time = max(0, frame_interval - elapsed)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+        except Exception as e:
+            send_error(f"Streaming error: {e}")
+            break
+
+    send_status("Streaming worker stopped")
 
 
 def get_daq_instance(settings: Dict[str, Any]) -> Any:
@@ -323,6 +459,8 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
     Args:
         cmd: Command dictionary with camera parameters
     """
+    global _streaming_thread
+
     if not CAMERA_AVAILABLE:
         send_error("Camera module not available")
         return
@@ -388,6 +526,62 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
 
             send_data({"success": True, "configured": True})
 
+        elif action == "start_stream":
+            # Start streaming frames in background thread
+            with _streaming_lock:
+                # Check if already streaming
+                if _streaming_active.is_set():
+                    send_data(
+                        {
+                            "success": True,
+                            "streaming": True,
+                            "message": "Already streaming",
+                        }
+                    )
+                    return
+
+                # Ensure camera is connected
+                if _camera_instance is None or not _camera_instance.is_open:
+                    if settings:
+                        camera = get_camera_instance(settings)
+                        camera.open()
+                    else:
+                        raise RuntimeError(
+                            "Camera not connected. Call connect() first or provide settings."
+                        )
+
+                # Start streaming thread
+                _streaming_active.set()
+                _streaming_thread = threading.Thread(
+                    target=streaming_worker, daemon=True
+                )
+                _streaming_thread.start()
+
+            send_data({"success": True, "streaming": True})
+
+        elif action == "stop_stream":
+            # Stop streaming thread
+            with _streaming_lock:
+                if not _streaming_active.is_set():
+                    send_data(
+                        {
+                            "success": True,
+                            "streaming": False,
+                            "message": "Not streaming",
+                        }
+                    )
+                    return
+
+                # Signal thread to stop
+                _streaming_active.clear()
+
+                # Wait for thread to finish (with timeout)
+                if _streaming_thread is not None:
+                    _streaming_thread.join(timeout=2.0)
+                    _streaming_thread = None
+
+            send_data({"success": True, "streaming": False})
+
         elif action == "status":
             # Get camera status
             is_connected = _camera_instance is not None and _camera_instance.is_open
@@ -399,6 +593,11 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                     "available": CAMERA_AVAILABLE,
                 }
             )
+
+        elif action == "detect_cameras":
+            # Detect available cameras on network
+            cameras = detect_cameras()
+            send_data({"cameras": cameras, "count": len(cameras)})
 
         else:
             send_error(f"Unknown camera action: {action}")
