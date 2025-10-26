@@ -59,6 +59,16 @@ const cameraAPI: CameraAPI = {
       callback(image)
     );
   },
+  startStream: (settings?: Partial<CameraSettings>) =>
+    ipcRenderer.invoke('camera:start-stream', settings),
+  stopStream: () => ipcRenderer.invoke('camera:stop-stream'),
+  onFrame: (callback: (image: CapturedImage) => void) => {
+    const listener = (_event: unknown, image: CapturedImage) => callback(image);
+    ipcRenderer.on('camera:frame', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.removeListener('camera:frame', listener);
+  },
+  detectCameras: () => ipcRenderer.invoke('camera:detect-cameras'),
 };
 
 /**

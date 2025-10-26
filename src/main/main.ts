@@ -32,6 +32,9 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+// Configuration constants
+const STOP_STREAM_TIMEOUT_MS = 2000; // Timeout for stopping camera stream during quit
+
 let mainWindow: BrowserWindow | null = null;
 let pythonProcess: PythonProcess | null = null;
 let cameraProcess: CameraProcess | null = null;
@@ -78,19 +81,25 @@ async function initializePythonProcess(): Promise<void> {
 
     // Forward Python status events to renderer
     pythonProcess.on('status', (status: string) => {
-      mainWindow?.webContents.send('python:status', status);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('python:status', status);
+      }
     });
 
     // Forward Python errors to renderer
     pythonProcess.on('error', (error: string) => {
       console.error('Python error:', error);
-      mainWindow?.webContents.send('python:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('python:error', error);
+      }
     });
 
     // Handle Python process exit
     pythonProcess.on('exit', (code: number | null) => {
       console.log(`Python process exited with code ${code}`);
-      mainWindow?.webContents.send('python:status', `Process exited: ${code}`);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('python:status', `Process exited: ${code}`);
+      }
     });
 
     // Start the Python process
@@ -201,14 +210,28 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
 
     // Forward camera events to renderer
     cameraProcess.on('camera-trigger', () => {
-      mainWindow?.webContents.send('camera:trigger');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:trigger');
+      }
     });
 
     cameraProcess.on('image-captured', (dataUri: string) => {
-      mainWindow?.webContents.send('camera:image-captured', {
-        dataUri,
-        timestamp: Date.now(),
-      });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:image-captured', {
+          dataUri,
+          timestamp: Date.now(),
+        });
+      }
+    });
+
+    cameraProcess.on('frame', (dataUri: string) => {
+      // Check if window still exists and hasn't been destroyed
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:frame', {
+          dataUri,
+          timestamp: Date.now(),
+        });
+      }
     });
 
     cameraProcess.on('status', (status: string) => {
@@ -217,7 +240,9 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
 
     cameraProcess.on('error', (error: string) => {
       console.error('Camera error:', error);
-      mainWindow?.webContents.send('camera:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('camera:error', error);
+      }
     });
 
     cameraProcess.on('exit', (code: number | null) => {
@@ -326,6 +351,56 @@ ipcMain.handle('camera:get-status', async () => {
   }
 });
 
+/**
+ * Handle camera:start-stream - Start streaming frames from camera
+ */
+ipcMain.handle(
+  'camera:start-stream',
+  async (_event, settings?: Partial<CameraSettings>) => {
+    try {
+      const camera = await ensureCameraProcess();
+      const success = await camera.startStream(settings);
+      return { success };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error('camera:start-stream error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+);
+
+/**
+ * Handle camera:stop-stream - Stop streaming frames from camera
+ */
+ipcMain.handle('camera:stop-stream', async () => {
+  try {
+    if (!cameraProcess) {
+      return { success: true }; // Already stopped
+    }
+    const success = await cameraProcess.stopStream();
+    return { success };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('camera:stop-stream error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
+ * Handle camera:detect-cameras - Detect available cameras on network
+ */
+ipcMain.handle('camera:detect-cameras', async () => {
+  try {
+    const camera = await ensureCameraProcess();
+    const cameras = await camera.detectCameras();
+    return { success: true, cameras };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error('camera:detect-cameras error:', error);
+    return { success: false, error: error.message, cameras: [] };
+  }
+});
+
 // =============================================================================
 // IPC Handlers for DAQ Communication
 // =============================================================================
@@ -340,15 +415,21 @@ async function ensureDAQProcess(): Promise<DAQProcess> {
 
     // Forward DAQ events to renderer
     daqProcess.on('daq-initialized', () => {
-      mainWindow?.webContents.send('daq:initialized');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:initialized');
+      }
     });
 
     daqProcess.on('daq-position-changed', (position: number) => {
-      mainWindow?.webContents.send('daq:position-changed', { position });
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:position-changed', { position });
+      }
     });
 
     daqProcess.on('daq-home', () => {
-      mainWindow?.webContents.send('daq:home');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:home');
+      }
     });
 
     daqProcess.on('status', (status: string) => {
@@ -357,7 +438,9 @@ async function ensureDAQProcess(): Promise<DAQProcess> {
 
     daqProcess.on('error', (error: string) => {
       console.error('DAQ error:', error);
-      mainWindow?.webContents.send('daq:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('daq:error', error);
+      }
     });
 
     daqProcess.on('exit', (code: number | null) => {
@@ -505,20 +588,28 @@ async function ensureScannerProcess(): Promise<ScannerProcess> {
 
     // Forward scanner events to renderer
     scannerProcess.on('initialized', () => {
-      mainWindow?.webContents.send('scanner:initialized');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:initialized');
+      }
     });
 
     scannerProcess.on('progress', (progress) => {
-      mainWindow?.webContents.send('scanner:progress', progress);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:progress', progress);
+      }
     });
 
     scannerProcess.on('complete', (result) => {
-      mainWindow?.webContents.send('scanner:complete', result);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:complete', result);
+      }
     });
 
     scannerProcess.on('error', (error: string) => {
       console.error('Scanner error:', error);
-      mainWindow?.webContents.send('scanner:error', error);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('scanner:error', error);
+      }
     });
   }
 
@@ -643,18 +734,85 @@ app.on('activate', () => {
   }
 });
 
-// Clean up processes when app quits
+// Clean up processes before app quits
+let isQuitting = false;
+app.on('before-quit', async (event) => {
+  // Prevent infinite loop - only run cleanup once
+  if (isQuitting) {
+    return;
+  }
+
+  console.log('App is quitting, cleaning up processes...');
+  isQuitting = true;
+
+  // Prevent immediate quit to allow cleanup
+  event.preventDefault();
+
+  try {
+    // Stop camera streaming first with timeout
+    if (cameraProcess) {
+      console.log('Stopping camera streaming...');
+      let stopStreamCompleted = false;
+      const stopStreamPromise = cameraProcess.stopStream().then(() => {
+        stopStreamCompleted = true;
+      });
+      await Promise.race([
+        stopStreamPromise,
+        new Promise((resolve) => setTimeout(resolve, STOP_STREAM_TIMEOUT_MS)),
+      ]);
+      if (stopStreamCompleted) {
+        console.log('Camera stream stopped successfully');
+      } else {
+        console.warn(
+          'Camera stream stop timed out, force-stopping camera process...'
+        );
+        try {
+          cameraProcess.stop();
+        } catch (stopErr) {
+          console.error('Error force-stopping camera process:', stopErr);
+        }
+      }
+    }
+
+    // Stop all processes
+    if (pythonProcess) {
+      console.log('Stopping Python process...');
+      pythonProcess.stop();
+      console.log('Python process stopped');
+    }
+    if (cameraProcess) {
+      console.log('Stopping camera process...');
+      cameraProcess.stop();
+      console.log('Camera process stopped');
+    }
+    if (daqProcess) {
+      console.log('Stopping DAQ process...');
+      daqProcess.stop();
+      console.log('DAQ process stopped');
+    }
+
+    // Give processes a moment to clean up
+    console.log('Waiting 500ms for processes to clean up...');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    console.log('Cleanup wait complete');
+  } catch (err) {
+    console.error('Error during cleanup:', err);
+  }
+
+  // Now allow the quit - use exit instead of quit to avoid triggering before-quit again
+  console.log('Calling app.exit(0)...');
+  app.exit(0);
+});
+
+// Clean up processes when app quits (fallback)
 app.on('quit', () => {
   if (pythonProcess) {
-    console.log('Stopping Python process...');
     pythonProcess.stop();
   }
   if (cameraProcess) {
-    console.log('Stopping camera process...');
     cameraProcess.stop();
   }
   if (daqProcess) {
-    console.log('Stopping DAQ process...');
     daqProcess.stop();
   }
 });
