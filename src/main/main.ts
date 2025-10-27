@@ -41,6 +41,9 @@ let cameraProcess: CameraProcess | null = null;
 let daqProcess: DAQProcess | null = null;
 let scannerProcess: ScannerProcess | null = null;
 
+// Track current camera settings (in-memory, lost on app restart)
+let currentCameraSettings: CameraSettings | null = null;
+
 const createWindow = (): void => {
   // Create the browser window.
   mainWindow = new BrowserWindow({
@@ -297,6 +300,15 @@ ipcMain.handle(
     try {
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
+      
+      // Store settings in memory if successfully configured
+      if (success) {
+        currentCameraSettings = {
+          ...currentCameraSettings,
+          ...settings,
+        } as CameraSettings;
+      }
+      
       return { success };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -349,6 +361,13 @@ ipcMain.handle('camera:get-status', async () => {
     console.error('camera:get-status error:', error);
     return { connected: false, mock: true, available: false };
   }
+});
+
+/**
+ * Handle camera:get-settings - Get current camera settings
+ */
+ipcMain.handle('camera:get-settings', async () => {
+  return currentCameraSettings;
 });
 
 /**
