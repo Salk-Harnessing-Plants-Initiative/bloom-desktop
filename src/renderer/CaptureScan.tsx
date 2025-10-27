@@ -19,6 +19,7 @@ import type { CameraSettings } from '../types/camera';
 import type { ScanProgress as ScanProgressData } from '../types/scanner';
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
+import { sanitizePath } from '../utils/path-sanitizer';
 
 export function CaptureScan() {
   // Metadata state
@@ -173,7 +174,13 @@ export function CaptureScan() {
       setErrorMessage(null);
 
       // Initialize scanner
-      const outputPath = `./scans/${metadata.experimentId}/${metadata.plantQrCode}_${Date.now()}`;
+      // Sanitize user input to prevent path traversal attacks
+      const sanitizedPath = sanitizePath([
+        'scans',
+        metadata.experimentId,
+        `${metadata.plantQrCode}_${Date.now()}`,
+      ]);
+      const outputPath = `./${sanitizedPath}`;
 
       await window.electron.scanner.initialize({
         camera: cameraSettings,
