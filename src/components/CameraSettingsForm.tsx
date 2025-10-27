@@ -60,11 +60,17 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
       if (result.success && result.cameras) {
         setDetectedCameras(result.cameras);
 
-        // Select mock camera by default
-        const mockCamera = result.cameras.find((c) => c.is_mock);
-        if (mockCamera) {
-          setSelectedCamera(mockCamera.ip_address);
-          onChange({ ...settings, camera_ip_address: mockCamera.ip_address });
+        // Only auto-select if no camera is currently selected
+        if (!settings.camera_ip_address) {
+          // Select mock camera by default
+          const mockCamera = result.cameras.find((c) => c.is_mock);
+          if (mockCamera) {
+            setSelectedCamera(mockCamera.ip_address);
+            onChange({ ...settings, camera_ip_address: mockCamera.ip_address });
+          }
+        } else {
+          // Camera already selected, just update selectedCamera state for UI
+          setSelectedCamera(settings.camera_ip_address);
         }
       }
     } catch (err) {
