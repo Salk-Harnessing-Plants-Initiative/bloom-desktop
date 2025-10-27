@@ -27,6 +27,19 @@ export function CameraSettings() {
   const [lastApplied, setLastApplied] = useState<Date | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Load existing settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      const settings = await window.electron.camera.getSettings();
+      if (settings) {
+        setCurrentSettings(settings);
+        setEditedSettings(settings);
+        setShowPreview(true); // Show preview if settings exist
+      }
+    };
+    loadSettings();
+  }, []);
+
   // Track if settings have changed
   useEffect(() => {
     const changed =
