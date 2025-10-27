@@ -11,6 +11,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './camera-process';
 import type { CameraSettings } from './camera-process';
+import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DAQProcess } from './daq-process';
 import type { DAQSettings } from '../types/daq';
 import { ScannerProcess } from './scanner-process';
@@ -298,15 +299,19 @@ ipcMain.handle(
   'camera:configure',
   async (_event, settings: Partial<CameraSettings>) => {
     try {
+      console.log('[camera:configure] Configuring with settings:', settings);
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
       
       // Store settings in memory if successfully configured
       if (success) {
         currentCameraSettings = {
-          ...currentCameraSettings,
+          ...(currentCameraSettings || DEFAULT_CAMERA_SETTINGS),
           ...settings,
         } as CameraSettings;
+        console.log('[camera:configure] Stored settings:', currentCameraSettings);
+      } else {
+        console.log('[camera:configure] Failed to configure, not storing');
       }
       
       return { success };
@@ -367,6 +372,7 @@ ipcMain.handle('camera:get-status', async () => {
  * Handle camera:get-settings - Get current camera settings
  */
 ipcMain.handle('camera:get-settings', async () => {
+  console.log('[camera:get-settings] Returning settings:', currentCameraSettings);
   return currentCameraSettings;
 });
 

@@ -56,9 +56,11 @@ export function CaptureScan() {
     const checkCameraStatus = async () => {
       try {
         const status = await window.electron.camera.getStatus();
+        console.log('[CaptureScan] Camera status:', status);
         
         // Get current camera settings from main process
         const settings = await window.electron.camera.getSettings();
+        console.log('[CaptureScan] Got settings:', settings);
         
         if (settings) {
           // Use settings that were configured on Camera Settings page
