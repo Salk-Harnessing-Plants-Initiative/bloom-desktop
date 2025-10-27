@@ -31,9 +31,16 @@ export function ScanProgress({
     return () => clearInterval(interval);
   }, []);
 
-  const progress = totalFrames > 0 ? (currentFrame / totalFrames) * 100 : 0;
+  // currentFrame is 0-indexed, but represents the frame just captured
+  // So currentFrame=0 means 1 frame completed, currentFrame=71 means 72 frames completed
+  const progress =
+    totalFrames > 0 ? ((currentFrame + 1) / totalFrames) * 100 : 0;
+  // Calculate ETA based on completed frames (currentFrame + 1)
+  const completedFrames = currentFrame + 1;
   const estimatedTotalTime =
-    currentFrame > 0 ? (elapsedSeconds / currentFrame) * totalFrames : 0;
+    currentFrame >= 0 && completedFrames > 0
+      ? (elapsedSeconds / completedFrames) * totalFrames
+      : 0;
   const estimatedRemainingTime = Math.max(
     0,
     estimatedTotalTime - elapsedSeconds

@@ -302,18 +302,21 @@ ipcMain.handle(
       console.log('[camera:configure] Configuring with settings:', settings);
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
-      
+
       // Store settings in memory if successfully configured
       if (success) {
         currentCameraSettings = {
           ...(currentCameraSettings || DEFAULT_CAMERA_SETTINGS),
           ...settings,
         } as CameraSettings;
-        console.log('[camera:configure] Stored settings:', currentCameraSettings);
+        console.log(
+          '[camera:configure] Stored settings:',
+          currentCameraSettings
+        );
       } else {
         console.log('[camera:configure] Failed to configure, not storing');
       }
-      
+
       return { success };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -372,7 +375,10 @@ ipcMain.handle('camera:get-status', async () => {
  * Handle camera:get-settings - Get current camera settings
  */
 ipcMain.handle('camera:get-settings', async () => {
-  console.log('[camera:get-settings] Returning settings:', currentCameraSettings);
+  console.log(
+    '[camera:get-settings] Returning settings:',
+    currentCameraSettings
+  );
   return currentCameraSettings;
 });
 

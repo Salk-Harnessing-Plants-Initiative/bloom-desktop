@@ -511,13 +511,15 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
         elif action == "configure":
             # Update camera settings - auto-connect if not connected
             if _camera_instance is None or not _camera_instance.is_open:
-                if settings:
+                # Check if we have enough settings to create a camera instance
+                # At minimum, we need exposure_time and gain (required fields)
+                if settings and "exposure_time" in settings and "gain" in settings:
                     # Create and connect camera with provided settings
                     camera = get_camera_instance(settings)
                     camera.open()
                 else:
                     raise RuntimeError(
-                        "Camera not connected. Call connect() first or provide settings."
+                        "Camera not connected. Call connect() first or provide complete settings (exposure_time and gain required)."
                     )
             else:
                 # Update only the provided settings on existing camera
