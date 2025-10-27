@@ -38,6 +38,7 @@ export function CameraSettings() {
         setCurrentSettings(settings);
         setEditedSettings(settings);
         setShowPreview(true); // Show preview if settings exist
+        setLastApplied(new Date()); // Settings were applied previously
       } else {
         console.log('[CameraSettings] No settings found, using defaults');
       }
