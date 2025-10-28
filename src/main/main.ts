@@ -11,6 +11,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './camera-process';
 import type { CameraSettings } from './camera-process';
+import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DAQProcess } from './daq-process';
 import type { DAQSettings } from '../types/daq';
 import { ScannerProcess } from './scanner-process';
@@ -40,6 +41,9 @@ let pythonProcess: PythonProcess | null = null;
 let cameraProcess: CameraProcess | null = null;
 let daqProcess: DAQProcess | null = null;
 let scannerProcess: ScannerProcess | null = null;
+
+// Track current camera settings (in-memory, lost on app restart)
+let currentCameraSettings: CameraSettings | null = null;
 
 const createWindow = (): void => {
   // Create the browser window.
@@ -295,8 +299,24 @@ ipcMain.handle(
   'camera:configure',
   async (_event, settings: Partial<CameraSettings>) => {
     try {
+      console.log('[camera:configure] Configuring with settings:', settings);
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
+
+      // Store settings in memory if successfully configured
+      if (success) {
+        currentCameraSettings = {
+          ...(currentCameraSettings || DEFAULT_CAMERA_SETTINGS),
+          ...settings,
+        } as CameraSettings;
+        console.log(
+          '[camera:configure] Stored settings:',
+          currentCameraSettings
+        );
+      } else {
+        console.log('[camera:configure] Failed to configure, not storing');
+      }
+
       return { success };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -349,6 +369,17 @@ ipcMain.handle('camera:get-status', async () => {
     console.error('camera:get-status error:', error);
     return { connected: false, mock: true, available: false };
   }
+});
+
+/**
+ * Handle camera:get-settings - Get current camera settings
+ */
+ipcMain.handle('camera:get-settings', async () => {
+  console.log(
+    '[camera:get-settings] Returning settings:',
+    currentCameraSettings
+  );
+  return currentCameraSettings;
 });
 
 /**

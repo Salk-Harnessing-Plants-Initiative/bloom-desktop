@@ -113,6 +113,12 @@ export interface CameraAPI {
   }>;
 
   /**
+   * Get current camera settings
+   * @returns Promise resolving to current camera settings (or null if not configured)
+   */
+  getSettings: () => Promise<CameraSettings | null>;
+
+  /**
    * Register callback for camera trigger events
    * @param callback - Function to call when camera is triggered
    */

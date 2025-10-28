@@ -51,6 +51,7 @@ const cameraAPI: CameraAPI = {
   capture: (settings?: Partial<CameraSettings>) =>
     ipcRenderer.invoke('camera:capture', settings),
   getStatus: () => ipcRenderer.invoke('camera:get-status'),
+  getSettings: () => ipcRenderer.invoke('camera:get-settings'),
   onTrigger: (callback: () => void) => {
     ipcRenderer.on('camera:trigger', () => callback());
   },
