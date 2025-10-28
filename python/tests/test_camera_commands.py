@@ -519,3 +519,133 @@ class TestMockCameraPathResolution:
 
         # Clean up by reloading module (monkeypatch will auto-cleanup _MEIPASS)
         reload(camera_mock_module)
+
+
+class TestCameraOpenHelper:
+    """Test is_camera_open() defensive helper function."""
+
+    def test_is_camera_open_when_no_instance(self):
+        """Test is_camera_open returns False when no camera instance exists."""
+        import python.ipc_handler as ipc
+
+        ipc._camera_instance = None
+        assert ipc.is_camera_open() is False
+
+    def test_is_camera_open_when_camera_closed(self, mock_camera_settings):
+        """Test is_camera_open returns False when camera exists but is closed."""
+        import python.ipc_handler as ipc
+
+        # Create camera but don't open it
+        handle_command(
+            {"command": "camera", "action": "connect", "settings": mock_camera_settings}
+        )
+        ipc._camera_instance.is_open = False
+
+        assert ipc.is_camera_open() is False
+
+    def test_is_camera_open_when_camera_opened(self, mock_camera_settings):
+        """Test is_camera_open returns True when camera is opened."""
+        import python.ipc_handler as ipc
+
+        # Connect camera (opens it)
+        handle_command(
+            {"command": "camera", "action": "connect", "settings": mock_camera_settings}
+        )
+
+        assert ipc.is_camera_open() is True
+
+    def test_is_camera_open_handles_missing_is_open_attribute(self):
+        """Test is_camera_open safely handles camera without is_open attribute."""
+        import python.ipc_handler as ipc
+
+        # Create a camera instance without is_open attribute
+        class CameraWithoutIsOpen:
+            def __init__(self):
+                pass
+
+        ipc._camera_instance = CameraWithoutIsOpen()
+
+        # Should not raise AttributeError, should return False
+        assert ipc.is_camera_open() is False
+
+    def test_is_camera_open_handles_non_boolean_is_open(self):
+        """Test is_camera_open handles non-boolean is_open values."""
+        import python.ipc_handler as ipc
+
+        # Test with various truthy/falsy values
+        class CameraWithWeirdIsOpen:
+            pass
+
+        # Test with truthy non-boolean value
+        camera = CameraWithWeirdIsOpen()
+        camera.is_open = "yes"  # Truthy string
+        ipc._camera_instance = camera
+        # getattr returns the actual value, check truthiness not identity
+        assert ipc.is_camera_open()  # Truthy
+
+        # Test with falsy non-boolean value
+        camera.is_open = 0  # Falsy number
+        assert not ipc.is_camera_open()  # Falsy
+
+        # Test with None
+        camera.is_open = None
+        assert not ipc.is_camera_open()  # Falsy
+
+
+class TestDefensiveProgrammingIntegration:
+    """Integration tests verifying defensive programming in camera commands."""
+
+    def test_capture_handles_camera_without_is_open(self, capsys):
+        """Test capture command handles camera without is_open attribute safely."""
+        import python.ipc_handler as ipc
+
+        # Create mock camera without is_open
+        class BrokenCamera:
+            def __init__(self, settings):
+                self.settings = settings
+
+            def open(self):
+                return True
+
+            def grab_frame(self):
+                return np.zeros((480, 640), dtype=np.uint8)
+
+        ipc._camera_instance = BrokenCamera(None)
+
+        # Should not crash, should try to open camera
+        handle_command(
+            {
+                "command": "camera",
+                "action": "capture",
+                "settings": {
+                    "exposure_time": 5000,
+                    "gain": 10,
+                },
+            }
+        )
+
+        # Should succeed without AttributeError
+        captured = capsys.readouterr()
+        data = extract_json_data(captured.out)
+        assert data is not None
+        assert data["success"] is True
+
+    def test_status_handles_camera_without_is_open(self, capsys):
+        """Test status command handles camera without is_open attribute safely."""
+        import python.ipc_handler as ipc
+
+        # Create mock camera without is_open
+        class BrokenCamera:
+            def __init__(self):
+                pass
+
+        ipc._camera_instance = BrokenCamera()
+
+        # Should not crash when checking status
+        handle_command({"command": "camera", "action": "status"})
+
+        captured = capsys.readouterr()
+        data = extract_json_data(captured.out)
+        assert data is not None
+        assert data["connected"] is False  # Should report as disconnected
+        assert data["success"] is True
