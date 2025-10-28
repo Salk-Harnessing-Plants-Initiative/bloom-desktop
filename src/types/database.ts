@@ -141,7 +141,7 @@ export type AccessionCreateData = Prisma.AccessionsCreateInput
 /**
  * Data required to create new images (bulk)
  */
-export type ImageCreateData = Prisma.ImageCreateInput
+export type ImageCreateData = Prisma.ImageCreateManyInput
 
 // ============================================
 // Update Input Types

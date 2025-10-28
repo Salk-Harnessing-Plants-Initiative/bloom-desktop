@@ -335,7 +335,7 @@ export function registerDatabaseHandlers() {
     'db:images:create',
     async (
       _event,
-      data: Prisma.ImageCreateInput[]
+      data: Prisma.ImageCreateManyInput[]
     ): Promise<DatabaseResponse> => {
       try {
         // Use createMany for bulk insert (more efficient)
