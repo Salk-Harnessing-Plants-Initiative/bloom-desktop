@@ -4,8 +4,6 @@
  * Form for capturing scan metadata (phenotyper, experiment, plant ID, etc.)
  */
 
-import React from 'react';
-
 export interface ScanMetadata {
   phenotyper: string;
   experimentId: string;

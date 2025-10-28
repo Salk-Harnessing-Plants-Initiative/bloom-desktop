@@ -5,8 +5,6 @@
  * This is NOT the full browsing interface - just a quick preview.
  */
 
-import React from 'react';
-
 export interface ScanSummary {
   id: string;
   plantQrCode: string;

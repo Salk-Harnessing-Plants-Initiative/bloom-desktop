@@ -4,7 +4,7 @@
  * Displays real-time scanning progress with frame count and progress bar.
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface ScanProgressProps {
   /** Current frame number (0-indexed) */
