@@ -5,13 +5,13 @@
  * and CRUD operations work correctly.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { PrismaClient } from '@prisma/client'
-import { randomUUID } from 'crypto'
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 // Use dev database for testing
 // Tests will clean up after themselves
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
 /**
  * Clean database in correct FK order
@@ -19,30 +19,30 @@ const prisma = new PrismaClient()
  */
 async function cleanDatabase() {
   // Delete in correct order (deepest children first)
-  await prisma.image.deleteMany()
-  await prisma.scan.deleteMany()
-  await prisma.plantAccessionMappings.deleteMany()
-  await prisma.experiment.deleteMany()
-  await prisma.accessions.deleteMany()
-  await prisma.phenotyper.deleteMany()
-  await prisma.scientist.deleteMany()
+  await prisma.image.deleteMany();
+  await prisma.scan.deleteMany();
+  await prisma.plantAccessionMappings.deleteMany();
+  await prisma.experiment.deleteMany();
+  await prisma.accessions.deleteMany();
+  await prisma.phenotyper.deleteMany();
+  await prisma.scientist.deleteMany();
 }
 
 beforeAll(async () => {
   // Ensure database is connected
-  await prisma.$connect()
-})
+  await prisma.$connect();
+});
 
 afterAll(async () => {
   // Clean up and disconnect
-  await cleanDatabase()
-  await prisma.$disconnect()
-})
+  await cleanDatabase();
+  await prisma.$disconnect();
+});
 
 // Clean database before each test for perfect isolation
 beforeEach(async () => {
-  await cleanDatabase()
-})
+  await cleanDatabase();
+});
 
 describe('Database Schema', () => {
   describe('Scientist Model', () => {
@@ -50,215 +50,215 @@ describe('Database Schema', () => {
       const scientist = await prisma.scientist.create({
         data: {
           name: 'Dr. Test Scientist',
-          email: 'test.scientist@salk.edu'
-        }
-      })
+          email: 'test.scientist@salk.edu',
+        },
+      });
 
-      expect(scientist).toBeDefined()
-      expect(scientist.id).toBeTruthy()
-      expect(scientist.name).toBe('Dr. Test Scientist')
-      expect(scientist.email).toBe('test.scientist@salk.edu')
-    })
+      expect(scientist).toBeDefined();
+      expect(scientist.id).toBeTruthy();
+      expect(scientist.name).toBe('Dr. Test Scientist');
+      expect(scientist.email).toBe('test.scientist@salk.edu');
+    });
 
     it('should enforce unique email constraint', async () => {
       await prisma.scientist.create({
         data: {
           name: 'Dr. First',
-          email: 'duplicate@salk.edu'
-        }
-      })
+          email: 'duplicate@salk.edu',
+        },
+      });
 
       await expect(
         prisma.scientist.create({
           data: {
             name: 'Dr. Second',
-            email: 'duplicate@salk.edu'
-          }
+            email: 'duplicate@salk.edu',
+          },
         })
-      ).rejects.toThrow()
-    })
+      ).rejects.toThrow();
+    });
 
     it('should list all scientists', async () => {
       await prisma.scientist.createMany({
         data: [
           { name: 'Dr. Alice', email: 'alice@salk.edu' },
-          { name: 'Dr. Bob', email: 'bob@salk.edu' }
-        ]
-      })
+          { name: 'Dr. Bob', email: 'bob@salk.edu' },
+        ],
+      });
 
-      const scientists = await prisma.scientist.findMany()
-      expect(scientists).toHaveLength(2)
-    })
-  })
+      const scientists = await prisma.scientist.findMany();
+      expect(scientists).toHaveLength(2);
+    });
+  });
 
   describe('Phenotyper Model', () => {
     it('should create a phenotyper', async () => {
       const phenotyper = await prisma.phenotyper.create({
         data: {
           name: 'John Doe',
-          email: 'john.doe@salk.edu'
-        }
-      })
+          email: 'john.doe@salk.edu',
+        },
+      });
 
-      expect(phenotyper).toBeDefined()
-      expect(phenotyper.id).toBeTruthy()
-      expect(phenotyper.name).toBe('John Doe')
-    })
+      expect(phenotyper).toBeDefined();
+      expect(phenotyper.id).toBeTruthy();
+      expect(phenotyper.name).toBe('John Doe');
+    });
 
     it('should enforce unique email constraint', async () => {
       await prisma.phenotyper.create({
         data: {
           name: 'First User',
-          email: 'same@salk.edu'
-        }
-      })
+          email: 'same@salk.edu',
+        },
+      });
 
       await expect(
         prisma.phenotyper.create({
           data: {
             name: 'Second User',
-            email: 'same@salk.edu'
-          }
+            email: 'same@salk.edu',
+          },
         })
-      ).rejects.toThrow()
-    })
-  })
+      ).rejects.toThrow();
+    });
+  });
 
   describe('Accessions Model', () => {
     it('should create an accession', async () => {
       const accession = await prisma.accessions.create({
         data: {
-          name: 'ACC-TEST-001'
-        }
-      })
+          name: 'ACC-TEST-001',
+        },
+      });
 
-      expect(accession).toBeDefined()
-      expect(accession.id).toBeTruthy()
-      expect(accession.name).toBe('ACC-TEST-001')
-      expect(accession.createdAt).toBeInstanceOf(Date)
-    })
+      expect(accession).toBeDefined();
+      expect(accession.id).toBeTruthy();
+      expect(accession.name).toBe('ACC-TEST-001');
+      expect(accession.createdAt).toBeInstanceOf(Date);
+    });
 
     it('should allow multiple accessions with same name', async () => {
       await prisma.accessions.createMany({
         data: [
           { name: 'ACC-001' },
-          { name: 'ACC-001' } // Duplicates allowed
-        ]
-      })
+          { name: 'ACC-001' }, // Duplicates allowed
+        ],
+      });
 
       const accessions = await prisma.accessions.findMany({
-        where: { name: 'ACC-001' }
-      })
-      expect(accessions).toHaveLength(2)
-    })
-  })
+        where: { name: 'ACC-001' },
+      });
+      expect(accessions).toHaveLength(2);
+    });
+  });
 
   describe('Experiment Model', () => {
-    let scientist: { id: string; name: string; email: string }
+    let scientist: { id: string; name: string; email: string };
 
     beforeEach(async () => {
       // Delete in correct order: scans -> experiments -> scientists/accessions
-      await prisma.image.deleteMany()
-      await prisma.scan.deleteMany()
-      await prisma.experiment.deleteMany()
-      await prisma.scientist.deleteMany()
-      await prisma.accessions.deleteMany()
+      await prisma.image.deleteMany();
+      await prisma.scan.deleteMany();
+      await prisma.experiment.deleteMany();
+      await prisma.scientist.deleteMany();
+      await prisma.accessions.deleteMany();
 
       scientist = await prisma.scientist.create({
         data: {
           name: 'Dr. Test',
-          email: 'test@salk.edu'
-        }
-      })
-    })
+          email: 'test@salk.edu',
+        },
+      });
+    });
 
     it('should create an experiment', async () => {
       const experiment = await prisma.experiment.create({
         data: {
           name: 'test-experiment',
           species: 'Amaranthus',
-          scientist_id: scientist.id
-        }
-      })
+          scientist_id: scientist.id,
+        },
+      });
 
-      expect(experiment).toBeDefined()
-      expect(experiment.id).toBeTruthy()
-      expect(experiment.name).toBe('test-experiment')
-      expect(experiment.species).toBe('Amaranthus')
-      expect(experiment.scientist_id).toBe(scientist.id)
-    })
+      expect(experiment).toBeDefined();
+      expect(experiment.id).toBeTruthy();
+      expect(experiment.name).toBe('test-experiment');
+      expect(experiment.species).toBe('Amaranthus');
+      expect(experiment.scientist_id).toBe(scientist.id);
+    });
 
     it('should create experiment without scientist', async () => {
       const experiment = await prisma.experiment.create({
         data: {
           name: 'independent-experiment',
-          species: 'Amaranthus'
-        }
-      })
+          species: 'Amaranthus',
+        },
+      });
 
-      expect(experiment.scientist_id).toBeNull()
-    })
+      expect(experiment.scientist_id).toBeNull();
+    });
 
     it('should include scientist in query', async () => {
       await prisma.experiment.create({
         data: {
           name: 'test-experiment',
           species: 'Amaranthus',
-          scientist_id: scientist.id
-        }
-      })
+          scientist_id: scientist.id,
+        },
+      });
 
       const experiment = await prisma.experiment.findFirst({
-        include: { scientist: true }
-      })
+        include: { scientist: true },
+      });
 
-      expect(experiment?.scientist).toBeDefined()
-      expect(experiment?.scientist?.name).toBe('Dr. Test')
-    })
-  })
+      expect(experiment?.scientist).toBeDefined();
+      expect(experiment?.scientist?.name).toBe('Dr. Test');
+    });
+  });
 
   describe('Scan Model', () => {
-    let experiment: { id: string; name: string; species: string }
-    let phenotyper: { id: string; name: string; email: string }
-    let accession: { id: string; name: string }
+    let experiment: { id: string; name: string; species: string };
+    let phenotyper: { id: string; name: string; email: string };
+    let accession: { id: string; name: string };
 
     beforeEach(async () => {
-      await prisma.image.deleteMany()
-      await prisma.scan.deleteMany()
-      await prisma.experiment.deleteMany()
-      await prisma.phenotyper.deleteMany()
-      await prisma.scientist.deleteMany()
-      await prisma.accessions.deleteMany()
+      await prisma.image.deleteMany();
+      await prisma.scan.deleteMany();
+      await prisma.experiment.deleteMany();
+      await prisma.phenotyper.deleteMany();
+      await prisma.scientist.deleteMany();
+      await prisma.accessions.deleteMany();
 
       const scientist = await prisma.scientist.create({
         data: {
           name: 'Dr. Test',
-          email: 'test@salk.edu'
-        }
-      })
+          email: 'test@salk.edu',
+        },
+      });
 
       phenotyper = await prisma.phenotyper.create({
         data: {
           name: 'Test Phenotyper',
-          email: 'phenotyper@salk.edu'
-        }
-      })
+          email: 'phenotyper@salk.edu',
+        },
+      });
 
       accession = await prisma.accessions.create({
         data: {
-          name: 'ACC-TEST'
-        }
-      })
+          name: 'ACC-TEST',
+        },
+      });
 
       experiment = await prisma.experiment.create({
         data: {
           name: 'test-experiment',
           species: 'Amaranthus',
           scientist_id: scientist.id,
-          accession_id: accession.id
-        }
-      })
-    })
+          accession_id: accession.id,
+        },
+      });
+    });
 
     it('should create a scan with all required fields', async () => {
       const scan = await prisma.scan.create({
@@ -278,17 +278,17 @@ describe('Database Schema', () => {
           gamma: 1.0,
           seconds_per_rot: 36.0,
           wave_number: 1,
-          plant_age_days: 14
-        }
-      })
+          plant_age_days: 14,
+        },
+      });
 
-      expect(scan).toBeDefined()
-      expect(scan.id).toBeTruthy()
-      expect(scan.plant_id).toBe('PLANT-001')
-      expect(scan.num_frames).toBe(72)
-      expect(scan.exposure_time).toBe(10000)
-      expect(scan.deleted).toBe(false) // Default value
-    })
+      expect(scan).toBeDefined();
+      expect(scan.id).toBeTruthy();
+      expect(scan.plant_id).toBe('PLANT-001');
+      expect(scan.num_frames).toBe(72);
+      expect(scan.exposure_time).toBe(10000);
+      expect(scan.deleted).toBe(false); // Default value
+    });
 
     it('should include relations in query', async () => {
       await prisma.scan.create({
@@ -306,23 +306,23 @@ describe('Database Schema', () => {
           gamma: 1.0,
           seconds_per_rot: 36.0,
           wave_number: 1,
-          plant_age_days: 14
-        }
-      })
+          plant_age_days: 14,
+        },
+      });
 
       const scan = await prisma.scan.findFirst({
         include: {
           experiment: true,
           phenotyper: true,
-          images: true
-        }
-      })
+          images: true,
+        },
+      });
 
-      expect(scan?.experiment).toBeDefined()
-      expect(scan?.phenotyper).toBeDefined()
-      expect(scan?.experiment.name).toBe('test-experiment')
-      expect(scan?.phenotyper.name).toBe('Test Phenotyper')
-    })
+      expect(scan?.experiment).toBeDefined();
+      expect(scan?.phenotyper).toBeDefined();
+      expect(scan?.experiment.name).toBe('test-experiment');
+      expect(scan?.phenotyper.name).toBe('Test Phenotyper');
+    });
 
     it('should filter scans by experiment', async () => {
       await prisma.scan.create({
@@ -340,17 +340,17 @@ describe('Database Schema', () => {
           gamma: 1.0,
           seconds_per_rot: 36.0,
           wave_number: 1,
-          plant_age_days: 14
-        }
-      })
+          plant_age_days: 14,
+        },
+      });
 
       const scans = await prisma.scan.findMany({
-        where: { experiment_id: experiment.id }
-      })
+        where: { experiment_id: experiment.id },
+      });
 
-      expect(scans).toHaveLength(1)
-      expect(scans[0].plant_id).toBe('PLANT-001')
-    })
+      expect(scans).toHaveLength(1);
+      expect(scans[0].plant_id).toBe('PLANT-001');
+    });
 
     it('should filter scans by plant_id', async () => {
       await prisma.scan.createMany({
@@ -369,7 +369,7 @@ describe('Database Schema', () => {
             gamma: 1.0,
             seconds_per_rot: 36.0,
             wave_number: 1,
-            plant_age_days: 14
+            plant_age_days: 14,
           },
           {
             experiment_id: experiment.id,
@@ -385,52 +385,52 @@ describe('Database Schema', () => {
             gamma: 1.0,
             seconds_per_rot: 36.0,
             wave_number: 1,
-            plant_age_days: 14
-          }
-        ]
-      })
+            plant_age_days: 14,
+          },
+        ],
+      });
 
       const scans = await prisma.scan.findMany({
-        where: { plant_id: 'PLANT-001' }
-      })
+        where: { plant_id: 'PLANT-001' },
+      });
 
-      expect(scans).toHaveLength(1)
-      expect(scans[0].plant_id).toBe('PLANT-001')
-    })
-  })
+      expect(scans).toHaveLength(1);
+      expect(scans[0].plant_id).toBe('PLANT-001');
+    });
+  });
 
   describe('Image Model', () => {
-    let scan: { id: string; experiment_id: string; phenotyper_id: string }
+    let scan: { id: string; experiment_id: string; phenotyper_id: string };
 
     beforeEach(async () => {
-      await prisma.image.deleteMany()
-      await prisma.scan.deleteMany()
-      await prisma.experiment.deleteMany()
-      await prisma.phenotyper.deleteMany()
-      await prisma.scientist.deleteMany()
-      await prisma.accessions.deleteMany()
+      await prisma.image.deleteMany();
+      await prisma.scan.deleteMany();
+      await prisma.experiment.deleteMany();
+      await prisma.phenotyper.deleteMany();
+      await prisma.scientist.deleteMany();
+      await prisma.accessions.deleteMany();
 
       const scientist = await prisma.scientist.create({
         data: {
           name: 'Dr. Test',
-          email: 'test@salk.edu'
-        }
-      })
+          email: 'test@salk.edu',
+        },
+      });
 
       const phenotyper = await prisma.phenotyper.create({
         data: {
           name: 'Test Phenotyper',
-          email: 'phenotyper@salk.edu'
-        }
-      })
+          email: 'phenotyper@salk.edu',
+        },
+      });
 
       const experiment = await prisma.experiment.create({
         data: {
           name: 'test-experiment',
           species: 'Amaranthus',
-          scientist_id: scientist.id
-        }
-      })
+          scientist_id: scientist.id,
+        },
+      });
 
       scan = await prisma.scan.create({
         data: {
@@ -447,10 +447,10 @@ describe('Database Schema', () => {
           gamma: 1.0,
           seconds_per_rot: 36.0,
           wave_number: 1,
-          plant_age_days: 14
-        }
-      })
-    })
+          plant_age_days: 14,
+        },
+      });
+    });
 
     it('should create an image', async () => {
       const image = await prisma.image.create({
@@ -458,109 +458,109 @@ describe('Database Schema', () => {
           scan_id: scan.id,
           frame_number: 0,
           path: './scans/test/PLANT-001/frame_0000.png',
-          status: 'completed'
-        }
-      })
+          status: 'completed',
+        },
+      });
 
-      expect(image).toBeDefined()
-      expect(image.id).toBeTruthy()
-      expect(image.frame_number).toBe(0)
-      expect(image.status).toBe('completed')
-    })
+      expect(image).toBeDefined();
+      expect(image.id).toBeTruthy();
+      expect(image.frame_number).toBe(0);
+      expect(image.status).toBe('completed');
+    });
 
     it('should use default status "pending"', async () => {
       const image = await prisma.image.create({
         data: {
           scan_id: scan.id,
           frame_number: 0,
-          path: './scans/test/PLANT-001/frame_0000.png'
-        }
-      })
+          path: './scans/test/PLANT-001/frame_0000.png',
+        },
+      });
 
-      expect(image.status).toBe('pending')
-    })
+      expect(image.status).toBe('pending');
+    });
 
     it('should create multiple images for a scan', async () => {
-      const images = []
+      const images = [];
       for (let i = 0; i < 72; i++) {
         images.push({
           scan_id: scan.id,
           frame_number: i,
           path: `./scans/test/PLANT-001/frame_${i.toString().padStart(4, '0')}.png`,
-          status: 'completed'
-        })
+          status: 'completed',
+        });
       }
 
-      await prisma.image.createMany({ data: images })
+      await prisma.image.createMany({ data: images });
 
       const count = await prisma.image.count({
-        where: { scan_id: scan.id }
-      })
+        where: { scan_id: scan.id },
+      });
 
-      expect(count).toBe(72)
-    })
+      expect(count).toBe(72);
+    });
 
     it('should include scan in query', async () => {
       await prisma.image.create({
         data: {
           scan_id: scan.id,
           frame_number: 0,
-          path: './scans/test/PLANT-001/frame_0000.png'
-        }
-      })
+          path: './scans/test/PLANT-001/frame_0000.png',
+        },
+      });
 
       const image = await prisma.image.findFirst({
-        include: { scan: true }
-      })
+        include: { scan: true },
+      });
 
-      expect(image?.scan).toBeDefined()
-      expect(image?.scan.plant_id).toBe('PLANT-001')
-    })
-  })
+      expect(image?.scan).toBeDefined();
+      expect(image?.scan.plant_id).toBe('PLANT-001');
+    });
+  });
 
   describe('PlantAccessionMappings Model', () => {
-    let accession: { id: string; name: string }
+    let accession: { id: string; name: string };
 
     beforeEach(async () => {
-      await prisma.plantAccessionMappings.deleteMany()
-      await prisma.accessions.deleteMany()
+      await prisma.plantAccessionMappings.deleteMany();
+      await prisma.accessions.deleteMany();
 
       accession = await prisma.accessions.create({
         data: {
-          name: 'ACC-TEST'
-        }
-      })
-    })
+          name: 'ACC-TEST',
+        },
+      });
+    });
 
     it('should create a plant-accession mapping', async () => {
       const mapping = await prisma.plantAccessionMappings.create({
         data: {
           accession_id: randomUUID(),
           plant_barcode: 'PLANT-001',
-          accession_file_id: accession.id
-        }
-      })
+          accession_file_id: accession.id,
+        },
+      });
 
-      expect(mapping).toBeDefined()
-      expect(mapping.id).toBeTruthy()
-      expect(mapping.plant_barcode).toBe('PLANT-001')
-    })
+      expect(mapping).toBeDefined();
+      expect(mapping.id).toBeTruthy();
+      expect(mapping.plant_barcode).toBe('PLANT-001');
+    });
 
     it('should include accession in query', async () => {
       await prisma.plantAccessionMappings.create({
         data: {
           accession_id: randomUUID(),
           plant_barcode: 'PLANT-001',
-          accession_file_id: accession.id
-        }
-      })
+          accession_file_id: accession.id,
+        },
+      });
 
       const mapping = await prisma.plantAccessionMappings.findFirst({
-        include: { accession: true }
-      })
+        include: { accession: true },
+      });
 
-      expect(mapping?.accession).toBeDefined()
-      expect(mapping?.accession.name).toBe('ACC-TEST')
-    })
-  })
-})
+      expect(mapping?.accession).toBeDefined();
+      expect(mapping?.accession.name).toBe('ACC-TEST');
+    });
+  });
+});

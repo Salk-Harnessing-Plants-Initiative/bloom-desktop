@@ -172,7 +172,8 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:accessions:create', data),
   },
   images: {
-    create: (data: ImageCreateData[]) => ipcRenderer.invoke('db:images:create', data),
+    create: (data: ImageCreateData[]) =>
+      ipcRenderer.invoke('db:images:create', data),
   },
 };
 
