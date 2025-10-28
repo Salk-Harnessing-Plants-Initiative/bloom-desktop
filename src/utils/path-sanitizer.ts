@@ -49,7 +49,7 @@ export function sanitizePathComponent(
   sanitized = sanitized.replace(/[^a-zA-Z0-9\-_.]/g, '_');
 
   // 6. Remove leading/trailing periods and dashes (may cause issues on some filesystems)
-  sanitized = sanitized.replace(/^[.\-]+|[.\-]+$/g, '');
+  sanitized = sanitized.replace(/^[.-]+|[.-]+$/g, '');
 
   // 7. Collapse multiple underscores
   sanitized = sanitized.replace(/_+/g, '_');

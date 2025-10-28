@@ -91,9 +91,9 @@ describe('sanitizePathComponent', () => {
     });
 
     it('should handle non-string inputs', () => {
-      expect(sanitizePathComponent(null as any)).toBe('');
-      expect(sanitizePathComponent(undefined as any)).toBe('');
-      expect(sanitizePathComponent(123 as any)).toBe('');
+      expect(sanitizePathComponent(null as unknown as string)).toBe('');
+      expect(sanitizePathComponent(undefined as unknown as string)).toBe('');
+      expect(sanitizePathComponent(123 as unknown as string)).toBe('');
     });
   });
 
