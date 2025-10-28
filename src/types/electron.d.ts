@@ -25,7 +25,6 @@ import {
   Phenotyper,
   Scientist,
   Accessions,
-  Image,
   ExperimentCreateData,
   ExperimentUpdateData,
   ScanCreateData,

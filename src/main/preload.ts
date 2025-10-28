@@ -27,6 +27,7 @@ import type {
   PhenotyperCreateData,
   ScientistCreateData,
   AccessionCreateData,
+  ImageCreateData,
   ScanFilters,
 } from '../types/database';
 
@@ -171,7 +172,7 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:accessions:create', data),
   },
   images: {
-    create: (data: any) => ipcRenderer.invoke('db:images:create', data),
+    create: (data: ImageCreateData[]) => ipcRenderer.invoke('db:images:create', data),
   },
 };
 

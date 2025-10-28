@@ -154,7 +154,7 @@ describe('Database Schema', () => {
   })
 
   describe('Experiment Model', () => {
-    let scientist: any
+    let scientist: { id: string; name: string; email: string }
 
     beforeEach(async () => {
       // Delete in correct order: scans -> experiments -> scientists/accessions
@@ -218,9 +218,9 @@ describe('Database Schema', () => {
   })
 
   describe('Scan Model', () => {
-    let experiment: any
-    let phenotyper: any
-    let accession: any
+    let experiment: { id: string; name: string; species: string }
+    let phenotyper: { id: string; name: string; email: string }
+    let accession: { id: string; name: string }
 
     beforeEach(async () => {
       await prisma.image.deleteMany()
@@ -400,7 +400,7 @@ describe('Database Schema', () => {
   })
 
   describe('Image Model', () => {
-    let scan: any
+    let scan: { id: string; experiment_id: string; phenotyper_id: string }
 
     beforeEach(async () => {
       await prisma.image.deleteMany()
@@ -519,7 +519,7 @@ describe('Database Schema', () => {
   })
 
   describe('PlantAccessionMappings Model', () => {
-    let accession: any
+    let accession: { id: string; name: string }
 
     beforeEach(async () => {
       await prisma.plantAccessionMappings.deleteMany()
