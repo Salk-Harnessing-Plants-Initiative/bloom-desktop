@@ -528,7 +528,9 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                 if settings and "exposure_time" in settings and "gain" in settings:
                     # Create and connect camera with provided settings
                     get_camera_instance(settings)
-                    assert _camera_instance is not None  # Created by get_camera_instance()
+                    assert (
+                        _camera_instance is not None
+                    )  # Created by get_camera_instance()
                     _camera_instance.open()
                 else:
                     raise RuntimeError(
@@ -536,7 +538,9 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                     )
             else:
                 # Update only the provided settings on existing camera
-                assert _camera_instance is not None  # In else branch of is_camera_open() check
+                assert (
+                    _camera_instance is not None
+                )  # In else branch of is_camera_open() check
                 for key, value in settings.items():
                     if hasattr(_camera_instance.settings, key):
                         setattr(_camera_instance.settings, key, value)
