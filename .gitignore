@@ -92,3 +92,7 @@ coverage/
 /.serena
 /.claude
 .DS_Store
+
+/generated/prisma
+prisma/*.db
+prisma/*.db-journal
