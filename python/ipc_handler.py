@@ -400,6 +400,7 @@ def streaming_worker() -> None:
 
             # Capture frame using base64 method
             frame_start = time.time()
+            assert _camera_instance is not None  # Checked by is_camera_open()
             frame_data = _camera_instance.grab_frame_base64()
             send_frame(frame_data)
 
@@ -527,6 +528,7 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                 if settings and "exposure_time" in settings and "gain" in settings:
                     # Create and connect camera with provided settings
                     get_camera_instance(settings)
+                    assert _camera_instance is not None  # Created by get_camera_instance()
                     _camera_instance.open()
                 else:
                     raise RuntimeError(
@@ -534,6 +536,7 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                     )
             else:
                 # Update only the provided settings on existing camera
+                assert _camera_instance is not None  # In else branch of is_camera_open() check
                 for key, value in settings.items():
                     if hasattr(_camera_instance.settings, key):
                         setattr(_camera_instance.settings, key, value)
