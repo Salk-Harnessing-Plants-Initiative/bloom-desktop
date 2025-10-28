@@ -365,9 +365,7 @@ def is_camera_open() -> bool:
     Returns:
         True if camera exists and is open, False otherwise
     """
-    return _camera_instance is not None and getattr(
-        _camera_instance, "is_open", False
-    )
+    return _camera_instance is not None and getattr(_camera_instance, "is_open", False)
 
 
 def close_camera() -> None:

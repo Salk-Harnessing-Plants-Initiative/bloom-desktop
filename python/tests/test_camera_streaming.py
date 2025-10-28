@@ -398,9 +398,9 @@ class TestStreamingWorkflow:
             # Wait for frames
             time.sleep(0.3)
             captured = self.capsys.readouterr()
-            assert (
-                "FRAME:" in captured.out
-            ), f"Cycle {cycle}: No frames during streaming"
+            assert "FRAME:" in captured.out, (
+                f"Cycle {cycle}: No frames during streaming"
+            )
 
             # Stop streaming
             handle_command({"command": "camera", "action": "stop_stream"})

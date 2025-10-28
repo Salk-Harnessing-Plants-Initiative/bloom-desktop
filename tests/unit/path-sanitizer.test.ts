@@ -24,7 +24,9 @@ describe('sanitizePathComponent', () => {
     });
 
     it('should remove directory separators', () => {
-      expect(sanitizePathComponent('path/with/slashes')).toBe('pathwithslashes');
+      expect(sanitizePathComponent('path/with/slashes')).toBe(
+        'pathwithslashes'
+      );
       expect(sanitizePathComponent('path\\with\\backslashes')).toBe(
         'pathwithbackslashes'
       );
