@@ -64,9 +64,9 @@ def test_ipc_handler_imports_with_fallback():
     from python.ipc_handler import CAMERA_AVAILABLE, DAQ_AVAILABLE
 
     # In development environment, both should be available via fallback
-    assert CAMERA_AVAILABLE is True, (
-        "Camera modules should be available via fallback import"
-    )
+    assert (
+        CAMERA_AVAILABLE is True
+    ), "Camera modules should be available via fallback import"
     assert DAQ_AVAILABLE is True, "DAQ modules should be available via fallback import"
 
 

@@ -526,11 +526,11 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                 # Required fields: exposure_time and gain (to construct CameraSettings)
                 if settings and "exposure_time" in settings and "gain" in settings:
                     # Create and connect camera with provided settings
-                    camera = get_camera_instance(settings)
-                    camera.open()
+                    get_camera_instance(settings)
+                    _camera_instance.open()
                 else:
                     raise RuntimeError(
-                        "Camera not connected. Call connect() first or provide complete settings (exposure_time and gain required)."
+                        "Camera not connected. Provide complete settings (exposure_time and gain required) to auto-connect."
                     )
             else:
                 # Update only the provided settings on existing camera
