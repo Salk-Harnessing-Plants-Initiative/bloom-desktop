@@ -108,3 +108,17 @@ export interface CameraDetectionResponse {
   cameras: DetectedCamera[];
   count: number;
 }
+
+/**
+ * Default camera settings
+ *
+ * These are sensible default values for the Basler camera.
+ * Exported for use in initialization and testing.
+ */
+export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
+  exposure_time: 10000, // 10ms
+  gain: 0,
+  camera_ip_address: 'mock',
+  gamma: 1.0,
+  brightness: 0.5,
+};

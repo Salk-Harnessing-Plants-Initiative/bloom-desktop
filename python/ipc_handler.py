@@ -357,6 +357,17 @@ def get_camera_instance(settings: Dict[str, Any]) -> Any:
     return _camera_instance
 
 
+def is_camera_open() -> bool:
+    """Check if camera instance exists and is open.
+
+    Uses defensive programming to avoid AttributeError if is_open doesn't exist.
+
+    Returns:
+        True if camera exists and is open, False otherwise
+    """
+    return _camera_instance is not None and getattr(_camera_instance, "is_open", False)
+
+
 def close_camera() -> None:
     """Close the camera instance if it exists."""
     global _camera_instance
@@ -383,12 +394,13 @@ def streaming_worker() -> None:
 
     while _streaming_active.is_set():
         try:
-            if _camera_instance is None or not _camera_instance.is_open:
+            if not is_camera_open():
                 send_error("Camera not available during streaming")
                 break
 
             # Capture frame using base64 method
             frame_start = time.time()
+            assert _camera_instance is not None  # Checked by is_camera_open()
             frame_data = _camera_instance.grab_frame_base64()
             send_frame(frame_data)
 
@@ -480,11 +492,11 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
 
         elif action == "capture":
             # Use existing camera if already connected, otherwise create/connect
-            if _camera_instance is not None and _camera_instance.is_open:
+            if is_camera_open():
                 camera = _camera_instance
             elif settings:
                 camera = get_camera_instance(settings)
-                if not camera.is_open:
+                if not getattr(camera, "is_open", False):
                     camera.open()
             else:
                 raise RuntimeError(
@@ -509,20 +521,33 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
             )
 
         elif action == "configure":
-            # Update camera settings - only works if camera exists
-            if _camera_instance is None:
-                raise RuntimeError("Camera not connected. Call connect() first.")
+            # Update camera settings - auto-connect if not connected
+            if not is_camera_open():
+                # Check if we have enough settings to create a camera instance
+                # Required fields: exposure_time and gain (to construct CameraSettings)
+                if settings and "exposure_time" in settings and "gain" in settings:
+                    # Create and connect camera with provided settings
+                    get_camera_instance(settings)
+                    assert (
+                        _camera_instance is not None
+                    )  # Created by get_camera_instance()
+                    _camera_instance.open()
+                else:
+                    raise RuntimeError(
+                        "Camera not connected. Provide complete settings (exposure_time and gain required) to auto-connect."
+                    )
+            else:
+                # Update only the provided settings on existing camera
+                assert (
+                    _camera_instance is not None
+                )  # In else branch of is_camera_open() check
+                for key, value in settings.items():
+                    if hasattr(_camera_instance.settings, key):
+                        setattr(_camera_instance.settings, key, value)
 
-            # Update only the provided settings
-            for key, value in settings.items():
-                if hasattr(_camera_instance.settings, key):
-                    setattr(_camera_instance.settings, key, value)
-
-            # Re-configure if camera is open
-            if _camera_instance.is_open and hasattr(
-                _camera_instance, "_configure_camera"
-            ):
-                _camera_instance._configure_camera()
+                # Re-configure if camera is open
+                if is_camera_open() and hasattr(_camera_instance, "_configure_camera"):
+                    _camera_instance._configure_camera()
 
             send_data({"success": True, "configured": True})
 
@@ -541,7 +566,7 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
                     return
 
                 # Ensure camera is connected
-                if _camera_instance is None or not _camera_instance.is_open:
+                if not is_camera_open():
                     if settings:
                         camera = get_camera_instance(settings)
                         camera.open()
@@ -584,7 +609,7 @@ def handle_camera_command(cmd: Dict[str, Any]) -> None:
 
         elif action == "status":
             # Get camera status
-            is_connected = _camera_instance is not None and _camera_instance.is_open
+            is_connected = is_camera_open()
             send_data(
                 {
                     "success": True,
