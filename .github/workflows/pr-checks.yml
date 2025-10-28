@@ -47,6 +47,8 @@ jobs:
 
       - name: Generate Prisma Client
         run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
 
       - name: Run ESLint
         run: npm run lint
@@ -99,6 +101,8 @@ jobs:
 
       - name: Generate Prisma Client
         run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
 
       - name: Compile TypeScript
         run: npx tsc --noEmit
@@ -123,9 +127,13 @@ jobs:
 
       - name: Generate Prisma Client
         run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
 
       - name: Run Vitest unit tests with coverage
         run: npm run test:unit:coverage
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
         # Enforces 50% minimum coverage (configured in vitest.config.ts)
 
   # Python tests with coverage
