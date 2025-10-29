@@ -1,8 +1,8 @@
 # Scanner-Database Integration Plan (Issue #53)
 
-**Status**: Planning Complete
+**Status**: ✅ Implementation Complete - Testing Phase
 **Branch**: `elizabeth/scanner-database-integration`
-**Estimated Time**: 4-5 hours
+**Estimated Time**: 4-5 hours (Actual: ~5 hours)
 **Priority**: High
 
 ## Table of Contents
@@ -1056,6 +1056,90 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - [ ] Check Prisma Studio for data
 - [ ] Create PR with comprehensive description
 - [ ] Request review
+
+---
+
+## Implementation Status (Updated 2025-10-29)
+
+### ✅ Completed Phases
+
+**Phase 1: Type Definitions**
+- ✅ Added `ScanMetadata` interface to [src/types/scanner.ts](../src/types/scanner.ts)
+- ✅ Added `metadata` field to `ScannerSettings` (optional)
+- ✅ Added `scan_id` field to `ScanResult` (optional)
+- ✅ Added `metadata` field to Python `ScannerSettings` dataclass
+- ✅ Ensured 100% pilot compatibility
+
+**Phase 2: Scanner Process Integration**
+- ✅ Store scanner settings in instance ([src/main/scanner-process.ts:25](../src/main/scanner-process.ts#L25))
+- ✅ Implemented `saveScanToDatabase` method ([src/main/scanner-process.ts:169](../src/main/scanner-process.ts#L169))
+- ✅ Read image files from disk (more reliable than progress events)
+- ✅ Convert to 1-indexed frame numbers (pilot compatible)
+- ✅ Add error handling (graceful degradation - scan succeeds even if DB fails)
+- ✅ Add success logging with scan_id
+
+**Phase 3: Database Infrastructure**
+- ✅ Added `customPath` parameter to `initializeDatabase()` ([src/main/database.ts:27](../src/main/database.ts#L27))
+- ✅ Fixed test database initialization (use `BLOOM_DATABASE_URL` not `DATABASE_URL`)
+- ✅ Updated [.env.example](../.env.example) with clear documentation
+
+**Phase 5: Integration Tests**
+- ✅ Created comprehensive test file ([tests/integration/test-scanner-database.ts](../tests/integration/test-scanner-database.ts))
+- ✅ Test: Successful scan → Scan record created
+- ✅ Test: Scan without metadata → no database save
+- ✅ Test: Camera settings stored correctly
+- ✅ Test: All metadata fields verified
+- ✅ Added `test:scanner-database` npm script
+- ✅ Added to CI workflow ([.github/workflows/pr-checks.yml](../.github/workflows/pr-checks.yml))
+- ✅ All tests passing ✅
+
+**Documentation**
+- ✅ Created [PILOT_COMPATIBILITY.md](./PILOT_COMPATIBILITY.md) with detailed compatibility verification
+- ✅ Updated [.env.example](../.env.example) with comprehensive comments
+- ✅ Updated this plan document with implementation status
+
+### 🚧 Remaining Work (Not blocking merge)
+
+**Phase 4: UI Integration**
+- [ ] Add metadata form fields to Camera Settings page
+- [ ] Add experiment/phenotyper selection dropdowns
+- [ ] Add plant ID and wave number inputs
+- [ ] Update handleStartScan to pass metadata
+- [ ] Add form validation
+- [ ] Manual UI testing
+
+**Documentation Updates**
+- [ ] Update DATABASE.md with scanner integration examples
+- [ ] Update README.md with new test count
+- [ ] Add code examples for using scanner with metadata
+
+### Key Implementation Details
+
+1. **Database Initialization**: Tests use `initializeDatabase(customPath)` to point to test database
+2. **Schema Application**: Uses `BLOOM_DATABASE_URL` environment variable (matches schema.prisma)
+3. **Image Persistence**: Reads actual files from disk after scan completes (not progress events)
+4. **Frame Indexing**: Converts 0-indexed (internal) to 1-indexed (database) for pilot compatibility
+5. **Nested Create**: Uses Prisma's nested create pattern for atomic Scan + Images creation
+6. **Mock Hardware**: Test accepts 0 images since mock scanner doesn't create files
+
+### Test Results
+
+```bash
+=== Scanner-Database Integration Test ===
+[PASS] Test database schema applied
+[PASS] Created test scientist
+[PASS] Created test phenotyper
+[PASS] Created test experiment
+[PASS] Scanner initialized with metadata
+[PASS] Scan completed successfully
+[PASS] Scan ID returned
+[PASS] Scan found in database
+[PASS] All metadata fields match
+[PASS] Camera settings saved correctly
+[PASS] Database integration working correctly
+[PASS] Scan without metadata does not save to database
+=== All Tests Passed ===
+```
 
 ---
 
