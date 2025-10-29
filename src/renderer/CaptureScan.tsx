@@ -154,9 +154,8 @@ export function CaptureScan() {
     if (!metadata.plantQrCode.trim()) {
       errors.plantQrCode = 'Plant ID is required';
     }
-    if (!metadata.accessionId.trim()) {
-      errors.accessionId = 'Accession ID is required';
-    }
+    // accession_id is optional (matches pilot schema)
+    // No validation needed - empty string will be converted to undefined
 
     return errors;
   };
