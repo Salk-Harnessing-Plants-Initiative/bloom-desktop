@@ -1,0 +1,94 @@
+// Bloom Desktop Database Schema
+// Compatible with bloom-desktop-pilot schema
+// Source: https://github.com/eberrigan/bloom-desktop-pilot/blob/dev/app/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("BLOOM_DATABASE_URL")
+}
+
+model Phenotyper {
+  id    String @id @default(uuid())
+  name  String
+  email String @unique
+  scans Scan[]
+}
+
+model Scientist {
+  id          String       @id @default(uuid())
+  name        String
+  email       String       @unique
+  experiments Experiment[]
+}
+
+model Experiment {
+  id           String      @id @default(uuid())
+  name         String
+  species      String
+  scientist_id String?
+  accession_id String?
+  accession    Accessions? @relation("AccessionToExperiment", fields: [accession_id], references: [id])
+  scientist    Scientist?  @relation(fields: [scientist_id], references: [id])
+  scans        Scan[]
+}
+
+model Accessions {
+  id          String                   @id @default(uuid())
+  name        String
+  createdAt   DateTime                 @default(now())
+  experiments Experiment[]             @relation("AccessionToExperiment")
+  mappings    PlantAccessionMappings[]
+}
+
+model PlantAccessionMappings {
+  id                String     @id @default(uuid())
+  accession_id      String
+  plant_barcode     String
+  accession_file_id String
+  accession         Accessions @relation(fields: [accession_file_id], references: [id])
+}
+
+model Scan {
+  id              String     @id @default(uuid())
+  experiment_id   String
+  phenotyper_id   String
+  scanner_name    String
+  plant_id        String
+  accession_id    String?
+  path            String
+  capture_date    DateTime   @default(now())
+  num_frames      Int
+  exposure_time   Int
+  gain            Float
+  brightness      Float
+  contrast        Float
+  gamma           Float
+  seconds_per_rot Float
+  wave_number     Int
+  plant_age_days  Int
+  deleted         Boolean    @default(false)
+  images          Image[]
+  phenotyper      Phenotyper @relation(fields: [phenotyper_id], references: [id])
+  experiment      Experiment @relation(fields: [experiment_id], references: [id])
+
+  // Performance indexes (non-breaking additions)
+  @@index([experiment_id])
+  @@index([phenotyper_id])
+  @@index([plant_id])
+  @@index([capture_date])
+}
+
+model Image {
+  id           String @id @default(uuid())
+  scan_id      String
+  frame_number Int
+  path         String
+  status       String @default("pending")
+  scan         Scan   @relation(fields: [scan_id], references: [id])
+
+  @@index([scan_id])
+}

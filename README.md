@@ -12,6 +12,7 @@ See [Issue #1](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-deskto
 
 - **Frontend**: Electron + React + TypeScript
 - **Backend**: Python (Basler Pylon cameras + NI-DAQ)
+- **Database**: Prisma ORM + SQLite
 - **Python Management**: uv + pyproject.toml
 - **Distribution**: PyInstaller bundled with Electron
 - **Build System**: Electron Forge + Webpack
@@ -36,20 +37,29 @@ bloom-desktop/
 │   ├── main/             # Electron main process
 │   │   ├── python-process.ts   # Python subprocess manager
 │   │   ├── python-paths.ts     # Path resolution for Python executable
+│   │   ├── database.ts         # Prisma database initialization
+│   │   ├── database-handlers.ts # Database IPC handlers
 │   │   └── preload.ts          # Preload script
 │   ├── renderer/         # React renderer/UI
 │   └── types/            # TypeScript type definitions
+│       └── database.ts   # Database type definitions
 ├── python/               # Python hardware backend
 │   ├── main.py          # Entry point (--ipc or interactive mode)
 │   ├── ipc_handler.py   # IPC command routing
 │   ├── hardware/        # Hardware interfaces (camera, DAQ)
 │   ├── tests/           # Python unit tests (pytest)
 │   └── main.spec        # PyInstaller build configuration
+├── prisma/              # Database schema and migrations
+│   ├── schema.prisma    # Prisma schema (pilot-compatible)
+│   ├── migrations/      # Database migrations
+│   └── seed.ts          # Seed script for test data
 ├── tests/
 │   ├── integration/     # Integration tests
 │   │   ├── test-ipc.ts        # Python ↔ TypeScript IPC test
 │   │   └── test-package.ts    # Packaged app verification
 │   └── unit/            # TypeScript unit tests
+│       ├── path-sanitizer.test.ts # Path sanitization tests
+│       └── database.test.ts       # Database operation tests
 ├── scripts/
 │   └── build-python.js  # Python executable build script
 ├── out/                 # Packaged applications (generated)
@@ -101,6 +111,24 @@ npm run build:python
 npm run test:python
 ```
 
+#### Database
+
+```bash
+# Generate Prisma Client (run after schema changes)
+npm run prisma:generate
+
+# Create and apply database migrations
+npm run prisma:migrate
+
+# Seed database with test data
+npm run prisma:seed
+
+# Open Prisma Studio (visual database browser)
+npm run prisma:studio
+```
+
+For complete database documentation, see [docs/DATABASE.md](docs/DATABASE.md).
+
 #### Testing
 
 ```bash
@@ -121,6 +149,7 @@ npm run test:package
 
 - **Camera**: See [docs/CAMERA_TESTING.md](docs/CAMERA_TESTING.md) for camera testing instructions
 - **DAQ**: See [docs/DAQ_TESTING.md](docs/DAQ_TESTING.md) for DAQ turntable testing instructions
+- **Database**: See [docs/DATABASE.md](docs/DATABASE.md) for database testing instructions
 
 #### Packaging & Distribution
 
@@ -171,6 +200,7 @@ Pilot:                          New:
 
 ### Test Coverage
 
+- **TypeScript Unit Tests**: 48 tests (28 path sanitizer + 20 database)
 - **Python Unit Tests**: 84.5% coverage (78 tests)
 - **Integration Tests**: Python ↔ TypeScript IPC, camera, DAQ, packaged app verification
 - **Target**: 80%+ coverage for all code
@@ -178,6 +208,9 @@ Pilot:                          New:
 ### Running Tests
 
 ```bash
+# TypeScript unit tests (Vitest)
+npm run test:unit
+
 # Python unit tests (pytest)
 npm run test:python
 

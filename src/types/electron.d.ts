@@ -16,6 +16,24 @@ import {
   DAQStatusResponse,
 } from './daq';
 import { ScannerAPI } from './scanner';
+import {
+  DatabaseResponse,
+  ExperimentWithRelations,
+  ScanWithRelations,
+  Experiment,
+  Scan,
+  Phenotyper,
+  Scientist,
+  Accessions,
+  ExperimentCreateData,
+  ExperimentUpdateData,
+  ScanCreateData,
+  PhenotyperCreateData,
+  ScientistCreateData,
+  AccessionCreateData,
+  ImageCreateData,
+  ScanFilters,
+} from './database';
 
 /**
  * Python backend API
@@ -234,6 +252,50 @@ export interface DAQAPI {
 }
 
 /**
+ * Database API
+ */
+export interface DatabaseAPI {
+  experiments: {
+    list: () => Promise<DatabaseResponse<ExperimentWithRelations[]>>;
+    get: (id: string) => Promise<DatabaseResponse<ExperimentWithRelations>>;
+    create: (
+      data: ExperimentCreateData
+    ) => Promise<DatabaseResponse<Experiment>>;
+    update: (
+      id: string,
+      data: ExperimentUpdateData
+    ) => Promise<DatabaseResponse<Experiment>>;
+    delete: (id: string) => Promise<DatabaseResponse>;
+  };
+  scans: {
+    list: (
+      filters?: ScanFilters
+    ) => Promise<DatabaseResponse<ScanWithRelations[]>>;
+    get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
+    create: (data: ScanCreateData) => Promise<DatabaseResponse<Scan>>;
+  };
+  phenotypers: {
+    list: () => Promise<DatabaseResponse<Phenotyper[]>>;
+    create: (
+      data: PhenotyperCreateData
+    ) => Promise<DatabaseResponse<Phenotyper>>;
+  };
+  scientists: {
+    list: () => Promise<DatabaseResponse<Scientist[]>>;
+    create: (data: ScientistCreateData) => Promise<DatabaseResponse<Scientist>>;
+  };
+  accessions: {
+    list: () => Promise<DatabaseResponse<Accessions[]>>;
+    create: (
+      data: AccessionCreateData
+    ) => Promise<DatabaseResponse<Accessions>>;
+  };
+  images: {
+    create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
+  };
+}
+
+/**
  * Main Electron API exposed to renderer
  */
 export interface ElectronAPI {
@@ -241,6 +303,7 @@ export interface ElectronAPI {
   camera: CameraAPI;
   daq: DAQAPI;
   scanner: ScannerAPI;
+  database: DatabaseAPI;
 }
 
 /**

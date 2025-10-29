@@ -17,4 +17,9 @@ export const mainConfig: Configuration = {
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
+  externals: {
+    // Prisma Client needs to be external since it loads native binary engines
+    '.prisma/client': 'commonjs .prisma/client',
+    '@prisma/client': 'commonjs @prisma/client',
+  },
 };
