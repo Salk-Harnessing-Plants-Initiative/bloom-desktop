@@ -130,6 +130,11 @@ jobs:
         env:
           BLOOM_DATABASE_URL: "file:./dev.db"
 
+      - name: Run Prisma migrations
+        run: npx prisma migrate deploy
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
+
       - name: Run Vitest unit tests with coverage
         run: npm run test:unit:coverage
         env:
