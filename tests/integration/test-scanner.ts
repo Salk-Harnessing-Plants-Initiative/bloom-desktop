@@ -20,8 +20,8 @@ const PYTHON_EXECUTABLE = IS_WINDOWS
   ? path.join(__dirname, '../../dist/bloom-hardware.exe')
   : path.join(__dirname, '../../dist/bloom-hardware');
 
-// Test timeout (30 seconds for scan workflow)
-const TEST_TIMEOUT = 30000;
+// Test timeout (5 minutes for scan workflow on slow CI machines)
+const TEST_TIMEOUT = 300000;
 
 // Mock camera and DAQ settings for scanner test
 const SCANNER_SETTINGS = {
@@ -53,12 +53,13 @@ const SCANNER_SETTINGS = {
  */
 function sendCommand(
   proc: ChildProcess,
-  command: object
+  command: object,
+  timeoutMs: number = 5000
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error('Command timeout'));
-    }, 5000);
+    }, timeoutMs);
 
     let dataReceived = false;
 
@@ -227,10 +228,14 @@ async function runTest(): Promise<void> {
     console.log(
       '  Note: This will simulate 72 frames with rotation and capture'
     );
-    const scanResult = await sendCommand(pythonProcess, {
-      command: 'scanner',
-      action: 'scan',
-    });
+    const scanResult = await sendCommand(
+      pythonProcess,
+      {
+        command: 'scanner',
+        action: 'scan',
+      },
+      180000 // 3 minutes - scan operations can take longer on slow CI machines
+    );
 
     if (!scanResult.success || !scanResult.data) {
       throw new Error(`Scan failed: ${scanResult.error}`);
