@@ -284,7 +284,7 @@ export function registerDatabaseHandlers() {
           include: {
             experiment: true,
             phenotyper: true,
-            images: { select: { id: true, status: true } }, // Just count/status, not full image data
+            images: { select: { id: true, status: true } }, // Just id/status, not full image data
           },
           orderBy: { capture_date: 'desc' },
         });
