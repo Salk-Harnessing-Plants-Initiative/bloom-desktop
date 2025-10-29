@@ -221,7 +221,7 @@ export class ScannerProcess extends EventEmitter {
         brightness: cameraSettings.brightness ?? 0,
         contrast: cameraSettings.contrast ?? 1,
         gamma: cameraSettings.gamma ?? 1,
-        seconds_per_rot: settings.daq.seconds_per_rotation,
+        seconds_per_rot: settings.daq.seconds_per_rot,
 
         // Nested image creation (atomic transaction)
         images: {
