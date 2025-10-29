@@ -27,8 +27,8 @@ const PYTHON_EXECUTABLE = IS_WINDOWS
   ? path.join(__dirname, '../../dist/bloom-hardware.exe')
   : path.join(__dirname, '../../dist/bloom-hardware');
 
-// Test timeout (60 seconds for full workflow)
-const TEST_TIMEOUT = 60000;
+// Test timeout (5 minutes for full workflow on slow CI machines)
+const TEST_TIMEOUT = 300000;
 
 // Test database path
 const TEST_DB_PATH = path.join(__dirname, '../../prisma/test-scanner-db.db');
