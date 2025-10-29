@@ -7,7 +7,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 // eslint-disable-next-line import/no-unresolved
-import { PythonAPI, CameraAPI, DAQAPI } from '../types/electron';
+import { PythonAPI, CameraAPI, DAQAPI, DatabaseAPI } from '../types/electron';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -19,6 +19,17 @@ import {
   ScanProgress,
   ScanResult,
 } from '../types/scanner';
+// eslint-disable-next-line import/no-unresolved
+import type {
+  ExperimentCreateData,
+  ExperimentUpdateData,
+  ScanCreateData,
+  PhenotyperCreateData,
+  ScientistCreateData,
+  AccessionCreateData,
+  ImageCreateData,
+  ScanFilters,
+} from '../types/database';
 
 /**
  * Python backend API exposed to renderer
@@ -126,6 +137,47 @@ const scannerAPI: ScannerAPI = {
 };
 
 /**
+ * Database API exposed to renderer
+ */
+const databaseAPI: DatabaseAPI = {
+  experiments: {
+    list: () => ipcRenderer.invoke('db:experiments:list'),
+    get: (id: string) => ipcRenderer.invoke('db:experiments:get', id),
+    create: (data: ExperimentCreateData) =>
+      ipcRenderer.invoke('db:experiments:create', data),
+    update: (id: string, data: ExperimentUpdateData) =>
+      ipcRenderer.invoke('db:experiments:update', id, data),
+    delete: (id: string) => ipcRenderer.invoke('db:experiments:delete', id),
+  },
+  scans: {
+    list: (filters?: ScanFilters) =>
+      ipcRenderer.invoke('db:scans:list', filters),
+    get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
+    create: (data: ScanCreateData) =>
+      ipcRenderer.invoke('db:scans:create', data),
+  },
+  phenotypers: {
+    list: () => ipcRenderer.invoke('db:phenotypers:list'),
+    create: (data: PhenotyperCreateData) =>
+      ipcRenderer.invoke('db:phenotypers:create', data),
+  },
+  scientists: {
+    list: () => ipcRenderer.invoke('db:scientists:list'),
+    create: (data: ScientistCreateData) =>
+      ipcRenderer.invoke('db:scientists:create', data),
+  },
+  accessions: {
+    list: () => ipcRenderer.invoke('db:accessions:list'),
+    create: (data: AccessionCreateData) =>
+      ipcRenderer.invoke('db:accessions:create', data),
+  },
+  images: {
+    create: (data: ImageCreateData[]) =>
+      ipcRenderer.invoke('db:images:create', data),
+  },
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
@@ -133,4 +185,5 @@ contextBridge.exposeInMainWorld('electron', {
   camera: cameraAPI,
   daq: daqAPI,
   scanner: scannerAPI,
+  database: databaseAPI,
 });

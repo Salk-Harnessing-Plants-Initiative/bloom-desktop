@@ -92,3 +92,10 @@ coverage/
 /.serena
 /.claude
 .DS_Store
+
+/generated/prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Database files (production location: ~/.bloom/data/)
+# Note: Production databases are stored outside the repo in user home directory
