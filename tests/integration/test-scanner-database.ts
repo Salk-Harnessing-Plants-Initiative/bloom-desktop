@@ -55,7 +55,7 @@ const createScannerSettings = (metadata: {
     dir_pin: 1,
     steps_per_revolution: 6400,
     num_frames: 36,  // Use fewer frames for faster testing
-    seconds_per_rotation: 18.0,
+    seconds_per_rot: 18.0,
   },
   num_frames: 36,
   output_path: './test-scans',
@@ -64,7 +64,7 @@ const createScannerSettings = (metadata: {
     phenotyper_id: metadata.phenotyper_id,
     scanner_name: 'TestScanner-01',
     plant_id: 'TEST-PLANT-001',
-    accession_id: undefined,
+    // accession_id is optional, omit it
     plant_age_days: 14,
     wave_number: 1,
   },
