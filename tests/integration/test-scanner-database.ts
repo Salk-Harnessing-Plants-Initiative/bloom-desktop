@@ -94,12 +94,20 @@ async function setupTestDatabase(): Promise<{
 
   console.log('[INFO] Initializing test database...');
 
-  // Run migrations programmatically
-  execSync(`DATABASE_URL="${TEST_DB_URL}" npx prisma migrate deploy`, {
+  // Apply schema to test database using db push
+  // This is Prisma's recommended approach for test databases:
+  // - Directly applies schema.prisma to test DB
+  // - Doesn't require migration files
+  // - Isolated from production database
+  execSync(`npx prisma db push --skip-generate`, {
     stdio: 'inherit',
+    env: {
+      ...process.env,
+      DATABASE_URL: TEST_DB_URL,
+    },
   });
 
-  console.log('[PASS] Test database migrations applied');
+  console.log('[PASS] Test database schema applied');
 
   // Create test scientist
   const scientist = await prisma.scientist.create({
