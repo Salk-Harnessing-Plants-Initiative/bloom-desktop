@@ -54,7 +54,7 @@ const createScannerSettings = (metadata: {
     step_pin: 0,
     dir_pin: 1,
     steps_per_revolution: 6400,
-    num_frames: 36,  // Use fewer frames for faster testing
+    num_frames: 36, // Use fewer frames for faster testing
     seconds_per_rot: 18.0,
   },
   num_frames: 36,
@@ -95,10 +95,9 @@ async function setupTestDatabase(): Promise<{
   console.log('[INFO] Initializing test database...');
 
   // Run migrations programmatically
-  execSync(
-    `DATABASE_URL="${TEST_DB_URL}" npx prisma migrate deploy`,
-    { stdio: 'inherit' }
-  );
+  execSync(`DATABASE_URL="${TEST_DB_URL}" npx prisma migrate deploy`, {
+    stdio: 'inherit',
+  });
 
   console.log('[PASS] Test database migrations applied');
 
@@ -284,12 +283,16 @@ async function runTest(): Promise<void> {
     // Verify image frame numbers are 1-indexed (pilot compatible)
     const firstImage = savedScan.images.find((img) => img.frame_number === 1);
     if (!firstImage) {
-      throw new Error('First image with frame_number=1 not found (1-indexed expected)');
+      throw new Error(
+        'First image with frame_number=1 not found (1-indexed expected)'
+      );
     }
     console.log('[PASS] Images use 1-indexed frame numbers (pilot compatible)');
 
     // Verify all images have CAPTURED status
-    const allCaptured = savedScan.images.every((img) => img.status === 'CAPTURED');
+    const allCaptured = savedScan.images.every(
+      (img) => img.status === 'CAPTURED'
+    );
     if (!allCaptured) {
       throw new Error('Not all images have CAPTURED status');
     }

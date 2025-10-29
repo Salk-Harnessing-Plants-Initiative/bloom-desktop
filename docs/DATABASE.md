@@ -597,13 +597,13 @@ The scanner automatically persists scan metadata and captured images to the data
 
 ```typescript
 interface ScanMetadata {
-  experiment_id: string;        // Required: Experiment this scan belongs to
-  phenotyper_id: string;        // Required: Person performing the scan
-  scanner_name: string;         // Required: Scanner hardware identifier
-  plant_id: string;             // Required: Plant identifier (barcode, QR, etc.)
-  accession_id?: string;        // Optional: Accession if known
-  plant_age_days: number;       // Required: Plant age in days
-  wave_number: number;          // Required: Time point (1-4 typically)
+  experiment_id: string; // Required: Experiment this scan belongs to
+  phenotyper_id: string; // Required: Person performing the scan
+  scanner_name: string; // Required: Scanner hardware identifier
+  plant_id: string; // Required: Plant identifier (barcode, QR, etc.)
+  accession_id?: string; // Optional: Accession if known
+  plant_age_days: number; // Required: Plant age in days
+  wave_number: number; // Required: Time point (1-4 typically)
 }
 ```
 
@@ -678,6 +678,7 @@ await prisma.scan.create({
 ```
 
 **Benefits:**
+
 - ✅ Atomic transaction (all-or-nothing)
 - ✅ No orphaned images if scan save fails
 - ✅ Pilot-compatible approach
@@ -699,6 +700,7 @@ npm run test:scanner-database
 ```
 
 **Test Coverage:**
+
 - ✅ Initialize database with test records
 - ✅ Perform scan with metadata
 - ✅ Verify scan saved to database

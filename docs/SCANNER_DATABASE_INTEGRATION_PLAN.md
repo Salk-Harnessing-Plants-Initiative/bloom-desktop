@@ -6,6 +6,7 @@
 **Priority**: High
 
 ## Table of Contents
+
 1. [Overview](#overview)
 2. [Current State](#current-state)
 3. [Goals](#goals)
@@ -20,12 +21,14 @@
 ## Overview
 
 Integrate the Scanner process with the database to automatically persist scan metadata and image records after each scan completes. This enables:
+
 - Scan history tracking
 - Association with experiments and phenotypers
 - Foundation for BrowseScans UI
 - Data persistence for research workflows
 
 **Dependencies:**
+
 - ✅ PR #52 (Database setup) - MERGED
 - ✅ PR #48 (Scanner implementation) - MERGED
 
@@ -34,6 +37,7 @@ Integrate the Scanner process with the database to automatically persist scan me
 ## Current State
 
 ### What We Have ✅
+
 - Database infrastructure with Prisma + SQLite
 - 15 database IPC handlers (experiments, scans, images, etc.)
 - Scanner backend (captures images via camera + DAQ)
@@ -41,6 +45,7 @@ Integrate the Scanner process with the database to automatically persist scan me
 - Scan and Image models in database schema (100% pilot-compatible)
 
 ### What's Missing ❌
+
 - Scanner doesn't persist data to database
 - No metadata collection (experiment_id, phenotyper_id, plant_id, wave_number, plant_age_days)
 - UI doesn't pass context to scanner
@@ -50,6 +55,7 @@ Integrate the Scanner process with the database to automatically persist scan me
 ### Scanner Analysis
 
 **Current Scanner Flow:**
+
 ```
 UI calls scanner:initialize(settings)
   → Scanner configures camera + DAQ
@@ -61,6 +67,7 @@ UI calls scanner:initialize(settings)
 ```
 
 **Scanner Capabilities:**
+
 - ✅ Captures images and saves to disk
 - ✅ Returns image paths via ScanProgress events
 - ✅ Provides scan completion status
@@ -130,30 +137,31 @@ UI calls scanner:initialize(settings)
 **Analyzed from**: `bloom-desktop-pilot/app/src/main/prismastore.ts`
 
 **Exact pilot code for addScan**:
+
 ```typescript
 addScan = async (scan: Scan) => {
   const scanMetadata = parseCaptureDate(scan.metadata) as ScanMetadataParsed;
 
-  console.log("Adding scan to PrismaStore:", JSON.stringify(scan.metadata));
+  console.log('Adding scan to PrismaStore:', JSON.stringify(scan.metadata));
 
   // Map image paths to image objects
   const images = scan.images.map((path, index) => {
     return {
       id: uuidv4(),
       path,
-      frame_number: index + 1,  // 1-indexed in pilot!
-      status: "CAPTURED",
+      frame_number: index + 1, // 1-indexed in pilot!
+      status: 'CAPTURED',
     };
   });
 
   // Nested create - atomic transaction
   const newScan = await this.prisma.scan.create({
     data: {
-      ...scanMetadata,  // Spread all scan fields
-      images: { create: images }  // Nested image creation
+      ...scanMetadata, // Spread all scan fields
+      images: { create: images }, // Nested image creation
     },
   });
-}
+};
 ```
 
 **Key patterns we will adopt**:
@@ -179,6 +187,7 @@ addScan = async (scan: Scan) => {
    - Use JSON.stringify for metadata
 
 **Differences from pilot**:
+
 - Pilot: `frame_number` starts at 1
 - Ours: `frame_number` starts at 0 (matches scanner progress events)
 - Pilot: Uses `scanner_id` (string)
@@ -197,6 +206,7 @@ addScan = async (scan: Scan) => {
 ### Database Schema (from PR #52)
 
 **Scan Table** (all fields required except accession_id):
+
 ```prisma
 model Scan {
   id              String     @id @default(uuid())
@@ -224,6 +234,7 @@ model Scan {
 ```
 
 **Image Table**:
+
 ```prisma
 model Image {
   id           String  @id @default(uuid())
@@ -244,37 +255,40 @@ model Image {
 **File**: `src/types/scanner.ts`
 
 **Add ScanMetadata interface**:
+
 ```typescript
 export interface ScanMetadata {
-  experiment_id: string
-  phenotyper_id: string
-  plant_id: string
-  scanner_name: string
-  wave_number: number
-  plant_age_days: number
-  accession_id?: string  // Optional
+  experiment_id: string;
+  phenotyper_id: string;
+  plant_id: string;
+  scanner_name: string;
+  wave_number: number;
+  plant_age_days: number;
+  accession_id?: string; // Optional
 }
 ```
 
 **Update ScannerSettings**:
+
 ```typescript
 export interface ScannerSettings {
-  camera: CameraSettings
-  daq: DAQSettings
-  num_frames?: number
-  output_path?: string
-  metadata: ScanMetadata  // NEW - required
+  camera: CameraSettings;
+  daq: DAQSettings;
+  num_frames?: number;
+  output_path?: string;
+  metadata: ScanMetadata; // NEW - required
 }
 ```
 
 **Update ScanResult**:
+
 ```typescript
 export interface ScanResult {
-  success: boolean
-  frames_captured: number
-  output_path: string
-  error?: string
-  scan_id?: string  // NEW - database ID after save
+  success: boolean;
+  frames_captured: number;
+  output_path: string;
+  error?: string;
+  scan_id?: string; // NEW - database ID after save
 }
 ```
 
@@ -289,12 +303,14 @@ export interface ScanResult {
 **Changes**:
 
 1. **Import database**:
+
 ```typescript
-import { getDatabase } from './database'
-import type { Prisma } from '@prisma/client'
+import { getDatabase } from './database';
+import type { Prisma } from '@prisma/client';
 ```
 
 2. **Store settings and progress**:
+
 ```typescript
 export class ScannerProcess extends EventEmitter {
   private settings?: ScannerSettings
@@ -318,6 +334,7 @@ export class ScannerProcess extends EventEmitter {
 ```
 
 3. **Add database save method**:
+
 ```typescript
 async scan(): Promise<ScanResult> {
   const result = await this.pythonProcess.sendCommand({
@@ -392,6 +409,7 @@ private async saveScanToDatabase(result: ScanResult): Promise<string> {
 ```
 
 **Testing**:
+
 - Unit test: Mock database, verify correct data structure
 - Error handling: DB failure doesn't crash scanner
 
@@ -402,19 +420,23 @@ private async saveScanToDatabase(result: ScanResult): Promise<string> {
 **File**: `src/types/electron.d.ts`
 
 **Update ScannerAPI**:
+
 ```typescript
 export interface ScannerAPI {
-  initialize: (settings: ScannerSettings) => Promise<{ success: boolean; initialized: boolean }>
-  scan: () => Promise<ScanResult>  // Now includes scan_id
-  cleanup: () => Promise<{ success: boolean; initialized: boolean }>
-  getStatus: () => Promise<ScannerStatus>
-  onProgress: (callback: (progress: ScanProgress) => void) => void
-  onComplete: (callback: (result: ScanResult) => void) => void
-  onError: (callback: (error: string) => void) => void
+  initialize: (
+    settings: ScannerSettings
+  ) => Promise<{ success: boolean; initialized: boolean }>;
+  scan: () => Promise<ScanResult>; // Now includes scan_id
+  cleanup: () => Promise<{ success: boolean; initialized: boolean }>;
+  getStatus: () => Promise<ScannerStatus>;
+  onProgress: (callback: (progress: ScanProgress) => void) => void;
+  onComplete: (callback: (result: ScanResult) => void) => void;
+  onError: (callback: (error: string) => void) => void;
 }
 ```
 
 **No changes needed**:
+
 - `src/main/main.ts` - IPC handler already passes full settings
 - `src/main/preload.ts` - Already exposes scanner.initialize(settings)
 
@@ -530,6 +552,7 @@ const handleStartScan = async () => {
 ```
 
 **Note**: This is a temporary UI. Future PRs will add:
+
 - Experiment dropdown/selection
 - Automatic phenotyper_id from logged-in user
 - Plant barcode scanner
@@ -546,50 +569,50 @@ const handleStartScan = async () => {
 **Create comprehensive test suite**:
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { PrismaClient } from '@prisma/client'
-import { ScannerProcess } from '../../src/main/scanner-process'
-import { PythonProcess } from '../../src/main/python-process'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { PrismaClient } from '@prisma/client';
+import { ScannerProcess } from '../../src/main/scanner-process';
+import { PythonProcess } from '../../src/main/python-process';
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
 async function cleanDatabase() {
-  await prisma.image.deleteMany()
-  await prisma.scan.deleteMany()
+  await prisma.image.deleteMany();
+  await prisma.scan.deleteMany();
   // Don't delete experiments/phenotypers - they're test fixtures
 }
 
 describe('Scanner-Database Integration', () => {
-  let scanner: ScannerProcess
-  let pythonProcess: PythonProcess
-  let testExperimentId: string
-  let testPhenotyperId: string
+  let scanner: ScannerProcess;
+  let pythonProcess: PythonProcess;
+  let testExperimentId: string;
+  let testPhenotyperId: string;
 
   beforeEach(async () => {
-    await cleanDatabase()
+    await cleanDatabase();
 
     // Create test fixtures
     const experiment = await prisma.experiment.create({
-      data: { name: 'Test Experiment', species: 'Arabidopsis' }
-    })
-    testExperimentId = experiment.id
+      data: { name: 'Test Experiment', species: 'Arabidopsis' },
+    });
+    testExperimentId = experiment.id;
 
     const phenotyper = await prisma.phenotyper.create({
-      data: { name: 'Test Phenotyper', email: 'test@example.com' }
-    })
-    testPhenotyperId = phenotyper.id
+      data: { name: 'Test Phenotyper', email: 'test@example.com' },
+    });
+    testPhenotyperId = phenotyper.id;
 
     // Initialize scanner
-    pythonProcess = new PythonProcess()
-    await pythonProcess.start()
-    scanner = new ScannerProcess(pythonProcess)
-  })
+    pythonProcess = new PythonProcess();
+    await pythonProcess.start();
+    scanner = new ScannerProcess(pythonProcess);
+  });
 
   afterEach(async () => {
-    await scanner.cleanup()
-    await pythonProcess.stop()
-    await cleanDatabase()
-  })
+    await scanner.cleanup();
+    await pythonProcess.stop();
+    await cleanDatabase();
+  });
 
   it('should create Scan record after successful scan', async () => {
     await scanner.initialize({
@@ -614,88 +637,92 @@ describe('Scanner-Database Integration', () => {
         scanner_name: 'test-scanner',
         wave_number: 1,
         plant_age_days: 30,
-      }
-    })
+      },
+    });
 
-    const result = await scanner.scan()
+    const result = await scanner.scan();
 
-    expect(result.success).toBe(true)
-    expect(result.scan_id).toBeDefined()
+    expect(result.success).toBe(true);
+    expect(result.scan_id).toBeDefined();
 
     // Verify Scan record
     const scan = await prisma.scan.findUnique({
       where: { id: result.scan_id },
-      include: { images: true, experiment: true, phenotyper: true }
-    })
+      include: { images: true, experiment: true, phenotyper: true },
+    });
 
-    expect(scan).toBeDefined()
-    expect(scan!.plant_id).toBe('TEST-PLANT-001')
-    expect(scan!.wave_number).toBe(1)
-    expect(scan!.plant_age_days).toBe(30)
-    expect(scan!.num_frames).toBe(72)
-    expect(scan!.exposure_time).toBe(10000)
-    expect(scan!.experiment.name).toBe('Test Experiment')
-    expect(scan!.phenotyper.email).toBe('test@example.com')
-  })
+    expect(scan).toBeDefined();
+    expect(scan!.plant_id).toBe('TEST-PLANT-001');
+    expect(scan!.wave_number).toBe(1);
+    expect(scan!.plant_age_days).toBe(30);
+    expect(scan!.num_frames).toBe(72);
+    expect(scan!.exposure_time).toBe(10000);
+    expect(scan!.experiment.name).toBe('Test Experiment');
+    expect(scan!.phenotyper.email).toBe('test@example.com');
+  });
 
   it('should create 72 Image records with correct frame_numbers', async () => {
     // ... initialize and scan
 
-    const result = await scanner.scan()
+    const result = await scanner.scan();
 
     const images = await prisma.image.findMany({
       where: { scan_id: result.scan_id },
-      orderBy: { frame_number: 'asc' }
-    })
+      orderBy: { frame_number: 'asc' },
+    });
 
-    expect(images).toHaveLength(72)
+    expect(images).toHaveLength(72);
 
     images.forEach((img, idx) => {
-      expect(img.frame_number).toBe(idx)
-      expect(img.status).toBe('completed')
-      expect(img.path).toContain('.tiff')
-    })
-  })
+      expect(img.frame_number).toBe(idx);
+      expect(img.status).toBe('completed');
+      expect(img.path).toContain('.tiff');
+    });
+  });
 
   it('should not create database records if scan fails', async () => {
     // Mock scanner to fail
     jest.spyOn(pythonProcess, 'sendCommand').mockResolvedValueOnce({
       success: false,
-      error: 'Mock scanner failure'
-    })
+      error: 'Mock scanner failure',
+    });
 
-    const initialScanCount = await prisma.scan.count()
-    const initialImageCount = await prisma.image.count()
+    const initialScanCount = await prisma.scan.count();
+    const initialImageCount = await prisma.image.count();
 
-    await scanner.initialize({ /* settings */ })
-    const result = await scanner.scan()
+    await scanner.initialize({
+      /* settings */
+    });
+    const result = await scanner.scan();
 
-    expect(result.success).toBe(false)
-    expect(result.scan_id).toBeUndefined()
+    expect(result.success).toBe(false);
+    expect(result.scan_id).toBeUndefined();
 
-    const finalScanCount = await prisma.scan.count()
-    const finalImageCount = await prisma.image.count()
+    const finalScanCount = await prisma.scan.count();
+    const finalImageCount = await prisma.image.count();
 
-    expect(finalScanCount).toBe(initialScanCount)
-    expect(finalImageCount).toBe(initialImageCount)
-  })
+    expect(finalScanCount).toBe(initialScanCount);
+    expect(finalImageCount).toBe(initialImageCount);
+  });
 
   it('should handle database failure gracefully', async () => {
     // Mock database to fail
-    jest.spyOn(prisma.scan, 'create').mockRejectedValueOnce(
-      new Error('Mock database error')
-    )
+    jest
+      .spyOn(prisma.scan, 'create')
+      .mockRejectedValueOnce(new Error('Mock database error'));
 
-    await scanner.initialize({ /* settings */ })
-    const result = await scanner.scan()
+    await scanner.initialize({
+      /* settings */
+    });
+    const result = await scanner.scan();
 
     // Scan reports success even if DB fails
-    expect(result.success).toBe(true)
-    expect(result.scan_id).toBeUndefined()
+    expect(result.success).toBe(true);
+    expect(result.scan_id).toBeUndefined();
 
     // Check console.error was called
     // (requires spy on console.error)
-  })
+  });
 
   it('should store all camera settings correctly', async () => {
     const cameraSettings = {
@@ -705,31 +732,39 @@ describe('Scanner-Database Integration', () => {
       contrast: 1.3,
       gamma: 0.9,
       camera_ip_address: 'mock',
-    }
+    };
 
     await scanner.initialize({
       camera: cameraSettings,
-      daq: { /* daq settings */ },
-      metadata: { /* metadata */ }
-    })
+      daq: {
+        /* daq settings */
+      },
+      metadata: {
+        /* metadata */
+      },
+    });
 
-    const result = await scanner.scan()
+    const result = await scanner.scan();
     const scan = await prisma.scan.findUnique({
-      where: { id: result.scan_id }
-    })
+      where: { id: result.scan_id },
+    });
 
-    expect(scan!.exposure_time).toBe(15000)
-    expect(scan!.gain).toBe(10)
-    expect(scan!.brightness).toBe(0.7)
-    expect(scan!.contrast).toBe(1.3)
-    expect(scan!.gamma).toBe(0.9)
-  })
+    expect(scan!.exposure_time).toBe(15000);
+    expect(scan!.gain).toBe(10);
+    expect(scan!.brightness).toBe(0.7);
+    expect(scan!.contrast).toBe(1.3);
+    expect(scan!.gamma).toBe(0.9);
+  });
 
   it('should handle optional accession_id', async () => {
     // Test with accession
     await scanner.initialize({
-      camera: { /* camera */ },
-      daq: { /* daq */ },
+      camera: {
+        /* camera */
+      },
+      daq: {
+        /* daq */
+      },
       metadata: {
         experiment_id: testExperimentId,
         phenotyper_id: testPhenotyperId,
@@ -737,38 +772,41 @@ describe('Scanner-Database Integration', () => {
         scanner_name: 'scanner-01',
         wave_number: 1,
         plant_age_days: 15,
-        accession_id: 'ACC-123',  // Optional field
-      }
-    })
+        accession_id: 'ACC-123', // Optional field
+      },
+    });
 
-    const result = await scanner.scan()
+    const result = await scanner.scan();
     const scan = await prisma.scan.findUnique({
-      where: { id: result.scan_id }
-    })
+      where: { id: result.scan_id },
+    });
 
-    expect(scan!.accession_id).toBe('ACC-123')
-  })
+    expect(scan!.accession_id).toBe('ACC-123');
+  });
 
   it('should set capture_date to current time', async () => {
-    const beforeScan = new Date()
+    const beforeScan = new Date();
 
-    await scanner.initialize({ /* settings */ })
-    const result = await scanner.scan()
+    await scanner.initialize({
+      /* settings */
+    });
+    const result = await scanner.scan();
 
-    const afterScan = new Date()
+    const afterScan = new Date();
 
     const scan = await prisma.scan.findUnique({
-      where: { id: result.scan_id }
-    })
+      where: { id: result.scan_id },
+    });
 
-    const captureDate = new Date(scan!.capture_date)
-    expect(captureDate.getTime()).toBeGreaterThanOrEqual(beforeScan.getTime())
-    expect(captureDate.getTime()).toBeLessThanOrEqual(afterScan.getTime())
-  })
-})
+    const captureDate = new Date(scan!.capture_date);
+    expect(captureDate.getTime()).toBeGreaterThanOrEqual(beforeScan.getTime());
+    expect(captureDate.getTime()).toBeLessThanOrEqual(afterScan.getTime());
+  });
+});
 ```
 
 **Add to package.json**:
+
 ```json
 "scripts": {
   "test:scanner-db": "npm run build:python && vitest run tests/integration/test-scanner-database.ts"
@@ -776,6 +814,7 @@ describe('Scanner-Database Integration', () => {
 ```
 
 **Testing Goals**:
+
 - ✅ 7+ test scenarios
 - ✅ All scenarios pass
 - ✅ Coverage for success, failure, edge cases
@@ -799,32 +838,32 @@ When initializing the scanner, you must provide metadata:
 
 \`\`\`typescript
 await window.electron.scanner.initialize({
-  camera: {
-    exposure_time: 10000,
-    gain: 0,
-    camera_ip_address: '10.0.0.45',
-    brightness: 0.5,
-    contrast: 1.0,
-    gamma: 1.0,
-  },
-  daq: {
-    device_name: 'cDAQ1Mod1',
-    sampling_rate: 1000,
-    step_pin: 0,
-    dir_pin: 1,
-    steps_per_revolution: 200,
-    num_frames: 72,
-    seconds_per_rot: 60,
-  },
-  metadata: {
-    experiment_id: 'uuid-of-experiment',      // Required
-    phenotyper_id: 'uuid-of-phenotyper',      // Required
-    plant_id: 'PLANT-001',                    // Required
-    scanner_name: 'scanner-01',               // Required
-    wave_number: 1,                           // Required
-    plant_age_days: 30,                       // Required
-    accession_id: 'optional-uuid',            // Optional
-  }
+camera: {
+exposure_time: 10000,
+gain: 0,
+camera_ip_address: '10.0.0.45',
+brightness: 0.5,
+contrast: 1.0,
+gamma: 1.0,
+},
+daq: {
+device_name: 'cDAQ1Mod1',
+sampling_rate: 1000,
+step_pin: 0,
+dir_pin: 1,
+steps_per_revolution: 200,
+num_frames: 72,
+seconds_per_rot: 60,
+},
+metadata: {
+experiment_id: 'uuid-of-experiment', // Required
+phenotyper_id: 'uuid-of-phenotyper', // Required
+plant_id: 'PLANT-001', // Required
+scanner_name: 'scanner-01', // Required
+wave_number: 1, // Required
+plant_age_days: 30, // Required
+accession_id: 'optional-uuid', // Optional
+}
 })
 \`\`\`
 
@@ -836,16 +875,16 @@ The scan result includes the database record ID:
 const result = await window.electron.scanner.scan()
 
 if (result.success && result.scan_id) {
-  console.log('Scan saved with ID:', result.scan_id)
+console.log('Scan saved with ID:', result.scan_id)
 
-  // Fetch full scan record with images
-  const response = await window.electron.database.scans.get(result.scan_id)
+// Fetch full scan record with images
+const response = await window.electron.database.scans.get(result.scan_id)
 
-  if (response.success) {
-    console.log(`Scan has ${response.data.images.length} images`)
-    console.log('Experiment:', response.data.experiment.name)
-    console.log('Phenotyper:', response.data.phenotyper.name)
-  }
+if (response.success) {
+console.log(`Scan has ${response.data.images.length} images`)
+console.log('Experiment:', response.data.experiment.name)
+console.log('Phenotyper:', response.data.phenotyper.name)
+}
 }
 \`\`\`
 
@@ -863,6 +902,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 **File**: `README.md`
 
 **Update test count**:
+
 ```markdown
 - **TypeScript Unit Tests**: 48 tests (path sanitizer + database)
 - **TypeScript Integration Tests**: 7+ tests (scanner-database)
@@ -873,11 +913,13 @@ Navigate to the Scan table to see all captured scans with their metadata.
 ## Testing Strategy
 
 ### Unit Tests
+
 - Scanner process methods (saveScanToDatabase)
 - Correct Prisma data structure
 - Error handling (missing settings, DB failures)
 
 ### Integration Tests (7+ scenarios)
+
 1. ✅ Successful scan creates Scan + Images
 2. ✅ 72 Image records with correct frame_numbers
 3. ✅ All metadata fields populated correctly
@@ -888,6 +930,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 8. ✅ capture_date set to current time
 
 ### Manual Tests
+
 - Run scan with mock camera
 - Fill metadata form in UI
 - Check Prisma Studio for records
@@ -899,13 +942,13 @@ Navigate to the Scan table to see all captured scans with their metadata.
 
 ## Risk Mitigation
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Database write slows scan | Medium | Write happens AFTER scan completes, doesn't block |
-| Missing metadata breaks scan | High | TypeScript enforces required fields, UI validation |
-| Partial data on crash | Low | Scan succeeds independently; DB failure logged |
-| UI changes break tests | Medium | Tests use programmatic API, not UI |
-| Increased test time | Low | Integration tests run separately from unit tests |
+| Risk                         | Impact | Mitigation                                         |
+| ---------------------------- | ------ | -------------------------------------------------- |
+| Database write slows scan    | Medium | Write happens AFTER scan completes, doesn't block  |
+| Missing metadata breaks scan | High   | TypeScript enforces required fields, UI validation |
+| Partial data on crash        | Low    | Scan succeeds independently; DB failure logged     |
+| UI changes break tests       | Medium | Tests use programmatic API, not UI                 |
+| Increased test time          | Low    | Integration tests run separately from unit tests   |
 
 ---
 
@@ -929,9 +972,11 @@ Navigate to the Scan table to see all captured scans with their metadata.
 ## Files to Create/Modify
 
 ### Create
+
 - `tests/integration/test-scanner-database.ts` - Integration test suite
 
 ### Modify
+
 - `src/types/scanner.ts` - Add ScanMetadata, update ScannerSettings/ScanResult
 - `src/main/scanner-process.ts` - Add database write logic (saveScanToDatabase)
 - `src/types/electron.d.ts` - Update ScanResult type in API
@@ -941,6 +986,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - `package.json` - Add test:scanner-db script
 
 ### No Changes Needed
+
 - `src/main/main.ts` - IPC handler already correct
 - `src/main/preload.ts` - Already passes settings through
 - `prisma/schema.prisma` - Schema already correct
@@ -950,12 +996,14 @@ Navigate to the Scan table to see all captured scans with their metadata.
 ## Implementation Checklist
 
 ### Phase 1: Types (30 min)
+
 - [ ] Add ScanMetadata interface
 - [ ] Update ScannerSettings with metadata field
 - [ ] Update ScanResult with scan_id field
 - [ ] Verify TypeScript compilation
 
 ### Phase 2: Scanner Process (1-1.5 hours)
+
 - [ ] Import database functions
 - [ ] Store settings in scanner instance
 - [ ] Collect progress events
@@ -965,11 +1013,13 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - [ ] Test with mock database
 
 ### Phase 3: Type Definitions (15 min)
+
 - [ ] Update electron.d.ts ScannerAPI
 - [ ] Verify no other type changes needed
 - [ ] Verify TypeScript compilation
 
 ### Phase 4: UI (30 min)
+
 - [ ] Add metadata state
 - [ ] Add metadata form fields
 - [ ] Update handleStartScan to pass metadata
@@ -977,6 +1027,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - [ ] Manual test with UI
 
 ### Phase 5: Integration Tests (1.5 hours)
+
 - [ ] Create test file
 - [ ] Setup/teardown with clean database
 - [ ] Test: Successful scan → Scan + Images created
@@ -990,12 +1041,14 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - [ ] All tests pass
 
 ### Phase 6: Documentation (30 min)
+
 - [ ] Update DATABASE.md with scanner integration
 - [ ] Update README.md test count
 - [ ] Add code examples
 - [ ] Review for clarity
 
 ### Final Steps
+
 - [ ] Run all tests (npm run test:unit && npm run test:scanner-db)
 - [ ] Run lint (npm run lint)
 - [ ] Run format (npm run format)
@@ -1047,7 +1100,6 @@ Navigate to the Scan table to see all captured scans with their metadata.
 **Author**: Elizabeth Berrigan + Claude Code
 **Status**: Ready for Implementation
 
-
 ## Pilot Pattern Update (Added 2025-10-28)
 
 After reviewing the pilot implementation, we will use **Prisma's nested create** for atomic Scan + Images creation:
@@ -1058,11 +1110,10 @@ const scan = await db.scan.create({
   data: {
     ...scanFields,
     images: {
-      create: imagesArray  // Creates all images atomically with scan
-    }
-  }
-})
+      create: imagesArray, // Creates all images atomically with scan
+    },
+  },
+});
 ```
 
 This provides better atomicity - either all records are created or none are (transaction-like behavior).
-

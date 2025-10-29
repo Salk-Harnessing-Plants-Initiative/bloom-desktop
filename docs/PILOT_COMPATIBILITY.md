@@ -11,28 +11,29 @@ This document verifies backwards compatibility between bloom-desktop and bloom-d
 
 All fields match pilot schema exactly:
 
-| Field | Type | Pilot | Ours | Notes |
-|-------|------|-------|------|-------|
-| `id` | String | ✅ | ✅ | UUID primary key |
-| `experiment_id` | String | ✅ | ✅ | Foreign key |
-| `phenotyper_id` | String | ✅ | ✅ | Foreign key |
-| `scanner_name` | String | ✅ | ✅ | Hardware identifier |
-| `plant_id` | String | ✅ | ✅ | Plant identifier |
-| `accession_id` | String? | ✅ | ✅ | Optional |
-| `path` | String | ✅ | ✅ | Directory path |
-| `capture_date` | DateTime | ✅ | ✅ | Auto-generated |
-| `num_frames` | Int | ✅ | ✅ | Frame count |
-| `exposure_time` | Int | ✅ | ✅ | Microseconds |
-| `gain` | Float | ✅ | ✅ | Camera gain |
-| `brightness` | Float | ✅ | ✅ | Camera brightness |
-| `contrast` | Float | ✅ | ✅ | Camera contrast |
-| `gamma` | Float | ✅ | ✅ | Camera gamma |
-| `seconds_per_rot` | Float | ✅ | ✅ | Rotation speed |
-| `wave_number` | Int | ✅ | ✅ | Time point |
-| `plant_age_days` | Int | ✅ | ✅ | Plant age |
-| `deleted` | Boolean | ✅ | ✅ | Soft delete flag |
+| Field             | Type     | Pilot | Ours | Notes               |
+| ----------------- | -------- | ----- | ---- | ------------------- |
+| `id`              | String   | ✅    | ✅   | UUID primary key    |
+| `experiment_id`   | String   | ✅    | ✅   | Foreign key         |
+| `phenotyper_id`   | String   | ✅    | ✅   | Foreign key         |
+| `scanner_name`    | String   | ✅    | ✅   | Hardware identifier |
+| `plant_id`        | String   | ✅    | ✅   | Plant identifier    |
+| `accession_id`    | String?  | ✅    | ✅   | Optional            |
+| `path`            | String   | ✅    | ✅   | Directory path      |
+| `capture_date`    | DateTime | ✅    | ✅   | Auto-generated      |
+| `num_frames`      | Int      | ✅    | ✅   | Frame count         |
+| `exposure_time`   | Int      | ✅    | ✅   | Microseconds        |
+| `gain`            | Float    | ✅    | ✅   | Camera gain         |
+| `brightness`      | Float    | ✅    | ✅   | Camera brightness   |
+| `contrast`        | Float    | ✅    | ✅   | Camera contrast     |
+| `gamma`           | Float    | ✅    | ✅   | Camera gamma        |
+| `seconds_per_rot` | Float    | ✅    | ✅   | Rotation speed      |
+| `wave_number`     | Int      | ✅    | ✅   | Time point          |
+| `plant_age_days`  | Int      | ✅    | ✅   | Plant age           |
+| `deleted`         | Boolean  | ✅    | ✅   | Soft delete flag    |
 
 **Relationships:**
+
 - ✅ `phenotyper` → Phenotyper
 - ✅ `experiment` → Experiment
 - ✅ `images` → Image[]
@@ -41,15 +42,16 @@ All fields match pilot schema exactly:
 
 All fields match pilot schema exactly:
 
-| Field | Type | Pilot | Ours | Notes |
-|-------|------|-------|------|-------|
-| `id` | String | ✅ | ✅ | UUID primary key |
-| `scan_id` | String | ✅ | ✅ | Foreign key |
-| `frame_number` | Int | ✅ | ✅ | 1-indexed |
-| `path` | String | ✅ | ✅ | Image file path |
-| `status` | String | ✅ | ✅ | Processing status |
+| Field          | Type   | Pilot | Ours | Notes             |
+| -------------- | ------ | ----- | ---- | ----------------- |
+| `id`           | String | ✅    | ✅   | UUID primary key  |
+| `scan_id`      | String | ✅    | ✅   | Foreign key       |
+| `frame_number` | Int    | ✅    | ✅   | 1-indexed         |
+| `path`         | String | ✅    | ✅   | Image file path   |
+| `status`       | String | ✅    | ✅   | Processing status |
 
 **Relationships:**
+
 - ✅ `scan` → Scan
 
 ## Implementation Compatibility
@@ -59,17 +61,19 @@ All fields match pilot schema exactly:
 Our scanner automatically saves to database following pilot patterns:
 
 **Nested Create Pattern (Pilot-Compatible):**
+
 ```typescript
 // Both use atomic nested create
 await prisma.scan.create({
   data: {
     ...scanMetadata,
-    images: { create: imagesArray }
-  }
+    images: { create: imagesArray },
+  },
 });
 ```
 
 **Frame Number Indexing (Pilot-Compatible):**
+
 - Scanner internally: 0-indexed (frame 0-71)
 - Database: 1-indexed (frame 1-72) ← **Matches pilot**
 - Automatic conversion: `frame_number + 1`
@@ -122,6 +126,7 @@ npm run test:scanner-database
 ```
 
 **Test Coverage:**
+
 - ✅ Creates scans with all pilot-compatible fields
 - ✅ Uses 1-indexed frame numbers
 - ✅ Uses nested create pattern

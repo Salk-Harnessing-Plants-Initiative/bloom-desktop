@@ -169,22 +169,22 @@ npm run make
 
 ### 3. Script Details
 
-| Script                 | Description                                       | Prerequisites   |
-| ---------------------- | ------------------------------------------------- | --------------- |
-| `npm start`            | Launch Electron app in development mode           | None            |
-| `npm run build:python` | Build Python executable with PyInstaller          | uv installed    |
-| `npm run test:python`  | Run Python unit tests with pytest (80%+ coverage) | uv installed    |
-| `npm run test:ipc`              | Integration test for Python ↔ TypeScript IPC           | Python built    |
-| `npm run test:camera`           | Integration test for camera interface (mock)            | Python built    |
-| `npm run test:daq`              | Integration test for DAQ interface (mock)               | Python built    |
-| `npm run test:scanner`          | Integration test for scanner workflow (mock)            | Python built    |
-| `npm run test:scanner-database` | Integration test for scanner-database persistence       | Python built    |
-| `npm run test:package`          | Verify Python bundled in packaged app                   | Package created |
-| `npm run package`      | Create distributable app bundle                   | Python built    |
-| `npm run make`         | Create platform-specific installers               | Python built    |
-| `npm run lint`         | Check TypeScript/JavaScript code style            | None            |
-| `npm run format`       | Auto-format code with Prettier                    | None            |
-| `npm run format:check` | Check code formatting                             | None            |
+| Script                          | Description                                       | Prerequisites   |
+| ------------------------------- | ------------------------------------------------- | --------------- |
+| `npm start`                     | Launch Electron app in development mode           | None            |
+| `npm run build:python`          | Build Python executable with PyInstaller          | uv installed    |
+| `npm run test:python`           | Run Python unit tests with pytest (80%+ coverage) | uv installed    |
+| `npm run test:ipc`              | Integration test for Python ↔ TypeScript IPC     | Python built    |
+| `npm run test:camera`           | Integration test for camera interface (mock)      | Python built    |
+| `npm run test:daq`              | Integration test for DAQ interface (mock)         | Python built    |
+| `npm run test:scanner`          | Integration test for scanner workflow (mock)      | Python built    |
+| `npm run test:scanner-database` | Integration test for scanner-database persistence | Python built    |
+| `npm run test:package`          | Verify Python bundled in packaged app             | Package created |
+| `npm run package`               | Create distributable app bundle                   | Python built    |
+| `npm run make`                  | Create platform-specific installers               | Python built    |
+| `npm run lint`                  | Check TypeScript/JavaScript code style            | None            |
+| `npm run format`                | Auto-format code with Prettier                    | None            |
+| `npm run format:check`          | Check code formatting                             | None            |
 
 ## Migration from Pilot
 
