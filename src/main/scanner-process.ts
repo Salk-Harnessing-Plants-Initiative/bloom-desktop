@@ -8,6 +8,8 @@
 import { EventEmitter } from 'events';
 import { PythonProcess } from './python-process';
 import { getDatabase } from './database';
+import * as fs from 'fs';
+import * as path from 'path';
 import type {
   ScannerSettings,
   ScanResult,
@@ -187,15 +189,29 @@ export class ScannerProcess extends EventEmitter {
       output_path: scanResult.output_path,
     });
 
-    // Map progress events to image records
-    // Convert to 1-indexed frame_numbers for database (pilot compatibility)
-    const images = this.progressEvents
-      .filter((p) => p.image_path) // Only include events with image paths
-      .map((progress) => ({
-        frame_number: progress.frame_number + 1, // Convert 0-indexed to 1-indexed (pilot compatible)
-        path: progress.image_path!,
-        status: 'CAPTURED',
-      }));
+    // Read actual image files from output directory
+    // This is more reliable than progress events since files are guaranteed to exist
+    const images = [];
+    if (fs.existsSync(scanResult.output_path)) {
+      const files = fs
+        .readdirSync(scanResult.output_path)
+        .filter((f) => f.endsWith('.png') || f.endsWith('.jpg'))
+        .sort(); // Sort to ensure correct order
+
+      for (const file of files) {
+        const imagePath = path.join(scanResult.output_path, file);
+        // Extract frame number from filename (e.g., "frame_0000.png" -> 0)
+        const frameMatch = file.match(/frame_(\d+)/);
+        if (frameMatch) {
+          const frameNumber = parseInt(frameMatch[1], 10);
+          images.push({
+            frame_number: frameNumber + 1, // Convert 0-indexed to 1-indexed (pilot compatible)
+            path: imagePath,
+            status: 'CAPTURED',
+          });
+        }
+      }
+    }
 
     // Get camera settings for database record
     const cameraSettings = settings.camera;

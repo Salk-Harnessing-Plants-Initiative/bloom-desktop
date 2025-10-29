@@ -21,35 +21,42 @@ let prisma: PrismaClient | null = null;
  * - Linux: ~/.bloom/data/bloom.db
  * - Windows: %USERPROFILE%/.bloom/data/bloom.db
  *
+ * @param customPath - Optional custom database path (for testing)
  * @returns PrismaClient instance
  */
-export function initializeDatabase(): PrismaClient {
+export function initializeDatabase(customPath?: string): PrismaClient {
   if (prisma) {
     console.log('[Database] Already initialized');
     return prisma;
   }
 
   // Determine database path
-  const isDev = process.env.NODE_ENV === 'development';
   let dbPath: string;
 
-  if (isDev) {
-    // Development: use dev.db in project root
-    dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
-    console.log('[Database] Development mode - using dev.db');
+  if (customPath) {
+    // Use custom path (for testing)
+    dbPath = customPath;
+    console.log('[Database] Using custom path:', dbPath);
   } else {
-    // Production: use ~/.bloom/data/bloom.db
-    const homeDir = app.getPath('home');
-    const bloomDir = path.join(homeDir, '.bloom', 'data');
+    const isDev = process.env.NODE_ENV === 'development';
+    if (isDev) {
+      // Development: use dev.db in project root
+      dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+      console.log('[Database] Development mode - using dev.db');
+    } else {
+      // Production: use ~/.bloom/data/bloom.db
+      const homeDir = app.getPath('home');
+      const bloomDir = path.join(homeDir, '.bloom', 'data');
 
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(bloomDir)) {
-      console.log('[Database] Creating data directory:', bloomDir);
-      fs.mkdirSync(bloomDir, { recursive: true });
+      // Create directory if it doesn't exist
+      if (!fs.existsSync(bloomDir)) {
+        console.log('[Database] Creating data directory:', bloomDir);
+        fs.mkdirSync(bloomDir, { recursive: true });
+      }
+
+      dbPath = path.join(bloomDir, 'bloom.db');
+      console.log('[Database] Production mode - using:', dbPath);
     }
-
-    dbPath = path.join(bloomDir, 'bloom.db');
-    console.log('[Database] Production mode - using:', dbPath);
   }
 
   // Create Prisma Client with database path
@@ -59,7 +66,7 @@ export function initializeDatabase(): PrismaClient {
     datasources: {
       db: { url: dbUrl },
     },
-    log: isDev ? ['error', 'warn'] : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
 
   console.log('[Database] Initialized at:', dbPath);
