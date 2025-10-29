@@ -187,6 +187,15 @@ export function CaptureScan() {
         daq: DEFAULT_DAQ_SETTINGS,
         num_frames: 72,
         output_path: outputPath,
+        metadata: {
+          experiment_id: metadata.experimentId,
+          phenotyper_id: metadata.phenotyper,
+          scanner_name: 'CaptureScan-UI', // Could make this configurable
+          plant_id: metadata.plantQrCode,
+          accession_id: metadata.accessionId || undefined,
+          plant_age_days: metadata.plantAgeDays,
+          wave_number: metadata.waveNumber,
+        },
       });
 
       // Start scan
