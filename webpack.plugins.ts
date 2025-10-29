@@ -9,8 +9,13 @@ export const plugins = [
   new ForkTsCheckerWebpackPlugin({
     logger: 'webpack-infrastructure',
   }),
-  // Copy Prisma client (including query engine) - matches pilot approach
+  // Copy Prisma client (including query engine) to output directory
   new CopyWebpackPlugin({
-    patterns: [{ from: './node_modules/.prisma/client' }],
+    patterns: [
+      {
+        from: './node_modules/.prisma/client',
+        to: '.prisma/client',
+      },
+    ],
   }),
 ];
