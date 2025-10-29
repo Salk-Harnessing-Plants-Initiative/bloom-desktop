@@ -1,4 +1,5 @@
 import type { Configuration } from 'webpack';
+import CopyPlugin from 'copy-webpack-plugin';
 
 import { rules } from './webpack.rules';
 import { plugins } from './webpack.plugins';
@@ -13,7 +14,14 @@ export const mainConfig: Configuration = {
   module: {
     rules,
   },
-  plugins,
+  plugins: [
+    ...plugins,
+    // Copy Prisma Client to webpack output (pilot pattern)
+    // This ensures the generated Prisma Client and native binaries are available at runtime
+    new CopyPlugin({
+      patterns: [{ from: './node_modules/.prisma/client' }],
+    }),
+  ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },
