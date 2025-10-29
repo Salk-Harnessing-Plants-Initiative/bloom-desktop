@@ -5,6 +5,7 @@ This document describes the Prisma database setup, schema, API, and testing proc
 ## Overview
 
 Bloom Desktop uses **Prisma ORM** with **SQLite** as the database engine for storing:
+
 - Experimental metadata (experiments, scientists, phenotypers)
 - Plant accessions and mappings
 - Scan records and images
@@ -43,11 +44,13 @@ The database schema is **100% compatible** with the [bloom-desktop-pilot schema]
 ## Database Locations
 
 ### Development
+
 - **Path**: `./prisma/dev.db`
 - **Created by**: `prisma migrate dev`
 - **Used when**: `NODE_ENV=development`
 
 ### Production
+
 - **Path**: `~/.bloom/data/bloom.db`
 - **Created by**: App automatically creates directory on first run
 - **Used when**: Packaged application
@@ -73,6 +76,7 @@ PlantAccessionMappings ──> Accessions
 ```
 
 #### Phenotyper
+
 ```prisma
 model Phenotyper {
   id    String @id @default(uuid())
@@ -83,6 +87,7 @@ model Phenotyper {
 ```
 
 #### Scientist
+
 ```prisma
 model Scientist {
   id          String       @id @default(uuid())
@@ -93,6 +98,7 @@ model Scientist {
 ```
 
 #### Experiment
+
 ```prisma
 model Experiment {
   id           String      @id @default(uuid())
@@ -107,6 +113,7 @@ model Experiment {
 ```
 
 #### Accessions
+
 ```prisma
 model Accessions {
   id          String                   @id @default(uuid())
@@ -118,6 +125,7 @@ model Accessions {
 ```
 
 #### PlantAccessionMappings
+
 Many-to-many relationship between plants and accessions.
 
 ```prisma
@@ -131,6 +139,7 @@ model PlantAccessionMappings {
 ```
 
 #### Scan
+
 ```prisma
 model Scan {
   id              String     @id @default(uuid())
@@ -163,6 +172,7 @@ model Scan {
 ```
 
 #### Image
+
 ```prisma
 model Image {
   id           String @id @default(uuid())
@@ -219,9 +229,9 @@ The database is accessed from the renderer process via IPC handlers. All handler
 
 ```typescript
 interface DatabaseResponse<T = unknown> {
-  success: boolean
-  data?: T
-  error?: string
+  success: boolean;
+  data?: T;
+  error?: string;
 }
 ```
 
@@ -337,6 +347,7 @@ npm run test:unit
 ```
 
 Tests verify:
+
 - ✅ Create, read, update, delete operations
 - ✅ Foreign key relationships
 - ✅ Unique constraints
@@ -352,6 +363,7 @@ npm run prisma:studio
 ```
 
 This opens http://localhost:5555 with a GUI for:
+
 - Viewing all tables
 - Creating/editing/deleting records
 - Exploring relationships
@@ -369,11 +381,11 @@ When the app is running (`npm run dev`), you can test database operations via th
 // Create a scientist
 await window.electron.database.scientists.create({
   name: 'Dr. Jane Smith',
-  email: 'jane@example.com'
-})
+  email: 'jane@example.com',
+});
 
 // List all scientists
-await window.electron.database.scientists.list()
+await window.electron.database.scientists.list();
 // Expected: { success: true, data: [{ id: '...', name: 'Dr. Jane Smith', ... }] }
 ```
 
@@ -383,24 +395,24 @@ await window.electron.database.scientists.list()
 // Create scientist first
 const scientist = await window.electron.database.scientists.create({
   name: 'Dr. John Doe',
-  email: 'john@example.com'
-})
+  email: 'john@example.com',
+});
 
 // Create accession
 const accession = await window.electron.database.accessions.create({
-  name: 'ACC001'
-})
+  name: 'ACC001',
+});
 
 // Create experiment with relations
 const experiment = await window.electron.database.experiments.create({
   name: 'Growth Study 2025',
   species: 'Arabidopsis thaliana',
   scientist_id: scientist.data.id,
-  accession_id: accession.data.id
-})
+  accession_id: accession.data.id,
+});
 
 // List experiments with relations
-await window.electron.database.experiments.list()
+await window.electron.database.experiments.list();
 ```
 
 #### Example: Create Scan with Images
@@ -409,8 +421,8 @@ await window.electron.database.experiments.list()
 // Create phenotyper
 const phenotyper = await window.electron.database.phenotypers.create({
   name: 'Lab Tech 1',
-  email: 'tech1@example.com'
-})
+  email: 'tech1@example.com',
+});
 
 // Create scan
 const scan = await window.electron.database.scans.create({
@@ -427,18 +439,26 @@ const scan = await window.electron.database.scans.create({
   gamma: 1,
   seconds_per_rot: 60,
   wave_number: 1,
-  plant_age_days: 14
-})
+  plant_age_days: 14,
+});
 
 // Create images for the scan
 await window.electron.database.images.create([
-  { scan_id: scan.data.id, frame_number: 1, path: '/scans/2025-01-15/scan001/frame001.tiff' },
-  { scan_id: scan.data.id, frame_number: 2, path: '/scans/2025-01-15/scan001/frame002.tiff' },
+  {
+    scan_id: scan.data.id,
+    frame_number: 1,
+    path: '/scans/2025-01-15/scan001/frame001.tiff',
+  },
+  {
+    scan_id: scan.data.id,
+    frame_number: 2,
+    path: '/scans/2025-01-15/scan001/frame002.tiff',
+  },
   // ... more frames
-])
+]);
 
 // List scans with images
-await window.electron.database.scans.list()
+await window.electron.database.scans.list();
 ```
 
 #### Example: Filter Scans
@@ -446,18 +466,18 @@ await window.electron.database.scans.list()
 ```javascript
 // Get all scans for a specific experiment
 await window.electron.database.scans.list({
-  experiment_id: experiment.data.id
-})
+  experiment_id: experiment.data.id,
+});
 
 // Get all scans by a specific phenotyper
 await window.electron.database.scans.list({
-  phenotyper_id: phenotyper.data.id
-})
+  phenotyper_id: phenotyper.data.id,
+});
 
 // Get all scans for a specific plant
 await window.electron.database.scans.list({
-  plant_id: 'PLANT-001'
-})
+  plant_id: 'PLANT-001',
+});
 ```
 
 ## Troubleshooting
@@ -486,6 +506,7 @@ externals: {
 **Cause**: Migrations haven't been applied.
 
 **Solution**:
+
 ```bash
 npm run prisma:migrate
 ```
@@ -495,6 +516,7 @@ npm run prisma:migrate
 **Cause**: Trying to create a record that references a non-existent parent.
 
 **Solution**: Ensure parent records exist before creating children:
+
 1. Create Scientists, Phenotypers, Accessions first
 2. Then create Experiments (referencing Scientists/Accessions)
 3. Then create Scans (referencing Experiments/Phenotypers)
@@ -505,9 +527,10 @@ npm run prisma:migrate
 **Cause**: Trying to create a record with a duplicate unique field (e.g., email).
 
 **Solution**: Check existing records or use a different value:
+
 ```javascript
 // List existing scientists to check emails
-await window.electron.database.scientists.list()
+await window.electron.database.scientists.list();
 ```
 
 ### Database is locked
@@ -515,6 +538,7 @@ await window.electron.database.scientists.list()
 **Cause**: Multiple processes trying to access SQLite database simultaneously.
 
 **Solution**:
+
 1. Close any open Prisma Studio instances
 2. Stop running dev servers
 3. Check for orphaned processes: `ps aux | grep prisma`
@@ -528,6 +552,7 @@ The schema is 100% compatible with the pilot. To migrate data:
 3. No schema changes required
 
 **Additions in this version** (backward compatible):
+
 - `@default(now())` on `Scan.capture_date` and `Accessions.createdAt`
 - Indexes on frequently queried columns
 - Type-safe IPC handlers
@@ -537,6 +562,7 @@ The schema is 100% compatible with the pilot. To migrate data:
 ### Indexes
 
 The following indexes are automatically created for common queries:
+
 - `Scan.experiment_id` - For filtering scans by experiment
 - `Scan.phenotyper_id` - For filtering scans by phenotyper
 - `Scan.plant_id` - For filtering scans by plant
@@ -547,13 +573,13 @@ The following indexes are automatically created for common queries:
 
 ```javascript
 // ❌ Bad: Fetches all scans then filters in JavaScript
-const allScans = await window.electron.database.scans.list()
-const filtered = allScans.data.filter(s => s.experiment_id === expId)
+const allScans = await window.electron.database.scans.list();
+const filtered = allScans.data.filter((s) => s.experiment_id === expId);
 
 // ✅ Good: Filters in database
 const scans = await window.electron.database.scans.list({
-  experiment_id: expId
-})
+  experiment_id: expId,
+});
 ```
 
 ## Future Enhancements
