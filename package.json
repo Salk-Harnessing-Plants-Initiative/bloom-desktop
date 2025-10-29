@@ -24,6 +24,7 @@
     "test:streaming": "npm run build:python && ts-node tests/integration/test-streaming.ts",
     "test:daq": "npm run build:python && ts-node tests/integration/test-daq.ts",
     "test:scanner": "npm run build:python && ts-node tests/integration/test-scanner.ts",
+    "test:scanner-database": "npm run build:python && npm run prisma:generate && ts-node tests/integration/test-scanner-database.ts",
     "test:package": "ts-node tests/integration/test-package.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
