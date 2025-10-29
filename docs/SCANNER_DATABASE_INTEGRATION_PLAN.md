@@ -127,31 +127,72 @@ UI calls scanner:initialize(settings)
 
 ### Pilot Implementation Pattern
 
-**Key findings from pilot codebase**:
+**Analyzed from**: `bloom-desktop-pilot/app/src/main/prismastore.ts`
 
-1. **Nested Create Pattern** - Scan + Images created atomically:
+**Exact pilot code for addScan**:
 ```typescript
-await prisma.scan.create({
-  data: {
-    ...scanMetadata,
-    images: { create: imagesArray }  // Nested create
-  }
-})
-```
+addScan = async (scan: Scan) => {
+  const scanMetadata = parseCaptureDate(scan.metadata) as ScanMetadataParsed;
 
-2. **Error Handling** - Return error tuples instead of throwing:
-```typescript
-try {
-  const scan = await prisma.scan.create({...})
-  return { error: null, data: scan }
-} catch (err) {
-  return { error: err, data: null }
+  console.log("Adding scan to PrismaStore:", JSON.stringify(scan.metadata));
+
+  // Map image paths to image objects
+  const images = scan.images.map((path, index) => {
+    return {
+      id: uuidv4(),
+      path,
+      frame_number: index + 1,  // 1-indexed in pilot!
+      status: "CAPTURED",
+    };
+  });
+
+  // Nested create - atomic transaction
+  const newScan = await this.prisma.scan.create({
+    data: {
+      ...scanMetadata,  // Spread all scan fields
+      images: { create: images }  // Nested image creation
+    },
+  });
 }
 ```
 
-3. **Batch Operations** - Create all related data in single operation (atomic)
+**Key patterns we will adopt**:
 
-**We will adopt this pattern** for better atomicity and pilot compatibility.
+1. **Nested Create** - Atomic Scan + Images creation
+   - Single `prisma.scan.create()` call
+   - Images nested in `images: { create: imagesArray }`
+   - Automatic transaction (all or nothing)
+
+2. **Image Mapping**
+   - Map from image paths to objects with metadata
+   - Generate UUIDs for each image
+   - Set initial status ("CAPTURED" in pilot, "completed" in our schema)
+   - **Note**: Pilot uses 1-indexed frame_number, we use 0-indexed (matches our scanner)
+
+3. **Field Spreading**
+   - Use spread operator for scan metadata: `...scanMetadata`
+   - Clean, concise code
+   - TypeScript ensures all required fields present
+
+4. **Logging**
+   - Log scan creation for debugging
+   - Use JSON.stringify for metadata
+
+**Differences from pilot**:
+- Pilot: `frame_number` starts at 1
+- Ours: `frame_number` starts at 0 (matches scanner progress events)
+- Pilot: Uses `scanner_id` (string)
+- Ours: Uses `scanner_name` (our schema)
+- Pilot: Uses `plant_qr_code`
+- Ours: Uses `plant_id` (our schema)
+- Pilot: Has `experiment_id` implicit
+- Ours: Has explicit `experiment_id` field
+
+**This pattern gives us**:
+✅ Atomicity (transaction-like behavior)
+✅ Pilot compatibility (same approach)
+✅ Simpler code (one DB call instead of two)
+✅ Better error handling (no partial data)
 
 ### Database Schema (from PR #52)
 
