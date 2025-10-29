@@ -188,11 +188,11 @@ export class ScannerProcess extends EventEmitter {
     });
 
     // Map progress events to image records
-    // Keep 0-indexed frame_numbers to match our scanner progress events
+    // Convert to 1-indexed frame_numbers for database (pilot compatibility)
     const images = this.progressEvents
       .filter((p) => p.image_path) // Only include events with image paths
       .map((progress) => ({
-        frame_number: progress.frame_number, // 0-indexed (different from pilot's 1-indexed)
+        frame_number: progress.frame_number + 1, // Convert 0-indexed to 1-indexed (pilot compatible)
         path: progress.image_path!,
         status: 'CAPTURED',
       }));

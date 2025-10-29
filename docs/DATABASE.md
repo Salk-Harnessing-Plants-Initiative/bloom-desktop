@@ -668,9 +668,9 @@ await prisma.scan.create({
     // Scan metadata and parameters...
     images: {
       create: [
-        { frame_number: 0, path: '/path/frame000.tiff', status: 'CAPTURED' },
-        { frame_number: 1, path: '/path/frame001.tiff', status: 'CAPTURED' },
-        // ... more images
+        { frame_number: 1, path: '/path/frame000.tiff', status: 'CAPTURED' },
+        { frame_number: 2, path: '/path/frame001.tiff', status: 'CAPTURED' },
+        // ... more images (frame_number is 1-indexed, pilot compatible)
       ],
     },
   },
@@ -685,9 +685,10 @@ await prisma.scan.create({
 
 **Frame Number Indexing:**
 
-- Scanner progress events use **0-indexed** frame numbers (0-71 for 72 frames)
-- Database stores frame numbers as **0-indexed** (matches progress events)
-- Pilot uses 1-indexed (index + 1), we keep 0-indexed for consistency
+- Scanner progress events use **0-indexed** frame numbers internally (0-71 for 72 frames)
+- Database stores frame numbers as **1-indexed** (1-72 for 72 frames) - **pilot compatible**
+- Automatic conversion: `frame_number + 1` when saving to database
+- This maintains backwards compatibility with pilot database
 
 ### Testing Scanner-Database Integration
 
@@ -702,7 +703,7 @@ npm run test:scanner-database
 - ✅ Perform scan with metadata
 - ✅ Verify scan saved to database
 - ✅ Verify nested create (atomic transaction)
-- ✅ Verify 0-indexed frame_numbers
+- ✅ Verify 1-indexed frame_numbers (pilot compatible)
 - ✅ Verify CAPTURED status on all images
 - ✅ Verify scan without metadata doesn't save
 

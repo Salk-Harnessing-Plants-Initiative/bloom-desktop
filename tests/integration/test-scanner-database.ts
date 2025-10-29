@@ -281,12 +281,12 @@ async function runTest(): Promise<void> {
       `[PASS] Images created via nested pattern: ${savedScan.images.length} images`
     );
 
-    // Verify image frame numbers are 0-indexed
-    const firstImage = savedScan.images.find((img) => img.frame_number === 0);
+    // Verify image frame numbers are 1-indexed (pilot compatible)
+    const firstImage = savedScan.images.find((img) => img.frame_number === 1);
     if (!firstImage) {
-      throw new Error('First image with frame_number=0 not found (0-indexed expected)');
+      throw new Error('First image with frame_number=1 not found (1-indexed expected)');
     }
-    console.log('[PASS] Images use 0-indexed frame numbers');
+    console.log('[PASS] Images use 1-indexed frame numbers (pilot compatible)');
 
     // Verify all images have CAPTURED status
     const allCaptured = savedScan.images.every((img) => img.status === 'CAPTURED');
