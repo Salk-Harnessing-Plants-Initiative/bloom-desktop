@@ -1064,6 +1064,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 ### ✅ Completed Phases
 
 **Phase 1: Type Definitions**
+
 - ✅ Added `ScanMetadata` interface to [src/types/scanner.ts](../src/types/scanner.ts)
 - ✅ Added `metadata` field to `ScannerSettings` (optional)
 - ✅ Added `scan_id` field to `ScanResult` (optional)
@@ -1071,6 +1072,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - ✅ Ensured 100% pilot compatibility
 
 **Phase 2: Scanner Process Integration**
+
 - ✅ Store scanner settings in instance ([src/main/scanner-process.ts:25](../src/main/scanner-process.ts#L25))
 - ✅ Implemented `saveScanToDatabase` method ([src/main/scanner-process.ts:169](../src/main/scanner-process.ts#L169))
 - ✅ Read image files from disk (more reliable than progress events)
@@ -1079,11 +1081,13 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - ✅ Add success logging with scan_id
 
 **Phase 3: Database Infrastructure**
+
 - ✅ Added `customPath` parameter to `initializeDatabase()` ([src/main/database.ts:27](../src/main/database.ts#L27))
 - ✅ Fixed test database initialization (use `BLOOM_DATABASE_URL` not `DATABASE_URL`)
 - ✅ Updated [.env.example](../.env.example) with clear documentation
 
 **Phase 5: Integration Tests**
+
 - ✅ Created comprehensive test file ([tests/integration/test-scanner-database.ts](../tests/integration/test-scanner-database.ts))
 - ✅ Test: Successful scan → Scan record created
 - ✅ Test: Scan without metadata → no database save
@@ -1094,6 +1098,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - ✅ All tests passing ✅
 
 **Documentation**
+
 - ✅ Created [PILOT_COMPATIBILITY.md](./PILOT_COMPATIBILITY.md) with detailed compatibility verification
 - ✅ Updated [.env.example](../.env.example) with comprehensive comments
 - ✅ Updated this plan document with implementation status
@@ -1101,6 +1106,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 ### 🚧 Remaining Work (Not blocking merge)
 
 **Phase 4: UI Integration**
+
 - [ ] Add metadata form fields to Camera Settings page
 - [ ] Add experiment/phenotyper selection dropdowns
 - [ ] Add plant ID and wave number inputs
@@ -1109,6 +1115,7 @@ Navigate to the Scan table to see all captured scans with their metadata.
 - [ ] Manual UI testing
 
 **Documentation Updates**
+
 - [ ] Update DATABASE.md with scanner integration examples
 - [ ] Update README.md with new test count
 - [ ] Add code examples for using scanner with metadata
