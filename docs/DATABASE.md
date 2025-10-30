@@ -543,6 +543,30 @@ await window.electron.database.scientists.list();
 2. Stop running dev servers
 3. Check for orphaned processes: `ps aux | grep prisma`
 
+## Production Packaging
+
+Prisma requires special configuration for Electron packaging. The query engine binaries cannot be bundled inside the app.asar archive because:
+
+1. Binary engines cannot execute from read-only archives
+2. Node.js `require()` cannot resolve dynamic paths in ASAR
+3. Prisma's internal path resolution breaks when bundled
+
+**Solution**: The app uses dynamic module loading to load Prisma from different locations in development vs production:
+
+- **Development**: Loads from `node_modules/.prisma/client/`
+- **Production**: Loads from `process.resourcesPath/.prisma/client/` (outside ASAR)
+
+The packaging configuration in `forge.config.ts` uses `extraResource` to copy Prisma files to the `Resources/` directory where they can be accessed at runtime.
+
+**See [PACKAGING.md](PACKAGING.md)** for complete packaging documentation including:
+
+- Detailed explanation of the ASAR/Prisma conflict
+- Dynamic module loading implementation
+- Webpack and Forge configuration
+- Path resolution and fallbacks
+- Troubleshooting packaged apps
+- Platform-specific considerations
+
 ## Migration from Pilot
 
 The schema is 100% compatible with the pilot. To migrate data:
@@ -582,12 +606,180 @@ const scans = await window.electron.database.scans.list({
 });
 ```
 
+## Scanner-Database Integration
+
+The scanner automatically persists scan metadata and captured images to the database when metadata is provided during initialization.
+
+### How It Works
+
+1. **Initialize scanner with metadata** - Pass `metadata` object in scanner settings
+2. **Perform scan** - Scanner captures frames and collects progress events
+3. **Automatic save** - On completion, scanner saves to database using atomic nested create
+4. **Get scan ID** - Scan result includes `scan_id` for database reference
+
+### Metadata Interface
+
+```typescript
+interface ScanMetadata {
+  experiment_id: string; // Required: Experiment this scan belongs to
+  phenotyper_id: string; // Required: Person performing the scan
+  scanner_name: string; // Required: Scanner hardware identifier
+  plant_id: string; // Required: Plant identifier (barcode, QR, etc.)
+  accession_id?: string; // Optional: Accession if known
+  plant_age_days: number; // Required: Plant age in days
+  wave_number: number; // Required: Time point (1-4 typically)
+}
+```
+
+### Example Usage
+
+```typescript
+// Initialize scanner with metadata for automatic database persistence
+await window.electron.scanner.initialize({
+  camera: cameraSettings,
+  daq: daqSettings,
+  num_frames: 72,
+  output_path: './scans/2025-01-15',
+  metadata: {
+    experiment_id: experimentId,
+    phenotyper_id: phenotyperId,
+    scanner_name: 'Scanner-01',
+    plant_id: 'PLANT-001',
+    plant_age_days: 14,
+    wave_number: 1,
+  },
+});
+
+// Perform scan - automatically saves to database on completion
+const result = await window.electron.scanner.scan();
+
+if (result.success && result.scan_id) {
+  console.log('Scan saved to database:', result.scan_id);
+
+  // Retrieve scan with images from database
+  const scan = await window.electron.database.scans.get(result.scan_id);
+  console.log(`Scan has ${scan.data.images.length} images`);
+}
+```
+
+### Scan without Database
+
+If you don't provide metadata, the scan will work normally but won't be saved to the database:
+
+```typescript
+// Initialize without metadata
+await window.electron.scanner.initialize({
+  camera: cameraSettings,
+  daq: daqSettings,
+  num_frames: 72,
+  output_path: './scans/test',
+  // No metadata field - won't save to database
+});
+
+const result = await window.electron.scanner.scan();
+// result.scan_id will be undefined
+```
+
+### Implementation Details
+
+**Atomic Nested Create Pattern** (from pilot):
+
+The scanner uses Prisma's nested create pattern to atomically create the scan and all images in a single database transaction:
+
+```typescript
+await prisma.scan.create({
+  data: {
+    // Scan metadata and parameters...
+    images: {
+      create: [
+        { frame_number: 1, path: '/path/frame000.tiff', status: 'CAPTURED' },
+        { frame_number: 2, path: '/path/frame001.tiff', status: 'CAPTURED' },
+        // ... more images (frame_number is 1-indexed, pilot compatible)
+      ],
+    },
+  },
+});
+```
+
+**Benefits:**
+
+- ✅ Atomic transaction (all-or-nothing)
+- ✅ No orphaned images if scan save fails
+- ✅ Pilot-compatible approach
+- ✅ Automatic foreign key handling
+
+**Frame Number Indexing:**
+
+- Scanner progress events use **0-indexed** frame numbers internally (0-71 for 72 frames)
+- Database stores frame numbers as **1-indexed** (1-72 for 72 frames) - **pilot compatible**
+- Automatic conversion: `frame_number + 1` when saving to database
+- This maintains backwards compatibility with pilot database
+
+### Testing Scanner-Database Integration
+
+Run the integration test:
+
+```bash
+npm run test:scanner-database
+```
+
+**Test Coverage:**
+
+- ✅ Initialize database with test records
+- ✅ Perform scan with metadata
+- ✅ Verify scan saved to database
+- ✅ Verify nested create (atomic transaction)
+- ✅ Verify 1-indexed frame_numbers (pilot compatible)
+- ✅ Verify CAPTURED status on all images
+- ✅ Verify scan without metadata doesn't save
+
+### Prerequisites for Database Persistence
+
+Before scanning with database persistence:
+
+1. **Create Scientist** - The person responsible for the experiment
+2. **Create Phenotyper** - The person performing the scan
+3. **Create Experiment** - Links scientist, species, and accession
+
+```typescript
+// 1. Create scientist
+const scientist = await window.electron.database.scientists.create({
+  name: 'Dr. Jane Smith',
+  email: 'jane@example.com',
+});
+
+// 2. Create phenotyper
+const phenotyper = await window.electron.database.phenotypers.create({
+  name: 'Lab Tech 1',
+  email: 'tech1@example.com',
+});
+
+// 3. Create experiment
+const experiment = await window.electron.database.experiments.create({
+  name: 'Growth Study 2025',
+  species: 'Arabidopsis thaliana',
+  scientist_id: scientist.data.id,
+});
+
+// 4. Now you can scan with these IDs
+await window.electron.scanner.initialize({
+  camera: cameraSettings,
+  daq: daqSettings,
+  metadata: {
+    experiment_id: experiment.data.id,
+    phenotyper_id: phenotyper.data.id,
+    scanner_name: 'Scanner-01',
+    plant_id: 'PLANT-001',
+    plant_age_days: 14,
+    wave_number: 1,
+  },
+});
+```
+
 ## Future Enhancements
 
-See [Issue #53](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/53) for planned database integrations:
+See [Issue #53](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/53) for additional planned enhancements:
 
-- Scanner-Database Integration
-- Automatic scan record creation during capture
 - Image processing status tracking
 - Data export functionality
 - Backup and restore procedures

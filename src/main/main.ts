@@ -746,16 +746,38 @@ ipcMain.handle('scanner:get-status', async () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
-  // Initialize database
+  createWindow();
+
+  // Initialize database AFTER window is created so we can send errors to renderer
   try {
+    console.log('[Main] Initializing database...');
     initializeDatabase();
+    console.log('[Main] Database initialized, registering handlers...');
     registerDatabaseHandlers();
     console.log('[Main] Database initialized and handlers registered');
+
+    // Send success message to renderer
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('database:ready', { success: true });
+    }
   } catch (error) {
-    console.error('[Main] Failed to initialize database:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error(
+      '[Main] Failed to initialize database:',
+      errorMessage,
+      errorStack
+    );
+
+    // Send error to renderer so user can see it in DevTools
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('database:error', {
+        error: errorMessage,
+        stack: errorStack,
+      });
+    }
   }
 
-  createWindow();
   await initializePythonProcess();
 });
 

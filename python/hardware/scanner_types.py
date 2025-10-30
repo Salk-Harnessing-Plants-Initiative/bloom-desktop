@@ -20,12 +20,14 @@ class ScannerSettings:
         daq: DAQ configuration settings
         num_frames: Number of frames to capture during full rotation (default: 72)
         output_path: Directory path for saving captured images (default: "./scans")
+        metadata: Optional metadata for database persistence (not used by scanner itself)
     """
 
     camera: Union[CameraSettings, Any]
     daq: Union[DAQSettings, Any]
     num_frames: int = 72
     output_path: str = "./scans"
+    metadata: Optional[Any] = None
 
     def __post_init__(self):
         """Validate scanner settings values and convert dicts to proper types."""

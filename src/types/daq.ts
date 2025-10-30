@@ -58,7 +58,7 @@ export const DEFAULT_DAQ_SETTINGS: DAQSettings = {
   dir_pin: 1,
   steps_per_revolution: 6400,
   num_frames: 72,
-  seconds_per_rot: 36.0,
+  seconds_per_rot: 7.0, // Changed from 36.0 for faster scans - see docs/CONFIGURATION.md
 };
 
 /**

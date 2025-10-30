@@ -27,7 +27,7 @@ class DAQSettings:
     dir_pin: int = 1
     steps_per_revolution: int = 6400
     num_frames: int = 72
-    seconds_per_rot: float = 36.0
+    seconds_per_rot: float = 7.0  # Changed from 36.0 for faster scans
 
     def __post_init__(self):
         """Validate DAQ settings values."""
