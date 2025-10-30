@@ -41,6 +41,7 @@ npm run package
 ```
 
 This creates the packaged app in the `out/` directory:
+
 - **macOS**: `out/Bloom Desktop-darwin-arm64/Bloom Desktop.app`
 - **Windows**: `out/Bloom Desktop-win32-x64/Bloom Desktop.exe`
 - **Linux**: `out/Bloom Desktop-linux-x64/bloom-desktop`
@@ -66,6 +67,7 @@ npm run seed:production
 ```
 
 This creates:
+
 - ✅ Scientist: Elizabeth Berrigan
 - ✅ Phenotyper: elizabeth
 - ✅ Accession: Col-0
@@ -176,6 +178,7 @@ BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma studio
 ```
 
 Navigate to each table and copy the `id` values:
+
 - **Experiment** → Copy the UUID (e.g., `38555968-6bd2-45de-9dad-383ab6d69179`)
 - **Phenotyper** → Copy the UUID (e.g., `ddcfece0-f6ac-4c0e-a32e-8c31145785dd`)
 - **Accession** → Copy the UUID (optional)
@@ -200,6 +203,7 @@ Navigate to each table and copy the `id` values:
 ### Step 3: Verify in Database
 
 Refresh Prisma Studio and check the **Scan** table. You should see:
+
 - ✅ New scan record with your metadata
 - ✅ Linked to the Experiment and Phenotyper
 
@@ -220,6 +224,7 @@ ls -la ./scans/<experiment-id>/<plant-id>_<timestamp>/
 **Symptom:** App starts but no database logs appear
 
 **Solution:**
+
 1. Check that schema is applied: `BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma db push`
 2. Verify database file exists: `ls -la ~/.bloom/data/bloom.db`
 3. Run with logs: `"out/.../Bloom Desktop" 2>&1 | grep Database`
@@ -231,6 +236,7 @@ ls -la ./scans/<experiment-id>/<plant-id>_<timestamp>/
 **Cause:** The Experiment ID or Phenotyper ID doesn't exist in the database
 
 **Solution:**
+
 1. Open Prisma Studio: `BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma studio`
 2. Verify the Experiment and Phenotyper exist
 3. Copy the exact UUID `id` values (not human-readable names)
@@ -245,6 +251,7 @@ ls -la ./scans/<experiment-id>/<plant-id>_<timestamp>/
 **Expected Behavior:** This is normal for mock mode. Real hardware scans will create `.png`/`.jpg`/`.tiff` files that get saved to the database.
 
 **To Verify it Works:** Check the logs for:
+
 ```
 [Scanner] Saving scan to database: { ..., frames: 0, ... }
 [Scanner] Successfully saved scan to database: { scan_id: '...', image_count: 0 }
@@ -255,6 +262,7 @@ ls -la ./scans/<experiment-id>/<plant-id>_<timestamp>/
 **Cause:** You're viewing the dev database (`prisma/dev.db`) instead of the production database
 
 **Solution:** Always specify the production database URL:
+
 ```bash
 BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma studio
 ```
@@ -264,6 +272,7 @@ BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma studio
 **Symptom:** `out/` directory doesn't exist or is empty
 
 **Solution:** Run the packaging command:
+
 ```bash
 npm run package
 ```
@@ -275,6 +284,7 @@ Wait 1-2 minutes for it to complete.
 **Symptom:** Code changes don't appear in the packaged app
 
 **Solution:** Rebuild the package after every code change:
+
 ```bash
 npm run package
 ```
@@ -290,6 +300,7 @@ npm run test:package:database
 ```
 
 This script:
+
 1. Launches the packaged app
 2. Waits for the database initialization log message
 3. Verifies the app started successfully
