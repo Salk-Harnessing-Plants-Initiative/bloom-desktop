@@ -33,7 +33,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "seed:production": "tsx scripts/seed-production.ts",
+    "studio:production": "BLOOM_DATABASE_URL=\"file:$HOME/.bloom/data/bloom.db\" prisma studio"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
