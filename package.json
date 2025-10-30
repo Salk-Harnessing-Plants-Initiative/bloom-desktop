@@ -24,14 +24,18 @@
     "test:streaming": "npm run build:python && ts-node tests/integration/test-streaming.ts",
     "test:daq": "npm run build:python && ts-node tests/integration/test-daq.ts",
     "test:scanner": "npm run build:python && ts-node tests/integration/test-scanner.ts",
+    "test:scanner-database": "npm run build:python && npm run prisma:generate && ts-node tests/integration/test-scanner-database.ts",
     "test:package": "ts-node tests/integration/test-package.ts",
+    "test:package:database": "bash scripts/test-package-database.sh",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "seed:production": "tsx scripts/seed-production.ts",
+    "studio:production": "BLOOM_DATABASE_URL=\"file:$HOME/.bloom/data/bloom.db\" prisma studio"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

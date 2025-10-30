@@ -12,12 +12,22 @@ import { rendererConfig } from './webpack.renderer.config';
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    asar: {
+      unpack: '*.{node,dll,dylib,so,prisma,db,db-*}',
+    },
     extraResource: [
-      // Include Python executable in packaged app
+      // Python executable for hardware control (DAQ, camera)
       process.platform === 'win32'
         ? './dist/bloom-hardware.exe'
         : './dist/bloom-hardware',
+
+      // CRITICAL: Prisma Client must be outside ASAR archive
+      // Binary query engines cannot execute from read-only ASAR files.
+      // These files are copied to Resources/ for runtime access.
+      // See docs/PACKAGING.md for detailed explanation.
+      './node_modules/.prisma', // Generated Prisma Client + native binaries
+      './node_modules/@prisma/client', // Prisma Client package
+      './prisma/schema.prisma', // Schema for runtime introspection
     ],
   },
   rebuildConfig: {},

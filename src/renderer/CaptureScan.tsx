@@ -154,9 +154,8 @@ export function CaptureScan() {
     if (!metadata.plantQrCode.trim()) {
       errors.plantQrCode = 'Plant ID is required';
     }
-    if (!metadata.accessionId.trim()) {
-      errors.accessionId = 'Accession ID is required';
-    }
+    // accession_id is optional (matches pilot schema)
+    // No validation needed - empty string will be converted to undefined
 
     return errors;
   };
@@ -187,6 +186,15 @@ export function CaptureScan() {
         daq: DEFAULT_DAQ_SETTINGS,
         num_frames: 72,
         output_path: outputPath,
+        metadata: {
+          experiment_id: metadata.experimentId,
+          phenotyper_id: metadata.phenotyper,
+          scanner_name: 'CaptureScan-UI', // Could make this configurable
+          plant_id: metadata.plantQrCode,
+          accession_id: metadata.accessionId || undefined,
+          plant_age_days: metadata.plantAgeDays,
+          wave_number: metadata.waveNumber,
+        },
       });
 
       // Start scan

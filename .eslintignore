@@ -1,0 +1,21 @@
+# ESLint ignore file
+# Ignores build outputs and generated files
+
+# Build outputs
+out/
+dist/
+.webpack/
+
+# Node modules
+node_modules/
+
+# Generated Prisma files
+.prisma/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Test outputs
+playwright-report/
+test-results/

@@ -13,7 +13,11 @@ export const mainConfig: Configuration = {
   module: {
     rules,
   },
-  plugins,
+  plugins: [
+    ...plugins,
+    // Prisma is handled via extraResource in forge.config.ts
+    // This ensures Prisma files are copied outside asar for Node.js require
+  ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },

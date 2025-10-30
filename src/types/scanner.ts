@@ -8,6 +8,33 @@ import { CameraSettings } from './camera';
 import { DAQSettings } from './daq';
 
 /**
+ * Metadata for a scan that will be saved to the database.
+ * All fields are required for database persistence.
+ */
+export interface ScanMetadata {
+  /** ID of the experiment this scan belongs to */
+  experiment_id: string;
+
+  /** ID of the phenotyper performing the scan */
+  phenotyper_id: string;
+
+  /** Name/ID of the scanner hardware */
+  scanner_name: string;
+
+  /** Plant identifier (barcode, QR code, or manual ID) */
+  plant_id: string;
+
+  /** Optional accession ID if known */
+  accession_id?: string;
+
+  /** Age of the plant in days at time of scan */
+  plant_age_days: number;
+
+  /** Wave number for this scan (typically 1-4 for multiple time points) */
+  wave_number: number;
+}
+
+/**
  * Scanner configuration settings.
  */
 export interface ScannerSettings {
@@ -28,6 +55,12 @@ export interface ScannerSettings {
    * Optional - defaults to "./scans" if not specified.
    */
   output_path?: string;
+
+  /**
+   * Metadata for database persistence.
+   * If provided, scan will be automatically saved to database on completion.
+   */
+  metadata?: ScanMetadata;
 }
 
 /**
@@ -59,6 +92,9 @@ export interface ScanResult {
 
   /** Directory path where images were saved */
   output_path: string;
+
+  /** Database scan ID if metadata was provided and save was successful */
+  scan_id?: string;
 
   /** Error message if scan failed (undefined if successful) */
   error?: string;
