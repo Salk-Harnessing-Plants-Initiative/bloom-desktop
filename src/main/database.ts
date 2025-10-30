@@ -41,6 +41,7 @@ function loadPrismaClient(): typeof PrismaClientType {
   if (isDev) {
     // Development: normal import
     console.log('[Database] Development mode - using standard @prisma/client import');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaClient } = require('@prisma/client');
     return PrismaClient;
   } else {
