@@ -5,12 +5,115 @@
  * Database is stored at ~/.bloom/data/bloom.db by default.
  */
 
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient as PrismaClientType } from '@prisma/client';
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { createRequire } from 'module';
 
-let prisma: PrismaClient | null = null;
+/**
+ * Load Prisma Client from the correct location based on environment.
+ *
+ * **CRITICAL PACKAGING CONFIGURATION**
+ *
+ * In production, Prisma cannot be bundled inside app.asar because:
+ * 1. Binary query engines cannot execute from read-only archives
+ * 2. Node.js require() can't resolve dynamic paths in ASAR
+ * 3. Prisma's internal path resolution breaks when bundled
+ *
+ * Solution: forge.config.ts uses extraResource to copy .prisma/ to Resources/
+ * directory (outside ASAR). This function dynamically loads Prisma from the
+ * correct location based on whether we're in development or production.
+ *
+ * Development: Loads from node_modules/.prisma/client/
+ * Production:  Loads from process.resourcesPath/.prisma/client/
+ *
+ * Multiple fallback paths are checked to handle different Electron Forge
+ * configurations and versions. Detailed logging helps diagnose packaging issues.
+ *
+ * @see {@link /docs/PACKAGING.md} for complete packaging documentation
+ * @returns PrismaClient constructor
+ * @throws Error if Prisma Client cannot be found (with diagnostic paths)
+ */
+function loadPrismaClient(): typeof PrismaClientType {
+  const isDev = process.env.NODE_ENV === 'development';
+
+  if (isDev) {
+    // Development: normal import
+    console.log('[Database] Development mode - using standard @prisma/client import');
+    const { PrismaClient } = require('@prisma/client');
+    return PrismaClient;
+  } else {
+    // Production: load from Resources directory (outside asar)
+    const resourcesPath = process.resourcesPath;
+    console.log('[Database] Production mode - resourcesPath:', resourcesPath);
+
+    // Try multiple possible locations
+    const possiblePaths = [
+      path.join(resourcesPath, '.prisma', 'client', 'index.js'),
+      path.join(resourcesPath, 'node_modules', '.prisma', 'client', 'index.js'),
+      path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', '.prisma', 'client', 'index.js'),
+    ];
+
+    let prismaPath: string | null = null;
+    for (const testPath of possiblePaths) {
+      console.log('[Database] Checking for Prisma at:', testPath);
+      if (fs.existsSync(testPath)) {
+        prismaPath = testPath;
+        console.log('[Database] Found Prisma at:', prismaPath);
+        break;
+      }
+    }
+
+    if (!prismaPath) {
+      const error = `Prisma Client not found. Tried:\n${possiblePaths.join('\n')}`;
+      console.error('[Database]', error);
+      throw new Error(error);
+    }
+
+    // CRITICAL: Set up module resolution for Prisma's internal requires
+    // Prisma's index.js requires '@prisma/client/runtime/library.js'
+    // In production, this is at Resources/client/runtime/library.js
+    //
+    // Solution: Create node_modules symlink structure so Node.js can resolve modules
+    // When Prisma's index.js does require('@prisma/client/...'), Node.js searches
+    // for node_modules directories. We create Resources/node_modules/@prisma/client
+    // pointing to Resources/client so the resolution works.
+    const nodeModulesDir = path.join(resourcesPath, 'node_modules');
+    const prismaModuleDir = path.join(nodeModulesDir, '@prisma');
+    const prismaClientSymlink = path.join(prismaModuleDir, 'client');
+    const prismaClientActual = path.join(resourcesPath, 'client');
+
+    if (!fs.existsSync(prismaClientSymlink)) {
+      try {
+        // Create node_modules/@prisma directories if they don't exist
+        if (!fs.existsSync(prismaModuleDir)) {
+          fs.mkdirSync(prismaModuleDir, { recursive: true });
+          console.log('[Database] Created directory:', prismaModuleDir);
+        }
+
+        // Create symlink from node_modules/@prisma/client -> client
+        fs.symlinkSync(prismaClientActual, prismaClientSymlink, 'dir');
+        console.log('[Database] Created symlink:', prismaClientSymlink, '->', prismaClientActual);
+      } catch (error) {
+        console.error('[Database] Failed to create symlink:', error);
+        // Continue anyway - might still work
+      }
+    }
+
+    // Use createRequire to bypass webpack's require and load from absolute path
+    // This is necessary because webpack's bundled require() can't load modules
+    // from paths outside the bundle.
+    // IMPORTANT: Create require relative to Prisma's location, not our bundled location
+    // This ensures when Prisma's index.js does require('@prisma/client/runtime/library.js'),
+    // it can find it via the node_modules structure we created above.
+    const nodeRequire = createRequire(prismaPath);
+    const { PrismaClient } = nodeRequire(prismaPath);
+    return PrismaClient;
+  }
+}
+
+let prisma: InstanceType<typeof PrismaClientType> | null = null;
 
 /**
  * Initialize the database and ensure data directory exists.
@@ -24,11 +127,16 @@ let prisma: PrismaClient | null = null;
  * @param customPath - Optional custom database path (for testing)
  * @returns PrismaClient instance
  */
-export function initializeDatabase(customPath?: string): PrismaClient {
+export function initializeDatabase(
+  customPath?: string
+): InstanceType<typeof PrismaClientType> {
   if (prisma) {
     console.log('[Database] Already initialized');
     return prisma;
   }
+
+  // Load Prisma Client constructor
+  const PrismaClient = loadPrismaClient();
 
   // Determine database path
   let dbPath: string;
@@ -80,7 +188,7 @@ export function initializeDatabase(customPath?: string): PrismaClient {
  * @throws Error if database has not been initialized
  * @returns PrismaClient instance
  */
-export function getDatabase(): PrismaClient {
+export function getDatabase(): InstanceType<typeof PrismaClientType> {
   if (!prisma) {
     throw new Error(
       'Database not initialized. Call initializeDatabase() first.'

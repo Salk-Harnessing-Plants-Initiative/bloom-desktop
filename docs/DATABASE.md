@@ -543,6 +543,30 @@ await window.electron.database.scientists.list();
 2. Stop running dev servers
 3. Check for orphaned processes: `ps aux | grep prisma`
 
+## Production Packaging
+
+Prisma requires special configuration for Electron packaging. The query engine binaries cannot be bundled inside the app.asar archive because:
+
+1. Binary engines cannot execute from read-only archives
+2. Node.js `require()` cannot resolve dynamic paths in ASAR
+3. Prisma's internal path resolution breaks when bundled
+
+**Solution**: The app uses dynamic module loading to load Prisma from different locations in development vs production:
+
+- **Development**: Loads from `node_modules/.prisma/client/`
+- **Production**: Loads from `process.resourcesPath/.prisma/client/` (outside ASAR)
+
+The packaging configuration in `forge.config.ts` uses `extraResource` to copy Prisma files to the `Resources/` directory where they can be accessed at runtime.
+
+**See [PACKAGING.md](PACKAGING.md)** for complete packaging documentation including:
+
+- Detailed explanation of the ASAR/Prisma conflict
+- Dynamic module loading implementation
+- Webpack and Forge configuration
+- Path resolution and fallbacks
+- Troubleshooting packaged apps
+- Platform-specific considerations
+
 ## Migration from Pilot
 
 The schema is 100% compatible with the pilot. To migrate data:

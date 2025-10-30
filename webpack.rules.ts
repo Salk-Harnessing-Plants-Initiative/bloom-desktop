@@ -11,6 +11,11 @@ export const rules: Required<ModuleOptions>['rules'] = [
   {
     test: /[/\\]node_modules[/\\].+\.(m?js|node)$/,
     parser: { amd: false },
+    // CRITICAL: Exclude .prisma from webpack processing
+    // The asset-relocator-loader breaks Prisma's internal path resolution.
+    // Prisma files are copied via extraResource in forge.config.ts instead.
+    // See docs/PACKAGING.md for details.
+    exclude: /\.prisma/,
     use: {
       loader: '@vercel/webpack-asset-relocator-loader',
       options: {

@@ -167,6 +167,12 @@ npm run package
 npm run make
 ```
 
+**Important**: Bloom Desktop uses Prisma ORM, which requires special packaging configuration for Electron. Prisma's binary query engines cannot be bundled inside the ASAR archive and are copied to the `Resources/` directory using dynamic module loading. See [docs/PACKAGING.md](docs/PACKAGING.md) for detailed information on:
+
+- How Prisma packaging works
+- Troubleshooting packaged apps
+- Platform-specific considerations
+
 ### 3. Script Details
 
 | Script                          | Description                                       | Prerequisites   |
