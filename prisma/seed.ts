@@ -78,7 +78,11 @@ async function main() {
       accession_id: accession1.id,
     },
   });
-  console.log('✓ Created experiment:', experiment1.name, `(ID: ${experiment1.id})`);
+  console.log(
+    '✓ Created experiment:',
+    experiment1.name,
+    `(ID: ${experiment1.id})`
+  );
 
   const experiment2 = await prisma.experiment.create({
     data: {
@@ -88,7 +92,11 @@ async function main() {
       accession_id: accession2.id,
     },
   });
-  console.log('✓ Created experiment:', experiment2.name, `(ID: ${experiment2.id})`);
+  console.log(
+    '✓ Created experiment:',
+    experiment2.name,
+    `(ID: ${experiment2.id})`
+  );
 
   // Create sample scans
   const scan1 = await prisma.scan.create({

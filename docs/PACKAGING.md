@@ -5,6 +5,7 @@ This document describes how Bloom Desktop is packaged for distribution, with spe
 ## Overview
 
 Bloom Desktop packages into a standalone application using Electron Forge with:
+
 - **Build system**: Electron Forge + Webpack 5
 - **Package format**: ASAR archive with selected files unpacked
 - **External resources**: Python executable, Prisma Client binaries
@@ -32,13 +33,13 @@ out/Bloom Desktop-darwin-arm64/
 
 ### Development vs Production
 
-| Aspect | Development | Production |
-|--------|-------------|------------|
+| Aspect              | Development                    | Production                  |
+| ------------------- | ------------------------------ | --------------------------- |
 | **Prisma location** | `node_modules/.prisma/client/` | `Resources/.prisma/client/` |
-| **Database** | `prisma/dev.db` | `~/.bloom/data/bloom.db` |
-| **Python** | `dist/bloom-hardware` (local) | `Resources/bloom-hardware` |
-| **Hot reload** | ✅ Yes | ❌ No |
-| **ASAR archive** | ❌ No | ✅ Yes |
+| **Database**        | `prisma/dev.db`                | `~/.bloom/data/bloom.db`    |
+| **Python**          | `dist/bloom-hardware` (local)  | `Resources/bloom-hardware`  |
+| **Hot reload**      | ✅ Yes                         | ❌ No                       |
+| **ASAR archive**    | ❌ No                          | ✅ Yes                      |
 
 ## Critical: Prisma Packaging Configuration
 
@@ -55,6 +56,7 @@ Require stack:
 ```
 
 **This occurs even though**:
+
 - ✅ Prisma works perfectly in development (`npm start`)
 - ✅ Dependencies are installed (`npm install` succeeds)
 - ✅ Package builds without errors (`npm run package` completes)
@@ -67,6 +69,7 @@ Electron packages applications into **ASAR archives** - compressed, read-only fi
 #### 1. Binary Query Engines Cannot Execute from ASAR
 
 Prisma uses native binary engines (`query-engine-darwin`, `libquery_engine-darwin-arm64.dylib.node`, etc.) that must be **executable**. Operating systems cannot execute binaries from read-only archives because:
+
 - ASAR files are virtual filesystems, not real directories
 - OS loaders require actual file descriptors for executables
 - Memory mapping of executables fails from ASAR
@@ -74,6 +77,7 @@ Prisma uses native binary engines (`query-engine-darwin`, `libquery_engine-darwi
 #### 2. Node.js Module Resolution Fails in ASAR
 
 Prisma's client code uses dynamic `require()` calls to load engine binaries. Node.js's module resolution fails when paths are inside ASAR archives because:
+
 - ASAR paths use virtual file system (`/path/to/app.asar/file`)
 - `fs.existsSync()` returns `false` for ASAR contents
 - `require()` cannot resolve through ASAR indirection
@@ -151,7 +155,14 @@ function loadPrismaClient(): typeof PrismaClientType {
     const possiblePaths = [
       path.join(resourcesPath, '.prisma', 'client', 'index.js'),
       path.join(resourcesPath, 'node_modules', '.prisma', 'client', 'index.js'),
-      path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', '.prisma', 'client', 'index.js'),
+      path.join(
+        resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        '.prisma',
+        'client',
+        'index.js'
+      ),
     ];
 
     // Find the first path that exists
@@ -164,7 +175,9 @@ function loadPrismaClient(): typeof PrismaClientType {
     }
 
     if (!prismaPath) {
-      throw new Error(`Prisma Client not found. Tried:\n${possiblePaths.join('\n')}`);
+      throw new Error(
+        `Prisma Client not found. Tried:\n${possiblePaths.join('\n')}`
+      );
     }
 
     // CRITICAL: Set up node_modules symlink structure for Prisma's internal requires
@@ -244,6 +257,7 @@ The webpack asset-relocator-loader must **exclude** `.prisma` files:
 - **With exclusion**: webpack leaves Prisma files alone, preserving their structure
 
 **What still works**:
+
 - Other native modules (`.node` files) are still relocated correctly
 - The exclusion is specific to `.prisma` directory only
 - All other node_modules are processed normally
@@ -268,9 +282,9 @@ const config: ForgeConfig = {
 
       // CRITICAL: Prisma Client must be outside ASAR
       // Binary engines cannot execute from read-only archive
-      './node_modules/.prisma',        // Generated Prisma Client
+      './node_modules/.prisma', // Generated Prisma Client
       './node_modules/@prisma/client', // Prisma Client package
-      './prisma/schema.prisma',        // Schema for runtime introspection
+      './prisma/schema.prisma', // Schema for runtime introspection
     ],
   },
   // ... rest of config
@@ -365,12 +379,14 @@ ELECTRON_ENABLE_LOGGING=1 "./out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Co
 The `loadPrismaClient()` function logs helpful debugging information:
 
 **Development mode**:
+
 ```
 [Database] Development mode - using standard @prisma/client import
 [Database] Initialized at: /path/to/project/prisma/dev.db
 ```
 
 **Production mode (success)**:
+
 ```
 [Database] Production mode - resourcesPath: /Applications/Bloom Desktop.app/Contents/Resources
 [Database] Checking for Prisma at: /Applications/Bloom Desktop.app/Contents/Resources/.prisma/client/index.js
@@ -380,6 +396,7 @@ The `loadPrismaClient()` function logs helpful debugging information:
 ```
 
 **Production mode (error)**:
+
 ```
 [Database] Production mode - resourcesPath: /Applications/Bloom Desktop.app/Contents/Resources
 [Database] Checking for Prisma at: /Applications/Bloom Desktop.app/Contents/Resources/.prisma/client/index.js
@@ -396,6 +413,7 @@ The `loadPrismaClient()` function logs helpful debugging information:
 ### Error: "Cannot find module '@prisma/client'"
 
 **Symptoms**:
+
 - App works in development (`npm start`)
 - Packaged app crashes on launch
 - Console shows: `Error: Cannot find module '@prisma/client'`
@@ -403,11 +421,13 @@ The `loadPrismaClient()` function logs helpful debugging information:
 **Diagnosis**:
 
 **Method 1: DevTools Console** (shows renderer process only)
+
 1. Open packaged app and press `Cmd+Option+I` (macOS) or `Ctrl+Shift+I` (Windows/Linux)
 2. Check Console tab for `[Database]` log messages
 3. Look for which paths were checked
 
 **Method 2: Terminal Logs** (shows main process logs - **RECOMMENDED**)
+
 ```bash
 # Run packaged app from terminal to see main process initialization logs
 "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/MacOS/Bloom Desktop" 2>&1 | grep -E "\[Main\]|\[Database\]"
@@ -434,6 +454,7 @@ ls "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/Resources/.prisma/
 ```
 
 **Fix**: Ensure `forge.config.ts` has:
+
 ```typescript
 extraResource: [
   './node_modules/.prisma',
@@ -453,6 +474,7 @@ ls node_modules/.prisma/client/
 ```
 
 **Fix**: Run Prisma generate before packaging:
+
 ```bash
 npx prisma generate
 npm run package
@@ -467,10 +489,12 @@ The app might think it's in development mode when it's actually packaged.
 ### Error: "Query engine library not found"
 
 **Symptoms**:
+
 - Prisma Client loads successfully
 - Error when trying to query database: `Error: Query engine library for current platform could not be found`
 
 **Diagnosis**:
+
 - Prisma Client is loaded, but can't find the native query engine binary
 - Check console for: `PrismaClient failed to make request`
 
@@ -481,6 +505,7 @@ The app might think it's in development mode when it's actually packaged.
 The query engine binary (`libquery_engine-*.node` or `query-engine-*.exe`) is missing.
 
 **Fix**: Verify the binary exists:
+
 ```bash
 ls "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/Resources/.prisma/client/"/*.node
 
@@ -492,6 +517,7 @@ ls "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/Resources/.prisma/
 The native binary might have lost execute permissions.
 
 **Fix**: Check and restore permissions:
+
 ```bash
 chmod +x "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/Resources/.prisma/client/"*.node
 ```
@@ -499,14 +525,17 @@ chmod +x "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/Resources/.p
 ### Error: Database file not found
 
 **Symptoms**:
+
 - Prisma loads successfully
 - Error: `SQLITE_CANTOPEN: unable to open database file`
 
 **Diagnosis**:
+
 - Production database path might not be writable
 - Check logs for database path: `[Database] Production mode - using: ...`
 
 **Fix**:
+
 - Ensure `~/.bloom/data/` directory exists and is writable
 - The app should create this automatically, but might fail due to permissions
 
@@ -517,6 +546,7 @@ chmod +x "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/Resources/.p
 **Cause**: macOS Gatekeeper blocking unsigned app with unpacked files.
 
 **Fix**:
+
 ```bash
 # Remove quarantine attribute
 xattr -cr "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app"
@@ -535,6 +565,7 @@ xattr -cr "out/Bloom Desktop-darwin-arm64/Bloom Desktop.app"
 **Cause**: Missing system dependencies for query engine.
 
 **Fix**: Install OpenSSL:
+
 ```bash
 sudo apt-get install openssl libssl3
 ```
@@ -546,6 +577,7 @@ sudo apt-get install openssl libssl3
 When upgrading Prisma to a new version:
 
 1. **Test in development first**:
+
    ```bash
    npm install @prisma/client@latest prisma@latest
    npx prisma generate
@@ -553,6 +585,7 @@ When upgrading Prisma to a new version:
    ```
 
 2. **Test packaging**:
+
    ```bash
    npm run package
    # Open packaged app and verify database operations work
@@ -571,11 +604,13 @@ When upgrading Prisma to a new version:
 ### When Updating Electron Forge
 
 Electron Forge updates might change:
+
 - ASAR handling behavior
 - `extraResource` copying behavior
 - `process.resourcesPath` location
 
 **Test checklist**:
+
 - [ ] Verify `extraResource` still copies files to Resources/
 - [ ] Check that `process.resourcesPath` points to correct location
 - [ ] Confirm native binaries are still executable

@@ -37,15 +37,18 @@ import { createRequire } from 'module';
  */
 function loadPrismaClient(): typeof PrismaClientType {
   const isDev = process.env.NODE_ENV === 'development';
+  const isPackaged = process.resourcesPath !== undefined;
 
-  if (isDev) {
-    // Development: normal import
-    console.log('[Database] Development mode - using standard @prisma/client import');
+  if (isDev || !isPackaged) {
+    // Development or non-Electron context (e.g., tests): normal import
+    console.log(
+      '[Database] Development mode - using standard @prisma/client import'
+    );
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaClient } = require('@prisma/client');
     return PrismaClient;
   } else {
-    // Production: load from Resources directory (outside asar)
+    // Production packaged app: load from Resources directory (outside asar)
     const resourcesPath = process.resourcesPath;
     console.log('[Database] Production mode - resourcesPath:', resourcesPath);
 
@@ -53,7 +56,14 @@ function loadPrismaClient(): typeof PrismaClientType {
     const possiblePaths = [
       path.join(resourcesPath, '.prisma', 'client', 'index.js'),
       path.join(resourcesPath, 'node_modules', '.prisma', 'client', 'index.js'),
-      path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', '.prisma', 'client', 'index.js'),
+      path.join(
+        resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        '.prisma',
+        'client',
+        'index.js'
+      ),
     ];
 
     let prismaPath: string | null = null;
@@ -95,7 +105,12 @@ function loadPrismaClient(): typeof PrismaClientType {
 
         // Create symlink from node_modules/@prisma/client -> client
         fs.symlinkSync(prismaClientActual, prismaClientSymlink, 'dir');
-        console.log('[Database] Created symlink:', prismaClientSymlink, '->', prismaClientActual);
+        console.log(
+          '[Database] Created symlink:',
+          prismaClientSymlink,
+          '->',
+          prismaClientActual
+        );
       } catch (error) {
         console.error('[Database] Failed to create symlink:', error);
         // Continue anyway - might still work

@@ -763,13 +763,17 @@ app.on('ready', async () => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error('[Main] Failed to initialize database:', errorMessage, errorStack);
+    console.error(
+      '[Main] Failed to initialize database:',
+      errorMessage,
+      errorStack
+    );
 
     // Send error to renderer so user can see it in DevTools
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('database:error', {
         error: errorMessage,
-        stack: errorStack
+        stack: errorStack,
       });
     }
   }
