@@ -23,7 +23,8 @@ jobs:
   # 5. test-python: pytest with 80% coverage (Linux only)
   # 6. test-integration: IPC, camera, DAQ, scanner, and scanner-database tests
   #    across Linux, macOS, Windows
-  # 7. all-checks-passed: Summary job (only runs if all pass)
+  # 7. test-package-database: Packaged app database initialization (macOS only)
+  # 8. all-checks-passed: Summary job (only runs if all pass)
   #
   # All integration tests use mock hardware for CI environment
   # ==============================================================================
@@ -221,6 +222,44 @@ jobs:
       - name: Run Scanner-Database integration tests
         run: npm run test:scanner-database
 
+  # Test packaged app database integration (macOS only for speed)
+  test-package-database:
+    name: Test - Packaged App Database (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
+
+      - name: Build Python executable
+        run: npm run build:python
+
+      - name: Package application
+        run: npm run package
+
+      - name: Test packaged app database initialization
+        run: npm run test:package:database
+
   # Summary job - requires all checks to pass
   all-checks-passed:
     name: All Checks Passed
@@ -232,6 +271,7 @@ jobs:
       - test-unit
       - test-python
       - test-integration
+      - test-package-database
 
     steps:
       - name: All checks passed
