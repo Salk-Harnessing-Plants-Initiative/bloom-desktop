@@ -99,3 +99,10 @@ prisma/*.db-journal
 
 # Database files (production location: ~/.bloom/data/)
 # Note: Production databases are stored outside the repo in user home directory
+
+# Playwright E2E test artifacts #
+################################
+playwright-report/
+test-results/
+tests/e2e/**/*.db
+tests/e2e/**/*.db-journal
