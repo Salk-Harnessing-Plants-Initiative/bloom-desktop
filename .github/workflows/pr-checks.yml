@@ -265,10 +265,23 @@ jobs:
       - name: Build webpack development build
         run: node scripts/build-webpack-dev.js
 
+      - name: Start webpack dev server in background
+        run: |
+          npx webpack serve --config webpack.renderer.config.ts &
+          echo $! > webpack-dev-server.pid
+          sleep 10  # Wait for server to start
+
       - name: Run Playwright E2E tests
         run: npm run test:e2e
         env:
           CI: true
+
+      - name: Stop webpack dev server
+        if: always()
+        run: |
+          if [ -f webpack-dev-server.pid ]; then
+            kill $(cat webpack-dev-server.pid) || true
+          fi
 
       - name: Upload Playwright test results
         uses: actions/upload-artifact@v4
