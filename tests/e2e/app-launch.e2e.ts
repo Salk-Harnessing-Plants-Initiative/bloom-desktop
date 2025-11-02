@@ -1,11 +1,12 @@
 /**
  * E2E Test: App Launch and Database Initialization
  *
- * Tests the packaged Electron app's ability to launch and initialize.
- * This is a foundational test that verifies the core application startup.
+ * Tests the Electron app's ability to launch and initialize using the development build.
  *
- * NOTE: These tests require the app to be packaged first:
- * Run `npm run package` before running E2E tests.
+ * IMPORTANT: Playwright's _electron API is designed for development builds, not packaged apps.
+ * Testing the webpack development build is the standard approach for Electron E2E tests.
+ *
+ * For packaged app testing, use the integration test: `npm run test:package:database`
  */
 
 import {
@@ -22,70 +23,49 @@ import { execSync } from 'child_process';
 let electronApp: ElectronApplication;
 let window: Page;
 
-// Path to the packaged app (macOS example - adjust for other platforms)
-const getPackagedAppPath = () => {
-  const platform = process.platform;
-
-  if (platform === 'darwin') {
-    return path.join(
-      __dirname,
-      '../../out/Bloom Desktop-darwin-arm64/Bloom Desktop.app/Contents/MacOS/Bloom Desktop'
-    );
-  } else if (platform === 'win32') {
-    return path.join(
-      __dirname,
-      '../../out/Bloom Desktop-win32-x64/Bloom Desktop.exe'
-    );
-  } else {
-    // Linux
-    return path.join(
-      __dirname,
-      '../../out/Bloom Desktop-linux-x64/bloom-desktop'
-    );
-  }
-};
-
 test.describe('Electron App Launch', () => {
-  test.beforeAll(async () => {
-    // Check if packaged app exists, if not try to package it
-    const appPath = getPackagedAppPath();
-    if (!fs.existsSync(appPath)) {
-      console.log('[E2E] Packaged app not found, building...');
-      try {
-        execSync('npm run package', {
-          stdio: 'inherit',
-          cwd: path.join(__dirname, '../..'),
-        });
-      } catch (error) {
-        throw new Error(
-          `Failed to package app. Please run 'npm run package' manually. Error: ${error}`
-        );
-      }
-    }
-  });
+  // No beforeAll needed - Electron Forge auto-builds webpack on first launch
 
   test.beforeEach(async () => {
     // Clean up any existing test database
-    const testDbPath = path.join(__dirname, 'test.db');
+    // Database is created at prisma/tests/e2e/test.db (relative to prisma/ dir)
+    const testDbPath = path.join(__dirname, '../../prisma/tests/e2e/test.db');
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
 
-    // Launch the packaged Electron app
-    const appPath = getPackagedAppPath();
+    // Also clean up the directory where it might be created
+    const testDbDir = path.dirname(testDbPath);
+    if (!fs.existsSync(testDbDir)) {
+      fs.mkdirSync(testDbDir, { recursive: true });
+    }
 
-    electronApp = await electron.launch({
-      executablePath: appPath,
-      env: {
-        ...process.env,
-        NODE_ENV: 'development',
-        BLOOM_DATABASE_URL: `file:${testDbPath}`,
-      },
+    // Create the test database file and apply schema
+    // prisma db push creates the database file and applies the schema without migrations
+    // Uses BLOOM_DATABASE_URL from .env.e2e (single source of truth)
+    const appRoot = path.join(__dirname, '../..');
+    execSync('npx prisma db push --skip-generate', {
+      cwd: appRoot,
+      env: process.env,  // Use environment from .env.e2e
+      stdio: 'pipe',  // Suppress output
     });
 
-    // Get the first window that the app opens
-    window = await electronApp.firstWindow();
+    // Launch Electron app using the pilot's working approach
+    // Pass '.' as the arg to load app from package.json "main" field
+    // This avoids the --remote-debugging-port issue that occurs when
+    // passing the main file path directly
+    const electronPath = require('electron');
+    
+    electronApp = await electron.launch({
+      executablePath: electronPath as string,
+      args: ['.'],
+      cwd: appRoot,
+      env: process.env,  // Simply use environment (includes .env.e2e vars loaded by Playwright)
+    });
 
+    // Get the first window that opens
+    window = await electronApp.firstWindow();
+    
     // Wait for the window to be ready
     await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   });
@@ -96,8 +76,8 @@ test.describe('Electron App Launch', () => {
       await electronApp.close();
     }
 
-    // Clean up test database
-    const testDbPath = path.join(__dirname, 'test.db');
+    // Clean up test database at prisma/tests/e2e/test.db
+    const testDbPath = path.join(__dirname, '../../prisma/tests/e2e/test.db');
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
@@ -123,8 +103,8 @@ test.describe('Electron App Launch', () => {
     // Give the app time to initialize the database
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // Verify test database file was created
-    const testDbPath = path.join(__dirname, 'test.db');
+    // Verify test database file was created at prisma/tests/e2e/test.db
+    const testDbPath = path.join(__dirname, '../../prisma/tests/e2e/test.db');
     const dbExists = fs.existsSync(testDbPath);
     expect(dbExists).toBe(true);
   });

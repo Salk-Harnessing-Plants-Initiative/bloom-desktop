@@ -161,6 +161,10 @@ export function initializeDatabase(
     // Use custom path (for testing)
     dbPath = customPath;
     console.log('[Database] Using custom path:', dbPath);
+  } else if (process.env.BLOOM_DATABASE_URL) {
+    // Use environment variable if set (takes precedence over NODE_ENV logic)
+    dbPath = process.env.BLOOM_DATABASE_URL.replace('file:', '');
+    console.log('[Database] Using BLOOM_DATABASE_URL:', dbPath);
   } else {
     const isDev = process.env.NODE_ENV === 'development';
     if (isDev) {
