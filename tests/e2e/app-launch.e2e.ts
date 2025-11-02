@@ -19,6 +19,8 @@ import {
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import electronPath = require('electron');
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -54,10 +56,8 @@ test.describe('Electron App Launch', () => {
     // Pass '.' as the arg to load app from package.json "main" field
     // This avoids the --remote-debugging-port issue that occurs when
     // passing the main file path directly
-    const electronPath = require('electron');
-    
     electronApp = await electron.launch({
-      executablePath: electronPath as string,
+      executablePath: electronPath as unknown as string,
       args: ['.'],
       cwd: appRoot,
       env: process.env,  // Simply use environment (includes .env.e2e vars loaded by Playwright)
