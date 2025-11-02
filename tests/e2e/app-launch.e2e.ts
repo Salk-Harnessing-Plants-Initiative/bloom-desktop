@@ -48,8 +48,8 @@ test.describe('Electron App Launch', () => {
     const appRoot = path.join(__dirname, '../..');
     execSync('npx prisma db push --skip-generate', {
       cwd: appRoot,
-      env: process.env,  // Use environment from .env.e2e
-      stdio: 'pipe',  // Suppress output
+      env: process.env, // Use environment from .env.e2e
+      stdio: 'pipe', // Suppress output
     });
 
     // Launch Electron app using the pilot's working approach
@@ -60,12 +60,12 @@ test.describe('Electron App Launch', () => {
       executablePath: electronPath as unknown as string,
       args: ['.'],
       cwd: appRoot,
-      env: process.env,  // Simply use environment (includes .env.e2e vars loaded by Playwright)
+      env: process.env, // Simply use environment (includes .env.e2e vars loaded by Playwright)
     });
 
     // Get the first window that opens
     window = await electronApp.firstWindow();
-    
+
     // Wait for the window to be ready
     await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   });
