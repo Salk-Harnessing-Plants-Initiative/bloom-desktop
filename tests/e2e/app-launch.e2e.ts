@@ -94,46 +94,15 @@ test.describe('Electron App Launch', () => {
     // Get the first window that opens
     // WORKAROUND for DevTools race condition (GitHub issue #10964):
     // firstWindow() may return DevTools window instead of main window
-    // Solution: Wait for window with correct title
+    // Solution: Use firstWindow() but wait for it to load the main page
     // Reference: openspec/changes/add-e2e-testing-framework/design.md (Known Issue 1)
+    window = await electronApp.firstWindow();
 
-    // Wait for main window to be ready (with retry logic)
-    // Check both URL and title to ensure we get the right window
-    let attempts = 0;
-    const maxAttempts = 20;
-    let foundWindow: Page | undefined;
+    // Wait for the window to load the localhost page (not DevTools)
+    // The window starts with about:blank or devtools://, then navigates to localhost
+    await window.waitForURL(/localhost/, { timeout: 30000 });
 
-    while (attempts < maxAttempts && !foundWindow) {
-      const windows = electronApp.windows();
-
-      for (const w of windows) {
-        try {
-          const url = w.url();
-          const title = await w.title();
-
-          // Check if this is the main window:
-          // - URL includes localhost (renderer on dev server)
-          // - Title contains "Bloom Desktop" (not DevTools, not empty)
-          if (url.includes('localhost') && title.includes('Bloom Desktop')) {
-            foundWindow = w;
-            break;
-          }
-        } catch {
-          // Window might not be ready yet, continue
-        }
-      }
-
-      if (!foundWindow) {
-        // Wait a bit before retrying
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        attempts++;
-      }
-    }
-
-    // Use found window or fallback to first window
-    window = foundWindow || electronApp.windows()[0];
-
-    // Wait for the window to be ready
+    // Wait for the page to be fully loaded
     await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   });
 
