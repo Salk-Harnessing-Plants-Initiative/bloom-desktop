@@ -157,6 +157,12 @@ test.describe('Electron App Launch', () => {
     // Verify window was created
     expect(window).toBeDefined();
 
+    // Wait for title to be set (may take a moment for page to load)
+    await window.waitForFunction(
+      () => document.title.includes('Bloom Desktop'),
+      { timeout: 10000 },
+    );
+
     // Check window title contains "Bloom Desktop"
     const title = await window.title();
     expect(title).toContain('Bloom Desktop');
