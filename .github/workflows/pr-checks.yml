@@ -271,7 +271,14 @@ jobs:
           echo $! > electron-forge.pid
           sleep 15  # Wait for dev server to start
 
-      - name: Run Playwright E2E tests
+      - name: Run Playwright E2E tests (Linux with Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
+        env:
+          CI: true
+
+      - name: Run Playwright E2E tests (macOS/Windows)
+        if: runner.os != 'Linux'
         run: npm run test:e2e
         env:
           CI: true
