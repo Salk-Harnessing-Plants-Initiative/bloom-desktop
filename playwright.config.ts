@@ -42,7 +42,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
 
-    // Keep browser visible during tests (helpful for debugging)
-    headless: false,
+    // Headless mode: true in CI for performance, false locally for debugging
+    // Research finding: headless: false in CI causes issues
+    headless: process.env.CI ? true : false,
   },
 });

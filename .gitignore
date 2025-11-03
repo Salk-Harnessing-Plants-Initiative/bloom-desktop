@@ -104,5 +104,6 @@ prisma/*.db-journal
 ################################
 playwright-report/
 test-results/
+.playwright/
 tests/e2e/**/*.db
 tests/e2e/**/*.db-journal

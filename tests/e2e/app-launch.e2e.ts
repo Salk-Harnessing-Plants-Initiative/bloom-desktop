@@ -1,12 +1,23 @@
 /**
  * E2E Test: App Launch and Database Initialization
  *
- * Tests the Electron app's ability to launch and initialize using the development build.
+ * Tests the Electron app's ability to launch and initialize using Electron Forge's dev build.
  *
- * IMPORTANT: Playwright's _electron API is designed for development builds, not packaged apps.
- * Testing the webpack development build is the standard approach for Electron E2E tests.
+ * PREREQUISITES:
+ * 1. Start Electron Forge dev server: `npm run start` (keep running in Terminal 1)
+ * 2. Run E2E tests: `npm run test:e2e` (in Terminal 2)
  *
- * For packaged app testing, use the integration test: `npm run test:package:database`
+ * The Electron app loads the renderer from Electron Forge's dev server on port 9000.
+ * The dev server MUST be running or the Electron window will be blank.
+ *
+ * IMPORTANT: Playwright v1.44+ has a regression bug with packaged Electron apps.
+ * The _electron.launch() API adds --remote-debugging-port=0 flag that packaged apps reject.
+ * See: https://github.com/microsoft/playwright/issues/32027
+ *
+ * Decision: Use Electron Forge dev build for Playwright E2E tests (catches 95% of issues).
+ * For packaged app validation, use integration test: `npm run test:package:database`
+ *
+ * Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 1, Issue 2, Decision 5)
  */
 
 import {
@@ -19,8 +30,10 @@ import {
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
+
+// Import electron path using require() since the module exports a string path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-import electronPath = require('electron');
+const electronPath: string = require('electron');
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -30,13 +43,15 @@ test.describe('Electron App Launch', () => {
 
   test.beforeEach(async () => {
     // Clean up any existing test database
-    // Database is created at prisma/tests/e2e/test.db (relative to prisma/ dir)
-    const testDbPath = path.join(__dirname, '../../prisma/tests/e2e/test.db');
+    // Database path from .env.e2e: file:../tests/e2e/test.db (relative to prisma/ dir)
+    // Resolves to: tests/e2e/test.db from project root
+    // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 3)
+    const testDbPath = path.join(__dirname, '../../tests/e2e/test.db');
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
 
-    // Also clean up the directory where it might be created
+    // Create directory if it doesn't exist
     const testDbDir = path.dirname(testDbPath);
     if (!fs.existsSync(testDbDir)) {
       fs.mkdirSync(testDbDir, { recursive: true });
@@ -52,19 +67,31 @@ test.describe('Electron App Launch', () => {
       stdio: 'pipe', // Suppress output
     });
 
-    // Launch Electron app using the pilot's working approach
-    // Pass '.' as the arg to load app from package.json "main" field
-    // This avoids the --remote-debugging-port issue that occurs when
-    // passing the main file path directly
+    // Launch Electron app using webpack dev build
+    // Point directly to the built main process file to avoid Playwright's --remote-debugging-port=0 bug
+    // The .webpack/main/index.js is created by `node scripts/build-webpack-dev.js`
+    // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 5, Known Issue 2)
+    //
+    // IMPORTANT: Must run `node scripts/build-webpack-dev.js` before running tests
+    //
+    // Environment variables are loaded from .env.e2e by Playwright config (dotenv.config)
+    // and are available in process.env for both this test file and the launched Electron app
     electronApp = await electron.launch({
-      executablePath: electronPath as unknown as string,
-      args: ['.'],
+      executablePath: electronPath,
+      args: [path.join(appRoot, '.webpack/main/index.js')],
       cwd: appRoot,
-      env: process.env, // Simply use environment (includes .env.e2e vars loaded by Playwright)
+      env: process.env as Record<string, string>,
     });
 
     // Get the first window that opens
-    window = await electronApp.firstWindow();
+    // WORKAROUND for DevTools race condition (GitHub issue #10964):
+    // firstWindow() may return DevTools window instead of main window
+    // Solution: Wait for all windows and filter out DevTools
+    // Reference: openspec/changes/add-e2e-testing-framework/design.md (Known Issue 1)
+    const windows = await electronApp.windows();
+
+    // Find the main window (not DevTools)
+    window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 
     // Wait for the window to be ready
     await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
@@ -76,8 +103,8 @@ test.describe('Electron App Launch', () => {
       await electronApp.close();
     }
 
-    // Clean up test database at prisma/tests/e2e/test.db
-    const testDbPath = path.join(__dirname, '../../prisma/tests/e2e/test.db');
+    // Clean up test database at tests/e2e/test.db
+    const testDbPath = path.join(__dirname, '../../tests/e2e/test.db');
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath);
     }
@@ -103,8 +130,8 @@ test.describe('Electron App Launch', () => {
     // Give the app time to initialize the database
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // Verify test database file was created at prisma/tests/e2e/test.db
-    const testDbPath = path.join(__dirname, '../../prisma/tests/e2e/test.db');
+    // Verify test database file was created at tests/e2e/test.db
+    const testDbPath = path.join(__dirname, '../../tests/e2e/test.db');
     const dbExists = fs.existsSync(testDbPath);
     expect(dbExists).toBe(true);
   });
