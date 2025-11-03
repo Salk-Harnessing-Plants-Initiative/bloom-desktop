@@ -48,7 +48,9 @@ const checkInterval = setInterval(() => {
 
   if (fs.existsSync(webpackMainPath) && fs.existsSync(webpackRendererPath)) {
     console.log('[build-webpack-dev] Webpack build detected!');
-    console.log('[build-webpack-dev] Waiting 2 seconds to ensure build completes...');
+    console.log(
+      '[build-webpack-dev] Waiting 2 seconds to ensure build completes...'
+    );
 
     // Wait a bit more to ensure all files are written
     setTimeout(() => {
@@ -80,11 +82,15 @@ forgeProcess.on('exit', (code) => {
   const webpackMainPath = path.join(__dirname, '../.webpack/main/index.js');
 
   if (fs.existsSync(webpackMainPath)) {
-    console.log('[build-webpack-dev] ✓ Webpack development build completed successfully');
+    console.log(
+      '[build-webpack-dev] ✓ Webpack development build completed successfully'
+    );
     console.log(`[build-webpack-dev] Output: ${path.dirname(webpackMainPath)}`);
     process.exit(0);
   } else {
-    console.error('[build-webpack-dev] ✗ Webpack build failed - main index.js not found');
+    console.error(
+      '[build-webpack-dev] ✗ Webpack build failed - main index.js not found'
+    );
     process.exit(1);
   }
 });
