@@ -160,7 +160,7 @@ test.describe('Electron App Launch', () => {
     // Wait for title to be set (may take a moment for page to load)
     await window.waitForFunction(
       () => document.title.includes('Bloom Desktop'),
-      { timeout: 10000 },
+      { timeout: 10000 }
     );
 
     // Check window title contains "Bloom Desktop"
