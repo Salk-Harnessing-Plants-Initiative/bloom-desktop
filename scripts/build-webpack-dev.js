@@ -21,10 +21,11 @@ const MAX_WAIT_TIME = 120000; // Max 2 minutes
 console.log('[build-webpack-dev] Starting webpack development build...');
 
 // On Windows, spawn needs shell:true to find npx.cmd
+// But shell:true can cause issues with process signals on Unix
 const forgeProcess = spawn('npx', ['electron-forge', 'start'], {
   cwd: path.join(__dirname, '..'),
   stdio: 'pipe',
-  shell: true, // Required for Windows to find npx.cmd
+  shell: process.platform === 'win32', // Only use shell on Windows
 });
 
 let stdoutBuffer = '';
