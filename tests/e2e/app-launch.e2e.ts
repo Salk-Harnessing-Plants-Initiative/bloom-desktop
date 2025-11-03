@@ -118,7 +118,7 @@ test.describe('Electron App Launch', () => {
             foundWindow = w;
             break;
           }
-        } catch (e) {
+        } catch {
           // Window might not be ready yet, continue
         }
       }
