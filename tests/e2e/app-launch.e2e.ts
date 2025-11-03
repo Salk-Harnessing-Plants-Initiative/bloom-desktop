@@ -96,10 +96,35 @@ test.describe('Electron App Launch', () => {
     // firstWindow() may return DevTools window instead of main window
     // Solution: Wait for all windows and filter out DevTools
     // Reference: openspec/changes/add-e2e-testing-framework/design.md (Known Issue 1)
-    const windows = await electronApp.windows();
 
-    // Find the main window (not DevTools)
-    window = windows.find((w) => w.url().includes('localhost')) || windows[0];
+    // Wait for main window to be ready (with retry logic)
+    let windows = await electronApp.windows();
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (attempts < maxAttempts) {
+      windows = await electronApp.windows();
+
+      // Find the main window (localhost URL, not DevTools)
+      const mainWindow = windows.find((w) => {
+        const url = w.url();
+        return url.includes('localhost') && !url.includes('devtools');
+      });
+
+      if (mainWindow) {
+        window = mainWindow;
+        break;
+      }
+
+      // Wait a bit before retrying
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      attempts++;
+    }
+
+    // Fallback to first window if we couldn't find the main window
+    if (!window && windows.length > 0) {
+      window = windows[0];
+    }
 
     // Wait for the window to be ready
     await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
