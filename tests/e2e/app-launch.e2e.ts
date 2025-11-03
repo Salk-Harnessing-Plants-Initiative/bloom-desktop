@@ -76,9 +76,17 @@ test.describe('Electron App Launch', () => {
     //
     // Environment variables are loaded from .env.e2e by Playwright config (dotenv.config)
     // and are available in process.env for both this test file and the launched Electron app
+    //
+    // Linux CI Fix: Add --no-sandbox flag for Linux CI environments
+    // This fixes SUID sandbox permission errors in GitHub Actions Linux runners
+    const args = [path.join(appRoot, '.webpack/main/index.js')];
+    if (process.platform === 'linux' && process.env.CI === 'true') {
+      args.push('--no-sandbox');
+    }
+
     electronApp = await electron.launch({
       executablePath: electronPath,
-      args: [path.join(appRoot, '.webpack/main/index.js')],
+      args,
       cwd: appRoot,
       env: process.env as Record<string, string>,
     });
