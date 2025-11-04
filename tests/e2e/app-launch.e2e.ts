@@ -94,15 +94,14 @@ test.describe('Electron App Launch', () => {
     // Get the first window that opens
     // WORKAROUND for DevTools race condition (GitHub issue #10964):
     // firstWindow() may return DevTools window instead of main window
-    // Solution: Use firstWindow() but wait for it to load the main page
+    // Solution: Get all windows and filter for localhost
     // Reference: openspec/changes/add-e2e-testing-framework/design.md (Known Issue 1)
-    window = await electronApp.firstWindow();
+    const windows = await electronApp.windows();
 
-    // Wait for the window to load the localhost page (not DevTools)
-    // The window starts with about:blank or devtools://, then navigates to localhost
-    await window.waitForURL(/localhost/, { timeout: 30000 });
+    // Find the main window (not DevTools)
+    window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 
-    // Wait for the page to be fully loaded
+    // Wait for the window to be ready
     await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   });
 

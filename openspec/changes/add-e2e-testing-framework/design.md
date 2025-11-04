@@ -432,7 +432,20 @@ const window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 - Use Playwright UI mode (`npm run test:e2e:ui`) for interactive debugging
 
 **Implemented Fix** (2025-11-03):
-The test file now uses the window filtering approach which successfully avoids the race condition.
+The test file uses a simple window filtering approach that successfully avoids the race condition:
+
+```typescript
+const windows = await electronApp.windows();
+window = windows.find((w) => w.url().includes('localhost')) || windows[0];
+await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
+```
+
+**Regression Note** (2025-11-03):
+Commit `39656f6` attempted to use `waitForURL(/localhost/)` but this breaks on subsequent tests because:
+- Test 1: Window navigates to localhost → waitForURL detects navigation → passes
+- Test 2+: Window already on localhost → waitForURL times out waiting for navigation that already happened → fails
+
+The simple `windows.find()` approach is more reliable because it doesn't depend on detecting navigation events.
 
 ### Issue 2: Packaged App Testing with Playwright
 
