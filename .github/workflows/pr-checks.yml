@@ -268,6 +268,18 @@ jobs:
       - name: Build webpack development build
         run: node scripts/build-webpack-dev.js
 
+      - name: Start Electron Forge dev server in background
+        shell: bash
+        run: |
+          npm run start &
+          echo $! > electron-forge.pid
+          # Platform-specific wait times: Linux needs more time for dev server startup
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sleep 30
+          else
+            sleep 15
+          fi
+
       - name: Run Playwright E2E tests (Linux with Xvfb)
         if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
@@ -279,6 +291,10 @@ jobs:
         run: npm run test:e2e
         env:
           CI: true
+
+      - name: Stop Electron Forge dev server
+        if: always()
+        run: node scripts/stop-electron-forge.js
 
       - name: Upload Playwright test results
         uses: actions/upload-artifact@v4

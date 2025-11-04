@@ -22,7 +22,7 @@ export default defineConfig({
   testIgnore: ['**/*.test.ts', '**/*.spec.ts'], // Exclude unit/integration test patterns
 
   // Execution configuration
-  timeout: 120000, // 120 seconds per test (Electron app startup can be slow, especially on Windows)
+  timeout: 60000, // 60 seconds per test (Electron app startup can be slow)
   fullyParallel: false, // Run tests sequentially
   workers: 1, // Single worker to avoid conflicts with Electron instances
 
