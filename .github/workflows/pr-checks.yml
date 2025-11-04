@@ -269,6 +269,7 @@ jobs:
         run: node scripts/build-webpack-dev.js
 
       - name: Start Electron Forge dev server in background
+        shell: bash
         run: |
           npm run start &
           echo $! > electron-forge.pid
