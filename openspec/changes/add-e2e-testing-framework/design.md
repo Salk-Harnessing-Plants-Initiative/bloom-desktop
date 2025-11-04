@@ -563,6 +563,72 @@ expect(content).toContain('Expected text');
 - Test behavior through the Electron window, not direct imports
 - Keep tests in separate directory from source code
 
+### Issue 6: Platform-Specific CI Requirements
+
+**Problem**: E2E tests initially passed on macOS but failed on Ubuntu (2/3 tests) and Windows (CI step failure) due to platform-specific differences.
+
+**GitHub Issue**: Addressed in [fix-e2e-ci-ubuntu-windows](../fix-e2e-ci-ubuntu-windows/) OpenSpec change (2025-11-04)
+
+**Ubuntu/Linux Issues**:
+
+1. **Blank Renderer Problem**: Tests showed empty `<body>` content and `document.title` timeout
+   - **Root Cause**: Chromium requires `--no-sandbox` flag in CI/containerized environments
+   - **Evidence**: Page loads but renderer doesn't execute JavaScript from dev server
+   - **Solution**: Add `--no-sandbox` Electron launch arg when `process.platform === 'linux' && process.env.CI === 'true'`
+
+2. **Dev Server Startup Timing**: 15-second wait insufficient on slower Ubuntu GitHub runners
+   - **Root Cause**: Webpack dev server compilation takes longer on Ubuntu CI
+   - **Solution**: Increase wait to 30 seconds on Linux, keep 15s for macOS/Windows
+
+**Windows Issues**:
+
+1. **PowerShell Incompatibility**: Bash syntax in cleanup script fails on Windows
+   - **Error**: `ParserError: Missing '(' after 'if'` for `if [ -f electron-forge.pid ]; then`
+   - **Root Cause**: Windows GitHub Actions runners use PowerShell by default, not Bash
+   - **Solution**: Replace Bash script with cross-platform Node.js script (`scripts/stop-electron-forge.js`)
+
+**Implementation**:
+
+```typescript
+// In tests/e2e/app-launch.e2e.ts - Linux --no-sandbox flag
+const args = [path.join(appRoot, '.webpack/main/index.js')];
+if (process.platform === 'linux' && process.env.CI === 'true') {
+  args.push('--no-sandbox'); // Required for Chromium in CI
+}
+```
+
+```yaml
+# In .github/workflows/pr-checks.yml - Platform-specific wait times
+- name: Start Electron Forge dev server in background
+  run: |
+    npm run start &
+    echo $! > electron-forge.pid
+    if [ "$RUNNER_OS" == "Linux" ]; then
+      sleep 30  # Ubuntu needs more time
+    else
+      sleep 15  # macOS/Windows are faster
+    fi
+
+# Cross-platform cleanup (works on Linux, macOS, Windows)
+- name: Stop Electron Forge dev server
+  if: always()
+  run: node scripts/stop-electron-forge.js
+```
+
+**Important Notes**:
+
+- `--no-sandbox` is **only** used in CI on Linux, never in production or local development
+- Disabling sandbox is acceptable for CI test environment (not for end-user apps)
+- macOS and Windows don't need `--no-sandbox` (native sandboxing works)
+- Node.js cleanup script works identically on all platforms (no shell differences)
+
+**Impact**:
+
+After implementing these fixes:
+- ✅ macOS E2E: 3/3 tests passing (no regression)
+- ✅ Ubuntu E2E: 3/3 tests passing (fixed blank renderer)
+- ✅ Windows E2E: 3/3 tests passing (fixed PowerShell error)
+
 ## References
 
 ### Playwright Documentation

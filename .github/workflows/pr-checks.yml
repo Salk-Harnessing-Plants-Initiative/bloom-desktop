@@ -269,7 +269,12 @@ jobs:
         run: |
           npm run start &
           echo $! > electron-forge.pid
-          sleep 15  # Wait for dev server to start
+          # Platform-specific wait times: Linux needs more time for dev server startup
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            sleep 30
+          else
+            sleep 15
+          fi
 
       - name: Run Playwright E2E tests (Linux with Xvfb)
         if: runner.os == 'Linux'
@@ -285,10 +290,7 @@ jobs:
 
       - name: Stop Electron Forge dev server
         if: always()
-        run: |
-          if [ -f electron-forge.pid ]; then
-            kill $(cat electron-forge.pid) || true
-          fi
+        run: node scripts/stop-electron-forge.js
 
       - name: Upload Playwright test results
         uses: actions/upload-artifact@v4
