@@ -642,6 +642,10 @@ After implementing these fixes:
 
 - **#10964**: DevTools window race condition (closed 2021)
 - **#32027**: Packaged app regression in v1.44+ (open 2024)
+- **#60**: Integration tests failing in CI with PyInstaller module import error (open 2025)
+  - Integration tests pass locally but fail in GitHub Actions
+  - Environment-specific issue, not related to E2E framework
+  - Started failing Nov 4, 2025 due to GitHub Actions runner change
 
 ### Electron Resources
 
