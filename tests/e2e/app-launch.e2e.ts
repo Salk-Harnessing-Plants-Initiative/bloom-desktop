@@ -39,7 +39,15 @@ let electronApp: ElectronApplication;
 let window: Page;
 
 test.describe('Electron App Launch', () => {
-  // No beforeAll needed - Electron Forge auto-builds webpack on first launch
+  // IMPORTANT: These tests require the Electron Forge dev server to be running!
+  // The dev server must be started BEFORE running tests with: npm run start
+  //
+  // Why: Electron Forge configures MAIN_WINDOW_WEBPACK_ENTRY to point to
+  // http://localhost:9000 (dev server URL), not a file path.
+  // Without the dev server running, the Electron window loads but UI is blank.
+  //
+  // In CI: The dev server is started in the workflow before running tests
+  // Locally: Run `npm run start` in a separate terminal, then `npm run test:e2e`
 
   test.beforeEach(async () => {
     // Clean up any existing test database
@@ -69,10 +77,12 @@ test.describe('Electron App Launch', () => {
 
     // Launch Electron app using webpack dev build
     // Point directly to the built main process file to avoid Playwright's --remote-debugging-port=0 bug
-    // The .webpack/main/index.js is created by `node scripts/build-webpack-dev.js`
+    // The .webpack/main/index.js is created when the dev server starts (npm run start)
     // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 5, Known Issue 2)
     //
-    // IMPORTANT: Must run `node scripts/build-webpack-dev.js` before running tests
+    // IMPORTANT: The dev server must be running for these tests to work!
+    // Locally: Start dev server with `npm run start` before running tests
+    // CI: Dev server is started in the workflow as a background process
     //
     // Environment variables are loaded from .env.e2e by Playwright config (dotenv.config)
     // and are available in process.env for both this test file and the launched Electron app
