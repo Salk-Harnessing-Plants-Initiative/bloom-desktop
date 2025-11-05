@@ -35,14 +35,15 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
-// Enable remote debugging for E2E tests
+// Enable remote debugging for E2E tests specifically
 // This must be set before app.ready event fires
 // Playwright requires remote debugging to control the app
-if (process.env.NODE_ENV === 'test' || process.env.CI === 'true') {
+// Uses E2E_TEST flag (from .env.e2e) instead of broad CI flag to avoid enabling for all CI builds
+if (process.env.E2E_TEST === 'true') {
   // Use app.commandLine.appendSwitch() instead of --remote-debugging-port CLI flag
   // because Electron doesn't accept that flag as a command-line argument since v1.6.11+
   app.commandLine.appendSwitch('remote-debugging-port', '0'); // 0 = any free port
-  console.log('[E2E] Remote debugging enabled for test environment');
+  console.log('[E2E] Remote debugging enabled for E2E test environment');
 }
 
 // Configuration constants

@@ -1,14 +1,37 @@
 #!/usr/bin/env node
 /**
- * Builds webpack development build for E2E testing.
+ * Builds webpack development build by spawning electron-forge start and killing it.
  *
- * This script runs `electron-forge start` to build webpack in development mode,
- * then immediately kills the process. The dev build webpack files remain in .webpack/
+ * **IMPORTANT**: This script is currently NOT used in the standard E2E test workflow.
+ * See .github/workflows/pr-checks.yml which uses `npm run start &` instead.
  *
- * This is necessary because:
- * - Playwright's _electron.launch() adds debug flags that only work with dev builds
- * - electron-forge package creates production builds that reject these flags
- * - There's no standalone command to build webpack without starting the app
+ * **Standard E2E Workflow (as documented in docs/E2E_TESTING.md)**:
+ * 1. npm run start      # Starts dev server in background (keeps running on port 9000)
+ * 2. npm run test:e2e   # Runs E2E tests (requires dev server to be running)
+ * 3. Kill dev server    # Stop the background process
+ *
+ * **Why This Script Spawns Full electron-forge (not webpack CLI directly)**:
+ * - Webpack config is managed by Electron Forge webpack plugin
+ * - Electron Forge sets up special plugins that create MAIN_WINDOW_WEBPACK_ENTRY constants
+ * - These constants point to http://localhost:9000 (dev server URL)
+ * - Running webpack CLI standalone bypasses these Forge plugins
+ * - The built Electron app wouldn't know where to load the renderer from
+ * - Therefore, must use `electron-forge start` to get correct webpack build
+ *
+ * **How It Works**:
+ * - Spawns `electron-forge start` which builds webpack AND starts dev server
+ * - Waits for .webpack/main/index.js to be created (indicates webpack build complete)
+ * - Immediately kills the Electron Forge process (dev server doesn't stay running)
+ * - Built webpack files remain in .webpack/ directory for Electron to use
+ *
+ * **Potential Use Cases**:
+ * - Alternative CI workflows that need webpack build without persistent dev server
+ * - Standalone webpack build phase in modified test pipelines
+ * - Currently kept for reference and potential future workflows
+ *
+ * **See Also**:
+ * - docs/E2E_TESTING.md (current E2E testing workflow)
+ * - .github/workflows/pr-checks.yml (CI pipeline using npm run start)
  */
 
 const { spawn } = require('child_process');

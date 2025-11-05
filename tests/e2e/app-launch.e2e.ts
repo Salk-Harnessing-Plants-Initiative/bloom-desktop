@@ -38,8 +38,11 @@ const electronPath: string = require('electron');
 let electronApp: ElectronApplication;
 let window: Page;
 
-// E2E test database path - single source of truth
-// Resolves to: tests/e2e/test.db from project root
+// E2E test database path - extracted constant for fs operations
+// This must match BLOOM_DATABASE_URL in .env.e2e (file:../tests/e2e/test.db)
+// .env.e2e is the single source of truth for database URL (used by Electron main process)
+// This constant provides the absolute filesystem path for test cleanup operations
+// See: openspec/changes/add-e2e-testing-framework/design.md (Decision 3)
 const TEST_DB_PATH = path.join(__dirname, '../../tests/e2e/test.db');
 
 test.describe('Electron App Launch', () => {
