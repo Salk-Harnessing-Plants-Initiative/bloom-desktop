@@ -26,10 +26,17 @@ a = Analysis(
         'nidaqmx',
         'PIL',
         'PIL.Image',
+        # All python.hardware modules must be explicitly listed for PyInstaller
+        # to bundle them correctly in CI environments
         'python.hardware',
         'python.hardware.camera',
         'python.hardware.camera_mock',
         'python.hardware.camera_types',
+        'python.hardware.daq',
+        'python.hardware.daq_mock',
+        'python.hardware.daq_types',
+        'python.hardware.scanner',
+        'python.hardware.scanner_types',
     ],
     hookspath=[],
     hooksconfig={},
