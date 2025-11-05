@@ -268,14 +268,14 @@ jobs:
       - name: Build webpack development build
         run: node scripts/build-webpack-dev.js
 
-      - name: Wait for port release (Windows)
+      - name: Free port 9000 (Windows)
         if: runner.os == 'Windows'
-        run: sleep 5
+        run: node scripts/free-port-9000.js
 
       - name: Start Electron Forge dev server in background
         shell: bash
         env:
-          DISABLE_ELECTRON_SANDBOX: ${{ runner.os == 'Linux' && '1' || '' }}
+          ELECTRON_DISABLE_SANDBOX: ${{ runner.os == 'Linux' && '1' || '' }}
         run: |
           npm run start &
           echo $! > electron-forge.pid
