@@ -23,8 +23,10 @@ jobs:
   # 5. test-python: pytest with 80% coverage (Linux only)
   # 6. test-integration: IPC, camera, DAQ, scanner, and scanner-database tests
   #    across Linux, macOS, Windows
-  # 7. test-package-database: Packaged app database initialization (macOS only)
-  # 8. all-checks-passed: Summary job (only runs if all pass)
+  # 7. test-e2e-dev: Playwright E2E tests with webpack dev build
+  #    across Linux, macOS, Windows
+  # 8. test-package-database: Packaged app database initialization (macOS only)
+  # 9. all-checks-passed: Summary job (only runs if all pass)
   #
   # All integration tests use mock hardware for CI environment
   # ==============================================================================
@@ -157,6 +159,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
+          python-version: "3.12"
 
       - name: Install Python dependencies
         run: uv sync --all-extras
@@ -195,6 +198,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: npm ci
@@ -222,6 +226,91 @@ jobs:
       - name: Run Scanner-Database integration tests
         run: npm run test:scanner-database
 
+  # E2E tests with Playwright (dev build)
+  test-e2e-dev:
+    name: Test - E2E Dev Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Build Python executable
+        run: npm run build:python
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
+
+      - name: Start Electron Forge dev server in background (Linux with Xvfb)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          ELECTRON_DISABLE_SANDBOX: 1
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run start &
+          echo $! > electron-forge.pid
+          # Wait for webpack build to complete
+          sleep 45
+
+      - name: Start Electron Forge dev server in background (macOS/Windows)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          npm run start &
+          echo $! > electron-forge.pid
+          # Wait for webpack build to complete
+          sleep 30
+
+      - name: Run Playwright E2E tests (Linux with Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
+        env:
+          CI: true
+
+      - name: Run Playwright E2E tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        run: npm run test:e2e
+        env:
+          CI: true
+
+      - name: Stop Electron Forge dev server
+        if: always()
+        run: node scripts/stop-electron-forge.js
+
+      - name: Upload Playwright test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results-${{ matrix.os }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   # Test packaged app database integration (macOS only for speed)
   test-package-database:
     name: Test - Packaged App Database (macOS)
@@ -242,6 +331,7 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: npm ci
@@ -271,6 +361,7 @@ jobs:
       - test-unit
       - test-python
       - test-integration
+      - test-e2e-dev
       - test-package-database
 
     steps:
