@@ -265,20 +265,25 @@ jobs:
         env:
           BLOOM_DATABASE_URL: "file:./dev.db"
 
-      - name: Start Electron Forge dev server in background
+      - name: Start Electron Forge dev server in background (Linux with Xvfb)
+        if: runner.os == 'Linux'
         shell: bash
         env:
-          ELECTRON_DISABLE_SANDBOX: ${{ runner.os == 'Linux' && '1' || '' }}
+          ELECTRON_DISABLE_SANDBOX: 1
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run start &
+          echo $! > electron-forge.pid
+          # Wait for webpack build to complete
+          sleep 45
+
+      - name: Start Electron Forge dev server in background (macOS/Windows)
+        if: runner.os != 'Linux'
+        shell: bash
         run: |
           npm run start &
           echo $! > electron-forge.pid
-          # Platform-specific wait times: Linux needs more time for dev server startup
-          # Electron Forge will auto-build webpack on first launch
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sleep 45
-          else
-            sleep 30
-          fi
+          # Wait for webpack build to complete
+          sleep 30
 
       - name: Run Playwright E2E tests (Linux with Xvfb)
         if: runner.os == 'Linux'
