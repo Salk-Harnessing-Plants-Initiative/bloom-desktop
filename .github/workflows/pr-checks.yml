@@ -265,13 +265,6 @@ jobs:
         env:
           BLOOM_DATABASE_URL: "file:./dev.db"
 
-      - name: Build webpack development build
-        run: node scripts/build-webpack-dev.js
-
-      - name: Free port 9000 (Windows)
-        if: runner.os == 'Windows'
-        run: node scripts/free-port-9000.js
-
       - name: Start Electron Forge dev server in background
         shell: bash
         env:
@@ -280,10 +273,11 @@ jobs:
           npm run start &
           echo $! > electron-forge.pid
           # Platform-specific wait times: Linux needs more time for dev server startup
+          # Electron Forge will auto-build webpack on first launch
           if [ "$RUNNER_OS" == "Linux" ]; then
-            sleep 30
+            sleep 45
           else
-            sleep 15
+            sleep 30
           fi
 
       - name: Run Playwright E2E tests (Linux with Xvfb)
