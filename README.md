@@ -149,10 +149,16 @@ npm run test:scanner-database
 
 # Test packaged app (run after npm run package)
 npm run test:package
+
+# E2E tests (requires dev server running)
+# Terminal 1: npm run start
+# Terminal 2: npm run test:e2e
+npm run test:e2e
 ```
 
-**Hardware Testing Documentation**:
+**Testing Documentation**:
 
+- **E2E**: See [docs/E2E_TESTING.md](docs/E2E_TESTING.md) for end-to-end testing instructions ⚠️ **Requires dev server**
 - **Camera**: See [docs/CAMERA_TESTING.md](docs/CAMERA_TESTING.md) for camera testing instructions
 - **DAQ**: See [docs/DAQ_TESTING.md](docs/DAQ_TESTING.md) for DAQ turntable testing instructions
 - **Database**: See [docs/DATABASE.md](docs/DATABASE.md) for database testing instructions

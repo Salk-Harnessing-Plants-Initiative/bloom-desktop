@@ -161,6 +161,46 @@ export function initializeDatabase(
     // Use custom path (for testing)
     dbPath = customPath;
     console.log('[Database] Using custom path:', dbPath);
+  } else if (process.env.BLOOM_DATABASE_URL) {
+    // Use environment variable if set (takes precedence over NODE_ENV logic)
+    // Properly parse file:// URLs to handle Windows paths and URL encoding
+    try {
+      const url = new URL(process.env.BLOOM_DATABASE_URL);
+      if (url.protocol !== 'file:') {
+        throw new Error(
+          `BLOOM_DATABASE_URL must use file: protocol, got: ${url.protocol}`
+        );
+      }
+      // URL.pathname is already decoded (handles %20 → space, etc.)
+      dbPath = decodeURIComponent(url.pathname);
+      // On Windows, file: URLs produce paths like "/C:/path" - remove leading slash
+      if (
+        process.platform === 'win32' &&
+        dbPath.startsWith('/') &&
+        dbPath[2] === ':'
+      ) {
+        dbPath = dbPath.slice(1); // "/C:/path" → "C:/path"
+      }
+      console.log('[Database] Using BLOOM_DATABASE_URL:', dbPath);
+    } catch (error) {
+      // Fallback for legacy format without proper file:// URL
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(
+        '[Database] Failed to parse BLOOM_DATABASE_URL as URL (error: %s), falling back to legacy format',
+        errorMsg
+      );
+
+      // Defensive check: ensure env var exists before using
+      if (!process.env.BLOOM_DATABASE_URL) {
+        throw new Error('BLOOM_DATABASE_URL environment variable is not set');
+      }
+
+      dbPath = process.env.BLOOM_DATABASE_URL.replace(/^file:\/?\/?/, '');
+      console.log(
+        '[Database] Using BLOOM_DATABASE_URL (legacy format):',
+        dbPath
+      );
+    }
   } else {
     const isDev = process.env.NODE_ENV === 'development';
     if (isDev) {
