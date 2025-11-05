@@ -53,6 +53,7 @@ npm run start
 ```
 
 Wait for the message:
+
 ```
 › Output Available: http://localhost:9000
 ✔ Launched Electron app
@@ -233,7 +234,7 @@ npx prisma generate
 
 ```yaml
 - name: Stop Electron Forge dev server
-  if: always()  # Run even if tests fail
+  if: always() # Run even if tests fail
   run: node scripts/stop-electron-forge.js
 ```
 
