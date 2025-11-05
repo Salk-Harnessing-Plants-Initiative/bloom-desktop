@@ -664,3 +664,283 @@ After implementing these fixes:
 - **Bloom Desktop Pilot E2E**: `bloom-desktop-pilot/benfica/add-testing` branch
 - **Current Status**: See `PLAYWRIGHT_E2E_STATUS.md` for implementation progress
 - **VS Code Testing Approach**: Uses Playwright with dev builds (similar pattern)
+
+---
+
+## Post-Implementation: Lessons Learned
+
+This section documents issues discovered during implementation and CI integration. These lessons prevent future developers from rediscovering the same problems.
+
+### Issue 7: Windows Port Conflict (EADDRINUSE)
+
+**Date Discovered**: November 4, 2025
+
+**Problem**: Initial CI implementation ran `electron-forge start` twice in parallel:
+
+1. `node scripts/build-webpack-dev.js` (spawns electron-forge start, builds webpack, kills process)
+2. `npm run start &` (spawns electron-forge start again)
+
+Both tried to bind to port 9000, causing `EADDRINUSE` error on Windows.
+
+**Root Cause**:
+
+- Windows doesn't release ports as quickly as macOS/Linux after process termination
+- Even with 5-second delay, port wasn't freed in time
+- The redundancy was unnecessary - webpack builds automatically when dev server starts
+
+**Solution**: Modified CI workflow to only start dev server once:
+
+- Removed `build-webpack-dev.js` step from CI workflow
+- Start dev server directly with `npm run start &`
+- Let Electron Forge build webpack on first launch
+- Wait for server initialization (platform-specific timing: Linux 45s, others 30s)
+
+**Commits**: 198736b, 6ae98ee
+
+**Learning**: Windows is stricter about port conflicts. Always verify CI works on all platforms. Don't run electron-forge start twice!
+
+**Documentation**: See [docs/E2E_TESTING.md](../../docs/E2E_TESTING.md) - Common Pitfalls #1
+
+---
+
+### Issue 8: Linux Missing X Server
+
+**Date Discovered**: November 5, 2025
+
+**Problem**: Dev server failed to start on Ubuntu CI with error:
+
+```
+[ERROR:ozone_platform_x11.cc(240)] Missing X server or $DISPLAY
+[ERROR:env.cc(257)] The platform failed to initialize. Exiting.
+```
+
+**Root Cause**:
+
+- `npm run start` launches Electron Forge which starts full Electron GUI application
+- On Linux CI, there's no X display server available outside of Xvfb
+- The dev server was started BEFORE the Xvfb step (which only wrapped test execution)
+- Electron tried to initialize GUI → crashed immediately
+
+**Solution**: Run dev server inside Xvfb on Linux:
+
+```yaml
+# Linux
+- name: Start Electron Forge dev server in background (Linux with Xvfb)
+  if: runner.os == 'Linux'
+  env:
+    ELECTRON_DISABLE_SANDBOX: 1
+  run: |
+    xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run start &
+    echo $! > electron-forge.pid
+    sleep 45
+
+# macOS/Windows
+- name: Start Electron Forge dev server in background (macOS/Windows)
+  if: runner.os != 'Linux'
+  run: |
+    npm run start &
+    echo $! > electron-forge.pid
+    sleep 30
+```
+
+**Key Insight**: Xvfb (X Virtual FrameBuffer) creates a virtual display in RAM. Applications think they're rendering to a real display, but it's all in memory. This allows headless GUI testing.
+
+**Commit**: 6ae98ee
+
+**Learning**: Any process that launches Electron GUI on Linux CI must run inside Xvfb, not just the tests themselves.
+
+**Documentation**: See [docs/E2E_TESTING.md](../../docs/E2E_TESTING.md) - Architecture & Requirements
+
+---
+
+### Issue 9: Dev Server Architecture Clarification
+
+**Date Discovered**: November 5, 2025 (in code review)
+
+**Problem**: Original comment in test file said "No beforeAll needed - Electron Forge auto-builds" which was misleading. Tests actually REQUIRE external dev server running at `http://localhost:9000`.
+
+**Root Cause**: Confusion about Electron Forge's architecture:
+
+- `MAIN_WINDOW_WEBPACK_ENTRY` is set to `http://localhost:9000` (dev server URL)
+- This URL is baked into the webpack build at compile time (not a runtime variable)
+- Renderer process **always** loads from this URL in dev mode
+- Without dev server running: Electron launches successfully but window is completely blank
+
+**Why This Matters**:
+
+- Tests DO NOT start their own dev server
+- Tests launch Electron directly via `_electron.launch()`
+- Electron's main process calls `mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY)`
+- That URL points to the dev server, which must be running externally
+
+**Solution**: Updated comments in `app-launch.e2e.ts` to explicitly state:
+
+1. Dev server is REQUIRED (not optional)
+2. WHY it's required (MAIN_WINDOW_WEBPACK_ENTRY architecture)
+3. HOW to run locally (Terminal 1: `npm run start`, Terminal 2: `npm run test:e2e`)
+4. HOW CI runs (starts dev server in background before tests)
+
+**Commits**: c7c8c28
+
+**Learning**: Architecture comments should explain "WHY" not just "WHAT". Developers need context to understand dependencies and avoid repeating mistakes.
+
+**Documentation**: See [docs/E2E_TESTING.md](../../docs/E2E_TESTING.md) - Quick Start & Architecture sections
+
+---
+
+### Issue 10: Platform-Specific Timing Requirements
+
+**Date Discovered**: November 4-5, 2025 (during CI iterations)
+
+**Problem**: Initial wait time of 15 seconds worked on macOS but caused flaky failures on Ubuntu CI.
+
+**Symptoms**:
+
+- macOS: Dev server ready in ~15 seconds
+- Ubuntu: TimeoutError waiting for `document.title` (30s exceeded)
+- Windows: Moderate - sometimes worked, sometimes didn't
+
+**Root Cause**: GitHub Actions runners have different performance characteristics:
+
+- **macOS runners**: Fastest (native hardware, M1 chips)
+- **Windows runners**: Moderate speed
+- **Ubuntu runners**: Slowest (virtualized, shared resources, Xvfb overhead)
+
+**Solution**: Platform-specific wait times in CI workflow:
+
+```yaml
+if [ "$RUNNER_OS" == "Linux" ]; then
+  sleep 45  # Ubuntu needs more time for dev server startup
+else
+  sleep 30  # macOS/Windows are faster
+fi
+```
+
+**Additional Fix**: Increased test-level timeout from 30s to 60s for `document.title` wait:
+
+```typescript
+await window.waitForFunction(
+  () => document.title.includes('Bloom Desktop'),
+  { timeout: 60000 } // Increased from 30000 for slower CI runners
+);
+```
+
+**Commits**: 198736b, e16efc0
+
+**Learning**: CI timing assumptions from one platform don't transfer to others. Always test on all target platforms. Empirically determine wait times rather than guessing.
+
+**Documentation**: See [docs/E2E_TESTING.md](../../docs/E2E_TESTING.md) - CI/CD Integration
+
+---
+
+### Issue 11: Linux SUID Sandbox Permissions
+
+**Date Discovered**: November 4, 2025
+
+**Problem**: Dev server failed on Linux with SUID sandbox error:
+
+```
+FATAL:setuid_sandbox_host.cc(158)] The SUID sandbox helper binary was found,
+but is not configured correctly. Rather than run without sandboxing I'm
+aborting now. You need to make sure that chrome-sandbox is owned by root
+and has mode 4755.
+```
+
+**Root Cause**:
+
+- Electron's chromium-based sandbox requires SUID permissions on `chrome-sandbox` binary
+- GitHub Actions Linux runners don't provide root ownership or 4755 permissions
+- This is a common issue in CI environments (Docker, GitHub Actions, etc.)
+
+**Solution**: Disable sandbox in CI using environment variable:
+
+```yaml
+env:
+  ELECTRON_DISABLE_SANDBOX: 1
+```
+
+Plus add `--no-sandbox` flag when launching Electron in tests:
+
+```typescript
+const args = [path.join(appRoot, '.webpack/main/index.js')];
+if (process.platform === 'linux' && process.env.CI === 'true') {
+  args.push('--no-sandbox');
+}
+```
+
+**Security Note**: This is safe in CI because:
+
+- CI environments are ephemeral and isolated
+- Tests don't handle untrusted content
+- This is standard practice for Electron testing in CI (see Electron issues #17972, #18265, #42510)
+
+**Commits**: c2e41fb, 6ae98ee
+
+**Learning**: Chromium's sandbox requirements conflict with CI security models. Disabling sandbox is standard practice for CI testing.
+
+**Documentation**: See [docs/E2E_TESTING.md](../../docs/E2E_TESTING.md) - Common Pitfalls #4
+
+---
+
+### Documentation Created
+
+To prevent future developers from rediscovering these issues, comprehensive documentation was created:
+
+#### 1. `/docs/E2E_TESTING.md` - Primary Developer Guide
+
+Complete guide covering:
+
+- **Overview**: What E2E tests are and what they test
+- **Quick Start**: Step-by-step local development instructions
+- **Architecture**: Why dev server is required (MAIN_WINDOW_WEBPACK_ENTRY explanation)
+- **Running Tests**: All test commands and options
+- **CI/CD Integration**: How GitHub Actions runs E2E tests (platform-specific steps)
+- **Common Pitfalls**: All issues from this section with solutions
+- **Debugging**: Playwright UI mode, debug commands, checking server status
+- **Troubleshooting**: Specific solutions for common problems
+
+#### 2. `/tests/e2e/README.md` - Quick Reference
+
+Directory-level quick start guide:
+
+- Minimal instructions to get tests running
+- Prominent warnings about dev server requirement
+- Links to full documentation
+
+#### 3. Updated Comments in `app-launch.e2e.ts`
+
+Inline comments explaining:
+
+- Dev server dependency (lines 42-50)
+- Architecture reasoning (lines 78-91)
+- Platform-specific flags (lines 90-95)
+
+#### 4. This Section - Historical Context
+
+Lessons learned for future architectural work and debugging.
+
+### Documentation Philosophy
+
+**Principle**: Documentation should explain WHY things work the way they do, not just HOW to run them.
+
+**Rationale**: Future developers need context to:
+
+- Understand design decisions
+- Avoid repeating mistakes
+- Debug issues when things break
+- Make informed changes without breaking things
+
+**Cross-Linking Strategy**:
+
+- Main README → E2E_TESTING.md
+- tests/e2e/README.md → E2E_TESTING.md
+- E2E_TESTING.md → OpenSpec design.md
+- OpenSpec design.md → E2E_TESTING.md
+- Inline code comments → Documentation files
+
+This creates multiple entry points for different developer workflows:
+
+- Need to run tests? → tests/e2e/README.md
+- Something broken? → docs/E2E_TESTING.md
+- Need historical context? → OpenSpec design.md
+- Reading code? → Inline comments with doc links
