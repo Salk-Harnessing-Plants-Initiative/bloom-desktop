@@ -73,6 +73,15 @@ The tests **do not** start their own dev server. They launch Electron directly, 
 
 ## Architecture & Requirements
 
+### Dependencies
+
+**dotenv** (`devDependencies`)
+
+- Used **only** by `playwright.config.ts` to load `.env.e2e` during test setup
+- **Not needed** at Electron runtime - the main process doesn't import dotenv
+- Correctly placed in `devDependencies` (not `dependencies`) to keep production bundle minimal
+- Environment variables loaded by Playwright are passed to Electron via `process.env`
+
 ### Why Dev Server is Required
 
 Bloom Desktop uses Electron Forge's webpack plugin, which configures the renderer to load from a dev server URL rather than a file path.

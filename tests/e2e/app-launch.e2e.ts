@@ -38,6 +38,10 @@ const electronPath: string = require('electron');
 let electronApp: ElectronApplication;
 let window: Page;
 
+// E2E test database path - single source of truth
+// Resolves to: tests/e2e/test.db from project root
+const TEST_DB_PATH = path.join(__dirname, '../../tests/e2e/test.db');
+
 test.describe('Electron App Launch', () => {
   // IMPORTANT: These tests require the Electron Forge dev server to be running!
   // The dev server must be started BEFORE running tests with: npm run start
@@ -54,13 +58,12 @@ test.describe('Electron App Launch', () => {
     // Database path from .env.e2e: file:../tests/e2e/test.db (relative to prisma/ dir)
     // Resolves to: tests/e2e/test.db from project root
     // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 3)
-    const testDbPath = path.join(__dirname, '../../tests/e2e/test.db');
-    if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath);
+    if (fs.existsSync(TEST_DB_PATH)) {
+      fs.unlinkSync(TEST_DB_PATH);
     }
 
     // Create directory if it doesn't exist
-    const testDbDir = path.dirname(testDbPath);
+    const testDbDir = path.dirname(TEST_DB_PATH);
     if (!fs.existsSync(testDbDir)) {
       fs.mkdirSync(testDbDir, { recursive: true });
     }
@@ -121,10 +124,9 @@ test.describe('Electron App Launch', () => {
       await electronApp.close();
     }
 
-    // Clean up test database at tests/e2e/test.db
-    const testDbPath = path.join(__dirname, '../../tests/e2e/test.db');
-    if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath);
+    // Clean up test database
+    if (fs.existsSync(TEST_DB_PATH)) {
+      fs.unlinkSync(TEST_DB_PATH);
     }
   });
 
@@ -153,12 +155,22 @@ test.describe('Electron App Launch', () => {
   });
 
   test('should initialize database on startup', async () => {
-    // Give the app time to initialize the database
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    // Poll for database file creation instead of fixed delay
+    // More robust: succeeds immediately if DB initializes faster,
+    // without false failures on slower CI machines
+    const maxWaitMs = 10000; // 10 seconds max
+    const checkIntervalMs = 100; // Check every 100ms
+    const startTime = Date.now();
 
-    // Verify test database file was created at tests/e2e/test.db
-    const testDbPath = path.join(__dirname, '../../tests/e2e/test.db');
-    const dbExists = fs.existsSync(testDbPath);
+    let dbExists = false;
+    while (Date.now() - startTime < maxWaitMs) {
+      if (fs.existsSync(TEST_DB_PATH)) {
+        dbExists = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, checkIntervalMs));
+    }
+
     expect(dbExists).toBe(true);
   });
 
