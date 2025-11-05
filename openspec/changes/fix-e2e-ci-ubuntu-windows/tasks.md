@@ -1,56 +1,73 @@
 # Tasks: Fix E2E CI Failures on Ubuntu and Windows
 
+## Status: IN PROGRESS (Nov 4, 2025)
+
 ## Implementation Tasks
 
-### Task 1: Create cross-platform dev server cleanup script
+### Task 1: ✅ Create cross-platform dev server cleanup script (COMPLETED)
 **Description**: Replace Bash-specific process cleanup with Node.js script that works on all platforms.
 
-**Actions**:
-1. Create `scripts/stop-electron-forge.js` with cross-platform process kill logic
-2. Handle PID file reading, process termination, and cleanup
-3. Add error handling for missing PID file or already-terminated process
-
-**Validation**:
-- Script runs without errors on local macOS
-- Script handles missing PID file gracefully
-- Script cleans up PID file after execution
-
-**Dependencies**: None
+**Status**: ✅ DONE - `scripts/stop-electron-forge.js` created in commit b235d5c
 
 ---
 
-### Task 2: Add Linux-specific --no-sandbox flag
+### Task 2: ✅ Add Linux-specific --no-sandbox flag (COMPLETED)
 **Description**: Detect Linux platform and add `--no-sandbox` Electron launch arg to fix Chromium rendering in CI.
 
-**Actions**:
-1. Update `tests/e2e/app-launch.e2e.ts` beforeEach fixture
-2. Add platform detection: `process.platform === 'linux'`
-3. Conditionally append `--no-sandbox` to Electron args array
-4. Add comment explaining why this is needed
+**Status**: ✅ DONE - Already in `tests/e2e/app-launch.e2e.ts` line 84
 
-**Validation**:
-- Local macOS tests still pass (no `--no-sandbox` added)
-- Code inspection confirms flag only added on Linux
+---
+
+### Task 3: ⚠️ Update CI workflow for platform-specific behavior (PARTIALLY DONE)
+**Description**: Modify `.github/workflows/pr-checks.yml` to handle Windows PowerShell and Ubuntu timing.
+
+**Status**:
+- ✅ Added `shell: bash` in commit b235d5c
+- ✅ Added 30s wait for Linux, 15s for others
+- ❌ NEW ISSUE: Need to add `DISABLE_ELECTRON_SANDBOX=1` env var for Linux dev server
+- ❌ NEW ISSUE: Need to add 5s delay after webpack build on Windows for port release
+
+**Remaining Actions**:
+1. Add environment variable to dev server start step:
+   ```yaml
+   env:
+     DISABLE_ELECTRON_SANDBOX: ${{ runner.os == 'Linux' && '1' || '' }}
+   ```
+2. Add delay after webpack build on Windows:
+   ```yaml
+   - name: Wait for port release (Windows)
+     if: runner.os == 'Windows'
+     run: sleep 5
+   ```
 
 **Dependencies**: None
 
 ---
 
-### Task 3: Update CI workflow for platform-specific behavior
-**Description**: Modify `.github/workflows/pr-checks.yml` to handle Windows PowerShell and Ubuntu timing.
+### Task 4: Increase document.title timeout (NEW)
+**Description**: Ubuntu test 1 times out waiting for document.title after 10 seconds.
 
 **Actions**:
-1. Replace Bash cleanup script with `node scripts/stop-electron-forge.js`
-2. Add conditional dev server wait time (30s for Linux, 15s for others)
-3. Ensure `if: always()` condition remains on cleanup step
-4. Test YAML syntax validity
+1. Update `tests/e2e/app-launch.e2e.ts` line 131
+2. Change timeout from 10000 to 30000
+3. Add comment explaining slower CI startup
 
-**Validation**:
-- YAML lints successfully
-- Node.js script path is correct
-- Conditional logic uses correct GitHub Actions syntax
+**Code Change**:
+```typescript
+await window.waitForFunction(
+  () => document.title.includes('Bloom Desktop'),
+  { timeout: 30000 } // Increased from 10000 for slower CI (especially Ubuntu)
+);
+```
 
-**Dependencies**: Task 1 (cleanup script must exist)
+**Dependencies**: None
+
+---
+
+### Task 5: ✅ Document platform-specific requirements (COMPLETED)
+**Description**: Update E2E testing design doc with "Issue 6" for platform-specific CI requirements.
+
+**Status**: ✅ DONE - Added to `design.md` lines 566-631
 
 ---
 
