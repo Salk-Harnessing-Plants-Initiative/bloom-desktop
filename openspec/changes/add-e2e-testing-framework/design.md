@@ -442,6 +442,7 @@ await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
 
 **Regression Note** (2025-11-03):
 Commit `39656f6` attempted to use `waitForURL(/localhost/)` but this breaks on subsequent tests because:
+
 - Test 1: Window navigates to localhost → waitForURL detects navigation → passes
 - Test 2+: Window already on localhost → waitForURL times out waiting for navigation that already happened → fails
 
@@ -625,6 +626,7 @@ if (process.platform === 'linux' && process.env.CI === 'true') {
 **Impact**:
 
 After implementing these fixes:
+
 - ✅ macOS E2E: 3/3 tests passing (no regression)
 - ✅ Ubuntu E2E: 3/3 tests passing (fixed blank renderer)
 - ✅ Windows E2E: 3/3 tests passing (fixed PowerShell error)

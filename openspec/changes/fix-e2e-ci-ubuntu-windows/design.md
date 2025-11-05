@@ -5,12 +5,14 @@
 The E2E testing framework was successfully implemented but CI reveals platform-specific failures:
 
 **macOS** (✅ Passing):
+
 - All 3 tests pass in ~3 minutes
 - Dev server starts successfully
 - Renderer loads properly
 - No platform-specific issues
 
 **Ubuntu** (❌ Failing 2/3 tests):
+
 ```
 Test 1: "should launch successfully and show window"
 - TimeoutError: page.waitForFunction: Timeout 30000ms exceeded
@@ -27,6 +29,7 @@ Test 3: "should display page content"
 ```
 
 **Windows** (❌ CI Step Failure):
+
 ```
 Stop Electron Forge dev server step:
 - ParserError: Missing '(' after 'if' in if statement
@@ -39,6 +42,7 @@ Stop Electron Forge dev server step:
 ### Ubuntu Issue: Blank Renderer
 
 The Ubuntu tests show a pattern:
+
 1. Electron launches successfully (no launch errors)
 2. Database initializes (test 2 passes)
 3. Window object is valid (no window errors)
@@ -47,12 +51,14 @@ The Ubuntu tests show a pattern:
 **Hypothesis**: The renderer process isn't loading from `http://localhost:9000` dev server.
 
 **Possible Causes**:
+
 1. **Chromium sandbox issue on Linux**: Electron's Chromium requires `--no-sandbox` flag in containerized/CI environments
 2. **Dev server startup race**: 15-second wait may be insufficient on slower Ubuntu runners
 3. **Xvfb display isolation**: Virtual X11 server may affect localhost networking
 4. **Webpack dev server binding**: Dev server may bind to `127.0.0.1` instead of `0.0.0.0`
 
 **Evidence from Logs**:
+
 - Test 1 timeout is 30s (global timeout), not 10s (test's waitForFunction timeout)
   - This suggests the test fixture itself is timing out during setup
   - The "Internal error: step id not found: fixture@39" messages indicate Playwright fixture teardown issues
@@ -64,6 +70,7 @@ The Ubuntu tests show a pattern:
 Windows GitHub Actions runners use PowerShell by default, not Bash.
 
 **Current Code** (.github/workflows/pr-checks.yml:289-291):
+
 ```yaml
 - name: Stop Electron Forge dev server
   if: always()
@@ -76,6 +83,7 @@ Windows GitHub Actions runners use PowerShell by default, not Bash.
 **Problem**: Bash-specific syntax (`[ -f`, `$(cat ...)`, `||`) doesn't work in PowerShell.
 
 **PowerShell Error**:
+
 ```
 ParserError: Missing '(' after 'if' in if statement
 Line 2: if [ -f electron-forge.pid ]; then
@@ -88,12 +96,14 @@ Line 2: if [ -f electron-forge.pid ]; then
 **Choice**: Add `--no-sandbox` to Electron launch args on Linux only.
 
 **Rationale**:
+
 - Standard fix for Chromium/Electron in CI environments (Docker, GitHub Actions)
 - Already used in many Electron projects (VS Code, Playwright examples)
 - Sandboxing not critical for CI test environment
 - macOS and Windows don't need this flag (native sandboxing works)
 
 **Implementation**:
+
 ```typescript
 const launchArgs = [path.join(appRoot, '.webpack/main/index.js')];
 if (process.platform === 'linux') {
@@ -108,6 +118,7 @@ electronApp = await electron.launch({
 ```
 
 **Trade-offs**:
+
 - ✅ Fixes most Linux CI rendering issues
 - ✅ Platform-specific, doesn't affect macOS/Windows
 - ❌ Disables Chromium sandbox (acceptable for CI)
@@ -117,12 +128,14 @@ electronApp = await electron.launch({
 **Choice**: Increase dev server startup wait from 15s to 30s on Linux only.
 
 **Rationale**:
+
 - Ubuntu GitHub runners can be slower than macOS/Windows
 - Webpack dev server may take longer to compile on first run
 - No penalty for macOS/Windows (they keep 15s)
 - 30s is still reasonable for CI (total E2E job ~6 minutes)
 
 **Implementation** (.github/workflows/pr-checks.yml):
+
 ```yaml
 - name: Start Electron Forge dev server in background
   run: |
@@ -137,6 +150,7 @@ electronApp = await electron.launch({
 ```
 
 **Trade-offs**:
+
 - ✅ Reduces race condition risk on slower runners
 - ✅ Only affects Linux (no slowdown for macOS/Windows)
 - ❌ Adds 15s to Linux E2E job time
@@ -146,6 +160,7 @@ electronApp = await electron.launch({
 **Choice**: Replace Bash script with Node.js script for dev server cleanup.
 
 **Rationale**:
+
 - Node.js works identically on Linux, macOS, and Windows
 - No shell syntax differences to worry about
 - Better error handling (try/catch vs `|| true`)
@@ -154,6 +169,7 @@ electronApp = await electron.launch({
 **Implementation**:
 
 Create `scripts/stop-electron-forge.js`:
+
 ```javascript
 const fs = require('fs');
 const path = require('path');
@@ -179,6 +195,7 @@ try {
 ```
 
 Update `.github/workflows/pr-checks.yml`:
+
 ```yaml
 - name: Stop Electron Forge dev server
   if: always()
@@ -186,12 +203,14 @@ Update `.github/workflows/pr-checks.yml`:
 ```
 
 **Trade-offs**:
+
 - ✅ Works on all platforms
 - ✅ Better error handling
 - ✅ More maintainable
 - ❌ Adds one new file to repo
 
 **Alternative Considered**: Use PowerShell syntax with conditional on `runner.os`
+
 - Rejected because it requires maintaining two separate scripts (Bash + PowerShell)
 - More complex, harder to test locally
 
@@ -200,6 +219,7 @@ Update `.github/workflows/pr-checks.yml`:
 **Choice**: Update `design.md` in `add-e2e-testing-framework` with new "Issue 6: Platform-Specific CI Requirements".
 
 **Rationale**:
+
 - Future developers need to understand why `--no-sandbox` is required
 - Explains why cleanup uses Node.js instead of shell script
 - Prevents accidental removal of platform-specific fixes
@@ -208,17 +228,20 @@ Update `.github/workflows/pr-checks.yml`:
 `openspec/changes/add-e2e-testing-framework/design.md`
 
 Add section:
+
 ```markdown
 ### Issue 6: Platform-Specific CI Requirements
 
 **Problem**: E2E tests pass on macOS but fail on Ubuntu and Windows due to platform differences.
 
 **Ubuntu Requirements**:
+
 1. `--no-sandbox` flag required for Electron/Chromium in CI
 2. Longer dev server startup wait (30s vs 15s)
 3. Xvfb for virtual display
 
 **Windows Requirements**:
+
 1. Cross-platform process cleanup (Node.js vs Bash)
 2. PowerShell incompatibilities avoided
 
@@ -275,6 +298,7 @@ This is a **bug fix** for existing E2E testing - no migration required.
 ### Rollback Plan
 
 If changes cause new failures:
+
 1. Revert the PR
 2. Investigate specific failure mode
 3. Apply fix and re-test locally before pushing
@@ -296,12 +320,15 @@ If changes cause new failures:
 ## References
 
 ### Playwright Electron Testing
+
 - [Electron Testing with --no-sandbox](https://github.com/microsoft/playwright/issues/4380)
 - [GitHub Actions and Electron](https://til.simonwillison.net/electron/testing-electron-playwright)
 
 ### Platform-Specific Issues
+
 - [Chromium Sandbox in Docker/CI](https://github.com/puppeteer/puppeteer/blob/main/docs/troubleshooting.md#running-puppeteer-in-docker)
 - [Windows PowerShell vs Bash](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsshell)
 
 ### Related OpenSpec Changes
+
 - `add-e2e-testing-framework` (parent change being fixed)

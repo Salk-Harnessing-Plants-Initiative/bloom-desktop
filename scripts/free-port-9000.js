@@ -12,7 +12,7 @@ function freePort9000Windows() {
     // Find process using port 9000
     const netstatOutput = execSync('netstat -ano | findstr :9000', {
       encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore']
+      stdio: ['pipe', 'pipe', 'ignore'],
     }).trim();
 
     if (!netstatOutput) {
@@ -37,7 +37,9 @@ function freePort9000Windows() {
       return;
     }
 
-    console.log(`[free-port] Found ${pids.size} process(es) using port 9000: ${Array.from(pids).join(', ')}`);
+    console.log(
+      `[free-port] Found ${pids.size} process(es) using port 9000: ${Array.from(pids).join(', ')}`
+    );
 
     // Kill each process
     for (const pid of pids) {
@@ -45,22 +47,28 @@ function freePort9000Windows() {
         execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
         console.log(`[free-port] ✓ Killed process ${pid}`);
       } catch (error) {
-        console.log(`[free-port] Process ${pid} already terminated or access denied`);
+        console.log(
+          `[free-port] Process ${pid} already terminated or access denied`
+        );
       }
     }
 
     // Wait a moment for port to be released
-    const sleep = (ms) => execSync(`ping 127.0.0.1 -n ${Math.ceil(ms / 1000) + 1} > nul`, { stdio: 'ignore' });
+    const sleep = (ms) =>
+      execSync(`ping 127.0.0.1 -n ${Math.ceil(ms / 1000) + 1} > nul`, {
+        stdio: 'ignore',
+      });
     sleep(1000);
 
     console.log('[free-port] ✓ Port 9000 should now be free');
-
   } catch (error) {
     if (error.status === 1) {
       // netstat returned no results - port is free
       console.log('[free-port] ✓ Port 9000 is free');
     } else {
-      console.error(`[free-port] Error checking/freeing port: ${error.message}`);
+      console.error(
+        `[free-port] Error checking/freeing port: ${error.message}`
+      );
       process.exit(1);
     }
   }

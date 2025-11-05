@@ -36,7 +36,9 @@ try {
     fs.unlinkSync(pidFile);
     console.log(`✓ Removed ${pidFile}`);
   } else {
-    console.log(`No ${pidFile} file found - dev server may not have been started`);
+    console.log(
+      `No ${pidFile} file found - dev server may not have been started`
+    );
   }
 } catch (error) {
   console.error(`Error stopping dev server: ${error.message}`);
