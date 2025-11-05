@@ -26,8 +26,18 @@ a = Analysis(
         'nidaqmx',
         'PIL',
         'PIL.Image',
-        # All python.hardware modules must be explicitly listed for PyInstaller
-        # to bundle them correctly in CI environments
+        # Hardware modules - both import paths needed for bundled app
+        # ipc_handler.py tries 'hardware.*' first, then falls back to 'python.hardware.*'
+        'hardware',
+        'hardware.camera',
+        'hardware.camera_mock',
+        'hardware.camera_types',
+        'hardware.daq',
+        'hardware.daq_mock',
+        'hardware.daq_types',
+        'hardware.scanner',
+        'hardware.scanner_types',
+        # Development/fallback import paths
         'python.hardware',
         'python.hardware.camera',
         'python.hardware.camera_mock',
