@@ -34,6 +34,19 @@ try {
   process.exit(1);
 }
 
+// Clean PyInstaller build cache to ensure fresh build
+// This is critical when hiddenimports are modified in main.spec
+const buildDir = path.join(__dirname, '..', 'build');
+const distDir = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(buildDir)) {
+  console.log('[INFO] Cleaning PyInstaller build cache...');
+  fs.rmSync(buildDir, { recursive: true, force: true });
+}
+if (fs.existsSync(distDir)) {
+  console.log('[INFO] Cleaning dist directory...');
+  fs.rmSync(distDir, { recursive: true, force: true });
+}
+
 // Run PyInstaller
 console.log('[INFO] Running PyInstaller...');
 try {
