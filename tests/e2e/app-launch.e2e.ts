@@ -127,9 +127,10 @@ test.describe('Electron App Launch', () => {
 
     // Wait for title to be set (may take a moment for page to load)
     // Increased timeout for slower CI environments, especially Ubuntu
+    // 60s timeout accounts for slower Ubuntu runners where initial page load can be slow
     await window.waitForFunction(
       () => document.title.includes('Bloom Desktop'),
-      { timeout: 30000 }
+      { timeout: 60000 }
     );
 
     // Check window title contains "Bloom Desktop"
