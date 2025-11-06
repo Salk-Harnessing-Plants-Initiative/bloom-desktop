@@ -9,6 +9,7 @@ block_cipher = None
 # which requires the .dist-info directory to be bundled
 datas = []
 datas += copy_metadata('nidaqmx')
+datas += copy_metadata('imageio')  # Required for imageio.v2 imports in camera modules
 
 # Optional: Include nidaqmx data files (like _installer_metadata.json)
 # This is used by the nidaqmx.installdriver() CLI command
