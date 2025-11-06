@@ -16,7 +16,7 @@ datas += collect_data_files('nidaqmx', include_py_files=False)
 
 a = Analysis(
     ['main.py'],
-    pathex=['./python'],
+    pathex=['.', './python'],  # Include both project root and python/ for dual import paths
     binaries=[],
     datas=datas,
     hiddenimports=[
