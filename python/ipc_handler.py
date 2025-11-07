@@ -35,23 +35,29 @@ except ImportError:
 # Try both import paths for compatibility with bundled and development environments
 try:
     # First try bundled app import path
+    import sys
+
+    print(f"STATUS:sys.path={sys.path}", flush=True)
     from hardware.camera import Camera  # type: ignore[import-not-found]
     from hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
     from hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
 
+    print("STATUS:Successfully imported from hardware.*", flush=True)
     CAMERA_AVAILABLE = True
-except ImportError:
+except ImportError as e1:
+    print(f"STATUS:First import (hardware.*) failed: {e1}", flush=True)
     try:
         # Fall back to development/test import path
         from python.hardware.camera import Camera  # type: ignore[import-not-found]
         from python.hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
         from python.hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
 
+        print("STATUS:Successfully imported from python.hardware.*", flush=True)
         CAMERA_AVAILABLE = True
-    except ImportError as e:
+    except ImportError as e2:
         # Report import error using protocol-compliant error reporting
         # Use print directly since send_error() is defined later in this file
-        print(f"ERROR:Failed to import camera modules: {e}", flush=True)
+        print(f"ERROR:Failed to import camera modules: {e2}", flush=True)
         CAMERA_AVAILABLE = False
         Camera = None
         MockCamera = None
