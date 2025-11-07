@@ -40,11 +40,21 @@ const buildDir = path.join(__dirname, '..', 'build');
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(buildDir)) {
   console.log('[INFO] Cleaning PyInstaller build cache...');
-  fs.rmSync(buildDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  fs.rmSync(buildDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 100,
+  });
 }
 if (fs.existsSync(distDir)) {
   console.log('[INFO] Cleaning dist directory...');
-  fs.rmSync(distDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  fs.rmSync(distDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 3,
+    retryDelay: 100,
+  });
 }
 
 // Run PyInstaller
