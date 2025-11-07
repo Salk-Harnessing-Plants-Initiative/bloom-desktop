@@ -113,6 +113,7 @@ npm run test:python
 ```
 
 **PyInstaller Documentation**: See [python/PYINSTALLER.md](python/PYINSTALLER.md) for:
+
 - How the Python build process works
 - Troubleshooting bundling issues
 - Adding new Python dependencies

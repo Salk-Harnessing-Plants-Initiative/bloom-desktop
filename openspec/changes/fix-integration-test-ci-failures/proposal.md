@@ -21,6 +21,7 @@ This prevented merging critical bug fixes and new features, blocking the develop
 Through systematic debugging with diagnostic logging, the root cause was identified:
 
 ### The Issue
+
 PyInstaller was not bundling the `imageio` package metadata (`.dist-info` directory). When the bundled Python executable tried to import camera modules:
 
 1. `from hardware.camera import Camera` was attempted first
@@ -32,15 +33,19 @@ PyInstaller was not bundling the `imageio` package metadata (`.dist-info` direct
 7. Tests received ERROR messages and failed
 
 ### Why It Worked Locally
+
 Local development environments had different timing/caching behavior that masked the metadata issue. The bundled executable worked intermittently depending on how PyInstaller's cache was populated.
 
 ### Diagnostic Process
+
 Added STATUS logging to `python/ipc_handler.py` to trace:
+
 - `sys.path` contents in the bundled executable
-- Which import path was being attempted (hardware.* vs python.hardware.*)
+- Which import path was being attempted (hardware._ vs python.hardware._)
 - Exact error messages from failed imports
 
 This revealed:
+
 ```
 [STATUS] sys.path=['/var/folders/.../T/_MEI.../base_library.zip', ...]
 [STATUS] First import (hardware.*) failed: No package metadata was found for imageio
@@ -50,6 +55,7 @@ This revealed:
 ## Solution
 
 ### Primary Fix
+
 Added `imageio` package metadata to PyInstaller's bundled files in `python/main.spec`:
 
 ```python
@@ -79,6 +85,7 @@ This ensures the `.dist-info` directory for `imageio` is included in the bundled
 ## Testing
 
 ### Local Testing
+
 ```bash
 npm run build:python
 echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
@@ -89,6 +96,7 @@ npm run test:scanner
 ```
 
 All tests pass with output:
+
 ```
 STATUS:sys.path=['/var/folders/.../T/_MEI.../base_library.zip', ...]
 STATUS:Successfully imported from hardware.*
@@ -97,6 +105,7 @@ DATA:{"camera": {"library_available": true, "devices_found": 0, "available": fal
 ```
 
 ### CI Testing
+
 - ✅ macOS integration tests: **PASS**
 - ✅ Ubuntu integration tests: **PASS**
 - ⏳ Windows integration tests: Pending
@@ -153,6 +162,7 @@ DATA:{"camera": {"library_available": true, "devices_found": 0, "available": fal
 ### Optimization Recommendations (Priority Order)
 
 **Phase 1: Quick Wins** (Low risk, immediate value)
+
 - Remove duplicate `test:camera` script (alias to `test:streaming`)
 - Remove Prisma generate from `lint-node` job
 - Add cache for `node_modules`
@@ -160,12 +170,14 @@ DATA:{"camera": {"library_available": true, "devices_found": 0, "available": fal
 - **Expected savings:** ~30-60 seconds per CI run
 
 **Phase 2: Medium Impact** (Medium risk, high value)
+
 - Cache Python build artifacts across CI jobs
 - Implement `build-python` job with artifact upload/download
 - **Time investment:** 2-4 hours
 - **Expected savings:** ~2-4 minutes per CI run
 
 **Phase 3: Structural** (Higher risk, long-term value)
+
 - Create composite setup action for common steps
 - Reorganize job dependency graph
 - Cache Prisma Client
@@ -173,6 +185,7 @@ DATA:{"camera": {"library_available": true, "devices_found": 0, "available": fal
 - **Expected savings:** ~1-2 minutes per CI run + maintainability
 
 ### Total Potential Savings
+
 - **Current redundant work:** ~12-15 minutes per CI run
 - **After all optimizations:** ~5 minutes
 - **Net savings:** ~7-10 minutes per CI run (40-50% reduction)
@@ -221,11 +234,13 @@ scripts/build-python.js
 **CRITICAL DIFFERENCE:** When the bundled executable runs, it does NOT use the source code in `python/` directory!
 
 Instead:
+
 1. **Executable extracts to temp directory** (e.g., `/tmp/_MEI123abc/`)
 2. **Python runs from the temp directory** with its own `sys.path`
 3. **Modules are loaded from the extracted bundle**, not from source
 
 **Example sys.path in bundled executable:**
+
 ```python
 [
     '/tmp/_MEI123abc/base_library.zip',      # Python standard library
@@ -236,6 +251,7 @@ Instead:
 ```
 
 **Example sys.path in development:**
+
 ```python
 [
     '/path/to/bloom-desktop',                  # Project root
@@ -290,6 +306,7 @@ Analysis(
 ### Module Location Reference
 
 **Source Code Structure:**
+
 ```
 bloom-desktop/
 ├── python/
@@ -311,11 +328,13 @@ bloom-desktop/
 ```
 
 **Import Paths:**
+
 - Development: `from python.hardware.camera import Camera` ✅
 - Bundled: `from hardware.camera import Camera` ✅
 - Both work due to `pathex=['.', './python']`
 
 **Testing the Bundled Executable:**
+
 ```bash
 # Build the executable
 npm run build:python
@@ -335,6 +354,7 @@ echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
 ### Integration Tests Fail with "No module named 'X'"
 
 **Symptoms:**
+
 - Tests pass locally when running from source
 - Tests fail in CI or with bundled executable
 - Error: `No module named 'python.hardware'` or similar
@@ -342,6 +362,7 @@ echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
 **Diagnosis Steps:**
 
 1. **Check if it's a PyInstaller bundling issue:**
+
    ```bash
    npm run build:python
    echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
@@ -350,6 +371,7 @@ echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
    If this fails, it's a bundling issue, not a test issue.
 
 2. **Add diagnostic logging to see sys.path:**
+
    ```python
    import sys
    print(f"STATUS:sys.path={sys.path}", flush=True)
@@ -377,16 +399,19 @@ echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
 **Root Cause:** Package uses `importlib.metadata` internally but PyInstaller didn't bundle the `.dist-info` directory.
 
 **Solution:** Add to `python/main.spec`:
+
 ```python
 datas += copy_metadata('package-name')
 ```
 
 **How to identify which packages need this:**
+
 1. Look at the import error traceback
 2. Find which package is calling `importlib.metadata`
 3. Add `copy_metadata()` for that package
 
 **Current packages requiring metadata:**
+
 - `nidaqmx` - Uses `importlib.metadata.version(__name__)`
 - `imageio` - Uses `importlib.metadata.version('imageio')`
 

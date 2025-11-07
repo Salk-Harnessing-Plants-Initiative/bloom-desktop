@@ -9,6 +9,7 @@
 The CI pipeline contains **12-15 minutes of redundant work per run**, identified during investigation of integration test failures. The same build artifacts are created multiple times, dependencies are installed repeatedly without caching, and database schemas are generated unnecessarily.
 
 This redundancy:
+
 - Increases CI run time by 40-50%
 - Wastes GitHub Actions minutes
 - Delays feedback for developers
@@ -23,6 +24,7 @@ This redundancy:
 **Problem:** `npm run build:python` is executed 3+ times per CI run despite identical source code.
 
 **Affected Jobs:**
+
 - `.github/workflows/pr-checks.yml` line 207: `test-integration` builds Python
 - Line 261: `test-e2e-dev` builds Python again
 - Line 345: `test-package-database` builds Python a third time
@@ -36,6 +38,7 @@ This redundancy:
 **Problem:** `npx prisma generate` runs 6 times per CI run with identical output.
 
 **Affected Jobs:**
+
 - Line 52-55: `lint-node` ← **Not needed for linting!**
 - Line 106-109: `compile-typescript`
 - Line 132-135: `test-unit`
@@ -142,8 +145,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
 
       - name: Build Python executable
         run: |
@@ -230,8 +233,8 @@ runs:
       uses: astral-sh/setup-uv@v7
       with:
         enable-cache: true
-        cache-dependency-glob: "pyproject.toml"
-        python-version: "3.12"
+        cache-dependency-glob: 'pyproject.toml'
+        python-version: '3.12'
 
     - name: Install dependencies
       shell: bash
@@ -239,6 +242,7 @@ runs:
 ```
 
 **Usage in jobs:**
+
 ```yaml
 - name: Setup environment
   uses: ./.github/actions/setup-bloom
@@ -276,11 +280,11 @@ runs:
 
 ## Total Expected Savings
 
-| Phase | Effort | Savings | Risk |
-|-------|--------|---------|------|
-| Phase 1 | 30 min | ~4 min/run | Low |
-| Phase 2 | 2-4 hrs | ~1.5 min/run | Medium |
-| Phase 3 | 4-8 hrs | ~1-2 min/run | Medium-High |
+| Phase     | Effort       | Savings              | Risk        |
+| --------- | ------------ | -------------------- | ----------- |
+| Phase 1   | 30 min       | ~4 min/run           | Low         |
+| Phase 2   | 2-4 hrs      | ~1.5 min/run         | Medium      |
+| Phase 3   | 4-8 hrs      | ~1-2 min/run         | Medium-High |
 | **Total** | **7-12 hrs** | **~6.5-7.5 min/run** | **Managed** |
 
 **Current redundant work:** ~12-15 minutes per run
@@ -321,6 +325,7 @@ runs:
 
 **Problem:** Stale caches could cause mysterious failures
 **Mitigation:**
+
 - Use strict cache keys based on file hashes
 - Include cache busting in troubleshooting docs
 - Monitor for "works on CI but not locally" issues
@@ -329,6 +334,7 @@ runs:
 
 **Problem:** Python executable paths differ by OS (`.exe` on Windows)
 **Mitigation:**
+
 - Use `${{ runner.os }}` in artifact names
 - Test downloads on all platforms before merging
 - Document artifact structure
@@ -337,6 +343,7 @@ runs:
 
 **Problem:** Dependent jobs can't start until `build-python` completes
 **Mitigation:**
+
 - Keep `build-python` fast (~45 seconds)
 - Run linting/compilation jobs (which don't need Python) in parallel
 - Monitor overall CI time, not just individual job time
@@ -345,6 +352,7 @@ runs:
 
 **Problem:** Cached artifacts make "works on my machine" harder to debug
 **Mitigation:**
+
 - Clear logging of cache hits/misses
 - Document how to bypass caching for debugging
 - Keep artifact retention short (1 day) to force rebuilds
@@ -360,13 +368,16 @@ runs:
 ## Files to Change
 
 ### Phase 1
+
 - `package.json` - Remove duplicate script
 - `.github/workflows/pr-checks.yml` - Remove Prisma from lint-node, add node_modules cache
 
 ### Phase 2
+
 - `.github/workflows/pr-checks.yml` - Add build-python job, update test jobs
 
 ### Phase 3
+
 - `.github/actions/setup-bloom/action.yml` - New composite action
 - `.github/workflows/pr-checks.yml` - Use composite action, add Prisma caching
 
