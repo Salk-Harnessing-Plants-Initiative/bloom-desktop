@@ -1,8 +1,11 @@
 # e2e-testing Specification
 
 ## Purpose
+
 TBD - created by archiving change add-e2e-testing-framework. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Playwright Framework Configuration
 
 The system SHALL provide a Playwright configuration file that defines E2E test execution parameters for the Electron application.
@@ -188,4 +191,3 @@ The system SHALL ensure E2E tests clean up resources and do not interfere with e
 - **GIVEN** the test database directory does not exist
 - **WHEN** beforeEach hook runs
 - **THEN** the directory `prisma/tests/e2e/` SHALL be created recursively
-

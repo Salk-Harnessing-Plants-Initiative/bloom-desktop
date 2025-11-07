@@ -9,6 +9,7 @@ block_cipher = None
 # which requires the .dist-info directory to be bundled
 datas = []
 datas += copy_metadata('nidaqmx')
+datas += copy_metadata('imageio')  # Required for imageio.v2 imports in camera modules
 
 # Optional: Include nidaqmx data files (like _installer_metadata.json)
 # This is used by the nidaqmx.installdriver() CLI command
@@ -16,7 +17,7 @@ datas += collect_data_files('nidaqmx', include_py_files=False)
 
 a = Analysis(
     ['main.py'],
-    pathex=['./python'],
+    pathex=['.', './python'],  # Include both project root and python/ for dual import paths
     binaries=[],
     datas=datas,
     hiddenimports=[
@@ -26,10 +27,27 @@ a = Analysis(
         'nidaqmx',
         'PIL',
         'PIL.Image',
+        # Hardware modules - both import paths needed for bundled app
+        # ipc_handler.py tries 'hardware.*' first, then falls back to 'python.hardware.*'
+        'hardware',
+        'hardware.camera',
+        'hardware.camera_mock',
+        'hardware.camera_types',
+        'hardware.daq',
+        'hardware.daq_mock',
+        'hardware.daq_types',
+        'hardware.scanner',
+        'hardware.scanner_types',
+        # Development/fallback import paths
         'python.hardware',
         'python.hardware.camera',
         'python.hardware.camera_mock',
         'python.hardware.camera_types',
+        'python.hardware.daq',
+        'python.hardware.daq_mock',
+        'python.hardware.daq_types',
+        'python.hardware.scanner',
+        'python.hardware.scanner_types',
     ],
     hookspath=[],
     hooksconfig={},
