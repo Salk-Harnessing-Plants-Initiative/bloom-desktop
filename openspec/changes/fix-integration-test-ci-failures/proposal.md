@@ -177,16 +177,272 @@ DATA:{"camera": {"library_available": true, "devices_found": 0, "available": fal
 - **After all optimizations:** ~5 minutes
 - **Net savings:** ~7-10 minutes per CI run (40-50% reduction)
 
+## How PyInstaller Works: Understanding the Build Process
+
+### Overview
+
+The Python executable is built using **PyInstaller**, which bundles Python code, dependencies, and the Python interpreter into a standalone executable. This is critical to understand because the bundled application behaves differently from running Python source code directly.
+
+### Build Process Flow
+
+When you run `npm run build:python`, here's what happens:
+
+```
+npm run build:python
+    ↓
+scripts/build-python.js
+    ↓
+1. Clean build/dist directories (prevents stale cache issues)
+    ↓
+2. uv sync --extra dev (install Python dependencies including PyInstaller)
+    ↓
+3. uv run pyinstaller python/main.spec
+    ↓
+    ├─→ Analysis Phase
+    │   ├─ Reads python/main.py as entry point
+    │   ├─ Follows all imports to discover dependencies
+    │   ├─ Uses pathex=['.', './python'] to find modules
+    │   ├─ Includes modules from hiddenimports list
+    │   └─ Copies package metadata via copy_metadata()
+    │
+    ├─→ Build Phase
+    │   ├─ Compiles Python files to .pyc bytecode
+    │   ├─ Collects all dependencies into build/ directory
+    │   └─ Creates module tree structure
+    │
+    └─→ Bundle Phase
+        ├─ Packages everything into single executable
+        ├─ Adds bootloader (the executable shell)
+        └─ Outputs to dist/bloom-hardware
+```
+
+### Runtime Behavior
+
+**CRITICAL DIFFERENCE:** When the bundled executable runs, it does NOT use the source code in `python/` directory!
+
+Instead:
+1. **Executable extracts to temp directory** (e.g., `/tmp/_MEI123abc/`)
+2. **Python runs from the temp directory** with its own `sys.path`
+3. **Modules are loaded from the extracted bundle**, not from source
+
+**Example sys.path in bundled executable:**
+```python
+[
+    '/tmp/_MEI123abc/base_library.zip',      # Python standard library
+    '/tmp/_MEI123abc/python3.12/lib-dynload', # C extensions
+    '/tmp/_MEI123abc',                        # Bundled Python modules
+    '/tmp/_MEI123abc/setuptools/_vendor'      # Vendor dependencies
+]
+```
+
+**Example sys.path in development:**
+```python
+[
+    '/path/to/bloom-desktop',                  # Project root
+    '/path/to/bloom-desktop/python',           # Python source directory
+    '/path/to/.venv/lib/python3.12/site-packages'  # Installed packages
+]
+```
+
+### Key PyInstaller Spec File Settings
+
+**`python/main.spec` controls what gets bundled:**
+
+```python
+Analysis(
+    ['main.py'],                    # Entry point
+    pathex=['.', './python'],       # Module search paths
+    hiddenimports=[                 # Modules PyInstaller can't auto-detect
+        'hardware.camera',
+        'hardware.camera_mock',
+        'python.hardware.camera',
+        # ... etc
+    ],
+    datas=[                        # Non-Python files to bundle
+        copy_metadata('nidaqmx'),  # Package .dist-info directories
+        copy_metadata('imageio'),  # Required for importlib.metadata
+    ]
+)
+```
+
+### Common Gotchas
+
+1. **Hidden Imports**
+   - PyInstaller's static analysis can't detect dynamic imports
+   - Must manually list in `hiddenimports=[]`
+   - Example: `from hardware.camera import Camera` must be in hiddenimports
+
+2. **Package Metadata**
+   - If a package calls `importlib.metadata.version(__name__)`, it needs its `.dist-info` directory
+   - Must use `copy_metadata('package-name')` in spec file
+   - **THIS WAS THE ROOT CAUSE OF THE BUG**
+
+3. **Import Path Differences**
+   - Source code uses `from python.hardware.camera import Camera`
+   - Bundled app uses `from hardware.camera import Camera`
+   - Both paths must be in `pathex=[]` and `hiddenimports=[]`
+
+4. **Build Caching**
+   - PyInstaller caches analysis in `build/` directory
+   - Stale cache can ignore spec file changes
+   - **Always clean build/dist when modifying main.spec**
+
+### Module Location Reference
+
+**Source Code Structure:**
+```
+bloom-desktop/
+├── python/
+│   ├── __init__.py
+│   ├── main.py              # Entry point
+│   ├── ipc_handler.py       # IPC protocol implementation
+│   ├── hardware/
+│   │   ├── __init__.py
+│   │   ├── camera.py        # Camera control
+│   │   ├── camera_mock.py   # Mock camera for testing
+│   │   ├── camera_types.py  # Type definitions
+│   │   ├── daq.py           # DAQ control
+│   │   ├── daq_mock.py      # Mock DAQ
+│   │   └── ...
+│   └── tests/               # Not bundled (excluded in spec)
+├── dist/
+│   └── bloom-hardware       # Bundled executable (created by PyInstaller)
+└── build/                   # PyInstaller cache (cleaned before build)
+```
+
+**Import Paths:**
+- Development: `from python.hardware.camera import Camera` ✅
+- Bundled: `from hardware.camera import Camera` ✅
+- Both work due to `pathex=['.', './python']`
+
+**Testing the Bundled Executable:**
+```bash
+# Build the executable
+npm run build:python
+
+# Test directly (bypasses integration tests)
+echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
+
+# Expected output:
+# STATUS:sys.path=['/tmp/_MEI.../base_library.zip', ...]
+# STATUS:Successfully imported from hardware.*
+# STATUS:IPC handler ready
+# DATA:{"camera": {"library_available": true, ...}, ...}
+```
+
+## Troubleshooting Guide
+
+### Integration Tests Fail with "No module named 'X'"
+
+**Symptoms:**
+- Tests pass locally when running from source
+- Tests fail in CI or with bundled executable
+- Error: `No module named 'python.hardware'` or similar
+
+**Diagnosis Steps:**
+
+1. **Check if it's a PyInstaller bundling issue:**
+   ```bash
+   npm run build:python
+   echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
+   ```
+
+   If this fails, it's a bundling issue, not a test issue.
+
+2. **Add diagnostic logging to see sys.path:**
+   ```python
+   import sys
+   print(f"STATUS:sys.path={sys.path}", flush=True)
+   ```
+
+3. **Check hiddenimports in `python/main.spec`:**
+   - Does it include all modules you're importing?
+   - Are both import paths listed (`hardware.*` and `python.hardware.*`)?
+
+4. **Check for package metadata requirements:**
+   - Does the module import use `importlib.metadata.version()`?
+   - Is there `copy_metadata('package-name')` in the spec file?
+
+**Solutions:**
+
+- **Missing module:** Add to `hiddenimports=[]` in `python/main.spec`
+- **Missing metadata:** Add `copy_metadata('package-name')` to `datas` in spec
+- **Stale cache:** Clean build/dist directories (already automatic in build script)
+- **Wrong import path:** Add to `pathex=[]` in spec
+
+### Integration Tests Fail with "No package metadata was found for X"
+
+**This is what we just fixed!**
+
+**Root Cause:** Package uses `importlib.metadata` internally but PyInstaller didn't bundle the `.dist-info` directory.
+
+**Solution:** Add to `python/main.spec`:
+```python
+datas += copy_metadata('package-name')
+```
+
+**How to identify which packages need this:**
+1. Look at the import error traceback
+2. Find which package is calling `importlib.metadata`
+3. Add `copy_metadata()` for that package
+
+**Current packages requiring metadata:**
+- `nidaqmx` - Uses `importlib.metadata.version(__name__)`
+- `imageio` - Uses `importlib.metadata.version('imageio')`
+
+### Build Works Locally But Fails in CI
+
+**Possible Causes:**
+
+1. **Build cache differences** (now solved with auto-cleaning)
+2. **Platform-specific dependencies**
+   - Windows uses `.exe` extension
+   - macOS may require code signing
+   - Linux may have different library paths
+
+3. **Timing/race conditions**
+   - CI may run tests before build completes
+   - Solution: Ensure `npm run build:python` runs before tests
+
+4. **Environment differences**
+   - Different Python versions
+   - Different dependency versions
+   - Check `uv` is using the same Python version
+
+### Adding New Python Dependencies
+
+When adding new Python packages, consider:
+
+1. **Does it use importlib.metadata?**
+   - Check the package source or docs
+   - If yes, add `copy_metadata('package-name')` to spec
+
+2. **Does it have C extensions?**
+   - PyInstaller usually handles these automatically
+   - Check `dist/` for `.so` or `.pyd` files
+
+3. **Does it have data files?**
+   - May need `collect_data_files('package-name')`
+
+4. **Test the bundled executable:**
+   ```bash
+   npm run build:python
+   echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc
+   ```
+
 ## References
 
 - PR #61: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/61
-- PyInstaller Documentation: https://pyinstaller.org/en/stable/hooks.html
+- PyInstaller Documentation: https://pyinstaller.org/en/stable/
+- PyInstaller Hooks: https://pyinstaller.org/en/stable/hooks.html
+- PyInstaller Spec Files: https://pyinstaller.org/en/stable/spec-files.html
 - Related issue: Integration tests failing in CI (resolved)
 
 ## Lessons Learned
 
 1. **PyInstaller metadata requirements are not obvious** - Packages that use `importlib.metadata` need explicit metadata copying
-2. **Build caching can hide configuration issues** - Always clean cache when testing spec changes
+2. **Build caching can hide configuration issues** - Always clean cache when testing spec changes (now automatic)
 3. **Diagnostic logging is invaluable** - STATUS messages revealed the exact failure point
 4. **CI/local parity requires effort** - Bundled apps behave differently than source execution
 5. **Systematic debugging wins** - Methodical investigation with logging beats guesswork
+6. **Document the build process** - Understanding PyInstaller's behavior is critical for troubleshooting
