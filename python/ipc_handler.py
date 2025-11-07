@@ -36,10 +36,12 @@ except ImportError:
 try:
     # First try bundled app import path
     import sys
+
     print(f"STATUS:sys.path={sys.path}", flush=True)
     from hardware.camera import Camera  # type: ignore[import-not-found]
     from hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
     from hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
+
     print("STATUS:Successfully imported from hardware.*", flush=True)
     CAMERA_AVAILABLE = True
 except ImportError as e1:
@@ -49,6 +51,7 @@ except ImportError as e1:
         from python.hardware.camera import Camera  # type: ignore[import-not-found]
         from python.hardware.camera_mock import MockCamera  # type: ignore[import-not-found]
         from python.hardware.camera_types import CameraSettings  # type: ignore[import-not-found]
+
         print("STATUS:Successfully imported from python.hardware.*", flush=True)
         CAMERA_AVAILABLE = True
     except ImportError as e2:
