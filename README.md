@@ -48,7 +48,8 @@ bloom-desktop/
 │   ├── ipc_handler.py   # IPC command routing
 │   ├── hardware/        # Hardware interfaces (camera, DAQ)
 │   ├── tests/           # Python unit tests (pytest)
-│   └── main.spec        # PyInstaller build configuration
+│   ├── main.spec        # PyInstaller build configuration
+│   └── PYINSTALLER.md   # PyInstaller troubleshooting guide
 ├── prisma/              # Database schema and migrations
 │   ├── schema.prisma    # Prisma schema (pilot-compatible)
 │   ├── migrations/      # Database migrations
@@ -110,6 +111,12 @@ npm run build:python
 # Run Python unit tests
 npm run test:python
 ```
+
+**PyInstaller Documentation**: See [python/PYINSTALLER.md](python/PYINSTALLER.md) for:
+- How the Python build process works
+- Troubleshooting bundling issues
+- Adding new Python dependencies
+- Understanding module import paths
 
 #### Database
 
