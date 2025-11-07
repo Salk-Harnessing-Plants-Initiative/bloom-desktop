@@ -103,6 +103,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
       - name: Install dependencies
         run: npm ci
 
@@ -128,6 +136,14 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
 
       - name: Install dependencies
         run: npm ci
@@ -172,8 +188,40 @@ jobs:
         run: npm run test:python
         # Enforces 80% minimum coverage (configured in pyproject.toml)
 
+  # Build Python executable once per OS (caching for reuse across jobs)
+  build-python:
+    name: Build - Python Executable
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+          python-version: "3.12"
+
+      - name: Build Python executable
+        run: |
+          uv sync --extra dev
+          uv run pyinstaller python/main.spec
+
+      - name: Upload Python executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+          retention-days: 1
+
   # Integration tests
   test-integration:
+    needs: build-python
     name: Test - Integration (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -196,6 +244,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -203,11 +259,18 @@ jobs:
           cache-dependency-glob: "pyproject.toml"
           python-version: "3.12"
 
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x dist/bloom-hardware
+
       - name: Install dependencies
         run: npm ci
-
-      - name: Build Python executable
-        run: npm run build:python
 
       - name: Run IPC integration tests
         run: npm run test:ipc
@@ -231,6 +294,7 @@ jobs:
 
   # E2E tests with Playwright (dev build)
   test-e2e-dev:
+    needs: build-python
     name: Test - E2E Dev Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -247,6 +311,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -254,14 +326,21 @@ jobs:
           cache-dependency-glob: "pyproject.toml"
           python-version: "3.12"
 
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x dist/bloom-hardware
+
       - name: Install dependencies
         run: npm ci
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
-
-      - name: Build Python executable
-        run: npm run build:python
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -316,6 +395,7 @@ jobs:
 
   # Test packaged app database integration (macOS only for speed)
   test-package-database:
+    needs: build-python
     name: Test - Packaged App Database (macOS)
     runs-on: macos-latest
 
@@ -329,12 +409,30 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
           python-version: "3.12"
+
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x dist/bloom-hardware
 
       - name: Install dependencies
         run: npm ci
@@ -343,9 +441,6 @@ jobs:
         run: npx prisma generate
         env:
           BLOOM_DATABASE_URL: "file:./dev.db"
-
-      - name: Build Python executable
-        run: npm run build:python
 
       - name: Package application
         run: npm run package
@@ -363,6 +458,7 @@ jobs:
       - compile-typescript
       - test-unit
       - test-python
+      - build-python
       - test-integration
       - test-e2e-dev
       - test-package-database
