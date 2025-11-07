@@ -20,7 +20,7 @@ gh pr checks
 
 ## PR Description Template
 
-````markdown
+```markdown
 ## Summary
 
 [Brief 1-2 sentence description of what this PR does]
@@ -114,7 +114,7 @@ Related to #[issue number]
 [Specific areas you want reviewers to focus on]
 [Any concerns or questions you have]
 [Special testing instructions]
-````
+```
 
 ## GitHub CLI Tips
 
@@ -148,7 +148,7 @@ gh run view --log-failed
 
 ### Feature PR Example
 
-````markdown
+```markdown
 ## Summary
 
 Add camera brightness control to camera settings with live preview updates.
@@ -198,11 +198,11 @@ Closes #51 (per-experiment camera settings)
 ## Reviewer Notes
 
 Please verify the brightness range (0.0-1.0) makes sense for the UI. The Basler SDK uses this range internally.
-````
+```
 
 ### Bug Fix PR Example
 
-````markdown
+```markdown
 ## Summary
 
 Fix race condition in Python subprocess startup causing intermittent IPC test failures on Windows.
@@ -223,7 +223,7 @@ Fix race condition in Python subprocess startup causing intermittent IPC test fa
 ## Related Issues
 
 Closes #47 (IPC race condition on Windows)
-````
+```
 
 ## Related Commands
 

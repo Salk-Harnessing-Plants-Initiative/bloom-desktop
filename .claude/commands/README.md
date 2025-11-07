@@ -201,7 +201,7 @@ When adding new commands:
 
 Each command follows this structure:
 
-```markdown
+````markdown
 # Command Name
 
 [1-2 sentence description]
@@ -212,6 +212,7 @@ Each command follows this structure:
 # Command examples
 npm run command
 ```
+````
 
 ## What to do after running
 
@@ -225,6 +226,7 @@ npm run command
 ## Related Commands
 
 - /related-command - Description
+
 ```
 
 ## Getting Help
@@ -232,3 +234,4 @@ npm run command
 - **Command-specific help**: Run the command (e.g., `/lint`)
 - **General help**: See repository documentation in `docs/`
 - **Issues**: Report at https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues
+```

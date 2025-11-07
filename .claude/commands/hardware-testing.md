@@ -64,6 +64,7 @@ Test with actual Basler cameras and NI-DAQ devices.
 1. **Install Basler Pylon SDK**: [Download from Basler](https://www.baslerweb.com/en/products/software/basler-pylon-camera-software-suite/)
 2. **Connect camera**: USB 3.0 or GigE connection
 3. **Verify installation**:
+
    ```bash
    # macOS/Linux
    which pylon  # Should show path to Pylon installation
@@ -77,6 +78,7 @@ Test with actual Basler cameras and NI-DAQ devices.
 1. **Install NI-DAQmx Runtime**: [Download from NI](https://www.ni.com/en-us/support/downloads/drivers/download.ni-daqmx.html)
 2. **Connect DAQ device**: USB connection
 3. **Verify installation**:
+
    ```bash
    # Check NI-DAQmx version
    python -c "import nidaqmx; print(nidaqmx.system.System().driver_version)"
@@ -151,11 +153,13 @@ npm run start
 #### "No camera devices found"
 
 **Causes:**
+
 - Camera not connected
 - Pylon SDK not installed
 - Camera drivers not loaded
 
 **Solutions:**
+
 1. Check USB/GigE connection
 2. Verify Pylon SDK installation
 3. Test with Pylon Viewer application
@@ -166,6 +170,7 @@ npm run start
 **Cause:** USB permissions
 
 **Solution:**
+
 ```bash
 # Add udev rule for Basler cameras
 sudo sh -c 'echo "SUBSYSTEM==\"usb\", ATTR{idVendor}==\"2676\", MODE=\"0666\"" > /etc/udev/rules.d/99-basler.rules'
@@ -175,11 +180,13 @@ sudo udevadm control --reload-rules
 #### "Failed to grab image" during streaming
 
 **Causes:**
+
 - USB bandwidth insufficient
 - Camera buffer overrun
 - Exposure time too long
 
 **Solutions:**
+
 1. Use USB 3.0 port (not USB 2.0 hub)
 2. Reduce frame rate or resolution
 3. Adjust exposure time
@@ -190,11 +197,13 @@ sudo udevadm control --reload-rules
 #### "Device not found"
 
 **Causes:**
+
 - DAQ not connected
 - NI-DAQmx not installed
 - Device not configured in NI MAX
 
 **Solutions:**
+
 1. Check USB connection
 2. Install NI-DAQmx Runtime
 3. Open NI MAX (Measurement & Automation Explorer) and verify device appears
@@ -205,6 +214,7 @@ sudo udevadm control --reload-rules
 **Cause:** Another application using DAQ device
 
 **Solution:**
+
 - Close NI MAX or other applications using DAQ
 - Restart DAQ device
 - Check for zombie processes: `ps aux | grep python`
@@ -212,11 +222,13 @@ sudo udevadm control --reload-rules
 #### "Analog output failed"
 
 **Causes:**
+
 - Invalid voltage range
 - Channel not configured correctly
 - Wiring issue
 
 **Solutions:**
+
 1. Verify voltage within device specs (typically ±10V)
 2. Check physical wiring to turntable motor
 3. Test with known-good configuration in NI MAX
@@ -226,6 +238,7 @@ sudo udevadm control --reload-rules
 #### Tests pass with mock hardware, fail with real hardware
 
 **Common causes:**
+
 1. **Timing issues**: Real hardware slower than mocks
    - Solution: Increase timeouts in tests
 2. **Hardware initialization**: Real devices need warm-up time
@@ -236,11 +249,13 @@ sudo udevadm control --reload-rules
 #### "Python subprocess crashed" during hardware test
 
 **Causes:**
+
 - Hardware driver exception
 - Memory issue
 - SDK bug
 
 **Solutions:**
+
 1. Check Python subprocess logs in terminal
 2. Run Python hardware script directly to isolate issue:
    ```bash
@@ -269,6 +284,7 @@ Mock implementations simulate real hardware behavior:
 ### When to Update Mocks
 
 Update mocks when:
+
 1. Adding new hardware features (e.g., camera brightness control)
 2. Changing hardware interface (e.g., new IPC commands)
 3. Fixing bugs in real hardware driver (reproduce in mock for test)

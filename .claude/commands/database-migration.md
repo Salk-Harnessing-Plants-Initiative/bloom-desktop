@@ -70,6 +70,7 @@ npm run prisma:migrate
 ```
 
 This creates:
+
 - `prisma/migrations/20250107120000_add_brightness_to_scan/migration.sql`
 - SQL file with ALTER TABLE statements
 
@@ -81,6 +82,7 @@ ALTER TABLE "Scan" ADD COLUMN "brightness" REAL NOT NULL DEFAULT 0.5;
 ```
 
 Check:
+
 - [ ] Column type correct (REAL for Float, TEXT for String, INTEGER for Int)
 - [ ] Default value appropriate
 - [ ] NOT NULL vs nullable correct

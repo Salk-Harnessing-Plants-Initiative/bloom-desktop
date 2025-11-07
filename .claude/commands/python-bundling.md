@@ -140,6 +140,7 @@ datas += copy_metadata('package-name')
 ```
 
 **Common packages needing this**:
+
 - `imageio`
 - `nidaqmx`
 - Packages that check their own version at runtime
@@ -205,22 +206,26 @@ npm run build:python
 ### Windows
 
 **DLL Search Path**:
+
 - Windows looks for DLLs in: executable directory, system32, PATH
 - PyInstaller extracts to `_MEIXXXXXX` temp directory
 - Use `binaries` in spec to bundle DLLs
 
 **Common Windows DLLs needed**:
+
 - MSVC Runtime (usually present)
 - Hardware SDK DLLs (Pylon, NI-DAQmx)
 
 ### macOS
 
 **Code Signing**:
+
 - PyInstaller executables may need code signing
 - Use `--codesign-identity` flag or sign post-build
 - See `docs/PACKAGING.md` for details
 
 **Dylib Paths**:
+
 - macOS uses `@rpath`, `@executable_path`, `@loader_path`
 - PyInstaller usually handles correctly
 - May need `install_name_tool` adjustments
@@ -228,6 +233,7 @@ npm run build:python
 ### Linux
 
 **Shared Library Paths**:
+
 - Linux uses `LD_LIBRARY_PATH` and `rpath`
 - PyInstaller bundles most dependencies
 - May need `LD_LIBRARY_PATH` set for hardware SDKs
