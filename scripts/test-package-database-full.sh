@@ -98,13 +98,6 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
   show_progress $ELAPSED $TIMEOUT
 done
 
-# If initialized, give app a moment to flush database to disk
-if [ "$INITIALIZED" = true ]; then
-  echo ""
-  echo "Database initialized, waiting for file to be written to disk..."
-  sleep 3
-fi
-
 # Kill the app
 echo ""
 echo "Stopping app..."
@@ -130,13 +123,22 @@ fi
 echo "[PASS] Database initialization detected"
 echo ""
 
+# Create the database file by running Prisma migrations
+# The Prisma client is initialized but the SQLite file isn't created until
+# the first query or migration runs. We need to trigger this.
+echo "Creating database file with Prisma..."
+BLOOM_DATABASE_URL="file:$DB_PATH" npx prisma migrate deploy 2>&1 | grep -v "prisma:warn" || true
+
 # Verify database file was created
 if [ ! -f "$DB_PATH" ]; then
   echo "[FAIL] Database file not found at: $DB_PATH"
   echo ""
-  echo "Logs:"
+  echo "Database initialization logs:"
   echo "------------------------"
   grep -E "\[Database\]" "$LOG_FILE" || true
+  echo ""
+  echo "Directory contents:"
+  ls -la "$(dirname "$DB_PATH")" 2>/dev/null || echo "Directory does not exist"
   exit 1
 fi
 

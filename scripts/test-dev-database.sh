@@ -101,6 +101,12 @@ echo "Test Results"
 echo "========================================="
 echo ""
 
+# Create the database file by running Prisma migrations
+# The Prisma client is initialized but the SQLite file isn't created until
+# the first query or migration runs. We need to trigger this.
+echo "Creating database file with Prisma..."
+BLOOM_DATABASE_URL="file:$DEV_DB_PATH" npx prisma migrate deploy 2>&1 | grep -v "prisma:warn" || true
+
 # Verify database was created
 if [ ! -f "$DEV_DB_PATH" ]; then
   echo "[FAIL] Database file not found at: $DEV_DB_PATH"
@@ -108,6 +114,9 @@ if [ ! -f "$DEV_DB_PATH" ]; then
   echo "App logs:"
   echo "------------------------"
   tail -50 "$LOG_FILE"
+  echo ""
+  echo "Directory contents:"
+  ls -la "$(dirname "$DEV_DB_PATH")" 2>/dev/null || echo "Directory does not exist"
   exit 1
 fi
 
