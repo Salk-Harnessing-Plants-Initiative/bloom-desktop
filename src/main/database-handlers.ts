@@ -19,6 +19,20 @@ interface DatabaseResponse<T = unknown> {
 }
 
 /**
+ * Log database operation for testing/debugging (dev mode only)
+ * Format: [DB:OPERATION] Model: details
+ */
+function logDatabaseOperation(
+  operation: 'CREATE' | 'READ' | 'UPDATE' | 'DELETE',
+  model: string,
+  details: string
+) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[DB:${operation}] ${model}: ${details}`);
+  }
+}
+
+/**
  * Register all database IPC handlers
  *
  * Handlers follow naming convention: db:{model}:{action}
@@ -58,6 +72,11 @@ export function registerDatabaseHandlers() {
     ): Promise<DatabaseResponse> => {
       try {
         const experiment = await db.experiment.create({ data });
+        logDatabaseOperation(
+          'CREATE',
+          'Experiment',
+          `id=${experiment.id} name="${experiment.name}"`
+        );
         return { success: true, data: experiment };
       } catch (error) {
         console.error('[DB] Failed to create experiment:', error);
@@ -161,6 +180,11 @@ export function registerDatabaseHandlers() {
     ): Promise<DatabaseResponse> => {
       try {
         const phenotyper = await db.phenotyper.create({ data });
+        logDatabaseOperation(
+          'CREATE',
+          'Phenotyper',
+          `id=${phenotyper.id} name="${phenotyper.name}"`
+        );
         return { success: true, data: phenotyper };
       } catch (error) {
         console.error('[DB] Failed to create phenotyper:', error);
@@ -199,6 +223,11 @@ export function registerDatabaseHandlers() {
     ): Promise<DatabaseResponse> => {
       try {
         const scientist = await db.scientist.create({ data });
+        logDatabaseOperation(
+          'CREATE',
+          'Scientist',
+          `id=${scientist.id} email="${scientist.email}"`
+        );
         return { success: true, data: scientist };
       } catch (error) {
         console.error('[DB] Failed to create scientist:', error);
@@ -237,6 +266,11 @@ export function registerDatabaseHandlers() {
     ): Promise<DatabaseResponse> => {
       try {
         const accession = await db.accessions.create({ data });
+        logDatabaseOperation(
+          'CREATE',
+          'Accession',
+          `id=${accession.id} name="${accession.name}"`
+        );
         return { success: true, data: accession };
       } catch (error) {
         console.error('[DB] Failed to create accession:', error);
@@ -257,6 +291,11 @@ export function registerDatabaseHandlers() {
     async (_event, data: Prisma.ScanCreateInput): Promise<DatabaseResponse> => {
       try {
         const scan = await db.scan.create({ data });
+        logDatabaseOperation(
+          'CREATE',
+          'Scan',
+          `id=${scan.id} plant="${scan.plant_id}"`
+        );
         return { success: true, data: scan };
       } catch (error) {
         console.error('[DB] Failed to create scan:', error);
