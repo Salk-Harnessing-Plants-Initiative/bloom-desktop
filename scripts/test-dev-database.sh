@@ -41,7 +41,8 @@ echo "(App will run in background, monitoring logs)"
 echo ""
 
 # Launch electron-forge start in background
-npm run start > "$LOG_FILE" 2>&1 &
+# ELECTRON_DISABLE_SANDBOX=1 is required for CI environments
+ELECTRON_DISABLE_SANDBOX=1 npm run start > "$LOG_FILE" 2>&1 &
 APP_PID=$!
 
 echo "App launched (PID: $APP_PID)"

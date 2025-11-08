@@ -98,6 +98,13 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
   show_progress $ELAPSED $TIMEOUT
 done
 
+# If initialized, give app a moment to flush database to disk
+if [ "$INITIALIZED" = true ]; then
+  echo ""
+  echo "Database initialized, waiting for file to be written to disk..."
+  sleep 3
+fi
+
 # Kill the app
 echo ""
 echo "Stopping app..."
