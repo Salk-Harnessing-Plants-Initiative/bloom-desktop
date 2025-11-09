@@ -86,7 +86,8 @@ verify_schema() {
   local expected_tables=(
     "Scientist"
     "Phenotyper"
-    "Accession"
+    "Accessions"
+    "PlantAccessionMappings"
     "Experiment"
     "Scan"
     "Image"
