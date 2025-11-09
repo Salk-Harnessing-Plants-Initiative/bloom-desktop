@@ -32,6 +32,7 @@ rg "process\.env\." --type ts | grep -o "process\.env\.[A-Z_]*" | sort -u
 ### Existing Documentation ✅
 
 **Core Technical Docs** (`/docs/`):
+
 - ✅ `DATABASE.md` - Prisma schema, IPC API, testing, scanner integration
 - ✅ `PACKAGING.md` - Electron packaging, Prisma/ASAR issues, troubleshooting
 - ✅ `E2E_TESTING.md` - Playwright E2E tests, CI integration, platform-specific setup
@@ -44,26 +45,31 @@ rg "process\.env\." --type ts | grep -o "process\.env\.[A-Z_]*" | sort -u
 - ✅ `SCANNER_DATABASE_INTEGRATION_PLAN.md` - Integration design
 
 **Root Documentation**:
+
 - ✅ `README.md` - Project overview, setup, architecture, testing
 - ✅ `CLAUDE.md` - OpenSpec integration for AI assistants
 
 **OpenSpec** (`/openspec/`):
+
 - ✅ `AGENTS.md` - AI agent workflow instructions
 - ✅ `project.md` - Project conventions and context
 - ✅ `specs/` - Current specifications for built capabilities
 - ✅ `changes/` - Active proposals and archived changes
 
 **Python Documentation**:
+
 - ✅ `python/PYINSTALLER.md` - PyInstaller build process and troubleshooting
 
 ### Missing Documentation ❌
 
 **Critical Gaps**:
+
 - ❌ `CONTRIBUTING.md` - Contribution guidelines, PR process, code review
 - ❌ `ARCHITECTURE.md` - System architecture, design patterns, module interactions
 - ❌ `SECURITY.md` - Security policy, vulnerability reporting
 
 **Would Be Nice**:
+
 - ⚠️ Complete IPC API reference
 - ⚠️ Troubleshooting index (consolidate from all docs)
 - ⚠️ Development workflow guide
@@ -117,6 +123,7 @@ rg "process\.env\." --type ts | grep -o "process\.env\.[A-Z_]*" | sort -u
 **When to do**: After significant code changes
 
 **Tasks**:
+
 1. Verify all code examples compile and run
 2. Check configuration values match actual defaults
 3. Test all CLI commands in documentation
@@ -124,6 +131,7 @@ rg "process\.env\." --type ts | grep -o "process\.env\.[A-Z_]*" | sort -u
 5. Update screenshots if UI changed
 
 **Files to check**:
+
 - All testing guides (commands must work)
 - Configuration documentation (defaults must match code)
 - README setup instructions
@@ -133,12 +141,14 @@ rg "process\.env\." --type ts | grep -o "process\.env\.[A-Z_]*" | sort -u
 **When to do**: Quarterly or before major releases
 
 **Tasks**:
+
 1. Check for undocumented features (search codebase vs docs)
 2. Identify missing API documentation
 3. Find gaps in troubleshooting coverage
 4. Review error messages in code - are they documented?
 
 **Search patterns**:
+
 ```bash
 # Find undocumented IPC channels
 rg "ipcMain\.handle\(" src/main/ -A 2 | grep -o "'[^']*'" | sort -u
@@ -153,6 +163,7 @@ rg "window\.electron\." docs/ | grep -o "window\.electron\.[a-zA-Z.]*" | sort -u
 ### Phase 3: Consistency Enforcement
 
 **Standards**:
+
 1. **Command format**: Always use `npm run <script>` for package scripts
 2. **File paths**: Use relative paths from project root
 3. **Code blocks**: Always specify language for syntax highlighting
@@ -160,6 +171,7 @@ rg "window\.electron\." docs/ | grep -o "window\.electron\.[a-zA-Z.]*" | sort -u
 5. **Cross-references**: Use relative links: `[text](./FILE.md#section)`
 
 **Checklist**:
+
 - [ ] All bash commands use `bash` syntax highlighting
 - [ ] All TypeScript examples use `typescript` or `javascript`
 - [ ] All file paths are clear (absolute or relative)
@@ -201,6 +213,7 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 ### What to Document
 
 ✅ **Do Document:**
+
 - Setup and installation steps
 - Common workflows and patterns
 - API changes and new IPC channels
@@ -210,6 +223,7 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 - Architecture decisions
 
 ❌ **Don't Document:**
+
 - Implementation details (use code comments instead)
 - Temporary workarounds (fix the issue instead)
 - Obvious code behavior (self-documenting code is better)
@@ -217,21 +231,21 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 
 ### Where to Document
 
-| Content Type | Location |
-|--------------|----------|
-| Project overview | README.md |
-| Contribution process | CONTRIBUTING.md |
-| System architecture | ARCHITECTURE.md |
-| Security policy | SECURITY.md |
-| Database/Prisma | docs/DATABASE.md |
-| Packaging/Distribution | docs/PACKAGING.md |
-| E2E testing | docs/E2E_TESTING.md |
-| Hardware testing | docs/CAMERA_TESTING.md, docs/DAQ_TESTING.md, docs/SCANNER_TESTING.md |
-| Configuration | docs/CONFIGURATION.md |
-| Python packaging | python/PYINSTALLER.md |
-| Change proposals | openspec/changes/*/proposal.md |
-| Specifications | openspec/specs/*/spec.md |
-| AI assistant instructions | CLAUDE.md |
+| Content Type              | Location                                                             |
+| ------------------------- | -------------------------------------------------------------------- |
+| Project overview          | README.md                                                            |
+| Contribution process      | CONTRIBUTING.md                                                      |
+| System architecture       | ARCHITECTURE.md                                                      |
+| Security policy           | SECURITY.md                                                          |
+| Database/Prisma           | docs/DATABASE.md                                                     |
+| Packaging/Distribution    | docs/PACKAGING.md                                                    |
+| E2E testing               | docs/E2E_TESTING.md                                                  |
+| Hardware testing          | docs/CAMERA_TESTING.md, docs/DAQ_TESTING.md, docs/SCANNER_TESTING.md |
+| Configuration             | docs/CONFIGURATION.md                                                |
+| Python packaging          | python/PYINSTALLER.md                                                |
+| Change proposals          | openspec/changes/\*/proposal.md                                      |
+| Specifications            | openspec/specs/\*/spec.md                                            |
+| AI assistant instructions | CLAUDE.md                                                            |
 
 ## Common Documentation Issues
 
@@ -240,6 +254,7 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 **Symptom**: Setup instructions reference old tools, commands, or versions
 
 **Fix**:
+
 1. Test setup on clean environment (or Docker container)
 2. Update step-by-step instructions
 3. Update prerequisites and versions
@@ -250,6 +265,7 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 **Symptom**: New features added but not documented
 
 **Fix**:
+
 1. Add feature to relevant docs (`docs/*.md`)
 2. Update README if user-facing
 3. Add usage examples
@@ -261,6 +277,7 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 **Symptom**: Code examples don't compile or run
 
 **Fix**:
+
 1. Test each code example
 2. Update to current API
 3. Add comments explaining key parts
@@ -271,6 +288,7 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 **Symptom**: Links to moved/deleted files or external resources
 
 **Fix**:
+
 1. Find broken links with grep
 2. Update or remove dead links
 3. Use relative paths for internal links
@@ -281,6 +299,7 @@ rg "BLOOM_[A-Z_]+" docs/ -o | sort -u > /tmp/documented-env-vars.txt
 **Symptom**: Different commands/formats across docs
 
 **Fix**:
+
 1. Standardize on `npm run` for package scripts
 2. Use consistent code block syntax highlighting
 3. Follow same heading hierarchy
@@ -318,6 +337,7 @@ diff <(rg "ipcMain\.handle\(" src/main/ | grep -o "'[^']*'" | sort) \
 ## Documentation Templates
 
 See the `/docs-review` command for full templates for:
+
 - CONTRIBUTING.md
 - ARCHITECTURE.md
 - SECURITY.md
@@ -327,6 +347,7 @@ See the `/docs-review` command for full templates for:
 ### Migration Context
 
 This project is actively migrating from `bloom-desktop-pilot`. Documentation should:
+
 - Track migration status in README.md
 - Maintain pilot compatibility notes
 - Document feature parity progress
@@ -384,21 +405,25 @@ Documentation is complete when:
 ## Documentation Maintenance Schedule
 
 **Weekly**:
+
 - Check recent PRs for documentation updates
 - Fix reported documentation bugs
 
 **Monthly**:
+
 - Run quick documentation audit
 - Update any outdated screenshots
 - Validate external links
 
 **Quarterly**:
+
 - Run full `/docs-review`
 - Comprehensive documentation audit
 - Review and update all templates
 - Check for undocumented features
 
 **Before Releases**:
+
 - Full documentation review
 - Test all setup instructions
 - Validate all code examples
