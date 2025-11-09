@@ -105,7 +105,33 @@ echo ""
 # The Prisma client is initialized but the SQLite file isn't created until
 # the first query or migration runs. We need to trigger this.
 echo "Creating database file with Prisma..."
-BLOOM_DATABASE_URL="file:$DEV_DB_PATH" npx prisma migrate deploy 2>&1 | grep -v "prisma:warn" || true
+echo "  Working directory: $(pwd)"
+echo "  Database path: $DEV_DB_PATH"
+echo "  Absolute path: $(pwd)/$DEV_DB_PATH"
+echo ""
+
+# Ensure parent directory exists
+mkdir -p "$(dirname "$DEV_DB_PATH")"
+
+# Use absolute path to avoid Prisma's relative path resolution
+ABSOLUTE_DB_PATH="$(pwd)/$DEV_DB_PATH"
+echo "Running: BLOOM_DATABASE_URL='file:$ABSOLUTE_DB_PATH' npx prisma migrate deploy"
+echo ""
+
+if BLOOM_DATABASE_URL="file:$ABSOLUTE_DB_PATH" npx prisma migrate deploy; then
+  echo ""
+  echo "[PASS] Prisma migrations completed successfully"
+else
+  MIGRATION_EXIT_CODE=$?
+  echo ""
+  echo "[FAIL] Prisma migrations failed with exit code: $MIGRATION_EXIT_CODE"
+  echo ""
+  echo "Diagnostics:"
+  echo "  - Schema file exists: $([ -f prisma/schema.prisma ] && echo YES || echo NO)"
+  echo "  - Migrations dir exists: $([ -d prisma/migrations ] && echo YES || echo NO)"
+  echo "  - Parent dir exists: $([ -d "$(dirname "$DEV_DB_PATH")" ] && echo YES || echo NO)"
+  exit 1
+fi
 
 # Verify database was created
 if [ ! -f "$DEV_DB_PATH" ]; then
