@@ -1,8 +1,11 @@
 # developer-workflows Specification
 
 ## Purpose
+
 TBD - created by archiving change add-claude-commands. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Linting and Formatting Command
 
 The system SHALL provide a `/lint` command that documents all linting and formatting workflows for TypeScript and Python code.
@@ -260,4 +263,3 @@ The system SHALL provide an `/e2e-testing` command that documents Playwright E2E
 - **THEN** the `/e2e-testing` command SHALL document Playwright Inspector usage
 - **AND** SHALL document how to view test artifacts (screenshots, traces)
 - **AND** SHALL explain CI vs. local testing differences (headless vs. interactive)
-

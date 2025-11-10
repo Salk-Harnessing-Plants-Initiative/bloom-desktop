@@ -155,6 +155,12 @@ npm run test:scanner
 # Test scanner-database integration
 npm run test:scanner-database
 
+# Test database initialization in dev mode
+npm run test:dev:database
+
+# Test database initialization in packaged app (run after npm run package)
+npm run test:package:database
+
 # Test packaged app (run after npm run package)
 npm run test:package
 
@@ -199,6 +205,8 @@ npm run make
 | `npm run test:daq`              | Integration test for DAQ interface (mock)         | Python built    |
 | `npm run test:scanner`          | Integration test for scanner workflow (mock)      | Python built    |
 | `npm run test:scanner-database` | Integration test for scanner-database persistence | Python built    |
+| `npm run test:dev:database`     | Test database initialization in dev mode          | Python built    |
+| `npm run test:package:database` | Test database initialization in packaged app      | Package created |
 | `npm run test:package`          | Verify Python bundled in packaged app             | Package created |
 | `npm run package`               | Create distributable app bundle                   | Python built    |
 | `npm run make`                  | Create platform-specific installers               | Python built    |
