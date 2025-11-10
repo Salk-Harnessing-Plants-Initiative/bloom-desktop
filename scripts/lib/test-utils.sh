@@ -41,14 +41,14 @@ check_log_for_errors() {
 
   # Check for common error patterns
   if grep -q "\[Main\] Failed to initialize database" "$log_file"; then
-    echo "❌ Database initialization failed"
+    echo "[ERROR] Database initialization failed"
     grep -A 10 "\[Main\] Failed to initialize database" "$log_file"
     return 1
   fi
 
-  if grep -q "Error: " "$log_file" | grep -v "deprecated" | grep -v "warning"; then
-    echo "❌ Errors detected in logs"
-    grep "Error: " "$log_file" | grep -v "deprecated" | grep -v "warning" | head -10
+  if grep "Error: " "$log_file" | grep -v -e "deprecated" -e "warning" | grep -q .; then
+    echo "[ERROR] Errors detected in logs"
+    grep "Error: " "$log_file" | grep -v -e "deprecated" -e "warning" | head -10
     return 1
   fi
 

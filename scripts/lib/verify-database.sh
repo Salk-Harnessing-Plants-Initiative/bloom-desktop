@@ -5,6 +5,22 @@
 # These utilities use sqlite3 CLI to introspect database schema
 # and data for test validation.
 
+# Validate table name to prevent SQL injection
+# Usage: validate_table_name <table_name>
+# Returns: 0 if valid, 1 if invalid
+validate_table_name() {
+  local table_name="$1"
+
+  # Table names must start with letter or underscore, followed by alphanumeric or underscore
+  if [[ ! "$table_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    echo "[ERROR] Invalid table name: $table_name"
+    echo "[ERROR] Table names must contain only letters, numbers, and underscores"
+    return 1
+  fi
+
+  return 0
+}
+
 # Verify that a table exists in the database
 # Usage: verify_table_exists <db_path> <table_name>
 # Returns: 0 if table exists, 1 if not
@@ -14,6 +30,11 @@ verify_table_exists() {
 
   if [ ! -f "$db_path" ]; then
     echo "[ERROR] Database not found: $db_path"
+    return 1
+  fi
+
+  # Validate table name to prevent SQL injection
+  if ! validate_table_name "$table_name"; then
     return 1
   fi
 
@@ -37,6 +58,11 @@ verify_record_count() {
 
   if [ ! -f "$db_path" ]; then
     echo "[ERROR] Database not found: $db_path"
+    return 1
+  fi
+
+  # Validate table name to prevent SQL injection
+  if ! validate_table_name "$table_name"; then
     return 1
   fi
 
