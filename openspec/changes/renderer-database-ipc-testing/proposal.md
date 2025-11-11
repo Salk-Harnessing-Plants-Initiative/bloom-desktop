@@ -6,16 +6,26 @@ Add Playwright-based integration tests that verify the complete renderer-to-data
 
 ## Why
 
-**Current gap**: We have main process database tests and packaged app smoke tests, but no tests for the critical renderer → IPC → main → database path that the UI actually uses.
+**Current gap**: We have main process database tests and packaged app smoke tests, but no tests for the critical renderer → IPC → main → database path that the UI will use.
+
+**Context from pilot**: The [bloom-desktop-pilot](https://github.com/eberrigan/bloom-desktop-pilot) includes UI pages for managing database entities:
+- Scientists management page (list, create, edit scientists)
+- Phenotypers management page (list, create, edit phenotypers)
+- Experiments management page (list, create, edit experiments with relations)
+- Accessions management page (list, create, edit accessions)
+- Browse Scans page (list scans with filtering by experiment, phenotyper, date)
+- Scan Preview page (view individual scan details with all relations)
+
+**Migration plan**: These UI features will be migrated to the new codebase (see Issues #45, #46, #49, #51). The database IPC handlers already exist in `src/main/database-handlers.ts`, but currently only the scanner uses them (from main process, not renderer).
 
 **Risks without this**:
-- Context isolation bugs could break database access from renderer
-- Preload script API changes could break UI without detection
-- IPC handler changes could break renderer integration
+- Context isolation bugs could break database access when UI pages are added
+- Preload script API changes could break future UI without detection
+- IPC handler changes could break renderer integration silently
 - Error handling from renderer might not work correctly
-- No confidence that UI can actually use database
+- No confidence that the IPC bridge works before building UI pages
 
-**Value**: Tests the full integration path the UI depends on, catching context isolation and IPC bridging issues that unit tests miss.
+**Value**: Validates the complete IPC bridge now, providing confidence for future UI development and catching context isolation issues early.
 
 ## Scope
 
@@ -48,5 +58,10 @@ Add Playwright-based integration tests that verify the complete renderer-to-data
 ## Related
 
 - Issue #58 - Original issue request
+- Issue #45 - Browse Scans page (will need `db:scans:list` from renderer)
+- Issue #46 - Scan Preview page (will need `db:scans:get` from renderer)
+- Issue #49 - Machine Configuration UI (will need database access from renderer)
+- Issue #51 - Per-experiment camera settings (will need `db:experiments:*` from renderer)
 - PR #62 - Database test infrastructure
+- [bloom-desktop-pilot](https://github.com/eberrigan/bloom-desktop-pilot) - Source of UI patterns being migrated
 - `tests/e2e/app-launch.e2e.ts` - Existing E2E test pattern
