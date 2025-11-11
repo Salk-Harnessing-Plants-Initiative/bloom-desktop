@@ -1,5 +1,7 @@
 # Tasks: Renderer Database IPC Testing
 
+**Note**: These tests validate the IPC bridge (renderer → IPC → main → database) without UI components. For reference on full E2E tests with UI, see the pilot's [create-experiments.e2e.ts](https://github.com/eberrigan/bloom-desktop-pilot/blob/benfica/add-testing/app/tests/e2e/create-experiments.e2e.ts) which uses Prisma from test context to verify persistence.
+
 ## Phase 1: Test Infrastructure Setup
 
 - [ ] Create `tests/integration/renderer-database-ipc.test.ts` test file

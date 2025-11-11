@@ -27,6 +27,12 @@ Add Playwright-based integration tests that verify the complete renderer-to-data
 
 **Value**: Validates the complete IPC bridge now, providing confidence for future UI development and catching context isolation issues early.
 
+**Relationship to pilot E2E tests**: The pilot has full E2E tests ([example](https://github.com/eberrigan/bloom-desktop-pilot/blob/benfica/add-testing/app/tests/e2e/create-experiments.e2e.ts)) that test complete user workflows (UI → renderer → IPC → main → database). These IPC-only tests serve a different purpose:
+- **IPC tests** (this proposal): Validate the IPC bridge infrastructure before UI exists, run fast (~90s), catch IPC/context isolation issues early
+- **E2E tests** (pilot): Validate complete user workflows with UI interactions, run slower, will be migrated with UI pages
+
+The two test types complement each other: IPC tests validate infrastructure now, E2E tests validate workflows later.
+
 ## Scope
 
 **In scope:**
