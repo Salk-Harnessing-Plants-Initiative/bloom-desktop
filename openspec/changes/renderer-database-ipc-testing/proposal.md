@@ -55,11 +55,24 @@ The two test types complement each other: IPC tests validate infrastructure now,
 - Tests complete in under 90 seconds
 - Context isolation verified (no direct main process access)
 
+## Schema Reference
+
+The tests validate IPC handlers for the following Prisma models (from `prisma/schema.prisma`):
+
+**Scientist**: `id`, `name`, `email` (required)
+**Phenotyper**: `id`, `name`, `email` (required)
+**Accessions**: `id`, `name`, `createdAt` (note: no species field - species is on Experiment)
+**Experiment**: `id`, `name`, `species`, `scientist_id`, `accession_id` (relations to Scientist, Accessions)
+**Scan**: `id`, `experiment_id`, `phenotyper_id`, `scanner_name`, `plant_id`, `path`, `capture_date`, `num_frames`, `exposure_time`, `gain`, `brightness`, `contrast`, `gamma`, `seconds_per_rot`, `wave_number`, `plant_age_days`, `deleted`
+
+This schema is compatible with bloom-desktop-pilot (per schema.prisma comment).
+
 ## Dependencies
 
 - **Requires**: PR #62 (database test infrastructure, Playwright setup)
 - **Requires**: Database IPC handlers in `src/main/database-handlers.ts`
 - **Requires**: Preload script API in `src/main/preload.ts`
+- **Requires**: Prisma schema in `prisma/schema.prisma`
 
 ## Related
 

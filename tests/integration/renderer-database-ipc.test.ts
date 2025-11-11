@@ -332,6 +332,7 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     await prisma.experiment.create({
       data: {
         name: 'Test Experiment',
+        species: 'Arabidopsis thaliana',
         scientist_id: scientist.id,
         accession_id: accession.id,
       },
@@ -362,6 +363,7 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     const experiment = await prisma.experiment.create({
       data: {
         name: 'Get Experiment',
+        species: 'Arabidopsis thaliana',
         scientist_id: scientist.id,
       },
     });
@@ -523,6 +525,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     const experiment = await prisma.experiment.create({
       data: {
         name: 'Get Scan Experiment',
+        species: 'Arabidopsis thaliana',
         scientist_id: scientist.id,
       },
     });
