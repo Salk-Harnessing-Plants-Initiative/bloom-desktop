@@ -420,7 +420,22 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
 
 test.describe('Renderer Database IPC - Scans (with Filters)', () => {
   test('should list scans without filters from renderer', async () => {
-    // Seed phenotyper
+    // Seed scientist, experiment, and phenotyper
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Scan Scientist',
+        email: 'scansci@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Scan Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
     const phenotyper = await prisma.phenotyper.create({
       data: {
         name: 'Scan Phenotyper',
@@ -428,24 +443,44 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
       },
     });
 
-    // Create scans
+    // Create scans with all required fields
     await prisma.scan.create({
       data: {
+        experiment_id: experiment.id,
         phenotyper_id: phenotyper.id,
         scanner_name: 'Scanner1',
         plant_id: 'PLANT-001',
+        path: '/test/scans/PLANT-001',
         capture_date: new Date('2025-01-15'),
         num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
       },
     });
 
     await prisma.scan.create({
       data: {
+        experiment_id: experiment.id,
         phenotyper_id: phenotyper.id,
         scanner_name: 'Scanner1',
         plant_id: 'PLANT-002',
+        path: '/test/scans/PLANT-002',
         capture_date: new Date('2025-01-16'),
         num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
       },
     });
 
@@ -458,6 +493,22 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
   });
 
   test('should list scans with phenotyper filter from renderer', async () => {
+    // Seed scientist and experiment
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Filter Scientist',
+        email: 'filtersci@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Filter Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
     // Seed two phenotypers
     const phenotyper1 = await prisma.phenotyper.create({
       data: {
@@ -473,24 +524,44 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
       },
     });
 
-    // Create scans for each phenotyper
+    // Create scans for each phenotyper with all required fields
     await prisma.scan.create({
       data: {
+        experiment_id: experiment.id,
         phenotyper_id: phenotyper1.id,
         scanner_name: 'Scanner1',
         plant_id: 'PLANT-101',
+        path: '/test/scans/PLANT-101',
         capture_date: new Date('2025-01-15'),
         num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
       },
     });
 
     await prisma.scan.create({
       data: {
+        experiment_id: experiment.id,
         phenotyper_id: phenotyper2.id,
         scanner_name: 'Scanner1',
         plant_id: 'PLANT-102',
+        path: '/test/scans/PLANT-102',
         capture_date: new Date('2025-01-16'),
         num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
       },
     });
 
@@ -530,15 +601,24 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
       },
     });
 
-    // Create scan
+    // Create scan with all required fields
     const scan = await prisma.scan.create({
       data: {
-        phenotyper_id: phenotyper.id,
         experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
         scanner_name: 'Scanner1',
         plant_id: 'PLANT-999',
+        path: '/test/scans/PLANT-999',
         capture_date: new Date('2025-01-20'),
         num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
       },
     });
 

@@ -500,6 +500,54 @@ jobs:
         run: npm run test:package:database
 
   # Summary job - requires all checks to pass
+  test-renderer-database-ipc:
+    needs: build-python
+    name: Test - Renderer Database IPC
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+          python-version: "3.12"
+
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-linux
+          path: python/dist
+
+      - name: Make Python executable
+        run: chmod +x python/dist/hardware-interface-linux
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run renderer database IPC tests
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:renderer:database
+
   all-checks-passed:
     name: All Checks Passed
     runs-on: ubuntu-latest
@@ -514,6 +562,7 @@ jobs:
       - test-dev-database
       - test-e2e-dev
       - test-package-database
+      - test-renderer-database-ipc
 
     steps:
       - name: All checks passed
