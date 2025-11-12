@@ -336,9 +336,8 @@ test.describe('Renderer Database IPC - Accessions', () => {
     const result = await window.evaluate(() => {
       return (window as WindowWithElectron).electron.database.accessions.create(
         {
-          name: 'Invalid Accession',
-          // Missing required species field
-        } as { name: string }
+          // Missing required name field
+        } as Record<string, never>
       );
     });
 
@@ -431,12 +430,16 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
         window as WindowWithElectron
       ).electron.database.experiments.create({
         name: 'New Experiment',
-        scientist_id: scientistId,
+        species: 'Arabidopsis thaliana',
+        scientist: {
+          connect: { id: scientistId },
+        },
       });
     }, scientist.id);
 
     expect(result.success).toBe(true);
     expect(result.data.name).toBe('New Experiment');
+    expect(result.data.species).toBe('Arabidopsis thaliana');
 
     // Verify in database
     const experiment = await prisma.experiment.findFirst({
@@ -452,7 +455,10 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
         window as WindowWithElectron
       ).electron.database.experiments.create({
         name: 'Invalid Experiment',
-        scientist_id: 'invalid-uuid',
+        species: 'Test species',
+        scientist: {
+          connect: { id: 'invalid-uuid' },
+        },
       });
     });
 
