@@ -533,17 +533,22 @@ jobs:
       - name: Download Python executable
         uses: actions/download-artifact@v4
         with:
-          name: python-executable-linux
-          path: python/dist
+          name: python-executable-Linux
+          path: dist/
 
       - name: Make Python executable
-        run: chmod +x python/dist/hardware-interface-linux
+        run: chmod +x dist/bloom-hardware
 
       - name: Install dependencies
         run: npm ci
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: "file:./dev.db"
 
       - name: Run renderer database IPC tests
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:renderer:database

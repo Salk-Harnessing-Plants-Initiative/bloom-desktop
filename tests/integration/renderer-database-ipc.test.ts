@@ -28,10 +28,16 @@ import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
+import type { ElectronAPI } from '../../src/types/electron';
 
 // Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath: string = require('electron');
+
+// Type definition for window object with electron API
+interface WindowWithElectron extends Window {
+  electron: ElectronAPI;
+}
 
 let electronApp: ElectronApplication;
 let window: Page;
@@ -132,7 +138,7 @@ test.afterEach(async () => {
 test.describe('Renderer Database IPC - Scientists', () => {
   test('should list scientists from renderer (empty state)', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.scientists.list();
+      return (window as WindowWithElectron).electron.database.scientists.list();
     });
 
     expect(result.success).toBe(true);
@@ -149,7 +155,7 @@ test.describe('Renderer Database IPC - Scientists', () => {
     });
 
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.scientists.list();
+      return (window as WindowWithElectron).electron.database.scientists.list();
     });
 
     expect(result.success).toBe(true);
@@ -160,7 +166,7 @@ test.describe('Renderer Database IPC - Scientists', () => {
 
   test('should create scientist from renderer', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.scientists.create({
+      return (window as WindowWithElectron).electron.database.scientists.create({
         name: 'New Scientist',
         email: 'new@test.com',
       });
@@ -180,10 +186,10 @@ test.describe('Renderer Database IPC - Scientists', () => {
 
   test('should handle error when creating scientist with missing email', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.scientists.create({
+      return (window as WindowWithElectron).electron.database.scientists.create({
         name: 'Invalid Scientist',
         // Missing required email field
-      });
+      } as { name: string });
     });
 
     expect(result.success).toBe(false);
@@ -195,7 +201,7 @@ test.describe('Renderer Database IPC - Scientists', () => {
 test.describe('Renderer Database IPC - Phenotypers', () => {
   test('should list phenotypers from renderer (empty state)', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.phenotypers.list();
+      return (window as WindowWithElectron).electron.database.phenotypers.list();
     });
 
     expect(result.success).toBe(true);
@@ -212,7 +218,7 @@ test.describe('Renderer Database IPC - Phenotypers', () => {
     });
 
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.phenotypers.list();
+      return (window as WindowWithElectron).electron.database.phenotypers.list();
     });
 
     expect(result.success).toBe(true);
@@ -223,7 +229,7 @@ test.describe('Renderer Database IPC - Phenotypers', () => {
 
   test('should create phenotyper from renderer', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.phenotypers.create({
+      return (window as WindowWithElectron).electron.database.phenotypers.create({
         name: 'New Phenotyper',
         email: 'newpheno@test.com',
       });
@@ -243,10 +249,10 @@ test.describe('Renderer Database IPC - Phenotypers', () => {
 
   test('should handle error when creating phenotyper with missing email', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.phenotypers.create({
+      return (window as WindowWithElectron).electron.database.phenotypers.create({
         name: 'Invalid Phenotyper',
         // Missing required email field
-      } as any);
+      } as { name: string });
     });
 
     expect(result.success).toBe(false);
@@ -258,7 +264,7 @@ test.describe('Renderer Database IPC - Phenotypers', () => {
 test.describe('Renderer Database IPC - Accessions', () => {
   test('should list accessions from renderer (empty state)', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.accessions.list();
+      return (window as WindowWithElectron).electron.database.accessions.list();
     });
 
     expect(result.success).toBe(true);
@@ -274,7 +280,7 @@ test.describe('Renderer Database IPC - Accessions', () => {
     });
 
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.accessions.list();
+      return (window as WindowWithElectron).electron.database.accessions.list();
     });
 
     expect(result.success).toBe(true);
@@ -284,7 +290,7 @@ test.describe('Renderer Database IPC - Accessions', () => {
 
   test('should create accession from renderer', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.accessions.create({
+      return (window as WindowWithElectron).electron.database.accessions.create({
         name: 'New Accession',
       });
     });
@@ -301,10 +307,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
 
   test('should handle error when creating accession with missing required field', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.accessions.create({
+      return (window as WindowWithElectron).electron.database.accessions.create({
         name: 'Invalid Accession',
         // Missing required species field
-      } as any);
+      } as { name: string });
     });
 
     expect(result.success).toBe(false);
@@ -339,7 +345,7 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     });
 
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.experiments.list();
+      return (window as WindowWithElectron).electron.database.experiments.list();
     });
 
     expect(result.success).toBe(true);
@@ -369,7 +375,7 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     });
 
     const result = await window.evaluate((expId) => {
-      return (window as any).electron.database.experiments.get(expId);
+      return (window as WindowWithElectron).electron.database.experiments.get(expId);
     }, experiment.id);
 
     expect(result.success).toBe(true);
@@ -388,7 +394,7 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     });
 
     const result = await window.evaluate((scientistId) => {
-      return (window as any).electron.database.experiments.create({
+      return (window as WindowWithElectron).electron.database.experiments.create({
         name: 'New Experiment',
         scientist_id: scientistId,
       });
@@ -407,7 +413,7 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
 
   test('should handle error when creating experiment with invalid foreign key', async () => {
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.experiments.create({
+      return (window as WindowWithElectron).electron.database.experiments.create({
         name: 'Invalid Experiment',
         scientist_id: 'invalid-uuid',
       });
@@ -485,7 +491,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     });
 
     const result = await window.evaluate(() => {
-      return (window as any).electron.database.scans.list();
+      return (window as WindowWithElectron).electron.database.scans.list();
     });
 
     expect(result.success).toBe(true);
@@ -567,7 +573,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
 
     // Filter by phenotyper1
     const result = await window.evaluate((phenoId) => {
-      return (window as any).electron.database.scans.list({
+      return (window as WindowWithElectron).electron.database.scans.list({
         phenotyper_id: phenoId,
       });
     }, phenotyper1.id);
@@ -623,7 +629,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     });
 
     const result = await window.evaluate((scanId) => {
-      return (window as any).electron.database.scans.get(scanId);
+      return (window as WindowWithElectron).electron.database.scans.get(scanId);
     }, scan.id);
 
     expect(result.success).toBe(true);
@@ -638,7 +644,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
 test.describe('Renderer Database IPC - Context Isolation', () => {
   test('should not expose require() to renderer', async () => {
     const hasRequire = await window.evaluate(() => {
-      return typeof (window as any).require !== 'undefined';
+      return typeof (window as WindowWithElectron & { require?: unknown }).require !== 'undefined';
     });
 
     expect(hasRequire).toBe(false);
@@ -646,7 +652,7 @@ test.describe('Renderer Database IPC - Context Isolation', () => {
 
   test('should not expose process object to renderer', async () => {
     const hasProcess = await window.evaluate(() => {
-      return typeof (window as any).process !== 'undefined';
+      return typeof (window as WindowWithElectron & { process?: unknown }).process !== 'undefined';
     });
 
     expect(hasProcess).toBe(false);
@@ -654,7 +660,7 @@ test.describe('Renderer Database IPC - Context Isolation', () => {
 
   test('should only expose window.electron APIs', async () => {
     const electronAPIs = await window.evaluate(() => {
-      const apis = (window as any).electron;
+      const apis = (window as WindowWithElectron).electron;
       return {
         hasElectron: typeof apis !== 'undefined',
         hasDatabase: typeof apis?.database !== 'undefined',

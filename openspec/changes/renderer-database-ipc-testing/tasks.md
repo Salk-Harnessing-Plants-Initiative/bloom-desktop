@@ -82,15 +82,16 @@
 - [x] Configure job to run on Linux with xvfb
 - [x] Set timeout to 5 minutes (expected: ~90 seconds)
 - [x] Add job to `all-checks-passed` dependencies
-- [ ] Verify CI job runs and passes
+- [x] Fix CI configuration issues (lint errors, unit test exclusions, artifact paths)
+- [ ] Verify CI job runs and passes (pending PR update)
 
 **Validation**: Tests run successfully in CI on Linux
 
 ## Phase 9: Documentation
 
 - [x] Update README.md with `npm run test:renderer:database` command
-- [ ] Add test description to tests/integration/README.md (or create if missing)
-- [ ] Document test patterns for future renderer IPC tests
-- [ ] Update Issue #58 with completion status
+- [x] Add test description to tests/integration/README.md (or create if missing)
+- [x] Document test patterns for future renderer IPC tests
+- [ ] Update Issue #58 with completion status (after CI verification)
 
 **Validation**: Documentation clearly explains how to run and extend renderer IPC tests
