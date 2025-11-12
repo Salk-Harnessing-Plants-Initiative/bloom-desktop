@@ -9,6 +9,7 @@ Add Playwright-based integration tests that verify the complete renderer-to-data
 **Current gap**: We have main process database tests and packaged app smoke tests, but no tests for the critical renderer → IPC → main → database path that the UI will use.
 
 **Context from pilot**: The [bloom-desktop-pilot](https://github.com/eberrigan/bloom-desktop-pilot) includes UI pages for managing database entities:
+
 - Scientists management page (list, create, edit scientists)
 - Phenotypers management page (list, create, edit phenotypers)
 - Experiments management page (list, create, edit experiments with relations)
@@ -19,6 +20,7 @@ Add Playwright-based integration tests that verify the complete renderer-to-data
 **Migration plan**: These UI features will be migrated to the new codebase (see Issues #45, #46, #49, #51). The database IPC handlers already exist in `src/main/database-handlers.ts`, but currently only the scanner uses them (from main process, not renderer).
 
 **Risks without this**:
+
 - Context isolation bugs could break database access when UI pages are added
 - Preload script API changes could break future UI without detection
 - IPC handler changes could break renderer integration silently
@@ -28,6 +30,7 @@ Add Playwright-based integration tests that verify the complete renderer-to-data
 **Value**: Validates the complete IPC bridge now, providing confidence for future UI development and catching context isolation issues early.
 
 **Relationship to pilot E2E tests**: The pilot has full E2E tests ([example](https://github.com/eberrigan/bloom-desktop-pilot/blob/benfica/add-testing/app/tests/e2e/create-experiments.e2e.ts)) that test complete user workflows (UI → renderer → IPC → main → database). These IPC-only tests serve a different purpose:
+
 - **IPC tests** (this proposal): Validate the IPC bridge infrastructure before UI exists, run fast (~90s), catch IPC/context isolation issues early
 - **E2E tests** (pilot): Validate complete user workflows with UI interactions, run slower, will be migrated with UI pages
 
@@ -36,6 +39,7 @@ The two test types complement each other: IPC tests validate infrastructure now,
 ## Scope
 
 **In scope:**
+
 - Playwright tests for all database IPC handlers called from renderer
 - Test CRUD operations (create, read, update, delete) for all models
 - Test error handling from renderer perspective
@@ -43,12 +47,14 @@ The two test types complement each other: IPC tests validate infrastructure now,
 - Run tests in CI on Linux (with xvfb)
 
 **Out of scope:**
+
 - Testing database logic itself (covered by existing tests)
 - Testing packaged app (use existing smoke test)
 - Testing UI components (focus on IPC bridge only)
 - Testing on all platforms (Linux sufficient for IPC validation)
 
 **Success criteria:**
+
 - All database IPC handlers verified from renderer context
 - Error cases tested and handled correctly
 - Tests run in CI successfully

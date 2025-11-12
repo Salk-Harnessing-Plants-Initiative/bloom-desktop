@@ -9,6 +9,7 @@ This directory contains integration tests for Bloom Desktop. These tests validat
 **Purpose**: Validates the complete renderer → IPC → main → database path for all database operations using Playwright.
 
 **What it tests**:
+
 - IPC bridge functionality between renderer and main processes
 - Database CRUD operations via IPC handlers
 - Context isolation (renderer cannot access Node.js APIs directly)
@@ -16,6 +17,7 @@ This directory contains integration tests for Bloom Desktop. These tests validat
 - Relations and filters in database queries
 
 **Key characteristics**:
+
 - Runs using Playwright with Electron
 - Uses `window.evaluate()` to call IPC handlers from renderer context
 - Creates isolated test database for each test
@@ -25,6 +27,7 @@ This directory contains integration tests for Bloom Desktop. These tests validat
 **Relationship to E2E tests**: These tests validate the IPC infrastructure before UI development. Full E2E tests with UI interactions are in `tests/e2e/`. For reference on full E2E tests with UI, see the pilot's [create-experiments.e2e.ts](https://github.com/eberrigan/bloom-desktop-pilot/blob/benfica/add-testing/app/tests/e2e/create-experiments.e2e.ts).
 
 **Running the tests**:
+
 ```bash
 npm run test:renderer:database
 ```
@@ -36,6 +39,7 @@ npm run test:renderer:database
 **Purpose**: Tests basic IPC communication between main and renderer processes.
 
 **Running the tests**:
+
 ```bash
 npm run test:ipc
 ```
@@ -49,6 +53,7 @@ Tests for Python hardware backend integration:
 - `test-scanner.ts`: Complete scanner workflow
 
 **Running the tests**:
+
 ```bash
 npm run test:camera    # Camera capture/streaming
 npm run test:daq       # DAQ integration
@@ -60,6 +65,7 @@ npm run test:scanner   # Scanner workflow
 - `test-scanner-database.ts`: Scanner workflow with database persistence
 
 **Running the tests**:
+
 ```bash
 npm run test:scanner-database
 ```
@@ -69,6 +75,7 @@ npm run test:scanner-database
 **Purpose**: Tests the packaged application.
 
 **Running the tests**:
+
 ```bash
 npm run test:package
 npm run test:package:database
@@ -81,7 +88,13 @@ When adding new renderer IPC tests, follow these patterns:
 ### 1. Test File Setup
 
 ```typescript
-import { test, expect, _electron as electron, ElectronApplication, Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  _electron as electron,
+  ElectronApplication,
+  Page,
+} from '@playwright/test';
 import { PrismaClient } from '@prisma/client';
 import type { ElectronAPI } from '../../src/types/electron';
 
@@ -137,7 +150,9 @@ test.afterEach(async () => {
 ```typescript
 test('should perform database operation', async () => {
   const result = await window.evaluate(() => {
-    return (window as WindowWithElectron).electron.database.yourModel.yourMethod({
+    return (
+      window as WindowWithElectron
+    ).electron.database.yourModel.yourMethod({
       // your data
     });
   });
