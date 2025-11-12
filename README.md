@@ -155,9 +155,6 @@ npm run test:scanner
 # Test scanner-database integration
 npm run test:scanner-database
 
-# Test renderer database IPC (renderer → IPC → main → database)
-npm run test:renderer:database
-
 # Test database initialization in dev mode
 npm run test:dev:database
 
@@ -207,9 +204,8 @@ npm run make
 | `npm run test:camera`            | Integration test for camera interface (mock)       | Python built    |
 | `npm run test:daq`               | Integration test for DAQ interface (mock)          | Python built    |
 | `npm run test:scanner`           | Integration test for scanner workflow (mock)       | Python built    |
-| `npm run test:scanner-database`  | Integration test for scanner-database persistence  | Python built    |
-| `npm run test:renderer:database` | Test renderer IPC database operations (Playwright) | Package created |
-| `npm run test:dev:database`      | Test database initialization in dev mode           | Python built    |
+| `npm run test:scanner-database` | Integration test for scanner-database persistence | Python built |
+| `npm run test:dev:database`     | Test database initialization in dev mode          | Python built |
 | `npm run test:package:database`  | Test database initialization in packaged app       | Package created |
 | `npm run test:package`           | Verify Python bundled in packaged app              | Package created |
 | `npm run package`                | Create distributable app bundle                    | Python built    |

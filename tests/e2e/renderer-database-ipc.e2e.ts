@@ -1,15 +1,28 @@
 /**
- * Integration Test: Renderer Database IPC
+ * E2E Test: Renderer Database IPC
  *
  * Tests the complete renderer → IPC → main → database path for all database
- * operations. These tests validate the IPC bridge works correctly before UI
- * pages are built, ensuring context isolation and error handling work as expected.
+ * operations. These tests validate the IPC bridge works correctly, ensuring
+ * context isolation and error handling work as expected.
  *
- * Unlike the existing E2E tests (tests/e2e/), these tests:
- * - Focus on IPC bridge validation, not UI workflows
- * - Use window.evaluate() to call IPC handlers directly from renderer
- * - Don't require the Electron Forge dev server to be running
- * - Run faster (~90s) and validate infrastructure before UI development
+ * **PREREQUISITES:**
+ * 1. Start Electron Forge dev server: `npm run start` (keep running in Terminal 1)
+ * 2. Run E2E tests: `npm run test:e2e` (in Terminal 2)
+ *
+ * The Electron app loads the renderer from Electron Forge's dev server on port 9000.
+ * The dev server MUST be running or the Electron window will be blank.
+ *
+ * **Test Focus:**
+ * - IPC bridge validation (not UI workflows)
+ * - Uses window.evaluate() to call IPC handlers directly from renderer
+ * - Tests all database models: Scientists, Phenotypers, Accessions, Experiments, Scans
+ * - Validates context isolation (renderer cannot access Node.js APIs)
+ * - Verifies error handling in IPC communication
+ *
+ * **Comparison with UI E2E Tests:**
+ * - This test: Calls IPC directly via window.evaluate(), validates data layer
+ * - UI E2E tests: Clicks buttons, fills forms, validates user workflows
+ * - Both require dev server, both use Playwright with Electron
  *
  * For reference on full E2E tests with UI interactions, see the pilot's
  * create-experiments.e2e.ts which tests complete user workflows.

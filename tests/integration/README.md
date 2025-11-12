@@ -4,7 +4,9 @@ This directory contains integration tests for Bloom Desktop. These tests validat
 
 ## Test Types
 
-### 1. Renderer Database IPC Tests (`renderer-database-ipc.test.ts`)
+### 1. Renderer Database IPC Tests
+
+**Note**: These tests have been moved to [tests/e2e/renderer-database-ipc.e2e.ts](../e2e/renderer-database-ipc.e2e.ts) and now run as part of the E2E test suite. See the [E2E README](../e2e/README.md) for more details.
 
 **Purpose**: Validates the complete renderer → IPC → main → database path for all database operations using Playwright.
 
@@ -24,15 +26,15 @@ This directory contains integration tests for Bloom Desktop. These tests validat
 - Validates data via direct Prisma queries
 - Tests all database models: Scientists, Phenotypers, Accessions, Experiments, Scans
 
-**Relationship to E2E tests**: These tests validate the IPC infrastructure before UI development. Full E2E tests with UI interactions are in `tests/e2e/`. For reference on full E2E tests with UI, see the pilot's [create-experiments.e2e.ts](https://github.com/eberrigan/bloom-desktop-pilot/blob/benfica/add-testing/app/tests/e2e/create-experiments.e2e.ts).
+**Relationship to E2E tests**: These tests are now part of the E2E suite. They validate the IPC infrastructure without UI interactions, focusing on the renderer → IPC → main → database path. For reference on full E2E tests with UI, see the pilot's [create-experiments.e2e.ts](https://github.com/eberrigan/bloom-desktop-pilot/blob/benfica/add-testing/app/tests/e2e/create-experiments.e2e.ts).
 
 **Running the tests**:
 
 ```bash
-npm run test:renderer:database
+npm run test:e2e
 ```
 
-**CI Integration**: Runs on Ubuntu with xvfb (headless display server). Expected duration: ~90 seconds.
+**CI Integration**: Runs as part of the E2E test suite on Ubuntu with xvfb (headless display server).
 
 ### 2. IPC Tests (`test-ipc.ts`)
 

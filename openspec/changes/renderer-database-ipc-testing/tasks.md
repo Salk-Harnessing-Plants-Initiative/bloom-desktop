@@ -83,15 +83,22 @@
 - [x] Set timeout to 5 minutes (expected: ~90 seconds)
 - [x] Add job to `all-checks-passed` dependencies
 - [x] Fix CI configuration issues (lint errors, unit test exclusions, artifact paths)
+- [x] **Architectural change**: Renamed test file to `.e2e.ts` and moved to `tests/e2e/`
+- [x] Tests now run with E2E suite (require dev server per Electron Forge architecture)
+- [x] Removed redundant standalone CI job (tests run with existing E2E job)
 - [ ] Verify CI job runs and passes (pending PR update)
 
-**Validation**: Tests run successfully in CI on Linux
+**Validation**: Tests run successfully as part of E2E suite in CI
+
+**Note**: After investigation, discovered that renderer IPC tests require the Electron Forge dev server (MAIN_WINDOW_WEBPACK_ENTRY points to localhost:9000 in dev builds). Aligned with E2E test pattern rather than creating complex standalone build configuration.
 
 ## Phase 9: Documentation
 
 - [x] Update README.md with `npm run test:renderer:database` command
 - [x] Add test description to tests/integration/README.md (or create if missing)
 - [x] Document test patterns for future renderer IPC tests
+- [x] Update documentation to reflect E2E integration (tests run with `npm run test:e2e`)
+- [x] Update tests/integration/README.md with note about test relocation
 - [ ] Update Issue #58 with completion status (after CI verification)
 
-**Validation**: Documentation clearly explains how to run and extend renderer IPC tests
+**Validation**: Documentation clearly explains how to run and extend renderer IPC tests as part of E2E suite
