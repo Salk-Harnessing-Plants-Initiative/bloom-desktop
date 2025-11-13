@@ -803,7 +803,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
 
     // Create scan via IPC
     const result = await window.evaluate(
-      (expId, phenoId) => {
+      ({ expId, phenoId }) => {
         return (window as WindowWithElectron).electron.database.scans.create({
           experiment_id: expId,
           phenotyper_id: phenoId,
@@ -822,8 +822,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
           plant_age_days: 14,
         });
       },
-      experiment.id,
-      phenotyper.id
+      { expId: experiment.id, phenoId: phenotyper.id }
     );
 
     expect(result.success).toBe(true);
