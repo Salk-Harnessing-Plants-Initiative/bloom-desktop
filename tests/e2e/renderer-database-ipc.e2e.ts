@@ -449,6 +449,100 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     expect(experiment?.scientist_id).toBe(scientist.id);
   });
 
+  test('should update experiment from renderer', async () => {
+    // Seed scientist and experiment
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Update Scientist',
+        email: 'updatescientist@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Original Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const result = await window.evaluate((expId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.update(expId, {
+        name: 'Updated Experiment',
+        species: 'Sorghum bicolor',
+      });
+    }, experiment.id);
+
+    expect(result.success).toBe(true);
+    expect(result.data.name).toBe('Updated Experiment');
+    expect(result.data.species).toBe('Sorghum bicolor');
+
+    // Verify in database
+    const updated = await prisma.experiment.findUnique({
+      where: { id: experiment.id },
+    });
+    expect(updated?.name).toBe('Updated Experiment');
+    expect(updated?.species).toBe('Sorghum bicolor');
+  });
+
+  test('should delete experiment from renderer', async () => {
+    // Seed scientist and experiment
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Delete Scientist',
+        email: 'deletescientist@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Experiment To Delete',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const result = await window.evaluate((expId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.delete(expId);
+    }, experiment.id);
+
+    expect(result.success).toBe(true);
+
+    // Verify deleted from database
+    const deleted = await prisma.experiment.findUnique({
+      where: { id: experiment.id },
+    });
+    expect(deleted).toBeNull();
+  });
+
+  test('should handle error when updating experiment with invalid ID', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.update('invalid-uuid', {
+        name: 'Updated Name',
+      });
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
+  test('should handle error when deleting experiment with invalid ID', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.delete('invalid-uuid');
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+
   test('should handle error when creating experiment with invalid foreign key', async () => {
     const result = await window.evaluate(() => {
       return (
@@ -681,6 +775,104 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     expect(result.data.phenotyper.name).toBe('Get Scan Phenotyper');
     expect(result.data.experiment).toBeDefined();
     expect(result.data.experiment.name).toBe('Get Scan Experiment');
+  });
+
+  test('should create scan from renderer', async () => {
+    // Seed scientist, experiment, and phenotyper
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Create Scan Scientist',
+        email: 'createscan@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Create Scan Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Create Scan Phenotyper',
+        email: 'createscanpheno@test.com',
+      },
+    });
+
+    // Create scan via IPC
+    const result = await window.evaluate(
+      (expId, phenoId) => {
+        return (window as WindowWithElectron).electron.database.scans.create({
+          experiment_id: expId,
+          phenotyper_id: phenoId,
+          scanner_name: 'TestScanner',
+          plant_id: 'PLANT-CREATE-001',
+          path: '/test/scans/create/PLANT-CREATE-001',
+          capture_date: new Date('2025-01-25').toISOString(),
+          num_frames: 36,
+          exposure_time: 100,
+          gain: 1.0,
+          brightness: 0.5,
+          contrast: 1.0,
+          gamma: 1.0,
+          seconds_per_rot: 10.0,
+          wave_number: 1,
+          plant_age_days: 14,
+        });
+      },
+      experiment.id,
+      phenotyper.id
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.plant_id).toBe('PLANT-CREATE-001');
+    expect(result.data.scanner_name).toBe('TestScanner');
+    expect(result.data.experiment_id).toBe(experiment.id);
+    expect(result.data.phenotyper_id).toBe(phenotyper.id);
+
+    // Verify in database
+    const scan = await prisma.scan.findFirst({
+      where: { plant_id: 'PLANT-CREATE-001' },
+    });
+    expect(scan).toBeDefined();
+    expect(scan?.scanner_name).toBe('TestScanner');
+    expect(scan?.experiment_id).toBe(experiment.id);
+    expect(scan?.phenotyper_id).toBe(phenotyper.id);
+  });
+
+  test('should handle error when creating scan with invalid experiment_id', async () => {
+    // Seed phenotyper
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Error Scan Phenotyper',
+        email: 'errorscanpheno@test.com',
+      },
+    });
+
+    const result = await window.evaluate((phenoId) => {
+      return (window as WindowWithElectron).electron.database.scans.create({
+        experiment_id: 'invalid-uuid',
+        phenotyper_id: phenoId,
+        scanner_name: 'TestScanner',
+        plant_id: 'PLANT-ERROR-001',
+        path: '/test/scans/error/PLANT-ERROR-001',
+        capture_date: new Date('2025-01-25').toISOString(),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+      });
+    }, phenotyper.id);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
   });
 });
 
