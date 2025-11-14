@@ -21,12 +21,13 @@ jobs:
   # 3. compile-typescript: Type checking with tsc (Linux only)
   # 4. test-unit: Vitest unit tests (Linux only)
   # 5. test-python: pytest with 80% coverage (Linux only)
-  # 6. test-integration: IPC, camera, DAQ, scanner, and scanner-database tests
+  # 6. test-e2e-coverage: IPC handler test coverage check with 90% minimum (Linux only)
+  # 7. test-integration: IPC, camera, DAQ, scanner, and scanner-database tests
   #    across Linux, macOS, Windows
-  # 7. test-e2e-dev: Playwright E2E tests with webpack dev build
+  # 8. test-e2e-dev: Playwright E2E tests with webpack dev build
   #    across Linux, macOS, Windows
-  # 8. test-package-database: Packaged app database initialization (macOS only)
-  # 9. all-checks-passed: Summary job (only runs if all pass)
+  # 9. test-package-database: Packaged app database initialization (macOS only)
+  # 10. all-checks-passed: Summary job (only runs if all pass)
   #
   # All integration tests use mock hardware for CI environment
   # ==============================================================================
@@ -187,6 +188,36 @@ jobs:
       - name: Run Python tests with coverage
         run: npm run test:python
         # Enforces 80% minimum coverage (configured in pyproject.toml)
+
+  # IPC handler test coverage check
+  test-e2e-coverage:
+    name: Test - E2E IPC Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check IPC handler test coverage
+        run: npm run test:e2e:coverage
+        # Enforces 90% minimum coverage for IPC handlers (configured in scripts/check-ipc-coverage.py)
 
   # Build Python executable once per OS (caching for reuse across jobs)
   build-python:
