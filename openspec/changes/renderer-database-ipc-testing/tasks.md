@@ -86,7 +86,7 @@
 - [x] **Architectural change**: Renamed test file to `.e2e.ts` and moved to `tests/e2e/`
 - [x] Tests now run with E2E suite (require dev server per Electron Forge architecture)
 - [x] Removed redundant standalone CI job (tests run with existing E2E job)
-- [ ] Verify CI job runs and passes (pending PR update)
+- [x] Verify CI job runs and passes (all checks passed in PR #63)
 
 **Validation**: Tests run successfully as part of E2E suite in CI
 
@@ -99,6 +99,6 @@
 - [x] Document test patterns for future renderer IPC tests
 - [x] Update documentation to reflect E2E integration (tests run with `npm run test:e2e`)
 - [x] Update tests/integration/README.md with note about test relocation
-- [ ] Update Issue #58 with completion status (after CI verification)
+- [x] Update Issue #58 with completion status (PR #63 merged)
 
 **Validation**: Documentation clearly explains how to run and extend renderer IPC tests as part of E2E suite
