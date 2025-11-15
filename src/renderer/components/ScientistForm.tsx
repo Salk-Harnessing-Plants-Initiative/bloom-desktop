@@ -32,7 +32,11 @@ export function ScientistForm({ onSuccess }: ScientistFormProps) {
     setSubmitError(null);
 
     try {
-      const result = await window.electron.database.scientists.create(data);
+      // Data is validated by Zod schema before reaching here, so fields are guaranteed to be present
+      const result = await window.electron.database.scientists.create({
+        name: data.name,
+        email: data.email,
+      });
 
       if (!result.success) {
         // Check if it's a duplicate email error
