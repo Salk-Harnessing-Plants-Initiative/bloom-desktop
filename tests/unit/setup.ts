@@ -5,6 +5,13 @@
 
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// Cleanup after each test
+afterEach(() => {
+  cleanup();
+});
 
 // Mock window.electron API for all tests
 const mockPythonAPI = {
@@ -16,11 +23,20 @@ const mockPythonAPI = {
   onError: vi.fn(),
 };
 
+// Basic mock for database API - individual tests can override
+const mockDatabaseAPI = {
+  scientists: {
+    list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    create: vi.fn().mockResolvedValue({ success: true, data: {} }),
+  },
+};
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (global as any).window = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ...(global as any).window,
   electron: {
     python: mockPythonAPI,
+    database: mockDatabaseAPI,
   },
 };
