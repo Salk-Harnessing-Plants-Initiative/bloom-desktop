@@ -7,6 +7,12 @@
  * - IPC handlers for Python communication
  */
 
+import * as dotenv from 'dotenv';
+
+// Load .env file for development mode database configuration
+// This must be loaded before any other modules that use process.env
+dotenv.config();
+
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './camera-process';
