@@ -205,8 +205,9 @@ export function initializeDatabase(
     const isDev = process.env.NODE_ENV === 'development';
     if (isDev) {
       // Development: use dev.db in project root
-      dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
-      console.log('[Database] Development mode - using dev.db');
+      // Use app.getAppPath() instead of process.cwd() because webpack runs from .webpack/main
+      dbPath = path.join(app.getAppPath(), 'prisma', 'dev.db');
+      console.log('[Database] Development mode - using dev.db at:', dbPath);
     } else {
       // Production: use ~/.bloom/data/bloom.db
       const homeDir = app.getPath('home');
