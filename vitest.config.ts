@@ -11,6 +11,13 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: ['./tests/unit/setup.ts'],
     passWithNoTests: true, // Don't fail when no tests found
+    // Exclude integration tests (run via Playwright/ts-node, not vitest)
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/tests/integration/**',
+      '**/tests/e2e/**',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

@@ -173,6 +173,57 @@ Each test runs in isolation:
 - **Test database**: `tests/e2e/test.db` (separate from `prisma/dev.db`)
 - **Environment**: Loaded from `.env.e2e`
 
+## Test Coverage Requirements
+
+### IPC Handler Coverage Check
+
+E2E tests include automated coverage analysis for database IPC handlers to ensure comprehensive testing of the renderer-main bridge.
+
+**Run coverage check:**
+
+```bash
+npm run test:e2e:coverage
+```
+
+**Coverage requirements:**
+
+- **Minimum threshold**: 90% of IPC handlers must be tested
+- **CI enforcement**: Coverage check runs automatically in CI and fails PRs below threshold
+- **Current coverage**: 93.3% (14/15 handlers)
+
+**Example output:**
+
+```
+=== Renderer Database IPC Test Coverage Analysis ===
+
+📊 Total IPC Handlers Found: 15
+
+🗂️  EXPERIMENTS
+------------------------------------------------------------
+  ✅ create       db:experiments:create          (2 test calls)
+  ✅ delete       db:experiments:delete          (2 test calls)
+  ✅ get          db:experiments:get             (1 test calls)
+  ✅ list         db:experiments:list            (1 test calls)
+  ✅ update       db:experiments:update          (2 test calls)
+
+📈 Coverage Summary:
+  Tested handlers: 14/15
+  Coverage: 93.3%
+  Total test method calls: 27
+```
+
+**What gets checked:**
+
+- All `ipcMain.handle()` registrations in `src/main/database-handlers.ts`
+- Test method calls in `tests/e2e/renderer-database-ipc.e2e.ts`
+- Coverage organized by model (Experiments, Scans, Scientists, etc.)
+
+**When to update tests:**
+
+- When adding new IPC handlers to `database-handlers.ts`
+- When coverage drops below 90% threshold
+- When removing handlers (tests should be removed too)
+
 ## CI/CD Integration
 
 ### How CI Runs E2E Tests
