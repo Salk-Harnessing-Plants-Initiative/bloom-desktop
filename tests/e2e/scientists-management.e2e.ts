@@ -285,4 +285,177 @@ test.describe('Scientists Management', () => {
     await window.waitForTimeout(500);
     await expect(window.locator('text=Dr. Test (test@example.com)')).toBeVisible();
   });
+
+  // Edge Case Tests
+  test('should create scientist with maximum length name (255 characters)', async () => {
+    // Navigate to Scientists page
+    await window.click('text=Scientists');
+
+    // Create name with exactly 255 characters (database schema limit)
+    const maxLengthName = 'A'.repeat(255);
+
+    // Fill in the form
+    await window.fill('input#name', maxLengthName);
+    await window.fill('input#email', 'maxlength@example.com');
+
+    // Submit the form
+    await window.click('button:has-text("Add new scientist")');
+
+    // Wait for the list to update
+    await window.waitForTimeout(500);
+
+    // Verify scientist was created (check by email since name is very long)
+    await expect(window.locator('text=maxlength@example.com')).toBeVisible();
+
+    // Verify in database
+    const scientist = await prisma.scientist.findUnique({
+      where: { email: 'maxlength@example.com' },
+    });
+    expect(scientist).not.toBeNull();
+    expect(scientist?.name).toBe(maxLengthName);
+    expect(scientist?.name.length).toBe(255);
+  });
+
+  test('should create scientist with special characters in name', async () => {
+    // Navigate to Scientists page
+    await window.click('text=Scientists');
+
+    // Test name with apostrophe and hyphen
+    await window.fill('input#name', "Dr. O'Brien-Smith");
+    await window.fill('input#email', 'obrien@example.com');
+
+    // Submit the form
+    await window.click('button:has-text("Add new scientist")');
+
+    // Wait for the list to update
+    await window.waitForTimeout(500);
+
+    // Verify scientist appears with special characters preserved
+    await expect(window.locator('text=Dr. O\'Brien-Smith')).toBeVisible();
+
+    // Verify in database
+    const scientist = await prisma.scientist.findUnique({
+      where: { email: 'obrien@example.com' },
+    });
+    expect(scientist?.name).toBe("Dr. O'Brien-Smith");
+  });
+
+  test('should create scientist with Unicode characters in name', async () => {
+    // Navigate to Scientists page
+    await window.click('text=Scientists');
+
+    // Test name with Unicode characters
+    await window.fill('input#name', 'Dr. Müller');
+    await window.fill('input#email', 'muller@example.com');
+
+    // Submit the form
+    await window.click('button:has-text("Add new scientist")');
+
+    // Wait for the list to update
+    await window.waitForTimeout(500);
+
+    // Verify scientist appears with Unicode characters preserved
+    await expect(window.locator('text=Dr. Müller')).toBeVisible();
+
+    // Create another scientist to test alphabetical sorting with Unicode
+    await window.fill('input#name', 'Dr. Anderson');
+    await window.fill('input#email', 'anderson@example.com');
+    await window.click('button:has-text("Add new scientist")');
+    await window.waitForTimeout(500);
+
+    // Verify alphabetical sorting works with Unicode
+    const listItems = await window.locator('ul li').allTextContents();
+    expect(listItems[0]).toContain('Dr. Anderson');
+    expect(listItems[1]).toContain('Dr. Müller');
+  });
+
+  test('should create scientist with subdomain email', async () => {
+    // Navigate to Scientists page
+    await window.click('text=Scientists');
+
+    // Test email with subdomain
+    await window.fill('input#name', 'Dr. Subdomain Test');
+    await window.fill('input#email', 'user@test.example.com');
+
+    // Submit the form
+    await window.click('button:has-text("Add new scientist")');
+
+    // Wait for the list to update
+    await window.waitForTimeout(500);
+
+    // Verify scientist was created
+    await expect(window.locator('text=user@test.example.com')).toBeVisible();
+
+    // Verify in database
+    const scientist = await prisma.scientist.findUnique({
+      where: { email: 'user@test.example.com' },
+    });
+    expect(scientist).not.toBeNull();
+  });
+
+  test('should prevent rapid double submission', async () => {
+    // Navigate to Scientists page
+    await window.click('text=Scientists');
+
+    // Fill in the form
+    await window.fill('input#name', 'Dr. Double Click Test');
+    await window.fill('input#email', 'doubleclick@example.com');
+
+    // Click submit button twice in rapid succession
+    const submitButton = window.locator('button:has-text("Add new scientist")');
+    await Promise.all([submitButton.click(), submitButton.click()]);
+
+    // Wait for operations to complete
+    await window.waitForTimeout(1000);
+
+    // Verify only one scientist was created
+    const count = await prisma.scientist.count({
+      where: { email: 'doubleclick@example.com' },
+    });
+    expect(count).toBe(1);
+
+    // Verify only one entry in the list
+    const listItems = await window.locator('ul li').count();
+    expect(listItems).toBe(1);
+  });
+
+  test('should preserve state across page navigation', async () => {
+    // Navigate to Scientists page
+    await window.click('text=Scientists');
+
+    // Create a scientist
+    await window.fill('input#name', 'Dr. Navigation Test');
+    await window.fill('input#email', 'navigation@example.com');
+    await window.click('button:has-text("Add new scientist")');
+    await window.waitForTimeout(500);
+
+    // Verify scientist appears
+    await expect(window.locator('text=Dr. Navigation Test')).toBeVisible();
+
+    // Navigate to home page
+    await window.click('text=Home');
+
+    // Wait for navigation
+    await window.waitForTimeout(500);
+
+    // Navigate back to Scientists page
+    await window.click('text=Scientists');
+
+    // Wait for page to load
+    await window.waitForTimeout(500);
+
+    // Verify scientist still appears (loaded from database, not just UI state)
+    await expect(window.locator('text=Dr. Navigation Test')).toBeVisible();
+
+    // Verify form is cleared (not showing previous input)
+    await expect(window.locator('input#name')).toHaveValue('');
+    await expect(window.locator('input#email')).toHaveValue('');
+
+    // Verify data is in database
+    const scientist = await prisma.scientist.findUnique({
+      where: { email: 'navigation@example.com' },
+    });
+    expect(scientist).not.toBeNull();
+    expect(scientist?.name).toBe('Dr. Navigation Test');
+  });
 });
