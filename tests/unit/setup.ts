@@ -31,12 +31,12 @@ const mockDatabaseAPI = {
   },
 };
 
+// FIX: Don't spread global.window - just add properties to preserve happy-dom's DOM constructors
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(global as any).window = {
+if ((global as any).window) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ...(global as any).window,
-  electron: {
+  (global as any).window.electron = {
     python: mockPythonAPI,
     database: mockDatabaseAPI,
-  },
-};
+  };
+}

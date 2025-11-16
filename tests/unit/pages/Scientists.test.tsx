@@ -111,8 +111,8 @@ describe('Scientists Page', () => {
     });
 
     // Verify error styling applied
-    const errorContainer = screen.getByText('Database connection failed').parentElement;
-    expect(errorContainer).toHaveClass('text-red-600');
+    const errorText = screen.getByText('Database connection failed');
+    expect(errorText).toHaveClass('text-red-600');
 
     // Verify list is not rendered
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
@@ -173,26 +173,25 @@ describe('Scientists Page', () => {
   });
 
   it('should refresh list after successful scientist creation', async () => {
-    // Mock initial response with one scientist
-    mockList.mockResolvedValueOnce({
-      success: true,
-      data: [{ id: '1', name: 'Dr. Initial', email: 'initial@example.com' }],
-    });
+    // Mock initial response with one scientist, then second response with two
+    mockList
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{ id: '1', name: 'Dr. Initial', email: 'initial@example.com' }],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: [
+          { id: '1', name: 'Dr. Initial', email: 'initial@example.com' },
+          { id: '2', name: 'Dr. New', email: 'new@example.com' },
+        ],
+      });
 
     render(<Scientists />);
 
     // Wait for initial load
     await waitFor(() => {
-      expect(screen.getByText('Dr. Initial')).toBeInTheDocument();
-    });
-
-    // Mock second response with two scientists (after creation)
-    mockList.mockResolvedValueOnce({
-      success: true,
-      data: [
-        { id: '1', name: 'Dr. Initial', email: 'initial@example.com' },
-        { id: '2', name: 'Dr. New', email: 'new@example.com' },
-      ],
+      expect(screen.getByText(/Dr. Initial/)).toBeInTheDocument();
     });
 
     // Simulate successful scientist creation via form
@@ -206,7 +205,7 @@ describe('Scientists Page', () => {
 
     // Verify new scientist appears in list
     await waitFor(() => {
-      expect(screen.getByText('Dr. New')).toBeInTheDocument();
+      expect(screen.getByText(/Dr. New/)).toBeInTheDocument();
       expect(screen.getByText(/new@example.com/)).toBeInTheDocument();
     });
 
