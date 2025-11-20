@@ -8,11 +8,19 @@
  * 1. Start Electron Forge dev server: `npm run start` (keep running in Terminal 1)
  * 2. Run E2E tests: `npm run test:e2e` (in Terminal 2)
  *
+ * The Electron app loads the renderer from Electron Forge's dev server on port 9000.
+ * The dev server MUST be running or the Electron window will be blank.
+ *
  * **Test Focus:**
  * - UI interactions (navigation, form filling, button clicks)
  * - Form validation (client-side Zod validation)
  * - Database integration (scientist creation and list refresh)
  * - Error handling (duplicate email constraint)
+ *
+ * **Database Isolation:**
+ * - Test database: tests/e2e/scientists-ui-test.db
+ * - Created fresh for each test via BLOOM_DATABASE_URL environment variable
+ * - Main process uses test database, dev server only serves UI
  *
  * Related: openspec/changes/add-scientists-management-ui/
  */
@@ -82,17 +90,7 @@ test.beforeEach(async () => {
     fs.unlinkSync(TEST_DB_PATH);
   }
 
-  // Run Prisma migrations to create schema
-  execSync('npx prisma migrate deploy', {
-    cwd: path.join(__dirname, '../..'),
-    env: {
-      ...process.env,
-      BLOOM_DATABASE_URL: TEST_DB_URL,
-    },
-    stdio: 'pipe',
-  });
-
-  // Initialize Prisma client for direct database access
+  // Create Prisma client for direct database access
   prisma = new PrismaClient({
     datasources: {
       db: {
@@ -101,7 +99,21 @@ test.beforeEach(async () => {
     },
   });
 
-  // Launch the app
+  // Connect to database
+  await prisma.$connect();
+
+  // Create the test database file and apply schema
+  const appRoot = path.join(__dirname, '../..');
+  execSync('npx prisma db push --skip-generate', {
+    cwd: appRoot,
+    env: {
+      ...process.env,
+      BLOOM_DATABASE_URL: TEST_DB_URL,
+    },
+    stdio: 'pipe',
+  });
+
+  // Launch Electron app
   await launchElectronApp();
 });
 
@@ -109,9 +121,17 @@ test.beforeEach(async () => {
  * Test teardown: Close app and clean up database
  */
 test.afterEach(async () => {
-  await prisma.$disconnect();
-  await electronApp.close();
+  // Disconnect from database
+  if (prisma) {
+    await prisma.$disconnect();
+  }
 
+  // Close Electron app
+  if (electronApp) {
+    await electronApp.close();
+  }
+
+  // Clean up test database
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
   }
@@ -122,8 +142,10 @@ test.describe('Scientists Management', () => {
     // Click on Scientists navigation link
     await window.click('text=Scientists');
 
-    // Verify page heading
-    await expect(window.locator('h1')).toContainText('Scientists');
+    // Verify page heading (use getByRole to be more specific and avoid sidebar title)
+    await expect(
+      window.getByRole('heading', { name: 'Scientists', exact: true })
+    ).toBeVisible();
   });
 
   test('should display empty state when no scientists exist', async () => {
