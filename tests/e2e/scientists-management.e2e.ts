@@ -283,7 +283,9 @@ test.describe('Scientists Management', () => {
 
     // Should succeed
     await window.waitForTimeout(500);
-    await expect(window.locator('text=Dr. Test (test@example.com)')).toBeVisible();
+    await expect(
+      window.locator('text=Dr. Test (test@example.com)')
+    ).toBeVisible();
   });
 
   // Edge Case Tests
@@ -331,7 +333,7 @@ test.describe('Scientists Management', () => {
     await window.waitForTimeout(500);
 
     // Verify scientist appears with special characters preserved
-    await expect(window.locator('text=Dr. O\'Brien-Smith')).toBeVisible();
+    await expect(window.locator("text=Dr. O'Brien-Smith")).toBeVisible();
 
     // Verify in database
     const scientist = await prisma.scientist.findUnique({

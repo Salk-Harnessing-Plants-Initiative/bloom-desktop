@@ -40,6 +40,7 @@
 ## Phase 4: Testing
 
 ### E2E Tests
+
 - [ ] Create `tests/e2e/scientists-management.e2e.ts`
   - [ ] Test: List scientists (empty state)
   - [ ] Test: Create scientist with valid data
@@ -50,6 +51,7 @@
 - [ ] Verify all E2E tests pass in both dev and packaged modes
 
 ### Unit Tests
+
 - [ ] Create `tests/unit/components/ScientistForm.test.tsx`
   - [ ] Test: Renders form fields
   - [ ] Test: Shows validation errors

@@ -27,6 +27,7 @@ App.tsx
 ### Scientists.tsx
 
 **Responsibilities**:
+
 - Fetch scientists list on mount
 - Manage list state and loading state
 - Render list view with empty state handling
@@ -34,6 +35,7 @@ App.tsx
 - Refresh list after successful creation
 
 **State Management**:
+
 ```typescript
 const [scientists, setScientists] = useState<Scientist[]>([]);
 const [isLoading, setIsLoading] = useState(true);
@@ -41,12 +43,14 @@ const [error, setError] = useState<string | null>(null);
 ```
 
 **Data Flow**:
+
 1. Component mounts → fetch scientists via `window.electron.database.scientists.list()`
 2. User submits form → ScientistForm calls create IPC handler
 3. ScientistForm emits success event → Scientists.tsx refreshes list
 4. No polling (unlike pilot's 10-second interval)
 
 **Why this approach**:
+
 - On-demand refresh is more efficient than polling
 - Parent component controls when to refresh (after mutations)
 - Clear separation of concerns (list vs form)
@@ -54,6 +58,7 @@ const [error, setError] = useState<string | null>(null);
 ### ScientistForm.tsx
 
 **Responsibilities**:
+
 - Collect user input for name and email
 - Validate input using Zod schema
 - Submit to IPC handler
@@ -63,6 +68,7 @@ const [error, setError] = useState<string | null>(null);
 - Notify parent on success for list refresh
 
 **Validation Strategy**:
+
 ```typescript
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -70,19 +76,21 @@ import { useForm } from 'react-hook-form';
 
 const scientistSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255, 'Name too long'),
-  email: z.string().email('Must be a valid email address')
+  email: z.string().email('Must be a valid email address'),
 });
 
 type ScientistFormData = z.infer<typeof scientistSchema>;
 ```
 
 **State Management**:
+
 - React Hook Form manages form state (uncontrolled components)
 - Zod schema provides validation rules
 - `formState.errors` provides field-level errors
 - `formState.isSubmitting` provides loading state
 
 **Error Handling**:
+
 1. **Client-side validation errors** (Zod):
    - Empty name → "Name is required"
    - Invalid email format → "Must be a valid email address"
@@ -93,6 +101,7 @@ type ScientistFormData = z.infer<typeof scientistSchema>;
    - Clear errors on retry
 
 **Why React Hook Form + Zod**:
+
 - **Performance**: Uncontrolled components minimize re-renders (vs pilot's useState on every keystroke)
 - **Type Safety**: Zod infers TypeScript types automatically
 - **DX**: Single source of truth for validation rules
@@ -152,6 +161,7 @@ Render list view
 **Design System**: Tailwind CSS (already in project)
 
 **Color Palette** (matching pilot):
+
 - Background: white/gray-50
 - Text: gray-700
 - Borders: gray-300
@@ -160,6 +170,7 @@ Render list view
 - Success: green-600
 
 **Layout**:
+
 ```
 ┌─────────────────────────────────────┐
 │ Scientists                          │  ← Page title
@@ -183,6 +194,7 @@ Render list view
 **Responsive Design**: Fixed width containers (w-96 for list), left-aligned layout
 
 **Accessibility**:
+
 - Proper `<label>` elements for inputs
 - ARIA attributes for error messages
 - Focus states for keyboard navigation
@@ -191,10 +203,12 @@ Render list view
 ## IPC Integration
 
 **Handlers Used** (existing, tested):
+
 - `db:scientists:list` → Fetch all scientists
 - `db:scientists:create` → Create new scientist
 
 **Type Safety**:
+
 ```typescript
 // Shared types from preload.ts
 interface Scientist {
@@ -211,6 +225,7 @@ interface DatabaseResponse {
 ```
 
 **Error Response Handling**:
+
 ```typescript
 const result = await window.electron.database.scientists.create(data);
 if (!result.success) {
@@ -229,6 +244,7 @@ if (!result.success) {
 **File**: `tests/e2e/scientists-management.e2e.ts`
 
 **Test Scenarios**:
+
 1. **List empty state** - Verify "No scientists yet" message
 2. **Create valid scientist** - Fill form, submit, verify success
 3. **List shows created scientist** - Verify new entry appears
@@ -243,6 +259,7 @@ if (!result.success) {
 **File**: `tests/unit/components/ScientistForm.test.tsx`
 
 **Test Scenarios**:
+
 1. **Renders all form fields** - Name input, email input, submit button
 2. **Shows validation errors** - Required name, invalid email format
 3. **Calls IPC on valid submit** - Mock IPC, verify call with correct data
@@ -254,6 +271,7 @@ if (!result.success) {
 ### Test Database
 
 **Strategy**: Use existing test database setup from PR #63
+
 - Tests run against isolated SQLite database
 - Database reset between test suites
 - Both dev mode and packaged mode tested
@@ -261,6 +279,7 @@ if (!result.success) {
 ## Security Considerations
 
 **Input Validation**:
+
 - Client-side: Zod validates format (catches typos early)
 - Server-side: Prisma validates against schema
 - Database: Unique constraint on email (prevents duplicates)
@@ -270,6 +289,7 @@ if (!result.success) {
 **XSS Prevention**: ✅ React escapes rendered content by default
 
 **Email Privacy**:
+
 - Emails visible in UI (required for identifying scientists)
 - No external transmission (local-only SQLite database)
 - No email validation via external service (format check only)
@@ -277,16 +297,19 @@ if (!result.success) {
 ## Performance Considerations
 
 **Form Performance**:
+
 - React Hook Form uses uncontrolled components (fewer re-renders than pilot)
 - Validation runs on blur and submit (not on every keystroke)
 - Debouncing not needed for small forms (2 fields)
 
 **List Rendering**:
+
 - Simple list (no virtualization needed for <100 items)
 - Re-render only on mutation (no polling like pilot)
 - Memoization not needed (simple component)
 
 **Bundle Size Impact**:
+
 - zod: ~13KB gzipped
 - react-hook-form: ~25KB gzipped
 - @hookform/resolvers: ~2KB gzipped
@@ -325,6 +348,7 @@ This design establishes patterns that will be reused for:
 3. **Experiments page** - Extended pattern (relational fields)
 
 **Reusable Patterns**:
+
 - Zod validation schemas
 - React Hook Form integration
 - List + Create layout
@@ -333,6 +357,7 @@ This design establishes patterns that will be reused for:
 - IPC response handling
 
 **Not Reusable** (intentionally):
+
 - No generic CRUD component (each entity has unique requirements)
 - No shared form component (fields differ per entity)
 - Keep components simple and specific

@@ -7,6 +7,7 @@ This capability introduces database management UI pages for bloom-desktop, start
 ## Scope
 
 **In Scope**:
+
 - Scientists management page (list + create)
 - Form validation with Zod schemas
 - Error handling and user feedback
@@ -14,6 +15,7 @@ This capability introduces database management UI pages for bloom-desktop, start
 - On-demand data refresh after mutations
 
 **Out of Scope**:
+
 - Edit/Delete functionality (not permitted by database handlers)
 - Pagination (not needed for reference data scale)
 - Search/filter (will be added in future if needed)
@@ -33,6 +35,7 @@ The Scientists page SHALL display all scientists from the database in a clean, r
 **And** the create form is visible below
 
 **Acceptance Criteria**:
+
 - Empty state message is clear (e.g., "No scientists yet")
 - List container is visually distinct but empty
 - User can immediately see the create form without scrolling
@@ -46,6 +49,7 @@ The Scientists page SHALL display all scientists from the database in a clean, r
 **And** the list is sorted alphabetically by name
 
 **Acceptance Criteria**:
+
 - Each scientist appears exactly once
 - Format: "Name (email)" or similar clear presentation
 - List is scrollable if content exceeds container height
@@ -68,6 +72,7 @@ The Scientists page MUST allow users to create new scientists with client-side v
 **And** the scientists list refreshes to show the new entry
 
 **Acceptance Criteria**:
+
 - Name is trimmed of leading/trailing whitespace
 - Email is validated for proper format
 - Loading indicator appears during submission
@@ -87,6 +92,7 @@ The Scientists page MUST allow users to create new scientists with client-side v
 **And** the form remains populated with the entered email
 
 **Acceptance Criteria**:
+
 - Validation runs before submission (no network call)
 - Error message is displayed inline near the name field
 - Error message is cleared when user starts typing
@@ -105,6 +111,7 @@ The Scientists page MUST allow users to create new scientists with client-side v
 **And** the form remains populated with the entered name
 
 **Acceptance Criteria**:
+
 - Validation checks for @ symbol and domain
 - Error message is displayed inline near the email field
 - Error message is cleared when user starts typing
@@ -123,6 +130,7 @@ The Scientists page MUST allow users to create new scientists with client-side v
 **And** the user can correct the email and retry
 
 **Acceptance Criteria**:
+
 - Database unique constraint error is caught
 - Error message is user-friendly (not raw database error)
 - Error message clearly indicates the problem (duplicate email)
@@ -142,6 +150,7 @@ The application SHALL provide navigation to the Scientists page via a clearly la
 **And** the scientists list is fetched and displayed
 
 **Acceptance Criteria**:
+
 - Navigation link is clearly labeled "Scientists"
 - Link is visible in the main navigation menu
 - Route is registered in React Router
@@ -243,11 +252,13 @@ The application SHALL provide navigation to the Scientists page via a clearly la
 ## Future Considerations
 
 This spec establishes patterns for:
+
 - **Phenotypers page** - Identical requirements (name + email)
 - **Accessions page** - Similar requirements (name only)
 - **Experiments page** - Extended requirements (relational fields)
 
 **Not Addressed in This Spec**:
+
 - Edit functionality (no IPC handler exists)
 - Delete functionality (no IPC handler exists)
 - Pagination (not needed at current scale)

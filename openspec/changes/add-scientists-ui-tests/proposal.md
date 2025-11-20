@@ -7,17 +7,20 @@ Add comprehensive test coverage for the Scientists management UI to improve qual
 ## Context
 
 The Scientists management UI was recently implemented with:
+
 - Scientists page component (list + form integration)
 - ScientistForm component (validated form)
 - E2E tests (9 scenarios)
 - Unit tests for ScientistForm (10 test cases)
 
 **Current test coverage gaps:**
+
 1. **No unit tests for Scientists page component** - The page has significant logic (data fetching, loading states, error handling, list refresh) that's only tested via slow E2E tests
 2. **Missing edge case E2E tests** - Maximum length inputs, special characters, rapid submission prevention, state preservation across navigation
 3. **Test data duplication** - No shared fixtures/factories for test data
 
 **Why this matters:**
+
 - Scientists page logic is currently only tested through E2E tests, which are slower (2-3s per test vs 50-100ms for unit tests) and harder to debug
 - Edge cases represent real-world scenarios that could cause production bugs
 - Test data factories improve maintainability and reduce duplication across test files
@@ -27,11 +30,13 @@ The Scientists management UI was recently implemented with:
 **Problem**: The Scientists page component has untested logic paths that could break without fast feedback.
 
 **Impact**:
+
 - Slower debugging (must run full E2E tests to validate page logic)
 - Lower confidence in refactoring
 - Missing coverage for edge cases that could cause production bugs
 
 **Benefit of change**:
+
 - **Faster feedback loop**: Unit tests run in ~50-100ms vs 2-3s for E2E tests
 - **Better isolation**: Easier to debug page logic issues separate from IPC/database
 - **Higher confidence**: Edge cases tested systematically
@@ -44,6 +49,7 @@ The Scientists management UI was recently implemented with:
 **New file**: `tests/unit/pages/Scientists.test.tsx`
 
 **Test coverage**:
+
 - Data fetching on component mount
 - Loading state display during fetch
 - Error state display when fetch fails
@@ -59,6 +65,7 @@ The Scientists management UI was recently implemented with:
 **Extend**: `tests/e2e/scientists-management.e2e.ts`
 
 **New test scenarios**:
+
 - Maximum length name (255 characters) - validates database schema constraint
 - Special characters in name (e.g., "Dr. O'Brien-Smith")
 - International characters in email (e.g., "user@münchen.de")
@@ -72,6 +79,7 @@ The Scientists management UI was recently implemented with:
 **New file**: `tests/fixtures/scientists.ts`
 
 **Exports**:
+
 ```typescript
 export const createScientistData = (overrides = {}) => ({
   name: 'Dr. Test Scientist',
@@ -89,33 +97,40 @@ export const specialCharName = "Dr. O'Brien-Smith";
 ## Alternatives Considered
 
 **Alternative 1**: Only add E2E tests for edge cases
+
 - **Pros**: Simpler (one test file to update)
 - **Cons**: Slower feedback, harder to debug page logic issues, doesn't address unit test gap
 
 **Alternative 2**: Add integration tests instead of unit tests
+
 - **Pros**: Tests IPC layer at same time
 - **Cons**: Slower than unit tests, more complex setup, doesn't isolate page component logic
 
 **Alternative 3**: Wait until coverage becomes a problem
+
 - **Pros**: Less immediate work
 - **Cons**: Technical debt accumulates, harder to add tests later, bugs may reach production
 
 **Chosen approach**: Add both unit tests and edge case E2E tests
+
 - **Rationale**: Provides comprehensive coverage at appropriate abstraction levels (unit for page logic, E2E for user workflows, fixtures for maintainability)
 
 ## Dependencies
 
 **Prerequisites**:
+
 - Scientists management UI feature must be implemented (✅ complete)
 - Vitest and React Testing Library configured (✅ exists)
 - Playwright E2E framework configured (✅ exists)
 
 **Impacts**:
+
 - No breaking changes
 - No changes to production code (tests only)
 - No changes to dependencies (uses existing test infrastructure)
 
 **Related work**:
+
 - Complements existing ScientistForm unit tests
 - Extends existing E2E test coverage
 - Follows patterns from `tests/integration/README.md`

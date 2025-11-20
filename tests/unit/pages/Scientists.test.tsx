@@ -46,9 +46,7 @@ describe('Scientists Page', () => {
     // Mock successful response with scientist data
     mockList.mockResolvedValue({
       success: true,
-      data: [
-        { id: '1', name: 'Dr. Test', email: 'test@example.com' },
-      ],
+      data: [{ id: '1', name: 'Dr. Test', email: 'test@example.com' }],
     });
 
     render(<Scientists />);
@@ -92,7 +90,9 @@ describe('Scientists Page', () => {
 
     // Wait for loading to complete
     await waitFor(() => {
-      expect(screen.queryByText('Loading scientists...')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Loading scientists...')
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -107,7 +107,9 @@ describe('Scientists Page', () => {
 
     // Wait for error to appear
     await waitFor(() => {
-      expect(screen.getByText('Database connection failed')).toBeInTheDocument();
+      expect(
+        screen.getByText('Database connection failed')
+      ).toBeInTheDocument();
     });
 
     // Verify error styling applied
@@ -223,7 +225,9 @@ describe('Scientists Page', () => {
     // Wait for error to appear
     await waitFor(() => {
       expect(
-        screen.getByText('An unexpected error occurred while loading scientists')
+        screen.getByText(
+          'An unexpected error occurred while loading scientists'
+        )
       ).toBeInTheDocument();
     });
 
