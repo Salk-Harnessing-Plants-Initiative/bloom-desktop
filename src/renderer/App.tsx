@@ -6,6 +6,7 @@ import { Layout } from './Layout';
 import { Home } from './Home';
 import { CameraSettings } from './CameraSettings';
 import { CaptureScan } from './CaptureScan';
+import { Scientists } from './Scientists';
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route index element={<Home />} />
           <Route path="camera-settings" element={<CameraSettings />} />
           <Route path="capture-scan" element={<CaptureScan />} />
+          <Route path="scientists" element={<Scientists />} />
         </Route>
       </Routes>
     </Router>

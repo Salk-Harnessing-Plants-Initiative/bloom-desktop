@@ -10,14 +10,21 @@
  * The Electron app loads the renderer from Electron Forge's dev server on port 9000.
  * The dev server MUST be running or the Electron window will be blank.
  *
- * IMPORTANT: Playwright v1.44+ has a regression bug with packaged Electron apps.
- * The _electron.launch() API adds --remote-debugging-port=0 flag that packaged apps reject.
+ * ELECTRON_RUN_AS_NODE BUG (Root Cause Discovered Nov 2025):
+ * VS Code-based tools (Claude Code extension, etc.) set ELECTRON_RUN_AS_NODE=1 in their
+ * child process environment. This makes Electron run as plain Node.js, causing it to reject
+ * Playwright's hardcoded --remote-debugging-port=0 flag with "bad option" error.
+ *
+ * SOLUTION: playwright.config.ts deletes process.env.ELECTRON_RUN_AS_NODE before tests run.
+ * This was previously misattributed to "packaged apps" - the actual cause is env var inheritance.
+ *
  * See: https://github.com/microsoft/playwright/issues/32027
+ * See: docs/E2E_TESTING.md (Pitfall 6)
  *
  * Decision: Use Electron Forge dev build for Playwright E2E tests (catches 95% of issues).
  * For packaged app validation, use integration test: `npm run test:package:database`
  *
- * Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 1, Issue 2, Decision 5)
+ * Reference: openspec/changes/archive/2025-11-05-add-e2e-testing-framework/design.md
  */
 
 import {
@@ -39,11 +46,13 @@ let electronApp: ElectronApplication;
 let window: Page;
 
 // E2E test database path - extracted constant for fs operations
-// This must match BLOOM_DATABASE_URL in .env.e2e (file:../tests/e2e/test.db)
-// .env.e2e is the single source of truth for database URL (used by Electron main process)
-// This constant provides the absolute filesystem path for test cleanup operations
+// We compute the absolute path here and use it for both filesystem ops AND BLOOM_DATABASE_URL
+// This ensures consistent path handling regardless of working directory
 // See: openspec/changes/add-e2e-testing-framework/design.md (Decision 3)
-const TEST_DB_PATH = path.join(__dirname, '../../tests/e2e/test.db');
+const TEST_DB_PATH = path.join(__dirname, 'test.db');
+// Absolute URL for database - used by Electron main process
+// Format: file:/absolute/path/to/db (proper URL format that new URL() can parse)
+const TEST_DB_URL = `file:${TEST_DB_PATH}`;
 
 test.describe('Electron App Launch', () => {
   // IMPORTANT: These tests require the Electron Forge dev server to be running!
@@ -58,9 +67,6 @@ test.describe('Electron App Launch', () => {
 
   test.beforeEach(async () => {
     // Clean up any existing test database
-    // Database path from .env.e2e: file:../tests/e2e/test.db (relative to prisma/ dir)
-    // Resolves to: tests/e2e/test.db from project root
-    // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 3)
     if (fs.existsSync(TEST_DB_PATH)) {
       fs.unlinkSync(TEST_DB_PATH);
     }
@@ -73,17 +79,19 @@ test.describe('Electron App Launch', () => {
 
     // Create the test database file and apply schema
     // prisma db push creates the database file and applies the schema without migrations
-    // Uses BLOOM_DATABASE_URL from .env.e2e (single source of truth)
+    // We override BLOOM_DATABASE_URL with absolute path to ensure correct database location
     const appRoot = path.join(__dirname, '../..');
     execSync('npx prisma db push --skip-generate', {
       cwd: appRoot,
-      env: process.env, // Use environment from .env.e2e
+      env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL },
       stdio: 'pipe', // Suppress output
     });
 
     // Launch Electron app using webpack dev build
-    // Point directly to the built main process file to avoid Playwright's --remote-debugging-port=0 bug
+    // Point directly to the built main process file
     // The .webpack/main/index.js is created when the dev server starts (npm run start)
+    // NOTE: The --remote-debugging-port=0 bug is now fixed in playwright.config.ts
+    // by deleting ELECTRON_RUN_AS_NODE env var (see file header comment)
     // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 5, Known Issue 2)
     //
     // IMPORTANT: The dev server must be running for these tests to work!
@@ -104,7 +112,10 @@ test.describe('Electron App Launch', () => {
       executablePath: electronPath,
       args,
       cwd: appRoot,
-      env: process.env as Record<string, string>,
+      env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL } as Record<
+        string,
+        string
+      >,
     });
 
     // Get the first window that opens

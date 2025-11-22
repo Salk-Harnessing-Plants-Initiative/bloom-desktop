@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-claude-commands. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Linting and Formatting Command
 
 The system SHALL provide a `/lint` command that documents all linting and formatting workflows for TypeScript and Python code.
@@ -556,4 +558,3 @@ A reusable test infrastructure SHALL be provided for Playwright-based renderer I
 - **AND** SHALL have access to window.electron APIs
 - **AND** SHALL NOT have access to Node.js or main process APIs
 - **AND** SHALL return results to the test for assertions
-

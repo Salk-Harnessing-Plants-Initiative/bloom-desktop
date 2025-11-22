@@ -119,30 +119,40 @@ await window.click('[data-testid="camera-settings-button"]');
 
 E2E tests use isolated database:
 
+**IMPORTANT: BLOOM_DATABASE_URL Format**
+
+- Use `file:` protocol with proper URL format
+- Absolute paths: `file:/absolute/path/to/db` (preserves leading `/`)
+- The `database.ts` module uses `new URL()` parsing - NEVER regex
+- If you see "Error code 14", check logs for missing leading slash in path
+
 ```typescript
 import { test } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
+// Use path.join for cross-platform absolute paths
+const TEST_DB_PATH = path.join(__dirname, 'test.db');
+const TEST_DB_URL = `file:${TEST_DB_PATH}`;
+// Result: file:/Users/.../tests/e2e/test.db (correct absolute path)
+
 test.beforeEach(async () => {
   // Clean up previous test database
-  const testDbPath = path.join(__dirname, 'test.db');
-  if (fs.existsSync(testDbPath)) {
-    fs.unlinkSync(testDbPath);
+  if (fs.existsSync(TEST_DB_PATH)) {
+    fs.unlinkSync(TEST_DB_PATH);
   }
 
   // Create fresh database with schema
   execSync('npx prisma db push --skip-generate', {
-    env: { ...process.env, DATABASE_URL: 'file:./tests/e2e/test.db' },
+    env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL },
   });
 });
 
 test.afterEach(async () => {
   // Cleanup
-  const testDbPath = path.join(__dirname, 'test.db');
-  if (fs.existsSync(testDbPath)) {
-    fs.unlinkSync(testDbPath);
+  if (fs.existsSync(TEST_DB_PATH)) {
+    fs.unlinkSync(TEST_DB_PATH);
   }
 });
 ```

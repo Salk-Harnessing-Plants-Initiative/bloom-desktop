@@ -205,8 +205,10 @@ export function initializeDatabase(
     const isDev = process.env.NODE_ENV === 'development';
     if (isDev) {
       // Development: use dev.db in project root
-      dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
-      console.log('[Database] Development mode - using dev.db');
+      // Note: In dev mode, BLOOM_DATABASE_URL should be set via .env file
+      // If not set, fall back to default path using app.getAppPath()
+      dbPath = path.join(app.getAppPath(), 'prisma', 'dev.db');
+      console.log('[Database] Development mode - using fallback path:', dbPath);
     } else {
       // Production: use ~/.bloom/data/bloom.db
       const homeDir = app.getPath('home');

@@ -43,6 +43,7 @@ Click "Details" next to failed check → View full CI logs.
 | **EADDRINUSE**         | Port conflict (9000)          | Dev server race condition                       |
 | **Xvfb errors**        | Linux headless display issues | Check xvfb-run wrapping                         |
 | **Database errors**    | Prisma client not generated   | Check `prisma generate` step                    |
+| **"Error code 14"**    | DB path missing leading slash | Check `[Database]` log for path format          |
 
 ## Job-by-Job Debugging
 
