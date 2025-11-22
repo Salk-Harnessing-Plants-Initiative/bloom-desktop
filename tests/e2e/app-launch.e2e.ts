@@ -46,11 +46,13 @@ let electronApp: ElectronApplication;
 let window: Page;
 
 // E2E test database path - extracted constant for fs operations
-// This must match BLOOM_DATABASE_URL in .env.e2e (file:../tests/e2e/test.db)
-// .env.e2e is the single source of truth for database URL (used by Electron main process)
-// This constant provides the absolute filesystem path for test cleanup operations
+// We compute the absolute path here and use it for both filesystem ops AND BLOOM_DATABASE_URL
+// This ensures consistent path handling regardless of working directory
 // See: openspec/changes/add-e2e-testing-framework/design.md (Decision 3)
-const TEST_DB_PATH = path.join(__dirname, '../../tests/e2e/test.db');
+const TEST_DB_PATH = path.join(__dirname, 'test.db');
+// Absolute URL for database - used by Electron main process
+// Format: file:/absolute/path/to/db (proper URL format that new URL() can parse)
+const TEST_DB_URL = `file:${TEST_DB_PATH}`;
 
 test.describe('Electron App Launch', () => {
   // IMPORTANT: These tests require the Electron Forge dev server to be running!
@@ -65,9 +67,6 @@ test.describe('Electron App Launch', () => {
 
   test.beforeEach(async () => {
     // Clean up any existing test database
-    // Database path from .env.e2e: file:../tests/e2e/test.db (relative to prisma/ dir)
-    // Resolves to: tests/e2e/test.db from project root
-    // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 3)
     if (fs.existsSync(TEST_DB_PATH)) {
       fs.unlinkSync(TEST_DB_PATH);
     }
@@ -80,11 +79,11 @@ test.describe('Electron App Launch', () => {
 
     // Create the test database file and apply schema
     // prisma db push creates the database file and applies the schema without migrations
-    // Uses BLOOM_DATABASE_URL from .env.e2e (single source of truth)
+    // We override BLOOM_DATABASE_URL with absolute path to ensure correct database location
     const appRoot = path.join(__dirname, '../..');
     execSync('npx prisma db push --skip-generate', {
       cwd: appRoot,
-      env: process.env, // Use environment from .env.e2e
+      env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL },
       stdio: 'pipe', // Suppress output
     });
 
@@ -113,7 +112,10 @@ test.describe('Electron App Launch', () => {
       executablePath: electronPath,
       args,
       cwd: appRoot,
-      env: process.env as Record<string, string>,
+      env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL } as Record<
+        string,
+        string
+      >,
     });
 
     // Get the first window that opens

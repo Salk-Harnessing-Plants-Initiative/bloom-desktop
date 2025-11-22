@@ -39,11 +39,12 @@ export function ScientistForm({ onSuccess }: ScientistFormProps) {
       });
 
       if (!result.success) {
-        // Check if it's a duplicate email error
+        // Check if it's a duplicate email error (case-insensitive)
         const errorMessage = result.error || 'Failed to create scientist';
+        const lowerError = errorMessage.toLowerCase();
         if (
-          errorMessage.includes('UNIQUE constraint') ||
-          errorMessage.includes('unique')
+          lowerError.includes('unique constraint') ||
+          lowerError.includes('unique')
         ) {
           setSubmitError('A scientist with this email already exists');
         } else {
@@ -64,7 +65,7 @@ export function ScientistForm({ onSuccess }: ScientistFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       {submitError && (
         <div className="rounded-md bg-red-50 p-3 border border-red-200">
           <p className="text-sm text-red-800">{submitError}</p>
