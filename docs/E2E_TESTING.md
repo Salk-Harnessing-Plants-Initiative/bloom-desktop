@@ -467,6 +467,48 @@ const path = decodeURIComponent(url.pathname);
 
 **Historical Note:** This was fixed in November 2025 (commit 30cd920). The fix uses `new URL()` parsing which correctly handles both Unix (`/path`) and Windows (`C:\path`) absolute paths, plus URL encoding.
 
+---
+
+### ❌ Pitfall 8: Browser HTML5 Validation vs Zod Validation
+
+**Symptom:**
+
+E2E tests for form validation fail because the error message doesn't match what your Zod schema produces.
+
+```
+Expected: "Invalid email format"
+Received: "Please include an '@' in the email address"
+```
+
+**Cause:** HTML5 form validation (`type="email"`, `required`, etc.) triggers **before** your JavaScript validation (Zod, Yup, etc.). The browser shows its own validation messages.
+
+**Solution:** Add `noValidate` attribute to forms where you want JavaScript validation to handle errors:
+
+```tsx
+// ❌ Browser validation intercepts before Zod
+<form onSubmit={handleSubmit(onSubmit)}>
+  <input type="email" {...register('email')} />
+</form>
+
+// ✅ Zod validation handles all errors
+<form onSubmit={handleSubmit(onSubmit)} noValidate>
+  <input type="email" {...register('email')} />
+</form>
+```
+
+**When to use `noValidate`:**
+
+- When testing validation error messages in E2E tests
+- When you want consistent error styling/messaging
+- When Zod/Yup provides better validation than HTML5 (e.g., custom email patterns)
+
+**When NOT to use `noValidate`:**
+
+- Simple forms where browser validation is sufficient
+- Forms where you want the browser's native validation UX
+
+**Historical Note:** This was discovered in November 2025 when E2E tests for ScientistForm validation failed. The fix was adding `noValidate` to ensure Zod validation messages are shown.
+
 ## Debugging
 
 ### Using Playwright UI Mode (Recommended)
