@@ -60,10 +60,17 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 
 **Location**: `tests/e2e/test.db` (created per test)
 
+**IMPORTANT: URL Format**
+- Use `file:` protocol with proper URL format
+- Absolute paths: `file:/absolute/path/to/db` (preserves leading `/`)
+- The `database.ts` module uses `new URL()` parsing - NEVER regex
+- If you see "Error code 14", check logs for missing leading slash
+
 **Pattern**:
 ```typescript
 const TEST_DB_PATH = path.join(__dirname, 'test.db');
 const TEST_DB_URL = `file:${TEST_DB_PATH}`;
+// Result: file:/Users/.../tests/e2e/test.db (correct absolute path)
 
 // In beforeEach
 if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);

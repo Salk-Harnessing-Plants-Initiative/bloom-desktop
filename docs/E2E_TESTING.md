@@ -429,6 +429,44 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 
 **Historical Note:** This was discovered in November 2025 after extensive debugging. The root cause is VS Code's architecture - it uses Electron and sets this env var to spawn Node.js worker processes. See [GitHub Issue #32027](https://github.com/microsoft/playwright/issues/32027) and [design.md Issue 12](../openspec/changes/archive/2025-11-05-add-e2e-testing-framework/design.md).
 
+---
+
+### ❌ Pitfall 7: Database Path Parsing Bug (file:// URL)
+
+**Symptom:**
+
+```
+Error code 14: Unable to open the database file
+[Database] Using BLOOM_DATABASE_URL (absolute): Users/foo/bar.db
+```
+
+Note the **missing leading slash** - it should be `/Users/foo/bar.db`.
+
+**Cause:** Using regex to parse `file://` URLs strips the leading slash from absolute paths.
+
+```typescript
+// BROKEN - strips leading slash
+const path = url.replace(/^file:\/?\/?/, '');
+// file:/Users/foo/bar.db → Users/foo/bar.db (WRONG)
+```
+
+**Solution:** Always use `new URL()` for parsing file:// URLs:
+
+```typescript
+// CORRECT - preserves leading slash
+const url = new URL(process.env.BLOOM_DATABASE_URL);
+const path = decodeURIComponent(url.pathname);
+// file:/Users/foo/bar.db → /Users/foo/bar.db (CORRECT)
+```
+
+**How to diagnose:**
+
+1. Check logs for `[Database] Using BLOOM_DATABASE_URL:` line
+2. Verify absolute paths start with `/` (Unix) or drive letter (Windows)
+3. If path shows `Users/...` instead of `/Users/...`, the parsing is broken
+
+**Historical Note:** This was fixed in November 2025 (commit 30cd920). The fix uses `new URL()` parsing which correctly handles both Unix (`/path`) and Windows (`C:\path`) absolute paths, plus URL encoding.
+
 ## Debugging
 
 ### Using Playwright UI Mode (Recommended)
