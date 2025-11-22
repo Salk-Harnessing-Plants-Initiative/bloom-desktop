@@ -34,6 +34,7 @@ tests/
 ```
 
 **Setup file** (`tests/unit/setup.ts`):
+
 - Mocks `window.electron` API
 - Sets up testing-library matchers
 
@@ -42,6 +43,7 @@ tests/
 **File**: `playwright.config.ts`
 
 Key settings:
+
 - `testDir: './tests/e2e'`
 - `testMatch: '**/*.e2e.ts'`
 - `timeout: 60000` (60s for Electron startup)
@@ -49,6 +51,7 @@ Key settings:
 - `retries: 1` in CI only
 
 **Environment fix**:
+
 ```typescript
 // Required for VS Code/Claude Code environments
 delete process.env.ELECTRON_RUN_AS_NODE;
@@ -61,12 +64,14 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 **Location**: `tests/e2e/test.db` (created per test)
 
 **IMPORTANT: URL Format**
+
 - Use `file:` protocol with proper URL format
 - Absolute paths: `file:/absolute/path/to/db` (preserves leading `/`)
 - The `database.ts` module uses `new URL()` parsing - NEVER regex
 - If you see "Error code 14", check logs for missing leading slash
 
 **Pattern**:
+
 ```typescript
 const TEST_DB_PATH = path.join(__dirname, 'test.db');
 const TEST_DB_URL = `file:${TEST_DB_PATH}`;
@@ -127,11 +132,11 @@ vi.mock('window.electron', () => ({
 
 ## Coverage Requirements
 
-| Test Type | Threshold | Command |
-|-----------|-----------|---------|
-| Unit (TypeScript) | 50%+ | `npm run test:unit:coverage` |
-| Python | 80%+ | `npm run test:python` |
-| E2E IPC | 90%+ | `npm run test:e2e:coverage` |
+| Test Type         | Threshold | Command                      |
+| ----------------- | --------- | ---------------------------- |
+| Unit (TypeScript) | 50%+      | `npm run test:unit:coverage` |
+| Python            | 80%+      | `npm run test:python`        |
+| E2E IPC           | 90%+      | `npm run test:e2e:coverage`  |
 
 ## Playwright Selectors
 
@@ -225,9 +230,10 @@ npm run test:e2e:ui
 **Issue**: `firstWindow()` may return DevTools instead of main window
 
 **Solution**:
+
 ```typescript
 const windows = await electronApp.windows();
-const window = windows.find(w => w.url().includes('localhost')) || windows[0];
+const window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 ```
 
 ### 2. ELECTRON_RUN_AS_NODE
@@ -235,6 +241,7 @@ const window = windows.find(w => w.url().includes('localhost')) || windows[0];
 **Issue**: "bad option: --remote-debugging-port=0" in VS Code environments
 
 **Solution**: Fixed in `playwright.config.ts`:
+
 ```typescript
 delete process.env.ELECTRON_RUN_AS_NODE;
 ```
@@ -244,6 +251,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 **Issue**: SUID sandbox errors in CI
 
 **Solution**:
+
 ```typescript
 if (process.platform === 'linux' && process.env.CI === 'true') {
   args.push('--no-sandbox');

@@ -7,6 +7,7 @@
 **Root Cause**: The regex `replace(/^file:\/?\/?/, '')` in `database.ts` incorrectly stripped leading slashes from absolute file:// URLs.
 
 **Example of the bug**:
+
 - Input: `file:/Users/elizabethberrigan/repos/bloom-desktop/tests/e2e/test.db`
 - After regex: `Users/elizabethberrigan/repos/...` (WRONG - missing leading `/`)
 - Expected: `/Users/elizabethberrigan/repos/...`
@@ -23,6 +24,7 @@ const rawPath = process.env.BLOOM_DATABASE_URL.replace(/^file:\/?\/?/, '');
 ```
 
 For `file:/path/to/db`:
+
 1. Regex matches `file:/`
 2. Replace with empty string
 3. Result: `path/to/db` (missing leading `/`)
@@ -37,6 +39,7 @@ dbPath = decodeURIComponent(url.pathname);
 ```
 
 For `file:/path/to/db`:
+
 1. `new URL()` parses the URL
 2. `url.pathname` returns `/path/to/db` (correct!)
 3. Windows fix: Remove leading slash from `/C:/path` → `C:/path`

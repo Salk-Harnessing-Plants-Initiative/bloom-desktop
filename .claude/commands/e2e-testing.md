@@ -120,6 +120,7 @@ await window.click('[data-testid="camera-settings-button"]');
 E2E tests use isolated database:
 
 **IMPORTANT: BLOOM_DATABASE_URL Format**
+
 - Use `file:` protocol with proper URL format
 - Absolute paths: `file:/absolute/path/to/db` (preserves leading `/`)
 - The `database.ts` module uses `new URL()` parsing - NEVER regex

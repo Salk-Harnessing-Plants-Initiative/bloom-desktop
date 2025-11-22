@@ -31,6 +31,7 @@ Do NOT modify any E2E tests or database handlers.
 ```
 
 **Why this works**:
+
 - Forces reading before editing
 - Defines scope explicitly ("do NOT modify...")
 - Requires a plan before implementation
@@ -66,6 +67,7 @@ Do NOT:
 ```
 
 **Why this works**:
+
 - Lists exact files to modify
 - References existing patterns
 - Explicit about what NOT to do
@@ -103,6 +105,7 @@ After all steps, run full test suite: npm run lint && npm run test:unit
 ```
 
 **Why this works**:
+
 - Explicit ordering (prevents skipping steps)
 - Incremental validation
 - Clear requirements for the field
@@ -136,6 +139,7 @@ After changes, explain how to verify the fix:
 ```
 
 **Why this works**:
+
 - Gives specific context (CI vs local)
 - Lists what to look for
 - Prohibits band-aid fixes (longer timeouts)
@@ -170,6 +174,7 @@ After adding the test:
 ```
 
 **Why this works**:
+
 - Clear workflow steps
 - References existing patterns
 - Enforces best practices
@@ -204,6 +209,7 @@ After approval:
 ```
 
 **Why this works**:
+
 - Explains the architectural issue
 - Requires plan first
 - Explicit implementation order
@@ -220,9 +226,11 @@ The CI is failing on the "should initialize database on startup" test.
 
 Error from CI:
 ```
+
 expect(dbExists).toBe(true)
 Expected: true
 Received: false
+
 ```
 
 Please:
@@ -242,6 +250,7 @@ Do NOT:
 ```
 
 **Why this works**:
+
 - Provides specific error
 - Lists files to investigate
 - Suggests areas to check
@@ -273,6 +282,7 @@ Show me the coverage for this file.
 ```
 
 **Why this works**:
+
 - Specific test scenarios
 - References existing patterns
 - Specifies testing library
@@ -303,6 +313,7 @@ After fixing, run: npm run lint && npx tsc --noEmit
 ```
 
 **Why this works**:
+
 - Asks for diagnostic first
 - Requires explanation
 - Prohibits type-unsafe shortcuts
@@ -329,6 +340,7 @@ After exploration, suggest any E2E tests that should be added based on what you 
 ```
 
 **Why this works**:
+
 - Clear exploration steps
 - Asks for screenshots
 - Connects exploration to permanent tests
@@ -338,26 +350,31 @@ After exploration, suggest any E2E tests that should be added based on what you 
 ## Prompt Structure Guidelines
 
 ### Context Section
+
 - Current state of the code
 - What's working/not working
 - Any relevant error messages
 
 ### Requirements Section
+
 - What needs to change
 - Constraints and boundaries
 - Files involved
 
 ### Process Section
+
 - Order of operations
 - Validation steps
 - What to do after each step
 
 ### Boundaries Section
+
 - What NOT to modify
 - What NOT to use (e.g., `any` types, fixed timeouts)
 - Scope limits
 
 ### Verification Section
+
 - Commands to run
 - What success looks like
 - How to confirm the fix works

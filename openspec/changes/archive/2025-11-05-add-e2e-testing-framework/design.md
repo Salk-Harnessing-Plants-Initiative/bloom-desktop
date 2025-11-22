@@ -899,6 +899,7 @@ VS Code-based tools set `ELECTRON_RUN_AS_NODE=1` in their child process environm
 **Why This Was Confusing**:
 
 Previous documentation attributed this error to:
+
 - "Packaged apps" (incorrect - dev builds failed too)
 - "CI environments" (partially correct - but missed the root cause)
 - "Playwright v1.44+ regression" (correct, but incomplete explanation)
@@ -929,17 +930,20 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 ```
 
 **Why playwright.config.ts**:
+
 - Runs before any test files are loaded
 - Single point of fix (all tests benefit)
 - Clear and discoverable location
 
 **Documentation Updates**:
+
 - `playwright.config.ts`: Added fix with detailed comment
 - `docs/E2E_TESTING.md`: Added Pitfall 6 explaining this issue
 - `tests/e2e/app-launch.e2e.ts`: Updated header comment
 - `src/main/main.ts`: Noted that `app.commandLine.appendSwitch` is now belt-and-suspenders
 
 **Impact After Fix**:
+
 - Tests now pass when run from Claude Code extension
 - Tests still pass when run from regular terminal
 - Tests still pass in CI

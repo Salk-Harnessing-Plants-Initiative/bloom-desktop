@@ -20,6 +20,7 @@ Renderer Process (React)  ←→  Preload Bridge  ←→  Main Process (Node.js)
 ```
 
 **Critical Boundaries:**
+
 - **Renderer**: Browser context, NO Node.js APIs, access main via `window.electron.*`
 - **Preload**: ONLY file that bridges main/renderer, uses `contextBridge.exposeInMainWorld`
 - **Main**: Node.js context, manages IPC handlers, database, Python subprocesses
@@ -36,12 +37,14 @@ Renderer Process (React)  ←→  Preload Bridge  ←→  Main Process (Node.js)
 ### Process Boundary Rules
 
 **NEVER do these:**
+
 - Import Node.js modules (`fs`, `path`, `child_process`) in renderer code
 - Import React/browser APIs in main process code
 - Bypass preload bridge for main↔renderer communication
 - Access `window.electron` without null checks
 
 **ALWAYS do these:**
+
 - Validate IPC inputs with Zod schemas in main process handlers
 - Update `src/types/electron.d.ts` when adding IPC methods
 - Use `contextBridge.exposeInMainWorld` in preload for new APIs
@@ -50,16 +53,16 @@ Renderer Process (React)  ←→  Preload Bridge  ←→  Main Process (Node.js)
 
 ### Quick Reference
 
-| Task | Command |
-|------|---------|
-| Lint | `npm run lint` |
-| Format | `npm run format` |
-| Unit tests | `npm run test:unit` |
-| Unit tests (watch) | `npm run test:unit:watch` |
-| Unit tests (coverage) | `npm run test:unit:coverage` |
-| E2E tests | Start dev server first, then `npm run test:e2e` |
-| E2E tests (UI mode) | `npm run test:e2e:ui` |
-| Python tests | `npm run test:python` |
+| Task                  | Command                                         |
+| --------------------- | ----------------------------------------------- |
+| Lint                  | `npm run lint`                                  |
+| Format                | `npm run format`                                |
+| Unit tests            | `npm run test:unit`                             |
+| Unit tests (watch)    | `npm run test:unit:watch`                       |
+| Unit tests (coverage) | `npm run test:unit:coverage`                    |
+| E2E tests             | Start dev server first, then `npm run test:e2e` |
+| E2E tests (UI mode)   | `npm run test:e2e:ui`                           |
+| Python tests          | `npm run test:python`                           |
 
 ### E2E Test Requirements
 
@@ -78,6 +81,7 @@ Without the dev server, Electron launches but the window is blank.
 ### Validation After Changes
 
 **Always run after code changes:**
+
 ```bash
 npm run lint && npm run test:unit
 ```
@@ -135,13 +139,17 @@ test.describe('Feature Name', () => {
 ### Avoid Flaky Tests
 
 **BAD - Fixed timeouts:**
+
 ```typescript
-await window.waitForTimeout(500);  // Avoid!
+await window.waitForTimeout(500); // Avoid!
 ```
 
 **GOOD - Wait for actual state:**
+
 ```typescript
-await expect(window.locator('text=Expected Text')).toBeVisible({ timeout: 5000 });
+await expect(window.locator('text=Expected Text')).toBeVisible({
+  timeout: 5000,
+});
 
 // Or wait for network idle
 await window.waitForLoadState('networkidle');
@@ -155,11 +163,11 @@ await expect(async () => {
 
 ### CI Platform Notes
 
-| Platform | Special Requirements |
-|----------|---------------------|
-| Linux | `--no-sandbox` flag, `xvfb-run`, `ELECTRON_DISABLE_SANDBOX=1` |
-| macOS | None - works out of the box |
-| Windows | Use `shell: bash` in CI for cross-platform scripts |
+| Platform | Special Requirements                                          |
+| -------- | ------------------------------------------------------------- |
+| Linux    | `--no-sandbox` flag, `xvfb-run`, `ELECTRON_DISABLE_SANDBOX=1` |
+| macOS    | None - works out of the box                                   |
+| Windows  | Use `shell: bash` in CI for cross-platform scripts            |
 
 ## Adding New Features
 
@@ -176,6 +184,7 @@ await expect(async () => {
 ### IPC Handler Pattern
 
 **In `src/main/database-handlers.ts`:**
+
 ```typescript
 import { z } from 'zod';
 
@@ -191,6 +200,7 @@ ipcMain.handle('db:scientists:create', async (_, data: unknown) => {
 ```
 
 **In `src/main/preload.ts`:**
+
 ```typescript
 contextBridge.exposeInMainWorld('electron', {
   database: {
@@ -202,6 +212,7 @@ contextBridge.exposeInMainWorld('electron', {
 ```
 
 **In `src/types/electron.d.ts`:**
+
 ```typescript
 interface ElectronAPI {
   database: {
@@ -219,6 +230,7 @@ interface ElectronAPI {
 **Cause**: `ELECTRON_RUN_AS_NODE=1` set in environment (VS Code/Claude Code)
 
 **Solution**: Already fixed in `playwright.config.ts`:
+
 ```typescript
 delete process.env.ELECTRON_RUN_AS_NODE;
 ```
@@ -238,6 +250,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 ## Files to Avoid Modifying
 
 Without explicit request, do NOT modify:
+
 - `forge.config.ts` - Electron builder config
 - `webpack.*.ts` - Build configuration
 - `prisma/schema.prisma` - Use migrations instead
@@ -247,6 +260,7 @@ Without explicit request, do NOT modify:
 ## OpenSpec Integration
 
 For new features or significant changes:
+
 1. Check `openspec/specs/` for existing specifications
 2. Create proposal in `openspec/changes/` if needed
 3. Follow the spec during implementation
