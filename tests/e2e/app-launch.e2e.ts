@@ -10,14 +10,21 @@
  * The Electron app loads the renderer from Electron Forge's dev server on port 9000.
  * The dev server MUST be running or the Electron window will be blank.
  *
- * IMPORTANT: Playwright v1.44+ has a regression bug with packaged Electron apps.
- * The _electron.launch() API adds --remote-debugging-port=0 flag that packaged apps reject.
+ * ELECTRON_RUN_AS_NODE BUG (Root Cause Discovered Nov 2025):
+ * VS Code-based tools (Claude Code extension, etc.) set ELECTRON_RUN_AS_NODE=1 in their
+ * child process environment. This makes Electron run as plain Node.js, causing it to reject
+ * Playwright's hardcoded --remote-debugging-port=0 flag with "bad option" error.
+ *
+ * SOLUTION: playwright.config.ts deletes process.env.ELECTRON_RUN_AS_NODE before tests run.
+ * This was previously misattributed to "packaged apps" - the actual cause is env var inheritance.
+ *
  * See: https://github.com/microsoft/playwright/issues/32027
+ * See: docs/E2E_TESTING.md (Pitfall 6)
  *
  * Decision: Use Electron Forge dev build for Playwright E2E tests (catches 95% of issues).
  * For packaged app validation, use integration test: `npm run test:package:database`
  *
- * Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 1, Issue 2, Decision 5)
+ * Reference: openspec/changes/archive/2025-11-05-add-e2e-testing-framework/design.md
  */
 
 import {
@@ -82,8 +89,10 @@ test.describe('Electron App Launch', () => {
     });
 
     // Launch Electron app using webpack dev build
-    // Point directly to the built main process file to avoid Playwright's --remote-debugging-port=0 bug
+    // Point directly to the built main process file
     // The .webpack/main/index.js is created when the dev server starts (npm run start)
+    // NOTE: The --remote-debugging-port=0 bug is now fixed in playwright.config.ts
+    // by deleting ELECTRON_RUN_AS_NODE env var (see file header comment)
     // Reference: openspec/changes/add-e2e-testing-framework/design.md (Decision 5, Known Issue 2)
     //
     // IMPORTANT: The dev server must be running for these tests to work!

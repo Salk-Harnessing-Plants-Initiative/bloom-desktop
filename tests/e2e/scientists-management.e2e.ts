@@ -46,8 +46,7 @@ let window: Page;
 let prisma: PrismaClient;
 
 // Test database path for UI tests
-// Use path.resolve to ensure absolute path (path.join with __dirname can be relative in some test environments)
-const TEST_DB_PATH = path.resolve(__dirname, 'scientists-ui-test.db');
+const TEST_DB_PATH = path.join(__dirname, 'scientists-ui-test.db');
 const TEST_DB_URL = `file:${TEST_DB_PATH}`;
 
 /**
@@ -60,7 +59,6 @@ async function launchElectronApp() {
   const args = [path.join(appRoot, '.webpack/main/index.js')];
   if (process.platform === 'linux' && process.env.CI === 'true') {
     args.push('--no-sandbox');
-    args.push('--disable-gpu'); // Prevent GPU process crashes in CI headless environment
   }
 
   // Launch Electron with test database URL

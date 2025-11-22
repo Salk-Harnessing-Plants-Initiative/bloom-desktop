@@ -4,6 +4,23 @@ import * as dotenv from 'dotenv';
 // Load environment variables from .env.e2e
 dotenv.config({ path: '.env.e2e' });
 
+// CRITICAL: Clear ELECTRON_RUN_AS_NODE to fix Playwright Electron launch failures
+//
+// Root Cause: VS Code-based tools (Claude Code extension, VS Code tasks, etc.) set
+// ELECTRON_RUN_AS_NODE=1 in their child process environment. This makes Electron run
+// as plain Node.js instead of a full Electron app, causing it to reject Chromium-specific
+// flags like --remote-debugging-port=0 that Playwright hardcodes.
+//
+// Symptoms: "bad option: --remote-debugging-port=0" error when running E2E tests
+// from VS Code integrated terminal or VS Code extensions.
+//
+// This was previously misattributed to "packaged apps" or "CI environments" in docs,
+// but the actual cause is this environment variable inheritance from VS Code.
+//
+// See: https://github.com/microsoft/playwright/issues/32027
+// See: openspec/changes/archive/2025-11-05-add-e2e-testing-framework/design.md (Issue 12)
+delete process.env.ELECTRON_RUN_AS_NODE;
+
 /**
  * Playwright configuration for E2E testing of Bloom Desktop Electron app.
  *

@@ -7,12 +7,6 @@
  * - IPC handlers for Python communication
  */
 
-import * as dotenv from 'dotenv';
-
-// Load .env file for development mode database configuration
-// This must be loaded before any other modules that use process.env
-dotenv.config();
-
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './camera-process';
@@ -45,9 +39,13 @@ if (require('electron-squirrel-startup')) {
 // This must be set before app.ready event fires
 // Playwright requires remote debugging to control the app
 // Uses E2E_TEST flag (from .env.e2e) instead of broad CI flag to avoid enabling for all CI builds
+//
+// NOTE (Nov 2025): The primary fix for the --remote-debugging-port=0 "bad option" error is in
+// playwright.config.ts (deletes ELECTRON_RUN_AS_NODE env var). This app.commandLine.appendSwitch
+// is kept as defense-in-depth but may no longer be strictly required.
+// See: docs/E2E_TESTING.md (Pitfall 6) for full explanation of the root cause.
 if (process.env.E2E_TEST === 'true') {
-  // Use app.commandLine.appendSwitch() instead of --remote-debugging-port CLI flag
-  // because Electron doesn't accept that flag as a command-line argument since v1.6.11+
+  // Use app.commandLine.appendSwitch() to set debugging flags via Electron's internal API
   app.commandLine.appendSwitch('remote-debugging-port', '0'); // 0 = any free port
   console.log('[E2E] Remote debugging enabled for E2E test environment');
 }

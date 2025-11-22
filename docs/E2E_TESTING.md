@@ -400,6 +400,35 @@ but is not configured correctly.
 
 **Corrected:** Comments in `app-launch.e2e.ts` now clearly explain the dev server requirement.
 
+---
+
+### ❌ Pitfall 6: ELECTRON_RUN_AS_NODE Causes "bad option" Error
+
+**Symptom:**
+
+```
+Error: electron.launch: Process failed to launch!
+bad option: --remote-debugging-port=0
+```
+
+**Cause:** VS Code-based tools (like Claude Code extension, VS Code integrated terminal tasks) set `ELECTRON_RUN_AS_NODE=1` in their child process environment. This makes Electron run as plain Node.js instead of a full Electron app, causing it to reject Chromium-specific flags like `--remote-debugging-port=0` that Playwright hardcodes.
+
+**Why it's confusing:** Tests pass when run from a regular terminal but fail when run from VS Code integrated terminal or VS Code extensions. This was previously misattributed to "packaged apps" or "CI environments" in some documentation.
+
+**Solution:** Already fixed in `playwright.config.ts` - we delete this env var before tests run:
+
+```typescript
+delete process.env.ELECTRON_RUN_AS_NODE;
+```
+
+**If you still see this error:**
+
+1. Check for the env var: `env | grep ELECTRON_RUN_AS_NODE`
+2. Ensure `playwright.config.ts` has the `delete process.env.ELECTRON_RUN_AS_NODE` line
+3. Try running from a fresh terminal outside VS Code
+
+**Historical Note:** This was discovered in November 2025 after extensive debugging. The root cause is VS Code's architecture - it uses Electron and sets this env var to spawn Node.js worker processes. See [GitHub Issue #32027](https://github.com/microsoft/playwright/issues/32027) and [design.md Issue 12](../openspec/changes/archive/2025-11-05-add-e2e-testing-framework/design.md).
+
 ## Debugging
 
 ### Using Playwright UI Mode (Recommended)

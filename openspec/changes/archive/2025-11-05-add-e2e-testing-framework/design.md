@@ -882,6 +882,75 @@ if (process.platform === 'linux' && process.env.CI === 'true') {
 
 ---
 
+### Issue 12: ELECTRON_RUN_AS_NODE Environment Variable (ROOT CAUSE DISCOVERED)
+
+**Date Discovered**: November 21, 2025
+
+**Problem**: E2E tests fail with `bad option: --remote-debugging-port=0` when run from VS Code-based tools (Claude Code extension, VS Code integrated terminal tasks, etc.), but pass when run from a regular terminal.
+
+**Root Cause (CRITICAL DISCOVERY)**:
+
+VS Code-based tools set `ELECTRON_RUN_AS_NODE=1` in their child process environment. This environment variable makes Electron run as a plain Node.js runtime instead of a full Electron application. When Electron runs in Node.js mode:
+
+1. It doesn't recognize Chromium-specific command-line flags
+2. Playwright's hardcoded `--remote-debugging-port=0` flag is rejected as "bad option"
+3. The process fails to launch
+
+**Why This Was Confusing**:
+
+Previous documentation attributed this error to:
+- "Packaged apps" (incorrect - dev builds failed too)
+- "CI environments" (partially correct - but missed the root cause)
+- "Playwright v1.44+ regression" (correct, but incomplete explanation)
+
+The actual cause is environment variable inheritance, not anything specific to packaged apps or CI.
+
+**Evidence**:
+
+```bash
+# In VS Code/Claude Code environment:
+$ env | grep ELECTRON
+ELECTRON_RUN_AS_NODE=1
+
+# Running Electron with this set:
+$ ELECTRON_RUN_AS_NODE=1 /path/to/electron --remote-debugging-port=0 --version
+/path/to/electron: bad option: --remote-debugging-port=0
+
+# Without it:
+$ ELECTRON_RUN_AS_NODE= /path/to/electron --remote-debugging-port=0 --version
+v28.2.2  # Success!
+```
+
+**Solution**: Delete the environment variable before tests run. Added to `playwright.config.ts`:
+
+```typescript
+// After dotenv.config()
+delete process.env.ELECTRON_RUN_AS_NODE;
+```
+
+**Why playwright.config.ts**:
+- Runs before any test files are loaded
+- Single point of fix (all tests benefit)
+- Clear and discoverable location
+
+**Documentation Updates**:
+- `playwright.config.ts`: Added fix with detailed comment
+- `docs/E2E_TESTING.md`: Added Pitfall 6 explaining this issue
+- `tests/e2e/app-launch.e2e.ts`: Updated header comment
+- `src/main/main.ts`: Noted that `app.commandLine.appendSwitch` is now belt-and-suspenders
+
+**Impact After Fix**:
+- Tests now pass when run from Claude Code extension
+- Tests still pass when run from regular terminal
+- Tests still pass in CI
+- The `app.commandLine.appendSwitch('remote-debugging-port', '0')` in main.ts is kept as defense-in-depth
+
+**Commit**: TBD
+
+**Learning**: Environment variables can be inherited in unexpected ways. When debugging "works on my machine" issues, always check `env` output in both environments. The root cause is often simpler than the symptoms suggest.
+
+---
+
 ### Documentation Created
 
 To prevent future developers from rediscovering these issues, comprehensive documentation was created:
