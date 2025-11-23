@@ -19,7 +19,9 @@ dotenv.config({ path: '.env.e2e' });
 //
 // See: https://github.com/microsoft/playwright/issues/32027
 // See: openspec/changes/archive/2025-11-05-add-e2e-testing-framework/design.md (Issue 12)
-delete process.env.ELECTRON_RUN_AS_NODE;
+if (process.env.ELECTRON_RUN_AS_NODE) {
+  delete process.env.ELECTRON_RUN_AS_NODE;
+}
 
 /**
  * Playwright configuration for E2E testing of Bloom Desktop Electron app.
