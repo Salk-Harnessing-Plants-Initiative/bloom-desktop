@@ -32,8 +32,8 @@ export function createScientistData(
 ): ScientistTestData {
   return {
     name: 'Dr. Test Scientist',
-    // Use timestamp to ensure unique emails across tests
-    email: `test-${Date.now()}@example.com`,
+    // Use timestamp + random number to ensure unique emails across parallel tests
+    email: `test-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`,
     ...overrides,
   };
 }
