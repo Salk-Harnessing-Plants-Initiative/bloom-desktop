@@ -1,8 +1,11 @@
 # ui-management-pages Specification
 
 ## Purpose
+
 TBD - created by archiving change add-scientists-management-ui. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scientists List View
 
 The Scientists page SHALL display all scientists from the database in a clean, readable list format, with support for both empty and populated states.
@@ -270,4 +273,3 @@ The application SHALL provide navigation to the Phenotypers page via a clearly l
 - Route is registered in React Router
 - Navigation works in both development and packaged modes
 - Active route is visually indicated (if navigation has active states)
-

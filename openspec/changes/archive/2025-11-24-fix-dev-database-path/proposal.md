@@ -5,6 +5,7 @@
 ### Problem Statement
 
 When running `npm run start` (development mode) with `BLOOM_DATABASE_URL` set (via shell, IDE, or direnv), the database fails to open:
+
 ```
 [Database] Using BLOOM_DATABASE_URL: /prisma/dev.db
 Error querying the database: Error code 14: Unable to open the database file
@@ -17,11 +18,13 @@ The path `/prisma/dev.db` is incorrect - it's an absolute path at the filesystem
 **The file:// URL parsing doesn't support relative paths.**
 
 The `.env` file contains:
+
 ```
 BLOOM_DATABASE_URL="file:./prisma/dev.db"
 ```
 
 When this is parsed by Node.js `new URL()`:
+
 ```javascript
 const url = new URL('file:./prisma/dev.db');
 console.log(url.pathname); // Output: "/prisma/dev.db" (WRONG!)
@@ -30,6 +33,7 @@ console.log(url.pathname); // Output: "/prisma/dev.db" (WRONG!)
 The `file://` protocol (RFC 8089) is designed for **absolute paths only**. The `./` in `./prisma/dev.db` is treated as a path component starting at root, not as a relative path operator.
 
 **Current code path in `database.ts` (lines 164-184):**
+
 ```typescript
 } else if (process.env.BLOOM_DATABASE_URL) {
   try {
@@ -45,6 +49,7 @@ The `file://` protocol (RFC 8089) is designed for **absolute paths only**. The `
 ### Why E2E Tests Work
 
 E2E tests succeed because they:
+
 1. Use `.env.e2e` with absolute test paths
 2. Pass absolute paths directly to `initializeDatabase(customPath)`
 3. Bypass the environment variable parsing entirely
@@ -64,6 +69,7 @@ Add detection for relative path format before URL parsing.
 **File**: `src/main/database.ts`
 
 **Current code:**
+
 ```typescript
 } else if (process.env.BLOOM_DATABASE_URL) {
   try {
@@ -72,6 +78,7 @@ Add detection for relative path format before URL parsing.
 ```
 
 **Fixed code:**
+
 ```typescript
 } else if (process.env.BLOOM_DATABASE_URL) {
   const envUrl = process.env.BLOOM_DATABASE_URL;
@@ -93,6 +100,7 @@ Add detection for relative path format before URL parsing.
 ### Update .env documentation
 
 Clarify supported formats in `.env` comments:
+
 - `file:./relative/path` - Resolved relative to app root
 - `file:///absolute/path` - Used as-is
 

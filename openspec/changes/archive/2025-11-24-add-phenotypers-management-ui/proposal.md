@@ -105,13 +105,13 @@ This implementation follows Test-Driven Development:
 
 **Extract shared patterns** from Scientists UI:
 
-| Pattern | Scientists | Phenotypers | Shared Opportunity |
-|---------|-----------|-------------|-------------------|
-| Form validation schema | `scientistSchema` | `phenotyperSchema` | Schema structure identical |
-| Error display | Inline red text | Inline red text | Same component |
-| List display | `ul > li` with name (email) | Same format | Pattern, not component |
-| Loading state | Spinner + text | Same | Pattern |
-| Empty state | "No scientists yet" | "No phenotypers yet" | Pattern |
+| Pattern                | Scientists                  | Phenotypers          | Shared Opportunity         |
+| ---------------------- | --------------------------- | -------------------- | -------------------------- |
+| Form validation schema | `scientistSchema`           | `phenotyperSchema`   | Schema structure identical |
+| Error display          | Inline red text             | Inline red text      | Same component             |
+| List display           | `ul > li` with name (email) | Same format          | Pattern, not component     |
+| Loading state          | Spinner + text              | Same                 | Pattern                    |
+| Empty state            | "No scientists yet"         | "No phenotypers yet" | Pattern                    |
 
 **Decision**: Keep separate components for clarity, follow same patterns. Extract shared utilities only if a third management page is added.
 

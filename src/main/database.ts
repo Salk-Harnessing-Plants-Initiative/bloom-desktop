@@ -198,23 +198,23 @@ export function initializeDatabase(
         }
         console.log('[Database] Using BLOOM_DATABASE_URL:', dbPath);
       } catch (error) {
-      // Fallback for legacy format without proper file:// URL
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.warn(
-        '[Database] Failed to parse BLOOM_DATABASE_URL as URL (error: %s), falling back to legacy format',
-        errorMsg
-      );
+        // Fallback for legacy format without proper file:// URL
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.warn(
+          '[Database] Failed to parse BLOOM_DATABASE_URL as URL (error: %s), falling back to legacy format',
+          errorMsg
+        );
 
-      // Defensive check: ensure env var exists before using
-      if (!process.env.BLOOM_DATABASE_URL) {
-        throw new Error('BLOOM_DATABASE_URL environment variable is not set');
-      }
+        // Defensive check: ensure env var exists before using
+        if (!process.env.BLOOM_DATABASE_URL) {
+          throw new Error('BLOOM_DATABASE_URL environment variable is not set');
+        }
 
-      dbPath = process.env.BLOOM_DATABASE_URL.replace(/^file:\/?\/?/, '');
-      console.log(
-        '[Database] Using BLOOM_DATABASE_URL (legacy format):',
-        dbPath
-      );
+        dbPath = process.env.BLOOM_DATABASE_URL.replace(/^file:\/?\/?/, '');
+        console.log(
+          '[Database] Using BLOOM_DATABASE_URL (legacy format):',
+          dbPath
+        );
       }
     }
   } else {

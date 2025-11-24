@@ -272,7 +272,9 @@ test.describe('Phenotypers Management', () => {
     await window.fill('input#email', 'loading@example.com');
 
     // Click submit and immediately check for loading state
-    const submitButton = window.locator('button:has-text("Add new phenotyper")');
+    const submitButton = window.locator(
+      'button:has-text("Add new phenotyper")'
+    );
     await submitButton.click();
 
     // The button should show "Adding..." while submitting
@@ -301,9 +303,7 @@ test.describe('Phenotypers Management', () => {
     await window.click('button:has-text("Add new phenotyper")');
 
     // Should succeed - wait for phenotyper to appear
-    await expect(
-      window.locator('text=Test (test@example.com)')
-    ).toBeVisible();
+    await expect(window.locator('text=Test (test@example.com)')).toBeVisible();
   });
 
   // Edge Case Tests
@@ -410,7 +410,9 @@ test.describe('Phenotypers Management', () => {
     await window.fill('input#email', 'doubleclick@example.com');
 
     // Click submit button twice in rapid succession
-    const submitButton = window.locator('button:has-text("Add new phenotyper")');
+    const submitButton = window.locator(
+      'button:has-text("Add new phenotyper")'
+    );
     await Promise.all([submitButton.click(), submitButton.click()]);
 
     // Wait for phenotyper to appear in the list

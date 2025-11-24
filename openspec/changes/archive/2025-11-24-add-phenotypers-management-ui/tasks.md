@@ -3,6 +3,7 @@
 ## Overview
 
 Implementation follows Test-Driven Development (TDD):
+
 1. Write tests first (E2E + Unit)
 2. Implement to make tests pass
 3. Refactor for quality
@@ -10,6 +11,7 @@ Implementation follows Test-Driven Development (TDD):
 ## Phase 1: Test Infrastructure (TDD - Write Tests First)
 
 ### Task 1.1: Create Test Fixtures
+
 - [x] Create `tests/fixtures/phenotypers.ts` with:
   - `PhenotyperTestData` interface
   - `createPhenotyperData()` factory function with unique email generation
@@ -20,6 +22,7 @@ Implementation follows Test-Driven Development (TDD):
   - `unsortedPhenotypers` and `sortedPhenotypers` for sorting tests
 
 ### Task 1.2: Write E2E Tests (Before Implementation)
+
 - [x] Create `tests/e2e/phenotypers-management.e2e.ts` with tests for:
   - Navigation to Phenotypers page
   - Empty state display
@@ -35,6 +38,7 @@ Implementation follows Test-Driven Development (TDD):
   - State preservation across navigation
 
 ### Task 1.3: Write Unit Tests (Before Implementation)
+
 - [x] Create `tests/unit/components/PhenotyperForm.test.tsx` with tests for:
   - Renders all form fields
   - Name validation (required, max length)
@@ -49,6 +53,7 @@ Implementation follows Test-Driven Development (TDD):
 ## Phase 2: Implementation
 
 ### Task 2.1: Create PhenotyperForm Component
+
 - [x] Create `src/renderer/components/PhenotyperForm.tsx`:
   - Zod validation schema (name required, email format)
   - React Hook Form integration
@@ -59,6 +64,7 @@ Implementation follows Test-Driven Development (TDD):
   - Duplicate email error handling
 
 ### Task 2.2: Create Phenotypers Page
+
 - [x] Create `src/renderer/Phenotypers.tsx`:
   - Fetch phenotypers from `window.electron.database.phenotypers.list()`
   - Display list sorted alphabetically by name
@@ -69,6 +75,7 @@ Implementation follows Test-Driven Development (TDD):
   - Refresh list after successful creation
 
 ### Task 2.3: Add Navigation and Route
+
 - [x] Modify `src/renderer/App.tsx`:
   - Add route for `/phenotypers`
   - Import Phenotypers component
@@ -78,12 +85,14 @@ Implementation follows Test-Driven Development (TDD):
 ## Phase 3: Verification
 
 ### Task 3.1: Run All Tests
+
 - [x] Run unit tests: `npm run test:unit` (10/10 PhenotyperForm tests pass)
 - [x] Run E2E tests: `npm run test:e2e` (15/15 Phenotypers tests pass)
 - [x] Run linting: `npm run lint`
 - [x] Run type check: `npx tsc --noEmit`
 
 ### Task 3.2: Manual Verification
+
 - [x] E2E tests verify all scenarios automatically
 - [x] Navigate to Phenotypers page
 - [x] Verify empty state

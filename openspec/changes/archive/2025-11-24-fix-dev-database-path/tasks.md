@@ -7,6 +7,7 @@ Fix the database path parsing bug where `file:./prisma/dev.db` in `BLOOM_DATABAS
 ## Phase 1: Implementation
 
 ### Task 1.1: Fix relative path handling in database.ts
+
 - [x] Modify `src/main/database.ts` to detect `file:./` pattern
 - [x] Add regex match: `/^file:(\.\/.*)$/`
 - [x] Resolve relative paths using `path.resolve(app.getAppPath(), relativePath)`
@@ -14,6 +15,7 @@ Fix the database path parsing bug where `file:./prisma/dev.db` in `BLOOM_DATABAS
 - [x] Add console logging for relative path resolution
 
 ### Task 1.2: Update .env documentation
+
 - [x] Add comments to `.env` explaining supported formats:
   - `file:./relative/path` - Resolved relative to app root
   - `file:///absolute/path` - Used as-is
@@ -21,6 +23,7 @@ Fix the database path parsing bug where `file:./prisma/dev.db` in `BLOOM_DATABAS
 ## Phase 2: Testing
 
 ### Task 2.1: Manual verification
+
 - [x] Set `BLOOM_DATABASE_URL="file:./prisma/dev.db"` in `.env`
 - [x] Run `npm run start`
 - [x] Verify database opens successfully
@@ -28,12 +31,14 @@ Fix the database path parsing bug where `file:./prisma/dev.db` in `BLOOM_DATABAS
 - [x] Verify Phenotypers page loads data
 
 ### Task 2.2: Verify existing tests
+
 - [x] Existing E2E tests use absolute paths (no changes needed)
 - [x] Database initialization works with absolute paths
 
 ## Phase 3: Quality Checks
 
 ### Task 3.1: Code quality
+
 - [x] Run linting: `npm run lint`
 - [x] Run type check: `npx tsc --noEmit`
 
