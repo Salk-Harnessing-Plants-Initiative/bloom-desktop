@@ -163,26 +163,41 @@ export function initializeDatabase(
     console.log('[Database] Using custom path:', dbPath);
   } else if (process.env.BLOOM_DATABASE_URL) {
     // Use environment variable if set (takes precedence over NODE_ENV logic)
-    // Properly parse file:// URLs to handle Windows paths and URL encoding
-    try {
-      const url = new URL(process.env.BLOOM_DATABASE_URL);
-      if (url.protocol !== 'file:') {
-        throw new Error(
-          `BLOOM_DATABASE_URL must use file: protocol, got: ${url.protocol}`
-        );
-      }
-      // URL.pathname is already decoded (handles %20 → space, etc.)
-      dbPath = decodeURIComponent(url.pathname);
-      // On Windows, file: URLs produce paths like "/C:/path" - remove leading slash
-      if (
-        process.platform === 'win32' &&
-        dbPath.startsWith('/') &&
-        dbPath[2] === ':'
-      ) {
-        dbPath = dbPath.slice(1); // "/C:/path" → "C:/path"
-      }
-      console.log('[Database] Using BLOOM_DATABASE_URL:', dbPath);
-    } catch (error) {
+    const envUrl = process.env.BLOOM_DATABASE_URL;
+
+    // Check for relative path format: file:./path
+    // This is a common developer-friendly format but file:// URLs only support absolute paths
+    const relativeMatch = envUrl.match(/^file:(\.\/.*)$/);
+    if (relativeMatch) {
+      const relativePath = relativeMatch[1]; // "./prisma/dev.db"
+      dbPath = path.resolve(app.getAppPath(), relativePath);
+      console.log(
+        '[Database] Using BLOOM_DATABASE_URL (relative):',
+        relativePath,
+        '->',
+        dbPath
+      );
+    } else {
+      // Properly parse file:// URLs to handle Windows paths and URL encoding
+      try {
+        const url = new URL(envUrl);
+        if (url.protocol !== 'file:') {
+          throw new Error(
+            `BLOOM_DATABASE_URL must use file: protocol, got: ${url.protocol}`
+          );
+        }
+        // URL.pathname is already decoded (handles %20 → space, etc.)
+        dbPath = decodeURIComponent(url.pathname);
+        // On Windows, file: URLs produce paths like "/C:/path" - remove leading slash
+        if (
+          process.platform === 'win32' &&
+          dbPath.startsWith('/') &&
+          dbPath[2] === ':'
+        ) {
+          dbPath = dbPath.slice(1); // "/C:/path" → "C:/path"
+        }
+        console.log('[Database] Using BLOOM_DATABASE_URL:', dbPath);
+      } catch (error) {
       // Fallback for legacy format without proper file:// URL
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.warn(
@@ -200,6 +215,7 @@ export function initializeDatabase(
         '[Database] Using BLOOM_DATABASE_URL (legacy format):',
         dbPath
       );
+      }
     }
   } else {
     const isDev = process.env.NODE_ENV === 'development';
