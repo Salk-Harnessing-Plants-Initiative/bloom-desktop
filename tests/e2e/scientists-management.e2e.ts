@@ -167,10 +167,7 @@ test.describe('Scientists Management', () => {
     // Submit the form
     await window.click('button:has-text("Add new scientist")');
 
-    // Wait for the list to update
-    await window.waitForTimeout(500);
-
-    // Verify scientist appears in the list
+    // Wait for scientist to appear in the list
     await expect(
       window.locator('text=Dr. Jane Smith (jane.smith@example.com)')
     ).toBeVisible();
@@ -188,13 +185,13 @@ test.describe('Scientists Management', () => {
     await window.fill('input#name', 'Dr. Zara Wilson');
     await window.fill('input#email', 'zara.wilson@example.com');
     await window.click('button:has-text("Add new scientist")');
-    await window.waitForTimeout(500);
+    await expect(window.locator('text=Dr. Zara Wilson')).toBeVisible();
 
     // Create second scientist
     await window.fill('input#name', 'Dr. Alice Brown');
     await window.fill('input#email', 'alice.brown@example.com');
     await window.click('button:has-text("Add new scientist")');
-    await window.waitForTimeout(500);
+    await expect(window.locator('text=Dr. Alice Brown')).toBeVisible();
 
     // Get list items
     const listItems = await window.locator('ul li').allTextContents();
@@ -249,7 +246,7 @@ test.describe('Scientists Management', () => {
     await window.fill('input#name', 'Dr. John Doe');
     await window.fill('input#email', 'john.doe@example.com');
     await window.click('button:has-text("Add new scientist")');
-    await window.waitForTimeout(500);
+    await expect(window.locator('text=Dr. John Doe')).toBeVisible();
 
     // Try to create another scientist with same email
     await window.fill('input#name', 'Dr. Jane Doe');
@@ -303,8 +300,7 @@ test.describe('Scientists Management', () => {
     await window.fill('input#email', 'test@example.com');
     await window.click('button:has-text("Add new scientist")');
 
-    // Should succeed
-    await window.waitForTimeout(500);
+    // Should succeed - wait for scientist to appear
     await expect(
       window.locator('text=Dr. Test (test@example.com)')
     ).toBeVisible();
@@ -324,9 +320,6 @@ test.describe('Scientists Management', () => {
 
     // Submit the form
     await window.click('button:has-text("Add new scientist")');
-
-    // Wait for the list to update
-    await window.waitForTimeout(500);
 
     // Verify scientist was created (check by email since name is very long)
     await expect(window.locator('text=maxlength@example.com')).toBeVisible();
@@ -351,9 +344,6 @@ test.describe('Scientists Management', () => {
     // Submit the form
     await window.click('button:has-text("Add new scientist")');
 
-    // Wait for the list to update
-    await window.waitForTimeout(500);
-
     // Verify scientist appears with special characters preserved
     await expect(window.locator("text=Dr. O'Brien-Smith")).toBeVisible();
 
@@ -375,9 +365,6 @@ test.describe('Scientists Management', () => {
     // Submit the form
     await window.click('button:has-text("Add new scientist")');
 
-    // Wait for the list to update
-    await window.waitForTimeout(500);
-
     // Verify scientist appears with Unicode characters preserved
     await expect(window.locator('text=Dr. Müller')).toBeVisible();
 
@@ -385,7 +372,7 @@ test.describe('Scientists Management', () => {
     await window.fill('input#name', 'Dr. Anderson');
     await window.fill('input#email', 'anderson@example.com');
     await window.click('button:has-text("Add new scientist")');
-    await window.waitForTimeout(500);
+    await expect(window.locator('text=Dr. Anderson')).toBeVisible();
 
     // Verify alphabetical sorting works with Unicode
     const listItems = await window.locator('ul li').allTextContents();
@@ -403,9 +390,6 @@ test.describe('Scientists Management', () => {
 
     // Submit the form
     await window.click('button:has-text("Add new scientist")');
-
-    // Wait for the list to update
-    await window.waitForTimeout(500);
 
     // Verify scientist was created
     await expect(window.locator('text=user@test.example.com')).toBeVisible();
@@ -429,8 +413,8 @@ test.describe('Scientists Management', () => {
     const submitButton = window.locator('button:has-text("Add new scientist")');
     await Promise.all([submitButton.click(), submitButton.click()]);
 
-    // Wait for operations to complete
-    await window.waitForTimeout(1000);
+    // Wait for scientist to appear in the list
+    await expect(window.locator('text=doubleclick@example.com')).toBeVisible();
 
     // Verify only one scientist was created
     const count = await prisma.scientist.count({
@@ -451,7 +435,6 @@ test.describe('Scientists Management', () => {
     await window.fill('input#name', 'Dr. Navigation Test');
     await window.fill('input#email', 'navigation@example.com');
     await window.click('button:has-text("Add new scientist")');
-    await window.waitForTimeout(500);
 
     // Verify scientist appears
     await expect(window.locator('text=Dr. Navigation Test')).toBeVisible();
@@ -459,14 +442,18 @@ test.describe('Scientists Management', () => {
     // Navigate to home page
     await window.click('text=Home');
 
-    // Wait for navigation
-    await window.waitForTimeout(500);
+    // Wait for home page to load (unique heading on home page)
+    await expect(
+      window.getByRole('heading', { name: 'Under Construction', exact: true })
+    ).toBeVisible();
 
     // Navigate back to Scientists page
     await window.click('text=Scientists');
 
-    // Wait for page to load
-    await window.waitForTimeout(500);
+    // Wait for Scientists page heading to load
+    await expect(
+      window.getByRole('heading', { name: 'Scientists', exact: true })
+    ).toBeVisible();
 
     // Verify scientist still appears (loaded from database, not just UI state)
     await expect(window.locator('text=Dr. Navigation Test')).toBeVisible();
