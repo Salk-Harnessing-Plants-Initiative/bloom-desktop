@@ -400,6 +400,115 @@ but is not configured correctly.
 
 **Corrected:** Comments in `app-launch.e2e.ts` now clearly explain the dev server requirement.
 
+---
+
+### ❌ Pitfall 6: ELECTRON_RUN_AS_NODE Causes "bad option" Error
+
+**Symptom:**
+
+```
+Error: electron.launch: Process failed to launch!
+bad option: --remote-debugging-port=0
+```
+
+**Cause:** VS Code-based tools (like Claude Code extension, VS Code integrated terminal tasks) set `ELECTRON_RUN_AS_NODE=1` in their child process environment. This makes Electron run as plain Node.js instead of a full Electron app, causing it to reject Chromium-specific flags like `--remote-debugging-port=0` that Playwright hardcodes.
+
+**Why it's confusing:** Tests pass when run from a regular terminal but fail when run from VS Code integrated terminal or VS Code extensions. This was previously misattributed to "packaged apps" or "CI environments" in some documentation.
+
+**Solution:** Already fixed in `playwright.config.ts` - we delete this env var before tests run:
+
+```typescript
+delete process.env.ELECTRON_RUN_AS_NODE;
+```
+
+**If you still see this error:**
+
+1. Check for the env var: `env | grep ELECTRON_RUN_AS_NODE`
+2. Ensure `playwright.config.ts` has the `delete process.env.ELECTRON_RUN_AS_NODE` line
+3. Try running from a fresh terminal outside VS Code
+
+**Historical Note:** This was discovered in November 2025 after extensive debugging. The root cause is VS Code's architecture - it uses Electron and sets this env var to spawn Node.js worker processes. See [GitHub Issue #32027](https://github.com/microsoft/playwright/issues/32027) and [design.md Issue 12](../openspec/changes/archive/2025-11-05-add-e2e-testing-framework/design.md).
+
+---
+
+### ❌ Pitfall 7: Database Path Parsing Bug (file:// URL)
+
+**Symptom:**
+
+```
+Error code 14: Unable to open the database file
+[Database] Using BLOOM_DATABASE_URL (absolute): Users/foo/bar.db
+```
+
+Note the **missing leading slash** - it should be `/Users/foo/bar.db`.
+
+**Cause:** Using regex to parse `file://` URLs strips the leading slash from absolute paths.
+
+```typescript
+// BROKEN - strips leading slash
+const path = url.replace(/^file:\/?\/?/, '');
+// file:/Users/foo/bar.db → Users/foo/bar.db (WRONG)
+```
+
+**Solution:** Always use `new URL()` for parsing file:// URLs:
+
+```typescript
+// CORRECT - preserves leading slash
+const url = new URL(process.env.BLOOM_DATABASE_URL);
+const path = decodeURIComponent(url.pathname);
+// file:/Users/foo/bar.db → /Users/foo/bar.db (CORRECT)
+```
+
+**How to diagnose:**
+
+1. Check logs for `[Database] Using BLOOM_DATABASE_URL:` line
+2. Verify absolute paths start with `/` (Unix) or drive letter (Windows)
+3. If path shows `Users/...` instead of `/Users/...`, the parsing is broken
+
+**Historical Note:** This was fixed in November 2025 (commit 30cd920). The fix uses `new URL()` parsing which correctly handles both Unix (`/path`) and Windows (`C:\path`) absolute paths, plus URL encoding.
+
+---
+
+### ❌ Pitfall 8: Browser HTML5 Validation vs Zod Validation
+
+**Symptom:**
+
+E2E tests for form validation fail because the error message doesn't match what your Zod schema produces.
+
+```
+Expected: "Invalid email format"
+Received: "Please include an '@' in the email address"
+```
+
+**Cause:** HTML5 form validation (`type="email"`, `required`, etc.) triggers **before** your JavaScript validation (Zod, Yup, etc.). The browser shows its own validation messages.
+
+**Solution:** Add `noValidate` attribute to forms where you want JavaScript validation to handle errors:
+
+```tsx
+// ❌ Browser validation intercepts before Zod
+<form onSubmit={handleSubmit(onSubmit)}>
+  <input type="email" {...register('email')} />
+</form>
+
+// ✅ Zod validation handles all errors
+<form onSubmit={handleSubmit(onSubmit)} noValidate>
+  <input type="email" {...register('email')} />
+</form>
+```
+
+**When to use `noValidate`:**
+
+- When testing validation error messages in E2E tests
+- When you want consistent error styling/messaging
+- When Zod/Yup provides better validation than HTML5 (e.g., custom email patterns)
+
+**When NOT to use `noValidate`:**
+
+- Simple forms where browser validation is sufficient
+- Forms where you want the browser's native validation UX
+
+**Historical Note:** This was discovered in November 2025 when E2E tests for ScientistForm validation failed. The fix was adding `noValidate` to ensure Zod validation messages are shown.
+
 ## Debugging
 
 ### Using Playwright UI Mode (Recommended)
