@@ -7,6 +7,7 @@ import { Home } from './Home';
 import { CameraSettings } from './CameraSettings';
 import { CaptureScan } from './CaptureScan';
 import { Scientists } from './Scientists';
+import { Phenotypers } from './Phenotypers';
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="camera-settings" element={<CameraSettings />} />
           <Route path="capture-scan" element={<CaptureScan />} />
           <Route path="scientists" element={<Scientists />} />
+          <Route path="phenotypers" element={<Phenotypers />} />
         </Route>
       </Routes>
     </Router>
