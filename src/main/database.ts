@@ -165,9 +165,9 @@ export function initializeDatabase(
     // Use environment variable if set (takes precedence over NODE_ENV logic)
     const envUrl = process.env.BLOOM_DATABASE_URL;
 
-    // Check for relative path format: file:./path
+    // Check for relative path format: file:./path or file:../path
     // This is a common developer-friendly format but file:// URLs only support absolute paths
-    const relativeMatch = envUrl.match(/^file:(\.\/.*)$/);
+    const relativeMatch = envUrl.match(/^file:(\.\.?\/.*)$/);
     if (relativeMatch) {
       const relativePath = relativeMatch[1]; // "./prisma/dev.db"
       dbPath = path.resolve(app.getAppPath(), relativePath);

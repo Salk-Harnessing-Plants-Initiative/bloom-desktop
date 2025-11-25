@@ -23,9 +23,8 @@ export function Phenotypers() {
       }
 
       const data = result.data as Phenotyper[];
-      // Sort by name alphabetically
-      const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
-      setPhenotypers(sorted);
+      // Data is already sorted by the database handler (orderBy: { name: 'asc' })
+      setPhenotypers(data);
     } catch (err) {
       console.error('Error fetching phenotypers:', err);
       setError('An unexpected error occurred while loading phenotypers');
