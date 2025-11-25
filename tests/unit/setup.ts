@@ -28,6 +28,10 @@ const mockDatabaseAPI = {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     create: vi.fn().mockResolvedValue({ success: true, data: {} }),
   },
+  phenotypers: {
+    list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    create: vi.fn().mockResolvedValue({ success: true, data: {} }),
+  },
 };
 
 // FIX: Don't spread global.window - just add properties to preserve happy-dom's DOM constructors
