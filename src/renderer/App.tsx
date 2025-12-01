@@ -8,6 +8,7 @@ import { CameraSettings } from './CameraSettings';
 import { CaptureScan } from './CaptureScan';
 import { Scientists } from './Scientists';
 import { Phenotypers } from './Phenotypers';
+import { Accessions } from './Accessions';
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="capture-scan" element={<CaptureScan />} />
           <Route path="scientists" element={<Scientists />} />
           <Route path="phenotypers" element={<Phenotypers />} />
+          <Route path="accessions" element={<Accessions />} />
         </Route>
       </Routes>
     </Router>

@@ -282,6 +282,151 @@ export function registerDatabaseHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'db:accessions:createWithMappings',
+    async (
+      _event,
+      accessionData: { name: string },
+      mappings: { plant_barcode: string; genotype_id?: string }[]
+    ): Promise<DatabaseResponse> => {
+      try {
+        // Create accession with plant mappings in atomic transaction
+        const result = await db.$transaction(async (tx) => {
+          const accession = await tx.accessions.create({
+            data: { name: accessionData.name },
+          });
+
+          // Process mappings in batches of 100
+          const batchSize = 100;
+          let totalCreated = 0;
+
+          for (let i = 0; i < mappings.length; i += batchSize) {
+            const batch = mappings.slice(i, i + batchSize);
+            await tx.plantAccessionMappings.createMany({
+              data: batch.map((m) => ({
+                accession_file_id: accession.id,
+                accession_id: accession.id,
+                plant_barcode: m.plant_barcode,
+                genotype_id: m.genotype_id || '',
+              })),
+            });
+            totalCreated += batch.length;
+          }
+
+          return { accession, mappingCount: totalCreated };
+        });
+
+        logDatabaseOperation(
+          'CREATE',
+          'Accession with Mappings',
+          `id=${result.accession.id} name="${result.accession.name}" mappings=${result.mappingCount}`
+        );
+
+        return {
+          success: true,
+          data: {
+            ...result.accession,
+            mappingCount: result.mappingCount,
+          },
+        };
+      } catch (error) {
+        console.error('[DB] Failed to create accession with mappings:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:accessions:getMappings',
+    async (_event, accessionId: string): Promise<DatabaseResponse> => {
+      try {
+        const mappings = await db.plantAccessionMappings.findMany({
+          where: { accession_file_id: accessionId },
+          orderBy: { plant_barcode: 'asc' },
+        });
+        return { success: true, data: mappings };
+      } catch (error) {
+        console.error('[DB] Failed to get accession mappings:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:accessions:update',
+    async (
+      _event,
+      id: string,
+      data: { name: string }
+    ): Promise<DatabaseResponse> => {
+      try {
+        if (!data.name || data.name.trim() === '') {
+          return {
+            success: false,
+            error: 'Name cannot be empty',
+          };
+        }
+
+        const accession = await db.accessions.update({
+          where: { id },
+          data: { name: data.name.trim() },
+        });
+
+        logDatabaseOperation(
+          'UPDATE',
+          'Accession',
+          `id=${accession.id} name="${accession.name}"`
+        );
+
+        return { success: true, data: accession };
+      } catch (error) {
+        console.error('[DB] Failed to update accession:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:accessions:delete',
+    async (_event, id: string): Promise<DatabaseResponse> => {
+      try {
+        // Delete in transaction (cascade will handle plant mappings)
+        const result = await db.$transaction(async (tx) => {
+          // First delete all plant mappings
+          await tx.plantAccessionMappings.deleteMany({
+            where: { accession_file_id: id },
+          });
+
+          // Then delete the accession
+          const accession = await tx.accessions.delete({
+            where: { id },
+          });
+
+          return accession;
+        });
+
+        logDatabaseOperation('DELETE', 'Accession', `id=${id}`);
+
+        return { success: true, data: result };
+      } catch (error) {
+        console.error('[DB] Failed to delete accession:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
   // ============================================
   // Scans
   // ============================================
