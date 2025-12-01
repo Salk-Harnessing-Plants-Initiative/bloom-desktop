@@ -353,16 +353,14 @@ test.describe('Renderer Database IPC - Accessions', () => {
       },
     });
 
-    const result = await window.evaluate(
-      (id) => {
-        return (
-          window as WindowWithElectron
-        ).electron.database.accessions.update(id, {
+    const result = await window.evaluate((id) => {
+      return (window as WindowWithElectron).electron.database.accessions.update(
+        id,
+        {
           name: 'Updated Name',
-        });
-      },
-      accession.id
-    );
+        }
+      );
+    }, accession.id);
 
     expect(result.success).toBe(true);
     expect(result.data.name).toBe('Updated Name');
@@ -382,14 +380,11 @@ test.describe('Renderer Database IPC - Accessions', () => {
       },
     });
 
-    const result = await window.evaluate(
-      (id) => {
-        return (window as WindowWithElectron).electron.database.accessions.delete(
-          id
-        );
-      },
-      accession.id
-    );
+    const result = await window.evaluate((id) => {
+      return (window as WindowWithElectron).electron.database.accessions.delete(
+        id
+      );
+    }, accession.id);
 
     expect(result.success).toBe(true);
 
@@ -452,14 +447,11 @@ test.describe('Renderer Database IPC - Accessions', () => {
       },
     });
 
-    const result = await window.evaluate(
-      (id) => {
-        return (
-          window as WindowWithElectron
-        ).electron.database.accessions.getMappings(id);
-      },
-      accession.id
-    );
+    const result = await window.evaluate((id) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.accessions.getMappings(id);
+    }, accession.id);
 
     expect(result.success).toBe(true);
     expect(result.data).toHaveLength(2);
