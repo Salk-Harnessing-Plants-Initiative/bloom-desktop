@@ -5,6 +5,7 @@
 ### Problem Statement
 
 Accessions are fully implemented in the database backend (schema, IPC handlers, types) but have **no UI for management**. Users cannot:
+
 - View existing accessions
 - Create new accessions
 - Upload plant-accession mappings from Excel files
@@ -15,12 +16,14 @@ This forces users to manually manage accessions via database tools or skip acces
 ### User Impact
 
 **Current workflow (broken)**:
+
 1. User wants to track plant accessions for an experiment
 2. No UI exists to create/view accessions
 3. User either skips accession tracking or uses external database tools
 4. Data integrity suffers, experiment context is lost
 
 **Desired workflow (with this change)**:
+
 1. User navigates to Accessions page
 2. Views list of existing accessions
 3. Creates new accession with name
@@ -31,6 +34,7 @@ This forces users to manually manage accessions via database tools or skip acces
 ### Pilot Features to Incorporate
 
 The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI with:
+
 - Excel file upload (drag-and-drop, 15MB limit)
 - Multi-sheet support with sheet selection
 - Column mapping (Plant ID barcode column + Genotype ID column)
@@ -45,12 +49,14 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 ### Improvements Over Pilot
 
 **Code Quality**:
+
 - TypeScript strict mode throughout (pilot has mixed types)
 - Zod validation for file format and column selection
 - Comprehensive error handling with user-friendly messages
 - Test coverage: 20+ E2E tests, 15+ unit tests (pilot has minimal tests)
 
 **UX Improvements**:
+
 - Accessible drag-and-drop (keyboard support)
 - Loading states for all async operations
 - Empty state messaging
@@ -59,6 +65,7 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 - Column type auto-detection (suggest Plant ID vs Genotype columns)
 
 **Performance**:
+
 - Streaming file parsing (not blocking UI)
 - Web Worker for Excel processing
 - Optimistic UI updates
@@ -69,6 +76,7 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 ### New UI Components
 
 **Files Created**:
+
 - `src/renderer/Accessions.tsx` - Main page component (~300 lines)
 - `src/renderer/components/AccessionForm.tsx` - Name input form (~100 lines)
 - `src/renderer/components/AccessionFileUpload.tsx` - Excel upload widget (~400 lines)
@@ -79,6 +87,7 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 - `tests/unit/components/AccessionFileUpload.test.tsx` - Upload tests (~400 lines)
 
 **Files Modified**:
+
 - `src/renderer/App.tsx` - Add `/accessions` route
 - `src/renderer/Layout.tsx` - Add Accessions navigation link
 - `tests/unit/setup.ts` - Add accessions mock to global test setup
@@ -86,12 +95,14 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 ### Feature Breakdown
 
 #### Phase 1: Basic CRUD (MVP)
+
 - Display accessions list (sorted alphabetically by name)
 - Create accession with name validation
 - Empty state when no accessions exist
 - Loading/error states
 
 #### Phase 2: Excel File Upload
+
 - Drag-and-drop Excel upload (XLSX/XLS, 15MB limit)
 - File validation (format, size, structure)
 - Sheet selection dropdown (for multi-sheet files)
@@ -102,6 +113,7 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 - Batch processing (100 rows at a time)
 
 #### Phase 3: Accession Management
+
 - Expandable list items showing:
   - Accession name + creation date
   - Number of plant mappings
@@ -111,6 +123,7 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 - Delete accession (with confirmation)
 
 #### Phase 4: Polish
+
 - Info tooltips explaining each field
 - Accessible keyboard navigation
 - Search/filter accessions
@@ -119,12 +132,14 @@ The pilot (`eberrigan/bloom-desktop-pilot`) has a sophisticated Accessions UI wi
 ### Backend Already Complete
 
 No backend changes needed:
+
 - ✅ Database schema (`Accessions` + `PlantAccessionMappings`)
 - ✅ IPC handlers (`list`, `create`)
 - ✅ Type definitions
 - ✅ Unit tests for database operations
 
 **Additional IPC handler needed**:
+
 - `db:accessions:createWithMappings` - Atomic create accession + plant mappings
 - `db:accessions:getMappings` - Fetch plant mappings for an accession
 - `db:accessions:update` - Update accession name
@@ -135,12 +150,14 @@ No backend changes needed:
 ### On Development Workflow
 
 **Positive**:
+
 - Follows proven TDD pattern (Scientists, Phenotypers)
 - Reuses existing UI components (form patterns, loading states)
 - Comprehensive test coverage prevents regressions
 - Excel parsing library already in dependencies
 
 **Effort**: ~2-3 days with TDD
+
 - Day 1: Fixtures, E2E tests, unit tests (write tests first)
 - Day 2: Implement basic CRUD + file upload components
 - Day 3: Inline editing, polish, integration testing
@@ -151,6 +168,7 @@ No backend changes needed:
 **After**: Full-featured accession management with Excel bulk upload
 
 **Key UX Wins**:
+
 - Drag-and-drop file upload (familiar pattern)
 - Visual column highlighting (reduces errors)
 - Preview before upload (catch mistakes early)
@@ -160,6 +178,7 @@ No backend changes needed:
 ### On Testing
 
 **Test Strategy**:
+
 - **E2E Tests** (~20 scenarios):
   - Navigation and empty state
   - Create accession with valid/invalid names
@@ -186,6 +205,7 @@ No backend changes needed:
 ### On Performance
 
 **Optimizations**:
+
 - Web Worker for Excel parsing (non-blocking)
 - Virtual scrolling for large file previews
 - Debounced search (300ms)
@@ -193,6 +213,7 @@ No backend changes needed:
 - Optimistic UI updates for name edits
 
 **Expected performance**:
+
 - Upload 1000-row Excel file: ~2-3 seconds
 - Render preview: <100ms
 - Search/filter: <50ms
@@ -206,6 +227,7 @@ None - backend is complete, UI is standalone
 ### Blocks
 
 This change unblocks:
+
 - Issue #66 - Experiments Management (experiments can link to accessions)
 - Issue #68 - AccessionChooser component (needs accessions list to choose from)
 - Future: Scan filtering by accession

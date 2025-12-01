@@ -3,6 +3,7 @@
 ## Overview
 
 Implementation follows Test-Driven Development (TDD):
+
 1. Write tests first (E2E + Unit)
 2. Implement to make tests pass
 3. Refactor for quality
@@ -10,6 +11,7 @@ Implementation follows Test-Driven Development (TDD):
 ## Phase 1: Test Infrastructure (TDD - Write Tests First)
 
 ### Task 1.1: Create Test Fixtures
+
 - [ ] Create `tests/fixtures/accessions.ts` with:
   - `AccessionTestData` interface
   - `createAccessionData()` factory function with unique names
@@ -21,6 +23,7 @@ Implementation follows Test-Driven Development (TDD):
   - `mockPlantMappings()` for testing plant-accession relationships
 
 ### Task 1.2: Add Backend IPC Handlers (Prerequisites for Tests)
+
 - [ ] Add `db:accessions:createWithMappings` IPC handler
   - Atomic transaction: create accession + plant mappings
   - Handle batch inserts (100 rows at a time)
@@ -39,6 +42,7 @@ Implementation follows Test-Driven Development (TDD):
 - [ ] Update `tests/unit/setup.ts` with accessions mock
 
 ### Task 1.3: Write E2E Tests (Before Implementation)
+
 - [ ] Create `tests/e2e/accessions-management.e2e.ts` with tests for:
   - Navigation to Accessions page
   - Empty state display
@@ -67,6 +71,7 @@ Implementation follows Test-Driven Development (TDD):
   - State preservation across navigation
 
 ### Task 1.4: Write Unit Tests (Before Implementation)
+
 - [ ] Create `tests/unit/components/AccessionForm.test.tsx` with tests for:
   - Renders name field
   - Name validation (required, max length)
@@ -92,12 +97,14 @@ Implementation follows Test-Driven Development (TDD):
 ## Phase 2: Implementation
 
 ### Task 2.1: Install Dependencies
+
 - [ ] Add `xlsx` library for Excel parsing
   - `npm install xlsx`
   - `npm install --save-dev @types/xlsx`
 - [ ] Verify library works in Electron context
 
 ### Task 2.2: Create AccessionForm Component
+
 - [ ] Create `src/renderer/components/AccessionForm.tsx`:
   - Zod validation schema (name required, max 255 chars)
   - React Hook Form integration
@@ -107,6 +114,7 @@ Implementation follows Test-Driven Development (TDD):
   - Form reset on success
 
 ### Task 2.3: Create AccessionFileUpload Component
+
 - [ ] Create `src/renderer/components/AccessionFileUpload.tsx`:
   - Drag-and-drop zone with visual feedback
   - File validation (size <= 15MB, format XLSX/XLS)
@@ -121,6 +129,7 @@ Implementation follows Test-Driven Development (TDD):
   - Comprehensive error handling
 
 ### Task 2.4: Create AccessionList Component
+
 - [ ] Create `src/renderer/components/AccessionList.tsx`:
   - Expandable list items (accordion pattern)
   - Show name + creation date for collapsed items
@@ -132,6 +141,7 @@ Implementation follows Test-Driven Development (TDD):
   - Loading states for actions
 
 ### Task 2.5: Create Accessions Page
+
 - [ ] Create `src/renderer/Accessions.tsx`:
   - Fetch accessions from `window.electron.database.accessions.list()`
   - Display list sorted alphabetically by name
@@ -144,6 +154,7 @@ Implementation follows Test-Driven Development (TDD):
   - Refresh list after successful creation/upload
 
 ### Task 2.6: Add Navigation and Route
+
 - [ ] Modify `src/renderer/App.tsx`:
   - Add route for `/accessions`
   - Import Accessions component
@@ -154,6 +165,7 @@ Implementation follows Test-Driven Development (TDD):
 ## Phase 3: Verification
 
 ### Task 3.1: Run All Tests
+
 - [ ] Run unit tests: `npm run test:unit`
   - Verify AccessionForm tests pass (7-10 tests)
   - Verify AccessionFileUpload tests pass (12-15 tests)
@@ -163,6 +175,7 @@ Implementation follows Test-Driven Development (TDD):
 - [ ] Run type check: `npx tsc --noEmit`
 
 ### Task 3.2: Manual Verification
+
 - [ ] Navigate to Accessions page
 - [ ] Verify empty state
 - [ ] Create a simple accession
@@ -177,6 +190,7 @@ Implementation follows Test-Driven Development (TDD):
 - [ ] Verify duplicate names are allowed
 
 ### Task 3.3: Performance Testing
+
 - [ ] Upload large Excel file (1000+ rows)
 - [ ] Verify batch processing works smoothly
 - [ ] Verify UI remains responsive during upload
@@ -186,6 +200,7 @@ Implementation follows Test-Driven Development (TDD):
 ## Phase 4: Polish and Documentation
 
 ### Task 4.1: Accessibility
+
 - [ ] Verify keyboard navigation works
 - [ ] Add ARIA labels to drag-and-drop zone
 - [ ] Ensure screen reader support for column highlighting
@@ -193,6 +208,7 @@ Implementation follows Test-Driven Development (TDD):
 - [ ] Add focus indicators
 
 ### Task 4.2: Documentation
+
 - [ ] Update README with Accessions page description
 - [ ] Document Excel file format requirements
 - [ ] Add example Excel template to docs

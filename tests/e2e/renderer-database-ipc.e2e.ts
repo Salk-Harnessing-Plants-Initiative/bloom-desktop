@@ -344,6 +344,128 @@ test.describe('Renderer Database IPC - Accessions', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
   });
+
+  test('should update accession from renderer', async () => {
+    // Create accession first
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Original Name',
+      },
+    });
+
+    const result = await window.evaluate(
+      (id) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.accessions.update(id, {
+          name: 'Updated Name',
+        });
+      },
+      accession.id
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.name).toBe('Updated Name');
+
+    // Verify in database
+    const updated = await prisma.accessions.findUnique({
+      where: { id: accession.id },
+    });
+    expect(updated?.name).toBe('Updated Name');
+  });
+
+  test('should delete accession from renderer', async () => {
+    // Create accession first
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'To Delete',
+      },
+    });
+
+    const result = await window.evaluate(
+      (id) => {
+        return (window as WindowWithElectron).electron.database.accessions.delete(
+          id
+        );
+      },
+      accession.id
+    );
+
+    expect(result.success).toBe(true);
+
+    // Verify deletion in database
+    const deleted = await prisma.accessions.findUnique({
+      where: { id: accession.id },
+    });
+    expect(deleted).toBeNull();
+  });
+
+  test('should create accession with mappings from renderer', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.accessions.createWithMappings({
+        name: 'Accession with Mappings',
+        mappings: [
+          {
+            plantId: 'PLANT001',
+            genotypeId: 'GENOTYPE_A',
+          },
+          {
+            plantId: 'PLANT002',
+            genotypeId: 'GENOTYPE_B',
+          },
+        ],
+      });
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.name).toBe('Accession with Mappings');
+    expect(result.data.mappingCount).toBe(2);
+
+    // Verify in database
+    const accession = await prisma.accessions.findFirst({
+      where: { name: 'Accession with Mappings' },
+      include: { plantMappings: true },
+    });
+    expect(accession).toBeDefined();
+    expect(accession?.plantMappings).toHaveLength(2);
+  });
+
+  test('should get mappings for accession from renderer', async () => {
+    // Create accession with mappings
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Test Accession',
+        plantMappings: {
+          create: [
+            {
+              plantId: 'PLANT001',
+              genotypeId: 'GENOTYPE_A',
+            },
+            {
+              plantId: 'PLANT002',
+              genotypeId: 'GENOTYPE_B',
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await window.evaluate(
+      (id) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.accessions.getMappings(id);
+      },
+      accession.id
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0].plantId).toBe('PLANT001');
+    expect(result.data[1].plantId).toBe('PLANT002');
+  });
 });
 
 test.describe('Renderer Database IPC - Experiments (with Relations)', () => {

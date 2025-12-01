@@ -79,9 +79,7 @@ describe('AccessionForm', () => {
 
     // Verify validation error appears
     await waitFor(() => {
-      expect(
-        screen.getByText(/maximum|too long|255/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/maximum|too long|255/i)).toBeInTheDocument();
     });
 
     // Verify IPC was NOT called

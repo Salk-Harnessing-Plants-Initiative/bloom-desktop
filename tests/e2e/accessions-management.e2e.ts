@@ -366,12 +366,16 @@ test.describe('Accessions List Display', () => {
     ).toBeVisible();
 
     // Wait for list to load
-    await expect(window.locator(`text=${sortedAccessions[0].name}`)).toBeVisible({
+    await expect(
+      window.locator(`text=${sortedAccessions[0].name}`)
+    ).toBeVisible({
       timeout: 5000,
     });
 
     // Get all accession names from UI
-    const accessionElements = await window.locator('[data-testid="accession-item"]').all();
+    const accessionElements = await window
+      .locator('[data-testid="accession-item"]')
+      .all();
     const displayedNames: string[] = [];
 
     for (const element of accessionElements) {

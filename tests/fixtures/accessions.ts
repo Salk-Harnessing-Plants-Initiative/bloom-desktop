@@ -157,9 +157,15 @@ export function mockExcelFile(options: {
       data: Array.from({ length: sheet.rowCount }, (_, i) => {
         const row: Record<string, string | number> = {};
         columns.forEach((col) => {
-          if (col.toLowerCase().includes('barcode') || col.toLowerCase().includes('plant')) {
+          if (
+            col.toLowerCase().includes('barcode') ||
+            col.toLowerCase().includes('plant')
+          ) {
             row[col] = `PLANT-${String(i + 1).padStart(6, '0')}`;
-          } else if (col.toLowerCase().includes('genotype') || col.toLowerCase().includes('gt')) {
+          } else if (
+            col.toLowerCase().includes('genotype') ||
+            col.toLowerCase().includes('gt')
+          ) {
             row[col] = `GT-${String(i + 1).padStart(4, '0')}`;
           } else if (col.toLowerCase().includes('notes')) {
             row[col] = i % 10 === 0 ? `Test note ${i}` : '';

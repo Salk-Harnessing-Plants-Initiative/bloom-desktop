@@ -82,39 +82,59 @@ Perform a complete pre-merge check following this workflow:
     - Push all changes
     - Create PR if not exists: `gh pr create`
 
-### Phase 7: Review Feedback
+### Phase 7: CI Monitoring
 
-11. **Review PR Comments**
+11. **Monitor GitHub Actions**
+    - After PR creation, check CI status: `gh pr checks <PR_NUMBER>`
+    - Monitor all workflows:
+      - Lint (Node.js + Python)
+      - TypeScript compilation
+      - Unit tests
+      - E2E IPC coverage
+      - Python builds (macOS, Ubuntu, Windows)
+      - Python tests
+    - Wait for all checks to complete
+    - If any fail: use `/ci-debug` command to investigate
+    - Review workflow logs for failures
+    - Address failures incrementally
+
+### Phase 8: Review Feedback
+
+12. **Review PR Comments**
     - Run `/review-pr` command
     - Check for GitHub Actions failures
     - Review comments from:
       - GitHub Copilot
       - Human reviewers
       - Automated linters/tests
+      - CI failure messages
     - Address all concerns
 
-12. **Plan Fixes** (if issues found)
+13. **Plan Fixes** (if issues found)
     - Use planning mode with ultrathink
     - Create action plan for each concern
     - Implement fixes incrementally
     - Re-run relevant checks after each fix
     - Push updated commits
+    - Monitor CI re-runs: `gh pr checks <PR_NUMBER>`
 
-### Phase 8: Changelog
+### Phase 9: Changelog
 
-13. **Update Changelog**
+14. **Update Changelog**
     - Run `/changelog` command
     - Add entry for this PR
     - Follow semantic versioning
     - Include migration notes if needed
 
-### Phase 9: Final Verification
+### Phase 10: Final Verification
 
-14. **Final Check**
-    - Verify all CI checks are green
+15. **Final Check**
+    - Verify all CI checks are green: `gh pr checks <PR_NUMBER>`
     - Confirm all review comments are addressed
-    - Check branch is up-to-date with main
+    - Check branch is up-to-date with main: `git fetch origin main && git merge-base --is-ancestor origin/main HEAD`
     - Verify no merge conflicts
+    - Ensure PR has required approvals
+    - Check for "ready to merge" status
 
 ## Output Format
 
@@ -124,39 +144,46 @@ Provide a comprehensive summary in this format:
 # Pre-Merge Check Results
 
 ## ✅ Code Quality
+
 - [x] Linting: PASS
 - [x] TypeScript: PASS
 - [x] Formatting: PASS
 
 ## ✅ Testing
+
 - [x] Unit Tests: X passed, Y skipped
 - [x] E2E Tests: X passed, Y skipped
 - [x] Integration Tests: X passed (or N/A)
 - [x] Coverage: X% (meets threshold)
 
 ## ✅ Build & Package
+
 - [x] Package builds successfully
 - [x] Application launches
 - [x] Bundle size: XMB (change: +/-YMB)
 
 ## ✅ Documentation
+
 - [x] README up-to-date
 - [x] API docs current
 - [x] OpenSpec completed (or N/A)
 
 ## ✅ Pull Request
+
 - [x] PR created: #X
 - [x] Description comprehensive
 - [x] All checks passing
 - [x] No review blockers
 
 ## ✅ Changelog
+
 - [x] Entry added for vX.Y.Z
 
 ## 🎯 Status: READY TO MERGE
 ```
 
 If any checks fail, provide:
+
 - Clear explanation of failure
 - Proposed fix
 - Steps to implement
@@ -174,6 +201,7 @@ If any checks fail, provide:
 ## When to Use
 
 Run this command before:
+
 - Creating a pull request
 - Requesting code review
 - Merging to main/production

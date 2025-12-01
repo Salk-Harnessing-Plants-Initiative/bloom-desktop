@@ -129,6 +129,7 @@ curl http://localhost:9000
 ### Navigation Assertions
 
 **DO:** Use semantic role-based selectors
+
 ```typescript
 await expect(
   window.getByRole('heading', { name: 'PageName', exact: true })
@@ -136,6 +137,7 @@ await expect(
 ```
 
 **DON'T:** Use CSS selectors with text content
+
 ```typescript
 await expect(window.locator('h1:has-text("PageName")')).toBeVisible();
 ```
@@ -145,12 +147,14 @@ await expect(window.locator('h1:has-text("PageName")')).toBeVisible();
 ### Checking Multiple Elements
 
 **DO:** Check each element individually
+
 ```typescript
 await expect(window.locator('button:has-text("Edit")')).toBeVisible();
 await expect(window.locator('button:has-text("Delete")')).toBeVisible();
 ```
 
 **DON'T:** Use comma-separated selectors with single assertion
+
 ```typescript
 await expect(
   window.locator('button:has-text("Edit"), button:has-text("Delete")')
@@ -162,12 +166,14 @@ await expect(
 ### React Controlled Inputs
 
 **DO:** Use `getByRole()` and verify value with `toHaveValue()`
+
 ```typescript
 const input = window.getByRole('textbox').first();
 await expect(input).toHaveValue('expected value');
 ```
 
 **DON'T:** Use attribute selectors like `input[value="..."]`
+
 ```typescript
 const input = window.locator('input[value="Old Name"]');
 ```
@@ -177,12 +183,14 @@ const input = window.locator('input[value="Old Name"]');
 ### Multiple Textboxes on Page
 
 **DO:** Use `.first()` or `.last()` to disambiguate when multiple textboxes exist
+
 ```typescript
 // Gets the first textbox (e.g., edit input in expanded section)
 const editInput = window.getByRole('textbox').first();
 ```
 
 **DON'T:** Use `getByRole('textbox')` when multiple exist
+
 ```typescript
 const editInput = window.getByRole('textbox'); // Throws strict mode error
 ```

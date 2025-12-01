@@ -28,7 +28,8 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
   if (win && win.electron && win.electron.database) {
-    win.electron.database.accessions.createWithMappings = mockCreateWithMappings;
+    win.electron.database.accessions.createWithMappings =
+      mockCreateWithMappings;
   }
 });
 

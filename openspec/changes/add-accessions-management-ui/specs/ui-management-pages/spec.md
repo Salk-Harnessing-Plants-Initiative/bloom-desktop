@@ -14,6 +14,7 @@ The Accessions page SHALL display all accessions from the database in a clean, r
 **And** the create form is visible below
 
 **Acceptance Criteria**:
+
 - Empty state message is clear (e.g., "No accessions yet")
 - List container is visually distinct but empty
 - User can immediately see the create form without scrolling
@@ -28,6 +29,7 @@ The Accessions page SHALL display all accessions from the database in a clean, r
 **And** the list is sorted alphabetically by name
 
 **Acceptance Criteria**:
+
 - Each accession appears exactly once
 - Format: "Name - Created: YYYY-MM-DD" or similar clear presentation
 - List is scrollable if content exceeds container height
@@ -45,6 +47,7 @@ The Accessions page SHALL display all accessions from the database in a clean, r
 **And** shows edit/delete action buttons
 
 **Acceptance Criteria**:
+
 - Smooth expand/collapse animation
 - Clear visual hierarchy for nested information
 - Edit button enables inline name editing
@@ -66,6 +69,7 @@ The Accessions page MUST allow users to create new accessions with client-side v
 **And** the accessions list refreshes to show the new entry
 
 **Acceptance Criteria**:
+
 - Name is trimmed of leading/trailing whitespace
 - Loading indicator appears during submission
 - IPC call completes successfully
@@ -83,6 +87,7 @@ The Accessions page MUST allow users to create new accessions with client-side v
 **And** no IPC call is made to the database
 
 **Acceptance Criteria**:
+
 - Validation runs before submission (no network call)
 - Error message is displayed inline near the name field
 - Error message is cleared when user starts typing
@@ -97,6 +102,7 @@ The Accessions page MUST allow users to create new accessions with client-side v
 **And** both accessions appear in the list with distinct IDs
 
 **Acceptance Criteria**:
+
 - Database does NOT enforce unique name constraint
 - Duplicate names are permitted by design
 - Each accession has unique UUID
@@ -118,6 +124,7 @@ The Accessions page SHALL support uploading Excel files (XLSX/XLS) to bulk-creat
 **And** column selection dropdowns appear for Plant ID and Genotype ID
 
 **Acceptance Criteria**:
+
 - Drag-and-drop zone is clearly marked
 - File size validation (15MB limit)
 - Format validation (XLSX, XLS only)
@@ -135,6 +142,7 @@ The Accessions page SHALL support uploading Excel files (XLSX/XLS) to bulk-creat
 **And** the user can select a different file
 
 **Acceptance Criteria**:
+
 - Size check happens before parsing
 - Clear error message with size limit
 - Upload zone remains interactive
@@ -150,6 +158,7 @@ The Accessions page SHALL support uploading Excel files (XLSX/XLS) to bulk-creat
 **And** Genotype ID column shows blue highlighting
 
 **Acceptance Criteria**:
+
 - Visual column highlighting in preview table
 - Color-coded: green for Plant ID, blue for Genotype ID
 - Highlighting updates immediately on selection change
@@ -167,6 +176,7 @@ The Accessions page SHALL support uploading Excel files (XLSX/XLS) to bulk-creat
 **And** success message shows "500 mappings uploaded"
 
 **Acceptance Criteria**:
+
 - Batch size: 100 rows per database transaction
 - Progress indicator shows current batch
 - UI remains responsive during upload
@@ -191,6 +201,7 @@ The Accessions page MUST support inline editing of accession names with keyboard
 **And** a success indicator appears briefly
 
 **Acceptance Criteria**:
+
 - Name field converts to input on edit click
 - Current value is pre-filled and selected
 - Enter key saves changes
@@ -209,6 +220,7 @@ The Accessions page MUST support inline editing of accession names with keyboard
 **And** no database call is made
 
 **Acceptance Criteria**:
+
 - Escape key cancels edit
 - Changes are discarded
 - Original value restored immediately
@@ -228,6 +240,7 @@ The application SHALL provide navigation to the Accessions page via a clearly la
 **And** the accessions list is fetched and displayed
 
 **Acceptance Criteria**:
+
 - Navigation link is clearly labeled "Accessions"
 - Link is visible in the main navigation menu
 - Route is registered in React Router

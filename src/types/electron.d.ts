@@ -292,9 +292,7 @@ export interface DatabaseAPI {
     createWithMappings: (
       accessionData: { name: string },
       mappings: { plant_barcode: string; genotype_id?: string }[]
-    ) => Promise<
-      DatabaseResponse<Accessions & { mappingCount: number }>
-    >;
+    ) => Promise<DatabaseResponse<Accessions & { mappingCount: number }>>;
     getMappings: (
       accessionId: string
     ) => Promise<

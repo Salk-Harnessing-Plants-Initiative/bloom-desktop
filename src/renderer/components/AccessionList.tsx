@@ -94,8 +94,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
               <div>
                 <div className="font-medium text-sm">{accession.name}</div>
                 <div className="text-xs text-gray-500">
-                  Created:{' '}
-                  {new Date(accession.createdAt).toLocaleDateString()}
+                  Created: {new Date(accession.createdAt).toLocaleDateString()}
                 </div>
               </div>
               <div className="text-gray-400">
