@@ -435,12 +435,12 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accessionId: '', // Will be auto-set by Prisma
+              accessionId: 'dummy', // Required field
               plantBarcode: 'PLANT001',
               genotypeId: 'GENOTYPE_A',
             },
             {
-              accessionId: '', // Will be auto-set by Prisma
+              accessionId: 'dummy', // Required field
               plantBarcode: 'PLANT002',
               genotypeId: 'GENOTYPE_B',
             },
