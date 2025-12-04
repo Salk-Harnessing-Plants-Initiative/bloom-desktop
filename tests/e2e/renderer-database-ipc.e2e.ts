@@ -435,14 +435,14 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accessionId: 'dummy', // Required field
-              plantBarcode: 'PLANT001',
-              genotypeId: 'GENOTYPE_A',
+              accession_id: 'dummy', // Required field
+              plant_barcode: 'PLANT001',
+              genotype_id: 'GENOTYPE_A',
             },
             {
-              accessionId: 'dummy', // Required field
-              plantBarcode: 'PLANT002',
-              genotypeId: 'GENOTYPE_B',
+              accession_id: 'dummy', // Required field
+              plant_barcode: 'PLANT002',
+              genotype_id: 'GENOTYPE_B',
             },
           ],
         },
