@@ -399,19 +399,19 @@ test.describe('Renderer Database IPC - Accessions', () => {
     const result = await window.evaluate(() => {
       return (
         window as WindowWithElectron
-      ).electron.database.accessions.createWithMappings({
-        name: 'Accession with Mappings',
-        mappings: [
+      ).electron.database.accessions.createWithMappings(
+        { name: 'Accession with Mappings' },
+        [
           {
-            plantId: 'PLANT001',
-            genotypeId: 'GENOTYPE_A',
+            plant_barcode: 'PLANT001',
+            genotype_id: 'GENOTYPE_A',
           },
           {
-            plantId: 'PLANT002',
-            genotypeId: 'GENOTYPE_B',
+            plant_barcode: 'PLANT002',
+            genotype_id: 'GENOTYPE_B',
           },
-        ],
-      });
+        ]
+      );
     });
 
     expect(result.success).toBe(true);
@@ -421,10 +421,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
     // Verify in database
     const accession = await prisma.accessions.findFirst({
       where: { name: 'Accession with Mappings' },
-      include: { plantMappings: true },
+      include: { mappings: true },
     });
     expect(accession).toBeDefined();
-    expect(accession?.plantMappings).toHaveLength(2);
+    expect(accession?.mappings).toHaveLength(2);
   });
 
   test('should get mappings for accession from renderer', async () => {
@@ -432,14 +432,16 @@ test.describe('Renderer Database IPC - Accessions', () => {
     const accession = await prisma.accessions.create({
       data: {
         name: 'Test Accession',
-        plantMappings: {
+        mappings: {
           create: [
             {
-              plantId: 'PLANT001',
+              accessionId: '', // Will be auto-set by Prisma
+              plantBarcode: 'PLANT001',
               genotypeId: 'GENOTYPE_A',
             },
             {
-              plantId: 'PLANT002',
+              accessionId: '', // Will be auto-set by Prisma
+              plantBarcode: 'PLANT002',
               genotypeId: 'GENOTYPE_B',
             },
           ],
@@ -455,8 +457,8 @@ test.describe('Renderer Database IPC - Accessions', () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toHaveLength(2);
-    expect(result.data[0].plantId).toBe('PLANT001');
-    expect(result.data[1].plantId).toBe('PLANT002');
+    expect(result.data[0].plant_barcode).toBe('PLANT001');
+    expect(result.data[1].plant_barcode).toBe('PLANT002');
   });
 });
 
