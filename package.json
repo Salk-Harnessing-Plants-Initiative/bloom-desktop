@@ -66,6 +66,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
+    "@types/xlsx": "^0.0.35",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vercel/webpack-asset-relocator-loader": "1.7.3",
@@ -105,6 +106,7 @@
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.51.0",
     "react-router-dom": "^6.22.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   }
 }

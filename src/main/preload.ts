@@ -170,6 +170,20 @@ const databaseAPI: DatabaseAPI = {
     list: () => ipcRenderer.invoke('db:accessions:list'),
     create: (data: AccessionCreateData) =>
       ipcRenderer.invoke('db:accessions:create', data),
+    createWithMappings: (
+      accessionData: { name: string },
+      mappings: { plant_barcode: string; genotype_id?: string }[]
+    ) =>
+      ipcRenderer.invoke(
+        'db:accessions:createWithMappings',
+        accessionData,
+        mappings
+      ),
+    getMappings: (accessionId: string) =>
+      ipcRenderer.invoke('db:accessions:getMappings', accessionId),
+    update: (id: string, data: { name: string }) =>
+      ipcRenderer.invoke('db:accessions:update', id, data),
+    delete: (id: string) => ipcRenderer.invoke('db:accessions:delete', id),
   },
   images: {
     create: (data: ImageCreateData[]) =>
