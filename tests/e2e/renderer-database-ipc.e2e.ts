@@ -435,12 +435,14 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'dummy', // Required field
+              // accession_id is set automatically by Prisma via the parent relation
+              accession_id: 'dummy',
               plant_barcode: 'PLANT001',
               genotype_id: 'GENOTYPE_A',
             },
             {
-              accession_id: 'dummy', // Required field
+              // accession_id is set automatically by Prisma via the parent relation
+              accession_id: 'dummy',
               plant_barcode: 'PLANT002',
               genotype_id: 'GENOTYPE_B',
             },
