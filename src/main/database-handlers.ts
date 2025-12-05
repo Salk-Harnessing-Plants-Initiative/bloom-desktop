@@ -307,7 +307,7 @@ export function registerDatabaseHandlers() {
                 accession_file_id: accession.id,
                 accession_id: accession.id,
                 plant_barcode: m.plant_barcode,
-                genotype_id: m.genotype_id || '',
+                genotype_id: m.genotype_id ?? null,
               })),
             });
             totalCreated += batch.length;

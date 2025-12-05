@@ -33,6 +33,12 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
           ...prev,
           [accession.id]: result.data.length,
         }));
+      } else {
+        console.error('Failed to fetch mappings:', result.error);
+        setMappingCounts((prev) => ({
+          ...prev,
+          [accession.id]: 0,
+        }));
       }
     }
   };
@@ -52,6 +58,9 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
     if (result.success) {
       setEditingId(null);
       onUpdate(); // Refresh list
+    } else {
+      // eslint-disable-next-line no-alert
+      alert(`Failed to update accession: ${result.error || 'Unknown error'}`);
     }
   };
 
@@ -68,6 +77,9 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
     const result = await window.electron.database.accessions.delete(id);
     if (result.success) {
       onUpdate(); // Refresh list
+    } else {
+      // eslint-disable-next-line no-alert
+      alert(`Failed to delete accession: ${result.error || 'Unknown error'}`);
     }
   };
 

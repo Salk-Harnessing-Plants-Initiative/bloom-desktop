@@ -216,7 +216,7 @@ test.describe('Empty State Display', () => {
     // Verify create form is visible
     await expect(window.locator('input[name="name"]')).toBeVisible();
     await expect(
-      window.locator('button:has-text("Add"), button:has-text("Create")')
+      window.locator('button:has-text("Add Accession")')
     ).toBeVisible();
   });
 });
@@ -235,8 +235,14 @@ test.describe('Create Accession', () => {
     // Fill in name field
     await window.fill('input[name="name"]', validAccession.name);
 
-    // Click submit button
-    await window.click('button:has-text("Add"), button:has-text("Create")');
+    // Click submit button (check for either "Add" or "Create")
+    const addButton = window.locator('button:has-text("Add")');
+    const createButton = window.locator('button:has-text("Create")');
+    if (await addButton.isVisible()) {
+      await addButton.click();
+    } else if (await createButton.isVisible()) {
+      await createButton.click();
+    }
 
     // Wait for success (list should update)
     await expect(window.locator(`text=${validAccession.name}`)).toBeVisible({
@@ -259,8 +265,14 @@ test.describe('Create Accession', () => {
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
-    // Click submit without filling name
-    await window.click('button:has-text("Add"), button:has-text("Create")');
+    // Click submit without filling name (check for either button)
+    const addButton = window.locator('button:has-text("Add")');
+    const createButton = window.locator('button:has-text("Create")');
+    if (await addButton.isVisible()) {
+      await addButton.click();
+    } else if (await createButton.isVisible()) {
+      await createButton.click();
+    }
 
     // Verify error message appears
     await expect(
@@ -278,8 +290,14 @@ test.describe('Create Accession', () => {
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
-    // Trigger validation error
-    await window.click('button:has-text("Add"), button:has-text("Create")');
+    // Trigger validation error (check for either button)
+    const addButton = window.locator('button:has-text("Add")');
+    const createButton = window.locator('button:has-text("Create")');
+    if (await addButton.isVisible()) {
+      await addButton.click();
+    } else if (await createButton.isVisible()) {
+      await createButton.click();
+    }
     await expect(
       window.locator('text=/required|cannot be empty/i')
     ).toBeVisible();
