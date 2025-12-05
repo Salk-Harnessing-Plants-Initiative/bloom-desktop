@@ -6,8 +6,9 @@ GitHub Actions CI workflow is failing with `ENOSPC: no space left on device` err
 
 - Use the `jlumbroso/free-disk-space@main` GitHub Action to free disk space on Ubuntu runners
 - Add the action to disk-intensive jobs: `test-e2e-dev` (Linux) and `test-dev-database`
-- Configure the action to remove Android SDK (~14GB), .NET (~2.7GB), Haskell, large packages (~5.3GB), and Docker images
+- Configure the action to remove Android SDK (~14GB), .NET (~2.7GB), Haskell, Docker images, and swap storage
 - Keep `tool-cache: false` to preserve Node.js, Python, and other cached tools we need
+- Keep `large-packages: false` to preserve xvfb and other apt packages needed for headless GUI tests
 
 ## Impact
 
@@ -15,4 +16,4 @@ GitHub Actions CI workflow is failing with `ENOSPC: no space left on device` err
 - Affected code: `.github/workflows/pr-checks.yml`
 - Non-breaking: Only adds cleanup steps before existing operations
 - No changes to test behavior or outcomes
-- Expected: ~25GB freed on Ubuntu runners, preventing ENOSPC errors
+- Expected: ~20GB freed on Ubuntu runners, preventing ENOSPC errors
