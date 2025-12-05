@@ -289,6 +289,22 @@ export interface DatabaseAPI {
     create: (
       data: AccessionCreateData
     ) => Promise<DatabaseResponse<Accessions>>;
+    createWithMappings: (
+      accessionData: { name: string },
+      mappings: { plant_barcode: string; genotype_id?: string }[]
+    ) => Promise<DatabaseResponse<Accessions & { mappingCount: number }>>;
+    getMappings: (
+      accessionId: string
+    ) => Promise<
+      DatabaseResponse<
+        { id: string; plant_barcode: string; genotype_id: string }[]
+      >
+    >;
+    update: (
+      id: string,
+      data: { name: string }
+    ) => Promise<DatabaseResponse<Accessions>>;
+    delete: (id: string) => Promise<DatabaseResponse<Accessions>>;
   };
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
