@@ -3,7 +3,9 @@
 ## Purpose
 
 This specification defines the requirements for the UI management pages for both Scientists and Phenotypers. It covers the functionality and user experience for listing, creating, editing, and deleting Scientists and Phenotypers, ensuring that users can efficiently manage these entities through intuitive interfaces, robust validation, and clear feedback. The goal is to provide a unified, consistent, and reliable management experience for both Scientists and Phenotypers within the application.
+
 ## Requirements
+
 ### Requirement: Scientists List View
 
 The Scientists page SHALL display all scientists from the database in a clean, readable list format, with support for both empty and populated states.
@@ -411,4 +413,3 @@ The Accessions page SHALL provide drag-and-drop Excel file upload functionality 
 - Only .xlsx and .xls files accepted
 - Clear error message for invalid file types
 - Upload zone remains available for retry
-
