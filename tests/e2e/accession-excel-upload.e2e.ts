@@ -863,10 +863,14 @@ test.describe('Real-World Data Upload', () => {
     await expect(previewTable).toBeVisible();
 
     // Check for actual data from the file (first row barcode)
-    await expect(previewTable.locator('td:has-text("981T0FPX7B")')).toBeVisible();
+    await expect(
+      previewTable.locator('td:has-text("981T0FPX7B")')
+    ).toBeVisible();
 
     // Check for Line column value
-    await expect(previewTable.locator('td:has-text("ARV1")').first()).toBeVisible();
+    await expect(
+      previewTable.locator('td:has-text("ARV1")').first()
+    ).toBeVisible();
 
     // Empty cells should not display "undefined" or "null"
     await expect(window.getByText('undefined')).not.toBeVisible();
@@ -942,9 +946,7 @@ test.describe('Real-World Data Upload', () => {
     expect(mappings.length).toBe(20);
 
     // Check first mapping matches first row of real data
-    const firstMapping = mappings.find(
-      (m) => m.plant_barcode === '981T0FPX7B'
-    );
+    const firstMapping = mappings.find((m) => m.plant_barcode === '981T0FPX7B');
     expect(firstMapping).toBeDefined();
     expect(firstMapping?.genotype_id).toBe('ARV1');
 
