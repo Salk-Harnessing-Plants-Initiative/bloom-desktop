@@ -62,6 +62,12 @@ const _ALTERNATIVE_COLUMNS_FILE = path.join(
   'alternative-columns.xlsx'
 );
 
+// Real-world data fixture (ARV1 Media Pilot experiment)
+const REAL_DATA_FILE = path.join(
+  FIXTURES_DIR,
+  'ARV1_Media_Pilot_Master_Data.xlsx'
+);
+
 /**
  * Helper: Launch Electron app with test database
  */
@@ -782,5 +788,171 @@ test.describe('File Validation', () => {
     // Would need a large file fixture
     // await fileInput.setInputFiles(OVERSIZED_FILE);
     // await expect(window.getByText(/file.*too.*large|exceeds.*15mb/i)).toBeVisible();
+  });
+});
+
+// ============================================
+// Real-World Data Tests (ARV1 Media Pilot)
+// ============================================
+
+test.describe('Real-World Data Upload', () => {
+  test('should upload real experiment Excel file with non-standard column names', async () => {
+    await navigateToAccessions();
+
+    const fileInput = window.locator('input[type="file"]');
+    await fileInput.setInputFiles(REAL_DATA_FILE);
+
+    // Wait for parsing
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
+
+    // Verify column selectors contain real column names
+    const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
+    );
+
+    // Should have Barcode and Line columns from real data
+    await expect(
+      plantIdSelector.locator('option[value="Barcode"]')
+    ).toBeAttached();
+    await expect(
+      genotypeSelector.locator('option[value="Line"]')
+    ).toBeAttached();
+
+    // Map columns (Barcode → Plant ID, Line → Genotype)
+    await plantIdSelector.selectOption('Barcode');
+    await genotypeSelector.selectOption('Line');
+
+    // Upload button should be enabled
+    const uploadButton = window.locator('[data-testid="upload-button"]');
+    await expect(uploadButton).toBeEnabled();
+
+    // Click upload
+    await uploadButton.click();
+
+    // Wait for success
+    await expect(window.getByText(/done.*upload|success/i)).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Verify accession was created with correct data
+    const accessions = await prisma.accessions.findMany({
+      include: { mappings: true },
+    });
+
+    expect(accessions.length).toBe(1);
+    expect(accessions[0].name).toContain('ARV1_Media_Pilot_Master_Data');
+    expect(accessions[0].mappings.length).toBe(20); // Real file has 20 data rows
+  });
+
+  test('should display real data correctly in preview table', async () => {
+    await navigateToAccessions();
+
+    const fileInput = window.locator('input[type="file"]');
+    await fileInput.setInputFiles(REAL_DATA_FILE);
+
+    // Wait for parsing
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
+
+    // Preview table should show actual barcode values from real data
+    const previewTable = window.locator('[data-testid="preview-table"]');
+    await expect(previewTable).toBeVisible();
+
+    // Check for actual data from the file (first row barcode)
+    await expect(previewTable.locator('td:has-text("981T0FPX7B")')).toBeVisible();
+
+    // Check for Line column value
+    await expect(previewTable.locator('td:has-text("ARV1")').first()).toBeVisible();
+
+    // Empty cells should not display "undefined" or "null"
+    await expect(window.getByText('undefined')).not.toBeVisible();
+    await expect(window.getByText('null')).not.toBeVisible();
+  });
+
+  test('should show accession in list after uploading real data', async () => {
+    await navigateToAccessions();
+
+    // Initially no accessions
+    await expect(window.getByText(/no accessions/i)).toBeVisible();
+
+    const fileInput = window.locator('input[type="file"]');
+    await fileInput.setInputFiles(REAL_DATA_FILE);
+
+    // Wait for parsing and select columns
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
+
+    const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
+    );
+
+    await plantIdSelector.selectOption('Barcode');
+    await genotypeSelector.selectOption('Line');
+
+    const uploadButton = window.locator('[data-testid="upload-button"]');
+    await uploadButton.click();
+
+    // Wait for success
+    await expect(window.getByText(/done.*upload|success/i)).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Accession list should show the uploaded file name
+    await expect(
+      window.getByText('ARV1_Media_Pilot_Master_Data.xlsx')
+    ).toBeVisible();
+  });
+
+  test('should store correct plant-genotype mappings from real data', async () => {
+    await navigateToAccessions();
+
+    const fileInput = window.locator('input[type="file"]');
+    await fileInput.setInputFiles(REAL_DATA_FILE);
+
+    // Wait for parsing and select columns
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
+
+    const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
+    );
+
+    await plantIdSelector.selectOption('Barcode');
+    await genotypeSelector.selectOption('Line');
+
+    const uploadButton = window.locator('[data-testid="upload-button"]');
+    await uploadButton.click();
+
+    // Wait for success
+    await expect(window.getByText(/done.*upload|success/i)).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Verify specific mappings in database
+    const mappings = await prisma.plantAccessionMappings.findMany();
+
+    expect(mappings.length).toBe(20);
+
+    // Check first mapping matches first row of real data
+    const firstMapping = mappings.find(
+      (m) => m.plant_barcode === '981T0FPX7B'
+    );
+    expect(firstMapping).toBeDefined();
+    expect(firstMapping?.genotype_id).toBe('ARV1');
+
+    // Check another mapping
+    const anotherMapping = mappings.find(
+      (m) => m.plant_barcode === '3R9FSDZ6M0'
+    );
+    expect(anotherMapping).toBeDefined();
+    expect(anotherMapping?.genotype_id).toBe('ARV1');
   });
 });
