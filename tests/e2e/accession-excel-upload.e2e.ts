@@ -168,15 +168,19 @@ test.describe('Excel Upload Zone', () => {
       window.locator('[data-testid="excel-upload-zone"]')
     ).toBeVisible();
 
-    // Verify upload instructions
-    await expect(window.getByText(/drag.*drop|upload.*excel/i)).toBeVisible();
+    // Verify upload instructions - use specific text
+    await expect(
+      window.getByText('Drag and drop or click to select XLSX/XLS files (max 15MB)')
+    ).toBeVisible();
   });
 
   test('should show accepted file types hint', async () => {
     await navigateToAccessions();
 
-    // Should indicate XLSX/XLS files are accepted
-    await expect(window.getByText(/xlsx|xls/i)).toBeVisible();
+    // Should indicate XLSX/XLS files are accepted - use specific text
+    await expect(
+      window.getByText(/XLSX\/XLS files/)
+    ).toBeVisible();
   });
 });
 
@@ -193,10 +197,12 @@ test.describe('File Upload', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Verify file was accepted - column selectors should appear
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
-    await expect(window.getByText(/select.*genotype/i)).toBeVisible();
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
+    await expect(
+      window.locator('[data-testid="genotype-selector"]')
+    ).toBeVisible();
   });
 
   test('should show loading indicator while parsing file', async () => {
@@ -213,9 +219,9 @@ test.describe('File Upload', () => {
     await uploadPromise;
 
     // After loading, column selectors should be visible
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test('should reject non-Excel files', async () => {
@@ -270,9 +276,9 @@ test.describe('Sheet Selection', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Sheet selector should NOT be visible for single-sheet files
     const sheetSelector = window.locator('[data-testid="sheet-selector"]');
@@ -315,9 +321,9 @@ test.describe('Column Mapping', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Both column selectors should be visible
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
@@ -336,9 +342,9 @@ test.describe('Column Mapping', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Plant ID selector should contain columns from the file
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
@@ -361,9 +367,9 @@ test.describe('Column Mapping', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     const uploadButton = window.locator('[data-testid="upload-button"]');
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
@@ -400,9 +406,9 @@ test.describe('Column Highlighting', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Select Plant ID column
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
@@ -422,9 +428,9 @@ test.describe('Column Highlighting', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Select Genotype column
     const genotypeSelector = window.locator(
@@ -446,9 +452,9 @@ test.describe('Column Highlighting', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Select both columns
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
@@ -477,9 +483,9 @@ test.describe('Preview Table', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Preview table should be visible
     const previewTable = window.locator('[data-testid="preview-table"]');
@@ -497,9 +503,9 @@ test.describe('Preview Table', () => {
     await fileInput.setInputFiles(LARGE_BATCH_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Preview table should exist
     const previewTable = window.locator('[data-testid="preview-table"]');
@@ -519,9 +525,9 @@ test.describe('Preview Table', () => {
     await fileInput.setInputFiles(EDGE_CASES_FILE);
 
     // Wait for parsing
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     // Should display rows (edge-cases.xlsx has some empty cells)
     await expect(window.getByText('EDGE001')).toBeVisible();
@@ -544,9 +550,9 @@ test.describe('Upload Processing', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Wait for parsing and select columns
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
     const genotypeSelector = window.locator(
@@ -582,9 +588,9 @@ test.describe('Upload Processing', () => {
     await fileInput.setInputFiles(LARGE_BATCH_FILE);
 
     // Select columns
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
     const genotypeSelector = window.locator(
@@ -617,9 +623,9 @@ test.describe('Upload Processing', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Select columns and upload
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
     const genotypeSelector = window.locator(
@@ -648,9 +654,9 @@ test.describe('Upload Processing', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Select columns and upload
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
     const genotypeSelector = window.locator(
@@ -690,9 +696,9 @@ test.describe('Batch Processing', () => {
     await fileInput.setInputFiles(LARGE_BATCH_FILE);
 
     // Select columns
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
     const genotypeSelector = window.locator(
@@ -733,9 +739,9 @@ test.describe('Error Handling', () => {
     await fileInput.setInputFiles(SINGLE_SHEET_FILE);
 
     // Select columns
-    await expect(window.getByText(/select.*plant.*id/i)).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      window.locator('[data-testid="plant-id-selector"]')
+    ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
     const genotypeSelector = window.locator(
