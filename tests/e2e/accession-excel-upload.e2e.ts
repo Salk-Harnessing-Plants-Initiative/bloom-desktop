@@ -170,7 +170,9 @@ test.describe('Excel Upload Zone', () => {
 
     // Verify upload instructions - use specific text
     await expect(
-      window.getByText('Drag and drop or click to select XLSX/XLS files (max 15MB)')
+      window.getByText(
+        'Drag and drop or click to select XLSX/XLS files (max 15MB)'
+      )
     ).toBeVisible();
   });
 
@@ -178,9 +180,7 @@ test.describe('Excel Upload Zone', () => {
     await navigateToAccessions();
 
     // Should indicate XLSX/XLS files are accepted - use specific text
-    await expect(
-      window.getByText(/XLSX\/XLS files/)
-    ).toBeVisible();
+    await expect(window.getByText(/XLSX\/XLS files/)).toBeVisible();
   });
 });
 
