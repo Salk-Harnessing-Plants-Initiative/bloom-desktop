@@ -296,16 +296,19 @@ test.describe('Sheet Selection', () => {
       timeout: 5000,
     });
 
-    // First sheet should show its columns (Batch_A has Plant_ID, Genotype, Batch)
-    await expect(window.getByText('Plant_ID')).toBeVisible();
+    // First sheet should show its columns in the preview table header
+    const previewTable = window.locator('[data-testid="preview-table"]');
+    await expect(previewTable.locator('th:has-text("Plant_ID")')).toBeVisible();
 
     // Select second sheet (Batch_B has QRCode, AccessionID, Date)
     const sheetSelector = window.locator('[data-testid="sheet-selector"]');
     await sheetSelector.selectOption('Batch_B');
 
     // Preview should update to show new columns
-    await expect(window.getByText('QRCode')).toBeVisible();
-    await expect(window.getByText('AccessionID')).toBeVisible();
+    await expect(previewTable.locator('th:has-text("QRCode")')).toBeVisible();
+    await expect(
+      previewTable.locator('th:has-text("AccessionID")')
+    ).toBeVisible();
   });
 });
 
@@ -348,16 +351,17 @@ test.describe('Column Mapping', () => {
 
     // Plant ID selector should contain columns from the file
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    await plantIdSelector.click();
 
-    // Should see column headers as options
+    // Should see column headers as options in the dropdown
     await expect(
-      window.getByRole('option', { name: 'PlantBarcode' })
-    ).toBeVisible();
+      plantIdSelector.locator('option[value="PlantBarcode"]')
+    ).toBeAttached();
     await expect(
-      window.getByRole('option', { name: 'GenotypeID' })
-    ).toBeVisible();
-    await expect(window.getByRole('option', { name: 'Notes' })).toBeVisible();
+      plantIdSelector.locator('option[value="GenotypeID"]')
+    ).toBeAttached();
+    await expect(
+      plantIdSelector.locator('option[value="Notes"]')
+    ).toBeAttached();
   });
 
   test('should enable upload button only when both columns selected', async () => {
@@ -491,9 +495,9 @@ test.describe('Preview Table', () => {
     const previewTable = window.locator('[data-testid="preview-table"]');
     await expect(previewTable).toBeVisible();
 
-    // Should show data from file (single-sheet.xlsx has 10 data rows)
-    await expect(window.getByText('PLANT001')).toBeVisible();
-    await expect(window.getByText('GT-A001')).toBeVisible();
+    // Should show data from file in the table (single-sheet.xlsx has 10 data rows)
+    await expect(previewTable.locator('td:has-text("PLANT001")')).toBeVisible();
+    await expect(previewTable.locator('td:has-text("GT-A001")')).toBeVisible();
   });
 
   test('should limit preview to 20 rows for large files', async () => {
