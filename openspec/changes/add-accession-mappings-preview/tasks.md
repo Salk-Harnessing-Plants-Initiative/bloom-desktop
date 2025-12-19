@@ -35,4 +35,4 @@
 - [x] 5.1 Run `npm run test:e2e` and verify all new tests pass (21/21 passed)
 - [x] 5.2 Run `npm run lint` and fix any issues
 - [x] 5.3 Run `npm run typecheck` and fix any type errors
-- [ ] 5.4 Verify tests pass in CI
+- [x] 5.4 Verify tests pass in CI
