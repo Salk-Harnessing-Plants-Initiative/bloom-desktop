@@ -184,6 +184,8 @@ const databaseAPI: DatabaseAPI = {
     update: (id: string, data: { name: string }) =>
       ipcRenderer.invoke('db:accessions:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('db:accessions:delete', id),
+    updateMapping: (mappingId: string, data: { genotype_id: string }) =>
+      ipcRenderer.invoke('db:accessions:updateMapping', mappingId, data),
   },
   images: {
     create: (data: ImageCreateData[]) =>

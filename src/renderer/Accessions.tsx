@@ -87,7 +87,7 @@ export function Accessions() {
           Upload Plant Mappings (Excel)
         </h2>
         <div className="w-full max-w-2xl">
-          <AccessionFileUpload />
+          <AccessionFileUpload onUploadComplete={handleAccessionCreated} />
         </div>
       </div>
     </div>

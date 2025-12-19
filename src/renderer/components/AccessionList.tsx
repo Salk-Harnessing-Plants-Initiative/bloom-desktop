@@ -6,6 +6,12 @@ interface Accession {
   createdAt: Date | string;
 }
 
+interface PlantMapping {
+  id: string;
+  plant_barcode: string;
+  genotype_id: string;
+}
+
 interface AccessionListProps {
   accessions: Accession[];
   onUpdate: () => void;
@@ -15,31 +21,41 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [mappingCounts, setMappingCounts] = useState<Record<string, number>>(
-    {}
-  );
+  const [mappings, setMappings] = useState<Record<string, PlantMapping[]>>({});
+  const [mappingsLoading, setMappingsLoading] = useState<
+    Record<string, boolean>
+  >({});
+
+  // Inline mapping edit state
+  const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
+  const [editingGenotypeId, setEditingGenotypeId] = useState('');
 
   const handleExpand = async (accession: Accession) => {
     const newExpandedId = expandedId === accession.id ? null : accession.id;
     setExpandedId(newExpandedId);
 
-    // Fetch mapping count when expanding
-    if (newExpandedId) {
+    // Fetch mappings when expanding
+    if (newExpandedId && !mappings[accession.id]) {
+      setMappingsLoading((prev) => ({ ...prev, [accession.id]: true }));
+
       const result = await window.electron.database.accessions.getMappings(
         accession.id
       );
+
       if (result.success && result.data) {
-        setMappingCounts((prev) => ({
+        setMappings((prev) => ({
           ...prev,
-          [accession.id]: result.data.length,
+          [accession.id]: result.data,
         }));
       } else {
         console.error('Failed to fetch mappings:', result.error);
-        setMappingCounts((prev) => ({
+        setMappings((prev) => ({
           ...prev,
-          [accession.id]: 0,
+          [accession.id]: [],
         }));
       }
+
+      setMappingsLoading((prev) => ({ ...prev, [accession.id]: false }));
     }
   };
 
@@ -83,6 +99,48 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
     }
   };
 
+  // Inline mapping editing handlers
+  const handleMappingEditStart = (mapping: PlantMapping) => {
+    setEditingMappingId(mapping.id);
+    setEditingGenotypeId(mapping.genotype_id || '');
+  };
+
+  const handleMappingEditSave = async (
+    accessionId: string,
+    mappingId: string
+  ) => {
+    if (!editingGenotypeId.trim()) {
+      setEditingMappingId(null);
+      return;
+    }
+
+    const result = await window.electron.database.accessions.updateMapping(
+      mappingId,
+      { genotype_id: editingGenotypeId.trim() }
+    );
+
+    if (result.success) {
+      // Update local state
+      setMappings((prev) => ({
+        ...prev,
+        [accessionId]: prev[accessionId].map((m) =>
+          m.id === mappingId
+            ? { ...m, genotype_id: editingGenotypeId.trim() }
+            : m
+        ),
+      }));
+      setEditingMappingId(null);
+    } else {
+      // eslint-disable-next-line no-alert
+      alert(`Failed to update mapping: ${result.error || 'Unknown error'}`);
+    }
+  };
+
+  const handleMappingEditCancel = () => {
+    setEditingMappingId(null);
+    setEditingGenotypeId('');
+  };
+
   if (accessions.length === 0) {
     return (
       <div className="text-sm text-gray-500 italic">No accessions yet</div>
@@ -117,7 +175,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
 
           {/* Expanded view */}
           {expandedId === accession.id && (
-            <div className="p-3 border-t border-gray-200 bg-gray-50 space-y-2">
+            <div className="p-3 border-t border-gray-200 bg-gray-50 space-y-3">
               {/* Edit mode */}
               {editingId === accession.id ? (
                 <div className="space-y-2">
@@ -154,10 +212,85 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                 <>
                   {/* Mapping count */}
                   <div className="text-sm text-gray-600">
-                    {mappingCounts[accession.id] !== undefined
-                      ? `${mappingCounts[accession.id]} plant mappings`
-                      : 'Loading mappings...'}
+                    {mappingsLoading[accession.id]
+                      ? 'Loading mappings...'
+                      : mappings[accession.id]
+                        ? `${mappings[accession.id].length} plant mappings`
+                        : '0 plant mappings'}
                   </div>
+
+                  {/* Mappings table */}
+                  {mappings[accession.id] &&
+                    mappings[accession.id].length > 0 && (
+                      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-md bg-white">
+                        <table
+                          data-testid="mappings-table"
+                          className="w-full text-xs"
+                        >
+                          <thead className="bg-gray-100 sticky top-0">
+                            <tr>
+                              <th className="px-2 py-1 text-left font-medium text-gray-700">
+                                Plant Barcode
+                              </th>
+                              <th className="px-2 py-1 text-left font-medium text-gray-700">
+                                Genotype ID
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {mappings[accession.id].map((mapping) => (
+                              <tr
+                                key={mapping.id}
+                                className="border-t border-gray-100 hover:bg-gray-50"
+                              >
+                                <td className="px-2 py-1">
+                                  {mapping.plant_barcode}
+                                </td>
+                                <td
+                                  className="px-2 py-1 cursor-pointer"
+                                  onClick={() =>
+                                    handleMappingEditStart(mapping)
+                                  }
+                                >
+                                  {editingMappingId === mapping.id ? (
+                                    <input
+                                      type="text"
+                                      value={editingGenotypeId}
+                                      onChange={(e) =>
+                                        setEditingGenotypeId(e.target.value)
+                                      }
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleMappingEditSave(
+                                            accession.id,
+                                            mapping.id
+                                          );
+                                        } else if (e.key === 'Escape') {
+                                          handleMappingEditCancel();
+                                        }
+                                      }}
+                                      onBlur={() =>
+                                        handleMappingEditSave(
+                                          accession.id,
+                                          mapping.id
+                                        )
+                                      }
+                                      className="w-full px-1 py-0.5 border border-blue-400 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                      autoFocus
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  ) : (
+                                    <span className="hover:text-blue-600">
+                                      {mapping.genotype_id || '—'}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
 
                   {/* Action buttons */}
                   <div className="flex gap-2">
