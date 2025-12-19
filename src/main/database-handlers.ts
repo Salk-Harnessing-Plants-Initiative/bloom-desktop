@@ -427,6 +427,43 @@ export function registerDatabaseHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'db:accessions:updateMapping',
+    async (
+      _event,
+      mappingId: string,
+      data: { genotype_id: string }
+    ): Promise<DatabaseResponse> => {
+      try {
+        if (!data.genotype_id || data.genotype_id.trim() === '') {
+          return {
+            success: false,
+            error: 'Genotype ID cannot be empty',
+          };
+        }
+
+        const mapping = await db.plantAccessionMappings.update({
+          where: { id: mappingId },
+          data: { genotype_id: data.genotype_id.trim() },
+        });
+
+        logDatabaseOperation(
+          'UPDATE',
+          'PlantAccessionMapping',
+          `id=${mappingId} genotype_id="${data.genotype_id}"`
+        );
+
+        return { success: true, data: mapping };
+      } catch (error) {
+        console.error('[DB] Failed to update mapping:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
   // ============================================
   // Scans
   // ============================================

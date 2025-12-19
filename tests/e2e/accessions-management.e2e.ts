@@ -487,6 +487,246 @@ test.describe('Expand Accession Details', () => {
       timeout: 3000,
     });
   });
+
+  test('should display mappings table with Plant Barcode and Genotype ID columns', async () => {
+    const accession = await prisma.accessions.create({
+      data: createAccessionData(),
+    });
+
+    // Create plant mappings
+    await prisma.plantAccessionMappings.createMany({
+      data: [
+        {
+          accession_file_id: accession.id,
+          accession_id: accession.id,
+          plant_barcode: 'PLANT-001',
+          genotype_id: 'GT-001',
+        },
+        {
+          accession_file_id: accession.id,
+          accession_id: accession.id,
+          plant_barcode: 'PLANT-002',
+          genotype_id: 'GT-002',
+        },
+      ],
+    });
+
+    await window.click('text=Accessions');
+    await expect(
+      window.getByRole('heading', { name: 'Accessions', exact: true })
+    ).toBeVisible();
+    await window.click(`text=${accession.name}`);
+
+    // Verify mappings table is visible with correct headers
+    const mappingsTable = window.locator('[data-testid="mappings-table"]');
+    await expect(mappingsTable).toBeVisible({ timeout: 5000 });
+    await expect(
+      mappingsTable.locator('th:has-text("Plant Barcode")')
+    ).toBeVisible();
+    await expect(
+      mappingsTable.locator('th:has-text("Genotype ID")')
+    ).toBeVisible();
+
+    // Verify actual data is displayed
+    await expect(
+      mappingsTable.locator('td:has-text("PLANT-001")')
+    ).toBeVisible();
+    await expect(mappingsTable.locator('td:has-text("GT-001")')).toBeVisible();
+    await expect(
+      mappingsTable.locator('td:has-text("PLANT-002")')
+    ).toBeVisible();
+    await expect(mappingsTable.locator('td:has-text("GT-002")')).toBeVisible();
+  });
+
+  test('should show empty state when accession has no mappings', async () => {
+    const accession = await prisma.accessions.create({
+      data: createAccessionData(),
+    });
+
+    await window.click('text=Accessions');
+    await expect(
+      window.getByRole('heading', { name: 'Accessions', exact: true })
+    ).toBeVisible();
+    await window.click(`text=${accession.name}`);
+
+    // Verify empty state message
+    await expect(window.locator('text=/no.*mapping|0.*mapping/i')).toBeVisible({
+      timeout: 3000,
+    });
+
+    // Edit and Delete buttons should still be visible
+    await expect(window.locator('button:has-text("Edit")')).toBeVisible();
+    await expect(window.locator('button:has-text("Delete")')).toBeVisible();
+  });
+
+  test('should sort mappings alphabetically by plant barcode', async () => {
+    const accession = await prisma.accessions.create({
+      data: createAccessionData(),
+    });
+
+    // Create mappings in non-alphabetical order
+    await prisma.plantAccessionMappings.createMany({
+      data: [
+        {
+          accession_file_id: accession.id,
+          accession_id: accession.id,
+          plant_barcode: 'ZEBRA-001',
+          genotype_id: 'GT-Z',
+        },
+        {
+          accession_file_id: accession.id,
+          accession_id: accession.id,
+          plant_barcode: 'ALPHA-001',
+          genotype_id: 'GT-A',
+        },
+      ],
+    });
+
+    await window.click('text=Accessions');
+    await expect(
+      window.getByRole('heading', { name: 'Accessions', exact: true })
+    ).toBeVisible();
+    await window.click(`text=${accession.name}`);
+
+    // Wait for mappings table
+    const mappingsTable = window.locator('[data-testid="mappings-table"]');
+    await expect(mappingsTable).toBeVisible({ timeout: 5000 });
+
+    // Get all plant barcode cells and verify order
+    const rows = mappingsTable.locator('tbody tr');
+    const firstRowBarcode = rows.nth(0).locator('td').first();
+    const secondRowBarcode = rows.nth(1).locator('td').first();
+
+    await expect(firstRowBarcode).toHaveText('ALPHA-001');
+    await expect(secondRowBarcode).toHaveText('ZEBRA-001');
+  });
+});
+
+// ============================================
+// Inline Mapping Edit Tests
+// ============================================
+
+test.describe('Inline Mapping Editing', () => {
+  test('should enter edit mode when clicking genotype ID cell', async () => {
+    const accession = await prisma.accessions.create({
+      data: createAccessionData(),
+    });
+
+    await prisma.plantAccessionMappings.create({
+      data: {
+        accession_file_id: accession.id,
+        accession_id: accession.id,
+        plant_barcode: 'PLANT-001',
+        genotype_id: 'GT-001',
+      },
+    });
+
+    await window.click('text=Accessions');
+    await expect(
+      window.getByRole('heading', { name: 'Accessions', exact: true })
+    ).toBeVisible();
+    await window.click(`text=${accession.name}`);
+
+    // Wait for mappings table
+    const mappingsTable = window.locator('[data-testid="mappings-table"]');
+    await expect(mappingsTable).toBeVisible({ timeout: 5000 });
+
+    // Click on genotype ID cell
+    await mappingsTable.locator('td:has-text("GT-001")').click();
+
+    // Verify input appears with current value
+    const editInput = mappingsTable.locator('input[type="text"]');
+    await expect(editInput).toBeVisible();
+    await expect(editInput).toHaveValue('GT-001');
+  });
+
+  test('should save inline edit with Enter key', async () => {
+    const accession = await prisma.accessions.create({
+      data: createAccessionData(),
+    });
+
+    const mapping = await prisma.plantAccessionMappings.create({
+      data: {
+        accession_file_id: accession.id,
+        accession_id: accession.id,
+        plant_barcode: 'PLANT-001',
+        genotype_id: 'GT-001',
+      },
+    });
+
+    await window.click('text=Accessions');
+    await expect(
+      window.getByRole('heading', { name: 'Accessions', exact: true })
+    ).toBeVisible();
+    await window.click(`text=${accession.name}`);
+
+    // Wait for mappings table
+    const mappingsTable = window.locator('[data-testid="mappings-table"]');
+    await expect(mappingsTable).toBeVisible({ timeout: 5000 });
+
+    // Click on genotype ID cell to edit
+    await mappingsTable.locator('td:has-text("GT-001")').click();
+
+    // Edit and press Enter
+    const editInput = mappingsTable.locator('input[type="text"]');
+    await editInput.fill('GT-UPDATED');
+    await editInput.press('Enter');
+
+    // Verify UI updated
+    await expect(
+      mappingsTable.locator('td:has-text("GT-UPDATED")')
+    ).toBeVisible();
+    await expect(mappingsTable.locator('input[type="text"]')).not.toBeVisible();
+
+    // Verify database updated
+    const updated = await prisma.plantAccessionMappings.findUnique({
+      where: { id: mapping.id },
+    });
+    expect(updated?.genotype_id).toBe('GT-UPDATED');
+  });
+
+  test('should cancel inline edit with Escape key', async () => {
+    const accession = await prisma.accessions.create({
+      data: createAccessionData(),
+    });
+
+    const mapping = await prisma.plantAccessionMappings.create({
+      data: {
+        accession_file_id: accession.id,
+        accession_id: accession.id,
+        plant_barcode: 'PLANT-001',
+        genotype_id: 'GT-001',
+      },
+    });
+
+    await window.click('text=Accessions');
+    await expect(
+      window.getByRole('heading', { name: 'Accessions', exact: true })
+    ).toBeVisible();
+    await window.click(`text=${accession.name}`);
+
+    // Wait for mappings table
+    const mappingsTable = window.locator('[data-testid="mappings-table"]');
+    await expect(mappingsTable).toBeVisible({ timeout: 5000 });
+
+    // Click on genotype ID cell to edit
+    await mappingsTable.locator('td:has-text("GT-001")').click();
+
+    // Edit and press Escape
+    const editInput = mappingsTable.locator('input[type="text"]');
+    await editInput.fill('GT-CHANGED');
+    await editInput.press('Escape');
+
+    // Verify original value restored in UI
+    await expect(mappingsTable.locator('td:has-text("GT-001")')).toBeVisible();
+    await expect(mappingsTable.locator('input[type="text"]')).not.toBeVisible();
+
+    // Verify database NOT updated
+    const unchanged = await prisma.plantAccessionMappings.findUnique({
+      where: { id: mapping.id },
+    });
+    expect(unchanged?.genotype_id).toBe('GT-001');
+  });
 });
 
 // ============================================

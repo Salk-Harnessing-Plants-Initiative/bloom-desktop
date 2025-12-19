@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-claude-commands. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Linting and Formatting Command
 
 The system SHALL provide a `/lint` command that documents all linting and formatting workflows for TypeScript and Python code.
@@ -587,4 +589,3 @@ The CI workflow SHALL manage disk space to prevent `ENOSPC` (no space left on de
 - **WHEN** any test job starts
 - **THEN** the job SHALL NOT run the disk cleanup action
 - **AND** existing test behavior SHALL NOT be affected
-
