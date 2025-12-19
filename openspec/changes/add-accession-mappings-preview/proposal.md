@@ -16,6 +16,7 @@ Without this feature, users must trust that uploads worked correctly with no way
 - Add inline editing capability for genotype ID field (matching pilot behavior)
 
 **Not included in this PR** (blocked by Experiments page):
+
 - Linked experiments list (requires Experiments management UI - not yet implemented)
 
 ## Impact

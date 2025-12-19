@@ -309,7 +309,11 @@ export interface DatabaseAPI {
       mappingId: string,
       data: { genotype_id: string }
     ) => Promise<
-      DatabaseResponse<{ id: string; plant_barcode: string; genotype_id: string }>
+      DatabaseResponse<{
+        id: string;
+        plant_barcode: string;
+        genotype_id: string;
+      }>
     >;
   };
   images: {

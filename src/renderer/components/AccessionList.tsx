@@ -124,7 +124,9 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
       setMappings((prev) => ({
         ...prev,
         [accessionId]: prev[accessionId].map((m) =>
-          m.id === mappingId ? { ...m, genotype_id: editingGenotypeId.trim() } : m
+          m.id === mappingId
+            ? { ...m, genotype_id: editingGenotypeId.trim() }
+            : m
         ),
       }));
       setEditingMappingId(null);
@@ -246,7 +248,9 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                                 </td>
                                 <td
                                   className="px-2 py-1 cursor-pointer"
-                                  onClick={() => handleMappingEditStart(mapping)}
+                                  onClick={() =>
+                                    handleMappingEditStart(mapping)
+                                  }
                                 >
                                   {editingMappingId === mapping.id ? (
                                     <input

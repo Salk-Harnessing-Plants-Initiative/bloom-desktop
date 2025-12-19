@@ -520,13 +520,21 @@ test.describe('Expand Accession Details', () => {
     // Verify mappings table is visible with correct headers
     const mappingsTable = window.locator('[data-testid="mappings-table"]');
     await expect(mappingsTable).toBeVisible({ timeout: 5000 });
-    await expect(mappingsTable.locator('th:has-text("Plant Barcode")')).toBeVisible();
-    await expect(mappingsTable.locator('th:has-text("Genotype ID")')).toBeVisible();
+    await expect(
+      mappingsTable.locator('th:has-text("Plant Barcode")')
+    ).toBeVisible();
+    await expect(
+      mappingsTable.locator('th:has-text("Genotype ID")')
+    ).toBeVisible();
 
     // Verify actual data is displayed
-    await expect(mappingsTable.locator('td:has-text("PLANT-001")')).toBeVisible();
+    await expect(
+      mappingsTable.locator('td:has-text("PLANT-001")')
+    ).toBeVisible();
     await expect(mappingsTable.locator('td:has-text("GT-001")')).toBeVisible();
-    await expect(mappingsTable.locator('td:has-text("PLANT-002")')).toBeVisible();
+    await expect(
+      mappingsTable.locator('td:has-text("PLANT-002")')
+    ).toBeVisible();
     await expect(mappingsTable.locator('td:has-text("GT-002")')).toBeVisible();
   });
 
@@ -665,7 +673,9 @@ test.describe('Inline Mapping Editing', () => {
     await editInput.press('Enter');
 
     // Verify UI updated
-    await expect(mappingsTable.locator('td:has-text("GT-UPDATED")')).toBeVisible();
+    await expect(
+      mappingsTable.locator('td:has-text("GT-UPDATED")')
+    ).toBeVisible();
     await expect(mappingsTable.locator('input[type="text"]')).not.toBeVisible();
 
     // Verify database updated
