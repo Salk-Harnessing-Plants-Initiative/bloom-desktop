@@ -305,6 +305,12 @@ export interface DatabaseAPI {
       data: { name: string }
     ) => Promise<DatabaseResponse<Accessions>>;
     delete: (id: string) => Promise<DatabaseResponse<Accessions>>;
+    updateMapping: (
+      mappingId: string,
+      data: { genotype_id: string }
+    ) => Promise<
+      DatabaseResponse<{ id: string; plant_barcode: string; genotype_id: string }>
+    >;
   };
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
