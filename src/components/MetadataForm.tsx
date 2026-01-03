@@ -77,7 +77,9 @@ export function MetadataForm({
         </label>
         <ExperimentChooser
           value={values.experimentId || null}
-          onExperimentChange={(id) => handleFieldChange('experimentId', id || '')}
+          onExperimentChange={(id) =>
+            handleFieldChange('experimentId', id || '')
+          }
           disabled={disabled}
         />
         {errors.experimentId && (

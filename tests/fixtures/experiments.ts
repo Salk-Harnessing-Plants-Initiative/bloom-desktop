@@ -144,7 +144,11 @@ export interface ExperimentWithScientistDisplay {
 }
 
 export const experimentsWithScientists: ExperimentWithScientistDisplay[] = [
-  { name: 'Drought Study', species: 'Arabidopsis', scientistName: 'Dr. Jane Smith' },
+  {
+    name: 'Drought Study',
+    species: 'Arabidopsis',
+    scientistName: 'Dr. Jane Smith',
+  },
   { name: 'Growth Analysis', species: 'Rice', scientistName: null },
   { name: 'Stress Response', species: 'Maize', scientistName: 'Dr. Bob Brown' },
 ];
@@ -162,7 +166,9 @@ export const experimentsWithScientists: ExperimentWithScientistDisplay[] = [
  * getExperimentDisplayFormat({ name: 'Test', species: 'Arabidopsis', scientistName: null })
  * // Returns: "Arabidopsis - Test (unknown)"
  */
-export function getExperimentDisplayFormat(experiment: ExperimentWithScientistDisplay): string {
+export function getExperimentDisplayFormat(
+  experiment: ExperimentWithScientistDisplay
+): string {
   const scientistDisplay = experiment.scientistName || 'unknown';
   return `${experiment.species} - ${experiment.name} (${scientistDisplay})`;
 }

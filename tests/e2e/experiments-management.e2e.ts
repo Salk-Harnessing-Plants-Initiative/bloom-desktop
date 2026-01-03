@@ -182,10 +182,14 @@ test.describe('Experiments Management', () => {
 
     // Verify experiments are displayed with correct format in the list
     await expect(
-      window.locator('ul.experiments-list').locator('text=Arabidopsis - Drought Study (Dr. Jane Smith)')
+      window
+        .locator('ul.experiments-list')
+        .locator('text=Arabidopsis - Drought Study (Dr. Jane Smith)')
     ).toBeVisible();
     await expect(
-      window.locator('ul.experiments-list').locator('text=Rice - Growth Analysis (unknown)')
+      window
+        .locator('ul.experiments-list')
+        .locator('text=Rice - Growth Analysis (unknown)')
     ).toBeVisible();
   });
 
@@ -203,7 +207,9 @@ test.describe('Experiments Management', () => {
     await window.click('text=Experiments');
 
     // Wait for experiments to load (use list-specific locator)
-    await expect(window.locator('ul.experiments-list').locator('text=Alpha Test')).toBeVisible();
+    await expect(
+      window.locator('ul.experiments-list').locator('text=Alpha Test')
+    ).toBeVisible();
 
     // Get list items and verify alphabetical order
     const listItems = await window
@@ -227,7 +233,9 @@ test.describe('Experiments Management', () => {
     await window.click('button:has-text("Create")');
 
     // Wait for experiment to appear in the list
-    await expect(window.locator('ul.experiments-list').locator('text=Drought Study 2025')).toBeVisible();
+    await expect(
+      window.locator('ul.experiments-list').locator('text=Drought Study 2025')
+    ).toBeVisible();
 
     // Verify form was cleared
     await expect(window.locator('input#experiment-name')).toHaveValue('');
@@ -260,7 +268,9 @@ test.describe('Experiments Management', () => {
 
     // Wait for experiment to appear with scientist name in the list
     await expect(
-      window.locator('ul.experiments-list').locator('text=Linked Experiment (Dr. Test Scientist)')
+      window
+        .locator('ul.experiments-list')
+        .locator('text=Linked Experiment (Dr. Test Scientist)')
     ).toBeVisible();
 
     // Verify in database
@@ -278,7 +288,9 @@ test.describe('Experiments Management', () => {
     await window.click('text=Experiments');
 
     // Get all options from species dropdown
-    const options = await window.locator('select#species-select option').allTextContents();
+    const options = await window
+      .locator('select#species-select option')
+      .allTextContents();
 
     // Verify all 15 species are present and sorted
     expect(options).toEqual(SPECIES_LIST);
@@ -314,7 +326,9 @@ test.describe('Experiments Management', () => {
     await submitButton.click();
 
     // Verify experiment was created in the list
-    await expect(window.locator('ul.experiments-list').locator('text=Loading Test')).toBeVisible();
+    await expect(
+      window.locator('ul.experiments-list').locator('text=Loading Test')
+    ).toBeVisible();
   });
 });
 
@@ -333,7 +347,9 @@ test.describe('Attach Accession to Existing Experiment', () => {
     await window.click('text=Experiments');
 
     // Wait for page to load (experiment in list)
-    await expect(window.locator('ul.experiments-list').locator('text=Unlinked Experiment')).toBeVisible();
+    await expect(
+      window.locator('ul.experiments-list').locator('text=Unlinked Experiment')
+    ).toBeVisible();
 
     // Select experiment from dropdown in attach section
     await window.selectOption('select#attach-experiment-select', experiment.id);
@@ -394,10 +410,12 @@ test.describe('Attach Accession to Existing Experiment', () => {
       .allTextContents();
 
     // Verify format includes species, name, and scientist
-    expect(options.some((o) => o.includes('Rice - With Scientist (Dr. Format Test)'))).toBe(
-      true
-    );
-    expect(options.some((o) => o.includes('Maize - No Scientist (unknown)'))).toBe(true);
+    expect(
+      options.some((o) => o.includes('Rice - With Scientist (Dr. Format Test)'))
+    ).toBe(true);
+    expect(
+      options.some((o) => o.includes('Maize - No Scientist (unknown)'))
+    ).toBe(true);
   });
 
   test('should show accession dropdown with name and id', async () => {
@@ -415,9 +433,11 @@ test.describe('Attach Accession to Existing Experiment', () => {
       .allTextContents();
 
     // Verify format includes name and id
-    expect(options.some((o) => o.includes('Test Accession') && o.includes(accession.id))).toBe(
-      true
-    );
+    expect(
+      options.some(
+        (o) => o.includes('Test Accession') && o.includes(accession.id)
+      )
+    ).toBe(true);
   });
 });
 

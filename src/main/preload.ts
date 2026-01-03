@@ -149,7 +149,11 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:experiments:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('db:experiments:delete', id),
     attachAccession: (experimentId: string, accessionId: string) =>
-      ipcRenderer.invoke('db:experiments:attachAccession', experimentId, accessionId),
+      ipcRenderer.invoke(
+        'db:experiments:attachAccession',
+        experimentId,
+        accessionId
+      ),
   },
   scans: {
     list: (filters?: ScanFilters) =>

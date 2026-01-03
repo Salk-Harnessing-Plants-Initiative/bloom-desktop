@@ -97,7 +97,8 @@ export function ExperimentForm({
         createData.accession = { connect: { id: data.accession_id } };
       }
 
-      const result = await window.electron.database.experiments.create(createData);
+      const result =
+        await window.electron.database.experiments.create(createData);
 
       if (!result.success) {
         setSubmitError(result.error || 'Failed to create experiment');

@@ -128,7 +128,9 @@ export function Experiments() {
     }
   };
 
-  const getExperimentDisplay = (experiment: ExperimentWithScientist): string => {
+  const getExperimentDisplay = (
+    experiment: ExperimentWithScientist
+  ): string => {
     const scientistName = experiment.scientist?.name || 'unknown';
     return `${experiment.species} - ${experiment.name} (${scientistName})`;
   };

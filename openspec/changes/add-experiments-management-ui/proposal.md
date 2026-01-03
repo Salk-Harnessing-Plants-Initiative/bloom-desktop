@@ -19,7 +19,6 @@ Currently, users must manually type experiment IDs as text strings in CaptureSca
 ### In Scope
 
 1. **Experiments Page** (`src/renderer/Experiments.tsx`)
-
    - List experiments showing: `{species} - {name} ({scientist name})`
    - Create new experiment form with:
      - Name (required, text input)
@@ -30,27 +29,23 @@ Currently, users must manually type experiment IDs as text strings in CaptureSca
    - Loading states, error handling, empty states
 
 2. **ExperimentForm Component** (`src/renderer/components/ExperimentForm.tsx`)
-
    - Form validation (name required, species required)
    - Dropdowns for scientist and accession selection
    - Success/error feedback
 
 3. **ExperimentChooser Component** (`src/renderer/components/ExperimentChooser.tsx`)
-
    - Dropdown to select experiment by name
    - Polls for experiments periodically (refresh on interval)
    - Visual indicator when no experiment selected (amber border)
    - Callback when selection changes
 
 4. **PhenotyperChooser Component** (`src/renderer/components/PhenotyperChooser.tsx`)
-
    - Dropdown to select phenotyper by name
    - Polls for phenotypers periodically
    - Visual indicator when no phenotyper selected
    - Callback when selection changes
 
 5. **CaptureScan Integration**
-
    - Replace experiment text input with ExperimentChooser
    - Replace phenotyper text input with PhenotyperChooser
    - Update MetadataForm to support chooser components
