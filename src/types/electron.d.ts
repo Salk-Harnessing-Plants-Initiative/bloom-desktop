@@ -266,6 +266,10 @@ export interface DatabaseAPI {
       data: ExperimentUpdateData
     ) => Promise<DatabaseResponse<Experiment>>;
     delete: (id: string) => Promise<DatabaseResponse>;
+    attachAccession: (
+      experimentId: string,
+      accessionId: string
+    ) => Promise<DatabaseResponse<ExperimentWithRelations>>;
   };
   scans: {
     list: (
