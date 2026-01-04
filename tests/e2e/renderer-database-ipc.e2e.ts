@@ -677,6 +677,72 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
   });
+
+  test('should attach accession to experiment from renderer', async () => {
+    // Seed scientist
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Attach Scientist',
+        email: 'attachsci@test.com',
+      },
+    });
+
+    // Create experiment without accession
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Experiment Without Accession',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Create accession to attach
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Accession To Attach',
+      },
+    });
+
+    // Attach accession to experiment via IPC
+    const result = await window.evaluate(
+      ({ expId, accId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.experiments.attachAccession(expId, accId);
+      },
+      { expId: experiment.id, accId: accession.id }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.accession).toBeDefined();
+    expect(result.data.accession.name).toBe('Accession To Attach');
+
+    // Verify in database
+    const updated = await prisma.experiment.findUnique({
+      where: { id: experiment.id },
+      include: { accession: true },
+    });
+    expect(updated?.accession_id).toBe(accession.id);
+    expect(updated?.accession?.name).toBe('Accession To Attach');
+  });
+
+  test('should handle error when attaching accession with invalid experiment ID', async () => {
+    // Create accession
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Valid Accession',
+      },
+    });
+
+    const result = await window.evaluate((accId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.attachAccession('invalid-uuid', accId);
+    }, accession.id);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
 });
 
 test.describe('Renderer Database IPC - Scans (with Filters)', () => {
