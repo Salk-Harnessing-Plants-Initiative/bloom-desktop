@@ -60,6 +60,11 @@ Currently, users must manually type experiment IDs as text strings in CaptureSca
 - Expandable experiment rows (pilot shows simple list)
 - Species management page (hardcoded for now)
 - Syncing species from bloom server (future work)
+- **Plant barcode validation/autocomplete** (tracked in Issue #74)
+  - Autocomplete plant barcodes from accession mappings
+  - Validate plant barcodes against accession file
+  - Auto-populate genotype ID from mappings
+  - "Already scanned today" duplicate prevention
 
 ## Species List
 
