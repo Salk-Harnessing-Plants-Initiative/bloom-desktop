@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ExperimentForm } from './components/ExperimentForm';
 
 interface Scientist {
@@ -34,7 +34,7 @@ export function Experiments() {
   const [attachSuccess, setAttachSuccess] = useState<string | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
 
-  const fetchExperiments = async () => {
+  const fetchExperiments = useCallback(async () => {
     try {
       setError(null);
       const result = await window.electron.database.experiments.list();
@@ -49,9 +49,9 @@ export function Experiments() {
       const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
       setExperiments(sorted);
 
-      // Set default attach experiment if available
-      if (sorted.length > 0 && !attachExperimentId) {
-        setAttachExperimentId(sorted[0].id);
+      // Set default attach experiment if available (only if not already set)
+      if (sorted.length > 0) {
+        setAttachExperimentId((prev) => (prev === '' ? sorted[0].id : prev));
       }
     } catch (err) {
       console.error('Error fetching experiments:', err);
@@ -59,9 +59,9 @@ export function Experiments() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const fetchScientists = async () => {
+  const fetchScientists = useCallback(async () => {
     try {
       const result = await window.electron.database.scientists.list();
       if (result.success) {
@@ -70,29 +70,29 @@ export function Experiments() {
     } catch (err) {
       console.error('Error fetching scientists:', err);
     }
-  };
+  }, []);
 
-  const fetchAccessions = async () => {
+  const fetchAccessions = useCallback(async () => {
     try {
       const result = await window.electron.database.accessions.list();
       if (result.success) {
         const data = result.data as Accession[];
         setAccessions(data);
-        // Set default attach accession if available
-        if (data.length > 0 && !attachAccessionId) {
-          setAttachAccessionId(data[0].id);
+        // Set default attach accession if available (only if not already set)
+        if (data.length > 0) {
+          setAttachAccessionId((prev) => (prev === '' ? data[0].id : prev));
         }
       }
     } catch (err) {
       console.error('Error fetching accessions:', err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchExperiments();
     fetchScientists();
     fetchAccessions();
-  }, []);
+  }, [fetchExperiments, fetchScientists, fetchAccessions]);
 
   const handleExperimentCreated = () => {
     // Refresh the list after successful creation

@@ -13,6 +13,8 @@ interface ExperimentChooserProps {
   value?: string | null;
   /** Whether the chooser is disabled */
   disabled?: boolean;
+  /** ID for the select element (for label association) */
+  id?: string;
 }
 
 /**
@@ -27,6 +29,7 @@ export function ExperimentChooser({
   onExperimentChange,
   value = null,
   disabled = false,
+  id,
 }: ExperimentChooserProps) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,14 +51,55 @@ export function ExperimentChooser({
   }, []);
 
   useEffect(() => {
-    // Initial fetch
-    fetchExperiments();
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    // Poll every 10 seconds
-    const intervalId = setInterval(fetchExperiments, 10000);
+    const startPolling = () => {
+      if (intervalId !== null) return;
+      // Ensure we have fresh data when polling starts
+      fetchExperiments();
+      intervalId = setInterval(fetchExperiments, 10000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document === 'undefined') {
+        // In non-browser environments, fall back to always polling
+        if (intervalId === null) {
+          startPolling();
+        }
+        return;
+      }
+
+      if (document.visibilityState === 'visible') {
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    // Initialize polling based on current visibility
+    handleVisibilityChange();
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     // Cleanup on unmount
-    return () => clearInterval(intervalId);
+    return () => {
+      stopPolling();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener(
+          'visibilitychange',
+          handleVisibilityChange
+        );
+      }
+    };
   }, [fetchExperiments]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -68,6 +112,7 @@ export function ExperimentChooser({
 
   return (
     <select
+      id={id}
       className={`experiment-chooser p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full border-2 ${borderClass}`}
       value={value || ''}
       onChange={handleChange}

@@ -57,12 +57,15 @@ export function MetadataForm({
 
       {/* Phenotyper - now using PhenotyperChooser */}
       <div>
-        <label className={labelClassName}>
+        <label htmlFor="phenotyper-chooser" className={labelClassName}>
           Phenotyper <span className="text-red-500">*</span>
         </label>
         <PhenotyperChooser
+          id="phenotyper-chooser"
           value={values.phenotyper || null}
-          onPhenotyperChange={(id) => handleFieldChange('phenotyper', id || '')}
+          onPhenotyperChange={(phenotyperId) =>
+            handleFieldChange('phenotyper', phenotyperId || '')
+          }
           disabled={disabled}
         />
         {errors.phenotyper && (
@@ -72,13 +75,14 @@ export function MetadataForm({
 
       {/* Experiment - now using ExperimentChooser */}
       <div>
-        <label className={labelClassName}>
+        <label htmlFor="experiment-chooser" className={labelClassName}>
           Experiment <span className="text-red-500">*</span>
         </label>
         <ExperimentChooser
+          id="experiment-chooser"
           value={values.experimentId || null}
-          onExperimentChange={(id) =>
-            handleFieldChange('experimentId', id || '')
+          onExperimentChange={(experimentId) =>
+            handleFieldChange('experimentId', experimentId || '')
           }
           disabled={disabled}
         />
