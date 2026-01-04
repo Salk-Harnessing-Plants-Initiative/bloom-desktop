@@ -9,6 +9,7 @@ import { CaptureScan } from './CaptureScan';
 import { Scientists } from './Scientists';
 import { Phenotypers } from './Phenotypers';
 import { Accessions } from './Accessions';
+import { Experiments } from './Experiments';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="scientists" element={<Scientists />} />
           <Route path="phenotypers" element={<Phenotypers />} />
           <Route path="accessions" element={<Accessions />} />
+          <Route path="experiments" element={<Experiments />} />
         </Route>
       </Routes>
     </Router>

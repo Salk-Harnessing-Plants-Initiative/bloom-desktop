@@ -153,6 +153,35 @@ export function registerDatabaseHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'db:experiments:attachAccession',
+    async (
+      _event,
+      experimentId: string,
+      accessionId: string
+    ): Promise<DatabaseResponse> => {
+      try {
+        const experiment = await db.experiment.update({
+          where: { id: experimentId },
+          data: { accession_id: accessionId },
+          include: { accession: true },
+        });
+        logDatabaseOperation(
+          'UPDATE',
+          'Experiment',
+          `id=${experimentId} attached accession=${accessionId}`
+        );
+        return { success: true, data: experiment };
+      } catch (error) {
+        console.error('[DB] Failed to attach accession to experiment:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
   // ============================================
   // Phenotypers
   // ============================================

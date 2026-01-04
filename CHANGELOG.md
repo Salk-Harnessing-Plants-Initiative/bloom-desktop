@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Experiments Management UI with full CRUD functionality (#73)
+  - Experiments page with list, create, and attach accession sections
+  - ExperimentForm with name, species dropdown (15 species), scientist, and accession
+  - ExperimentChooser dropdown for CaptureScan (replaces text input)
+  - PhenotyperChooser dropdown for CaptureScan (replaces text input)
+  - Visibility-aware polling (stops when tab hidden, resumes when visible)
+  - Accessibility improvements with proper label associations
+  - Navigation link and route for /experiments
 - Accessions Management UI with basic CRUD operations (#69)
   - Create accessions with name validation
   - List accessions sorted alphabetically with creation dates

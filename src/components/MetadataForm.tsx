@@ -2,7 +2,11 @@
  * MetadataForm Component
  *
  * Form for capturing scan metadata (phenotyper, experiment, plant ID, etc.)
+ * Uses ExperimentChooser and PhenotyperChooser dropdowns instead of text inputs.
  */
+
+import { ExperimentChooser } from '../renderer/components/ExperimentChooser';
+import { PhenotyperChooser } from '../renderer/components/PhenotyperChooser';
 
 export interface ScanMetadata {
   phenotyper: string;
@@ -51,38 +55,36 @@ export function MetadataForm({
         Scan Metadata
       </h2>
 
-      {/* Phenotyper */}
+      {/* Phenotyper - now using PhenotyperChooser */}
       <div>
-        <label htmlFor="phenotyper" className={labelClassName}>
+        <label htmlFor="phenotyper-chooser" className={labelClassName}>
           Phenotyper <span className="text-red-500">*</span>
         </label>
-        <input
-          id="phenotyper"
-          type="text"
-          value={values.phenotyper}
-          onChange={(e) => handleFieldChange('phenotyper', e.target.value)}
+        <PhenotyperChooser
+          id="phenotyper-chooser"
+          value={values.phenotyper || null}
+          onPhenotyperChange={(phenotyperId) =>
+            handleFieldChange('phenotyper', phenotyperId || '')
+          }
           disabled={disabled}
-          className={inputClassName}
-          placeholder="Enter researcher name"
         />
         {errors.phenotyper && (
           <p className={errorClassName}>{errors.phenotyper}</p>
         )}
       </div>
 
-      {/* Experiment ID */}
+      {/* Experiment - now using ExperimentChooser */}
       <div>
-        <label htmlFor="experimentId" className={labelClassName}>
+        <label htmlFor="experiment-chooser" className={labelClassName}>
           Experiment <span className="text-red-500">*</span>
         </label>
-        <input
-          id="experimentId"
-          type="text"
-          value={values.experimentId}
-          onChange={(e) => handleFieldChange('experimentId', e.target.value)}
+        <ExperimentChooser
+          id="experiment-chooser"
+          value={values.experimentId || null}
+          onExperimentChange={(experimentId) =>
+            handleFieldChange('experimentId', experimentId || '')
+          }
           disabled={disabled}
-          className={inputClassName}
-          placeholder="e.g., drought_2024"
         />
         {errors.experimentId && (
           <p className={errorClassName}>{errors.experimentId}</p>
