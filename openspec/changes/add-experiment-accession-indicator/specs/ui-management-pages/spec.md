@@ -67,6 +67,7 @@ No experiments linked
 ```
 
 **Styling:**
+
 - White background (`bg-white`)
 - Border with rounded corners (`border rounded`)
 - Padding (`p-2`)
@@ -99,6 +100,7 @@ ipcMain.handle('db:accessions:list', async (): Promise<DatabaseResponse> => {
 ## Pilot Parity
 
 This implementation matches the bloom-desktop-pilot's pattern exactly:
+
 - Same expandable section structure
 - Same visual styling (white box, borders, padding)
 - Same bulleted list format for linked experiments
@@ -107,6 +109,7 @@ This implementation matches the bloom-desktop-pilot's pattern exactly:
 ## Rationale
 
 Users need to see which experiments have accessions to understand:
+
 - When barcode validation will be available
 - Which accessions are actively being used
 - Which accessions are orphaned (not linked to any experiment)
