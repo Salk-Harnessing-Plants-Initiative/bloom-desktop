@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Plant Barcode Validation & Autocomplete in CaptureScan (#74)
+  - PlantBarcodeInput component with autocomplete dropdown (top 5 matches)
+  - Barcode sanitization: replaces + and spaces with \_, strips other special characters
+  - Hard validation against experiment's accession plant barcodes
+  - Genotype ID auto-population when valid barcode is selected
+  - Duplicate scan prevention (same plant + experiment + day shows warning)
+  - Keyboard navigation for autocomplete (arrow keys, Enter to select, Escape to close)
+  - IPC handlers: getPlantBarcodes, getGenotypeByBarcode, getMostRecentScanDate
+  - ExperimentChooser shows checkmark (✓) indicator for experiments with accessions attached
+  - Accessions page displays linked experiments in expandable view (pilot parity)
 - Experiments Management UI with full CRUD functionality (#73)
   - Experiments page with list, create, and attach accession sections
   - ExperimentForm with name, species dropdown (15 species), scientist, and accession

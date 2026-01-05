@@ -1,9 +1,14 @@
 import { useState } from 'react';
 
+interface Experiment {
+  name: string;
+}
+
 interface Accession {
   id: string;
   name: string;
   createdAt: Date | string;
+  experiments?: Experiment[];
 }
 
 interface PlantMapping {
@@ -210,6 +215,29 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                 </div>
               ) : (
                 <>
+                  {/* Linked Experiments */}
+                  <div
+                    className="mt-2 text-sm bg-white border rounded p-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="font-semibold mb-1">
+                      Linked Experiments:
+                    </div>
+
+                    {accession.experiments &&
+                    accession.experiments.length > 0 ? (
+                      <ul className="list-disc list-inside">
+                        {accession.experiments.map((exp, i) => (
+                          <li key={i}>{exp.name}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="italic text-gray-400">
+                        No experiments linked
+                      </div>
+                    )}
+                  </div>
+
                   {/* Mapping count */}
                   <div className="text-sm text-gray-600">
                     {mappingsLoading[accession.id]

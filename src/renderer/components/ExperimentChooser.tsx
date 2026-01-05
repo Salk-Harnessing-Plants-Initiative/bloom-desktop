@@ -1,9 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 
+interface Accession {
+  id: string;
+  name: string;
+}
+
 interface Experiment {
   id: string;
   name: string;
   species: string;
+  accession?: Accession | null;
 }
 
 interface ExperimentChooserProps {
@@ -23,6 +29,7 @@ interface ExperimentChooserProps {
  * Dropdown for selecting experiments in CaptureScan.
  * - Polls for experiments every 10 seconds
  * - Shows amber border when unselected, gray when selected
+ * - Shows checkmark (✓) indicator for experiments with accessions attached
  * - Fires callback on selection change
  */
 export function ExperimentChooser({
@@ -123,6 +130,7 @@ export function ExperimentChooser({
       </option>
       {experiments.map((experiment) => (
         <option key={experiment.id} value={experiment.id}>
+          {experiment.accession ? '✓ ' : ''}
           {experiment.name}
         </option>
       ))}

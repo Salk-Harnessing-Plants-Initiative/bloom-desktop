@@ -3,10 +3,15 @@ import { AccessionForm } from './components/AccessionForm';
 import { AccessionList } from './components/AccessionList';
 import { AccessionFileUpload } from './components/AccessionFileUpload';
 
+interface Experiment {
+  name: string;
+}
+
 interface Accession {
   id: string;
   name: string;
   createdAt: Date | string;
+  experiments?: Experiment[];
 }
 
 export function Accessions() {

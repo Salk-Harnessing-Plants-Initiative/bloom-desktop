@@ -19,3 +19,6 @@ export type {
   RecentScansPreviewProps,
   ScanSummary,
 } from './RecentScansPreview';
+
+export { PlantBarcodeInput, sanitizePlantBarcode } from './PlantBarcodeInput';
+export type { PlantBarcodeInputProps } from './PlantBarcodeInput';

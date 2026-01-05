@@ -3,10 +3,13 @@
  *
  * Form for capturing scan metadata (phenotyper, experiment, plant ID, etc.)
  * Uses ExperimentChooser and PhenotyperChooser dropdowns instead of text inputs.
+ * Integrates PlantBarcodeInput for barcode validation and autocomplete.
  */
 
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ExperimentChooser } from '../renderer/components/ExperimentChooser';
 import { PhenotyperChooser } from '../renderer/components/PhenotyperChooser';
+import { PlantBarcodeInput } from './PlantBarcodeInput';
 
 export interface ScanMetadata {
   phenotyper: string;
@@ -15,6 +18,7 @@ export interface ScanMetadata {
   plantAgeDays: number;
   plantQrCode: string;
   accessionId: string;
+  genotypeId: string;
 }
 
 export interface MetadataFormProps {
@@ -26,6 +30,8 @@ export interface MetadataFormProps {
   disabled?: boolean;
   /** Validation errors for each field */
   errors?: Partial<Record<keyof ScanMetadata, string>>;
+  /** Callback when barcode validation state changes */
+  onBarcodeValidationChange?: (isValid: boolean, error?: string) => void;
 }
 
 export function MetadataForm({
@@ -33,16 +39,94 @@ export function MetadataForm({
   onChange,
   disabled = false,
   errors = {},
+  onBarcodeValidationChange,
 }: MetadataFormProps) {
-  const handleFieldChange = (
-    field: keyof ScanMetadata,
-    value: string | number
-  ) => {
-    onChange({
-      ...values,
-      [field]: value,
-    });
-  };
+  // State for experiment's accession ID (fetched when experiment changes)
+  const [experimentAccessionId, setExperimentAccessionId] = useState<
+    string | null
+  >(null);
+
+  // Ref to track latest values without causing re-renders
+  // This prevents infinite loops in callbacks that need current values
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+
+  // Fetch experiment's accession when experiment changes
+  useEffect(() => {
+    const fetchExperimentAccession = async () => {
+      if (!values.experimentId) {
+        setExperimentAccessionId(null);
+        return;
+      }
+
+      try {
+        const result = await window.electron.database.experiments.get(
+          values.experimentId
+        );
+        if (result.success && result.data) {
+          // ExperimentWithRelations includes accession
+          const experiment = result.data as {
+            accession?: { id: string } | null;
+          };
+          setExperimentAccessionId(experiment.accession?.id || null);
+        } else {
+          setExperimentAccessionId(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch experiment:', error);
+        setExperimentAccessionId(null);
+      }
+    };
+
+    fetchExperimentAccession();
+  }, [values.experimentId]);
+
+  const handleFieldChange = useCallback(
+    (field: keyof ScanMetadata, value: string | number) => {
+      onChange({
+        ...values,
+        [field]: value,
+      });
+    },
+    [values, onChange]
+  );
+
+  // Handle experiment change - reset barcode-related fields
+  const handleExperimentChange = useCallback(
+    (experimentId: string | null) => {
+      onChange({
+        ...values,
+        experimentId: experimentId || '',
+        // Reset barcode-related fields when experiment changes
+        plantQrCode: '',
+        genotypeId: '',
+      });
+    },
+    [values, onChange]
+  );
+
+  // Handle genotype ID found from barcode lookup
+  // Uses valuesRef to avoid infinite loop (values in deps would cause re-render cycle)
+  const handleGenotypeIdFound = useCallback(
+    (genotypeId: string | null) => {
+      onChange({
+        ...valuesRef.current,
+        genotypeId: genotypeId || '',
+      });
+    },
+    [onChange]
+  );
+
+  // Handle barcode change
+  const handleBarcodeChange = useCallback(
+    (barcode: string) => {
+      onChange({
+        ...values,
+        plantQrCode: barcode,
+      });
+    },
+    [values, onChange]
+  );
 
   const inputClassName =
     'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed';
@@ -55,7 +139,7 @@ export function MetadataForm({
         Scan Metadata
       </h2>
 
-      {/* Phenotyper - now using PhenotyperChooser */}
+      {/* Phenotyper - using PhenotyperChooser */}
       <div>
         <label htmlFor="phenotyper-chooser" className={labelClassName}>
           Phenotyper <span className="text-red-500">*</span>
@@ -73,7 +157,7 @@ export function MetadataForm({
         )}
       </div>
 
-      {/* Experiment - now using ExperimentChooser */}
+      {/* Experiment - using ExperimentChooser */}
       <div>
         <label htmlFor="experiment-chooser" className={labelClassName}>
           Experiment <span className="text-red-500">*</span>
@@ -81,9 +165,7 @@ export function MetadataForm({
         <ExperimentChooser
           id="experiment-chooser"
           value={values.experimentId || null}
-          onExperimentChange={(experimentId) =>
-            handleFieldChange('experimentId', experimentId || '')
-          }
+          onExperimentChange={handleExperimentChange}
           disabled={disabled}
         />
         {errors.experimentId && (
@@ -135,45 +217,59 @@ export function MetadataForm({
         )}
       </div>
 
-      {/* Plant QR Code / ID */}
+      {/* Plant Barcode / QR Code - using PlantBarcodeInput with validation */}
       <div>
         <label htmlFor="plantQrCode" className={labelClassName}>
-          Plant ID / QR Code <span className="text-red-500">*</span>
+          Plant ID / Barcode <span className="text-red-500">*</span>
         </label>
-        <input
+        <PlantBarcodeInput
           id="plantQrCode"
-          type="text"
           value={values.plantQrCode}
-          onChange={(e) => handleFieldChange('plantQrCode', e.target.value)}
+          onChange={handleBarcodeChange}
+          onGenotypeIdFound={handleGenotypeIdFound}
+          onValidationChange={onBarcodeValidationChange}
+          experimentId={values.experimentId || null}
+          accessionId={experimentAccessionId}
           disabled={disabled}
-          className={inputClassName}
-          placeholder="e.g., Plant-001"
+          placeholder="e.g., PLANT_001"
         />
         {errors.plantQrCode && (
           <p className={errorClassName}>{errors.plantQrCode}</p>
         )}
+        {experimentAccessionId && (
+          <p className="text-xs text-gray-500 mt-1">
+            Autocomplete enabled from accession file
+          </p>
+        )}
       </div>
 
-      {/* Accession ID */}
+      {/* Genotype ID - auto-populated from barcode lookup */}
       <div>
-        <label htmlFor="accessionId" className={labelClassName}>
-          Accession ID <span className="text-red-500">*</span>
+        <label htmlFor="genotypeId" className={labelClassName}>
+          Genotype ID
         </label>
         <input
-          id="accessionId"
+          id="genotypeId"
           type="text"
-          value={values.accessionId}
-          onChange={(e) => handleFieldChange('accessionId', e.target.value)}
+          value={values.genotypeId}
+          onChange={(e) => handleFieldChange('genotypeId', e.target.value)}
           disabled={disabled}
-          className={inputClassName}
-          placeholder="e.g., ACC-12345"
+          className={`${inputClassName} ${values.genotypeId ? 'bg-green-50' : ''}`}
+          placeholder={
+            experimentAccessionId
+              ? 'Auto-populated from barcode'
+              : 'e.g., GT_ABC123'
+          }
+          readOnly={!!experimentAccessionId && !!values.genotypeId}
         />
-        {errors.accessionId && (
-          <p className={errorClassName}>{errors.accessionId}</p>
+        {errors.genotypeId && (
+          <p className={errorClassName}>{errors.genotypeId}</p>
         )}
-        <p className="text-xs text-gray-500 mt-1">
-          Accession identifier for this plant
-        </p>
+        {experimentAccessionId && values.genotypeId && (
+          <p className="text-xs text-green-600 mt-1">
+            Auto-populated from accession mapping
+          </p>
+        )}
       </div>
     </div>
   );
