@@ -4,4 +4,4 @@
 - [x] Modify experiment fetch to include accession relation (already done in backend)
 - [x] Add visual indicator for experiments with accessions in dropdown
 - [x] Add E2E tests for accession indicator visibility
-- [ ] Update spec documentation
+- [x] Update spec documentation
