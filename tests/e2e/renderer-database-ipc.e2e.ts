@@ -462,6 +462,111 @@ test.describe('Renderer Database IPC - Accessions', () => {
     expect(result.data[0].plant_barcode).toBe('PLANT001');
     expect(result.data[1].plant_barcode).toBe('PLANT002');
   });
+
+  test('should get plant barcodes for accession from renderer', async () => {
+    // Create accession with mappings
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Barcode Test Accession',
+        mappings: {
+          create: [
+            {
+              accession_id: 'dummy',
+              plant_barcode: 'PLANT_A_01',
+              genotype_id: 'GENO_A',
+            },
+            {
+              accession_id: 'dummy',
+              plant_barcode: 'PLANT_B_02',
+              genotype_id: 'GENO_B',
+            },
+            {
+              accession_id: 'dummy',
+              plant_barcode: 'PLANT_C_03',
+              genotype_id: 'GENO_C',
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await window.evaluate((id) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.accessions.getPlantBarcodes(id);
+    }, accession.id);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(3);
+    expect(result.data).toContain('PLANT_A_01');
+    expect(result.data).toContain('PLANT_B_02');
+    expect(result.data).toContain('PLANT_C_03');
+  });
+
+  test('should get genotype ID by barcode from renderer', async () => {
+    // Create accession with mappings
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Genotype Lookup Accession',
+        mappings: {
+          create: [
+            {
+              accession_id: 'dummy',
+              plant_barcode: 'PLANT_X_01',
+              genotype_id: 'GENOTYPE_X',
+            },
+            {
+              accession_id: 'dummy',
+              plant_barcode: 'PLANT_Y_02',
+              genotype_id: 'GENOTYPE_Y',
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await window.evaluate(
+      ({ accId, barcode }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.accessions.getGenotypeByBarcode(accId, barcode);
+      },
+      { accId: accession.id, barcode: 'PLANT_X_01' }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBe('GENOTYPE_X');
+  });
+
+  test('should return null when barcode not found in accession', async () => {
+    // Create accession with mappings
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Not Found Accession',
+        mappings: {
+          create: [
+            {
+              accession_id: 'dummy',
+              plant_barcode: 'PLANT_VALID',
+              genotype_id: 'GENO_VALID',
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await window.evaluate(
+      ({ accId, barcode }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.accessions.getGenotypeByBarcode(accId, barcode);
+      },
+      { accId: accession.id, barcode: 'PLANT_INVALID' }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeNull();
+  });
 });
 
 test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
@@ -1056,6 +1161,137 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
+  });
+
+  test('should get most recent scan date for plant and experiment from renderer', async () => {
+    // Seed scientist and experiment
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Recent Scan Scientist',
+        email: 'recentscan@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Recent Scan Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Recent Scan Phenotyper',
+        email: 'recentscanpheno@test.com',
+      },
+    });
+
+    // Create 3 scans for the same plant on different dates
+    const scan1 = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT_RECENT_TEST',
+        path: '/test/scans/scan1',
+        capture_date: new Date('2025-01-10'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+      },
+    });
+
+    const scan2 = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT_RECENT_TEST',
+        path: '/test/scans/scan2',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+      },
+    });
+
+    const scan3 = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT_RECENT_TEST',
+        path: '/test/scans/scan3',
+        capture_date: new Date('2025-01-12'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+      },
+    });
+
+    const result = await window.evaluate(
+      ({ expId, plantId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.scans.getMostRecentScanDate(plantId, expId);
+      },
+      { expId: experiment.id, plantId: 'PLANT_RECENT_TEST' }
+    );
+
+    expect(result.success).toBe(true);
+    // Should return most recent date (2025-01-15)
+    const returnedDate = new Date(result.data);
+    const expectedDate = new Date('2025-01-15');
+    expect(returnedDate.toDateString()).toBe(expectedDate.toDateString());
+  });
+
+  test('should return null when no scans exist for plant and experiment', async () => {
+    // Seed scientist and experiment
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'No Scan Scientist',
+        email: 'noscan@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'No Scan Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const result = await window.evaluate(
+      ({ expId, plantId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.scans.getMostRecentScanDate(plantId, expId);
+      },
+      { expId: experiment.id, plantId: 'PLANT_NEVER_SCANNED' }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeNull();
   });
 });
 
