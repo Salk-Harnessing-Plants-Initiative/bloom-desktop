@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-claude-commands. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Linting and Formatting Command
 
 The system SHALL provide a `/lint` command that documents all linting and formatting workflows for TypeScript and Python code.
@@ -624,4 +626,3 @@ The project SHALL provide a `.mcp.json` file at the repository root that configu
 - **THEN** the serena MCP server SHALL use relative path "." for project root
 - **AND** the configuration SHALL NOT contain machine-specific absolute paths
 - **AND** the configuration SHALL work on Linux, macOS, and Windows
-
