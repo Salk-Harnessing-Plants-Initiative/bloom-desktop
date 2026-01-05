@@ -1188,7 +1188,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     });
 
     // Create 3 scans for the same plant on different dates
-    const scan1 = await prisma.scan.create({
+    await prisma.scan.create({
       data: {
         experiment_id: experiment.id,
         phenotyper_id: phenotyper.id,
@@ -1208,7 +1208,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
       },
     });
 
-    const scan2 = await prisma.scan.create({
+    await prisma.scan.create({
       data: {
         experiment_id: experiment.id,
         phenotyper_id: phenotyper.id,
@@ -1228,7 +1228,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
       },
     });
 
-    const scan3 = await prisma.scan.create({
+    await prisma.scan.create({
       data: {
         experiment_id: experiment.id,
         phenotyper_id: phenotyper.id,
