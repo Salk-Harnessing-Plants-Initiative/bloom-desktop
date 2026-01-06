@@ -277,6 +277,10 @@ export interface DatabaseAPI {
     ) => Promise<DatabaseResponse<ScanWithRelations[]>>;
     get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
     create: (data: ScanCreateData) => Promise<DatabaseResponse<Scan>>;
+    getMostRecentScanDate: (
+      plantId: string,
+      experimentId: string
+    ) => Promise<DatabaseResponse<string | null>>;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;
@@ -319,6 +323,13 @@ export interface DatabaseAPI {
         genotype_id: string;
       }>
     >;
+    getPlantBarcodes: (
+      accessionId: string
+    ) => Promise<DatabaseResponse<string[]>>;
+    getGenotypeByBarcode: (
+      plantBarcode: string,
+      experimentId: string
+    ) => Promise<DatabaseResponse<string | null>>;
   };
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;

@@ -275,6 +275,13 @@ export function registerDatabaseHandlers() {
   ipcMain.handle('db:accessions:list', async (): Promise<DatabaseResponse> => {
     try {
       const accessions = await db.accessions.findMany({
+        include: {
+          experiments: {
+            select: {
+              name: true,
+            },
+          },
+        },
         orderBy: { name: 'asc' },
       });
       return { success: true, data: accessions };
@@ -493,6 +500,68 @@ export function registerDatabaseHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'db:accessions:getPlantBarcodes',
+    async (
+      _event,
+      accessionId: string
+    ): Promise<DatabaseResponse<string[]>> => {
+      try {
+        const mappings = await db.plantAccessionMappings.findMany({
+          where: { accession_file_id: accessionId },
+          select: { plant_barcode: true },
+        });
+
+        const barcodes = mappings.map((m) => m.plant_barcode);
+        return { success: true, data: barcodes };
+      } catch (error) {
+        console.error('[DB] Failed to get plant barcodes:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:accessions:getGenotypeByBarcode',
+    async (
+      _event,
+      plantBarcode: string,
+      experimentId: string
+    ): Promise<DatabaseResponse<string | null>> => {
+      try {
+        // First get the experiment to find its accession
+        const experiment = await db.experiment.findUnique({
+          where: { id: experimentId },
+          select: { accession_id: true },
+        });
+
+        if (!experiment?.accession_id) {
+          return { success: true, data: null };
+        }
+
+        // Find the mapping for this barcode in the experiment's accession
+        const mapping = await db.plantAccessionMappings.findFirst({
+          where: {
+            accession_file_id: experiment.accession_id,
+            plant_barcode: plantBarcode,
+          },
+          select: { genotype_id: true },
+        });
+
+        return { success: true, data: mapping?.genotype_id || null };
+      } catch (error) {
+        console.error('[DB] Failed to get genotype by barcode:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
   // ============================================
   // Scans
   // ============================================
@@ -566,6 +635,38 @@ export function registerDatabaseHandlers() {
         return { success: true, data: scan };
       } catch (error) {
         console.error('[DB] Failed to get scan:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:scans:getMostRecentScanDate',
+    async (
+      _event,
+      plantId: string,
+      experimentId: string
+    ): Promise<DatabaseResponse<string | null>> => {
+      try {
+        const scan = await db.scan.findFirst({
+          where: {
+            plant_id: plantId,
+            experiment_id: experimentId,
+            deleted: false,
+          },
+          orderBy: { capture_date: 'desc' },
+          select: { capture_date: true },
+        });
+
+        return {
+          success: true,
+          data: scan?.capture_date?.toISOString() || null,
+        };
+      } catch (error) {
+        console.error('[DB] Failed to get most recent scan date:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
