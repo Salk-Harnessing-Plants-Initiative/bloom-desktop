@@ -519,12 +519,12 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'ACC_001',  // Accession ID from the file
+              accession_id: 'ACC_001', // Accession ID from the file
               plant_barcode: 'PLANT_X_01',
               genotype_id: 'GENOTYPE_X',
             },
             {
-              accession_id: 'ACC_001',  // Accession ID from the file
+              accession_id: 'ACC_001', // Accession ID from the file
               plant_barcode: 'PLANT_Y_02',
               genotype_id: 'GENOTYPE_Y',
             },
