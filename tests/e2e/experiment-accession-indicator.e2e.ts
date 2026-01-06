@@ -89,6 +89,7 @@ test.beforeEach(async () => {
   });
 
   // Run migrations to create schema
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { execSync } = require('child_process');
   execSync('npx prisma migrate deploy', {
     env: {
