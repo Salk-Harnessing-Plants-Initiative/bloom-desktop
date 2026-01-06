@@ -175,13 +175,16 @@ test.describe('Experiment Accession Indicator', () => {
     const optionWithAccession = window.locator(
       '#experiment-chooser option:has-text("✓ Experiment with Accession")'
     );
-    await expect(optionWithAccession).toBeVisible();
+    // Option elements are not visible by default, just check they exist
+    await expect(optionWithAccession).toHaveCount(1);
+    const textWithAccession = await optionWithAccession.textContent();
+    expect(textWithAccession).toContain('✓');
 
     // Check for experiment without accession (should NOT have ✓)
     const optionWithoutAccession = window.locator(
       '#experiment-chooser option:has-text("Experiment without Accession")'
     );
-    await expect(optionWithoutAccession).toBeVisible();
+    await expect(optionWithoutAccession).toHaveCount(1);
 
     // Verify the option without accession doesn't have the checkmark
     const textWithoutAccession = await optionWithoutAccession.textContent();
