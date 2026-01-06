@@ -75,6 +75,7 @@ export function PlantBarcodeInput({
   // Refs
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const blurTimeoutRef = useRef<number | null>(null);
 
   // Fetch plant barcodes when accession changes
   useEffect(() => {
@@ -249,18 +250,28 @@ export function PlantBarcodeInput({
 
   // Handle blur - close dropdown after a short delay (to allow click on suggestion)
   const handleBlur = () => {
-    setTimeout(() => {
+    if (blurTimeoutRef.current !== null) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+    blurTimeoutRef.current = window.setTimeout(() => {
       setShowDropdown(false);
       setHighlightedIndex(-1);
+      blurTimeoutRef.current = null;
     }, 200);
   };
 
+  // Cleanup blur timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current !== null) {
+        clearTimeout(blurTimeoutRef.current);
+        blurTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // Determine border color based on validation
-  const borderClass = validationError
-    ? 'border-red-500'
-    : value && !validationError
-      ? 'border-gray-300'
-      : 'border-gray-300';
+  const borderClass = validationError ? 'border-red-500' : 'border-gray-300';
 
   const inputClassName = `w-full px-3 py-2 border ${borderClass} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed ${className}`;
 

@@ -160,7 +160,7 @@ test.describe('Experiment Accession Indicator', () => {
   test('ExperimentChooser shows checkmark for experiments with accessions', async () => {
     // Navigate to CaptureScan page
     await window.click('text=Capture Scan');
-    await window.waitForTimeout(500);
+    await window.waitForSelector('#experiment-chooser', { timeout: 5000 });
 
     // Open the experiment chooser dropdown
     const experimentChooser = window.locator('#experiment-chooser');
@@ -194,7 +194,7 @@ test.describe('Experiment Accession Indicator', () => {
   test('Experiments without accession do not show checkmark', async () => {
     // Navigate to CaptureScan page
     await window.click('text=Capture Scan');
-    await window.waitForTimeout(500);
+    await window.waitForSelector('#experiment-chooser', { timeout: 5000 });
 
     // Get all options from the experiment chooser
     const options = await window.locator('#experiment-chooser option').all();

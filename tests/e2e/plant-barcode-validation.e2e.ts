@@ -509,10 +509,10 @@ test.describe('UI: Plant Barcode Validation', () => {
     await window.selectOption('.phenotyper-chooser', { index: 1 });
 
     // Wait for plant barcodes to be loaded from experiment's accession
-    await window.waitForTimeout(500);
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.waitFor({ state: 'visible', timeout: 5000 });
 
     // Enter an invalid plant barcode
-    const plantBarcodeInput = window.locator('#plantQrCode');
     await plantBarcodeInput.fill('INVALID_BARCODE');
     await plantBarcodeInput.blur();
 
@@ -540,7 +540,7 @@ test.describe('UI: Plant Barcode Validation', () => {
             {
               plant_barcode: 'PLANT_WITH_GENOTYPE',
               genotype_id: 'AUTO_GENOTYPE_123',
-              accession_id: 'ACC_001',
+              accession_id: 'ACC_001', // Accession identifier from mapping structure
             },
           ],
         },
@@ -699,10 +699,10 @@ test.describe('UI: Barcode Autocomplete', () => {
     await window.selectOption('.experiment-chooser', { index: 1 });
 
     // Wait for plant barcodes to be loaded
-    await window.waitForTimeout(500);
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.waitFor({ state: 'visible', timeout: 5000 });
 
     // Type in plant barcode to trigger autocomplete
-    const plantBarcodeInput = window.locator('#plantQrCode');
     await plantBarcodeInput.fill('PLANT');
 
     // Should show autocomplete dropdown with matching suggestions
@@ -759,10 +759,10 @@ test.describe('UI: Barcode Autocomplete', () => {
     await window.selectOption('.experiment-chooser', { index: 1 });
 
     // Wait for plant barcodes to be loaded
-    await window.waitForTimeout(500);
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.waitFor({ state: 'visible', timeout: 5000 });
 
     // Type to trigger autocomplete
-    const plantBarcodeInput = window.locator('#plantQrCode');
     await plantBarcodeInput.fill('SELECT');
 
     // Wait for autocomplete dropdown to appear and click the suggestion

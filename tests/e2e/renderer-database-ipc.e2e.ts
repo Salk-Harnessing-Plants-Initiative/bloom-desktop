@@ -1224,6 +1224,12 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     });
 
     // Create 3 scans for the same plant on different dates
+    const today = new Date();
+    const threeDaysAgo = new Date(today);
+    threeDaysAgo.setDate(today.getDate() - 3);
+    const fiveDaysAgo = new Date(today);
+    fiveDaysAgo.setDate(today.getDate() - 5);
+
     await prisma.scan.create({
       data: {
         experiment_id: experiment.id,
@@ -1231,7 +1237,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
         scanner_name: 'Scanner1',
         plant_id: 'PLANT_RECENT_TEST',
         path: '/test/scans/scan1',
-        capture_date: new Date('2025-01-10'),
+        capture_date: fiveDaysAgo,
         num_frames: 36,
         exposure_time: 100,
         gain: 1.0,
@@ -1251,7 +1257,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
         scanner_name: 'Scanner1',
         plant_id: 'PLANT_RECENT_TEST',
         path: '/test/scans/scan2',
-        capture_date: new Date('2025-01-15'),
+        capture_date: today,
         num_frames: 36,
         exposure_time: 100,
         gain: 1.0,
@@ -1271,7 +1277,7 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
         scanner_name: 'Scanner1',
         plant_id: 'PLANT_RECENT_TEST',
         path: '/test/scans/scan3',
-        capture_date: new Date('2025-01-12'),
+        capture_date: threeDaysAgo,
         num_frames: 36,
         exposure_time: 100,
         gain: 1.0,
@@ -1294,10 +1300,9 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     );
 
     expect(result.success).toBe(true);
-    // Should return most recent date (2025-01-15)
+    // Should return the most recent date (today)
     const returnedDate = new Date(result.data);
-    const expectedDate = new Date('2025-01-15');
-    expect(returnedDate.toDateString()).toBe(expectedDate.toDateString());
+    expect(returnedDate.toDateString()).toBe(today.toDateString());
   });
 
   test('should return null when no scans exist for plant and experiment', async () => {

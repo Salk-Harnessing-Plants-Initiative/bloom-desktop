@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 interface Experiment {
+  id: string;
   name: string;
 }
 
@@ -227,8 +228,8 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                     {accession.experiments &&
                     accession.experiments.length > 0 ? (
                       <ul className="list-disc list-inside">
-                        {accession.experiments.map((exp, i) => (
-                          <li key={i}>{exp.name}</li>
+                        {accession.experiments.map((exp) => (
+                          <li key={exp.id}>{exp.name}</li>
                         ))}
                       </ul>
                     ) : (
