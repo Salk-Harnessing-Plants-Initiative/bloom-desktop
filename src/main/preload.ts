@@ -161,6 +161,12 @@ const databaseAPI: DatabaseAPI = {
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>
       ipcRenderer.invoke('db:scans:create', data),
+    getMostRecentScanDate: (plantId: string, experimentId: string) =>
+      ipcRenderer.invoke(
+        'db:scans:getMostRecentScanDate',
+        plantId,
+        experimentId
+      ),
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),
@@ -192,6 +198,14 @@ const databaseAPI: DatabaseAPI = {
     delete: (id: string) => ipcRenderer.invoke('db:accessions:delete', id),
     updateMapping: (mappingId: string, data: { genotype_id: string }) =>
       ipcRenderer.invoke('db:accessions:updateMapping', mappingId, data),
+    getPlantBarcodes: (accessionId: string) =>
+      ipcRenderer.invoke('db:accessions:getPlantBarcodes', accessionId),
+    getGenotypeByBarcode: (plantBarcode: string, experimentId: string) =>
+      ipcRenderer.invoke(
+        'db:accessions:getGenotypeByBarcode',
+        plantBarcode,
+        experimentId
+      ),
   },
   images: {
     create: (data: ImageCreateData[]) =>

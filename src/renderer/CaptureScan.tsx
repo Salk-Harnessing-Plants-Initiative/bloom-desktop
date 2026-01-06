@@ -5,7 +5,7 @@
  * Integrates camera preview, scanner control, and metadata input.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   MetadataForm,
   ScanMetadata,
@@ -30,6 +30,7 @@ export function CaptureScan() {
     plantAgeDays: 0,
     plantQrCode: '',
     accessionId: '',
+    genotypeId: '',
   });
 
   // Camera settings state
@@ -51,6 +52,72 @@ export function CaptureScan() {
   // UI state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Barcode validation state
+  const [barcodeValidationError, setBarcodeValidationError] = useState<
+    string | null
+  >(null);
+
+  // Duplicate scan prevention state
+  const [duplicateScanWarning, setDuplicateScanWarning] = useState<
+    string | null
+  >(null);
+
+  // Handle barcode validation changes from MetadataForm
+  const handleBarcodeValidationChange = useCallback(
+    (isValid: boolean, error?: string) => {
+      setBarcodeValidationError(isValid ? null : error || null);
+    },
+    []
+  );
+
+  // Check for duplicate scans (same plant + experiment + today)
+  useEffect(() => {
+    const checkDuplicateScan = async () => {
+      if (!metadata.plantQrCode.trim() || !metadata.experimentId.trim()) {
+        setDuplicateScanWarning(null);
+        return;
+      }
+
+      try {
+        const result =
+          await window.electron.database.scans.getMostRecentScanDate(
+            metadata.plantQrCode,
+            metadata.experimentId
+          );
+
+        if (result.success && result.data) {
+          // Compare dates (ignoring time)
+          const scanDate = new Date(result.data);
+          const today = new Date();
+
+          const isSameDay =
+            scanDate.getFullYear() === today.getFullYear() &&
+            scanDate.getMonth() === today.getMonth() &&
+            scanDate.getDate() === today.getDate();
+
+          if (isSameDay) {
+            setDuplicateScanWarning('This plant was already scanned today');
+          } else {
+            setDuplicateScanWarning(null);
+          }
+        } else {
+          setDuplicateScanWarning(null);
+        }
+      } catch (error) {
+        console.error('Failed to check for duplicate scan:', error);
+        setDuplicateScanWarning(null);
+      }
+    };
+
+    // Initial check
+    checkDuplicateScan();
+
+    // Poll every 2 seconds
+    const intervalId = setInterval(checkDuplicateScan, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [metadata.plantQrCode, metadata.experimentId]);
 
   // Check camera configuration on mount
   useEffect(() => {
@@ -162,7 +229,12 @@ export function CaptureScan() {
 
   const errors = validateMetadata();
   const isFormValid = Object.keys(errors).length === 0;
-  const canStartScan = isFormValid && cameraConfigured && !isScanning;
+  const canStartScan =
+    isFormValid &&
+    cameraConfigured &&
+    !isScanning &&
+    !barcodeValidationError &&
+    !duplicateScanWarning;
 
   // Start scan handler
   const handleStartScan = async () => {
@@ -272,7 +344,33 @@ export function CaptureScan() {
                 onChange={setMetadata}
                 disabled={isScanning}
                 errors={errors}
+                onBarcodeValidationChange={handleBarcodeValidationChange}
               />
+
+              {/* Duplicate Scan Warning */}
+              {duplicateScanWarning && (
+                <div
+                  className="mt-4 bg-amber-50 border-2 border-amber-400 rounded-lg p-3"
+                  data-testid="duplicate-scan-warning"
+                >
+                  <div className="flex items-center">
+                    <svg
+                      className="h-5 w-5 text-amber-600 mr-2"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <span className="font-medium text-amber-800">
+                      {duplicateScanWarning}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Camera Settings Review Panel (Collapsible) */}
               <div className="mt-6 pt-6 border-t border-gray-200">
