@@ -4,6 +4,7 @@ import { AccessionList } from './components/AccessionList';
 import { AccessionFileUpload } from './components/AccessionFileUpload';
 
 interface Experiment {
+  id: string;
   name: string;
 }
 
