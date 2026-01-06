@@ -4,6 +4,12 @@
  * Tests that ExperimentChooser displays visual indicators for experiments
  * that have accessions attached, helping users know which experiments
  * support barcode validation and autocomplete.
+ *
+ * **PREREQUISITES:**
+ * 1. Start Electron Forge dev server: `npm run start` (keep running in Terminal 1)
+ * 2. Run E2E tests: `npm run test:e2e` (in Terminal 2)
+ *
+ * The Electron app loads the renderer from Electron Forge's dev server on port 9000.
  */
 
 import {
@@ -13,109 +19,181 @@ import {
   Page,
   _electron as electron,
 } from '@playwright/test';
+import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 
-// Test database setup
-const TEST_DB_PATH = path.join(__dirname, '../../prisma/prisma/test.db');
-const DEV_DB_PATH = path.join(__dirname, '../../prisma/prisma/dev.db');
+// Import electron path
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const electronPath: string = require('electron');
 
 let electronApp: ElectronApplication;
-let page: Page;
+let window: Page;
+let prisma: PrismaClient;
+
+// Test database path for UI tests
+const TEST_DB_PATH = path.join(
+  __dirname,
+  'experiment-accession-indicator-test.db'
+);
+const TEST_DB_URL = `file:${TEST_DB_PATH}`;
+
+/**
+ * Helper: Launch Electron app with test database
+ */
+async function launchElectronApp() {
+  const appRoot = path.join(__dirname, '../..');
+
+  // Build args for Electron
+  const args = [path.join(appRoot, '.webpack/main/index.js')];
+  if (process.platform === 'linux' && process.env.CI === 'true') {
+    args.push('--no-sandbox');
+  }
+
+  // Launch Electron with test database URL
+  electronApp = await electron.launch({
+    executablePath: electronPath,
+    args,
+    cwd: appRoot,
+    env: {
+      ...process.env,
+      BLOOM_DATABASE_URL: TEST_DB_URL,
+      NODE_ENV: 'test',
+    } as Record<string, string>,
+  });
+
+  // Get the main window
+  const windows = await electronApp.windows();
+  window = windows.find((w) => w.url().includes('localhost')) || windows[0];
+
+  // Wait for window to be ready
+  await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
+}
+
+/**
+ * Test setup: Create fresh database and launch app
+ */
+test.beforeEach(async () => {
+  // Clean up any existing test database
+  if (fs.existsSync(TEST_DB_PATH)) {
+    fs.unlinkSync(TEST_DB_PATH);
+  }
+
+  // Create Prisma client for direct database access
+  prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: TEST_DB_URL,
+      },
+    },
+  });
+
+  // Run migrations to create schema
+  const { execSync } = require('child_process');
+  execSync('npx prisma migrate deploy', {
+    env: {
+      ...process.env,
+      BLOOM_DATABASE_URL: TEST_DB_URL,
+    },
+  });
+
+  // Seed test data - create scientist, accession, and experiments
+  const scientist = await prisma.scientist.create({
+    data: {
+      name: 'Test Scientist',
+      email: 'scientist@test.com',
+    },
+  });
+
+  const accession = await prisma.accessions.create({
+    data: {
+      name: 'Test Accession',
+    },
+  });
+
+  // Create experiment WITH accession
+  await prisma.experiment.create({
+    data: {
+      name: 'Experiment with Accession',
+      species: 'Arabidopsis thaliana',
+      scientist_id: scientist.id,
+      accession_id: accession.id,
+    },
+  });
+
+  // Create experiment WITHOUT accession
+  await prisma.experiment.create({
+    data: {
+      name: 'Experiment without Accession',
+      species: 'Sorghum bicolor',
+      scientist_id: scientist.id,
+      accession_id: null,
+    },
+  });
+
+  // Launch Electron app
+  await launchElectronApp();
+});
+
+/**
+ * Test cleanup
+ */
+test.afterEach(async () => {
+  // Close Electron app
+  if (electronApp) {
+    await electronApp.close();
+  }
+
+  // Disconnect Prisma
+  if (prisma) {
+    await prisma.$disconnect();
+  }
+
+  // Clean up test database
+  if (fs.existsSync(TEST_DB_PATH)) {
+    fs.unlinkSync(TEST_DB_PATH);
+  }
+});
 
 test.describe('Experiment Accession Indicator', () => {
-  test.beforeAll(async () => {
-    // Copy dev database for testing if it exists
-    if (fs.existsSync(DEV_DB_PATH)) {
-      fs.copyFileSync(DEV_DB_PATH, TEST_DB_PATH);
-    }
-
-    // Launch Electron app
-    electronApp = await electron.launch({
-      args: [path.join(__dirname, '../../dist/main/main.js')],
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-        DATABASE_URL: `file:${TEST_DB_PATH}`,
-      },
-    });
-
-    page = await electronApp.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
-  });
-
-  test.afterAll(async () => {
-    if (electronApp) {
-      await electronApp.close();
-    }
-    // Clean up test database
-    if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
-    }
-  });
-
-  test('ExperimentChooser shows accession indicator for experiments with accessions', async () => {
+  test('ExperimentChooser shows checkmark for experiments with accessions', async () => {
     // Navigate to CaptureScan page
-    await page.click('text=Capture Scan');
-    await page.waitForTimeout(500);
+    await window.click('text=Capture Scan');
+    await window.waitForTimeout(500);
 
     // Open the experiment chooser dropdown
-    const experimentChooser = page.locator('#experiment-chooser');
+    const experimentChooser = window.locator('#experiment-chooser');
     await expect(experimentChooser).toBeVisible();
-    await experimentChooser.click();
 
-    // Wait for experiments to load
-    await page.waitForTimeout(1000);
-
-    // At least verify the dropdown has options
-    const allOptions = page.locator('#experiment-chooser option');
+    // Get all options
+    const allOptions = window.locator('#experiment-chooser option');
     const optionCount = await allOptions.count();
-    expect(optionCount).toBeGreaterThan(1); // At least placeholder + 1 experiment
+    expect(optionCount).toBeGreaterThan(2); // Placeholder + 2 experiments
 
-    // Check for accession indicators (checkmarks) if any experiments have accessions
-    const optionsWithAccession = page.locator(
-      '#experiment-chooser option:has-text("✓")'
+    // Check for experiment with accession (should have ✓)
+    const optionWithAccession = window.locator(
+      '#experiment-chooser option:has-text("✓ Experiment with Accession")'
     );
-    const accessionCount = await optionsWithAccession.count();
-    // Log for debugging - we expect some experiments to have accessions
-    console.log(
-      `Found ${accessionCount} experiments with accession indicators`
+    await expect(optionWithAccession).toBeVisible();
+
+    // Check for experiment without accession (should NOT have ✓)
+    const optionWithoutAccession = window.locator(
+      '#experiment-chooser option:has-text("Experiment without Accession")'
     );
+    await expect(optionWithoutAccession).toBeVisible();
+
+    // Verify the option without accession doesn't have the checkmark
+    const textWithoutAccession = await optionWithoutAccession.textContent();
+    expect(textWithoutAccession).not.toContain('✓');
   });
 
-  test('Selected experiment with accession shows indicator text', async () => {
+  test('Experiments without accession do not show checkmark', async () => {
     // Navigate to CaptureScan page
-    await page.click('text=Capture Scan');
-    await page.waitForTimeout(500);
-
-    // Get the experiment chooser
-    const experimentChooser = page.locator('#experiment-chooser');
-    await expect(experimentChooser).toBeVisible();
-
-    // Select an experiment (if one with accession exists)
-    // The test will verify the indicator is shown after selection
-    const options = await page.locator('#experiment-chooser option').all();
-
-    // Find an option that has the accession indicator
-    for (const option of options) {
-      const text = await option.textContent();
-      if (text && (text.includes('✓') || text.includes('accession'))) {
-        const value = await option.getAttribute('value');
-        if (value) {
-          await experimentChooser.selectOption(value);
-          break;
-        }
-      }
-    }
-  });
-
-  test('Experiments without accession do not show indicator', async () => {
-    // Navigate to CaptureScan page
-    await page.click('text=Capture Scan');
-    await page.waitForTimeout(500);
+    await window.click('text=Capture Scan');
+    await window.waitForTimeout(500);
 
     // Get all options from the experiment chooser
-    const options = await page.locator('#experiment-chooser option').all();
+    const options = await window.locator('#experiment-chooser option').all();
 
     // Count experiments with and without indicators
     let withIndicator = 0;
@@ -136,12 +214,8 @@ test.describe('Experiment Accession Indicator', () => {
       }
     }
 
-    // Log for debugging
-    console.log(
-      `Experiments with accession: ${withIndicator}, without: ${withoutIndicator}`
-    );
-
-    // Verify that the counts are reasonable (at least one experiment exists)
-    expect(withIndicator + withoutIndicator).toBeGreaterThan(0);
+    // Verify counts match our test data
+    expect(withIndicator).toBe(1); // 1 experiment with accession
+    expect(withoutIndicator).toBe(1); // 1 experiment without accession
   });
 });
