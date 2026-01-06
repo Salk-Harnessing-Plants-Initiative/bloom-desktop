@@ -504,6 +504,14 @@ test.describe('Renderer Database IPC - Accessions', () => {
   });
 
   test('should get genotype ID by barcode from renderer', async () => {
+    // Seed scientist
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Genotype Scientist',
+        email: 'genosci@test.com',
+      },
+    });
+
     // Create accession with mappings
     const accession = await prisma.accessions.create({
       data: {
@@ -511,12 +519,12 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'dummy',
+              accession_id: 'ACC_001',  // Accession ID from the file
               plant_barcode: 'PLANT_X_01',
               genotype_id: 'GENOTYPE_X',
             },
             {
-              accession_id: 'dummy',
+              accession_id: 'ACC_001',  // Accession ID from the file
               plant_barcode: 'PLANT_Y_02',
               genotype_id: 'GENOTYPE_Y',
             },
@@ -525,13 +533,23 @@ test.describe('Renderer Database IPC - Accessions', () => {
       },
     });
 
+    // Create experiment linked to the accession
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Genotype Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
     const result = await window.evaluate(
-      ({ accId, barcode }) => {
+      ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(accId, barcode);
+        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
       },
-      { accId: accession.id, barcode: 'PLANT_X_01' }
+      { barcode: 'PLANT_X_01', expId: experiment.id }
     );
 
     expect(result.success).toBe(true);
@@ -539,6 +557,14 @@ test.describe('Renderer Database IPC - Accessions', () => {
   });
 
   test('should return null when barcode not found in accession', async () => {
+    // Seed scientist
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Not Found Scientist',
+        email: 'notfound@test.com',
+      },
+    });
+
     // Create accession with mappings
     const accession = await prisma.accessions.create({
       data: {
@@ -555,13 +581,23 @@ test.describe('Renderer Database IPC - Accessions', () => {
       },
     });
 
+    // Create experiment linked to accession
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Not Found Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
     const result = await window.evaluate(
-      ({ accId, barcode }) => {
+      ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(accId, barcode);
+        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
       },
-      { accId: accession.id, barcode: 'PLANT_INVALID' }
+      { barcode: 'PLANT_INVALID', expId: experiment.id }
     );
 
     expect(result.success).toBe(true);
