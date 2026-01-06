@@ -184,7 +184,7 @@ export function PlantBarcodeInput({
     };
 
     lookupGenotypeId();
-  }, [value, experimentId, onGenotypeIdFound]);
+  }, [value, experimentId]); // onGenotypeIdFound omitted from deps - it's a callback, not data
 
   // Validate on value change
   useEffect(() => {
