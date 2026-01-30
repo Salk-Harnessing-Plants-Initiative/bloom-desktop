@@ -6,10 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type {
-  MachineConfig,
-  Scanner,
-} from '../main/config-store';
+import type { MachineConfig, Scanner } from '../main/config-store';
 
 type FormState = 'loading' | 'config'; // Removed 'login' state
 type CameraTestStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -53,9 +50,7 @@ export function MachineConfiguration() {
   // Scanner list state
   const [scannerList, setScannerList] = useState<Scanner[]>([]);
   const [scannerListLoading, setScannerListLoading] = useState(false);
-  const [scannerListError, setScannerListError] = useState<string | null>(
-    null
-  );
+  const [scannerListError, setScannerListError] = useState<string | null>(null);
 
   // Fetch scanners from Bloom API (pass form credentials)
   const fetchScanners = async () => {
@@ -486,7 +481,9 @@ export function MachineConfiguration() {
                     setCameraTestStatus('idle');
                   }}
                   className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.camera_ip_address ? 'border-red-500' : 'border-gray-300'
+                    errors.camera_ip_address
+                      ? 'border-red-500'
+                      : 'border-gray-300'
                   }`}
                   placeholder="10.0.0.23 or mock"
                 />
@@ -526,7 +523,10 @@ export function MachineConfiguration() {
                   type="text"
                   value={config.scans_dir}
                   onChange={(e) =>
-                    setConfig((prev) => ({ ...prev, scans_dir: e.target.value }))
+                    setConfig((prev) => ({
+                      ...prev,
+                      scans_dir: e.target.value,
+                    }))
                   }
                   className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.scans_dir ? 'border-red-500' : 'border-gray-300'

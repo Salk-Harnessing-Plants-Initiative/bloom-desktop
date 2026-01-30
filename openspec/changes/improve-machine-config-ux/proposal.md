@@ -63,10 +63,10 @@ Reorganize the Machine Configuration page to place "Bloom API Credentials" as th
 
 ## Risks and Mitigations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Tests may fail due to changed DOM order | Medium | Update tests to query by label/role instead of DOM position |
-| Users familiar with old layout may be briefly confused | Low | Layout change is intuitive and follows logical flow |
+| Risk                                                   | Impact | Mitigation                                                  |
+| ------------------------------------------------------ | ------ | ----------------------------------------------------------- |
+| Tests may fail due to changed DOM order                | Medium | Update tests to query by label/role instead of DOM position |
+| Users familiar with old layout may be briefly confused | Low    | Layout change is intuitive and follows logical flow         |
 
 ## Success Criteria
 

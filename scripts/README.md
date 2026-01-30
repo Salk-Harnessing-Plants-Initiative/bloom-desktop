@@ -20,6 +20,7 @@ scripts/
 **Location**: `examples/test-bloom-api.example.js`
 
 **Setup**:
+
 ```bash
 # 1. Copy the example to create your test script
 cp scripts/examples/test-bloom-api.example.js scripts/test-bloom-api.js
@@ -35,12 +36,14 @@ node scripts/test-bloom-api.js
 ```
 
 **What it does**:
+
 1. Creates a Supabase client with your API URL and anon key
 2. Authenticates using email/password via `signInWithPassword()`
 3. Queries the `cyl_scanners` table using `SupabaseStore.getAllCylScanners()`
 4. Displays the list of available scanners
 
 **Expected output**:
+
 ```
 ✅ Authentication successful!
 📊 Found 4 scanners:
@@ -51,6 +54,7 @@ node scripts/test-bloom-api.js
 ```
 
 **Troubleshooting**:
+
 - **401 Authentication failed**: Check your username/password in `.env`
 - **Network error**: Verify API URL is correct and accessible
 - **Module not found**: Run `npm install` to install dependencies
@@ -74,6 +78,7 @@ When creating new example scripts:
 - ✅ `.env.example` - Safe to commit (template only)
 
 The `.gitignore` automatically ignores:
+
 - `scripts/*.js` (except in examples/ subdirectory)
 - `.env`
 - `.npmrc`

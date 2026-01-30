@@ -3,6 +3,7 @@
 ## Implementation Checklist
 
 ### Phase 1: Component Refactoring
+
 - [ ] Read current MachineConfiguration.tsx component structure
 - [ ] Identify the three main sections (Credentials, Machine Identity, Hardware)
 - [ ] Reorder JSX sections: Credentials → Machine Identity → Hardware
@@ -10,6 +11,7 @@
 - [ ] Run TypeScript compilation check
 
 ### Phase 2: Test Updates (TDD)
+
 - [ ] Run existing MachineConfiguration tests to identify failures
 - [ ] Update tests to be resilient to section order (query by label/role, not position)
 - [ ] Add test to verify section order in DOM
@@ -17,6 +19,7 @@
 - [ ] Verify no regressions in other test files
 
 ### Phase 3: Validation
+
 - [ ] Run full unit test suite
 - [ ] Manual test: First-run experience (no credentials)
 - [ ] Manual test: Existing configuration (credentials present)
@@ -46,6 +49,7 @@
 ### Expected Test Updates
 
 Tests that may need updates:
+
 1. Section order assertions
 2. DOM traversal that depends on order
 3. Accessibility tree order checks
@@ -53,18 +57,20 @@ Tests that may need updates:
 ### Test Strategy
 
 Use stable queries:
+
 ```tsx
 // ✓ Good (order-independent)
-screen.getByLabelText(/Username/i)
-screen.getByRole('heading', { name: /Bloom API Credentials/i })
+screen.getByLabelText(/Username/i);
+screen.getByRole('heading', { name: /Bloom API Credentials/i });
 
 // ✗ Avoid (order-dependent)
-container.querySelector('div:nth-child(1)')
+container.querySelector('div:nth-child(1)');
 ```
 
 ## Manual Testing Checklist
 
 ### First-Run Experience
+
 1. Delete `~/.bloom/config.json` and `~/.bloom/.env`
 2. Start app → navigate to Machine Configuration
 3. Verify Bloom API Credentials section appears first
@@ -75,6 +81,7 @@ container.querySelector('div:nth-child(1)')
 8. Verify configuration persists
 
 ### Existing Configuration
+
 1. Ensure `~/.bloom/config.json` and `~/.bloom/.env` exist
 2. Start app → navigate to Machine Configuration
 3. Verify login screen appears (credentials exist)
@@ -85,6 +92,7 @@ container.querySelector('div:nth-child(1)')
 8. Verify changes persist
 
 ### Keyboard Navigation
+
 1. Load Machine Configuration page
 2. Tab through form fields
 3. Verify order: Username → Password → Anon Key → API URL → Scanner → Camera IP → Scans Dir → Browse → Save
@@ -94,6 +102,7 @@ container.querySelector('div:nth-child(1)')
 ## Rollback Plan
 
 If issues arise:
+
 1. Revert MachineConfiguration.tsx section order
 2. Revert test updates
 3. Run test suite to verify rollback successful

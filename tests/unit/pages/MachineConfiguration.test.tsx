@@ -23,10 +23,11 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   // Setup window.electron mock
-  (window as unknown as { electron: { config: typeof mockConfigAPI } }).electron =
-    {
-      config: mockConfigAPI,
-    };
+  (
+    window as unknown as { electron: { config: typeof mockConfigAPI } }
+  ).electron = {
+    config: mockConfigAPI,
+  };
 
   // Default mock implementations
   mockConfigAPI.get.mockResolvedValue({
@@ -73,8 +74,6 @@ describe('MachineConfiguration Page', () => {
       // Should show form, not login
       expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
     });
-
-
   });
 
   describe('Configuration form with existing credentials', () => {
@@ -109,7 +108,7 @@ describe('MachineConfiguration Page', () => {
 
       // Should NOT have login elements
       expect(screen.queryByText(/Authenticate/i)).not.toBeInTheDocument();
-      
+
       // Form should show all credential fields
       expect(screen.getByLabelText(/Username/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
@@ -128,11 +127,11 @@ describe('MachineConfiguration Page', () => {
       expect(screen.getByDisplayValue('test@salk.edu')).toBeInTheDocument();
       expect(screen.getByDisplayValue('********')).toBeInTheDocument();
       expect(screen.getByDisplayValue('testkey123')).toBeInTheDocument();
-      expect(screen.getByDisplayValue('https://api.bloom.salk.edu/proxy')).toBeInTheDocument();
+      expect(
+        screen.getByDisplayValue('https://api.bloom.salk.edu/proxy')
+      ).toBeInTheDocument();
     });
   });
-
-
 
   describe('Configuration form', () => {
     beforeEach(() => {
@@ -164,8 +163,9 @@ describe('MachineConfiguration Page', () => {
       expect(screen.getByLabelText(/Username/i)).toBeInTheDocument();
       // Password field with label
       expect(
-        screen.getByLabelText((content, element) =>
-          element?.tagName === 'INPUT' && content.includes('Password')
+        screen.getByLabelText(
+          (content, element) =>
+            element?.tagName === 'INPUT' && content.includes('Password')
         )
       ).toBeInTheDocument();
       expect(screen.getByLabelText(/Anon Key/i)).toBeInTheDocument();
@@ -225,7 +225,9 @@ describe('MachineConfiguration Page', () => {
       });
 
       // Click save
-      fireEvent.click(screen.getByRole('button', { name: /Save Configuration/i }));
+      fireEvent.click(
+        screen.getByRole('button', { name: /Save Configuration/i })
+      );
 
       await waitFor(() => {
         expect(mockConfigAPI.set).toHaveBeenCalled();
@@ -249,10 +251,7 @@ describe('MachineConfiguration Page', () => {
 
       mockConfigAPI.fetchScanners.mockResolvedValue({
         success: true,
-        scanners: [
-          { name: 'PBIOBScanner' },
-          { name: 'FastScanner' },
-        ],
+        scanners: [{ name: 'PBIOBScanner' }, { name: 'FastScanner' }],
       });
 
       mockConfigAPI.set.mockResolvedValue({
@@ -279,7 +278,9 @@ describe('MachineConfiguration Page', () => {
 
       // Now on config form - clear scanner selection
       await waitFor(() => {
-        expect(screen.getByLabelText(/Scanner Name/i)).toHaveValue('PBIOBScanner');
+        expect(screen.getByLabelText(/Scanner Name/i)).toHaveValue(
+          'PBIOBScanner'
+        );
       });
 
       // Change to empty value
@@ -288,7 +289,9 @@ describe('MachineConfiguration Page', () => {
       });
 
       // Try to save
-      fireEvent.click(screen.getByRole('button', { name: /Save Configuration/i }));
+      fireEvent.click(
+        screen.getByRole('button', { name: /Save Configuration/i })
+      );
 
       await waitFor(() => {
         expect(

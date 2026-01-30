@@ -18,6 +18,7 @@ The Machine Configuration page SHALL fetch valid scanner names from the Bloom AP
 **And** populates the scanner dropdown with the fetched names
 
 **Acceptance Criteria**:
+
 - Uses `@supabase/supabase-js` `createClient()` method
 - Uses `@salk-hpi/bloom-js` `SupabaseStore` class
 - Authenticates with email/password (not password as Bearer token)
@@ -36,6 +37,7 @@ The Machine Configuration page SHALL fetch valid scanner names from the Bloom AP
 **And** a "Retry" button allows the user to attempt fetch again
 
 **Acceptance Criteria**:
+
 - Supabase auth errors are caught and formatted for user display
 - No raw error objects exposed to UI
 - Retry mechanism available
@@ -52,6 +54,7 @@ The Machine Configuration page SHALL fetch valid scanner names from the Bloom AP
 **And** appropriate error handling prevents application crash
 
 **Acceptance Criteria**:
+
 - Network errors caught and handled gracefully
 - User-friendly error messages displayed
 - Application remains functional despite API unavailability
@@ -68,6 +71,7 @@ The Machine Configuration page SHALL fetch valid scanner names from the Bloom AP
 **And** the user can immediately select a scanner without page refresh
 
 **Acceptance Criteria**:
+
 - Scanner fetch triggered automatically after first-time credential save
 - Loading state shown during fetch ("Loading scanners...")
 - Dropdown populates without requiring page navigation or refresh

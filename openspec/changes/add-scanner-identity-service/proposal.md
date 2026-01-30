@@ -5,6 +5,7 @@
 The scanner name configured in Machine Configuration is not displayed in the Layout sidebar after saving. This occurs because Layout loads the scanner name once on mount and never refreshes, even after configuration changes are saved.
 
 **Current Behavior**:
+
 1. User saves scanner name in Machine Configuration → saved to `~/.bloom/.env` ✅
 2. Layout displays "Not configured" in bottom left → never updates ❌
 3. App restart required to see updated scanner name → poor UX ❌
@@ -18,18 +19,20 @@ The pilot implementation separates these concerns using a scanner service patter
 ### Evidence from `bloom-desktop-pilot`
 
 **Pilot Architecture** (`bloom-desktop-pilot/app/src/main/main.ts`):
+
 ```typescript
 // Line 88: Config loaded at startup (persistence layer)
-const config = yaml.load(fs.readFileSync(config_yaml, "utf8"));
+const config = yaml.load(fs.readFileSync(config_yaml, 'utf8'));
 
 // Line 148: Scanner service created with config (runtime state)
 const scanner = createScanner(config);
 
 // Line 149: IPC handler exposes scanner identity (runtime API)
-ipcMain.handle("scanner:get-scanner-id", scanner.getScannerId);
+ipcMain.handle('scanner:get-scanner-id', scanner.getScannerId);
 ```
 
 **Scanner Service** (`bloom-desktop-pilot/app/src/main/scanner.ts`):
+
 ```typescript
 class Scanner {
   private scanner_name: string;
@@ -45,6 +48,7 @@ class Scanner {
 ```
 
 **Key Architectural Pattern**:
+
 - **Config file** (`.env`) = Persistence layer (read at startup, written on save)
 - **Scanner service** = Runtime state (holds current scanner identity)
 - **UI components** = Query scanner service via IPC, not config directly
@@ -60,6 +64,7 @@ Implement a lightweight scanner identity service following the pilot pattern, al
 We already use this pattern for camera settings:
 
 **From `src/main/main.ts` line 83**:
+
 ```typescript
 // Camera settings: in-memory, ephemeral (lost on restart)
 let currentCameraSettings: CameraSettings | null = null;
@@ -78,6 +83,7 @@ ipcMain.handle('camera:get-settings', async () => {
 ```
 
 **Proposed: Scanner Identity (Same Pattern)**:
+
 ```typescript
 // Scanner identity: in-memory, synced from config
 let scannerIdentity: { name: string } = { name: '' };
@@ -115,12 +121,12 @@ ipcMain.handle('config:set', async (_event, config: MachineConfig) => {
 
 ### Comparison with Other Runtime State
 
-| State | Storage | Lifecycle | Access Pattern |
-|-------|---------|-----------|----------------|
-| Camera settings | In-memory (`currentCameraSettings`) | Lost on restart | `camera:get-settings` IPC |
-| Scanner metadata | In-memory (`ScannerProcess.currentSettings`) | Lost on restart | Per-scan initialization |
-| **Scanner identity** | **In-memory (`scannerIdentity`)** | **Synced from .env** | **`scanner:get-scanner-id` IPC** |
-| Machine config | Persistent (`.env` file) | Survives restart | `config:get` IPC |
+| State                | Storage                                      | Lifecycle            | Access Pattern                   |
+| -------------------- | -------------------------------------------- | -------------------- | -------------------------------- |
+| Camera settings      | In-memory (`currentCameraSettings`)          | Lost on restart      | `camera:get-settings` IPC        |
+| Scanner metadata     | In-memory (`ScannerProcess.currentSettings`) | Lost on restart      | Per-scan initialization          |
+| **Scanner identity** | **In-memory (`scannerIdentity`)**            | **Synced from .env** | **`scanner:get-scanner-id` IPC** |
+| Machine config       | Persistent (`.env` file)                     | Survives restart     | `config:get` IPC                 |
 
 Scanner identity follows the same pattern but syncs with persistent config.
 
@@ -192,6 +198,7 @@ Scanner identity follows the same pattern but syncs with persistent config.
 ### No Breaking Changes
 
 This is a purely additive change:
+
 - New IPC handler added
 - No existing APIs modified or removed
 - No interface changes to existing code
@@ -202,6 +209,7 @@ This is a purely additive change:
 ### Phase 1: Write Tests First
 
 **Unit Tests** (`tests/unit/scanner-identity.test.ts`):
+
 ```typescript
 describe('Scanner Identity Service', () => {
   it('should initialize scanner identity from config on startup', () => {
@@ -227,6 +235,7 @@ describe('Scanner Identity Service', () => {
 ```
 
 **Component Tests** (`tests/unit/components/Layout.test.tsx`):
+
 ```typescript
 describe('Layout scanner name display', () => {
   it('should display scanner name from scanner:get-scanner-id', async () => {
@@ -254,6 +263,7 @@ describe('Layout scanner name display', () => {
 ### Phase 3: Integration Testing
 
 **Manual Test Flow**:
+
 1. Start app with existing config → verify scanner name displays
 2. Navigate to Machine Configuration
 3. Change scanner name → save
@@ -267,11 +277,13 @@ Not required for this change (no user-facing flow changes).
 ## Implementation Plan (TDD)
 
 ### Phase 1: Write Tests (15 min)
+
 - [ ] Create `tests/unit/scanner-identity.test.ts`
 - [ ] Write 5 unit tests (see Testing Strategy above)
 - [ ] Run tests - expect failures ❌
 
 ### Phase 2: Implement Scanner Identity Service (20 min)
+
 - [ ] Add `scannerIdentity` variable in main.ts
 - [ ] Initialize from config at app startup
 - [ ] Add `scanner:get-scanner-id` IPC handler
@@ -280,28 +292,33 @@ Not required for this change (no user-facing flow changes).
 - [ ] Run tests - expect all to pass ✅
 
 ### Phase 3: Update Preload & Types (10 min)
+
 - [ ] Add `getScannerId` to preload.ts
 - [ ] Add type definitions to electron.d.ts
 - [ ] Run TypeScript compiler - expect no errors ✅
 
 ### Phase 4: Update Layout Component (15 min)
+
 - [ ] Write Layout component tests
 - [ ] Update Layout to use `scanner:get-scanner-id`
 - [ ] Add periodic refresh (useEffect polling)
 - [ ] Run component tests - expect all to pass ✅
 
 ### Phase 5: Create Spec Delta (10 min)
+
 - [ ] Write spec delta in `specs/scanner-api/spec.md`
 - [ ] Document requirements and scenarios
 - [ ] Run `npx openspec validate add-scanner-identity-service`
 
 ### Phase 6: Manual Testing (10 min)
+
 - [ ] Test full flow (see Integration Testing above)
 - [ ] Verify scanner name updates without restart
 - [ ] Test first-run behavior (no config)
 - [ ] Test app restart (persistence)
 
 ### Phase 7: Code Review & Cleanup (10 min)
+
 - [ ] Run linter: `npm run lint`
 - [ ] Run formatter: `npm run format`
 - [ ] Run full test suite: `npm run test:unit`
@@ -318,6 +335,7 @@ Not required for this change (no user-facing flow changes).
 ## Rollback Plan
 
 If issues discovered:
+
 1. Remove `scanner:get-scanner-id` IPC handler
 2. Revert Layout to use `config:get` (old behavior)
 3. Remove `scannerIdentity` variable
@@ -344,6 +362,7 @@ If issues discovered:
 ## Acceptance Criteria
 
 ### Functional Requirements
+
 - ✅ Scanner name displays in Layout after saving config
 - ✅ No app restart required to see updated name
 - ✅ "Not configured" shown when scanner name empty
@@ -351,6 +370,7 @@ If issues discovered:
 - ✅ Matches pilot's `scanner:get-scanner-id` API pattern
 
 ### Technical Requirements
+
 - ✅ `scannerIdentity` variable holds runtime state
 - ✅ `scanner:get-scanner-id` IPC handler returns identity
 - ✅ `config:set` syncs `scannerIdentity` from config
@@ -361,6 +381,7 @@ If issues discovered:
 - ✅ No breaking changes to existing APIs
 
 ### Code Quality Requirements
+
 - ✅ Code comments explain scanner identity purpose
 - ✅ Follows existing runtime state pattern (camera settings)
 - ✅ TypeScript types for all new APIs

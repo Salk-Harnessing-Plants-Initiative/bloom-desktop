@@ -166,7 +166,7 @@ useEffect(() => {
 This implementation matches `bloom-desktop-pilot/app/src/main/main.ts` line 149:
 
 ```typescript
-ipcMain.handle("scanner:get-scanner-id", scanner.getScannerId);
+ipcMain.handle('scanner:get-scanner-id', scanner.getScannerId);
 ```
 
 Where `scanner.getScannerId()` returns the scanner's name from runtime state.

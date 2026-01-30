@@ -315,7 +315,7 @@ export function validateConfig(config: MachineConfig): ValidationResult {
 /**
  * Load unified configuration from .env file
  * Includes automatic migration from legacy config.json + .env format
- * 
+ *
  * @param envPath - Path to .env file (e.g., ~/.bloom/.env)
  * @returns Unified configuration with all fields
  */
@@ -342,7 +342,7 @@ export function loadEnvConfig(envPath: string): MachineConfig {
 
   // Load from .env file
   let envConfig: Partial<MachineConfig> = {};
-  
+
   try {
     if (fs.existsSync(envPath)) {
       const content = fs.readFileSync(envPath, 'utf-8');
@@ -402,7 +402,7 @@ export function loadEnvConfig(envPath: string): MachineConfig {
   // If we migrated from legacy config.json, save to new format and delete old file
   if (legacyConfig && Object.keys(legacyConfig).length > 0) {
     saveEnvConfig(merged, envPath);
-    
+
     try {
       fs.unlinkSync(legacyConfigPath);
     } catch {
@@ -415,7 +415,7 @@ export function loadEnvConfig(envPath: string): MachineConfig {
 
 /**
  * Save unified configuration to .env file
- * 
+ *
  * @param config - Unified configuration to save
  * @param envPath - Path to .env file (e.g., ~/.bloom/.env)
  */

@@ -16,11 +16,13 @@ There is a **catch-22 UX problem** in the Machine Configuration page:
 5. **Save fails** because scanner_name is required but user can't select one yet!
 
 **Current workaround (confusing)**:
+
 - Save credentials fails due to validation
 - No way to test credentials without completing entire form
 - User must manually type a scanner name or refresh page after partial save
 
 **What users expect**:
+
 - Enter credentials → Test/Fetch scanners → Select scanner → Save complete configuration
 
 ## Proposed Solution
@@ -38,6 +40,7 @@ Add a **"Fetch Scanners from Bloom"** button in the Bloom API Credentials sectio
 **Location**: After the Anon Key field in Bloom API Credentials section
 
 **Button states**:
+
 - **Disabled** when any credential field is empty
 - **Loading** while fetching (with spinner)
 - **Enabled** when all credentials are present
@@ -78,11 +81,11 @@ Add a **"Fetch Scanners from Bloom"** button in the Bloom API Credentials sectio
 
 ## Risks and Mitigations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Users forget to fetch scanners | Low | Keep existing auto-fetch on save as fallback |
-| Multiple fetch calls (button + auto) | Low | Loading state prevents duplicate calls |
-| Error messages need to be clear | Medium | Use specific error text from API |
+| Risk                                 | Impact | Mitigation                                   |
+| ------------------------------------ | ------ | -------------------------------------------- |
+| Users forget to fetch scanners       | Low    | Keep existing auto-fetch on save as fallback |
+| Multiple fetch calls (button + auto) | Low    | Loading state prevents duplicate calls       |
+| Error messages need to be clear      | Medium | Use specific error text from API             |
 
 ## Success Criteria
 

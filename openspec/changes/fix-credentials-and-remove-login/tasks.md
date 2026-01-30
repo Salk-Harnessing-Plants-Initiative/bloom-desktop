@@ -3,6 +3,7 @@
 ## Implementation Checklist (TDD Approach)
 
 ### Phase 0: Consolidate Configuration Storage (NEW)
+
 - [ ] 0.1 Add test: `loadEnvConfig()` reads all fields from .env
 - [ ] 0.2 Add test: `saveEnvConfig()` writes all fields to .env
 - [ ] 0.3 Add test: Migration merges config.json + .env → .env
@@ -18,6 +19,7 @@
 - [ ] 0.13 Run config-store tests - expect all to pass
 
 ### Phase 1: Write Tests First (TDD)
+
 - [ ] 1.1 Add IPC test: `config:fetch-scanners` accepts apiUrl parameter
 - [ ] 1.2 Add IPC test: `config:fetch-scanners` accepts credentials parameter
 - [ ] 1.3 Add IPC test: Handler uses provided credentials, not file
@@ -28,6 +30,7 @@
 - [ ] 1.8 Run IPC tests - expect failures (not implemented yet)
 
 ### Phase 2: Fix IPC Handler (TDD)
+
 - [ ] 2.1 Update `config:fetch-scanners` handler in src/main/main.ts
 - [ ] 2.2 Update handler signature to accept `apiUrl` and `credentials`
 - [ ] 2.3 Remove `loadCredentials()` call from handler (use unified config)
@@ -39,6 +42,7 @@
 - [ ] 2.9 Run IPC tests - expect all to pass
 
 ### Phase 3: Update Renderer for Unified Config (TDD)
+
 - [ ] 3.1 Add component test: Component uses single unified config state
 - [ ] 3.2 Add component test: fetchScanners called with credentials from config
 - [ ] 3.3 Add component test: Save writes all fields to unified config
@@ -51,6 +55,7 @@
 - [ ] 3.10 Run component tests - expect all to pass
 
 ### Phase 4: Remove Login Screen Tests (TDD)
+
 - [ ] 4.1 Remove test: "should display login screen when credentials exist"
 - [ ] 4.2 Remove test: "should validate credentials on login"
 - [ ] 4.3 Remove test: "should show error on invalid login"
@@ -60,6 +65,7 @@
 - [ ] 4.7 Run tests - expect failures (login screen still exists)
 
 ### Phase 5: Remove Login Screen Implementation
+
 - [ ] 5.1 Remove `FormState` type value `'login'` from types
 - [ ] 5.2 Update `formState` type to `'loading' | 'config'`
 - [ ] 5.3 Remove state: `loginUsername`
@@ -73,6 +79,7 @@
 - [ ] 5.11 Run tests - expect all to pass (24/24 after removals)
 
 ### Phase 6: Update E2E Tests
+
 - [ ] 6.1 Update test: "should not require credentials to access config form"
 - [ ] 6.2 Add test: "should fetch scanners with form credentials on first run"
 - [ ] 6.3 Update test: "should populate scanner dropdown after successful fetch"
@@ -80,6 +87,7 @@
 - [ ] 6.5 Run E2E tests - verify they pass (requires dev server running)
 
 ### Phase 7: Manual Testing
+
 - [ ] 7.1 Test: Delete ~/.bloom/ and start app
 - [ ] 7.2 Test: Verify config form shown immediately (no login)
 - [ ] 7.3 Test: Enter ALL config fields (scanner name, camera IP, scans dir, API URL, credentials)
@@ -95,6 +103,7 @@
 - [ ] 7.13 Test: Verify uses NEW credentials from form
 
 ### Phase 7b: Migration Testing
+
 - [ ] 7b.1 Test: Create old-style config.json + .env files manually
 - [ ] 7b.2 Test: Start app
 - [ ] 7b.3 Test: Verify form loads with values from BOTH files
@@ -104,6 +113,7 @@
 - [ ] 7b.7 Test: Verify loads correctly from .env only
 
 ### Phase 8: Cleanup & Documentation
+
 - [ ] 8.1 Remove `config:validate-credentials` IPC handler from src/main/main.ts
 - [ ] 8.2 Remove `validateCredentials` from src/main/preload.ts
 - [ ] 8.3 Remove `validateCredentials` from src/types/electron.d.ts
@@ -116,6 +126,7 @@
 ## Acceptance Criteria
 
 ### Functional Requirements
+
 - ✓ No login screen shown on app start (first run or returning user)
 - ✓ Configuration form loads immediately
 - ✓ Form pre-filled with ALL saved values (scanner name, camera IP, credentials, etc.)
@@ -126,6 +137,7 @@
 - ✓ Matches pilot implementation pattern (single file, no login screen)
 
 ### Technical Requirements
+
 - ✓ Single `loadEnvConfig()` function replaces dual load functions
 - ✓ Single `saveEnvConfig()` function replaces dual save functions
 - ✓ `MachineConfig` interface includes all fields (config + credentials)
@@ -141,6 +153,7 @@
 - ✓ Migration logic automatically merges legacy files
 
 ### Testing Requirements
+
 - ✓ All unit tests pass (24+ tests expected after removals)
 - ✓ All E2E tests pass (7 tests in machine-config-fetch-scanners.e2e.ts)
 - ✓ Manual testing checklist completed
@@ -151,6 +164,7 @@
 ### IPC Handler Change
 
 **Before**:
+
 ```typescript
 ipcMain.handle('config:fetch-scanners', async () => {
   const config = loadConfig(CONFIG_PATH);
@@ -160,20 +174,21 @@ ipcMain.handle('config:fetch-scanners', async () => {
 ```
 
 **After**:
+
 ```typescript
-ipcMain.handle('config:fetch-scanners', async (
-  _event,
-  apiUrl: string,
-  credentials: MachineCredentials
-) => {
-  // ✅ Uses provided credentials from form
-  return await fetchScannersFromBloom(apiUrl, credentials);
-});
+ipcMain.handle(
+  'config:fetch-scanners',
+  async (_event, apiUrl: string, credentials: MachineCredentials) => {
+    // ✅ Uses provided credentials from form
+    return await fetchScannersFromBloom(apiUrl, credentials);
+  }
+);
 ```
 
 ### Renderer Change
 
 **Before**:
+
 ```typescript
 const fetchScanners = async () => {
   const result = await window.electron.config.fetchScanners(); // ❌ No params
@@ -182,6 +197,7 @@ const fetchScanners = async () => {
 ```
 
 **After**:
+
 ```typescript
 const fetchScanners = async () => {
   // ✅ Pass form state as parameters
@@ -196,6 +212,7 @@ const fetchScanners = async () => {
 ### FormState Simplification
 
 **Before**:
+
 ```typescript
 type FormState = 'loading' | 'login' | 'config';
 const [formState, setFormState] = useState<FormState>('loading');
@@ -209,6 +226,7 @@ if (configData.hasCredentials) {
 ```
 
 **After**:
+
 ```typescript
 type FormState = 'loading' | 'config';
 const [formState, setFormState] = useState<FormState>('loading');
@@ -220,6 +238,7 @@ setFormState('config'); // ✅ Direct to config form
 ### Configuration Consolidation
 
 **Before** (dual storage):
+
 ```typescript
 // config-store.ts
 const CONFIG_PATH = path.join(homedir, '.bloom', 'config.json');
@@ -238,11 +257,12 @@ interface MachineCredentials {
   bloom_anon_key: string;
 }
 
-loadConfig(CONFIG_PATH);      // Reads config.json
-loadCredentials(ENV_PATH);    // Reads .env
+loadConfig(CONFIG_PATH); // Reads config.json
+loadCredentials(ENV_PATH); // Reads .env
 ```
 
 **After** (unified .env):
+
 ```typescript
 // config-store.ts
 const ENV_PATH = path.join(homedir, '.bloom', '.env');
@@ -252,15 +272,16 @@ interface MachineConfig {
   camera_ip_address: string;
   scans_dir: string;
   bloom_api_url: string;
-  bloom_scanner_username: string;  // ✅ Merged
-  bloom_scanner_password: string;  // ✅ Merged
-  bloom_anon_key: string;          // ✅ Merged
+  bloom_scanner_username: string; // ✅ Merged
+  bloom_scanner_password: string; // ✅ Merged
+  bloom_anon_key: string; // ✅ Merged
 }
 
-loadEnvConfig(ENV_PATH);  // ✅ Reads everything from .env
+loadEnvConfig(ENV_PATH); // ✅ Reads everything from .env
 ```
 
 **`.env` file format**:
+
 ```env
 SCANNER_NAME=PBIOBScanner
 CAMERA_IP_ADDRESS=10.0.0.50
@@ -274,17 +295,21 @@ BLOOM_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ### Files Modified
 
 **Main Process**:
+
 - `src/main/config-store.ts` - **MAJOR REFACTOR**: Consolidate to single .env
 - `src/main/main.ts` - Update IPC handlers for unified config
 - `src/main/preload.ts` - Update API signatures
 
 **Renderer**:
+
 - `src/renderer/MachineConfiguration.tsx` - Merge state, remove login UI
 
 **Types**:
+
 - `src/types/electron.d.ts` - Update interfaces and API signatures
 
 **Tests**:
+
 - `tests/unit/config-ipc.test.ts` - Add parameterized handler tests
 - `tests/unit/pages/MachineConfiguration.test.tsx` - Remove login tests
 - `tests/e2e/machine-config-fetch-scanners.e2e.ts` - Update for new flow
@@ -298,6 +323,7 @@ BLOOM_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ## Rollback Plan
 
 If issues discovered:
+
 1. Revert single commit containing all changes
 2. Login screen restored
 3. Fetch button fix can be cherry-picked separately

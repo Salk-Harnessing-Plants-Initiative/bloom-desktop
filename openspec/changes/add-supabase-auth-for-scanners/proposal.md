@@ -14,6 +14,7 @@ The current `fetchScannersFromBloom()` implementation incorrectly uses raw `fetc
 3. **Use Supabase client methods**: Query the `cyl_scanners` table using Supabase client, not raw HTTP
 
 **Current broken code:**
+
 ```typescript
 const response = await fetch(`${apiUrl}/scanners`, {
   headers: {
@@ -23,6 +24,7 @@ const response = await fetch(`${apiUrl}/scanners`, {
 ```
 
 **Evidence from pilot code:**
+
 - Uses `@supabase/supabase-js` client library
 - Authenticates with `supabase.auth.signInWithPassword()`
 - Uses `@salk-hpi/bloom-js` `SupabaseStore.getAllCylScanners()` method
@@ -39,6 +41,7 @@ Replace the broken authentication with proper Supabase client authentication mat
    - `@salk-hpi/bloom-js`: Bloom-specific helpers including `SupabaseStore`
 
 2. **Rewrite `fetchScannersFromBloom()`**:
+
    ```typescript
    export async function fetchScannersFromBloom(
      apiUrl: string,
@@ -55,7 +58,10 @@ Replace the broken authentication with proper Supabase client authentication mat
        });
 
        if (authError) {
-         return { success: false, error: `Authentication failed: ${authError.message}` };
+         return {
+           success: false,
+           error: `Authentication failed: ${authError.message}`,
+         };
        }
 
        // Use SupabaseStore to query scanners
@@ -63,7 +69,10 @@ Replace the broken authentication with proper Supabase client authentication mat
        const { data, error } = await store.getAllCylScanners();
 
        if (error) {
-         return { success: false, error: `Failed to fetch scanners: ${error.message}` };
+         return {
+           success: false,
+           error: `Failed to fetch scanners: ${error.message}`,
+         };
        }
 
        return { success: true, scanners: data };
@@ -114,11 +123,11 @@ Replace the broken authentication with proper Supabase client authentication mat
 
 ## Risks and Mitigations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Package size increase | Low | Both packages are already used in pilot, sizes are reasonable |
-| Breaking existing tests | Medium | Update mocks to match Supabase client API |
-| Auth token expiration | Low | Each fetch creates new authenticated session |
+| Risk                    | Impact | Mitigation                                                    |
+| ----------------------- | ------ | ------------------------------------------------------------- |
+| Package size increase   | Low    | Both packages are already used in pilot, sizes are reasonable |
+| Breaking existing tests | Medium | Update mocks to match Supabase client API                     |
+| Auth token expiration   | Low    | Each fetch creates new authenticated session                  |
 
 ## Success Criteria
 

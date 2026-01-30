@@ -67,7 +67,9 @@ BLOOM_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9`;
       expect(config.bloom_api_url).toBe('https://api.bloom.salk.edu/proxy');
       expect(config.bloom_scanner_username).toBe('pbiob_scanner@salk.edu');
       expect(config.bloom_scanner_password).toBe('scanner_password_123');
-      expect(config.bloom_anon_key).toBe('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');
+      expect(config.bloom_anon_key).toBe(
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'
+      );
     });
 
     it('should return defaults when .env file does not exist', () => {
@@ -546,7 +548,12 @@ OTHER_VAR=ignored`;
       });
 
       it('should accept valid IPv4 addresses', () => {
-        const validIPs = ['10.0.0.23', '192.168.1.100', '172.16.0.1', '1.2.3.4'];
+        const validIPs = [
+          '10.0.0.23',
+          '192.168.1.100',
+          '172.16.0.1',
+          '1.2.3.4',
+        ];
 
         for (const ip of validIPs) {
           const config: MachineConfig = {
@@ -781,10 +788,7 @@ OTHER_VAR=ignored`;
         error: null,
       });
 
-      const result = await fetchScannersFromBloom(
-        mockApiUrl,
-        mockCredentials
-      );
+      const result = await fetchScannersFromBloom(mockApiUrl, mockCredentials);
 
       // Verify result
       expect(result.success).toBe(true);
@@ -819,10 +823,7 @@ OTHER_VAR=ignored`;
         error: { message: 'Invalid login credentials' },
       });
 
-      const result = await fetchScannersFromBloom(
-        mockApiUrl,
-        mockCredentials
-      );
+      const result = await fetchScannersFromBloom(mockApiUrl, mockCredentials);
 
       expect(result.success).toBe(false);
       expect(result.scanners).toBeUndefined();
@@ -841,10 +842,7 @@ OTHER_VAR=ignored`;
         new Error('Network error')
       );
 
-      const result = await fetchScannersFromBloom(
-        mockApiUrl,
-        mockCredentials
-      );
+      const result = await fetchScannersFromBloom(mockApiUrl, mockCredentials);
 
       expect(result.success).toBe(false);
       expect(result.scanners).toBeUndefined();
@@ -867,14 +865,13 @@ OTHER_VAR=ignored`;
         error: { message: 'Database query failed' },
       });
 
-      const result = await fetchScannersFromBloom(
-        mockApiUrl,
-        mockCredentials
-      );
+      const result = await fetchScannersFromBloom(mockApiUrl, mockCredentials);
 
       expect(result.success).toBe(false);
       expect(result.scanners).toBeUndefined();
-      expect(result.error).toBe('Failed to fetch scanners: Database query failed');
+      expect(result.error).toBe(
+        'Failed to fetch scanners: Database query failed'
+      );
     });
 
     it('should handle scanner query returning null data', async () => {
@@ -893,10 +890,7 @@ OTHER_VAR=ignored`;
         error: null,
       });
 
-      const result = await fetchScannersFromBloom(
-        mockApiUrl,
-        mockCredentials
-      );
+      const result = await fetchScannersFromBloom(mockApiUrl, mockCredentials);
 
       // Should handle gracefully, returning empty array
       expect(result.success).toBe(true);
@@ -924,10 +918,7 @@ OTHER_VAR=ignored`;
         error: null,
       });
 
-      const result = await fetchScannersFromBloom(
-        mockApiUrl,
-        mockCredentials
-      );
+      const result = await fetchScannersFromBloom(mockApiUrl, mockCredentials);
 
       expect(result.success).toBe(true);
       expect(result.scanners).toEqual(mockScanners);

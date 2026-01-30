@@ -12,6 +12,7 @@ The pilot application (`bloom-desktop-pilot`) uses a YAML configuration file tha
 ## Goals / Non-Goals
 
 **Goals:**
+
 - Provide GUI for all machine-level settings
 - Protect configuration with credential-based access
 - Display scanner identity in sidebar
@@ -19,6 +20,7 @@ The pilot application (`bloom-desktop-pilot`) uses a YAML configuration file tha
 - Support first-run setup flow
 
 **Non-Goals:**
+
 - Per-experiment camera settings (separate issue #51)
 - Cloud sync of configuration (each station is independent)
 - Multi-user authentication (single admin per station)
@@ -31,12 +33,14 @@ The pilot application (`bloom-desktop-pilot`) uses a YAML configuration file tha
 **What**: Non-sensitive settings in `~/.bloom/config.json`, sensitive credentials in `~/.bloom/.env`
 
 **Why**:
+
 - Security best practice separates secrets from config
 - `.env` files are standard for credentials
 - JSON is easy to read/write programmatically
 - Consistent with existing `BLOOM_DATABASE_URL` pattern
 
 **Alternatives considered**:
+
 - Single YAML file (pilot approach) - mixes secrets with config, harder to parse
 - electron-store - adds dependency, less control over file location
 - All in .env - harder to structure complex config
@@ -46,11 +50,13 @@ The pilot application (`bloom-desktop-pilot`) uses a YAML configuration file tha
 **What**: Require Bloom scanner credentials to access configuration page
 
 **Why**:
+
 - No separate admin password to manage
 - Credentials serve dual purpose (auth + API)
 - Each scanner has unique credentials
 
 **Alternatives considered**:
+
 - Separate admin PIN - adds another credential to manage
 - No protection - too easy to accidentally change settings
 - Lock checkbox (pilot approach) - can be bypassed by editing file
@@ -60,11 +66,13 @@ The pilot application (`bloom-desktop-pilot`) uses a YAML configuration file tha
 **What**: No sidebar link, access via `Ctrl+Shift+,`
 
 **Why**:
+
 - Phenotypers don't need to see this option
 - Consistent with "admin-only" pattern
 - Discoverable by those who need it
 
 **Alternatives considered**:
+
 - Always visible link - confusing for phenotypers
 - Menu item only - less discoverable
 - Command-line flag only - not user-friendly
@@ -74,6 +82,7 @@ The pilot application (`bloom-desktop-pilot`) uses a YAML configuration file tha
 **What**: Machine Configuration handles machine-level defaults; Camera Settings handles per-session image parameters
 
 **Why**:
+
 - **Machine Configuration** (`/machine-config`): Admin-only, rarely changed, stores defaults
   - Scanner name, default camera IP, scans directory, API credentials
   - No live preview (use Camera Settings for that)
@@ -84,22 +93,24 @@ The pilot application (`bloom-desktop-pilot`) uses a YAML configuration file tha
   - Temporary camera selection for testing (not persisted)
 
 **Interaction**:
+
 - Camera Settings loads default camera IP from Machine Configuration on mount
 - Temporary camera changes in Camera Settings are session-only
 - CaptureScan always uses the Machine Configuration camera IP
 
 **Alternatives considered**:
+
 - Merge into one page - too complex, mixes admin and user workflows
 - Have Camera Settings persist camera IP - creates confusion about source of truth
 
 ## Risks / Trade-offs
 
-| Risk | Mitigation |
-|------|------------|
-| User forgets keyboard shortcut | First-run auto-redirect; document in README |
+| Risk                            | Mitigation                                              |
+| ------------------------------- | ------------------------------------------------------- |
+| User forgets keyboard shortcut  | First-run auto-redirect; document in README             |
 | Credentials stored in plaintext | .env file has restricted permissions; standard practice |
-| Config file corruption | Validate on load; keep backup; provide reset option |
-| Camera IP changes | "Test Connection" verifies before save |
+| Config file corruption          | Validate on load; keep backup; provide reset option     |
+| Camera IP changes               | "Test Connection" verifies before save                  |
 
 ## Migration Plan
 

@@ -57,7 +57,10 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
         if (config.camera_ip_address && !settings.camera_ip_address) {
           // Pre-select the configured default camera
           setSelectedCamera(config.camera_ip_address);
-          onChange({ ...settings, camera_ip_address: config.camera_ip_address });
+          onChange({
+            ...settings,
+            camera_ip_address: config.camera_ip_address,
+          });
         }
       } catch (error) {
         console.error('Failed to load camera config:', error);

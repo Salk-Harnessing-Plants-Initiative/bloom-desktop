@@ -7,6 +7,7 @@
 The Machine Configuration page SHALL provide a Bloom API Credentials section at the top of the form that allows users to enter authentication credentials and test connectivity before completing the full configuration.
 
 The section SHALL include:
+
 - API URL input field
 - Username (email) input field
 - Password input field

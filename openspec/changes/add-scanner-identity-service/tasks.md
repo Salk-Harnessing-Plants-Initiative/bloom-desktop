@@ -3,6 +3,7 @@
 ## Implementation Checklist (TDD Approach)
 
 ### Phase 1: Write Unit Tests First (TDD)
+
 - [ ] 1.1 Create `tests/unit/scanner-identity.test.ts`
 - [ ] 1.2 Add test: Scanner identity initialized from config on startup
 - [ ] 1.3 Add test: `scanner:get-scanner-id` returns current identity
@@ -12,6 +13,7 @@
 - [ ] 1.7 Run tests: `npm run test:unit` - expect 5 failures ❌
 
 ### Phase 2: Implement Scanner Identity Service (TDD)
+
 - [ ] 2.1 Add `scannerIdentity` variable in src/main/main.ts (after line 83)
 - [ ] 2.2 Initialize `scannerIdentity` from config at app startup
 - [ ] 2.3 Add `scanner:get-scanner-id` IPC handler
@@ -20,18 +22,21 @@
 - [ ] 2.6 Run tests: `npm run test:unit` - expect all scanner-identity tests to pass ✅
 
 ### Phase 3: Update Preload and Types (TDD)
+
 - [ ] 3.1 Add `getScannerId` function to scanner API in src/main/preload.ts
 - [ ] 3.2 Update `ScannerAPI` interface in src/types/electron.d.ts
 - [ ] 3.3 Add JSDoc comments to `getScannerId` method
 - [ ] 3.4 Run TypeScript compiler: `npx tsc --noEmit` - expect no errors ✅
 
 ### Phase 4: Write Layout Component Tests (TDD)
+
 - [ ] 4.1 Add test: Layout displays scanner name from scanner:get-scanner-id
 - [ ] 4.2 Add test: Layout shows "Not configured" when scanner name empty
 - [ ] 4.3 Add test: Layout updates display when scanner identity changes
 - [ ] 4.4 Run tests: `npm run test:unit` - expect 3 failures ❌
 
 ### Phase 5: Update Layout Component (TDD)
+
 - [ ] 5.1 Update Layout useEffect to call `window.electron.scanner.getScannerId()`
 - [ ] 5.2 Change from single load to periodic refresh (every 2 seconds)
 - [ ] 5.3 Update scanner name display logic ("Not configured" fallback)
@@ -39,6 +44,7 @@
 - [ ] 5.5 Run tests: `npm run test:unit` - expect all Layout tests to pass ✅
 
 ### Phase 6: Integration Testing
+
 - [ ] 6.1 Manual test: Start app with existing config
 - [ ] 6.2 Manual test: Verify scanner name displays in Layout
 - [ ] 6.3 Manual test: Navigate to Machine Configuration
@@ -48,12 +54,14 @@
 - [ ] 6.7 Manual test: Delete ~/.bloom/ - verify "Not configured" shows
 
 ### Phase 7: Create Spec Delta
+
 - [ ] 7.1 Create `specs/scanner-api/spec.md` (already done ✅)
 - [ ] 7.2 Document all requirements and scenarios (already done ✅)
 - [ ] 7.3 Run validation: `npx openspec validate add-scanner-identity-service`
 - [ ] 7.4 Fix any validation errors
 
 ### Phase 8: Code Quality and Cleanup
+
 - [ ] 8.1 Run linter: `npm run lint` - fix any errors
 - [ ] 8.2 Run formatter: `npm run format`
 - [ ] 8.3 Run full test suite: `npm run test:unit` - expect all tests to pass ✅
@@ -64,6 +72,7 @@
 ## Acceptance Criteria
 
 ### Functional Requirements
+
 - ✓ Scanner name displays in Layout after saving config
 - ✓ No app restart required to see updated name
 - ✓ "Not configured" shown when scanner name empty
@@ -71,6 +80,7 @@
 - ✓ Matches pilot's `scanner:get-scanner-id` API pattern
 
 ### Technical Requirements
+
 - ✓ `scannerIdentity` variable holds runtime state
 - ✓ `scanner:get-scanner-id` IPC handler returns identity
 - ✓ `config:set` syncs `scannerIdentity` from saved config
@@ -80,6 +90,7 @@
 - ✓ No breaking changes to existing APIs
 
 ### Code Quality Requirements
+
 - ✓ Code comments explain scanner identity purpose
 - ✓ Follows existing runtime state pattern (camera settings)
 - ✓ TypeScript types for all new APIs
@@ -114,7 +125,10 @@ let scannerIdentity: { name: string } = { name: '' };
 // Initialize scanner identity from config
 const config = loadEnvConfig(ENV_PATH);
 scannerIdentity.name = config.scanner_name || '';
-console.log('[Scanner Identity] Initialized:', scannerIdentity.name || '(not configured)');
+console.log(
+  '[Scanner Identity] Initialized:',
+  scannerIdentity.name || '(not configured)'
+);
 ```
 
 ### IPC Handler
@@ -159,7 +173,8 @@ ipcMain.handle('config:set', async (_event, config: MachineConfig) => {
     return {
       success: false,
       errors: {
-        general: error instanceof Error ? error.message : 'Unknown error occurred',
+        general:
+          error instanceof Error ? error.message : 'Unknown error occurred',
       },
     };
   }
@@ -178,7 +193,9 @@ const scannerAPI = {
   cleanup: () => ipcRenderer.invoke('scanner:cleanup'),
   getStatus: () => ipcRenderer.invoke('scanner:get-status'),
   onProgress: (callback: (progress: ScanProgress) => void) => {
-    ipcRenderer.on('scanner:progress', (_event, progress) => callback(progress));
+    ipcRenderer.on('scanner:progress', (_event, progress) =>
+      callback(progress)
+    );
   },
   onComplete: (callback: (result: ScanResult) => void) => {
     ipcRenderer.on('scanner:complete', (_event, result) => callback(result));
@@ -194,7 +211,8 @@ const scannerAPI = {
    *
    * @returns {Promise<string>} Scanner name
    */
-  getScannerId: (): Promise<string> => ipcRenderer.invoke('scanner:get-scanner-id'),
+  getScannerId: (): Promise<string> =>
+    ipcRenderer.invoke('scanner:get-scanner-id'),
 };
 ```
 
@@ -204,7 +222,9 @@ const scannerAPI = {
 // src/types/electron.d.ts (in ScannerAPI interface)
 
 export interface ScannerAPI {
-  initialize: (settings: ScannerSettings) => Promise<{ success: boolean; initialized: boolean }>;
+  initialize: (
+    settings: ScannerSettings
+  ) => Promise<{ success: boolean; initialized: boolean }>;
   scan: () => Promise<{ success: boolean }>;
   cleanup: () => Promise<{ success: boolean; initialized: boolean }>;
   getStatus: () => Promise<ScannerStatus>;
@@ -397,18 +417,22 @@ describe('Layout scanner name display', () => {
 ## Files Modified
 
 ### Main Process
+
 - `src/main/main.ts` - Add scanner identity service
 - `src/main/preload.ts` - Add getScannerId API
 - `src/types/electron.d.ts` - Add type definitions
 
 ### Renderer
+
 - `src/renderer/Layout.tsx` - Use scanner identity service
 
 ### Tests
+
 - `tests/unit/scanner-identity.test.ts` - **NEW** (unit tests)
 - `tests/unit/components/Layout.test.tsx` - Update (if exists) or create
 
 ### Spec
+
 - `openspec/changes/add-scanner-identity-service/proposal.md` - ✓ Created
 - `openspec/changes/add-scanner-identity-service/specs/scanner-api/spec.md` - ✓ Created
 - `openspec/changes/add-scanner-identity-service/tasks.md` - ✓ This file

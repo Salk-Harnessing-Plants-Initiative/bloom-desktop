@@ -18,6 +18,7 @@ The Machine Configuration page SHALL present form sections in the following orde
 **And** the user can complete the form in top-to-bottom order without scrolling back
 
 **Acceptance Criteria**:
+
 - Section visual order: Credentials → Machine Identity → Hardware
 - Tab navigation order follows visual order
 - Scanner dropdown disabled until credentials entered
@@ -36,6 +37,7 @@ The Machine Configuration page SHALL present form sections in the following orde
 **And** the user can review and modify settings in top-to-bottom order
 
 **Acceptance Criteria**:
+
 - Credentials section shows: username (populated), password (masked), anon key (populated), API URL (populated)
 - Scanner dropdown populated with scanners from Bloom API
 - Pre-existing scanner selection visible
@@ -47,17 +49,19 @@ The Machine Configuration page SHALL present form sections in the following orde
 **Given** a user is on the Machine Configuration page
 **When** the user presses Tab to navigate through form fields
 **Then** focus moves in the following order:
-  1. Username (Bloom API Credentials)
-  2. Password (Bloom API Credentials)
-  3. Anon Key (Bloom API Credentials)
-  4. API URL (Bloom API Credentials)
-  5. Scanner Name dropdown (Machine Identity)
-  6. Camera IP Address (Hardware)
-  7. Scans Directory path (Hardware)
-  8. Browse button (Hardware)
-  9. Save Configuration button
+
+1. Username (Bloom API Credentials)
+2. Password (Bloom API Credentials)
+3. Anon Key (Bloom API Credentials)
+4. API URL (Bloom API Credentials)
+5. Scanner Name dropdown (Machine Identity)
+6. Camera IP Address (Hardware)
+7. Scans Directory path (Hardware)
+8. Browse button (Hardware)
+9. Save Configuration button
 
 **Acceptance Criteria**:
+
 - Tab order matches visual top-to-bottom order
 - No focus traps or unexpected focus jumps
 - Focus visible on all interactive elements

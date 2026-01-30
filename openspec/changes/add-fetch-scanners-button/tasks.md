@@ -3,6 +3,7 @@
 ## Implementation Checklist (TDD Approach)
 
 ### Phase 1: Write Tests First
+
 - [x] 1.1 Add test for "Fetch Scanners" button visibility
 - [x] 1.2 Add test for button disabled when credentials incomplete
 - [x] 1.3 Add test for button enabled when all credentials present
@@ -12,6 +13,7 @@
 - [x] 1.7 Run tests - expect failures (not implemented yet)
 
 ### Phase 2: Implementation
+
 - [x] 2.1 Add "Fetch Scanners" button UI in credentials section
 - [x] 2.2 Implement disabled logic (check all credential fields)
 - [x] 2.3 Implement click handler to call fetchScanners()
@@ -21,6 +23,7 @@
 - [x] 2.7 Run tests - expect all to pass (26/26 passed)
 
 ### Phase 3: Integration & Manual Testing
+
 - [x] 3.1 Start dev server and open Machine Configuration
 - [ ] 3.2 Test: Button disabled with empty credentials
 - [ ] 3.3 Test: Enter valid credentials, button enables
@@ -30,6 +33,7 @@
 - [ ] 3.7 Test: Complete form and save successfully
 
 ### Phase 4: E2E Tests with Playwright
+
 - [x] 4.1 Write E2E test for fetch button visibility
 - [x] 4.2 Write E2E test for button disabled state
 - [x] 4.3 Write E2E test for successful scanner fetch
@@ -37,6 +41,7 @@
 - [ ] 4.5 Run E2E tests and verify they pass (requires manual testing with app running)
 
 ### Phase 5: Spec Delta
+
 - [x] 5.1 Create spec delta in specs/ui-management-pages/spec.md
 - [x] 5.2 Add MODIFIED requirement for credentials section
 - [x] 5.3 Add scenarios for fetch button states
@@ -57,9 +62,11 @@
 ## Technical Notes
 
 ### Button Location
+
 Add after line 464 (after Anon Key input field, before closing div)
 
 ### Disabled Logic
+
 ```typescript
 disabled={
   !credentials.bloom_scanner_username ||
@@ -71,13 +78,17 @@ disabled={
 ```
 
 ### Success Feedback
+
 ```tsx
-{scannerList.length > 0 && (
-  <p className="text-green-600 text-sm mt-2">
-    ✓ Found {scannerList.length} scanner{scannerList.length !== 1 ? 's' : ''}
-  </p>
-)}
+{
+  scannerList.length > 0 && (
+    <p className="text-green-600 text-sm mt-2">
+      ✓ Found {scannerList.length} scanner{scannerList.length !== 1 ? 's' : ''}
+    </p>
+  );
+}
 ```
 
 ### Spinner SVG
+
 Use Tailwind's animate-spin with circular SVG

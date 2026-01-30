@@ -22,18 +22,19 @@ The current Machine Configuration implementation has three critical issues:
 ### Pilot Implementation Pattern
 
 **Evidence from `bloom-desktop-pilot/app/src/main/main.ts`**:
+
 ```typescript
 // Lines 86-100: Pilot stores EVERYTHING in ONE file
-const config_yaml = path.join(homedir, ".bloom", "desktop-config.yaml");
-const config = yaml.load(fs.readFileSync(config_yaml, "utf8")) as {
+const config_yaml = path.join(homedir, '.bloom', 'desktop-config.yaml');
+const config = yaml.load(fs.readFileSync(config_yaml, 'utf8')) as {
   python: string;
-  scanner_name: string;              // ← Config
-  camera_ip_address: string;         // ← Config
-  scans_dir: string;                 // ← Config
-  bloom_api_url: string;             // ← Config
-  bloom_scanner_username: string;    // ← Credentials
-  bloom_scanner_password: string;    // ← Credentials
-  bloom_anon_key: string;            // ← Credentials
+  scanner_name: string; // ← Config
+  camera_ip_address: string; // ← Config
+  scans_dir: string; // ← Config
+  bloom_api_url: string; // ← Config
+  bloom_scanner_username: string; // ← Credentials
+  bloom_scanner_password: string; // ← Credentials
+  bloom_anon_key: string; // ← Credentials
   // ...
 };
 // No separate files - single source of truth
@@ -44,6 +45,7 @@ const config = yaml.load(fs.readFileSync(config_yaml, "utf8")) as {
 ### How Bloom API Authentication Works
 
 **Evidence from Bloom API** (`bloom/supabase/migrations`):
+
 ```sql
 -- cyl_scanners table stores scanner names only
 CREATE TABLE cyl_scanners (
@@ -57,12 +59,14 @@ ON cyl_scanners FOR SELECT TO authenticated USING (true);
 ```
 
 **Authentication Flow**:
+
 1. Desktop app uses Supabase `signInWithPassword()` with stored credentials
 2. Supabase returns JWT token
 3. All API calls (including future uploads) use this authenticated session
 4. Credentials represent a **service account** for the scanner machine, not a human user
 
 **Why ALL Configuration Must Be Persisted**:
+
 - Scanner needs persistent identity (scanner_name, camera_ip, etc.)
 - Scanner needs to upload scan data to Bloom API (future feature)
 - Uploads require authenticated Supabase session
@@ -84,14 +88,15 @@ The credential architecture violates "single source of truth" principle:
 ### 1. Remove Login Screen (Match Pilot Pattern)
 
 **Pilot Evidence** (`bloom-desktop-pilot/app/src/main/main.ts`):
+
 ```typescript
 // Lines 86-100: Pilot loads config on startup
-const config_yaml = path.join(homedir, ".bloom", "desktop-config.yaml");
-const config = yaml.load(fs.readFileSync(config_yaml, "utf8")) as {
+const config_yaml = path.join(homedir, '.bloom', 'desktop-config.yaml');
+const config = yaml.load(fs.readFileSync(config_yaml, 'utf8')) as {
   python: string;
   scanner_name: string;
-  bloom_scanner_username: string;   // Loaded directly
-  bloom_scanner_password: string;   // No re-authentication
+  bloom_scanner_username: string; // Loaded directly
+  bloom_scanner_password: string; // No re-authentication
   bloom_anon_key: string;
   // ...
 };
@@ -99,6 +104,7 @@ const config = yaml.load(fs.readFileSync(config_yaml, "utf8")) as {
 ```
 
 **New Flow**:
+
 ```
 App Startup:
 ├─ Load ~/.bloom/.env (if exists) - contains ALL config + credentials
@@ -111,6 +117,7 @@ App Startup:
 ### 2. Fix Fetch Scanners to Accept Form Credentials
 
 **Current (broken)**:
+
 ```typescript
 // src/main/main.ts:940
 ipcMain.handle('config:fetch-scanners', async () => {
@@ -120,18 +127,19 @@ ipcMain.handle('config:fetch-scanners', async () => {
 ```
 
 **Fixed**:
+
 ```typescript
-ipcMain.handle('config:fetch-scanners', async (
-  _event,
-  apiUrl: string,
-  credentials: MachineCredentials
-) => {
-  // ✅ Uses credentials from form, works on first run
-  return await fetchScannersFromBloom(apiUrl, credentials);
-});
+ipcMain.handle(
+  'config:fetch-scanners',
+  async (_event, apiUrl: string, credentials: MachineCredentials) => {
+    // ✅ Uses credentials from form, works on first run
+    return await fetchScannersFromBloom(apiUrl, credentials);
+  }
+);
 ```
 
 **Renderer Update**:
+
 ```typescript
 // src/renderer/MachineConfiguration.tsx
 const fetchScanners = async () => {
@@ -155,6 +163,7 @@ const fetchScanners = async () => {
 **Keep**: `~/.bloom/.env` as single source of truth for ALL configuration
 
 **Why consolidate?**
+
 - ✅ Matches pilot implementation pattern (single YAML file)
 - ✅ Eliminates synchronization issues between two files
 - ✅ Simpler code (one load/save function instead of two)
@@ -163,6 +172,7 @@ const fetchScanners = async () => {
 - ✅ Consistent file permissions (600) for all config
 
 **New `.env` File Structure** (single source of truth):
+
 ```env
 # Machine Configuration
 SCANNER_NAME=PBIOBScanner
@@ -177,13 +187,14 @@ BLOOM_ANON_KEY=<supabase-anon-key>
 ```
 
 **Configuration Functions** (simplified):
+
 ```typescript
 // BEFORE: Two separate functions
-loadConfig(CONFIG_PATH);      // Loads config.json
-loadCredentials(ENV_PATH);    // Loads .env
+loadConfig(CONFIG_PATH); // Loads config.json
+loadCredentials(ENV_PATH); // Loads .env
 
 // AFTER: Single unified function
-loadEnvConfig(ENV_PATH);      // Loads everything from .env
+loadEnvConfig(ENV_PATH); // Loads everything from .env
 ```
 
 ## Scope
@@ -290,6 +301,7 @@ loadEnvConfig(ENV_PATH);      // Loads everything from .env
 ### Migration Path
 
 **Automatic migration on first load**:
+
 1. App checks for existing `~/.bloom/config.json`
 2. If found, reads both `config.json` and `.env`
 3. Merges into single `.env` file
@@ -299,6 +311,7 @@ loadEnvConfig(ENV_PATH);      // Loads everything from .env
 **User impact**: Zero - migration happens transparently on startup.
 
 **Code Migration**: Unit tests need updates for:
+
 - New unified config interfaces
 - Single load/save functions
 - Merged component state
@@ -308,11 +321,14 @@ loadEnvConfig(ENV_PATH);      // Loads everything from .env
 ### Unit Tests (TDD Approach)
 
 1. **IPC Handler Tests** (`config-ipc.test.ts`):
+
    ```typescript
    describe('config:fetch-scanners handler logic', () => {
      it('should accept apiUrl and credentials as parameters', async () => {
        const apiUrl = 'https://api.bloom.salk.edu/proxy';
-       const credentials = { /* ... */ };
+       const credentials = {
+         /* ... */
+       };
 
        const result = await handler(apiUrl, credentials);
 
@@ -327,6 +343,7 @@ loadEnvConfig(ENV_PATH);      // Loads everything from .env
    ```
 
 2. **Component Tests** (`MachineConfiguration.test.tsx`):
+
    ```typescript
    it('should not render login screen', () => {
      render(<MachineConfiguration />);
@@ -455,6 +472,7 @@ npm start
 ### Alternative 2: Use OS Keychain for Credentials
 
 **Deferred**: Adds complexity. Plain text `.env` is acceptable because:
+
 - Scanner machines are physically secured
 - Matches pilot implementation (YAML)
 - Credentials are for service account, not human user
@@ -463,6 +481,7 @@ npm start
 ### Alternative 3: Add PIN/Passcode for Machine Access
 
 **Deferred**: Not needed for MVP. If access control required later:
+
 - Use OS-level authentication (Windows/Mac login)
 - Or add simple numeric PIN (not credential-based)
 - Independent of Supabase scanner identity
@@ -470,6 +489,7 @@ npm start
 ### Alternative 4: Keep Login as "Access Control"
 
 **Rejected**: Flawed reasoning:
+
 - If credentials are on disk, login provides no security
 - Anyone with file access can read `.env`
 - OS-level security is proper approach
@@ -484,6 +504,7 @@ npm start
 ## Rollback Plan
 
 If issues discovered post-merge:
+
 1. Revert commit restores login screen
 2. Fetch button bug remains fixed (parameterized IPC)
 3. No data loss (`.env` files unchanged)
@@ -498,16 +519,19 @@ If issues discovered post-merge:
 ## Security Considerations
 
 **Current State** (with login):
+
 - Credentials in plain text `.env`
 - Login screen validates against same file
 - Provides illusion of security, not actual security
 
 **New State** (without login):
+
 - Credentials in plain text `.env` (unchanged)
 - No login screen
 - **Same security posture**, clearer UX
 
 **Actual Security**:
+
 - File permissions (600) on `.env`
 - OS-level access control
 - Physical security of scanner machines

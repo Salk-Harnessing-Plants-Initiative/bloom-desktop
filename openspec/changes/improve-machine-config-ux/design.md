@@ -34,6 +34,7 @@ Reorder sections in the Machine Configuration page to place Bloom API Credential
 ```
 
 ### Problems
+
 1. Scanner dropdown appears first but requires credentials (bottom)
 2. User must scroll down → enter credentials → scroll up → select scanner
 3. First-run UX shows disabled fields without context
@@ -68,6 +69,7 @@ Reorder sections in the Machine Configuration page to place Bloom API Credential
 ```
 
 ### Benefits
+
 1. Top-to-bottom flow: Credentials → Scanner → Hardware
 2. Scanner dropdown enabled after user enters credentials
 3. Clear dependency: "Configure credentials to enable scanner selection"
@@ -77,6 +79,7 @@ Reorder sections in the Machine Configuration page to place Bloom API Credential
 ### Component Structure Change
 
 **Current order in MachineConfiguration.tsx:**
+
 ```tsx
 <form>
   {/* Machine Identity */}
@@ -100,6 +103,7 @@ Reorder sections in the Machine Configuration page to place Bloom API Credential
 ```
 
 **New order:**
+
 ```tsx
 <form>
   {/* Bloom API Credentials */}
@@ -132,6 +136,7 @@ Reorder sections in the Machine Configuration page to place Bloom API Credential
 ### Test Updates Required
 
 Tests may need updates for:
+
 1. Section order verification
 2. Form field traversal (tab order)
 3. Accessibility tree order
@@ -157,6 +162,7 @@ No visual changes to individual sections - only their vertical order changes:
 ## User Flow Comparison
 
 ### Before (Current)
+
 1. Load page → see disabled scanner dropdown
 2. Wonder why dropdown is disabled
 3. Scroll down to find credentials section
@@ -166,6 +172,7 @@ No visual changes to individual sections - only their vertical order changes:
 7. Scroll down to save
 
 ### After (Proposed)
+
 1. Load page → see credentials section first
 2. Enter credentials (clear call-to-action)
 3. Continue down → select scanner (now enabled)
@@ -177,10 +184,12 @@ No visual changes to individual sections - only their vertical order changes:
 ## Edge Cases
 
 ### First-Run Flow
+
 - **Before**: User sees "Enter credentials first" message in scanner section before seeing credentials section
 - **After**: User sees credentials section first, then scanner section with contextual message
 
 ### Existing Configuration
+
 - **Before**: User sees pre-populated scanner, then scrolls down to see masked credentials
 - **After**: User sees masked credentials first, then scanner selection
 
@@ -189,6 +198,7 @@ No visual changes to individual sections - only their vertical order changes:
 ## Testing Strategy
 
 ### Unit Tests
+
 1. Verify section order in DOM
 2. Verify form field order for accessibility
 3. Verify scanner fetch trigger (unchanged behavior)
@@ -196,6 +206,7 @@ No visual changes to individual sections - only their vertical order changes:
 5. Verify save functionality (unchanged behavior)
 
 ### Manual Testing
+
 1. First-run experience (no credentials)
 2. Returning user experience (credentials exist)
 3. Form completion flow
@@ -205,6 +216,7 @@ No visual changes to individual sections - only their vertical order changes:
 ## Rollback Plan
 
 If issues arise, rollback is simple:
+
 1. Revert JSX section order in MachineConfiguration.tsx
 2. Revert test updates
 

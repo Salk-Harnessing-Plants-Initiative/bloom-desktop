@@ -43,8 +43,8 @@ Fetch the list of valid scanner names from the Bloom API and present them as a d
 
 ## Risks & Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| API unavailable blocks setup | Clear error message with retry option |
+| Risk                               | Mitigation                                                           |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| API unavailable blocks setup       | Clear error message with retry option                                |
 | API credentials not yet configured | First-time flow allows entering credentials before scanner selection |
-| Network latency | Show loading spinner during fetch |
+| Network latency                    | Show loading spinner during fetch                                    |
