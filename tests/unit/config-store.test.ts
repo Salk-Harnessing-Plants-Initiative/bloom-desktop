@@ -481,6 +481,157 @@ OTHER_VAR=ignored`;
     });
   });
 
+  describe('Development vs Production Path Defaults (improve-database-scans-config)', () => {
+    describe('Development environment paths', () => {
+      it('should use ~/.bloom/dev-scans for development scans default', () => {
+        // Save original NODE_ENV
+        const originalEnv = process.env.NODE_ENV;
+
+        try {
+          // Set development mode
+          process.env.NODE_ENV = 'development';
+
+          const config = getDefaultConfig();
+
+          // Should contain 'dev-scans' in the path
+          expect(config.scans_dir).toContain('.bloom');
+          expect(config.scans_dir).toContain('dev-scans');
+          expect(config.scans_dir).not.toContain('scans/');
+        } finally {
+          // Restore original NODE_ENV
+          process.env.NODE_ENV = originalEnv;
+        }
+      });
+    });
+
+    describe('Production environment paths', () => {
+      it('should use ~/.bloom/scans for production scans default (unchanged)', () => {
+        // Save original NODE_ENV
+        const originalEnv = process.env.NODE_ENV;
+
+        try {
+          // Set production mode (or unset to simulate production)
+          process.env.NODE_ENV = 'production';
+
+          const config = getDefaultConfig();
+
+          // Should contain '.bloom/scans' but NOT 'dev-scans'
+          expect(config.scans_dir).toContain('.bloom');
+          expect(config.scans_dir).toContain('scans');
+          expect(config.scans_dir).not.toContain('dev-scans');
+        } finally {
+          // Restore original NODE_ENV
+          process.env.NODE_ENV = originalEnv;
+        }
+      });
+    });
+
+    describe('Scans directory validation', () => {
+      let testDir: string;
+      let writableDir: string;
+      let nonWritableDir: string;
+
+      beforeEach(() => {
+        // Create temp directory for tests
+        testDir = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'bloom-scans-validation-')
+        );
+
+        // Create a writable directory
+        writableDir = path.join(testDir, 'writable-scans');
+        fs.mkdirSync(writableDir, { recursive: true });
+
+        // Create a non-writable directory (if possible on this platform)
+        nonWritableDir = path.join(testDir, 'non-writable-scans');
+        fs.mkdirSync(nonWritableDir, { recursive: true });
+
+        // Try to make it non-writable (may not work on all platforms)
+        try {
+          fs.chmodSync(nonWritableDir, 0o444); // Read-only
+        } catch {
+          // chmod may not work on all platforms, skip this test setup
+        }
+      });
+
+      afterEach(() => {
+        // Restore permissions before cleanup
+        try {
+          if (fs.existsSync(nonWritableDir)) {
+            fs.chmodSync(nonWritableDir, 0o755);
+          }
+        } catch {
+          // Ignore permission errors during cleanup
+        }
+
+        // Clean up test directory
+        if (fs.existsSync(testDir)) {
+          fs.rmSync(testDir, { recursive: true, force: true });
+        }
+      });
+
+      it('should pass validation for existing writable directory', () => {
+        const config: MachineConfig = {
+          scanner_name: 'test-scanner',
+          camera_ip_address: 'mock',
+          scans_dir: writableDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        };
+
+        const result = validateConfig(config);
+
+        // Should NOT have scans_dir error for writable directory
+        expect(result.errors.scans_dir).toBeUndefined();
+      });
+
+      it('should fail validation for non-existent directory', () => {
+        const nonExistentPath = path.join(testDir, 'does-not-exist');
+
+        const config: MachineConfig = {
+          scanner_name: 'test-scanner',
+          camera_ip_address: 'mock',
+          scans_dir: nonExistentPath,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        };
+
+        const result = validateConfig(config);
+
+        // Should have scans_dir error for non-existent directory
+        expect(result.valid).toBe(false);
+        expect(result.errors.scans_dir).toBeDefined();
+        expect(result.errors.scans_dir).toContain('does not exist');
+      });
+
+      it('should fail validation for non-writable directory', () => {
+        // Skip test if chmod doesn't work (e.g., Windows)
+        let isActuallyNonWritable = false;
+        try {
+          fs.accessSync(nonWritableDir, fs.constants.W_OK);
+        } catch {
+          isActuallyNonWritable = true;
+        }
+
+        if (!isActuallyNonWritable) {
+          // Skip this test on platforms where chmod doesn't restrict writes
+          return;
+        }
+
+        const config: MachineConfig = {
+          scanner_name: 'test-scanner',
+          camera_ip_address: 'mock',
+          scans_dir: nonWritableDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        };
+
+        const result = validateConfig(config);
+
+        // Should have scans_dir error for non-writable directory
+        expect(result.valid).toBe(false);
+        expect(result.errors.scans_dir).toBeDefined();
+        expect(result.errors.scans_dir).toContain('not writable');
+      });
+    });
+  });
+
   describe('validateConfig', () => {
     describe('scanner_name validation', () => {
       it('should reject empty scanner name', () => {
@@ -498,37 +649,59 @@ OTHER_VAR=ignored`;
       });
 
       it('should accept scanner names with any characters (dropdown enforces validity)', () => {
-        const config: MachineConfig = {
-          scanner_name: 'PBIOBScanner',
-          camera_ip_address: 'mock',
-          scans_dir: '/data',
-          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-        };
+        // Create a temporary writable directory
+        const testDir = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'bloom-scanner-')
+        );
 
-        const result = validateConfig(config);
-
-        expect(result.valid).toBe(true);
-        expect(result.errors.scanner_name).toBeUndefined();
-      });
-
-      it('should accept valid scanner names', () => {
-        const validNames = [
-          'Scanner1',
-          'PBIOB-Scanner',
-          'scanner_lab_2',
-          'Scanner-A1_v2',
-        ];
-
-        for (const name of validNames) {
+        try {
           const config: MachineConfig = {
-            scanner_name: name,
+            scanner_name: 'PBIOBScanner',
             camera_ip_address: 'mock',
-            scans_dir: '/data',
+            scans_dir: testDir, // Use actual writable directory
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
           };
 
           const result = validateConfig(config);
+
+          expect(result.valid).toBe(true);
           expect(result.errors.scanner_name).toBeUndefined();
+        } finally {
+          // Clean up
+          if (fs.existsSync(testDir)) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+          }
+        }
+      });
+
+      it('should accept valid scanner names', () => {
+        // Create a temporary writable directory once for all names
+        const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-names-'));
+
+        try {
+          const validNames = [
+            'Scanner1',
+            'PBIOB-Scanner',
+            'scanner_lab_2',
+            'Scanner-A1_v2',
+          ];
+
+          for (const name of validNames) {
+            const config: MachineConfig = {
+              scanner_name: name,
+              camera_ip_address: 'mock',
+              scans_dir: testDir, // Use actual writable directory
+              bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            };
+
+            const result = validateConfig(config);
+            expect(result.errors.scanner_name).toBeUndefined();
+          }
+        } finally {
+          // Clean up
+          if (fs.existsSync(testDir)) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+          }
         }
       });
     });
@@ -609,24 +782,26 @@ OTHER_VAR=ignored`;
       });
 
       it('should accept valid directory paths', () => {
-        const validPaths = [
-          '/data/scans',
-          '/home/user/.bloom/scans',
-          '~/.bloom/scans',
-          'C:\\Users\\bloom\\scans',
-          '/Users/scientist/Documents/bloom-scans',
-        ];
+        // Create a temporary directory that actually exists
+        const testDir = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'bloom-validation-')
+        );
 
-        for (const dir of validPaths) {
+        try {
           const config: MachineConfig = {
             scanner_name: 'Scanner',
             camera_ip_address: 'mock',
-            scans_dir: dir,
+            scans_dir: testDir, // Use actual writable directory
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
           };
 
           const result = validateConfig(config);
           expect(result.errors.scans_dir).toBeUndefined();
+        } finally {
+          // Clean up
+          if (fs.existsSync(testDir)) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+          }
         }
       });
     });
@@ -684,17 +859,27 @@ OTHER_VAR=ignored`;
 
     describe('overall validation', () => {
       it('should return valid=true when all fields are valid', () => {
-        const config: MachineConfig = {
-          scanner_name: 'ValidScanner',
-          camera_ip_address: '10.0.0.23',
-          scans_dir: '/data/scans',
-          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-        };
+        // Create a temporary writable directory for testing
+        const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-valid-'));
 
-        const result = validateConfig(config);
+        try {
+          const config: MachineConfig = {
+            scanner_name: 'ValidScanner',
+            camera_ip_address: '10.0.0.23',
+            scans_dir: testDir, // Use actual writable directory
+            bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          };
 
-        expect(result.valid).toBe(true);
-        expect(Object.keys(result.errors).length).toBe(0);
+          const result = validateConfig(config);
+
+          expect(result.valid).toBe(true);
+          expect(Object.keys(result.errors).length).toBe(0);
+        } finally {
+          // Clean up
+          if (fs.existsSync(testDir)) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+          }
+        }
       });
 
       it('should return valid=false with multiple errors', () => {

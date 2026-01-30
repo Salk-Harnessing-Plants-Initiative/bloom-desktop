@@ -220,13 +220,21 @@ export function initializeDatabase(
   } else {
     const isDev = process.env.NODE_ENV === 'development';
     if (isDev) {
-      // Development: use dev.db in project root
-      // Note: In dev mode, BLOOM_DATABASE_URL should be set via .env file
-      // If not set, fall back to default path using app.getAppPath()
-      dbPath = path.join(app.getAppPath(), 'prisma', 'dev.db');
-      console.log('[Database] Development mode - using fallback path:', dbPath);
+      // Development: use dev.db in ~/.bloom/ (not in project directory)
+      // This keeps development data separate from production and out of the project
+      const homeDir = app.getPath('home');
+      const bloomDir = path.join(homeDir, '.bloom');
+
+      // Ensure ~/.bloom directory exists
+      if (!fs.existsSync(bloomDir)) {
+        console.log('[Database] Creating ~/.bloom directory:', bloomDir);
+        fs.mkdirSync(bloomDir, { recursive: true });
+      }
+
+      dbPath = path.join(bloomDir, 'dev.db');
+      console.log('[Database] Development mode - using:', dbPath);
     } else {
-      // Production: use ~/.bloom/data/bloom.db
+      // Production: use ~/.bloom/data/bloom.db (unchanged)
       const homeDir = app.getPath('home');
       const bloomDir = path.join(homeDir, '.bloom', 'data');
 

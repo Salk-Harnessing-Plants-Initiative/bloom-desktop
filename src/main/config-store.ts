@@ -95,10 +95,19 @@ export interface FetchScannersResult {
  */
 export function getDefaultConfig(): MachineConfig {
   const homeDir = os.homedir();
+
+  // Use environment-specific scans directory defaults
+  // Development: ~/.bloom/dev-scans (separate from production)
+  // Production: ~/.bloom/scans (unchanged)
+  const isDev = process.env.NODE_ENV === 'development';
+  const scansDir = isDev
+    ? path.join(homeDir, '.bloom', 'dev-scans')
+    : path.join(homeDir, '.bloom', 'scans');
+
   return {
     scanner_name: '',
     camera_ip_address: 'mock',
-    scans_dir: path.join(homeDir, '.bloom', 'scans'),
+    scans_dir: scansDir,
     bloom_api_url: 'https://api.bloom.salk.edu/proxy',
     bloom_scanner_username: '',
     bloom_scanner_password: '',
@@ -295,6 +304,18 @@ export function validateConfig(config: MachineConfig): ValidationResult {
   // Validate scans_dir
   if (!config.scans_dir || config.scans_dir.trim() === '') {
     errors.scans_dir = 'Scans directory is required';
+  } else {
+    // Validate that directory exists and is writable
+    try {
+      if (!fs.existsSync(config.scans_dir)) {
+        errors.scans_dir = 'Directory does not exist or is not writable';
+      } else {
+        // Check if directory is writable
+        fs.accessSync(config.scans_dir, fs.constants.W_OK);
+      }
+    } catch {
+      errors.scans_dir = 'Directory does not exist or is not writable';
+    }
   }
 
   // Validate bloom_api_url
@@ -341,7 +362,7 @@ export function loadEnvConfig(envPath: string): MachineConfig {
   }
 
   // Load from .env file
-  let envConfig: Partial<MachineConfig> = {};
+  const envConfig: Partial<MachineConfig> = {};
 
   try {
     if (fs.existsSync(envPath)) {

@@ -517,6 +517,12 @@ export function MachineConfiguration() {
               >
                 Scans Directory
               </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Default location keeps scan data together with database.
+                <br />
+                For large datasets, configure external storage (e.g.,
+                /mnt/scanner-data)
+              </p>
               <div className="flex gap-2">
                 <input
                   id="scans-dir"
@@ -531,7 +537,7 @@ export function MachineConfiguration() {
                   className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                     errors.scans_dir ? 'border-red-500' : 'border-gray-300'
                   }`}
-                  placeholder="~/.bloom/scans"
+                  placeholder="Default scans directory"
                 />
                 <button
                   onClick={handleBrowseDirectory}
@@ -543,9 +549,6 @@ export function MachineConfiguration() {
               {errors.scans_dir && (
                 <p className="text-red-600 text-sm mt-1">{errors.scans_dir}</p>
               )}
-              <p className="text-gray-500 text-sm mt-1">
-                Where scan images are saved
-              </p>
             </div>
           </div>
         </div>
