@@ -6,8 +6,17 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
+/* eslint-disable import/no-unresolved */
+import {
+  PythonAPI,
+  CameraAPI,
+  DAQAPI,
+  DatabaseAPI,
+  ConfigAPI,
+} from '../types/electron';
+/* eslint-enable import/no-unresolved */
 // eslint-disable-next-line import/no-unresolved
-import { PythonAPI, CameraAPI, DAQAPI, DatabaseAPI } from '../types/electron';
+import { MachineConfig, MachineCredentials } from './config-store';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -214,6 +223,26 @@ const databaseAPI: DatabaseAPI = {
 };
 
 /**
+ * Config API exposed to renderer
+ */
+const configAPI: ConfigAPI = {
+  get: () => ipcRenderer.invoke('config:get'),
+  set: (config: MachineConfig) => ipcRenderer.invoke('config:set', config),
+  testCamera: (ipAddress: string) =>
+    ipcRenderer.invoke('config:test-camera', ipAddress),
+  browseDirectory: () => ipcRenderer.invoke('config:browse-directory'),
+  exists: () => ipcRenderer.invoke('config:exists'),
+  fetchScanners: (
+    apiUrl: string,
+    credentials: {
+      bloom_scanner_username: string;
+      bloom_scanner_password: string;
+      bloom_anon_key: string;
+    }
+  ) => ipcRenderer.invoke('config:fetch-scanners', apiUrl, credentials),
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
@@ -222,4 +251,5 @@ contextBridge.exposeInMainWorld('electron', {
   daq: daqAPI,
   scanner: scannerAPI,
   database: databaseAPI,
+  config: configAPI,
 });

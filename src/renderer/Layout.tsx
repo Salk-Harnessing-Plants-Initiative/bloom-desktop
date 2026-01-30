@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 const links = [
   {
@@ -149,16 +150,49 @@ const links = [
 ];
 
 export function Layout() {
+  const navigate = useNavigate();
+  const [scannerName, setScannerName] = useState<string>('');
+
+  // Load scanner name from config
+  useEffect(() => {
+    const loadScannerName = async () => {
+      try {
+        const { config } = await window.electron.config.get();
+        setScannerName(config.scanner_name || '');
+      } catch (error) {
+        console.error('Failed to load scanner name:', error);
+      }
+    };
+    loadScannerName();
+  }, []);
+
+  // Keyboard shortcut: Ctrl/Cmd+Shift+, opens Machine Configuration
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Check for Ctrl+Shift+, (Windows/Linux) or Cmd+Shift+, (macOS)
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const modifier = isMac ? event.metaKey : event.ctrlKey;
+
+      if (modifier && event.shiftKey && event.key === ',') {
+        event.preventDefault();
+        navigate('/machine-config');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <div className="w-64 bg-white shadow-lg">
+      <div className="w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6">
           <h1 className="text-2xl font-bold text-gray-800">Bloom Desktop</h1>
           <p className="text-sm text-gray-500 mt-1">Cylinder Scanner</p>
         </div>
 
-        <nav className="mt-6">
+        <nav className="mt-6 flex-1">
           {links.map((link) => (
             <NavLink
               key={link.to}
@@ -177,6 +211,13 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* Scanner name footer */}
+        <div className="p-4 border-t border-gray-200">
+          <p className="text-xs text-gray-500">
+            Scanner: {scannerName || 'Not configured'}
+          </p>
+        </div>
       </div>
 
       {/* Main content */}

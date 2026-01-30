@@ -99,6 +99,8 @@
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
     "@prisma/client": "^6.18.0",
+    "@salk-hpi/bloom-js": "^0.2.0",
+    "@supabase/supabase-js": "^2.93.1",
     "@types/node": "^20.11.20",
     "electron-squirrel-startup": "^1.0.0",
     "prisma": "^6.18.0",
@@ -107,6 +109,7 @@
     "react-drag-drop-files": "^3.1.0",
     "react-hook-form": "^7.51.0",
     "react-router-dom": "^6.22.0",
+    "sharp": "^0.34.5",
     "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   }

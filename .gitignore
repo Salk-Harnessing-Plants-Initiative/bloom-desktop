@@ -106,3 +106,10 @@ test-results/
 .playwright/
 tests/e2e/**/*.db
 tests/e2e/**/*.db-journal
+.npmrc
+
+# Test scripts with credentials (root directory only)
+/test-bloom-api*.js
+# Scripts directory: ignore actual scripts but keep examples
+scripts/*.js
+!scripts/examples/*.js
