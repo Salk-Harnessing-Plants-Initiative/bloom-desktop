@@ -785,6 +785,18 @@ ipcMain.handle('scanner:get-status', async () => {
   }
 });
 
+/**
+ * Handle scanner:get-scanner-id - Get current scanner identity
+ *
+ * Returns the scanner's configured name from runtime state.
+ * Matches pilot API: scanner.getScannerId()
+ *
+ * @returns {string} Scanner name or empty string if not configured
+ */
+ipcMain.handle('scanner:get-scanner-id', (): string => {
+  return scannerIdentity.name;
+});
+
 // =============================================================================
 // IPC Handlers for Configuration
 // =============================================================================
