@@ -845,6 +845,10 @@ ipcMain.handle('config:set', async (_event, config: MachineConfig) => {
     // Save unified config to .env
     saveEnvConfig(config, ENV_PATH);
 
+    // Sync scanner identity from saved config
+    scannerIdentity.name = config.scanner_name || '';
+    console.log('[Scanner Identity] Updated:', scannerIdentity.name);
+
     return { success: true };
   } catch (error) {
     console.error('config:set error:', error);
