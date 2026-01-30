@@ -130,6 +130,15 @@ const scannerAPI: ScannerAPI = {
   cleanup: () => ipcRenderer.invoke('scanner:cleanup'),
   scan: () => ipcRenderer.invoke('scanner:scan'),
   getStatus: () => ipcRenderer.invoke('scanner:get-status'),
+  /**
+   * Get the current scanner identity (name).
+   *
+   * Returns the scanner's configured name from runtime state.
+   * Returns empty string if scanner not configured.
+   *
+   * @returns {Promise<string>} Scanner name
+   */
+  getScannerId: () => ipcRenderer.invoke('scanner:get-scanner-id'),
   onProgress: (callback: (progress: ScanProgress) => void) => {
     ipcRenderer.on('scanner:progress', (_event, progress: ScanProgress) =>
       callback(progress)

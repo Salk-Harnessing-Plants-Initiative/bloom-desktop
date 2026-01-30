@@ -92,7 +92,7 @@ let currentCameraSettings: CameraSettings | null = null;
  * Pattern matches currentCameraSettings (ephemeral runtime state).
  * Pilot reference: bloom-desktop-pilot/app/src/main/main.ts:148
  */
-let scannerIdentity: { name: string } = { name: '' };
+const scannerIdentity: { name: string } = { name: '' };
 
 const createWindow = (): void => {
   // Create the browser window.

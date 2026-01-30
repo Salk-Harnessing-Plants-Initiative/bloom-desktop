@@ -153,17 +153,24 @@ export function Layout() {
   const navigate = useNavigate();
   const [scannerName, setScannerName] = useState<string>('');
 
-  // Load scanner name from config
+  // Load scanner name from scanner identity service
   useEffect(() => {
     const loadScannerName = async () => {
       try {
-        const { config } = await window.electron.config.get();
-        setScannerName(config.scanner_name || '');
+        const name = await window.electron.scanner.getScannerId();
+        setScannerName(name || '');
       } catch (error) {
-        console.error('Failed to load scanner name:', error);
+        console.error('Failed to load scanner identity:', error);
       }
     };
+
+    // Load on mount
     loadScannerName();
+
+    // Refresh every 2 seconds to catch config updates
+    const interval = setInterval(loadScannerName, 2000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Keyboard shortcut: Ctrl/Cmd+Shift+, opens Machine Configuration

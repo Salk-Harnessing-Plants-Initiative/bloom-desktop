@@ -181,7 +181,7 @@ describe('Scanner Identity Service Logic', () => {
   describe('Edge Cases', () => {
     it('should handle undefined scanner_name gracefully', () => {
       // Mock config with undefined scanner_name
-      const mockConfig: any = {
+      const mockConfig: Partial<MachineConfig> = {
         camera_ip_address: 'mock',
         scans_dir: '~/.bloom/scans',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -201,6 +201,7 @@ describe('Scanner Identity Service Logic', () => {
 
     it('should handle null scanner_name gracefully', () => {
       // Mock config with null scanner_name
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mockConfig: any = {
         scanner_name: null,
         camera_ip_address: 'mock',
