@@ -188,7 +188,7 @@ BLOOM_ANON_KEY=legacykey`;
       const config: MachineConfig = {
         scanner_name: 'NestedScanner',
         camera_ip_address: 'mock',
-        scans_dir: '/data',
+        scans_dir: path.join(testDir, 'test-scans-data'),
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
         bloom_scanner_username: 'nested@test.com',
         bloom_scanner_password: 'nestedpass',
@@ -293,10 +293,11 @@ BLOOM_ANON_KEY=legacykey`;
 
   describe('saveConfig', () => {
     it('should save config to a JSON file', () => {
+      const scansDir = path.join(testDir, 'test-scans');
       const config: MachineConfig = {
         scanner_name: 'SavedScanner',
         camera_ip_address: '192.168.1.100',
-        scans_dir: '/custom/path',
+        scans_dir: scansDir,
         bloom_api_url: 'https://custom.api.url',
       };
 
@@ -313,7 +314,7 @@ BLOOM_ANON_KEY=legacykey`;
       const config: MachineConfig = {
         scanner_name: 'NestedScanner',
         camera_ip_address: 'mock',
-        scans_dir: '/data',
+        scans_dir: path.join(testDir, 'test-scans-data'),
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
       };
 
@@ -328,7 +329,7 @@ BLOOM_ANON_KEY=legacykey`;
       const initialConfig: MachineConfig = {
         scanner_name: 'Initial',
         camera_ip_address: 'mock',
-        scans_dir: '/initial',
+        scans_dir: path.join(testDir, 'initial-scans'),
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
       };
       fs.writeFileSync(configPath, JSON.stringify(initialConfig));
@@ -336,21 +337,21 @@ BLOOM_ANON_KEY=legacykey`;
       const updatedConfig: MachineConfig = {
         scanner_name: 'Updated',
         camera_ip_address: '10.0.0.1',
-        scans_dir: '/updated',
+        scans_dir: path.join(testDir, 'updated-scans'),
         bloom_api_url: 'https://new.api.url',
       };
       saveConfig(updatedConfig, configPath);
 
       const savedContent = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       expect(savedContent.scanner_name).toBe('Updated');
-      expect(savedContent.scans_dir).toBe('/updated');
+      expect(savedContent.scans_dir).toBe(path.join(testDir, 'updated-scans'));
     });
 
     it('should write valid JSON with proper formatting', () => {
       const config: MachineConfig = {
         scanner_name: 'FormattedScanner',
         camera_ip_address: 'mock',
-        scans_dir: '/data',
+        scans_dir: path.join(testDir, 'test-scans-data'),
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
       };
 
@@ -361,6 +362,86 @@ BLOOM_ANON_KEY=legacykey`;
       expect(content).toContain('\n');
       // Should be valid JSON
       expect(() => JSON.parse(content)).not.toThrow();
+    });
+
+    describe('Auto-create scans directory (fix-scans-directory-creation)', () => {
+      let scansTestDir: string;
+
+      beforeEach(() => {
+        // Create temp directory for scans auto-creation tests
+        scansTestDir = fs.mkdtempSync(
+          path.join(os.tmpdir(), 'bloom-save-config-scans-')
+        );
+      });
+
+      afterEach(() => {
+        // Clean up test directory
+        if (fs.existsSync(scansTestDir)) {
+          fs.rmSync(scansTestDir, { recursive: true, force: true });
+        }
+      });
+
+      it('should auto-create non-existent scans directory on save', () => {
+        const scansDir = path.join(scansTestDir, 'new-scans');
+        const config: MachineConfig = {
+          scanner_name: 'AutoCreateScanner',
+          camera_ip_address: 'mock',
+          scans_dir: scansDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        };
+
+        // Verify directory doesn't exist before save
+        expect(fs.existsSync(scansDir)).toBe(false);
+
+        saveConfig(config, configPath);
+
+        // Verify directory was created during save
+        expect(fs.existsSync(scansDir)).toBe(true);
+        expect(fs.statSync(scansDir).isDirectory()).toBe(true);
+      });
+
+      it('should auto-create nested scans directories recursively', () => {
+        const nestedScansDir = path.join(
+          scansTestDir,
+          'level1',
+          'level2',
+          'scans'
+        );
+        const config: MachineConfig = {
+          scanner_name: 'NestedScanner',
+          camera_ip_address: 'mock',
+          scans_dir: nestedScansDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        };
+
+        // Verify directories don't exist before save
+        expect(fs.existsSync(nestedScansDir)).toBe(false);
+        expect(fs.existsSync(path.join(scansTestDir, 'level1'))).toBe(false);
+
+        saveConfig(config, configPath);
+
+        // Verify all nested directories were created
+        expect(fs.existsSync(nestedScansDir)).toBe(true);
+        expect(fs.statSync(nestedScansDir).isDirectory()).toBe(true);
+      });
+
+      it('should not error when scans directory already exists', () => {
+        const existingScansDir = path.join(scansTestDir, 'existing-scans');
+        fs.mkdirSync(existingScansDir);
+
+        const config: MachineConfig = {
+          scanner_name: 'ExistingScanner',
+          camera_ip_address: 'mock',
+          scans_dir: existingScansDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        };
+
+        // Should not throw error
+        expect(() => saveConfig(config, configPath)).not.toThrow();
+
+        // Config should be saved
+        expect(fs.existsSync(configPath)).toBe(true);
+      });
     });
   });
 
@@ -583,7 +664,7 @@ OTHER_VAR=ignored`;
         expect(result.errors.scans_dir).toBeUndefined();
       });
 
-      it('should fail validation for non-existent directory', () => {
+      it('should pass validation for non-existent directory with writable parent (auto-create)', () => {
         const nonExistentPath = path.join(testDir, 'does-not-exist');
 
         const config: MachineConfig = {
@@ -595,10 +676,9 @@ OTHER_VAR=ignored`;
 
         const result = validateConfig(config);
 
-        // Should have scans_dir error for non-existent directory
-        expect(result.valid).toBe(false);
-        expect(result.errors.scans_dir).toBeDefined();
-        expect(result.errors.scans_dir).toContain('does not exist');
+        // Should NOT have scans_dir error - parent exists and is writable
+        expect(result.errors.scans_dir).toBeUndefined();
+        expect(result.valid).toBe(true);
       });
 
       it('should fail validation for non-writable directory', () => {
@@ -629,6 +709,95 @@ OTHER_VAR=ignored`;
         expect(result.errors.scans_dir).toBeDefined();
         expect(result.errors.scans_dir).toContain('not writable');
       });
+
+      describe('Auto-creation validation (fix-scans-directory-creation)', () => {
+        let testDir: string;
+
+        beforeEach(() => {
+          // Create temp directory for tests
+          testDir = fs.mkdtempSync(
+            path.join(os.tmpdir(), 'bloom-scans-autocreate-')
+          );
+        });
+
+        afterEach(() => {
+          // Clean up test directory
+          if (fs.existsSync(testDir)) {
+            fs.rmSync(testDir, { recursive: true, force: true });
+          }
+        });
+
+        it('should pass validation for non-existent directory with writable parent', () => {
+          const nonExistentPath = path.join(testDir, 'new-scans');
+
+          const config: MachineConfig = {
+            scanner_name: 'test-scanner',
+            camera_ip_address: 'mock',
+            scans_dir: nonExistentPath,
+            bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          };
+
+          const result = validateConfig(config);
+
+          // Should NOT have scans_dir error - parent is writable
+          expect(result.errors.scans_dir).toBeUndefined();
+          expect(result.valid).toBe(true);
+        });
+
+        it('should pass validation for nested non-existent directory with writable ancestor', () => {
+          // This tests recursive: true behavior
+          const nestedPath = path.join(testDir, 'level1', 'level2', 'scans');
+
+          const config: MachineConfig = {
+            scanner_name: 'test-scanner',
+            camera_ip_address: 'mock',
+            scans_dir: nestedPath,
+            bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          };
+
+          const result = validateConfig(config);
+
+          // Should NOT have scans_dir error - we can create nested dirs
+          expect(result.errors.scans_dir).toBeUndefined();
+          expect(result.valid).toBe(true);
+        });
+
+        it('should fail validation when first existing ancestor is not writable', () => {
+          // Create a non-writable directory
+          const nonWritableDir = path.join(testDir, 'non-writable');
+          fs.mkdirSync(nonWritableDir);
+
+          // Try to make it non-writable (may not work on all platforms)
+          let isActuallyNonWritable = false;
+          try {
+            fs.chmodSync(nonWritableDir, 0o444); // Read-only
+            fs.accessSync(nonWritableDir, fs.constants.W_OK);
+          } catch {
+            isActuallyNonWritable = true;
+          }
+
+          if (!isActuallyNonWritable) {
+            // Skip this test on platforms where chmod doesn't restrict writes
+            return;
+          }
+
+          const pathUnderNonWritable = path.join(nonWritableDir, 'scans');
+
+          const config: MachineConfig = {
+            scanner_name: 'test-scanner',
+            camera_ip_address: 'mock',
+            scans_dir: pathUnderNonWritable,
+            bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          };
+
+          const result = validateConfig(config);
+
+          // Should have error indicating parent is not writable
+          expect(result.valid).toBe(false);
+          expect(result.errors.scans_dir).toBeDefined();
+          expect(result.errors.scans_dir).toContain('not writable');
+        });
+      });
     });
   });
 
@@ -638,7 +807,7 @@ OTHER_VAR=ignored`;
         const config: MachineConfig = {
           scanner_name: '',
           camera_ip_address: 'mock',
-          scans_dir: '/data',
+          scans_dir: path.join(testDir, 'test-scans-data'),
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
         };
 
@@ -711,7 +880,7 @@ OTHER_VAR=ignored`;
         const config: MachineConfig = {
           scanner_name: 'Scanner',
           camera_ip_address: 'mock',
-          scans_dir: '/data',
+          scans_dir: path.join(testDir, 'test-scans-data'),
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
         };
 
@@ -732,7 +901,7 @@ OTHER_VAR=ignored`;
           const config: MachineConfig = {
             scanner_name: 'Scanner',
             camera_ip_address: ip,
-            scans_dir: '/data',
+            scans_dir: path.join(testDir, 'test-scans-data'),
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
           };
 
@@ -754,7 +923,7 @@ OTHER_VAR=ignored`;
           const config: MachineConfig = {
             scanner_name: 'Scanner',
             camera_ip_address: ip,
-            scans_dir: '/data',
+            scans_dir: path.join(testDir, 'test-scans-data'),
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
           };
 
