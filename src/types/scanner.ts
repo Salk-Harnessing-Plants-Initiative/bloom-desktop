@@ -172,22 +172,25 @@ export interface ScannerAPI {
    * Event listener for scan progress updates.
    *
    * @param callback - Function called with progress updates
+   * @returns Cleanup function to remove the listener
    */
-  onProgress: (callback: (progress: ScanProgress) => void) => void;
+  onProgress: (callback: (progress: ScanProgress) => void) => () => void;
 
   /**
    * Event listener for scan completion.
    *
    * @param callback - Function called when scan completes
+   * @returns Cleanup function to remove the listener
    */
-  onComplete: (callback: (result: ScanResult) => void) => void;
+  onComplete: (callback: (result: ScanResult) => void) => () => void;
 
   /**
    * Event listener for scanner errors.
    *
    * @param callback - Function called on errors
+   * @returns Cleanup function to remove the listener
    */
-  onError: (callback: (error: string) => void) => void;
+  onError: (callback: (error: string) => void) => () => void;
 }
 
 /**

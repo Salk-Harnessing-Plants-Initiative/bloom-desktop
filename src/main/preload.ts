@@ -16,7 +16,7 @@ import {
 } from '../types/electron';
 /* eslint-enable import/no-unresolved */
 // eslint-disable-next-line import/no-unresolved
-import { MachineConfig, MachineCredentials } from './config-store';
+import { MachineConfig } from './config-store';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -140,17 +140,23 @@ const scannerAPI: ScannerAPI = {
    */
   getScannerId: () => ipcRenderer.invoke('scanner:get-scanner-id'),
   onProgress: (callback: (progress: ScanProgress) => void) => {
-    ipcRenderer.on('scanner:progress', (_event, progress: ScanProgress) =>
-      callback(progress)
-    );
+    const listener = (_event: unknown, progress: ScanProgress) =>
+      callback(progress);
+    ipcRenderer.on('scanner:progress', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.removeListener('scanner:progress', listener);
   },
   onComplete: (callback: (result: ScanResult) => void) => {
-    ipcRenderer.on('scanner:complete', (_event, result: ScanResult) =>
-      callback(result)
-    );
+    const listener = (_event: unknown, result: ScanResult) => callback(result);
+    ipcRenderer.on('scanner:complete', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.removeListener('scanner:complete', listener);
   },
   onError: (callback: (error: string) => void) => {
-    ipcRenderer.on('scanner:error', (_event, error: string) => callback(error));
+    const listener = (_event: unknown, error: string) => callback(error);
+    ipcRenderer.on('scanner:error', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.removeListener('scanner:error', listener);
   },
 };
 

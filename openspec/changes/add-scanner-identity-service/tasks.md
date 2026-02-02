@@ -4,29 +4,29 @@
 
 ### Phase 1: Write Unit Tests First (TDD)
 
-- [ ] 1.1 Create `tests/unit/scanner-identity.test.ts`
-- [ ] 1.2 Add test: Scanner identity initialized from config on startup
-- [ ] 1.3 Add test: `scanner:get-scanner-id` returns current identity
-- [ ] 1.4 Add test: Scanner identity updates when config saved successfully
-- [ ] 1.5 Add test: Scanner identity unchanged when config save fails
-- [ ] 1.6 Add test: Scanner identity defaults to empty string on first run
-- [ ] 1.7 Run tests: `npm run test:unit` - expect 5 failures ❌
+- [x] 1.1 Create `tests/unit/scanner-identity.test.ts`
+- [x] 1.2 Add test: Scanner identity initialized from config on startup
+- [x] 1.3 Add test: `scanner:get-scanner-id` returns current identity
+- [x] 1.4 Add test: Scanner identity updates when config saved successfully
+- [x] 1.5 Add test: Scanner identity unchanged when config save fails
+- [x] 1.6 Add test: Scanner identity defaults to empty string on first run
+- [x] 1.7 Run tests: `npm run test:unit` - expect 5 failures ❌
 
 ### Phase 2: Implement Scanner Identity Service (TDD)
 
-- [ ] 2.1 Add `scannerIdentity` variable in src/main/main.ts (after line 83)
-- [ ] 2.2 Initialize `scannerIdentity` from config at app startup
-- [ ] 2.3 Add `scanner:get-scanner-id` IPC handler
-- [ ] 2.4 Update `config:set` handler to sync scannerIdentity on success
-- [ ] 2.5 Add code comments explaining scanner identity purpose
-- [ ] 2.6 Run tests: `npm run test:unit` - expect all scanner-identity tests to pass ✅
+- [x] 2.1 Add `scannerIdentity` variable in src/main/main.ts (after line 83)
+- [x] 2.2 Initialize `scannerIdentity` from config at app startup
+- [x] 2.3 Add `scanner:get-scanner-id` IPC handler
+- [x] 2.4 Update `config:set` handler to sync scannerIdentity on success
+- [x] 2.5 Add code comments explaining scanner identity purpose
+- [x] 2.6 Run tests: `npm run test:unit` - expect all scanner-identity tests to pass ✅
 
 ### Phase 3: Update Preload and Types (TDD)
 
-- [ ] 3.1 Add `getScannerId` function to scanner API in src/main/preload.ts
-- [ ] 3.2 Update `ScannerAPI` interface in src/types/electron.d.ts
-- [ ] 3.3 Add JSDoc comments to `getScannerId` method
-- [ ] 3.4 Run TypeScript compiler: `npx tsc --noEmit` - expect no errors ✅
+- [x] 3.1 Add `getScannerId` function to scanner API in src/main/preload.ts
+- [x] 3.2 Update `ScannerAPI` interface in src/types/scanner.ts (uses import in electron.d.ts)
+- [x] 3.3 Add JSDoc comments to `getScannerId` method
+- [x] 3.4 Run TypeScript compiler: `npx tsc --noEmit` - expect no errors ✅
 
 ### Phase 4: Write Layout Component Tests (TDD)
 
@@ -37,10 +37,10 @@
 
 ### Phase 5: Update Layout Component (TDD)
 
-- [ ] 5.1 Update Layout useEffect to call `window.electron.scanner.getScannerId()`
-- [ ] 5.2 Change from single load to periodic refresh (every 2 seconds)
-- [ ] 5.3 Update scanner name display logic ("Not configured" fallback)
-- [ ] 5.4 Add cleanup for interval on unmount
+- [x] 5.1 Update Layout useEffect to call `window.electron.scanner.getScannerId()`
+- [x] 5.2 Change from single load to periodic refresh (every 2 seconds)
+- [x] 5.3 Update scanner name display logic ("Not configured" fallback)
+- [x] 5.4 Add cleanup for interval on unmount
 - [ ] 5.5 Run tests: `npm run test:unit` - expect all Layout tests to pass ✅
 
 ### Phase 6: Integration Testing
@@ -55,19 +55,19 @@
 
 ### Phase 7: Create Spec Delta
 
-- [ ] 7.1 Create `specs/scanner-api/spec.md` (already done ✅)
-- [ ] 7.2 Document all requirements and scenarios (already done ✅)
-- [ ] 7.3 Run validation: `npx openspec validate add-scanner-identity-service`
-- [ ] 7.4 Fix any validation errors
+- [x] 7.1 Create `specs/scanner-api/spec.md` (already done ✅)
+- [x] 7.2 Document all requirements and scenarios (already done ✅)
+- [x] 7.3 Run validation: `npx openspec validate add-scanner-identity-service`
+- [x] 7.4 Fix any validation errors
 
 ### Phase 8: Code Quality and Cleanup
 
-- [ ] 8.1 Run linter: `npm run lint` - fix any errors
-- [ ] 8.2 Run formatter: `npm run format`
-- [ ] 8.3 Run full test suite: `npm run test:unit` - expect all tests to pass ✅
-- [ ] 8.4 Review all code comments for clarity
-- [ ] 8.5 Verify no console.log statements left in code
-- [ ] 8.6 Check TypeScript types are complete
+- [x] 8.1 Run linter: `npm run lint` - fix any errors
+- [x] 8.2 Run formatter: `npm run format`
+- [x] 8.3 Run full test suite: `npm run test:unit` - expect all tests to pass ✅
+- [x] 8.4 Review all code comments for clarity
+- [x] 8.5 Verify no console.log statements left in code
+- [x] 8.6 Check TypeScript types are complete
 
 ## Acceptance Criteria
 

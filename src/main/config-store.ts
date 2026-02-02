@@ -327,7 +327,7 @@ export function validateConfig(config: MachineConfig): ValidationResult {
       } else {
         // Directory doesn't exist - find first existing ancestor and check writability
         // This allows auto-creation with recursive: true
-        let checkPath = config.scans_dir;
+        const checkPath = config.scans_dir;
         let parentPath = path.dirname(checkPath);
 
         // Walk up directory tree until we find an existing directory
@@ -408,7 +408,7 @@ export function loadEnvConfig(envPath: string): MachineConfig {
   }
 
   // Load from .env file
-  let envConfig: Partial<MachineConfig> = {};
+  const envConfig: Partial<MachineConfig> = {};
 
   try {
     if (fs.existsSync(envPath)) {

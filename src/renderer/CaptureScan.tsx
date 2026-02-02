@@ -217,12 +217,18 @@ export function CaptureScan() {
       setTimeout(() => setErrorMessage(null), 5000);
     };
 
-    window.electron.scanner.onProgress(handleProgress);
-    window.electron.scanner.onComplete(handleComplete);
-    window.electron.scanner.onError(handleError);
+    // Register listeners and get cleanup functions
+    const cleanupProgress = window.electron.scanner.onProgress(handleProgress);
+    const cleanupComplete = window.electron.scanner.onComplete(handleComplete);
+    const cleanupError = window.electron.scanner.onError(handleError);
 
-    // Cleanup handled by the scanner
-  }, [isScanning, metadata.plantQrCode]);
+    // Cleanup function removes all listeners
+    return () => {
+      cleanupProgress();
+      cleanupComplete();
+      cleanupError();
+    };
+  }, [isScanning]); // Removed metadata.plantQrCode - barcode captured in closure when scan starts
 
   // Validation
   const validateMetadata = (): Partial<Record<keyof ScanMetadata, string>> => {
