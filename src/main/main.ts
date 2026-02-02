@@ -23,7 +23,7 @@ import {
   getPythonExecutablePath,
   validatePythonExecutable,
 } from './python-paths';
-import { initializeDatabase, closeDatabase } from './database';
+import { initializeDatabaseAsync, closeDatabase } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
 import {
   loadConfig,
@@ -993,7 +993,7 @@ app.on('ready', async () => {
   // Initialize database AFTER window is created so we can send errors to renderer
   try {
     console.log('[Main] Initializing database...');
-    initializeDatabase();
+    await initializeDatabaseAsync();
     console.log('[Main] Database initialized, registering handlers...');
     registerDatabaseHandlers();
     console.log('[Main] Database initialized and handlers registered');
