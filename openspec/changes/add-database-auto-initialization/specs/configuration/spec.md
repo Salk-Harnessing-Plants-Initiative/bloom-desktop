@@ -146,12 +146,12 @@ The application SHALL validate that the database schema matches the expected str
 
 The auto-initialization behavior differs based on execution context:
 
-| Context | Schema Application | Prisma CLI Available | Recommended Workflow |
-|---------|-------------------|---------------------|---------------------|
-| Development (`npm run start`) | Automatic via `prisma db push` | Yes | Just run the app |
-| Unit Tests | Automatic via `prisma db push` | Yes | Tests handle setup |
-| E2E Tests | Automatic via `prisma db push` | Yes | Tests handle setup |
-| Packaged App | Skipped (external tooling) | No | Run `prisma migrate deploy` before first use |
+| Context                       | Schema Application             | Prisma CLI Available | Recommended Workflow                         |
+| ----------------------------- | ------------------------------ | -------------------- | -------------------------------------------- |
+| Development (`npm run start`) | Automatic via `prisma db push` | Yes                  | Just run the app                             |
+| Unit Tests                    | Automatic via `prisma db push` | Yes                  | Tests handle setup                           |
+| E2E Tests                     | Automatic via `prisma db push` | Yes                  | Tests handle setup                           |
+| Packaged App                  | Skipped (external tooling)     | No                   | Run `prisma migrate deploy` before first use |
 
 ### Why Packaged Apps Skip Auto-Init
 
@@ -206,8 +206,12 @@ async function applySchema(dbPath: string): Promise<void> {
   const isPackaged = process.resourcesPath !== undefined && app.isPackaged;
 
   if (isPackaged) {
-    console.log('[Database] Packaged app - skipping automatic schema application');
-    console.log('[Database] Run "prisma migrate deploy" externally to set up schema');
+    console.log(
+      '[Database] Packaged app - skipping automatic schema application'
+    );
+    console.log(
+      '[Database] Run "prisma migrate deploy" externally to set up schema'
+    );
     return; // Do not throw - allow app to continue
   }
 
