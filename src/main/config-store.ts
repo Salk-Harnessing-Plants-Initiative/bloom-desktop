@@ -493,6 +493,20 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 
+  // Auto-create scans directory if it doesn't exist
+  // This eliminates the UX issue where users must manually create the directory
+  if (config.scans_dir && !fs.existsSync(config.scans_dir)) {
+    try {
+      console.log('[Config] Creating scans directory:', config.scans_dir);
+      fs.mkdirSync(config.scans_dir, { recursive: true });
+      console.log('[Config] Scans directory created successfully');
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error('[Config] Failed to create scans directory:', errorMessage);
+    }
+  }
+
   // Write KEY=value format with sections
   const content = [
     '# Machine Configuration',

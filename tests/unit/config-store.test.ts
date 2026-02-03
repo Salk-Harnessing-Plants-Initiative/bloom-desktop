@@ -218,6 +218,73 @@ BLOOM_ANON_KEY=legacykey`;
       expect(content).toContain('SCANNER_NAME=NewScanner');
       expect(content).not.toContain('OldScanner');
     });
+
+    describe('Auto-create scans directory', () => {
+      it('should auto-create non-existent scans directory on save', () => {
+        const scansDir = path.join(testDir, 'auto-created-scans');
+        const config: MachineConfig = {
+          scanner_name: 'AutoCreateScanner',
+          camera_ip_address: 'mock',
+          scans_dir: scansDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: 'test@test.com',
+          bloom_scanner_password: 'testpass',
+          bloom_anon_key: 'testkey',
+        };
+
+        // Verify directory doesn't exist before save
+        expect(fs.existsSync(scansDir)).toBe(false);
+
+        saveEnvConfig(config, envPath);
+
+        // Verify directory was created during save
+        expect(fs.existsSync(scansDir)).toBe(true);
+        expect(fs.statSync(scansDir).isDirectory()).toBe(true);
+      });
+
+      it('should auto-create nested scans directories recursively', () => {
+        const nestedScansDir = path.join(testDir, 'level1', 'level2', 'scans');
+        const config: MachineConfig = {
+          scanner_name: 'NestedScanner',
+          camera_ip_address: 'mock',
+          scans_dir: nestedScansDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: 'test@test.com',
+          bloom_scanner_password: 'testpass',
+          bloom_anon_key: 'testkey',
+        };
+
+        // Verify directories don't exist before save
+        expect(fs.existsSync(nestedScansDir)).toBe(false);
+
+        saveEnvConfig(config, envPath);
+
+        // Verify all nested directories were created
+        expect(fs.existsSync(nestedScansDir)).toBe(true);
+        expect(fs.statSync(nestedScansDir).isDirectory()).toBe(true);
+      });
+
+      it('should not error when scans directory already exists', () => {
+        const existingScansDir = path.join(testDir, 'existing-scans');
+        fs.mkdirSync(existingScansDir);
+
+        const config: MachineConfig = {
+          scanner_name: 'ExistingScanner',
+          camera_ip_address: 'mock',
+          scans_dir: existingScansDir,
+          bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: 'test@test.com',
+          bloom_scanner_password: 'testpass',
+          bloom_anon_key: 'testkey',
+        };
+
+        // Should not throw error
+        expect(() => saveEnvConfig(config, envPath)).not.toThrow();
+
+        // Config should be saved
+        expect(fs.existsSync(envPath)).toBe(true);
+      });
+    });
   });
 
   // ========================================

@@ -940,3 +940,292 @@ The database handler for listing accessions SHALL include the linked experiments
 
 - **WHEN** the accessions list is fetched
 - **THEN** each accession includes an `experiments` array with experiment names
+
+### Requirement: Fetch Scanners IPC Handler
+
+The IPC handler for `config:fetch-scanners` SHALL accept `apiUrl` and `credentials` as parameters and use the provided credentials to fetch scanners from the Bloom API, rather than loading credentials from the `.env` file.
+
+#### Scenario: Fetch scanners works on first run
+
+- **GIVEN** the app is running for the first time
+- **AND** no `~/.bloom/.env` file exists
+- **WHEN** user enters valid credentials in the form
+- **AND** clicks the "Fetch Scanners from Bloom" button
+- **THEN** the button SHALL successfully fetch the scanner list
+- **AND** the scanner dropdown SHALL populate with available scanners
+
+#### Scenario: Fetch scanners uses form credentials not file
+
+- **GIVEN** saved credentials exist in `~/.bloom/.env`
+- **AND** user has modified the credentials in the form
+- **AND** user has NOT saved the modified credentials
+- **WHEN** user clicks the "Fetch Scanners from Bloom" button
+- **THEN** the handler SHALL use the modified credentials from the form
+- **AND** the handler SHALL NOT use the saved credentials from `.env`
+
+### Requirement: Configuration Form Loading
+
+When the Machine Configuration page loads, it SHALL immediately display the configuration form pre-filled with saved values (if any exist), without requiring credential re-entry or login screen.
+
+#### Scenario: Direct access to configuration without login
+
+- **GIVEN** the app is started
+- **AND** saved configuration exists in `~/.bloom/.env` (single file with all config)
+- **WHEN** user navigates to Machine Configuration
+- **THEN** the configuration form SHALL be displayed immediately
+- **AND** the form SHALL be pre-filled with ALL saved values (scanner name, camera IP, API URL, credentials)
+- **AND** NO login screen SHALL be displayed
+
+#### Scenario: First run shows form immediately
+
+- **GIVEN** the app is started for the first time
+- **AND** no saved configuration exists
+- **WHEN** user navigates to Machine Configuration
+- **THEN** the configuration form SHALL be displayed immediately
+- **AND** the form SHALL contain default values
+- **AND** NO login screen SHALL be displayed
+
+### Requirement: Form State Management
+
+The Machine Configuration component SHALL manage two form states (`'loading'` and `'config'`) without a login state.
+
+#### Scenario: Simplified state transitions
+
+- **GIVEN** the Machine Configuration component is mounted
+- **THEN** the form state SHALL initially be `'loading'`
+- **WHEN** configuration data is loaded from storage
+- **THEN** the form state SHALL transition directly to `'config'`
+- **AND** the form state SHALL NOT include `'login'` as a possible value
+
+### Requirement: Single Source of Truth Configuration Storage
+
+The application SHALL store all machine configuration (scanner settings AND credentials) in a single `~/.bloom/.env` file, eliminating the redundant `config.json` file.
+
+#### Scenario: All configuration saved to .env
+
+- **GIVEN** user has filled in the complete configuration form
+- **WHEN** user clicks "Save Configuration"
+- **THEN** all values SHALL be saved to `~/.bloom/.env`
+- **AND** the following fields SHALL be present in `.env`:
+  - `SCANNER_NAME`
+  - `CAMERA_IP_ADDRESS`
+  - `SCANS_DIR`
+  - `BLOOM_API_URL`
+  - `BLOOM_SCANNER_USERNAME`
+  - `BLOOM_SCANNER_PASSWORD`
+  - `BLOOM_ANON_KEY`
+- **AND** NO `~/.bloom/config.json` file SHALL be created
+
+#### Scenario: Automatic migration from legacy config.json
+
+- **GIVEN** the app is started
+- **AND** `~/.bloom/config.json` exists (legacy format)
+- **AND** `~/.bloom/.env` exists with credentials
+- **WHEN** configuration is loaded
+- **THEN** values from both files SHALL be merged
+- **AND** all values SHALL be saved to `~/.bloom/.env`
+- **AND** `~/.bloom/config.json` SHALL be deleted
+- **AND** future loads SHALL read only from `~/.bloom/.env`
+
+### Requirement: Bloom API Scanner Fetch Authentication
+
+The Machine Configuration page SHALL fetch valid scanner names from the Bloom API using proper Supabase authentication with `@salk-hpi/bloom-js` library, matching the pilot implementation.
+
+#### Scenario: Successful scanner fetch with valid credentials
+
+**Given** a user has entered valid Bloom API credentials (username, password, anon key, API URL)
+**When** the application fetches scanners from the Bloom API
+**Then** the system creates a Supabase client with the API URL and anon key
+**And** authenticates using `supabase.auth.signInWithPassword()` with the username and password
+**And** creates a `SupabaseStore` instance from `@salk-hpi/bloom-js`
+**And** calls `store.getAllCylScanners()` to query the `cyl_scanners` table
+**And** returns a list of scanners with `id` and `name` fields
+**And** populates the scanner dropdown with the fetched names
+
+**Acceptance Criteria**:
+
+- Uses `@supabase/supabase-js` `createClient()` method
+- Uses `@salk-hpi/bloom-js` `SupabaseStore` class
+- Authenticates with email/password (not password as Bearer token)
+- Queries `cyl_scanners` table (not `/scanners` HTTP endpoint)
+- Returns scanner objects with `{ id: number, name: string | null }` structure
+- Scanner dropdown shows only valid scanners from database
+
+#### Scenario: Authentication failure with invalid credentials
+
+**Given** a user has entered invalid Bloom API credentials
+**When** the application attempts to fetch scanners
+**Then** the Supabase client authentication fails
+**And** the system returns an error: "Authentication failed: [error message]"
+**And** the scanner dropdown shows "Unable to load scanners"
+**And** an error message displays to the user
+**And** a "Retry" button allows the user to attempt fetch again
+
+**Acceptance Criteria**:
+
+- Supabase auth errors are caught and formatted for user display
+- No raw error objects exposed to UI
+- Retry mechanism available
+- Scanner dropdown disabled during error state
+
+#### Scenario: Network error during scanner fetch
+
+**Given** a user has valid credentials
+**And** the Bloom API is unreachable or network is down
+**When** the application attempts to fetch scanners
+**Then** the system catches the network error
+**And** returns an error: "Network error: [error message]"
+**And** the scanner dropdown shows "Unable to load scanners"
+**And** appropriate error handling prevents application crash
+
+**Acceptance Criteria**:
+
+- Network errors caught and handled gracefully
+- User-friendly error messages displayed
+- Application remains functional despite API unavailability
+- Retry mechanism available
+
+#### Scenario: Scanner fetch triggers after credential save
+
+**Given** a user is configuring the machine for the first time (no existing credentials)
+**When** the user enters Bloom API credentials and clicks "Save Configuration"
+**And** the credentials save successfully
+**Then** the system automatically triggers `fetchScanners()`
+**And** shows a loading indicator in the scanner dropdown
+**And** populates the scanner dropdown when fetch completes
+**And** the user can immediately select a scanner without page refresh
+
+**Acceptance Criteria**:
+
+- Scanner fetch triggered automatically after first-time credential save
+- Loading state shown during fetch ("Loading scanners...")
+- Dropdown populates without requiring page navigation or refresh
+- Seamless UX: credentials → save → scanners load → select scanner
+
+### Requirement: Machine Configuration Page Section Order
+
+The Machine Configuration page SHALL present form sections in the following order to optimize user experience and logical flow: Bloom API Credentials (first), Machine Identity (second), Hardware (third).
+
+#### Scenario: First-run configuration flow
+
+**Given** a user is configuring the machine for the first time
+**And** no credentials exist in `~/.bloom/.env`
+**When** the user navigates to `/machine-configuration`
+**Then** the Bloom API Credentials section appears first at the top of the page
+**And** the Machine Identity section appears second below credentials
+**And** the Hardware section appears third below machine identity
+**And** the scanner name dropdown in Machine Identity section shows "Enter credentials first" (disabled)
+**And** the user can complete the form in top-to-bottom order without scrolling back
+
+**Acceptance Criteria**:
+
+- Section visual order: Credentials → Machine Identity → Hardware
+- Tab navigation order follows visual order
+- Scanner dropdown disabled until credentials entered
+- Save button appears at bottom after all sections
+- No behavioral changes to validation or save functionality
+
+#### Scenario: Existing configuration access flow
+
+**Given** a user has existing credentials stored in `~/.bloom/.env`
+**And** the user has authenticated successfully
+**When** the user views the Machine Configuration page
+**Then** the Bloom API Credentials section appears first at the top with masked password
+**And** the Machine Identity section appears second with pre-selected scanner
+**And** the Hardware section appears third with existing camera/directory settings
+**And** the scanner name dropdown is populated and enabled (credentials already exist)
+**And** the user can review and modify settings in top-to-bottom order
+
+**Acceptance Criteria**:
+
+- Credentials section shows: username (populated), password (masked), anon key (populated), API URL (populated)
+- Scanner dropdown populated with scanners from Bloom API
+- Pre-existing scanner selection visible
+- Camera IP and scans directory pre-populated
+- Form follows logical dependency: credentials enable scanner selection
+
+#### Scenario: Keyboard navigation follows visual order
+
+**Given** a user is on the Machine Configuration page
+**When** the user presses Tab to navigate through form fields
+**Then** focus moves in the following order:
+
+1. Username (Bloom API Credentials)
+2. Password (Bloom API Credentials)
+3. Anon Key (Bloom API Credentials)
+4. API URL (Bloom API Credentials)
+5. Scanner Name dropdown (Machine Identity)
+6. Camera IP Address (Hardware)
+7. Scans Directory path (Hardware)
+8. Browse button (Hardware)
+9. Save Configuration button
+
+**Acceptance Criteria**:
+
+- Tab order matches visual top-to-bottom order
+- No focus traps or unexpected focus jumps
+- Focus visible on all interactive elements
+- Screen readers announce sections in correct order
+
+### Requirement: Bloom API Credentials Section
+
+The Machine Configuration page SHALL provide a Bloom API Credentials section at the top of the form that allows users to enter authentication credentials and test connectivity before completing the full configuration.
+
+The section SHALL include:
+
+- API URL input field
+- Username (email) input field
+- Password input field
+- Anon Key input field
+- **"Fetch Scanners from Bloom" button** to test credentials and retrieve scanner list
+
+#### Scenario: Fetch button disabled when credentials incomplete
+
+- **GIVEN** user is on Machine Configuration page
+- **WHEN** any credential field (username, password, anon key, or API URL) is empty
+- **THEN** the "Fetch Scanners from Bloom" button SHALL be disabled
+- **AND** button SHALL have grayed-out styling
+
+#### Scenario: Fetch button enabled when credentials complete
+
+- **GIVEN** user has entered all credentials (username, password, anon key, API URL)
+- **WHEN** all fields have non-empty values
+- **THEN** the "Fetch Scanners from Bloom" button SHALL be enabled
+- **AND** button SHALL have primary blue styling
+
+#### Scenario: User fetches scanners successfully
+
+- **GIVEN** user has entered valid credentials
+- **WHEN** user clicks "Fetch Scanners from Bloom" button
+- **THEN** button SHALL show loading state with spinner
+- **AND** scanner list SHALL be fetched from Bloom API
+- **AND** on success, scanner dropdown SHALL populate with available scanners
+- **AND** success message SHALL display "✓ Found N scanners"
+- **AND** button SHALL return to enabled state
+
+#### Scenario: User fetches scanners with invalid credentials
+
+- **GIVEN** user has entered invalid credentials
+- **WHEN** user clicks "Fetch Scanners from Bloom" button
+- **THEN** button SHALL show loading state with spinner
+- **AND** authentication SHALL fail
+- **AND** error message SHALL display authentication failure reason
+- **AND** scanner dropdown SHALL remain empty with error state
+- **AND** button SHALL return to enabled state
+
+#### Scenario: User can complete form after fetching scanners
+
+- **GIVEN** user has successfully fetched scanners using the button
+- **WHEN** scanner dropdown is populated
+- **THEN** user SHALL be able to select a scanner from dropdown
+- **AND** user SHALL be able to complete remaining form fields
+- **AND** user SHALL be able to save full configuration
+- **AND** validation SHALL not block save due to empty scanner field
+
+#### Scenario: Fetch button prevents duplicate requests
+
+- **GIVEN** user clicks "Fetch Scanners from Bloom" button
+- **WHEN** fetch operation is in progress (loading state)
+- **THEN** button SHALL be disabled
+- **AND** clicking button again SHALL have no effect
+- **AND** button SHALL re-enable only after fetch completes
