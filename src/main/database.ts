@@ -688,6 +688,30 @@ export async function validateSchema(
 async function applySchema(dbPath: string): Promise<void> {
   console.log('[Database] Applying schema to:', dbPath);
 
+  // Check if we're in a packaged Electron app
+  // In packaged apps, we can't run npx/prisma CLI commands because:
+  // 1. The app is inside an asar archive (not a real filesystem directory)
+  // 2. execSync with cwd pointing to asar fails with ENOTDIR
+  // 3. CLI tools like npx are not bundled with the packaged app
+  // For packaged apps, schema should be applied via external tooling
+  let isPackaged = false;
+  try {
+    isPackaged = app.isPackaged;
+  } catch {
+    // Not in Electron context (e.g., unit tests)
+    isPackaged = false;
+  }
+
+  if (isPackaged) {
+    console.log(
+      '[Database] Packaged app detected - skipping automatic schema application'
+    );
+    console.log(
+      '[Database] Run "prisma migrate deploy" externally to set up the database schema'
+    );
+    return;
+  }
+
   const { execSync } = await import('child_process');
 
   // Use prisma db push to apply schema

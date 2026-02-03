@@ -6,23 +6,33 @@ This spec delta adds safe automatic database initialization for "out of the box"
 
 ### Requirement: Database Auto-Initialization on Startup
 
-The application SHALL automatically initialize the database schema on startup if needed, ensuring the app works immediately after installation without manual CLI commands.
+The application SHALL automatically initialize the database schema on startup if needed, ensuring the app works immediately after installation without manual CLI commands in development mode. In packaged (production) mode, the application SHALL detect database state but defer schema creation to external tooling.
 
-#### Scenario: Fresh install with no database file
+#### Scenario: Fresh install with no database file (Development Mode)
 
-- **GIVEN** the application is starting for the first time
+- **GIVEN** the application is starting in development mode (not packaged)
 - **AND** no database file exists at the configured location
 - **WHEN** database initialization runs
 - **THEN** the database file SHALL be created
-- **AND** all tables from the Prisma schema SHALL be created
+- **AND** all tables from the Prisma schema SHALL be created via `prisma db push`
 - **AND** the app SHALL proceed to normal startup
 - **AND** console logs SHALL indicate "Database created and initialized"
+
+#### Scenario: Fresh install with no database file (Packaged Mode)
+
+- **GIVEN** the application is starting as a packaged Electron app
+- **AND** no database file exists at the configured location
+- **WHEN** database initialization runs
+- **THEN** the app SHALL log "Packaged app detected - schema must be applied externally"
+- **AND** the app SHALL NOT attempt to run Prisma CLI commands
+- **AND** database operations will fail until schema is applied via external tooling
+- **AND** the recommended approach is to run `prisma migrate deploy` before first use
 
 #### Scenario: Database file exists but is empty (no tables)
 
 - **GIVEN** a database file exists at the configured location
 - **AND** the file contains no tables (empty SQLite database)
-- **WHEN** database initialization runs
+- **WHEN** database initialization runs in development mode
 - **THEN** all tables from the Prisma schema SHALL be created
 - **AND** the app SHALL proceed to normal startup
 - **AND** console logs SHALL indicate "Database schema initialized"
@@ -40,7 +50,7 @@ The application SHALL automatically initialize the database schema on startup if
 
 - **GIVEN** a database file exists with tables and data
 - **AND** the schema is from an older version (pending migrations exist)
-- **WHEN** database initialization runs
+- **WHEN** database initialization runs in development mode
 - **THEN** a backup of the database SHALL be created before migration
 - **AND** pending migrations SHALL be applied in order
 - **AND** existing data SHALL be preserved
@@ -82,7 +92,7 @@ The application SHALL prioritize data safety during database initialization, nev
 - **AND** the file is corrupted (not a valid SQLite database)
 - **WHEN** database initialization runs
 - **THEN** the corrupted file SHALL be renamed to `{db_path}.corrupted.{timestamp}`
-- **AND** a new database SHALL be created
+- **AND** a new database SHALL be created (in development mode)
 - **AND** a warning SHALL be logged: "Corrupted database found and preserved. A new database was created."
 
 ### Requirement: Database Initialization Feedback
@@ -96,7 +106,8 @@ The application SHALL provide clear feedback about database initialization statu
 - **THEN** console logs SHALL include:
   - Database path being used
   - Current state (new, empty, current, needs migration)
-  - Actions taken (created, migrated, none)
+  - Whether running in packaged or development mode
+  - Actions taken (created, migrated, skipped, none)
   - Time taken for initialization
 
 #### Scenario: Database error surfaced to user
@@ -126,10 +137,36 @@ The application SHALL validate that the database schema matches the expected str
 - **AND** the schema doesn't match expected structure
 - **WHEN** schema validation runs
 - **THEN** an error SHALL be logged with details of mismatches
-- **AND** the app SHALL attempt to fix minor issues automatically
+- **AND** the app SHALL attempt to fix minor issues automatically (development mode only)
 - **AND** for major issues, user SHALL be notified with recovery steps
 
 ## Technical Notes
+
+### Development vs Packaged Mode
+
+The auto-initialization behavior differs based on execution context:
+
+| Context | Schema Application | Prisma CLI Available | Recommended Workflow |
+|---------|-------------------|---------------------|---------------------|
+| Development (`npm run start`) | Automatic via `prisma db push` | Yes | Just run the app |
+| Unit Tests | Automatic via `prisma db push` | Yes | Tests handle setup |
+| E2E Tests | Automatic via `prisma db push` | Yes | Tests handle setup |
+| Packaged App | Skipped (external tooling) | No | Run `prisma migrate deploy` before first use |
+
+### Why Packaged Apps Skip Auto-Init
+
+Packaged Electron apps bundle code inside an `.asar` archive. The Prisma CLI cannot run from within this archive because:
+
+1. `app.getAppPath()` returns a path inside `.asar` which is not a real filesystem directory
+2. `execSync` with `cwd` pointing to asar fails with `ENOTDIR`
+3. CLI tools like `npx` are not bundled with the packaged app
+
+The solution is to run database migrations externally before the packaged app is used:
+
+```bash
+# From the project directory (not the packaged app)
+BLOOM_DATABASE_URL="file:~/.bloom/data/bloom.db" npx prisma migrate deploy
+```
 
 ### Detection Logic
 
@@ -161,23 +198,34 @@ async function detectDatabaseState(dbPath: string): Promise<DatabaseState> {
 }
 ```
 
-### Migration Strategy
-
-Using Prisma's built-in migration engine:
+### Schema Application Logic
 
 ```typescript
-// For development/simple cases: prisma db push
-// For production with migrations: prisma migrate deploy
+async function applySchema(dbPath: string): Promise<void> {
+  // Check if we're in a packaged Electron app
+  const isPackaged = process.resourcesPath !== undefined && app.isPackaged;
 
-// The app will use db push for SQLite since it's embedded
-// and migrations are applied automatically
+  if (isPackaged) {
+    console.log('[Database] Packaged app - skipping automatic schema application');
+    console.log('[Database] Run "prisma migrate deploy" externally to set up schema');
+    return; // Do not throw - allow app to continue
+  }
+
+  // Development/test mode: use prisma db push
+  execSync('npx prisma db push --skip-generate --accept-data-loss', {
+    env: { ...process.env, BLOOM_DATABASE_URL: `file:${dbPath}` },
+    cwd: getCwd(),
+    stdio: 'pipe',
+  });
+}
 ```
 
 ### Backup Location
 
 ```
 ~/.bloom/
-  ├── dev.db                           # Active database
+  ├── dev.db                           # Active database (development)
+  ├── data/bloom.db                    # Active database (production)
   ├── dev.db.backup.2026-01-31T14-30-00  # Backup before migration
   └── dev.db.corrupted.2026-01-31T14-30-00  # Preserved corrupted file
 ```

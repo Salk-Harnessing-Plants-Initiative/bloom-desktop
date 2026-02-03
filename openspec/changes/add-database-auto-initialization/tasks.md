@@ -181,15 +181,33 @@ Note: Manual testing scenarios are now covered by E2E tests in add-database-auto
 
 ---
 
-## Phase 9: Validation
+## Phase 9: Packaged App Support
 
-### 9.1 OpenSpec validation
+### 9.1 Handle packaged app context
 
-- [x] 9.1.1 Run `npx openspec validate add-database-auto-initialization --strict`
-- [x] 9.1.2 Fix any validation errors
+- [x] 9.1.1 Add `app.isPackaged` check to `applySchema` function
+- [x] 9.1.2 Skip Prisma CLI execution in packaged apps (would fail with ENOTDIR)
+- [x] 9.1.3 Log informational message about external migration requirement
+- [x] 9.1.4 Update spec to document packaged vs development behavior
 
-### 9.2 Full test suite
+### 9.2 Update documentation
 
-- [x] 9.2.1 Run unit test suite: `npm run test:unit -- database-auto-init`
-- [x] 9.2.2 Run TypeScript check: `npx tsc --noEmit`
-- [x] 9.2.3 Verify all tests pass (20/20 passing)
+- [x] 9.2.1 Update spec with "Development vs Packaged Mode" section
+- [x] 9.2.2 Add scenario for packaged app fresh install
+- [x] 9.2.3 Document why packaged apps skip auto-init (asar archive limitation)
+
+---
+
+## Phase 10: Validation
+
+### 10.1 OpenSpec validation
+
+- [x] 10.1.1 Run `npx openspec validate add-database-auto-initialization --strict`
+- [x] 10.1.2 Fix any validation errors
+
+### 10.2 Full test suite
+
+- [x] 10.2.1 Run unit test suite: `npm run test:unit -- database-auto-init`
+- [x] 10.2.2 Run TypeScript check: `npx tsc --noEmit`
+- [x] 10.2.3 Verify all tests pass (20/20 passing)
+- [ ] 10.2.4 Verify CI packaged app test passes
