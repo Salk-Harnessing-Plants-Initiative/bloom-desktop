@@ -1079,9 +1079,13 @@ OTHER_VAR=ignored`;
     };
 
     // Mock Supabase client and store
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let mockSupabaseClient: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let mockSupabaseStore: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let mockCreateClient: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let mockSupabaseStoreConstructor: any;
 
     beforeEach(async () => {

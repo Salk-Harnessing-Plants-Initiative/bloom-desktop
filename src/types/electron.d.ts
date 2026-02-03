@@ -6,12 +6,7 @@
  */
 
 import { CameraSettings, CapturedImage, DetectedCamera } from './camera';
-import {
-  MachineConfig,
-  MachineCredentials,
-  ValidationResult,
-  Scanner,
-} from '../main/config-store';
+import { MachineConfig, ValidationResult, Scanner } from '../main/config-store';
 import {
   DAQSettings,
   DAQInitializeResponse,

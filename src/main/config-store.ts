@@ -540,11 +540,10 @@ export async function fetchScannersFromBloom(
     const supabase = createClient(apiUrl, credentials.bloom_anon_key);
 
     // Authenticate with email/password
-    const { data: authData, error: authError } =
-      await supabase.auth.signInWithPassword({
-        email: credentials.bloom_scanner_username,
-        password: credentials.bloom_scanner_password,
-      });
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: credentials.bloom_scanner_username,
+      password: credentials.bloom_scanner_password,
+    });
 
     if (authError) {
       return {

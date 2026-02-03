@@ -143,7 +143,7 @@ describe('Database Auto-Initialization', () => {
       // It may fail on schema application in test env, but should not throw on backup
       try {
         await initializeDatabaseSchema(testDbPath, 'needs_migration');
-      } catch (error) {
+      } catch {
         // Expected - prisma db push may fail in test env
         // But the backup should have been created
         const files = fs.readdirSync(testDir);

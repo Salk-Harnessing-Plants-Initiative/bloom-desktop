@@ -235,7 +235,7 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('should show validation errors for invalid input', async () => {
-      // Scenario: User has credentials and scanners fetched, tries to save with empty scanner
+      // Scenario: User fills form, fetches scanners, tries to save with empty scanner
       mockConfigAPI.get.mockResolvedValue({
         config: {
           scanner_name: '',
@@ -263,24 +263,33 @@ describe('MachineConfiguration Page', () => {
 
       render(<MachineConfiguration />);
 
-      // Authenticate first
+      // Wait for config form to load
       await waitFor(() => {
         expect(screen.getByLabelText(/Username/i)).toBeInTheDocument();
       });
 
+      // Fill in all credentials to enable Fetch Scanners button
       fireEvent.change(screen.getByLabelText(/Username/i), {
         target: { value: 'user@salk.edu' },
       });
       fireEvent.change(screen.getByLabelText(/Password/i), {
         target: { value: 'password' },
       });
-      fireEvent.click(screen.getByRole('button', { name: /Authenticate/i }));
+      fireEvent.change(screen.getByLabelText(/Anon Key/i), {
+        target: { value: 'test-anon-key' },
+      });
 
-      // Now on config form - clear scanner selection
+      // Fetch scanners
+      fireEvent.click(
+        screen.getByRole('button', { name: /Fetch Scanners from Bloom/i })
+      );
+
+      // Wait for scanner list to populate
       await waitFor(() => {
-        expect(screen.getByLabelText(/Scanner Name/i)).toHaveValue(
-          'PBIOBScanner'
-        );
+        const scannerSelect = screen.getByLabelText(
+          /Scanner Name/i
+        ) as HTMLSelectElement;
+        expect(scannerSelect.disabled).toBe(false);
       });
 
       // Change to empty value
@@ -301,18 +310,18 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('should reset form when Cancel is clicked', async () => {
-      // Scenario: User has credentials and scanners are fetched
+      // Scenario: User fills form, fetches scanners, makes changes, then cancels
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_name: 'PBIOBScanner', // Start with a saved scanner
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-          bloom_scanner_username: '',
-          bloom_scanner_password: '',
-          bloom_anon_key: '',
+          bloom_scanner_username: 'user@salk.edu',
+          bloom_scanner_password: 'password',
+          bloom_anon_key: 'test-anon-key',
         },
-        hasCredentials: false,
+        hasCredentials: true,
       });
 
       mockConfigAPI.fetchScanners.mockResolvedValue({
@@ -326,24 +335,22 @@ describe('MachineConfiguration Page', () => {
 
       render(<MachineConfiguration />);
 
-      // Authenticate first
+      // Wait for config form to load
       await waitFor(() => {
         expect(screen.getByLabelText(/Username/i)).toBeInTheDocument();
       });
 
-      fireEvent.change(screen.getByLabelText(/Username/i), {
-        target: { value: 'user@salk.edu' },
-      });
-      fireEvent.change(screen.getByLabelText(/Password/i), {
-        target: { value: 'password' },
-      });
-      fireEvent.click(screen.getByRole('button', { name: /Authenticate/i }));
+      // Fetch scanners
+      fireEvent.click(
+        screen.getByRole('button', { name: /Fetch Scanners from Bloom/i })
+      );
 
-      // Now on config form
+      // Wait for scanner list to populate
       await waitFor(() => {
-        expect(screen.getByLabelText(/Scanner Name/i)).toHaveValue(
-          'PBIOBScanner'
-        );
+        const scannerSelect = screen.getByLabelText(
+          /Scanner Name/i
+        ) as HTMLSelectElement;
+        expect(scannerSelect.disabled).toBe(false);
       });
 
       // Change scanner selection
@@ -393,7 +400,8 @@ describe('MachineConfiguration Page', () => {
       fireEvent.click(screen.getByRole('button', { name: /Test Connection/i }));
 
       await waitFor(() => {
-        expect(mockConfigAPI.testCamera).toHaveBeenCalledWith('10.0.0.50');
+        // Config has camera_ip_address: 'mock'
+        expect(mockConfigAPI.testCamera).toHaveBeenCalledWith('mock');
       });
     });
 
@@ -472,7 +480,7 @@ describe('MachineConfiguration Page', () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scans Directory/i)).toHaveValue(
-          '/original/path'
+          '~/.bloom/scans'
         );
       });
 
@@ -492,7 +500,7 @@ describe('MachineConfiguration Page', () => {
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scans Directory/i)).toHaveValue(
-          '/original/path'
+          '~/.bloom/scans'
         );
       });
 
@@ -504,25 +512,25 @@ describe('MachineConfiguration Page', () => {
 
       // Should still have original value
       expect(screen.getByLabelText(/Scans Directory/i)).toHaveValue(
-        '/original/path'
+        '~/.bloom/scans'
       );
     });
   });
 
   describe('Scanner Name Dropdown', () => {
     // This test verifies the fetch is called (even though user sees login screen)
-    it('should fetch scanners on mount when credentials exist', async () => {
+    it('should NOT fetch scanners on mount (requires user to click button)', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
           scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-          bloom_scanner_username: '',
-          bloom_scanner_password: '',
-          bloom_anon_key: '',
+          bloom_scanner_username: 'user@salk.edu',
+          bloom_scanner_password: 'password',
+          bloom_anon_key: 'test-key',
         },
-        hasCredentials: false,
+        hasCredentials: true,
       });
 
       mockConfigAPI.fetchScanners.mockResolvedValue({
@@ -537,10 +545,13 @@ describe('MachineConfiguration Page', () => {
 
       render(<MachineConfiguration />);
 
-      // Fetch happens in background during mount
+      // Wait for form to render
       await waitFor(() => {
-        expect(mockConfigAPI.fetchScanners).toHaveBeenCalled();
+        expect(screen.getByLabelText(/Username/i)).toBeInTheDocument();
       });
+
+      // Fetch should NOT be called on mount - user must click button
+      expect(mockConfigAPI.fetchScanners).not.toHaveBeenCalled();
     });
 
     it('should display scanner dropdown when scanners fetched', async () => {
@@ -664,22 +675,28 @@ describe('MachineConfiguration Page', () => {
 
       render(<MachineConfiguration />);
 
-      // Wait for form to load - username and anon key will be pre-filled
+      // Wait for form to load
       await waitFor(() => {
         expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
       });
 
-      // Fill in password (only field that starts empty)
+      // Fill in all required credentials
+      fireEvent.change(screen.getByLabelText(/Username/i), {
+        target: { value: 'user@salk.edu' },
+      });
       fireEvent.change(screen.getByLabelText(/Password/i), {
         target: { value: 'password123' },
+      });
+      fireEvent.change(screen.getByLabelText(/Anon Key/i), {
+        target: { value: 'test-anon-key' },
       });
 
       // Button should now be enabled
       await waitFor(() => {
         const button = screen.getByRole('button', {
           name: /Fetch Scanners from Bloom/i,
-        });
-        expect(button).not.toBeDisabled();
+        }) as HTMLButtonElement;
+        expect(button.disabled).toBe(false);
       });
     });
 
@@ -713,9 +730,15 @@ describe('MachineConfiguration Page', () => {
         ).toBeInTheDocument();
       });
 
-      // Fill in password to enable button
+      // Fill in all credentials to enable button
+      fireEvent.change(screen.getByLabelText(/Username/i), {
+        target: { value: 'user@salk.edu' },
+      });
       fireEvent.change(screen.getByLabelText(/Password/i), {
         target: { value: 'password123' },
+      });
+      fireEvent.change(screen.getByLabelText(/Anon Key/i), {
+        target: { value: 'test-anon-key' },
       });
 
       const button = screen.getByRole('button', {
@@ -765,9 +788,15 @@ describe('MachineConfiguration Page', () => {
         ).toBeInTheDocument();
       });
 
-      // Fill in password to enable button
+      // Fill in all credentials to enable button
+      fireEvent.change(screen.getByLabelText(/Username/i), {
+        target: { value: 'user@salk.edu' },
+      });
       fireEvent.change(screen.getByLabelText(/Password/i), {
         target: { value: 'password123' },
+      });
+      fireEvent.change(screen.getByLabelText(/Anon Key/i), {
+        target: { value: 'test-anon-key' },
       });
 
       const button = screen.getByRole('button', {
@@ -812,9 +841,15 @@ describe('MachineConfiguration Page', () => {
         ).toBeInTheDocument();
       });
 
-      // Fill in password to enable button
+      // Fill in all credentials to enable button
+      fireEvent.change(screen.getByLabelText(/Username/i), {
+        target: { value: 'user@salk.edu' },
+      });
       fireEvent.change(screen.getByLabelText(/Password/i), {
         target: { value: 'password123' },
+      });
+      fireEvent.change(screen.getByLabelText(/Anon Key/i), {
+        target: { value: 'test-anon-key' },
       });
 
       const button = screen.getByRole('button', {
