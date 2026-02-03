@@ -187,7 +187,10 @@ export function getDatabasePath(customPath?: string): string {
     } catch {
       // Fallback for legacy format
       const dbPath = process.env.BLOOM_DATABASE_URL.replace(/^file:\/?\/?/, '');
-      console.log('[Database] Using BLOOM_DATABASE_URL (legacy format):', dbPath);
+      console.log(
+        '[Database] Using BLOOM_DATABASE_URL (legacy format):',
+        dbPath
+      );
       return dbPath;
     }
   }
@@ -635,7 +638,9 @@ export async function handleCorruptedDatabase(dbPath: string): Promise<string> {
  * @param dbPath - Path to the database file
  * @returns Validation result with details
  */
-export async function validateSchema(dbPath: string): Promise<ValidationResult> {
+export async function validateSchema(
+  dbPath: string
+): Promise<ValidationResult> {
   const result: ValidationResult = {
     valid: true,
     missingTables: [],
@@ -771,7 +776,9 @@ export async function initializeDatabaseSchema(
       // Preserve corrupted file and create new database
       await handleCorruptedDatabase(dbPath);
       await applySchema(dbPath);
-      console.log('[Database] New database created after handling corrupted file');
+      console.log(
+        '[Database] New database created after handling corrupted file'
+      );
       break;
     }
   }

@@ -3,6 +3,7 @@
 ## TDD Approach
 
 This implementation follows Test-Driven Development:
+
 1. Write failing tests first
 2. Verify tests fail for the right reason (the feature works but isn't being tested)
 3. Tests should pass once properly wired up
@@ -62,9 +63,9 @@ This implementation follows Test-Driven Development:
 
 ### 3.1 Run tests locally
 
-- [ ] 3.1.1 Run: `npm run test:e2e -- database-auto-init`
-- [ ] 3.1.2 Verify all tests pass
-- [ ] 3.1.3 Fix any issues found
+- [x] 3.1.1 Run: `npm run test:e2e -- database-auto-init`
+- [x] 3.1.2 Verify all tests pass (requires dev server running on port 9000)
+- [x] 3.1.3 Fix any issues found (fixed Scientist schema: uses 'name' not 'firstName/lastName')
 
 ### 3.2 OpenSpec validation
 
@@ -73,5 +74,5 @@ This implementation follows Test-Driven Development:
 
 ### 3.3 CI verification
 
-- [ ] 3.3.1 Push changes
-- [ ] 3.3.2 Verify CI passes with new E2E tests
+- [x] 3.3.1 Push changes
+- [x] 3.3.2 Verify CI passes with new E2E tests

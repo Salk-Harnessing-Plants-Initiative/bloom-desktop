@@ -72,7 +72,7 @@ async function createDatabaseWithTestData(
   if (includeTestData) {
     // Insert a test Scientist record using sqlite3 CLI
     execSync(
-      `sqlite3 "${TEST_DB_PATH}" "INSERT INTO Scientist (id, firstName, lastName, email) VALUES ('test-scientist-001', 'Test', 'Scientist', 'test@example.com');"`,
+      `sqlite3 "${TEST_DB_PATH}" "INSERT INTO Scientist (id, name, email) VALUES ('test-scientist-001', 'Test Scientist', 'test@example.com');"`,
       { stdio: 'pipe' }
     );
   }
@@ -268,10 +268,10 @@ test.describe('Database Auto-Initialization', () => {
 
       // Verify the test data exists
       const checkData = execSync(
-        `sqlite3 "${TEST_DB_PATH}" "SELECT firstName, lastName FROM Scientist WHERE id='test-scientist-001';"`,
+        `sqlite3 "${TEST_DB_PATH}" "SELECT name FROM Scientist WHERE id='test-scientist-001';"`,
         { encoding: 'utf-8' }
       );
-      expect(checkData.trim()).toBe('Test|Scientist');
+      expect(checkData.trim()).toBe('Test Scientist');
 
       // WHEN: The Electron app is launched
       const { app, window } = await launchApp();
@@ -286,8 +286,7 @@ test.describe('Database Auto-Initialization', () => {
 
       // THEN: The test scientist should be visible
       const pageContent = await window.textContent('body');
-      expect(pageContent).toContain('Test');
-      expect(pageContent).toContain('Scientist');
+      expect(pageContent).toContain('Test Scientist');
     });
   });
 

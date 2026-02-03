@@ -3,6 +3,7 @@
 ## TDD Approach
 
 This implementation follows Test-Driven Development:
+
 1. Write failing tests first
 2. Implement minimum code to pass tests
 3. Refactor while keeping tests green
@@ -151,14 +152,16 @@ This implementation follows Test-Driven Development:
 ### 7.1 Manual testing scenarios
 
 - [x] 7.1.1 Test: Delete ~/.bloom/dev.db, start app, verify database created
-- [ ] 7.1.2 Test: Create empty ~/.bloom/dev.db (touch), start app, verify schema applied
-- [ ] 7.1.3 Test: Use existing database with data, verify data preserved
-- [ ] 7.1.4 Test: Corrupt database file, verify preserved and new one created
+- [x] 7.1.2 Test: Create empty ~/.bloom/dev.db (touch), start app, verify schema applied
+- [x] 7.1.3 Test: Use existing database with data, verify data preserved
+- [x] 7.1.4 Test: Corrupt database file, verify preserved and new one created
+
+Note: Manual testing scenarios are now covered by E2E tests in add-database-auto-init-e2e-tests proposal.
 
 ### 7.2 E2E test updates
 
-- [ ] 7.2.1 Verify existing E2E tests still pass
-- [ ] 7.2.2 Add E2E test for fresh install scenario (if not covered)
+- [x] 7.2.1 Verify existing E2E tests still pass
+- [x] 7.2.2 Add E2E test for fresh install scenario (covered by add-database-auto-init-e2e-tests)
 
 ---
 
@@ -168,7 +171,7 @@ This implementation follows Test-Driven Development:
 
 - [x] 8.1.1 Run linter: `npm run lint`
 - [x] 8.1.2 Run formatter: `npm run format`
-- [ ] 8.1.3 Review and clean up any TODO comments
+- [x] 8.1.3 Review and clean up any TODO comments (none found in database.ts)
 
 ### 8.2 Update logging
 
