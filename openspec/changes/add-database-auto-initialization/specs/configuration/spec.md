@@ -25,8 +25,19 @@ The application SHALL automatically initialize the database schema on startup if
 - **WHEN** database initialization runs
 - **THEN** the app SHALL log "Packaged app detected - schema must be applied externally"
 - **AND** the app SHALL NOT attempt to run Prisma CLI commands
-- **AND** database operations will fail until schema is applied via external tooling
-- **AND** the recommended approach is to run `prisma migrate deploy` before first use
+- **AND** schema validation SHALL fail with clear error message
+- **AND** the recommended workflow is to run `prisma migrate deploy` BEFORE first app launch
+
+#### Scenario: Packaged app with pre-initialized database
+
+- **GIVEN** the application is a packaged Electron app
+- **AND** the database schema was applied externally via `prisma migrate deploy`
+- **AND** all expected tables exist at `~/.bloom/data/bloom.db`
+- **WHEN** the packaged app starts
+- **THEN** database state SHALL be detected as "current"
+- **AND** schema validation SHALL pass
+- **AND** the app SHALL proceed to normal startup
+- **AND** all database operations SHALL work correctly
 
 #### Scenario: Database file exists but is empty (no tables)
 
@@ -167,6 +178,18 @@ The solution is to run database migrations externally before the packaged app is
 # From the project directory (not the packaged app)
 BLOOM_DATABASE_URL="file:~/.bloom/data/bloom.db" npx prisma migrate deploy
 ```
+
+### Packaged App Test Workflow
+
+The CI test for packaged apps (`test:package:database`) follows this workflow:
+
+1. **Package the app** - Build the Electron app with `npm run package`
+2. **Apply schema externally** - Run `prisma migrate deploy` to create the database
+3. **Launch packaged app** - Start the app (which will find existing schema)
+4. **Verify initialization** - Check logs for successful database initialization
+5. **Verify schema** - Confirm all expected tables exist
+
+This mirrors the real production workflow where users run migrations before first use.
 
 ### Detection Logic
 
