@@ -91,7 +91,9 @@ async function waitForProcessExit(
 
   // Process didn't exit in time, try to force kill
   if (verbose) {
-    console.warn(`[Cleanup] Process ${pid} didn't exit in ${timeout}ms, force killing`);
+    console.warn(
+      `[Cleanup] Process ${pid} didn't exit in ${timeout}ms, force killing`
+    );
   }
   try {
     process.kill(pid, 'SIGKILL');
