@@ -22,6 +22,7 @@ import {
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
+import { closeElectronApp } from './helpers/electron-cleanup';
 
 // Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -140,10 +141,8 @@ test.beforeEach(async () => {
  * Test cleanup
  */
 test.afterEach(async () => {
-  // Close Electron app
-  if (electronApp) {
-    await electronApp.close();
-  }
+  // Close Electron app and wait for process to fully terminate
+  await closeElectronApp(electronApp);
 
   // Disconnect Prisma
   if (prisma) {

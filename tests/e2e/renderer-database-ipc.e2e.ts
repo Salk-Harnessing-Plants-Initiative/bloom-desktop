@@ -41,6 +41,7 @@ import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
+import { closeElectronApp } from './helpers/electron-cleanup';
 import type { ElectronAPI } from '../../src/types/electron';
 
 // Import electron path
@@ -137,10 +138,8 @@ test.afterEach(async () => {
     await prisma.$disconnect();
   }
 
-  // Close Electron app
-  if (electronApp) {
-    await electronApp.close();
-  }
+  // Close Electron app and wait for process to fully terminate
+  await closeElectronApp(electronApp);
 
   // Clean up test database
   if (fs.existsSync(TEST_DB_PATH)) {

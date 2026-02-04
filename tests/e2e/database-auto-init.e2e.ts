@@ -25,6 +25,7 @@ import {
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
+import { closeElectronApp } from './helpers/electron-cleanup';
 
 // Import electron path using require() since the module exports a string path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -194,11 +195,9 @@ test.describe('Database Auto-Initialization', () => {
   let electronApp: ElectronApplication | null = null;
 
   test.afterEach(async () => {
-    // Close the app if it's running
-    if (electronApp) {
-      await electronApp.close();
-      electronApp = null;
-    }
+    // Close the app and wait for process to fully terminate
+    await closeElectronApp(electronApp ?? undefined);
+    electronApp = null;
 
     // Clean up test database
     cleanupTestDatabase();

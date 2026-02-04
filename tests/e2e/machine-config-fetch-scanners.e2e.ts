@@ -21,6 +21,7 @@ import {
 } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { closeElectronApp } from './helpers/electron-cleanup';
 
 // Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -58,10 +59,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  // Close app
-  if (electronApp) {
-    await electronApp.close();
-  }
+  // Close app and wait for process to fully terminate
+  await closeElectronApp(electronApp);
 
   // Clean up test database
   if (fs.existsSync(E2E_DB_PATH)) {
