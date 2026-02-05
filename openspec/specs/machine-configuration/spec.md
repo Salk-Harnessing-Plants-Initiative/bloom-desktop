@@ -8,18 +8,18 @@ TBD - created by archiving change add-machine-configuration. Update Purpose afte
 
 ### Requirement: Config Store Module
 
-The application SHALL provide a config store module that persists machine-level settings to `~/.bloom/config.json` and credentials to `~/.bloom/.env`.
+The application SHALL provide a config store module that persists all machine-level settings and credentials to `~/.bloom/.env`.
 
 #### Scenario: Load config from file
 
-- **GIVEN** a valid config.json exists at `~/.bloom/config.json`
+- **GIVEN** a valid `.env` file exists at `~/.bloom/.env`
 - **WHEN** the application starts or `loadConfig()` is called
 - **THEN** the config values SHALL be loaded into memory
 - **AND** the config object SHALL contain all expected fields
 
 #### Scenario: Load config when file missing
 
-- **GIVEN** no config.json exists at `~/.bloom/config.json`
+- **GIVEN** no `.env` file exists at `~/.bloom/.env`
 - **WHEN** the application starts or `loadConfig()` is called
 - **THEN** default values SHALL be returned
 - **AND** default `scanner_name` SHALL be empty string
@@ -31,23 +31,17 @@ The application SHALL provide a config store module that persists machine-level 
 
 - **GIVEN** valid config values are provided
 - **WHEN** `saveConfig()` is called
-- **THEN** the config SHALL be written to `~/.bloom/config.json`
-- **AND** the file SHALL be valid JSON
+- **THEN** the config SHALL be written to `~/.bloom/.env`
+- **AND** the file SHALL use KEY=VALUE format
 - **AND** the directory SHALL be created if it doesn't exist
 
-#### Scenario: Load credentials from env file
+#### Scenario: Load all settings from file
 
-- **GIVEN** a valid .env file exists at `~/.bloom/.env`
-- **WHEN** `loadCredentials()` is called
-- **THEN** the credentials SHALL be loaded into memory
-- **AND** the credentials object SHALL contain `bloom_scanner_username`, `bloom_scanner_password`, and `bloom_anon_key`
-
-#### Scenario: Save credentials to env file
-
-- **GIVEN** valid credential values are provided
-- **WHEN** `saveCredentials()` is called
-- **THEN** the credentials SHALL be written to `~/.bloom/.env`
-- **AND** the file SHALL use KEY=value format
+- **GIVEN** a valid `.env` file exists at `~/.bloom/.env`
+- **WHEN** `loadConfig()` is called
+- **THEN** all settings and credentials SHALL be loaded into memory
+- **AND** the config object SHALL contain `scanner_name`, `camera_ip_address`, `scans_dir`, `bloom_api_url`
+- **AND** the credentials SHALL contain `bloom_scanner_username`, `bloom_scanner_password`, and `bloom_anon_key`
 
 ### Requirement: Config Validation
 
@@ -223,14 +217,14 @@ The application SHALL detect first-run state and guide users to Machine Configur
 
 #### Scenario: First-run auto-redirect
 
-- **GIVEN** no config.json exists at `~/.bloom/config.json`
+- **GIVEN** no `.env` file exists at `~/.bloom/.env`
 - **WHEN** the application starts
 - **THEN** the application SHALL redirect to `/machine-config`
 - **AND** a message SHALL indicate this is first-time setup
 
 #### Scenario: Subsequent runs with valid config
 
-- **GIVEN** a valid config.json exists with required fields
+- **GIVEN** a valid `.env` file exists with required fields
 - **WHEN** the application starts
 - **THEN** the application SHALL navigate to the home page as normal
 - **AND** no redirect to configuration SHALL occur
