@@ -545,15 +545,19 @@ export async function detectDatabaseState(
  * @returns Array of table names
  */
 async function queryTablesWithCli(dbPath: string): Promise<string[]> {
-  const { execSync } = await import('child_process');
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execAsync = promisify(exec);
 
   try {
-    const result = execSync(
+    // Use async exec to avoid blocking the event loop
+    // This is critical for Electron main process responsiveness
+    const { stdout } = await execAsync(
       `sqlite3 "${dbPath}" "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma_%';"`,
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { encoding: 'utf-8', timeout: 10000 } // 10 second timeout
     );
 
-    return result
+    return stdout
       .trim()
       .split('\n')
       .filter((name) => name.length > 0);
@@ -712,7 +716,9 @@ async function applySchema(dbPath: string): Promise<void> {
     return;
   }
 
-  const { execSync } = await import('child_process');
+  const { exec } = await import('child_process');
+  const { promisify } = await import('util');
+  const execAsync = promisify(exec);
 
   // Use prisma db push to apply schema
   // This is safe for SQLite and handles fresh databases
@@ -732,10 +738,13 @@ async function applySchema(dbPath: string): Promise<void> {
       cwd = process.cwd();
     }
 
-    execSync('npx prisma db push --skip-generate --accept-data-loss', {
+    // Use async exec to avoid blocking the event loop
+    // This is critical for Electron main process responsiveness
+    // Prisma CLI can take several seconds, so we use a 60 second timeout
+    await execAsync('npx prisma db push --skip-generate --accept-data-loss', {
       env,
       cwd,
-      stdio: 'pipe',
+      timeout: 60000, // 60 second timeout for prisma CLI
     });
 
     console.log('[Database] Schema applied successfully');

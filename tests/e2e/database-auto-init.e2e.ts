@@ -187,6 +187,25 @@ async function waitForDatabaseFile(
   return false;
 }
 
+/**
+ * Wait for database schema to be fully applied.
+ * This is necessary because database initialization is now async.
+ */
+async function waitForSchemaReady(
+  maxWaitMs = 30000,
+  checkIntervalMs = 500
+): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    const { valid } = verifyDatabaseTables();
+    if (valid) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, checkIntervalMs));
+  }
+  return false;
+}
+
 // ============================================
 // E2E Tests
 // ============================================
@@ -217,7 +236,9 @@ test.describe('Database Auto-Initialization', () => {
       const dbCreated = await waitForDatabaseFile();
       expect(dbCreated).toBe(true);
 
-      // AND: All 7 expected tables should exist
+      // AND: All 7 expected tables should exist (wait for async schema application)
+      const schemaReady = await waitForSchemaReady();
+      expect(schemaReady).toBe(true);
       const { valid, tables } = verifyDatabaseTables();
       expect(valid).toBe(true);
       expect(tables).toEqual(expect.arrayContaining(EXPECTED_TABLES));
@@ -299,8 +320,9 @@ test.describe('Database Auto-Initialization', () => {
       const { app, window } = await launchApp();
       electronApp = app;
 
-      // Wait for initialization
+      // Wait for initialization (including async schema application)
       await waitForDatabaseFile();
+      await waitForSchemaReady();
       await window.waitForLoadState('networkidle', { timeout: 30000 });
 
       // THEN: The corrupted file should be renamed with .corrupted.{timestamp} suffix
@@ -336,7 +358,8 @@ test.describe('Database Auto-Initialization', () => {
       const { app, window } = await launchApp();
       electronApp = app;
 
-      // Wait for initialization
+      // Wait for initialization (including async schema application)
+      await waitForSchemaReady();
       await window.waitForLoadState('networkidle', { timeout: 30000 });
 
       // THEN: The schema should be applied
