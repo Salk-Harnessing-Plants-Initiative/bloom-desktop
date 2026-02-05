@@ -219,7 +219,9 @@ describe('Database Async Operations', () => {
       const execAsync = promisify(exec);
 
       // Should reject for non-existent command
-      await expect(execAsync('nonexistent_command_xyz_12345')).rejects.toThrow();
+      await expect(
+        execAsync('nonexistent_command_xyz_12345')
+      ).rejects.toThrow();
     });
 
     it('should support timeout option', async () => {
