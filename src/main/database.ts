@@ -248,9 +248,12 @@ export async function initializeDatabaseAsync(
   // Playwright's debugger connection to Electron fails, causing electron.launch()
   // to hang for 60 seconds. This delay gives Playwright time to establish the
   // remote debugging connection before the app fully initializes.
+  console.log('[Database] E2E_TEST env:', process.env.E2E_TEST);
   if (process.env.E2E_TEST === 'true') {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    console.log('[Database] E2E mode - skipping auto-init, adding 2000ms delay');
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   } else {
+    console.log('[Database] Production mode - running ensureDatabaseReady()');
     await ensureDatabaseReady(dbPath);
   }
 
