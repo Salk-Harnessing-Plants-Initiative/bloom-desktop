@@ -38,7 +38,10 @@ let electronApp: ElectronApplication;
 let window: Page;
 
 // Test database path
-const TEST_DB_PATH = path.join(__dirname, 'machine-config-fetch-scanners-test.db');
+const TEST_DB_PATH = path.join(
+  __dirname,
+  'machine-config-fetch-scanners-test.db'
+);
 const TEST_DB_URL = `file:${TEST_DB_PATH}`;
 
 // Store original env file if it exists

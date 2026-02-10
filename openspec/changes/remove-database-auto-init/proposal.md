@@ -6,11 +6,11 @@ The database auto-initialization feature was based on incorrect assumptions and 
 
 ### Feature Analysis
 
-| Context | Auto-Init Works? | Notes |
-|---------|------------------|-------|
-| Development (`npm run start`) | ✅ Yes | Only context where it works |
-| E2E Tests | ❌ No | Causes hangs with blocking external process calls |
-| **Packaged App (Production)** | ❌ No | Explicitly skipped (`app.isPackaged`) |
+| Context                       | Auto-Init Works? | Notes                                             |
+| ----------------------------- | ---------------- | ------------------------------------------------- |
+| Development (`npm run start`) | ✅ Yes           | Only context where it works                       |
+| E2E Tests                     | ❌ No            | Causes hangs with blocking external process calls |
+| **Packaged App (Production)** | ❌ No            | Explicitly skipped (`app.isPackaged`)             |
 
 **Conclusion**: The feature only benefits developers, not end users. The complexity cost outweighs the benefit.
 

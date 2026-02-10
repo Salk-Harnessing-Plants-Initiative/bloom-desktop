@@ -10,18 +10,18 @@ The `accessions-management.e2e.ts` file contains 5 skipped test stubs that are r
 
 ### Stubs Removed (empty, redundant)
 
-| Location | Stub Name | Already Covered By |
-|----------|-----------|-------------------|
-| Line 928 | `should upload valid Excel file` | `accession-excel-upload.e2e.ts:568` |
-| Line 932 | `should reject file larger than 15MB` | `accession-excel-upload.e2e.ts:792` (also skipped - manual test) |
-| Line 936 | `should allow sheet selection for multi-sheet files` | `accession-excel-upload.e2e.ts:285` |
-| Line 940 | `should highlight selected columns` | `accession-excel-upload.e2e.ts:421,443` |
-| Line 944 | `should process 500 rows in batches of 100` | `accession-excel-upload.e2e.ts:712` |
+| Location | Stub Name                                            | Already Covered By                                               |
+| -------- | ---------------------------------------------------- | ---------------------------------------------------------------- |
+| Line 928 | `should upload valid Excel file`                     | `accession-excel-upload.e2e.ts:568`                              |
+| Line 932 | `should reject file larger than 15MB`                | `accession-excel-upload.e2e.ts:792` (also skipped - manual test) |
+| Line 936 | `should allow sheet selection for multi-sheet files` | `accession-excel-upload.e2e.ts:285`                              |
+| Line 940 | `should highlight selected columns`                  | `accession-excel-upload.e2e.ts:421,443`                          |
+| Line 944 | `should process 500 rows in batches of 100`          | `accession-excel-upload.e2e.ts:712`                              |
 
 ### Kept (has implementation)
 
-| Location | Test Name | Reason |
-|----------|-----------|--------|
+| Location | Test Name                                   | Reason                                       |
+| -------- | ------------------------------------------- | -------------------------------------------- |
 | Line 352 | `should show loading state during creation` | Has real test code, skipped due to flakiness |
 
 ## What Changes

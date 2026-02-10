@@ -1143,6 +1143,7 @@ gh run watch <run_id>
 E2E tests may fail if `~/.bloom/.env` doesn't exist, because the Home page redirects to Machine Configuration.
 
 **Symptoms:**
+
 - Tests timeout waiting for Home page content
 - Tests fail with "element not found" for Home page elements
 - Machine Configuration page appears instead of Home
@@ -1152,8 +1153,12 @@ When `~/.bloom/.env` doesn't exist, the Home page (`src/renderer/Home.tsx`) chec
 
 **Solution:**
 E2E tests must create a minimal `~/.bloom/.env` file in `beforeEach`:
+
 ```typescript
-import { createTestBloomConfig, cleanupTestBloomConfig } from './helpers/bloom-config';
+import {
+  createTestBloomConfig,
+  cleanupTestBloomConfig,
+} from './helpers/bloom-config';
 
 test.beforeEach(async () => {
   createTestBloomConfig();

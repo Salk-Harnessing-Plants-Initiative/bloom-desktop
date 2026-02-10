@@ -6,11 +6,11 @@ The E2E test suite has 13 failing tests and 7 skipped tests. The failing tests a
 
 ### Root Cause Analysis
 
-| Category | Count | Issue |
-|----------|-------|-------|
-| machine-config-fetch-scanners.e2e.ts | 7 tests | Uses `test.beforeAll()` instead of `test.beforeEach()`, causing test isolation failure |
-| Intermittent timeouts | ~6 tests | `beforeEach` hooks timeout due to resource contention |
-| Skipped tests | 7 tests | Intentionally skipped - features not yet implemented |
+| Category                             | Count    | Issue                                                                                  |
+| ------------------------------------ | -------- | -------------------------------------------------------------------------------------- |
+| machine-config-fetch-scanners.e2e.ts | 7 tests  | Uses `test.beforeAll()` instead of `test.beforeEach()`, causing test isolation failure |
+| Intermittent timeouts                | ~6 tests | `beforeEach` hooks timeout due to resource contention                                  |
+| Skipped tests                        | 7 tests  | Intentionally skipped - features not yet implemented                                   |
 
 ### Primary Issue: machine-config-fetch-scanners.e2e.ts
 
@@ -23,6 +23,7 @@ The test file uses `test.beforeAll()` which launches the Electron app once for t
 ### Secondary Issue: Intermittent Timeouts
 
 Several test files have `beforeEach` hooks that:
+
 - Create fresh test databases
 - Run Prisma migrations
 - Launch Electron app
@@ -33,6 +34,7 @@ Under resource contention, 30 seconds is sometimes insufficient.
 ### Skipped Tests
 
 7 tests are intentionally skipped because features are not yet implemented:
+
 - Excel file upload features (5 tests in accessions-management.e2e.ts)
 - Loading state test (1 test - flaky due to fast operations)
 - Large file validation (1 test - requires 15MB+ file creation)

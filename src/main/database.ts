@@ -438,4 +438,3 @@ export async function closeDatabase(): Promise<void> {
 export function isDatabaseReady(): boolean {
   return prisma !== null;
 }
-
