@@ -914,34 +914,3 @@ test.describe('State Preservation', () => {
     await expect(window.locator(`text=${validAccession.name}`)).toBeVisible();
   });
 });
-
-/**
- * NOTE: Excel file upload tests require:
- * 1. xlsx library to be installed
- * 2. AccessionFileUpload component to be implemented
- * 3. File upload UI to be created
- *
- * These tests are placeholders and will be implemented after the basic UI is working.
- */
-
-test.describe.skip('Excel File Upload - Prerequisites Not Met', () => {
-  test.skip('should upload valid Excel file', async () => {
-    // TODO: Implement after AccessionFileUpload component exists
-  });
-
-  test.skip('should reject file larger than 15MB', async () => {
-    // TODO: Implement after file validation exists
-  });
-
-  test.skip('should allow sheet selection for multi-sheet files', async () => {
-    // TODO: Implement after sheet selection UI exists
-  });
-
-  test.skip('should highlight selected columns', async () => {
-    // TODO: Implement after column highlighting exists
-  });
-
-  test.skip('should process 500 rows in batches of 100', async () => {
-    // TODO: Implement after batch processing exists
-  });
-});
