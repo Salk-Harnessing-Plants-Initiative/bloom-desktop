@@ -221,72 +221,33 @@ The E2E test suite SHALL include tests using real-world experiment data files to
 - **THEN** the dropdowns SHALL contain `Barcode` and `Line` as selectable options
 - **AND** the user SHALL be able to map these columns successfully
 
-### Requirement: Database Auto-Initialization E2E Tests
+### Requirement: Machine Configuration Setup for E2E Tests
 
-The E2E test suite SHALL include tests that verify the database auto-initialization feature works correctly across all database states.
+E2E tests SHALL create a minimal machine configuration file to prevent the Machine Configuration redirect.
 
-#### Scenario: Fresh install creates database automatically
+#### Scenario: Test setup creates ~/.bloom/.env
 
-- **GIVEN** no database file exists at the configured path
-- **WHEN** the Electron app is launched
-- **THEN** the app SHALL create the database file automatically
-- **AND** all 7 expected tables SHALL be created (Phenotyper, Scientist, Experiment, Accessions, PlantAccessionMappings, Scan, Image)
-- **AND** the app window SHALL display without errors
-- **AND** console logs SHALL indicate "Database created and initialized"
+- **GIVEN** an E2E test needs to test Home page or other non-configuration pages
+- **WHEN** the test's `beforeEach` hook runs
+- **THEN** a minimal `~/.bloom/.env` file SHALL be created with valid configuration values
+- **AND** the file SHALL contain at minimum: SCANNER_NAME, CAMERA_IP_ADDRESS, SCANS_DIR, BLOOM_API_URL
 
-#### Scenario: Existing database with current schema is preserved
+#### Scenario: Test cleanup restores original configuration
 
-- **GIVEN** a database file exists with all required tables and test data
-- **WHEN** the Electron app is launched
-- **THEN** the existing database SHALL NOT be modified
-- **AND** the test data SHALL still be accessible via the app
-- **AND** console logs SHALL indicate "Database schema is current"
+- **GIVEN** an E2E test has completed
+- **WHEN** the test's `afterEach` hook runs
+- **THEN** the test SHALL restore any original `~/.bloom/.env` that existed before the test
+- **OR** delete the test-created file if no original existed
 
-#### Scenario: Existing database with user data survives app restart
+#### Scenario: Helper utility provides config management
 
-- **GIVEN** a database exists with a Scientist record (name: "Test Scientist")
-- **WHEN** the Electron app is launched
-- **AND** the Scientists page is navigated to
-- **THEN** the "Test Scientist" record SHALL be visible in the list
-- **AND** the data SHALL NOT be deleted or corrupted
+- **GIVEN** E2E tests need consistent configuration setup
+- **WHEN** tests import from `./helpers/bloom-config`
+- **THEN** `createTestBloomConfig()` SHALL create the minimal configuration
+- **AND** `cleanupTestBloomConfig()` SHALL restore/cleanup after tests
 
-#### Scenario: Corrupted database is handled gracefully
+#### Scenario: Machine Configuration tests skip config setup
 
-- **GIVEN** a database file exists but contains invalid content (not SQLite)
-- **WHEN** the Electron app is launched
-- **THEN** the corrupted file SHALL be renamed with `.corrupted.{timestamp}` suffix
-- **AND** a new database SHALL be created with correct schema
-- **AND** the app window SHALL display without errors
-- **AND** console logs SHALL indicate "Corrupted database found and preserved"
-
-#### Scenario: Empty database file has schema applied
-
-- **GIVEN** an empty database file exists (0 bytes)
-- **WHEN** the Electron app is launched
-- **THEN** the schema SHALL be applied to the empty file
-- **AND** all 7 expected tables SHALL be created
-- **AND** the app window SHALL display without errors
-
-### Requirement: E2E Test Database State Setup Utilities
-
-The E2E test framework SHALL provide utilities to set up specific database states for testing auto-initialization scenarios.
-
-#### Scenario: Utility creates database with test data
-
-- **GIVEN** a test needs a pre-populated database
-- **WHEN** the `createDatabaseWithTestData()` utility is called
-- **THEN** a database SHALL be created with schema via `prisma db push`
-- **AND** a test Scientist record SHALL be inserted
-
-#### Scenario: Utility creates corrupted database file
-
-- **GIVEN** a test needs a corrupted database
-- **WHEN** the `createCorruptedDatabase()` utility is called
-- **THEN** a file SHALL be created with invalid (non-SQLite) content
-
-#### Scenario: Utility verifies database tables exist
-
-- **GIVEN** a test needs to verify database initialization
-- **WHEN** the `verifyDatabaseTables()` utility is called
-- **THEN** it SHALL return true if all 7 expected tables exist
-- **AND** it SHALL return false with details if any tables are missing
+- **GIVEN** an E2E test specifically tests the Machine Configuration page
+- **WHEN** the test runs
+- **THEN** the test SHALL NOT create `~/.bloom/.env` to allow the natural redirect to occur

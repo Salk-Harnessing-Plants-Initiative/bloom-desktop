@@ -23,6 +23,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
+import {
+  createTestBloomConfig,
+  cleanupTestBloomConfig,
+} from './helpers/bloom-config';
 import type { ElectronAPI } from '../../src/types/electron';
 
 // Import electron path
@@ -74,6 +78,9 @@ async function launchElectronApp() {
  * Test setup: Create fresh database and launch app
  */
 test.beforeEach(async () => {
+  // Create minimal ~/.bloom/.env to prevent Machine Config redirect
+  createTestBloomConfig();
+
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
   }
@@ -115,6 +122,9 @@ test.afterEach(async () => {
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
   }
+
+  // Clean up test ~/.bloom/.env (restores original if there was one)
+  cleanupTestBloomConfig();
 });
 
 // ============================================================================

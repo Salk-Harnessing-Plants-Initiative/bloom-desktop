@@ -1067,6 +1067,110 @@ When CI fails, go through this checklist:
 
 ---
 
+## Using gh CLI for CI Debugging
+
+The GitHub CLI (`gh`) provides powerful tools for debugging CI failures without leaving the terminal.
+
+### List Recent CI Runs
+
+```bash
+# List recent runs on current branch
+gh run list --branch $(git branch --show-current) --limit 10
+
+# List with JSON output for parsing
+gh run list --branch feature/my-branch --limit 5 --json databaseId,headSha,conclusion,createdAt
+```
+
+### Check Run Status
+
+```bash
+# Get overall run status
+gh run view <run_id> --json status,conclusion
+
+# Get all job statuses
+gh run view <run_id> --json jobs --jq '.jobs[] | {name: .name, status: .status, conclusion: .conclusion}'
+
+# Check only E2E jobs
+gh run view <run_id> --json jobs --jq '.jobs[] | select(.name | contains("E2E")) | {name: .name, status: .status, conclusion: .conclusion}'
+```
+
+### View Job Logs
+
+```bash
+# Get job ID
+gh run view <run_id> --json jobs --jq '.jobs[] | select(.name == "Test - E2E Dev Build (macos-latest)") | .databaseId'
+
+# View logs (only works after job completes)
+gh run view --job <job_id> --log
+
+# Filter logs for test results
+gh run view --job <job_id> --log 2>&1 | grep -E "(✓|✘|Error:|timeout)"
+
+# Filter for specific patterns
+gh run view --job <job_id> --log 2>&1 | grep -E "(PASS|FAIL|running|accession)" | head -50
+```
+
+### Compare CI Runs Before/After Changes
+
+```bash
+# List commits with their run IDs
+gh run list --branch feature/my-branch --limit 10 --json databaseId,headSha,conclusion --jq '.[] | {id: .databaseId, sha: .headSha[0:7], conclusion: .conclusion}'
+
+# Compare E2E results between two runs
+# Run 1 (before changes)
+gh run view <run_id_before> --json jobs --jq '.jobs[] | select(.name | contains("E2E")) | .conclusion'
+
+# Run 2 (after changes)
+gh run view <run_id_after> --json jobs --jq '.jobs[] | select(.name | contains("E2E")) | .conclusion'
+```
+
+### Monitor In-Progress Runs
+
+```bash
+# Check elapsed time for a job
+date -u && gh run view <run_id> --json jobs --jq '.jobs[] | select(.name | contains("E2E")) | {name: .name, startedAt: .startedAt}'
+
+# Watch for completion (runs until complete or Ctrl+C)
+gh run watch <run_id>
+```
+
+---
+
+## E2E Test Machine Configuration
+
+### Machine Configuration Redirect
+
+E2E tests may fail if `~/.bloom/.env` doesn't exist, because the Home page redirects to Machine Configuration.
+
+**Symptoms:**
+- Tests timeout waiting for Home page content
+- Tests fail with "element not found" for Home page elements
+- Machine Configuration page appears instead of Home
+
+**Root Cause:**
+When `~/.bloom/.env` doesn't exist, the Home page (`src/renderer/Home.tsx`) checks `window.electron.config.exists()` and redirects to `/machine-config` for first-run setup.
+
+**Solution:**
+E2E tests must create a minimal `~/.bloom/.env` file in `beforeEach`:
+```typescript
+import { createTestBloomConfig, cleanupTestBloomConfig } from './helpers/bloom-config';
+
+test.beforeEach(async () => {
+  createTestBloomConfig();
+  // ... rest of setup
+});
+
+test.afterEach(async () => {
+  // ... cleanup
+  cleanupTestBloomConfig();
+});
+```
+
+**For Tests That Test Machine Configuration:**
+Don't use `createTestBloomConfig()` - let the redirect happen naturally.
+
+---
+
 ## Getting Help
 
 - **CI-specific issues:** Check GitHub Actions status page
