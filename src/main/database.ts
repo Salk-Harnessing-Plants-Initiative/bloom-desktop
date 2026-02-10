@@ -242,17 +242,15 @@ export async function initializeDatabaseAsync(
 
   const dbPath = getDatabasePath(customPath);
 
-  // Skip database auto-initialization in E2E tests
-  // E2E tests create their own test database with `npx prisma migrate deploy` before launching Electron.
-  // The auto-init calls external processes (sqlite3 CLI, npx prisma) that can hang on CI runners.
-  // This skip is safe because:
-  // 1. E2E tests explicitly set BLOOM_DATABASE_URL to the test database path
-  // 2. The test database already has the correct schema from migrate deploy
-  // 3. Prisma Client just needs to connect, not verify/apply schema
+  // Skip auto-init in E2E tests - tests pre-create database with prisma migrate/push
+  // IMPORTANT: The 100ms delay is required to avoid a Playwright race condition.
+  // When ensureDatabaseReady() is skipped, the app initializes so fast that
+  // Playwright's debugger connection to Electron fails, causing electron.launch()
+  // to hang for 60 seconds. This delay gives Playwright time to establish the
+  // remote debugging connection before the app fully initializes.
   if (process.env.E2E_TEST === 'true') {
-    console.log('[Database] E2E test mode - skipping auto-initialization');
+    await new Promise((resolve) => setTimeout(resolve, 100));
   } else {
-    // Ensure database is ready with correct schema
     await ensureDatabaseReady(dbPath);
   }
 
