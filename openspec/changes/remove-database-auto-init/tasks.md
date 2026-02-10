@@ -20,6 +20,7 @@
 - [x] Keep 100ms delay for E2E_TEST (required for Playwright connection - confirmed by testing)
 - [x] Remove `database-auto-init.e2e.ts` test file
 - [x] Remove `database-auto-init.test.ts` unit test file
+- [x] Remove `database-async.test.ts` unit test file (tests removed functions)
 
 ## Phase 2: E2E Test Environment Setup ✅
 
