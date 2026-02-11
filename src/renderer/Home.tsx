@@ -1,6 +1,38 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PythonStatus } from './components/PythonStatus';
 
 export function Home() {
+  const navigate = useNavigate();
+  const [isCheckingConfig, setIsCheckingConfig] = useState(true);
+
+  // Check if this is first run (no config exists)
+  useEffect(() => {
+    const checkFirstRun = async () => {
+      try {
+        const configExists = await window.electron.config.exists();
+        if (!configExists) {
+          // First run - redirect to machine configuration
+          navigate('/machine-config');
+        }
+      } catch (error) {
+        console.error('Failed to check config:', error);
+      } finally {
+        setIsCheckingConfig(false);
+      }
+    };
+    checkFirstRun();
+  }, [navigate]);
+
+  // Show loading while checking config
+  if (isCheckingConfig) {
+    return (
+      <div className="p-8 flex items-center justify-center h-full">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8">
       <h1 className="text-3xl font-bold mb-4 text-gray-800">Bloom Desktop</h1>

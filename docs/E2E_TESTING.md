@@ -509,6 +509,38 @@ Received: "Please include an '@' in the email address"
 
 **Historical Note:** This was discovered in November 2025 when E2E tests for ScientistForm validation failed. The fix was adding `noValidate` to ensure Zod validation messages are shown.
 
+---
+
+### ❌ Pitfall 9: E2E Tests Fail Intermittently Without Startup Delay
+
+**Symptom:**
+
+E2E tests fail intermittently with 60-second timeouts in the beforeEach hook. Tests that pass sometimes fail other times, with no code changes.
+
+**Cause:** The Machine Configuration feature (commit a6d3cd6) added an async IPC call (`config.exists()`) in Home.tsx that runs immediately on app startup. This new async operation during initialization creates a race condition with Playwright's remote debugging connection.
+
+**Why this wasn't a problem before:** Previous versions of the app didn't have async IPC calls firing immediately on startup. The Machine Configuration redirect check in Home.tsx is the first feature to call an IPC handler (`config:exists`) during initial render, which can interfere with Playwright's connection establishment.
+
+**Solution:** A startup delay is added in `src/main/database.ts` during E2E mode:
+
+```typescript
+if (process.env.E2E_TEST === 'true') {
+  const delay = process.env.CI === 'true' ? 500 : 100;
+  await new Promise((resolve) => setTimeout(resolve, delay));
+}
+```
+
+**Empirical results (local):**
+
+- Without delay: ~15% of tests pass (4/27)
+- With 100ms delay: 100% of tests pass (27/27)
+
+**CI environments:** CI runners (GitHub Actions) need a longer 500ms delay due to variable performance on shared runners. The `CI=true` environment variable is automatically set by GitHub Actions.
+
+The delay allows Playwright's remote debugging connection to stabilize before the Electron app fully initializes and starts processing IPC calls.
+
+**Important:** Do NOT remove this delay. It was empirically verified in February 2025 that removing it causes most E2E tests to fail.
+
 ## Debugging
 
 ### Using Playwright UI Mode (Recommended)

@@ -40,6 +40,10 @@ export function CaptureScan() {
   const [cameraConfigured, setCameraConfigured] = useState(false);
   const [showCameraSettings, setShowCameraSettings] = useState(false);
 
+  // Machine config state
+  const [scannerName, setScannerName] = useState('CaptureScan-UI');
+  const [scansDir, setScansDir] = useState('~/.bloom/scans');
+
   // Scanning state
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgressData | null>(
@@ -119,6 +123,24 @@ export function CaptureScan() {
     return () => clearInterval(intervalId);
   }, [metadata.plantQrCode, metadata.experimentId]);
 
+  // Load machine config on mount
+  useEffect(() => {
+    const loadMachineConfig = async () => {
+      try {
+        const { config } = await window.electron.config.get();
+        if (config.scanner_name) {
+          setScannerName(config.scanner_name);
+        }
+        if (config.scans_dir) {
+          setScansDir(config.scans_dir);
+        }
+      } catch (error) {
+        console.error('Failed to load machine config:', error);
+      }
+    };
+    loadMachineConfig();
+  }, []);
+
   // Check camera configuration on mount
   useEffect(() => {
     const checkCameraStatus = async () => {
@@ -195,12 +217,18 @@ export function CaptureScan() {
       setTimeout(() => setErrorMessage(null), 5000);
     };
 
-    window.electron.scanner.onProgress(handleProgress);
-    window.electron.scanner.onComplete(handleComplete);
-    window.electron.scanner.onError(handleError);
+    // Register listeners and get cleanup functions
+    const cleanupProgress = window.electron.scanner.onProgress(handleProgress);
+    const cleanupComplete = window.electron.scanner.onComplete(handleComplete);
+    const cleanupError = window.electron.scanner.onError(handleError);
 
-    // Cleanup handled by the scanner
-  }, [isScanning, metadata.plantQrCode]);
+    // Cleanup function removes all listeners
+    return () => {
+      cleanupProgress();
+      cleanupComplete();
+      cleanupError();
+    };
+  }, [isScanning]); // Removed metadata.plantQrCode - barcode captured in closure when scan starts
 
   // Validation
   const validateMetadata = (): Partial<Record<keyof ScanMetadata, string>> => {
@@ -245,13 +273,13 @@ export function CaptureScan() {
       setErrorMessage(null);
 
       // Initialize scanner
+      // Build output path from config scans_dir
       // Sanitize user input to prevent path traversal attacks
       const sanitizedPath = sanitizePath([
-        'scans',
         metadata.experimentId,
         `${metadata.plantQrCode}_${Date.now()}`,
       ]);
-      const outputPath = `./${sanitizedPath}`;
+      const outputPath = `${scansDir}/${sanitizedPath}`;
 
       await window.electron.scanner.initialize({
         camera: cameraSettings,
@@ -261,7 +289,7 @@ export function CaptureScan() {
         metadata: {
           experiment_id: metadata.experimentId,
           phenotyper_id: metadata.phenotyper,
-          scanner_name: 'CaptureScan-UI', // Could make this configurable
+          scanner_name: scannerName,
           plant_id: metadata.plantQrCode,
           accession_id: metadata.accessionId || undefined,
           plant_age_days: metadata.plantAgeDays,

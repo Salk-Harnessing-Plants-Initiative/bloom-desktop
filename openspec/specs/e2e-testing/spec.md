@@ -220,3 +220,34 @@ The E2E test suite SHALL include tests using real-world experiment data files to
 - **WHEN** the column selector dropdowns are populated
 - **THEN** the dropdowns SHALL contain `Barcode` and `Line` as selectable options
 - **AND** the user SHALL be able to map these columns successfully
+
+### Requirement: Machine Configuration Setup for E2E Tests
+
+E2E tests SHALL create a minimal machine configuration file to prevent the Machine Configuration redirect.
+
+#### Scenario: Test setup creates ~/.bloom/.env
+
+- **GIVEN** an E2E test needs to test Home page or other non-configuration pages
+- **WHEN** the test's `beforeEach` hook runs
+- **THEN** a minimal `~/.bloom/.env` file SHALL be created with valid configuration values
+- **AND** the file SHALL contain at minimum: SCANNER_NAME, CAMERA_IP_ADDRESS, SCANS_DIR, BLOOM_API_URL
+
+#### Scenario: Test cleanup restores original configuration
+
+- **GIVEN** an E2E test has completed
+- **WHEN** the test's `afterEach` hook runs
+- **THEN** the test SHALL restore any original `~/.bloom/.env` that existed before the test
+- **OR** delete the test-created file if no original existed
+
+#### Scenario: Helper utility provides config management
+
+- **GIVEN** E2E tests need consistent configuration setup
+- **WHEN** tests import from `./helpers/bloom-config`
+- **THEN** `createTestBloomConfig()` SHALL create the minimal configuration
+- **AND** `cleanupTestBloomConfig()` SHALL restore/cleanup after tests
+
+#### Scenario: Machine Configuration tests skip config setup
+
+- **GIVEN** an E2E test specifically tests the Machine Configuration page
+- **WHEN** the test runs
+- **THEN** the test SHALL NOT create `~/.bloom/.env` to allow the natural redirect to occur

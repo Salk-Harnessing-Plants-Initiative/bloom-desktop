@@ -132,7 +132,148 @@ function loadPrismaClient(): typeof PrismaClientType {
 let prisma: InstanceType<typeof PrismaClientType> | null = null;
 
 /**
- * Initialize the database and ensure data directory exists.
+ * Get the database path based on configuration.
+ *
+ * Priority:
+ * 1. Custom path (for testing)
+ * 2. BLOOM_DATABASE_URL environment variable
+ * 3. NODE_ENV-based defaults (dev: ~/.bloom/dev.db, prod: ~/.bloom/data/bloom.db)
+ *
+ * @param customPath - Optional custom database path
+ * @returns The resolved database path
+ */
+export function getDatabasePath(customPath?: string): string {
+  if (customPath) {
+    console.log('[Database] Using custom path:', customPath);
+    return customPath;
+  }
+
+  if (process.env.BLOOM_DATABASE_URL) {
+    const envUrl = process.env.BLOOM_DATABASE_URL;
+
+    // Check for relative path format: file:./path or file:../path
+    const relativeMatch = envUrl.match(/^file:(\.\.?\/.*)$/);
+    if (relativeMatch) {
+      const relativePath = relativeMatch[1];
+      const resolvedPath = path.resolve(app.getAppPath(), relativePath);
+      console.log(
+        '[Database] Using BLOOM_DATABASE_URL (relative):',
+        relativePath,
+        '->',
+        resolvedPath
+      );
+      return resolvedPath;
+    }
+
+    // Properly parse file:// URLs
+    try {
+      const url = new URL(envUrl);
+      if (url.protocol !== 'file:') {
+        throw new Error(
+          `BLOOM_DATABASE_URL must use file: protocol, got: ${url.protocol}`
+        );
+      }
+      let dbPath = decodeURIComponent(url.pathname);
+      // On Windows, file: URLs produce paths like "/C:/path"
+      if (
+        process.platform === 'win32' &&
+        dbPath.startsWith('/') &&
+        dbPath[2] === ':'
+      ) {
+        dbPath = dbPath.slice(1);
+      }
+      console.log('[Database] Using BLOOM_DATABASE_URL:', dbPath);
+      return dbPath;
+    } catch {
+      // Fallback for legacy format
+      const dbPath = process.env.BLOOM_DATABASE_URL.replace(/^file:\/?\/?/, '');
+      console.log(
+        '[Database] Using BLOOM_DATABASE_URL (legacy format):',
+        dbPath
+      );
+      return dbPath;
+    }
+  }
+
+  // NODE_ENV-based defaults
+  const isDev = process.env.NODE_ENV === 'development';
+  const homeDir = app.getPath('home');
+
+  if (isDev) {
+    const bloomDir = path.join(homeDir, '.bloom');
+    if (!fs.existsSync(bloomDir)) {
+      console.log('[Database] Creating ~/.bloom directory:', bloomDir);
+      fs.mkdirSync(bloomDir, { recursive: true });
+    }
+    const dbPath = path.join(bloomDir, 'dev.db');
+    console.log('[Database] Development mode - using:', dbPath);
+    return dbPath;
+  } else {
+    const bloomDir = path.join(homeDir, '.bloom', 'data');
+    if (!fs.existsSync(bloomDir)) {
+      console.log('[Database] Creating data directory:', bloomDir);
+      fs.mkdirSync(bloomDir, { recursive: true });
+    }
+    const dbPath = path.join(bloomDir, 'bloom.db');
+    console.log('[Database] Production mode - using:', dbPath);
+    return dbPath;
+  }
+}
+
+/**
+ * Initialize the database asynchronously.
+ *
+ * This creates the Prisma Client and connects to the database.
+ * Database schema should be set up externally via `prisma migrate deploy`
+ * or `prisma db push` before the app runs.
+ *
+ * @param customPath - Optional custom database path (for testing)
+ * @returns PrismaClient instance
+ */
+export async function initializeDatabaseAsync(
+  customPath?: string
+): Promise<InstanceType<typeof PrismaClientType>> {
+  if (prisma) {
+    console.log('[Database] Already initialized');
+    return prisma;
+  }
+
+  const dbPath = getDatabasePath(customPath);
+
+  // E2E tests: Add a delay to allow Playwright's remote debugging
+  // connection to stabilize before the app fully initializes. Without this
+  // delay, tests fail intermittently because the Electron app starts processing
+  // before Playwright has fully connected via the debugging port.
+  // CI environments need a longer delay due to slower/variable runner performance.
+  // See: docs/E2E_TESTING.md and commit daaba62
+  if (process.env.E2E_TEST === 'true') {
+    const delay = process.env.CI === 'true' ? 500 : 100;
+    console.log(
+      `[Database] E2E mode - ${delay}ms delay for Playwright connection`
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  // Create Prisma Client
+  const PrismaClient = loadPrismaClient();
+  const dbUrl = `file:${dbPath}`;
+
+  prisma = new PrismaClient({
+    datasources: {
+      db: { url: dbUrl },
+    },
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  });
+
+  console.log('[Database] Initialized at:', dbPath);
+  return prisma;
+}
+
+/**
+ * Initialize the database and ensure data directory exists (sync version).
+ *
+ * NOTE: This is the legacy synchronous version. For new code, prefer
+ * initializeDatabaseAsync() which includes auto-schema setup.
  *
  * Creates the database directory if it doesn't exist and initializes
  * the Prisma Client. In production, database is stored at:
@@ -220,13 +361,21 @@ export function initializeDatabase(
   } else {
     const isDev = process.env.NODE_ENV === 'development';
     if (isDev) {
-      // Development: use dev.db in project root
-      // Note: In dev mode, BLOOM_DATABASE_URL should be set via .env file
-      // If not set, fall back to default path using app.getAppPath()
-      dbPath = path.join(app.getAppPath(), 'prisma', 'dev.db');
-      console.log('[Database] Development mode - using fallback path:', dbPath);
+      // Development: use dev.db in ~/.bloom/ (not in project directory)
+      // This keeps development data separate from production and out of the project
+      const homeDir = app.getPath('home');
+      const bloomDir = path.join(homeDir, '.bloom');
+
+      // Ensure ~/.bloom directory exists
+      if (!fs.existsSync(bloomDir)) {
+        console.log('[Database] Creating ~/.bloom directory:', bloomDir);
+        fs.mkdirSync(bloomDir, { recursive: true });
+      }
+
+      dbPath = path.join(bloomDir, 'dev.db');
+      console.log('[Database] Development mode - using:', dbPath);
     } else {
-      // Production: use ~/.bloom/data/bloom.db
+      // Production: use ~/.bloom/data/bloom.db (unchanged)
       const homeDir = app.getPath('home');
       const bloomDir = path.join(homeDir, '.bloom', 'data');
 
