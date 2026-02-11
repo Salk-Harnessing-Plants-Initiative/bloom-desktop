@@ -29,8 +29,7 @@ export function CaptureScan() {
     waveNumber: 0,
     plantAgeDays: 0,
     plantQrCode: '',
-    accessionId: '',
-    genotypeId: '',
+    accessionName: '',
   });
 
   // Camera settings state
@@ -291,7 +290,7 @@ export function CaptureScan() {
           phenotyper_id: metadata.phenotyper,
           scanner_name: scannerName,
           plant_id: metadata.plantQrCode,
-          accession_id: metadata.accessionId || undefined,
+          accession_name: metadata.accessionName || undefined,
           plant_age_days: metadata.plantAgeDays,
           wave_number: metadata.waveNumber,
         },

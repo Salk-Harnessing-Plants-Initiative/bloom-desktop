@@ -208,7 +208,7 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:accessions:create', data),
     createWithMappings: (
       accessionData: { name: string },
-      mappings: { plant_barcode: string; genotype_id?: string }[]
+      mappings: { plant_barcode: string; accession_name?: string }[]
     ) =>
       ipcRenderer.invoke(
         'db:accessions:createWithMappings',
@@ -220,13 +220,13 @@ const databaseAPI: DatabaseAPI = {
     update: (id: string, data: { name: string }) =>
       ipcRenderer.invoke('db:accessions:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('db:accessions:delete', id),
-    updateMapping: (mappingId: string, data: { genotype_id: string }) =>
+    updateMapping: (mappingId: string, data: { accession_name: string }) =>
       ipcRenderer.invoke('db:accessions:updateMapping', mappingId, data),
     getPlantBarcodes: (accessionId: string) =>
       ipcRenderer.invoke('db:accessions:getPlantBarcodes', accessionId),
-    getGenotypeByBarcode: (plantBarcode: string, experimentId: string) =>
+    getAccessionNameByBarcode: (plantBarcode: string, experimentId: string) =>
       ipcRenderer.invoke(
-        'db:accessions:getGenotypeByBarcode',
+        'db:accessions:getAccessionNameByBarcode',
         plantBarcode,
         experimentId
       ),

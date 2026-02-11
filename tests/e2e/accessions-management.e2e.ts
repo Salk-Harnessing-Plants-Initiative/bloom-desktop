@@ -472,15 +472,13 @@ test.describe('Expand Accession Details', () => {
       data: [
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-001',
-          genotype_id: 'GT-001',
+          accession_name: 'GT-001',
         },
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-002',
-          genotype_id: 'GT-002',
+          accession_name: 'GT-002',
         },
       ],
     });
@@ -507,15 +505,13 @@ test.describe('Expand Accession Details', () => {
       data: [
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-001',
-          genotype_id: 'GT-001',
+          accession_name: 'GT-001',
         },
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-002',
-          genotype_id: 'GT-002',
+          accession_name: 'GT-002',
         },
       ],
     });
@@ -578,15 +574,13 @@ test.describe('Expand Accession Details', () => {
       data: [
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'ZEBRA-001',
-          genotype_id: 'GT-Z',
+          accession_name: 'GT-Z',
         },
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'ALPHA-001',
-          genotype_id: 'GT-A',
+          accession_name: 'GT-A',
         },
       ],
     });
@@ -624,9 +618,8 @@ test.describe('Inline Mapping Editing', () => {
     await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
@@ -657,9 +650,8 @@ test.describe('Inline Mapping Editing', () => {
     const mapping = await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
@@ -691,7 +683,7 @@ test.describe('Inline Mapping Editing', () => {
     const updated = await prisma.plantAccessionMappings.findUnique({
       where: { id: mapping.id },
     });
-    expect(updated?.genotype_id).toBe('GT-UPDATED');
+    expect(updated?.accession_name).toBe('GT-UPDATED');
   });
 
   test('should cancel inline edit with Escape key', async () => {
@@ -702,9 +694,8 @@ test.describe('Inline Mapping Editing', () => {
     const mapping = await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
@@ -734,7 +725,7 @@ test.describe('Inline Mapping Editing', () => {
     const unchanged = await prisma.plantAccessionMappings.findUnique({
       where: { id: mapping.id },
     });
-    expect(unchanged?.genotype_id).toBe('GT-001');
+    expect(unchanged?.accession_name).toBe('GT-001');
   });
 });
 
@@ -853,9 +844,8 @@ test.describe('Delete Accession', () => {
     await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
