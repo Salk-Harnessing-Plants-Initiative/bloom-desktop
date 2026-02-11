@@ -240,14 +240,18 @@ export async function initializeDatabaseAsync(
 
   const dbPath = getDatabasePath(customPath);
 
-  // E2E tests: Add a small delay to allow Playwright's remote debugging
+  // E2E tests: Add a delay to allow Playwright's remote debugging
   // connection to stabilize before the app fully initializes. Without this
   // delay, tests fail intermittently because the Electron app starts processing
   // before Playwright has fully connected via the debugging port.
+  // CI environments need a longer delay due to slower/variable runner performance.
   // See: docs/E2E_TESTING.md and commit daaba62
   if (process.env.E2E_TEST === 'true') {
-    console.log('[Database] E2E mode - 100ms delay for Playwright connection');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const delay = process.env.CI === 'true' ? 500 : 100;
+    console.log(
+      `[Database] E2E mode - ${delay}ms delay for Playwright connection`
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
   }
 
   // Create Prisma Client
