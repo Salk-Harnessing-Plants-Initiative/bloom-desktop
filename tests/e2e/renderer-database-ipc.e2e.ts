@@ -547,7 +547,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
       ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getAccessionNameByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_X_01', expId: experiment.id }
     );
@@ -594,7 +597,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
       ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getAccessionNameByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_INVALID', expId: experiment.id }
     );

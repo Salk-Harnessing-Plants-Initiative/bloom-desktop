@@ -102,7 +102,9 @@ describe('AccessionFileUpload', () => {
       render(<AccessionFileUpload onUploadComplete={vi.fn()} />);
 
       expect(screen.queryByTestId('plant-id-selector')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('accession-selector')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('accession-selector')
+      ).not.toBeInTheDocument();
     });
 
     it('should not show preview table initially', () => {
