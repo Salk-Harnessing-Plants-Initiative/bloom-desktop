@@ -39,9 +39,9 @@ export function AccessionFileUpload({
   const [columns, setColumns] = useState<string[]>([]);
   const [data, setData] = useState<string[][]>([]);
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
-  const [selectedAccessionCol, setSelectedAccessionCol] = useState<string | null>(
-    null
-  );
+  const [selectedAccessionCol, setSelectedAccessionCol] = useState<
+    string | null
+  >(null);
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
@@ -423,7 +423,9 @@ export function AccessionFileUpload({
               <select
                 data-testid="accession-selector"
                 value={selectedAccessionCol || ''}
-                onChange={(e) => setSelectedAccessionCol(e.target.value || null)}
+                onChange={(e) =>
+                  setSelectedAccessionCol(e.target.value || null)
+                }
                 className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select...</option>

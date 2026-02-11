@@ -236,7 +236,10 @@ test.describe('IPC: db:accessions:getAccessionNameByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getAccessionNameByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_001', expId: experiment.id }
     );
@@ -277,7 +280,10 @@ test.describe('IPC: db:accessions:getAccessionNameByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getAccessionNameByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'INVALID_BARCODE', expId: experiment.id }
     );
@@ -304,7 +310,10 @@ test.describe('IPC: db:accessions:getAccessionNameByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getAccessionNameByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_001', expId: experiment.id }
     );

@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-e2e-testing-framework. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Playwright Framework Configuration
 
 The system SHALL provide a Playwright configuration file that defines E2E test execution parameters for the Electron application.
@@ -265,4 +267,3 @@ E2E tests SHALL create a minimal machine configuration file to prevent the Machi
 - **GIVEN** an E2E test specifically tests the Machine Configuration page
 - **WHEN** the test runs
 - **THEN** the test SHALL NOT create `~/.bloom/.env` to allow the natural redirect to occur
-

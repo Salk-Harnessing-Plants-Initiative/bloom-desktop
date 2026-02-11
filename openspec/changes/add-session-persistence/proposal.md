@@ -9,6 +9,7 @@ Additionally, the current data model has a bug: `genotype_id` in PlantAccessionM
 ### 1. Schema Fix: PlantAccessionMappings
 
 **Current (broken):**
+
 ```prisma
 model PlantAccessionMappings {
   accession_id      String     // UUID - redundant copy of accession_file_id (NEVER USED)
@@ -18,6 +19,7 @@ model PlantAccessionMappings {
 ```
 
 **Target (cleaned up):**
+
 ```prisma
 model PlantAccessionMappings {
   accession_name    String?    // Stores "Col-0" (renamed from genotype_id)
@@ -26,12 +28,14 @@ model PlantAccessionMappings {
 ```
 
 **Changes:**
+
 - **REMOVE** `accession_id` - redundant, always equals `accession_file_id`, never read anywhere
 - **RENAME** `genotype_id` → `accession_name` - clarifies what it actually stores
 
 ### 2. Schema Fix: Scan Table
 
 **Current:**
+
 ```prisma
 model Scan {
   accession_id    String?    // Actually stores accession NAME like "Col-0"
@@ -39,6 +43,7 @@ model Scan {
 ```
 
 **Target:**
+
 ```prisma
 model Scan {
   accession_name    String?    // Renamed for clarity
@@ -50,6 +55,7 @@ model Scan {
 Store session fields in main process memory via a new `SessionStore` module:
 
 **Fields that persist** (survive navigation, reset on app restart):
+
 - `phenotyperId` (string | null) - selected phenotyper UUID
 - `experimentId` (string | null) - selected experiment UUID
 - `waveNumber` (number | null) - current wave number
@@ -57,6 +63,7 @@ Store session fields in main process memory via a new `SessionStore` module:
 - `accessionName` (string | null) - accession name, auto-populated from barcode lookup
 
 **Fields that do NOT persist** (change per scan):
+
 - `plantQrCode` - unique per plant
 
 ### 4. Recent Scans Loading
@@ -74,21 +81,21 @@ Load today's scans from database on CaptureScan mount.
 
 ### Files to Modify
 
-| File | Type | Changes |
-|------|------|---------|
-| `prisma/schema.prisma` | Schema | Remove `accession_id`, rename `genotype_id` → `accession_name` |
-| `src/main/database-handlers.ts` | Backend | Update handlers, remove `accession_id` writes |
-| `src/main/scanner-process.ts` | Backend | Rename `accession_id` → `accession_name` |
-| `src/main/preload.ts` | IPC | Update method parameters |
-| `src/main/session-store.ts` | **NEW** | In-memory session state |
-| `src/main/main.ts` | Backend | Register session IPC handlers |
-| `src/types/electron.d.ts` | Types | Update DatabaseAPI, add SessionAPI |
-| `src/types/scanner.ts` | Types | Rename `accession_id` → `accession_name` |
-| `src/renderer/components/AccessionFileUpload.tsx` | Component | Rename genotypeId → accessionName |
-| `src/renderer/components/AccessionList.tsx` | Component | Rename genotypeId → accessionName |
-| `src/components/MetadataForm.tsx` | Component | Rename genotypeId → accessionName |
-| `src/components/PlantBarcodeInput.tsx` | Component | Rename callback |
-| `src/renderer/CaptureScan.tsx` | Component | Session persistence, recent scans |
+| File                                              | Type      | Changes                                                        |
+| ------------------------------------------------- | --------- | -------------------------------------------------------------- |
+| `prisma/schema.prisma`                            | Schema    | Remove `accession_id`, rename `genotype_id` → `accession_name` |
+| `src/main/database-handlers.ts`                   | Backend   | Update handlers, remove `accession_id` writes                  |
+| `src/main/scanner-process.ts`                     | Backend   | Rename `accession_id` → `accession_name`                       |
+| `src/main/preload.ts`                             | IPC       | Update method parameters                                       |
+| `src/main/session-store.ts`                       | **NEW**   | In-memory session state                                        |
+| `src/main/main.ts`                                | Backend   | Register session IPC handlers                                  |
+| `src/types/electron.d.ts`                         | Types     | Update DatabaseAPI, add SessionAPI                             |
+| `src/types/scanner.ts`                            | Types     | Rename `accession_id` → `accession_name`                       |
+| `src/renderer/components/AccessionFileUpload.tsx` | Component | Rename genotypeId → accessionName                              |
+| `src/renderer/components/AccessionList.tsx`       | Component | Rename genotypeId → accessionName                              |
+| `src/components/MetadataForm.tsx`                 | Component | Rename genotypeId → accessionName                              |
+| `src/components/PlantBarcodeInput.tsx`            | Component | Rename callback                                                |
+| `src/renderer/CaptureScan.tsx`                    | Component | Session persistence, recent scans                              |
 
 ### Database Handlers to Update
 
