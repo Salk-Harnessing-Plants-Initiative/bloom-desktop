@@ -6,8 +6,17 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
+/* eslint-disable import/no-unresolved */
+import {
+  PythonAPI,
+  CameraAPI,
+  DAQAPI,
+  DatabaseAPI,
+  ConfigAPI,
+} from '../types/electron';
+/* eslint-enable import/no-unresolved */
 // eslint-disable-next-line import/no-unresolved
-import { PythonAPI, CameraAPI, DAQAPI, DatabaseAPI } from '../types/electron';
+import type { MachineConfig } from './config-store';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -121,18 +130,33 @@ const scannerAPI: ScannerAPI = {
   cleanup: () => ipcRenderer.invoke('scanner:cleanup'),
   scan: () => ipcRenderer.invoke('scanner:scan'),
   getStatus: () => ipcRenderer.invoke('scanner:get-status'),
+  /**
+   * Get the current scanner identity (name).
+   *
+   * Returns the scanner's configured name from runtime state.
+   * Returns empty string if scanner not configured.
+   *
+   * @returns {Promise<string>} Scanner name
+   */
+  getScannerId: () => ipcRenderer.invoke('scanner:get-scanner-id'),
   onProgress: (callback: (progress: ScanProgress) => void) => {
-    ipcRenderer.on('scanner:progress', (_event, progress: ScanProgress) =>
-      callback(progress)
-    );
+    const listener = (_event: unknown, progress: ScanProgress) =>
+      callback(progress);
+    ipcRenderer.on('scanner:progress', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.removeListener('scanner:progress', listener);
   },
   onComplete: (callback: (result: ScanResult) => void) => {
-    ipcRenderer.on('scanner:complete', (_event, result: ScanResult) =>
-      callback(result)
-    );
+    const listener = (_event: unknown, result: ScanResult) => callback(result);
+    ipcRenderer.on('scanner:complete', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.removeListener('scanner:complete', listener);
   },
   onError: (callback: (error: string) => void) => {
-    ipcRenderer.on('scanner:error', (_event, error: string) => callback(error));
+    const listener = (_event: unknown, error: string) => callback(error);
+    ipcRenderer.on('scanner:error', listener);
+    // Return cleanup function to remove listener
+    return () => ipcRenderer.removeListener('scanner:error', listener);
   },
 };
 
@@ -214,6 +238,26 @@ const databaseAPI: DatabaseAPI = {
 };
 
 /**
+ * Config API exposed to renderer
+ */
+const configAPI: ConfigAPI = {
+  get: () => ipcRenderer.invoke('config:get'),
+  set: (config: MachineConfig) => ipcRenderer.invoke('config:set', config),
+  testCamera: (ipAddress: string) =>
+    ipcRenderer.invoke('config:test-camera', ipAddress),
+  browseDirectory: () => ipcRenderer.invoke('config:browse-directory'),
+  exists: () => ipcRenderer.invoke('config:exists'),
+  fetchScanners: (
+    apiUrl: string,
+    credentials: {
+      bloom_scanner_username: string;
+      bloom_scanner_password: string;
+      bloom_anon_key: string;
+    }
+  ) => ipcRenderer.invoke('config:fetch-scanners', apiUrl, credentials),
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
@@ -222,4 +266,5 @@ contextBridge.exposeInMainWorld('electron', {
   daq: daqAPI,
   scanner: scannerAPI,
   database: databaseAPI,
+  config: configAPI,
 });

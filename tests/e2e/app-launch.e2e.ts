@@ -37,6 +37,11 @@ import {
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
+import { closeElectronApp } from './helpers/electron-cleanup';
+import {
+  createTestBloomConfig,
+  cleanupTestBloomConfig,
+} from './helpers/bloom-config';
 
 // Import electron path using require() since the module exports a string path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -66,6 +71,9 @@ test.describe('Electron App Launch', () => {
   // Locally: Run `npm run start` in a separate terminal, then `npm run test:e2e`
 
   test.beforeEach(async () => {
+    // Create minimal ~/.bloom/.env to prevent Machine Config redirect
+    createTestBloomConfig();
+
     // Clean up any existing test database
     if (fs.existsSync(TEST_DB_PATH)) {
       fs.unlinkSync(TEST_DB_PATH);
@@ -133,15 +141,18 @@ test.describe('Electron App Launch', () => {
   });
 
   test.afterEach(async () => {
-    // Close the app
-    if (electronApp) {
-      await electronApp.close();
-    }
+    // Close the app and wait for process to fully terminate
+    // This prevents race conditions where the next test tries to launch
+    // while the previous Electron instance is still shutting down
+    await closeElectronApp(electronApp);
 
     // Clean up test database
     if (fs.existsSync(TEST_DB_PATH)) {
       fs.unlinkSync(TEST_DB_PATH);
     }
+
+    // Clean up test ~/.bloom/.env (restores original if there was one)
+    cleanupTestBloomConfig();
   });
 
   test('should launch successfully and show window', async () => {

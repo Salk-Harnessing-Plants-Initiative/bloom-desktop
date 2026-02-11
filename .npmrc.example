@@ -1,0 +1,11 @@
+# NPM Registry Configuration for @salk-hpi packages
+#
+# Copy this file to .npmrc and set the NPM_TOKEN environment variable:
+# 1. cp .npmrc.example .npmrc
+# 2. Add NPM_TOKEN to your .env file (see .env.example)
+#
+# The NPM_TOKEN is required to access private @salk-hpi packages from GitLab.
+# Contact the team lead for the token value.
+
+@salk-hpi:registry=https://gitlab.com/api/v4/projects/48311510/packages/npm/
+//gitlab.com/api/v4/projects/48311510/packages/npm/:_authToken=${NPM_TOKEN}

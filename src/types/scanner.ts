@@ -159,25 +159,38 @@ export interface ScannerAPI {
   getStatus: () => Promise<ScannerStatus>;
 
   /**
+   * Get the current scanner identity (name).
+   *
+   * Returns the scanner's configured name from runtime state.
+   * Returns empty string if scanner not configured.
+   *
+   * @returns Promise resolving to scanner name
+   */
+  getScannerId: () => Promise<string>;
+
+  /**
    * Event listener for scan progress updates.
    *
    * @param callback - Function called with progress updates
+   * @returns Cleanup function to remove the listener
    */
-  onProgress: (callback: (progress: ScanProgress) => void) => void;
+  onProgress: (callback: (progress: ScanProgress) => void) => () => void;
 
   /**
    * Event listener for scan completion.
    *
    * @param callback - Function called when scan completes
+   * @returns Cleanup function to remove the listener
    */
-  onComplete: (callback: (result: ScanResult) => void) => void;
+  onComplete: (callback: (result: ScanResult) => void) => () => void;
 
   /**
    * Event listener for scanner errors.
    *
    * @param callback - Function called on errors
+   * @returns Cleanup function to remove the listener
    */
-  onError: (callback: (error: string) => void) => void;
+  onError: (callback: (error: string) => void) => () => void;
 }
 
 /**
