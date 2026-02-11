@@ -45,4 +45,4 @@
 
 - [x] Test hypothesis: 100ms delay is needed for Playwright (CONFIRMED - test passed in 2.7s vs 60s timeout)
 - [x] Run full E2E test suite locally (157 passed, 13 failed - failures are pre-existing issues unrelated to this change)
-- [ ] Verify CI pipeline passes after push
+- [x] Verify CI pipeline passes after push (PR #84 merged successfully)
