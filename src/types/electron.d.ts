@@ -338,6 +338,41 @@ export interface DatabaseAPI {
 }
 
 /**
+ * Session State - persists across page navigation within a session
+ */
+export interface SessionState {
+  phenotyperId: string | null;
+  experimentId: string | null;
+  waveNumber: number | null;
+  plantAgeDays: number | null;
+  accessionName: string | null;
+}
+
+/**
+ * Session API - in-memory session state management
+ */
+export interface SessionAPI {
+  /**
+   * Get current session state
+   * @returns Promise resolving to session state
+   */
+  get: () => Promise<SessionState>;
+
+  /**
+   * Update session state (partial update - merges with existing)
+   * @param updates - Partial session state to merge
+   * @returns Promise resolving to updated session state
+   */
+  set: (updates: Partial<SessionState>) => Promise<SessionState>;
+
+  /**
+   * Reset session state to initial values (all null)
+   * @returns Promise resolving when reset is complete
+   */
+  reset: () => Promise<void>;
+}
+
+/**
  * Machine Configuration API
  */
 export interface ConfigAPI {
@@ -410,6 +445,7 @@ export interface ElectronAPI {
   scanner: ScannerAPI;
   database: DatabaseAPI;
   config: ConfigAPI;
+  session: SessionAPI;
 }
 
 /**

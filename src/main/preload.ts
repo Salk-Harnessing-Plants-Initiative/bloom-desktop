@@ -258,6 +258,22 @@ const configAPI: ConfigAPI = {
 };
 
 /**
+ * Session API exposed to renderer
+ * Manages in-memory session state that persists across page navigation
+ */
+const sessionAPI = {
+  get: () => ipcRenderer.invoke('session:get'),
+  set: (updates: {
+    phenotyperId?: string | null;
+    experimentId?: string | null;
+    waveNumber?: number | null;
+    plantAgeDays?: number | null;
+    accessionName?: string | null;
+  }) => ipcRenderer.invoke('session:set', updates),
+  reset: () => ipcRenderer.invoke('session:reset'),
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
@@ -267,4 +283,5 @@ contextBridge.exposeInMainWorld('electron', {
   scanner: scannerAPI,
   database: databaseAPI,
   config: configAPI,
+  session: sessionAPI,
 });
