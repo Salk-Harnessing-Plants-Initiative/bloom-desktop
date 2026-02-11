@@ -16,7 +16,7 @@ import {
 } from '../types/electron';
 /* eslint-enable import/no-unresolved */
 // eslint-disable-next-line import/no-unresolved
-import { MachineConfig } from './config-store';
+import type { MachineConfig } from './config-store';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved

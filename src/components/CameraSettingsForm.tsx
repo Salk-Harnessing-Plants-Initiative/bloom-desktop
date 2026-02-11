@@ -5,7 +5,7 @@
  * Can be used in Camera Settings page and CaptureScan page.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { CameraSettings, DetectedCamera } from '../types/camera';
 
 export interface CameraSettingsFormProps {
@@ -46,6 +46,14 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
+  // Use refs to avoid stale closures in async effects
+  const settingsRef = useRef(settings);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    settingsRef.current = settings;
+    onChangeRef.current = onChange;
+  }, [settings, onChange]);
+
   // Load default camera from machine config, then detect cameras
   useEffect(() => {
     const initializeCamera = async () => {
@@ -54,11 +62,15 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
       // First, try to load default camera from machine config
       try {
         const { config } = await window.electron.config.get();
-        if (config.camera_ip_address && !settings.camera_ip_address) {
+        // Use refs to get latest values after async operation
+        if (
+          config.camera_ip_address &&
+          !settingsRef.current.camera_ip_address
+        ) {
           // Pre-select the configured default camera
           setSelectedCamera(config.camera_ip_address);
-          onChange({
-            ...settings,
+          onChangeRef.current({
+            ...settingsRef.current,
             camera_ip_address: config.camera_ip_address,
           });
         }
@@ -80,17 +92,23 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
       if (result.success && result.cameras) {
         setDetectedCameras(result.cameras);
 
+        // Use refs to get latest values after async operation
+        const currentSettings = settingsRef.current;
+
         // Only auto-select if no camera is currently selected
-        if (!settings.camera_ip_address) {
+        if (!currentSettings.camera_ip_address) {
           // Select mock camera by default
           const mockCamera = result.cameras.find((c) => c.is_mock);
           if (mockCamera) {
             setSelectedCamera(mockCamera.ip_address);
-            onChange({ ...settings, camera_ip_address: mockCamera.ip_address });
+            onChangeRef.current({
+              ...currentSettings,
+              camera_ip_address: mockCamera.ip_address,
+            });
           }
         } else {
           // Camera already selected, just update selectedCamera state for UI
-          setSelectedCamera(settings.camera_ip_address);
+          setSelectedCamera(currentSettings.camera_ip_address);
         }
       }
     } catch (err) {

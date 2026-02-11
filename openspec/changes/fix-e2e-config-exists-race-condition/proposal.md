@@ -45,7 +45,9 @@ Added a delay in `src/main/database.ts` during E2E mode to allow Playwright's re
 // src/main/database.ts
 if (process.env.E2E_TEST === 'true') {
   const delay = process.env.CI === 'true' ? 500 : 100;
-  console.log(`[Database] E2E mode - ${delay}ms delay for Playwright connection`);
+  console.log(
+    `[Database] E2E mode - ${delay}ms delay for Playwright connection`
+  );
   await new Promise((resolve) => setTimeout(resolve, delay));
 }
 ```

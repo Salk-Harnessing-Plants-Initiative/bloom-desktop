@@ -180,7 +180,9 @@ export function Layout() {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const modifier = isMac ? event.metaKey : event.ctrlKey;
 
-      if (modifier && event.shiftKey && event.key === ',') {
+      // Use event.code for layout-independent key detection
+      // (Shift+Comma produces different event.key on different layouts)
+      if (modifier && event.shiftKey && event.code === 'Comma') {
         event.preventDefault();
         navigate('/machine-config');
       }
