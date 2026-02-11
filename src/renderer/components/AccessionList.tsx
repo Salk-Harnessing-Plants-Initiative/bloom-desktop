@@ -15,7 +15,7 @@ interface Accession {
 interface PlantMapping {
   id: string;
   plant_barcode: string;
-  genotype_id: string;
+  accession_name: string;
 }
 
 interface AccessionListProps {
@@ -34,7 +34,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
 
   // Inline mapping edit state
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
-  const [editingGenotypeId, setEditingGenotypeId] = useState('');
+  const [editingAccessionName, setEditingAccessionName] = useState('');
 
   const handleExpand = async (accession: Accession) => {
     const newExpandedId = expandedId === accession.id ? null : accession.id;
@@ -108,21 +108,21 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
   // Inline mapping editing handlers
   const handleMappingEditStart = (mapping: PlantMapping) => {
     setEditingMappingId(mapping.id);
-    setEditingGenotypeId(mapping.genotype_id || '');
+    setEditingAccessionName(mapping.accession_name || '');
   };
 
   const handleMappingEditSave = async (
     accessionId: string,
     mappingId: string
   ) => {
-    if (!editingGenotypeId.trim()) {
+    if (!editingAccessionName.trim()) {
       setEditingMappingId(null);
       return;
     }
 
     const result = await window.electron.database.accessions.updateMapping(
       mappingId,
-      { genotype_id: editingGenotypeId.trim() }
+      { accession_name: editingAccessionName.trim() }
     );
 
     if (result.success) {
@@ -131,7 +131,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
         ...prev,
         [accessionId]: prev[accessionId].map((m) =>
           m.id === mappingId
-            ? { ...m, genotype_id: editingGenotypeId.trim() }
+            ? { ...m, accession_name: editingAccessionName.trim() }
             : m
         ),
       }));
@@ -144,7 +144,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
 
   const handleMappingEditCancel = () => {
     setEditingMappingId(null);
-    setEditingGenotypeId('');
+    setEditingAccessionName('');
   };
 
   if (accessions.length === 0) {
@@ -262,7 +262,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                                 Plant Barcode
                               </th>
                               <th className="px-2 py-1 text-left font-medium text-gray-700">
-                                Genotype ID
+                                Accession
                               </th>
                             </tr>
                           </thead>
@@ -284,9 +284,9 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                                   {editingMappingId === mapping.id ? (
                                     <input
                                       type="text"
-                                      value={editingGenotypeId}
+                                      value={editingAccessionName}
                                       onChange={(e) =>
-                                        setEditingGenotypeId(e.target.value)
+                                        setEditingAccessionName(e.target.value)
                                       }
                                       onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
@@ -310,7 +310,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                                     />
                                   ) : (
                                     <span className="hover:text-blue-600">
-                                      {mapping.genotype_id || '—'}
+                                      {mapping.accession_name || '—'}
                                     </span>
                                   )}
                                 </td>

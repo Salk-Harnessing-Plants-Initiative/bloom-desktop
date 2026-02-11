@@ -300,13 +300,13 @@ export interface DatabaseAPI {
     ) => Promise<DatabaseResponse<Accessions>>;
     createWithMappings: (
       accessionData: { name: string },
-      mappings: { plant_barcode: string; genotype_id?: string }[]
+      mappings: { plant_barcode: string; accession_name?: string }[]
     ) => Promise<DatabaseResponse<Accessions & { mappingCount: number }>>;
     getMappings: (
       accessionId: string
     ) => Promise<
       DatabaseResponse<
-        { id: string; plant_barcode: string; genotype_id: string }[]
+        { id: string; plant_barcode: string; accession_name: string }[]
       >
     >;
     update: (
@@ -316,18 +316,18 @@ export interface DatabaseAPI {
     delete: (id: string) => Promise<DatabaseResponse<Accessions>>;
     updateMapping: (
       mappingId: string,
-      data: { genotype_id: string }
+      data: { accession_name: string }
     ) => Promise<
       DatabaseResponse<{
         id: string;
         plant_barcode: string;
-        genotype_id: string;
+        accession_name: string;
       }>
     >;
     getPlantBarcodes: (
       accessionId: string
     ) => Promise<DatabaseResponse<string[]>>;
-    getGenotypeByBarcode: (
+    getAccessionNameByBarcode: (
       plantBarcode: string,
       experimentId: string
     ) => Promise<DatabaseResponse<string | null>>;

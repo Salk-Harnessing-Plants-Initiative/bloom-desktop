@@ -102,7 +102,7 @@ describe('AccessionFileUpload', () => {
       render(<AccessionFileUpload onUploadComplete={vi.fn()} />);
 
       expect(screen.queryByTestId('plant-id-selector')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('genotype-selector')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('accession-selector')).not.toBeInTheDocument();
     });
 
     it('should not show preview table initially', () => {
@@ -364,7 +364,7 @@ describe('AccessionFileUpload', () => {
         'Plant'
       );
       await userEvent.selectOptions(
-        screen.getByTestId('genotype-selector'),
+        screen.getByTestId('accession-selector'),
         'Genotype'
       );
 
@@ -442,7 +442,7 @@ describe('AccessionFileUpload', () => {
         'Plant'
       );
       await userEvent.selectOptions(
-        screen.getByTestId('genotype-selector'),
+        screen.getByTestId('accession-selector'),
         'Genotype'
       );
 
@@ -458,7 +458,7 @@ describe('AccessionFileUpload', () => {
       expect(accessionData.name).toBe('test.xlsx');
       expect(mappings.length).toBe(2);
       expect(mappings[0].plant_barcode).toBe('P1');
-      expect(mappings[0].genotype_id).toBe('G1');
+      expect(mappings[0].accession_name).toBe('G1');
     });
 
     // Skip: Testing setTimeout behavior requires fake timers which conflict with async file operations
@@ -486,7 +486,7 @@ describe('AccessionFileUpload', () => {
         'Plant'
       );
       await userEvent.selectOptions(
-        screen.getByTestId('genotype-selector'),
+        screen.getByTestId('accession-selector'),
         'Genotype'
       );
 
@@ -529,7 +529,7 @@ describe('AccessionFileUpload', () => {
         'Plant'
       );
       await userEvent.selectOptions(
-        screen.getByTestId('genotype-selector'),
+        screen.getByTestId('accession-selector'),
         'Genotype'
       );
 
@@ -565,7 +565,7 @@ describe('AccessionFileUpload', () => {
         'Plant'
       );
       await userEvent.selectOptions(
-        screen.getByTestId('genotype-selector'),
+        screen.getByTestId('accession-selector'),
         'Genotype'
       );
 
