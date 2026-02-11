@@ -62,8 +62,12 @@ export async function closeElectronApp(
     // Continue - process may have already exited
   }
 
-  // Small delay to ensure OS releases resources
-  await sleep(100);
+  // Wait for Electron child processes (GPU, Renderer, Utility) to fully terminate.
+  // The main process exits first, but child processes may still be shutting down.
+  // Without this delay, the next test's electron.launch() can fail due to
+  // resource contention (port conflicts, file locks, IPC channel issues).
+  // 500ms is sufficient for both local and slower CI runners.
+  await sleep(500);
 }
 
 /**

@@ -241,10 +241,10 @@ export async function initializeDatabaseAsync(
   const dbPath = getDatabasePath(customPath);
 
   // E2E tests: Add a small delay to allow Playwright's remote debugging
-  // connection to establish before the app fully initializes. Without this
-  // delay, electron.launch() can hang because Playwright's debugger connection
-  // fails when the app starts too quickly.
-  // See: docs/E2E_TESTING.md (Pitfall 6) and commit daaba62
+  // connection to stabilize before the app fully initializes. Without this
+  // delay, tests fail intermittently because the Electron app starts processing
+  // before Playwright has fully connected via the debugging port.
+  // See: docs/E2E_TESTING.md and commit daaba62
   if (process.env.E2E_TEST === 'true') {
     console.log('[Database] E2E mode - 100ms delay for Playwright connection');
     await new Promise((resolve) => setTimeout(resolve, 100));

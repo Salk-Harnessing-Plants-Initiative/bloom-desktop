@@ -97,7 +97,7 @@ async function launchElectronApp() {
     } as Record<string, string>,
   });
 
-  // Get the main window
+  // Get the main window - filter for localhost to avoid DevTools window
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 

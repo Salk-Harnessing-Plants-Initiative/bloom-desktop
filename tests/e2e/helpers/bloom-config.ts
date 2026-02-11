@@ -7,10 +7,11 @@
  * When ~/.bloom/.env doesn't exist, the Home page redirects to Machine Configuration.
  * E2E tests that expect to land on the Home page need this file to exist.
  *
- * **Root cause of E2E test failures (Feb 2025):**
+ * **Background:**
  * The Machine Configuration feature (commit a6d3cd6) added a redirect in Home.tsx
- * that checks for config existence. Tests that don't create this file timeout
- * waiting for Home content that never appears.
+ * that checks for config existence via async IPC. Tests must create this file
+ * before launching Electron so the app loads the Home page instead of redirecting
+ * to Machine Configuration.
  *
  * @see openspec/changes/remove-database-auto-init/proposal.md
  */
