@@ -12,7 +12,7 @@
  * - Drag-and-drop file upload
  * - File type and size validation
  * - Sheet selection for multi-sheet files
- * - Column mapping (Plant ID + Genotype ID)
+ * - Column mapping (Plant Barcode + Accession)
  * - Visual column highlighting
  * - Preview table display
  * - Batch upload processing
@@ -484,9 +484,9 @@ test.describe('Column Highlighting', () => {
     await plantIdSelector.selectOption('PlantBarcode');
     await accessionSelector.selectOption('GenotypeID');
 
-    // Should show Plant ID and Genotype ID labels in headers
+    // Should show Plant ID and Accession labels in headers
     await expect(window.getByText(/🌱.*plant.*id/i)).toBeVisible();
-    await expect(window.getByText(/🏷️.*genotype.*id/i)).toBeVisible();
+    await expect(window.getByText(/🏷️.*accession/i)).toBeVisible();
   });
 });
 
