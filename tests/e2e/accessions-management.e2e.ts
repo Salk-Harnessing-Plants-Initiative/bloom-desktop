@@ -17,7 +17,7 @@
  * - Form validation (client-side Zod validation)
  * - Excel file upload and parsing
  * - Sheet selection for multi-sheet files
- * - Column mapping (Plant ID + Genotype ID)
+ * - Column mapping (Plant Barcode + Accession)
  * - Visual column highlighting (green/blue)
  * - Database integration (accession creation, list refresh, plant mappings)
  * - Inline editing with keyboard shortcuts (Enter/Escape)
@@ -495,7 +495,7 @@ test.describe('Expand Accession Details', () => {
     });
   });
 
-  test('should display mappings table with Plant Barcode and Genotype ID columns', async () => {
+  test('should display mappings table with Plant Barcode and Accession columns', async () => {
     const accession = await prisma.accessions.create({
       data: createAccessionData(),
     });
@@ -529,7 +529,7 @@ test.describe('Expand Accession Details', () => {
       mappingsTable.locator('th:has-text("Plant Barcode")')
     ).toBeVisible();
     await expect(
-      mappingsTable.locator('th:has-text("Genotype ID")')
+      mappingsTable.locator('th:has-text("Accession")')
     ).toBeVisible();
 
     // Verify actual data is displayed
