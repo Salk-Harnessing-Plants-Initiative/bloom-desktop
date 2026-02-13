@@ -24,7 +24,7 @@ Dependencies: None (can start immediately)
   - Test: detects v1 schema (has accession_id, no genotype_id)
   - Test: detects v2 schema (has genotype_id)
   - Test: detects v3 schema (has accession_name, no accession_id)
-  - Test: detects already-migrated database (has _prisma_migrations table)
+  - Test: detects already-migrated database (has \_prisma_migrations table)
   - Test: handles empty database gracefully
   - Test: handles missing tables gracefully
   - **Validation**: ✅ 12 tests pass, 100% coverage of detection logic
@@ -152,6 +152,7 @@ Task 14 ──▶ Task 15
 ```
 
 **TDD Order** (write tests first):
+
 1. Task 1: Create fixture databases
 2. Task 2: Write unit tests for schema detection (tests will fail)
 3. Task 4: Implement schema detection (tests pass)
@@ -164,22 +165,13 @@ Task 14 ──▶ Task 15
 After all tasks complete:
 
 **Testing:**
+
 1. [ ] Unit tests pass: `npm run test:unit` includes schema detection tests
 2. [ ] Integration tests pass: `npm run test:db-upgrade` covers all upgrade paths
 3. [ ] Test coverage: schema detection has 100% coverage
 4. [ ] Test coverage: upgrade script has >80% coverage
 5. [ ] CI runs upgrade tests on every PR
 
-**Functionality:**
-6. [ ] `npm run db:upgrade` upgrades v1 databases while preserving data
-7. [ ] `npm run db:upgrade` upgrades v2 databases while preserving data
-8. [ ] `npm run db:upgrade` upgrades pilot databases while preserving data
-9. [ ] `npm run db:upgrade` creates backup before modifying database
-10. [ ] `npm run prisma:reset` creates fresh database from migrations
+**Functionality:** 6. [ ] `npm run db:upgrade` upgrades v1 databases while preserving data 7. [ ] `npm run db:upgrade` upgrades v2 databases while preserving data 8. [ ] `npm run db:upgrade` upgrades pilot databases while preserving data 9. [ ] `npm run db:upgrade` creates backup before modifying database 10. [ ] `npm run prisma:reset` creates fresh database from migrations
 
-**Documentation:**
-11. [ ] `project.md` shows correct database paths
-12. [ ] `DATABASE.md` includes upgrade and reset workflows
-13. [ ] `PILOT_COMPATIBILITY.md` reflects current schema and upgrade path
-14. [ ] `/database-migration` command documents both upgrade and reset
-15. [ ] `openspec validate ensure-reproducible-database-migrations` passes
+**Documentation:** 11. [ ] `project.md` shows correct database paths 12. [ ] `DATABASE.md` includes upgrade and reset workflows 13. [ ] `PILOT_COMPATIBILITY.md` reflects current schema and upgrade path 14. [ ] `/database-migration` command documents both upgrade and reset 15. [ ] `openspec validate ensure-reproducible-database-migrations` passes

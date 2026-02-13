@@ -12,10 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Database from 'better-sqlite3';
 import { detectSchemaVersion } from '../../scripts/detect-schema-version';
-import {
-  upgradeDatabase,
-  UpgradeResult,
-} from '../../scripts/upgrade-database';
+import { upgradeDatabase, UpgradeResult } from '../../scripts/upgrade-database';
 
 const FIXTURES_DIR = path.join(__dirname, '../fixtures/databases');
 const TEMP_DIR = path.join(__dirname, '../fixtures/temp');
@@ -54,7 +51,9 @@ function countRecords(dbPath: string): Record<string, number> {
     const counts: Record<string, number> = {};
     for (const table of tables) {
       try {
-        const result = db.prepare(`SELECT COUNT(*) as count FROM "${table}"`).get() as { count: number };
+        const result = db
+          .prepare(`SELECT COUNT(*) as count FROM "${table}"`)
+          .get() as { count: number };
         counts[table] = result.count;
       } catch {
         counts[table] = 0;
@@ -161,7 +160,9 @@ describe('upgradeDatabase', () => {
       expect(afterCounts.Phenotyper).toBe(beforeCounts.Phenotyper);
       expect(afterCounts.Experiment).toBe(beforeCounts.Experiment);
       expect(afterCounts.Accessions).toBe(beforeCounts.Accessions);
-      expect(afterCounts.PlantAccessionMappings).toBe(beforeCounts.PlantAccessionMappings);
+      expect(afterCounts.PlantAccessionMappings).toBe(
+        beforeCounts.PlantAccessionMappings
+      );
       expect(afterCounts.Scan).toBe(beforeCounts.Scan);
       expect(afterCounts.Image).toBe(beforeCounts.Image);
     });
@@ -231,7 +232,9 @@ describe('upgradeDatabase', () => {
       expect(afterCounts.Scientist).toBe(beforeCounts.Scientist);
       expect(afterCounts.Phenotyper).toBe(beforeCounts.Phenotyper);
       expect(afterCounts.Experiment).toBe(beforeCounts.Experiment);
-      expect(afterCounts.PlantAccessionMappings).toBe(beforeCounts.PlantAccessionMappings);
+      expect(afterCounts.PlantAccessionMappings).toBe(
+        beforeCounts.PlantAccessionMappings
+      );
       expect(afterCounts.Scan).toBe(beforeCounts.Scan);
     });
 
@@ -332,9 +335,11 @@ describe('upgradeDatabase', () => {
 
       // Verify no migrations table before
       const db1 = new Database(testDb, { readonly: true });
-      const before = db1.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='_prisma_migrations'"
-      ).get();
+      const before = db1
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='_prisma_migrations'"
+        )
+        .get();
       db1.close();
       expect(before).toBeUndefined();
 
@@ -343,9 +348,11 @@ describe('upgradeDatabase', () => {
 
       // Verify migrations table exists after
       const db2 = new Database(testDb, { readonly: true });
-      const after = db2.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='_prisma_migrations'"
-      ).get();
+      const after = db2
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='_prisma_migrations'"
+        )
+        .get();
       db2.close();
       expect(after).toBeDefined();
     });
@@ -359,15 +366,21 @@ describe('upgradeDatabase', () => {
       // Check migration records
       const db = new Database(testDb, { readonly: true });
       const migrations = db
-        .prepare('SELECT migration_name FROM _prisma_migrations ORDER BY migration_name')
+        .prepare(
+          'SELECT migration_name FROM _prisma_migrations ORDER BY migration_name'
+        )
         .all() as Array<{ migration_name: string }>;
       db.close();
 
       // Should have all migrations applied
       const migrationNames = migrations.map((m) => m.migration_name);
       expect(migrationNames).toContain('20251028040530_init');
-      expect(migrationNames).toContain('20251125180403_add_genotype_id_to_plant_mappings');
-      expect(migrationNames).toContain('20260211195433_cleanup_accession_fields');
+      expect(migrationNames).toContain(
+        '20251125180403_add_genotype_id_to_plant_mappings'
+      );
+      expect(migrationNames).toContain(
+        '20260211195433_cleanup_accession_fields'
+      );
     });
   });
 

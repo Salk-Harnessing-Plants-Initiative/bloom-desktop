@@ -88,10 +88,12 @@ function insertMigrationRecord(
   }
 
   const now = new Date().toISOString();
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO "_prisma_migrations" (id, checksum, migration_name, finished_at, started_at, applied_steps_count)
     VALUES (?, ?, ?, ?, ?, 1)
-  `).run(generateMigrationId(), migration.checksum, migration.name, now, now);
+  `
+  ).run(generateMigrationId(), migration.checksum, migration.name, now, now);
 }
 
 /**
@@ -283,7 +285,10 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
       console.log('  Applying V1 → V2 migration (add genotype_id)...');
       applyV1ToV2(db);
       insertMigrationRecord(db, '20251028040530_init');
-      insertMigrationRecord(db, '20251125180403_add_genotype_id_to_plant_mappings');
+      insertMigrationRecord(
+        db,
+        '20251125180403_add_genotype_id_to_plant_mappings'
+      );
 
       console.log('  Applying V2 → V3 migration (cleanup accession fields)...');
       applyV2ToV3(db);
@@ -291,7 +296,10 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
     } else if (currentVersion === 'v2') {
       // V2 → V3
       insertMigrationRecord(db, '20251028040530_init');
-      insertMigrationRecord(db, '20251125180403_add_genotype_id_to_plant_mappings');
+      insertMigrationRecord(
+        db,
+        '20251125180403_add_genotype_id_to_plant_mappings'
+      );
 
       console.log('  Applying V2 → V3 migration (cleanup accession fields)...');
       applyV2ToV3(db);
@@ -342,7 +350,9 @@ if (require.main === module) {
 
   if (!fs.existsSync(dbPath)) {
     console.error(`\nError: Database not found at ${dbPath}`);
-    console.log('\nUsage: npx ts-node scripts/upgrade-database.ts [database-path]');
+    console.log(
+      '\nUsage: npx ts-node scripts/upgrade-database.ts [database-path]'
+    );
     process.exit(1);
   }
 

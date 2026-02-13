@@ -13,11 +13,7 @@ export default defineConfig({
     testTimeout: 30000, // Longer timeout for database operations
     // Only include integration tests
     include: ['**/tests/integration/**/*.test.ts'],
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/tests/e2e/**',
-    ],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/tests/e2e/**'],
   },
   resolve: {
     alias: {

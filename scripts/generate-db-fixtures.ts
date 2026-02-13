@@ -434,9 +434,15 @@ function createFixture(
     dataFn(db);
 
     // Verify data was inserted
-    const scientists = db.prepare('SELECT COUNT(*) as count FROM Scientist').get() as { count: number };
-    const scans = db.prepare('SELECT COUNT(*) as count FROM Scan').get() as { count: number };
-    const mappings = db.prepare('SELECT COUNT(*) as count FROM PlantAccessionMappings').get() as { count: number };
+    const scientists = db
+      .prepare('SELECT COUNT(*) as count FROM Scientist')
+      .get() as { count: number };
+    const scans = db.prepare('SELECT COUNT(*) as count FROM Scan').get() as {
+      count: number;
+    };
+    const mappings = db
+      .prepare('SELECT COUNT(*) as count FROM PlantAccessionMappings')
+      .get() as { count: number };
 
     console.log(`  - Scientists: ${scientists.count}`);
     console.log(`  - Scans: ${scans.count}`);

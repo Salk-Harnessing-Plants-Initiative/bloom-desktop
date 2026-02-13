@@ -8,6 +8,7 @@ This document describes compatibility between bloom-desktop and bloom-desktop-pi
 ## Important: Schema Differences
 
 As of v3 (cleanup_accession_fields migration), bloom-desktop has renamed some columns:
+
 - `Scan.accession_id` → `Scan.accession_name`
 - `PlantAccessionMappings.accession_id` and `genotype_id` → `PlantAccessionMappings.accession_name`
 
@@ -19,26 +20,26 @@ As of v3 (cleanup_accession_fields migration), bloom-desktop has renamed some co
 
 Pilot databases require running the upgrade script. The `accession_id` column is renamed to `accession_name`:
 
-| Field             | Type     | Pilot         | Ours (v3)       | Notes                    |
-| ----------------- | -------- | ------------- | --------------- | ------------------------ |
-| `id`              | String   | ✅            | ✅              | UUID primary key         |
-| `experiment_id`   | String   | ✅            | ✅              | Foreign key              |
-| `phenotyper_id`   | String   | ✅            | ✅              | Foreign key              |
-| `scanner_name`    | String   | ✅            | ✅              | Hardware identifier      |
-| `plant_id`        | String   | ✅            | ✅              | Plant identifier         |
-| `accession_id`    | String?  | ✅            | → `accession_name` | Renamed in v3 migration |
-| `path`            | String   | ✅            | ✅              | Directory path           |
-| `capture_date`    | DateTime | ✅            | ✅              | Auto-generated           |
-| `num_frames`      | Int      | ✅            | ✅              | Frame count              |
-| `exposure_time`   | Int      | ✅            | ✅              | Microseconds             |
-| `gain`            | Float    | ✅            | ✅              | Camera gain              |
-| `brightness`      | Float    | ✅            | ✅              | Camera brightness        |
-| `contrast`        | Float    | ✅            | ✅              | Camera contrast          |
-| `gamma`           | Float    | ✅            | ✅              | Camera gamma             |
-| `seconds_per_rot` | Float    | ✅            | ✅              | Rotation speed           |
-| `wave_number`     | Int      | ✅            | ✅              | Time point               |
-| `plant_age_days`  | Int      | ✅            | ✅              | Plant age                |
-| `deleted`         | Boolean  | ✅            | ✅              | Soft delete flag         |
+| Field             | Type     | Pilot | Ours (v3)          | Notes                   |
+| ----------------- | -------- | ----- | ------------------ | ----------------------- |
+| `id`              | String   | ✅    | ✅                 | UUID primary key        |
+| `experiment_id`   | String   | ✅    | ✅                 | Foreign key             |
+| `phenotyper_id`   | String   | ✅    | ✅                 | Foreign key             |
+| `scanner_name`    | String   | ✅    | ✅                 | Hardware identifier     |
+| `plant_id`        | String   | ✅    | ✅                 | Plant identifier        |
+| `accession_id`    | String?  | ✅    | → `accession_name` | Renamed in v3 migration |
+| `path`            | String   | ✅    | ✅                 | Directory path          |
+| `capture_date`    | DateTime | ✅    | ✅                 | Auto-generated          |
+| `num_frames`      | Int      | ✅    | ✅                 | Frame count             |
+| `exposure_time`   | Int      | ✅    | ✅                 | Microseconds            |
+| `gain`            | Float    | ✅    | ✅                 | Camera gain             |
+| `brightness`      | Float    | ✅    | ✅                 | Camera brightness       |
+| `contrast`        | Float    | ✅    | ✅                 | Camera contrast         |
+| `gamma`           | Float    | ✅    | ✅                 | Camera gamma            |
+| `seconds_per_rot` | Float    | ✅    | ✅                 | Rotation speed          |
+| `wave_number`     | Int      | ✅    | ✅                 | Time point              |
+| `plant_age_days`  | Int      | ✅    | ✅                 | Plant age               |
+| `deleted`         | Boolean  | ✅    | ✅                 | Soft delete flag        |
 
 **Relationships:**
 
@@ -139,11 +140,11 @@ If you have an existing pilot database:
 
 The upgrade script applies these transformations to pilot databases:
 
-| Table | Pilot Column | After Upgrade |
-|-------|--------------|---------------|
-| Scan | `accession_id` | `accession_name` (values preserved) |
-| PlantAccessionMappings | `accession_id` | Removed (was redundant) |
-| PlantAccessionMappings | N/A | `accession_name` added from `accession_id` |
+| Table                  | Pilot Column   | After Upgrade                              |
+| ---------------------- | -------------- | ------------------------------------------ |
+| Scan                   | `accession_id` | `accession_name` (values preserved)        |
+| PlantAccessionMappings | `accession_id` | Removed (was redundant)                    |
+| PlantAccessionMappings | N/A            | `accession_name` added from `accession_id` |
 
 All data is preserved during the upgrade. The values in `accession_id` are copied to the new `accession_name` column.
 

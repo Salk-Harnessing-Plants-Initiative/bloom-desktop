@@ -45,6 +45,7 @@ npx ts-node scripts/upgrade-database.ts /path/to/database.db
 ```
 
 Use this when:
+
 - You have a database created with `prisma db push`
 - You have a database from bloom-desktop-pilot
 - Your database is missing the `_prisma_migrations` table
@@ -62,6 +63,7 @@ npm run prisma:reset:seed
 ```
 
 Use this when:
+
 - Setting up a new development environment
 - Your database has irrecoverable issues
 - You want a clean slate (data loss acceptable)

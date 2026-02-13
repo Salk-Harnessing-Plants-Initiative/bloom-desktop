@@ -25,11 +25,13 @@ The project currently uses `db push` everywhere but has migration files that are
 **Decision**: Keep `db push` for E2E test databases, but add a dedicated CI job that verifies migrations produce equivalent schema.
 
 **Rationale**:
+
 - E2E tests focus on application behavior, not migration correctness
 - A separate verification job provides clear signal when migrations are broken
 - No changes to existing E2E test infrastructure
 
 **Alternatives considered**:
+
 - Switch all E2E tests to use migrations: Rejected due to complexity and potential flakiness
 - Test migrations only manually: Rejected due to risk of shipping broken migrations
 
@@ -40,6 +42,7 @@ The project currently uses `db push` everywhere but has migration files that are
 **Decision**: Create two databases (one via migrations, one via `db push`) and compare their SQLite schemas.
 
 **Implementation**:
+
 ```bash
 # Create database via migrations
 rm -f /tmp/migrate-test.db
@@ -56,6 +59,7 @@ diff /tmp/migrate-schema.sql /tmp/push-schema.sql
 ```
 
 **Rationale**:
+
 - Direct schema comparison catches any drift between migrations and schema.prisma
 - SQLite schema dump is deterministic
 - Simple to implement and understand
@@ -63,10 +67,12 @@ diff /tmp/migrate-schema.sql /tmp/push-schema.sql
 ### Decision 3: Database upgrade script for existing databases with data
 
 **Context**: Production databases and databases with valuable data cannot simply be deleted. This includes:
+
 - bloom-desktop databases created via `db push` (lack migration history)
 - bloom-desktop-pilot databases (the original pilot application, also lack migration history)
 
 **Decision**: Create a `scripts/upgrade-database.ts` script that:
+
 1. Backs up the database file
 2. Detects if `_prisma_migrations` table exists
 3. If not, detects current schema version by inspecting columns
@@ -96,12 +102,14 @@ Schema Version 3 (cleanup_accession_fields) - CURRENT:
 ```
 
 **Rationale**:
+
 - Preserves user data during schema evolution
 - Makes existing databases migration-compatible going forward
 - Backup ensures recovery if something goes wrong
 - Column-based detection is reliable (SQLite `PRAGMA table_info`)
 
 **Alternatives considered**:
+
 - Manual SQL migration: Rejected - not reproducible, error-prone
 - Export/import data: Rejected - complex, loses relationships
 - Require fresh database: Rejected - unacceptable data loss for production
@@ -111,11 +119,13 @@ Schema Version 3 (cleanup_accession_fields) - CURRENT:
 **Context**: For development databases where data loss is acceptable, a simple reset is faster than upgrading.
 
 **Decision**: Provide an npm script `prisma:reset` that:
+
 1. Deletes existing dev database
 2. Creates new database via `prisma migrate deploy`
 3. Optionally seeds with test data
 
 **Implementation**:
+
 ```json
 {
   "scripts": {
@@ -126,6 +136,7 @@ Schema Version 3 (cleanup_accession_fields) - CURRENT:
 ```
 
 **Rationale**:
+
 - Simple, explicit workflow for development
 - Faster than upgrade when data doesn't matter
 - Seed step is optional for those who want empty database
@@ -135,11 +146,13 @@ Schema Version 3 (cleanup_accession_fields) - CURRENT:
 **Context**: `project.md` incorrectly states dev database is at `./prisma/dev.db`.
 
 **Decision**: Update documentation to reflect actual behavior:
+
 - Development: `~/.bloom/dev.db` (outside project directory)
 - Production: `~/.bloom/data/bloom.db`
 - E2E tests: Per-test temporary files (e.g., `tests/e2e/renderer-ipc-test.db`)
 
 **Rationale**:
+
 - Accurate documentation prevents confusion
 - Current behavior (user home directory) is intentional - keeps data separate from project
 
@@ -246,6 +259,7 @@ Developer Workflow:
 Prisma's `migrate deploy` requires the `_prisma_migrations` table. Databases created via `db push` don't have this table. While it's technically possible to "baseline" an existing database by inserting migration records, this is error-prone and requires exact schema matching.
 
 For development databases, the simplest approach is to reset: delete and recreate. This is acceptable because:
+
 1. Dev databases contain test data that can be regenerated via seeding
 2. The reset workflow is explicit and predictable
 3. No complex migration state to manage
@@ -253,6 +267,7 @@ For development databases, the simplest approach is to reset: delete and recreat
 ### E2E test database isolation
 
 E2E tests already create isolated temporary databases:
+
 - Each test file uses a unique database path
 - Databases are deleted after tests complete
 - No shared state between test runs
@@ -283,6 +298,7 @@ tests/fixtures/databases/
 ```
 
 Each fixture contains realistic test data:
+
 - 2 scientists, 2 phenotypers
 - 2 experiments with accession links
 - 5 scans with plant mappings
@@ -293,17 +309,23 @@ Each fixture contains realistic test data:
 ```typescript
 describe('detectSchemaVersion', () => {
   it('detects v1 schema (has accession_id, no genotype_id)', async () => {
-    const version = await detectSchemaVersion('tests/fixtures/databases/v1-init.db');
+    const version = await detectSchemaVersion(
+      'tests/fixtures/databases/v1-init.db'
+    );
     expect(version).toBe('v1');
   });
 
   it('detects v2 schema (has genotype_id)', async () => {
-    const version = await detectSchemaVersion('tests/fixtures/databases/v2-add-genotype.db');
+    const version = await detectSchemaVersion(
+      'tests/fixtures/databases/v2-add-genotype.db'
+    );
     expect(version).toBe('v2');
   });
 
   it('detects v3 schema (has accession_name)', async () => {
-    const version = await detectSchemaVersion('tests/fixtures/databases/v3-current.db');
+    const version = await detectSchemaVersion(
+      'tests/fixtures/databases/v3-current.db'
+    );
     expect(version).toBe('v3');
   });
 
@@ -340,7 +362,7 @@ describe('upgradeDatabase', () => {
 
     // Verify accession_name populated from genotype_id
     const mappings = await getMappings(testDb);
-    expect(mappings.every(m => m.accession_name !== null)).toBe(true);
+    expect(mappings.every((m) => m.accession_name !== null)).toBe(true);
   });
 
   it('creates backup before modifying database', async () => {
@@ -375,11 +397,11 @@ After each upgrade, tests verify:
 
 ### Coverage Requirements
 
-| Component | Target | Rationale |
-|-----------|--------|-----------|
-| Schema detection | 100% | Critical safety - must detect all versions |
-| Upgrade script | >80% | Core functionality must be thoroughly tested |
-| Backup/restore | 100% | Data safety - no untested paths |
+| Component        | Target | Rationale                                    |
+| ---------------- | ------ | -------------------------------------------- |
+| Schema detection | 100%   | Critical safety - must detect all versions   |
+| Upgrade script   | >80%   | Core functionality must be thoroughly tested |
+| Backup/restore   | 100%   | Data safety - no untested paths              |
 
 ### CI Integration
 

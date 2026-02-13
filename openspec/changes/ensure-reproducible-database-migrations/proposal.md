@@ -9,9 +9,11 @@ Currently, databases cannot be reliably created or migrated using `prisma migrat
 ### Current State
 
 1. **E2E tests use `prisma db push`** ([renderer-database-ipc.e2e.ts:126](tests/e2e/renderer-database-ipc.e2e.ts#L126)):
+
    ```typescript
    execSync('npx prisma db push --skip-generate', { ... });
    ```
+
    This syncs schema directly without using migrations, so tests never verify that migrations work.
 
 2. **Development databases lack migration history**: Databases created via `db push` don't have a `_prisma_migrations` table, so `prisma migrate deploy` fails with "database schema is not empty".
@@ -36,6 +38,7 @@ Create a test helper that uses `prisma migrate deploy` instead of `db push`, ens
 ### 2. Add database upgrade script for existing databases
 
 Create a script that can upgrade existing databases to be migration-compatible while preserving data. This includes:
+
 - **bloom-desktop databases** created via `prisma db push`
 - **bloom-desktop-pilot databases** (the original pilot application)
 
@@ -49,6 +52,7 @@ The script will:
 ### 3. Add explicit database reset workflow (for development)
 
 Document and provide tooling for developers to reset their database when needed:
+
 - Delete existing database file
 - Run `prisma migrate deploy` to create from scratch
 
@@ -59,6 +63,7 @@ Update `project.md` to accurately reflect that development databases are stored 
 ### 5. Add CI job to verify migrations
 
 Add a dedicated CI step that:
+
 - Creates a fresh database using only migrations
 - Verifies the resulting schema matches `prisma db push` output
 
@@ -88,13 +93,13 @@ Add a dedicated CI step that:
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Upgrade script fails on unexpected schema | Script detects schema version before modifying; backs up database first |
-| Data loss during upgrade | Script creates backup before any modifications; can restore on failure |
-| Upgrade script misidentifies schema version | Use multiple column checks to reliably detect schema state |
-| CI time increase | Migration verification is fast (~5 seconds) |
-| Test flakiness from migration step | Migration step is deterministic; add retry logic if needed |
+| Risk                                        | Mitigation                                                              |
+| ------------------------------------------- | ----------------------------------------------------------------------- |
+| Upgrade script fails on unexpected schema   | Script detects schema version before modifying; backs up database first |
+| Data loss during upgrade                    | Script creates backup before any modifications; can restore on failure  |
+| Upgrade script misidentifies schema version | Use multiple column checks to reliably detect schema state              |
+| CI time increase                            | Migration verification is fast (~5 seconds)                             |
+| Test flakiness from migration step          | Migration step is deterministic; add retry logic if needed              |
 
 ## Related Work
 

@@ -44,7 +44,9 @@ interface ColumnInfo {
  * @returns The detected schema version
  * @throws Error if database doesn't exist or PlantAccessionMappings table is missing
  */
-export async function detectSchemaVersion(dbPath: string): Promise<SchemaVersion> {
+export async function detectSchemaVersion(
+  dbPath: string
+): Promise<SchemaVersion> {
   const db = new Database(dbPath, { readonly: true });
 
   try {
@@ -177,7 +179,9 @@ if (require.main === module) {
   const dbPath = process.argv[2];
 
   if (!dbPath) {
-    console.error('Usage: npx ts-node scripts/detect-schema-version.ts <database-path>');
+    console.error(
+      'Usage: npx ts-node scripts/detect-schema-version.ts <database-path>'
+    );
     process.exit(1);
   }
 
@@ -189,7 +193,9 @@ if (require.main === module) {
     .then((info) => {
       console.log('\nDetailed info:');
       console.log(`  Has migrations table: ${info.hasMigrationsTable}`);
-      console.log(`  PlantAccessionMappings columns: ${info.plantMappingsColumns.join(', ')}`);
+      console.log(
+        `  PlantAccessionMappings columns: ${info.plantMappingsColumns.join(', ')}`
+      );
       console.log(`  Scan columns: ${info.scanColumns.join(', ')}`);
     })
     .catch((err) => {

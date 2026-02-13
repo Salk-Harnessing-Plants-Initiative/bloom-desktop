@@ -234,6 +234,7 @@ Use this workflow when you have an existing database with data that needs to be 
 ### How It Works
 
 The upgrade script:
+
 1. Creates a backup of your database before any modifications
 2. Detects the current schema version by inspecting table columns
 3. Creates the `_prisma_migrations` table with appropriate records
@@ -253,11 +254,11 @@ npx ts-node scripts/upgrade-database.ts /path/to/database.db
 
 The upgrade script handles these schema versions:
 
-| Version | Description | Key Characteristics |
-|---------|-------------|---------------------|
-| v1 (init) | Original/pilot schema | `PlantAccessionMappings` has `accession_id` |
-| v2 | Add genotype | `PlantAccessionMappings` has `genotype_id` |
-| v3 (current) | Cleanup fields | `PlantAccessionMappings` has `accession_name`, `Scan` has `accession_name` |
+| Version      | Description           | Key Characteristics                                                        |
+| ------------ | --------------------- | -------------------------------------------------------------------------- |
+| v1 (init)    | Original/pilot schema | `PlantAccessionMappings` has `accession_id`                                |
+| v2           | Add genotype          | `PlantAccessionMappings` has `genotype_id`                                 |
+| v3 (current) | Cleanup fields        | `PlantAccessionMappings` has `accession_name`, `Scan` has `accession_name` |
 
 ### Upgrade Paths
 
@@ -299,6 +300,7 @@ npm run prisma:reset:seed
 ### How It Works
 
 The reset script:
+
 1. Deletes the development database at `~/.bloom/dev.db`
 2. Runs `prisma migrate deploy` to create a fresh database with all migrations
 
