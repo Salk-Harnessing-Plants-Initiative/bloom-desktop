@@ -34,14 +34,37 @@ npm run prisma:studio
 npm run studio:production
 ```
 
+### Upgrade Database (Preserves Data)
+
+```bash
+# Upgrade existing database while preserving all data
+npm run db:upgrade
+
+# For a specific database file:
+npx ts-node scripts/upgrade-database.ts /path/to/database.db
+```
+
+Use this when:
+- You have a database created with `prisma db push`
+- You have a database from bloom-desktop-pilot
+- Your database is missing the `_prisma_migrations` table
+
 ### Reset Database (Development Only)
 
 ```bash
-# Drop database, recreate, and apply all migrations
-npx prisma migrate reset
+# Delete dev database and create fresh from migrations
+npm run prisma:reset
+
+# Reset and seed with test data
+npm run prisma:reset:seed
 
 # WARNING: This deletes all data! Only use in development.
 ```
+
+Use this when:
+- Setting up a new development environment
+- Your database has irrecoverable issues
+- You want a clean slate (data loss acceptable)
 
 ## Migration Workflow
 
@@ -112,9 +135,10 @@ npm run package
 
 ### Development
 
-- **Path**: `./prisma/dev.db`
+- **Path**: `~/.bloom/dev.db`
 - **When**: Running `npm run start` or `npm run dev`
-- **Migrations**: Applied automatically by Prisma
+- **Migrations**: Applied on app startup via `prisma migrate deploy`
+- **Note**: Database stored outside project directory to persist across branches
 
 ### Production (Packaged App)
 
@@ -204,6 +228,22 @@ npx prisma migrate resolve --applied 20250107120000_migration_name
 npx prisma migrate reset
 ```
 
+### "Database schema is not empty" (prisma migrate deploy)
+
+**Cause**: Database was created with `prisma db push` instead of migrations. It has data but no `_prisma_migrations` table.
+
+**Solution**:
+
+```bash
+# Option 1: Upgrade (preserves data)
+npm run db:upgrade
+
+# Option 2: Reset (loses data)
+npm run prisma:reset
+```
+
+This is common for databases created during development when using `db push` for rapid iteration.
+
 ### "Database schema is not in sync"
 
 **Cause**: Manual database changes or migration issues
@@ -214,11 +254,11 @@ npx prisma migrate reset
 # Check current status
 npx prisma migrate status
 
-# If development, reset
-npx prisma migrate reset
+# If development and data not important, reset
+npm run prisma:reset
 
-# If production, create fix migration
-npx prisma migrate dev --name fix_schema_sync
+# If data important, use upgrade
+npm run db:upgrade
 ```
 
 ### Migration Fails in Packaged App

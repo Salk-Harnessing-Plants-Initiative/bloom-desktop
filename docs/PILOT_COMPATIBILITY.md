@@ -1,36 +1,44 @@
 # Pilot Compatibility
 
-This document verifies backwards compatibility between bloom-desktop and bloom-desktop-pilot.
+This document describes compatibility between bloom-desktop and bloom-desktop-pilot.
 
-**Last Verified:** 2025-01-29
+**Last Verified:** 2026-02-13
 **Pilot Reference:** https://github.com/eberrigan/bloom-desktop-pilot/blob/dev/app/prisma/schema.prisma
+
+## Important: Schema Differences
+
+As of v3 (cleanup_accession_fields migration), bloom-desktop has renamed some columns:
+- `Scan.accession_id` → `Scan.accession_name`
+- `PlantAccessionMappings.accession_id` and `genotype_id` → `PlantAccessionMappings.accession_name`
+
+**Pilot databases require upgrade to work with the current schema.** See [Migration Path](#migration-path) below.
 
 ## Database Schema Compatibility
 
-### ✅ Scan Model - 100% Compatible
+### ✅ Scan Model - Compatible After Upgrade
 
-All fields match pilot schema exactly:
+Pilot databases require running the upgrade script. The `accession_id` column is renamed to `accession_name`:
 
-| Field             | Type     | Pilot | Ours | Notes               |
-| ----------------- | -------- | ----- | ---- | ------------------- |
-| `id`              | String   | ✅    | ✅   | UUID primary key    |
-| `experiment_id`   | String   | ✅    | ✅   | Foreign key         |
-| `phenotyper_id`   | String   | ✅    | ✅   | Foreign key         |
-| `scanner_name`    | String   | ✅    | ✅   | Hardware identifier |
-| `plant_id`        | String   | ✅    | ✅   | Plant identifier    |
-| `accession_id`    | String?  | ✅    | ✅   | Optional            |
-| `path`            | String   | ✅    | ✅   | Directory path      |
-| `capture_date`    | DateTime | ✅    | ✅   | Auto-generated      |
-| `num_frames`      | Int      | ✅    | ✅   | Frame count         |
-| `exposure_time`   | Int      | ✅    | ✅   | Microseconds        |
-| `gain`            | Float    | ✅    | ✅   | Camera gain         |
-| `brightness`      | Float    | ✅    | ✅   | Camera brightness   |
-| `contrast`        | Float    | ✅    | ✅   | Camera contrast     |
-| `gamma`           | Float    | ✅    | ✅   | Camera gamma        |
-| `seconds_per_rot` | Float    | ✅    | ✅   | Rotation speed      |
-| `wave_number`     | Int      | ✅    | ✅   | Time point          |
-| `plant_age_days`  | Int      | ✅    | ✅   | Plant age           |
-| `deleted`         | Boolean  | ✅    | ✅   | Soft delete flag    |
+| Field             | Type     | Pilot         | Ours (v3)       | Notes                    |
+| ----------------- | -------- | ------------- | --------------- | ------------------------ |
+| `id`              | String   | ✅            | ✅              | UUID primary key         |
+| `experiment_id`   | String   | ✅            | ✅              | Foreign key              |
+| `phenotyper_id`   | String   | ✅            | ✅              | Foreign key              |
+| `scanner_name`    | String   | ✅            | ✅              | Hardware identifier      |
+| `plant_id`        | String   | ✅            | ✅              | Plant identifier         |
+| `accession_id`    | String?  | ✅            | → `accession_name` | Renamed in v3 migration |
+| `path`            | String   | ✅            | ✅              | Directory path           |
+| `capture_date`    | DateTime | ✅            | ✅              | Auto-generated           |
+| `num_frames`      | Int      | ✅            | ✅              | Frame count              |
+| `exposure_time`   | Int      | ✅            | ✅              | Microseconds             |
+| `gain`            | Float    | ✅            | ✅              | Camera gain              |
+| `brightness`      | Float    | ✅            | ✅              | Camera brightness        |
+| `contrast`        | Float    | ✅            | ✅              | Camera contrast          |
+| `gamma`           | Float    | ✅            | ✅              | Camera gamma             |
+| `seconds_per_rot` | Float    | ✅            | ✅              | Rotation speed           |
+| `wave_number`     | Int      | ✅            | ✅              | Time point               |
+| `plant_age_days`  | Int      | ✅            | ✅              | Plant age                |
+| `deleted`         | Boolean  | ✅            | ✅              | Soft delete flag         |
 
 **Relationships:**
 
@@ -103,19 +111,41 @@ These are **additive only** - they improve performance without changing data str
 
 ## Compatibility Guarantees
 
-✅ **Can read pilot databases** - No migration needed
-✅ **Can write pilot-compatible data** - Pilot can read our data
-✅ **Pilot can read our databases** - Full interoperability
-✅ **No schema changes required** - Drop-in compatibility
+✅ **Can read pilot databases after upgrade** - Use `npm run db:upgrade`
+✅ **Data fully preserved during upgrade** - All pilot data is migrated
+✅ **Upgrade creates backup** - Original database saved as `.backup`
+
+⚠️ **Note**: After upgrading to v3, the database is NOT backwards compatible with pilot. The upgrade is one-way.
 
 ## Migration Path
 
 If you have an existing pilot database:
 
-1. **No migration needed!** - Schemas are identical
-2. Copy `bloom.db` to bloom-desktop data directory
-3. Run bloom-desktop normally
-4. Optionally run `npx prisma migrate deploy` to add performance indexes
+1. Copy `bloom.db` to bloom-desktop data directory (`~/.bloom/`)
+2. Run the upgrade script to migrate the schema:
+   ```bash
+   npm run db:upgrade
+   # Or for a specific file:
+   npx ts-node scripts/upgrade-database.ts ~/.bloom/bloom.db
+   ```
+3. The script will:
+   - Create a backup at `bloom.db.backup`
+   - Detect the pilot schema (v1)
+   - Rename `accession_id` → `accession_name` in Scan table
+   - Create proper migration history
+4. Run bloom-desktop normally
+
+### What the Upgrade Does
+
+The upgrade script applies these transformations to pilot databases:
+
+| Table | Pilot Column | After Upgrade |
+|-------|--------------|---------------|
+| Scan | `accession_id` | `accession_name` (values preserved) |
+| PlantAccessionMappings | `accession_id` | Removed (was redundant) |
+| PlantAccessionMappings | N/A | `accession_name` added from `accession_id` |
+
+All data is preserved during the upgrade. The values in `accession_id` are copied to the new `accession_name` column.
 
 ## Testing Compatibility
 

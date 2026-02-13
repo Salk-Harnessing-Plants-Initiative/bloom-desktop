@@ -89,6 +89,38 @@ jobs:
       - name: Run mypy type checker
         run: uv run mypy python/
 
+  # Database migration verification and upgrade tests
+  test-db-migrations:
+    name: Test - Database Migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify migrations match schema
+        run: ./scripts/verify-migrations.sh
+
+      - name: Run database upgrade tests
+        run: npm run test:db-upgrade
+
   # TypeScript compilation check
   compile-typescript:
     name: Compile - TypeScript
@@ -563,6 +595,7 @@ jobs:
       - compile-typescript
       - test-unit
       - test-python
+      - test-db-migrations
       - build-python
       - test-integration
       - test-dev-database
