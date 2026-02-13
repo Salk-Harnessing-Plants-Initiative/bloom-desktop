@@ -7,7 +7,7 @@
  * These tests follow TDD - they define expected behavior before implementation.
  */
 
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import Database from 'better-sqlite3';
@@ -85,38 +85,6 @@ function getMappings(dbPath: string): Array<{
       genotype_id?: string;
       accession_id?: string;
     }>;
-  } finally {
-    db.close();
-  }
-}
-
-/**
- * Helper to get Scan data
- */
-function getScans(dbPath: string): Array<{
-  id: string;
-  plant_id: string;
-  accession_name?: string;
-  accession_id?: string;
-}> {
-  const db = new Database(dbPath, { readonly: true });
-  try {
-    return db.prepare('SELECT id, plant_id, accession_name, accession_id FROM Scan').all() as Array<{
-      id: string;
-      plant_id: string;
-      accession_name?: string;
-      accession_id?: string;
-    }>;
-  } catch {
-    // If accession_name or accession_id column doesn't exist, try different query
-    try {
-      return db.prepare('SELECT id, plant_id FROM Scan').all() as Array<{
-        id: string;
-        plant_id: string;
-      }>;
-    } finally {
-      db.close();
-    }
   } finally {
     db.close();
   }

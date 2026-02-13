@@ -13,7 +13,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+
 import Database from 'better-sqlite3';
 import { detectSchemaVersion, SchemaVersion } from './detect-schema-version';
 
@@ -26,18 +26,6 @@ export interface UpgradeResult {
   toVersion?: SchemaVersion;
   backupPath?: string;
   error?: string;
-}
-
-/**
- * Migration record structure for _prisma_migrations table
- */
-interface MigrationRecord {
-  id: string;
-  checksum: string;
-  migration_name: string;
-  finished_at: string;
-  started_at: string;
-  applied_steps_count: number;
 }
 
 /**

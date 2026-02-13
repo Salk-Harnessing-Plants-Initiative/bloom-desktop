@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env ts-node
 /**
  * Reset Database Script
  *
@@ -8,11 +8,11 @@
  * This script deletes the dev database at ~/.bloom/dev.db
  */
 
-const fs = require('fs');
-const path = require('path');
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Dev database path matches the path used in src/main/database.ts
-const homeDir = process.env.HOME || process.env.USERPROFILE;
+const homeDir = process.env.HOME || process.env.USERPROFILE || '';
 const devDbPath = path.join(homeDir, '.bloom', 'dev.db');
 
 console.log('=== Database Reset ===\n');
@@ -37,7 +37,7 @@ if (fs.existsSync(devDbPath)) {
 
     console.log('\nDatabase reset complete. Running migrations...\n');
   } catch (error) {
-    console.error(`Error deleting database: ${error.message}`);
+    console.error(`Error deleting database: ${(error as Error).message}`);
     process.exit(1);
   }
 } else {
