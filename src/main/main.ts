@@ -32,6 +32,12 @@ import {
   fetchScannersFromBloom,
   MachineConfig,
 } from './config-store';
+import {
+  getSessionState,
+  setSessionState,
+  resetSessionState,
+  type SessionState,
+} from './session-store';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -973,6 +979,35 @@ ipcMain.handle(
     }
   }
 );
+
+// =============================================================================
+// Session State Handlers
+// =============================================================================
+
+/**
+ * Handle session:get - Get current session state
+ */
+ipcMain.handle('session:get', async (): Promise<SessionState> => {
+  return getSessionState();
+});
+
+/**
+ * Handle session:set - Update session state (partial update)
+ */
+ipcMain.handle(
+  'session:set',
+  async (_event, updates: Partial<SessionState>): Promise<SessionState> => {
+    setSessionState(updates);
+    return getSessionState();
+  }
+);
+
+/**
+ * Handle session:reset - Reset session state to initial values
+ */
+ipcMain.handle('session:reset', async (): Promise<void> => {
+  resetSessionState();
+});
 
 // =============================================================================
 // App Lifecycle

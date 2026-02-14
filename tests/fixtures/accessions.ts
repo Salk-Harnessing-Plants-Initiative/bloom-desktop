@@ -11,7 +11,7 @@ export interface AccessionTestData {
 
 export interface PlantMappingTestData {
   plant_barcode: string;
-  genotype_id?: string;
+  accession_name?: string;
 }
 
 export interface ExcelFileTestData {
@@ -116,7 +116,7 @@ export const sortedAccessions: AccessionTestData[] = [
 export function mockPlantMappings(count: number): PlantMappingTestData[] {
   return Array.from({ length: count }, (_, i) => ({
     plant_barcode: `PLANT-${String(i + 1).padStart(6, '0')}`,
-    genotype_id: `GT-${String(i + 1).padStart(4, '0')}`,
+    accession_name: `ACC-${String(i + 1).padStart(4, '0')}`,
   }));
 }
 

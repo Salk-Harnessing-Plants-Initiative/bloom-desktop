@@ -141,18 +141,15 @@ test.describe('IPC: db:accessions:getPlantBarcodes', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_A',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_A',
             },
             {
               plant_barcode: 'PLANT_002',
-              genotype_id: 'GT_B',
-              accession_id: 'ACC_002',
+              accession_name: 'GT_B',
             },
             {
               plant_barcode: 'OTHER_001',
-              genotype_id: 'GT_C',
-              accession_id: 'ACC_003',
+              accession_name: 'GT_C',
             },
           ],
         },
@@ -200,10 +197,10 @@ test.describe('IPC: db:accessions:getPlantBarcodes', () => {
 });
 
 // ============================================================================
-// IPC Handler Tests - db:accessions:getGenotypeByBarcode
+// IPC Handler Tests - db:accessions:getAccessionNameByBarcode
 // ============================================================================
 
-test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
+test.describe('IPC: db:accessions:getAccessionNameByBarcode', () => {
   test('should return genotype ID for valid plant barcode and experiment', async () => {
     // Create scientist
     const scientist = await prisma.scientist.create({
@@ -218,8 +215,7 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_ABC123',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_ABC123',
             },
           ],
         },
@@ -240,7 +236,10 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_001', expId: experiment.id }
     );
@@ -261,8 +260,7 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_ABC123',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_ABC123',
             },
           ],
         },
@@ -282,7 +280,10 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'INVALID_BARCODE', expId: experiment.id }
     );
@@ -309,7 +310,10 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_001', expId: experiment.id }
     );
@@ -486,8 +490,7 @@ test.describe('UI: Plant Barcode Validation', () => {
           create: [
             {
               plant_barcode: 'VALID_PLANT_001',
-              genotype_id: 'GT_001',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_001',
             },
           ],
         },
@@ -549,8 +552,7 @@ test.describe('UI: Plant Barcode Validation', () => {
           create: [
             {
               plant_barcode: 'PLANT_WITH_GENOTYPE',
-              genotype_id: 'AUTO_GENOTYPE_123',
-              accession_id: 'ACC_001', // Accession identifier from mapping structure
+              accession_name: 'AUTO_GENOTYPE_123',
             },
           ],
         },
@@ -579,8 +581,8 @@ test.describe('UI: Plant Barcode Validation', () => {
     await plantBarcodeInput.blur();
 
     // Genotype ID should be auto-populated
-    const genotypeInput = window.locator('#genotypeId');
-    await expect(genotypeInput).toHaveValue('AUTO_GENOTYPE_123', {
+    const accessionInput = window.locator('#accessionName');
+    await expect(accessionInput).toHaveValue('AUTO_GENOTYPE_123', {
       timeout: 5000,
     });
   });
@@ -670,23 +672,19 @@ test.describe('UI: Barcode Autocomplete', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_001',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_001',
             },
             {
               plant_barcode: 'PLANT_002',
-              genotype_id: 'GT_002',
-              accession_id: 'ACC_002',
+              accession_name: 'GT_002',
             },
             {
               plant_barcode: 'PLANT_003',
-              genotype_id: 'GT_003',
-              accession_id: 'ACC_003',
+              accession_name: 'GT_003',
             },
             {
               plant_barcode: 'OTHER_001',
-              genotype_id: 'GT_004',
-              accession_id: 'ACC_004',
+              accession_name: 'GT_004',
             },
           ],
         },
@@ -745,8 +743,7 @@ test.describe('UI: Barcode Autocomplete', () => {
           create: [
             {
               plant_barcode: 'SELECTABLE_PLANT',
-              genotype_id: 'SELECTED_GENOTYPE',
-              accession_id: 'ACC_001',
+              accession_name: 'SELECTED_GENOTYPE',
             },
           ],
         },
@@ -785,8 +782,8 @@ test.describe('UI: Barcode Autocomplete', () => {
     await expect(plantBarcodeInput).toHaveValue('SELECTABLE_PLANT');
 
     // Genotype should be auto-populated
-    const genotypeInput = window.locator('#genotypeId');
-    await expect(genotypeInput).toHaveValue('SELECTED_GENOTYPE', {
+    const accessionInput = window.locator('#accessionName');
+    await expect(accessionInput).toHaveValue('SELECTED_GENOTYPE', {
       timeout: 5000,
     });
   });

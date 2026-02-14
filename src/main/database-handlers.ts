@@ -323,7 +323,7 @@ export function registerDatabaseHandlers() {
     async (
       _event,
       accessionData: { name: string },
-      mappings: { plant_barcode: string; genotype_id?: string }[]
+      mappings: { plant_barcode: string; accession_name?: string }[]
     ): Promise<DatabaseResponse> => {
       try {
         // Create accession with plant mappings in atomic transaction
@@ -341,9 +341,8 @@ export function registerDatabaseHandlers() {
             await tx.plantAccessionMappings.createMany({
               data: batch.map((m) => ({
                 accession_file_id: accession.id,
-                accession_id: accession.id,
                 plant_barcode: m.plant_barcode,
-                genotype_id: m.genotype_id ?? null,
+                accession_name: m.accession_name ?? null,
               })),
             });
             totalCreated += batch.length;
@@ -468,25 +467,25 @@ export function registerDatabaseHandlers() {
     async (
       _event,
       mappingId: string,
-      data: { genotype_id: string }
+      data: { accession_name: string }
     ): Promise<DatabaseResponse> => {
       try {
-        if (!data.genotype_id || data.genotype_id.trim() === '') {
+        if (!data.accession_name || data.accession_name.trim() === '') {
           return {
             success: false,
-            error: 'Genotype ID cannot be empty',
+            error: 'Accession name cannot be empty',
           };
         }
 
         const mapping = await db.plantAccessionMappings.update({
           where: { id: mappingId },
-          data: { genotype_id: data.genotype_id.trim() },
+          data: { accession_name: data.accession_name.trim() },
         });
 
         logDatabaseOperation(
           'UPDATE',
           'PlantAccessionMapping',
-          `id=${mappingId} genotype_id="${data.genotype_id}"`
+          `id=${mappingId} accession_name="${data.accession_name}"`
         );
 
         return { success: true, data: mapping };
@@ -525,7 +524,7 @@ export function registerDatabaseHandlers() {
   );
 
   ipcMain.handle(
-    'db:accessions:getGenotypeByBarcode',
+    'db:accessions:getAccessionNameByBarcode',
     async (
       _event,
       plantBarcode: string,
@@ -548,12 +547,12 @@ export function registerDatabaseHandlers() {
             accession_file_id: experiment.accession_id,
             plant_barcode: plantBarcode,
           },
-          select: { genotype_id: true },
+          select: { accession_name: true },
         });
 
-        return { success: true, data: mapping?.genotype_id || null };
+        return { success: true, data: mapping?.accession_name || null };
       } catch (error) {
-        console.error('[DB] Failed to get genotype by barcode:', error);
+        console.error('[DB] Failed to get accession name by barcode:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
