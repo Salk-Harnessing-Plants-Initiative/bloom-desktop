@@ -17,8 +17,7 @@ export interface ScanMetadata {
   waveNumber: number;
   plantAgeDays: number;
   plantQrCode: string;
-  accessionId: string;
-  genotypeId: string;
+  accessionName: string;
 }
 
 export interface MetadataFormProps {
@@ -99,19 +98,19 @@ export function MetadataForm({
         experimentId: experimentId || '',
         // Reset barcode-related fields when experiment changes
         plantQrCode: '',
-        genotypeId: '',
+        accessionName: '',
       });
     },
     [values, onChange]
   );
 
-  // Handle genotype ID found from barcode lookup
+  // Handle accession name found from barcode lookup
   // Uses valuesRef to avoid infinite loop (values in deps would cause re-render cycle)
-  const handleGenotypeIdFound = useCallback(
-    (genotypeId: string | null) => {
+  const handleAccessionNameFound = useCallback(
+    (accessionName: string | null) => {
       onChange({
         ...valuesRef.current,
-        genotypeId: genotypeId || '',
+        accessionName: accessionName || '',
       });
     },
     [onChange]
@@ -226,7 +225,7 @@ export function MetadataForm({
           id="plantQrCode"
           value={values.plantQrCode}
           onChange={handleBarcodeChange}
-          onGenotypeIdFound={handleGenotypeIdFound}
+          onAccessionNameFound={handleAccessionNameFound}
           onValidationChange={onBarcodeValidationChange}
           experimentId={values.experimentId || null}
           accessionId={experimentAccessionId}
@@ -243,29 +242,29 @@ export function MetadataForm({
         )}
       </div>
 
-      {/* Genotype ID - auto-populated from barcode lookup */}
+      {/* Accession - auto-populated from barcode lookup */}
       <div>
-        <label htmlFor="genotypeId" className={labelClassName}>
-          Genotype ID
+        <label htmlFor="accessionName" className={labelClassName}>
+          Accession
         </label>
         <input
-          id="genotypeId"
+          id="accessionName"
           type="text"
-          value={values.genotypeId}
-          onChange={(e) => handleFieldChange('genotypeId', e.target.value)}
+          value={values.accessionName}
+          onChange={(e) => handleFieldChange('accessionName', e.target.value)}
           disabled={disabled}
-          className={`${inputClassName} ${values.genotypeId ? 'bg-green-50' : ''}`}
+          className={`${inputClassName} ${values.accessionName ? 'bg-green-50' : ''}`}
           placeholder={
             experimentAccessionId
               ? 'Auto-populated from barcode'
               : 'e.g., GT_ABC123'
           }
-          readOnly={!!experimentAccessionId && !!values.genotypeId}
+          readOnly={!!experimentAccessionId && !!values.accessionName}
         />
-        {errors.genotypeId && (
-          <p className={errorClassName}>{errors.genotypeId}</p>
+        {errors.accessionName && (
+          <p className={errorClassName}>{errors.accessionName}</p>
         )}
-        {experimentAccessionId && values.genotypeId && (
+        {experimentAccessionId && values.accessionName && (
           <p className="text-xs text-green-600 mt-1">
             Auto-populated from accession mapping
           </p>

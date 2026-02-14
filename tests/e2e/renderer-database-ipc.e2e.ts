@@ -413,11 +413,11 @@ test.describe('Renderer Database IPC - Accessions', () => {
         [
           {
             plant_barcode: 'PLANT001',
-            genotype_id: 'GENOTYPE_A',
+            accession_name: 'GENOTYPE_A',
           },
           {
             plant_barcode: 'PLANT002',
-            genotype_id: 'GENOTYPE_B',
+            accession_name: 'GENOTYPE_B',
           },
         ]
       );
@@ -444,16 +444,12 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              // accession_id is set automatically by Prisma via the parent relation
-              accession_id: 'dummy',
               plant_barcode: 'PLANT001',
-              genotype_id: 'GENOTYPE_A',
+              accession_name: 'GENOTYPE_A',
             },
             {
-              // accession_id is set automatically by Prisma via the parent relation
-              accession_id: 'dummy',
               plant_barcode: 'PLANT002',
-              genotype_id: 'GENOTYPE_B',
+              accession_name: 'GENOTYPE_B',
             },
           ],
         },
@@ -480,19 +476,16 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_A_01',
-              genotype_id: 'GENO_A',
+              accession_name: 'GENO_A',
             },
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_B_02',
-              genotype_id: 'GENO_B',
+              accession_name: 'GENO_B',
             },
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_C_03',
-              genotype_id: 'GENO_C',
+              accession_name: 'GENO_C',
             },
           ],
         },
@@ -512,7 +505,7 @@ test.describe('Renderer Database IPC - Accessions', () => {
     expect(result.data).toContain('PLANT_C_03');
   });
 
-  test('should get genotype ID by barcode from renderer', async () => {
+  test('should get accession name by barcode from renderer', async () => {
     // Seed scientist
     const scientist = await prisma.scientist.create({
       data: {
@@ -528,14 +521,12 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'ACC_001', // Accession ID from the file
               plant_barcode: 'PLANT_X_01',
-              genotype_id: 'GENOTYPE_X',
+              accession_name: 'GENOTYPE_X',
             },
             {
-              accession_id: 'ACC_001', // Accession ID from the file
               plant_barcode: 'PLANT_Y_02',
-              genotype_id: 'GENOTYPE_Y',
+              accession_name: 'GENOTYPE_Y',
             },
           ],
         },
@@ -556,7 +547,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
       ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_X_01', expId: experiment.id }
     );
@@ -581,9 +575,8 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_VALID',
-              genotype_id: 'GENO_VALID',
+              accession_name: 'GENO_VALID',
             },
           ],
         },
@@ -604,7 +597,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
       ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_INVALID', expId: experiment.id }
     );

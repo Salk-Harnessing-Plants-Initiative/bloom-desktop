@@ -300,13 +300,13 @@ export interface DatabaseAPI {
     ) => Promise<DatabaseResponse<Accessions>>;
     createWithMappings: (
       accessionData: { name: string },
-      mappings: { plant_barcode: string; genotype_id?: string }[]
+      mappings: { plant_barcode: string; accession_name?: string }[]
     ) => Promise<DatabaseResponse<Accessions & { mappingCount: number }>>;
     getMappings: (
       accessionId: string
     ) => Promise<
       DatabaseResponse<
-        { id: string; plant_barcode: string; genotype_id: string }[]
+        { id: string; plant_barcode: string; accession_name: string }[]
       >
     >;
     update: (
@@ -316,18 +316,18 @@ export interface DatabaseAPI {
     delete: (id: string) => Promise<DatabaseResponse<Accessions>>;
     updateMapping: (
       mappingId: string,
-      data: { genotype_id: string }
+      data: { accession_name: string }
     ) => Promise<
       DatabaseResponse<{
         id: string;
         plant_barcode: string;
-        genotype_id: string;
+        accession_name: string;
       }>
     >;
     getPlantBarcodes: (
       accessionId: string
     ) => Promise<DatabaseResponse<string[]>>;
-    getGenotypeByBarcode: (
+    getAccessionNameByBarcode: (
       plantBarcode: string,
       experimentId: string
     ) => Promise<DatabaseResponse<string | null>>;
@@ -335,6 +335,41 @@ export interface DatabaseAPI {
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
   };
+}
+
+/**
+ * Session State - persists across page navigation within a session
+ */
+export interface SessionState {
+  phenotyperId: string | null;
+  experimentId: string | null;
+  waveNumber: number | null;
+  plantAgeDays: number | null;
+  accessionName: string | null;
+}
+
+/**
+ * Session API - in-memory session state management
+ */
+export interface SessionAPI {
+  /**
+   * Get current session state
+   * @returns Promise resolving to session state
+   */
+  get: () => Promise<SessionState>;
+
+  /**
+   * Update session state (partial update - merges with existing)
+   * @param updates - Partial session state to merge
+   * @returns Promise resolving to updated session state
+   */
+  set: (updates: Partial<SessionState>) => Promise<SessionState>;
+
+  /**
+   * Reset session state to initial values (all null)
+   * @returns Promise resolving when reset is complete
+   */
+  reset: () => Promise<void>;
 }
 
 /**
@@ -410,6 +445,7 @@ export interface ElectronAPI {
   scanner: ScannerAPI;
   database: DatabaseAPI;
   config: ConfigAPI;
+  session: SessionAPI;
 }
 
 /**

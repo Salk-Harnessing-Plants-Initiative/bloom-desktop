@@ -46,9 +46,8 @@ model Accessions {
 
 model PlantAccessionMappings {
   id                String     @id @default(uuid())
-  accession_id      String
   plant_barcode     String
-  genotype_id       String?
+  accession_name    String?
   accession_file_id String
   accession         Accessions @relation(fields: [accession_file_id], references: [id])
 }
@@ -59,7 +58,7 @@ model Scan {
   phenotyper_id   String
   scanner_name    String
   plant_id        String
-  accession_id    String?
+  accession_name  String?
   path            String
   capture_date    DateTime   @default(now())
   num_frames      Int

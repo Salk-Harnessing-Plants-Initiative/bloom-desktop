@@ -113,3 +113,4 @@ tests/e2e/**/*.db-journal
 # Scripts directory: ignore actual scripts but keep examples
 scripts/*.js
 !scripts/examples/*.js
+.env.old-backup

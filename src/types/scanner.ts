@@ -24,8 +24,8 @@ export interface ScanMetadata {
   /** Plant identifier (barcode, QR code, or manual ID) */
   plant_id: string;
 
-  /** Optional accession ID if known */
-  accession_id?: string;
+  /** Optional accession name if known (e.g., "Col-0") */
+  accession_name?: string;
 
   /** Age of the plant in days at time of scan */
   plant_age_days: number;

@@ -6,7 +6,7 @@
  * - Sanitizes input (replaces + and spaces with _, strips other special chars)
  * - Shows autocomplete dropdown with matching barcodes from experiment's accession
  * - Validates barcode against accession's plant barcodes
- * - Auto-populates genotype ID via callback when valid barcode is selected
+ * - Auto-populates accession name via callback when valid barcode is selected
  * - Supports keyboard navigation (arrow keys, enter, escape)
  */
 
@@ -17,8 +17,8 @@ export interface PlantBarcodeInputProps {
   value: string;
   /** Callback when barcode changes */
   onChange: (barcode: string) => void;
-  /** Callback when genotype ID is found for the barcode */
-  onGenotypeIdFound?: (genotypeId: string | null) => void;
+  /** Callback when accession name is found for the barcode */
+  onAccessionNameFound?: (accessionName: string | null) => void;
   /** Callback when validation state changes */
   onValidationChange?: (isValid: boolean, error?: string) => void;
   /** The selected experiment ID (used to get accession) */
@@ -53,7 +53,7 @@ export function sanitizePlantBarcode(input: string): string {
 export function PlantBarcodeInput({
   value,
   onChange,
-  onGenotypeIdFound,
+  onAccessionNameFound,
   onValidationChange,
   experimentId,
   accessionId,
@@ -158,33 +158,33 @@ export function PlantBarcodeInput({
     [accessionId, plantBarcodes, onValidationChange]
   );
 
-  // Look up genotype ID when barcode changes
+  // Look up accession name when barcode changes
   useEffect(() => {
-    const lookupGenotypeId = async () => {
+    const lookupAccessionName = async () => {
       if (!experimentId || !value.trim()) {
-        onGenotypeIdFound?.(null);
+        onAccessionNameFound?.(null);
         return;
       }
 
       try {
         const result =
-          await window.electron.database.accessions.getGenotypeByBarcode(
+          await window.electron.database.accessions.getAccessionNameByBarcode(
             value,
             experimentId
           );
         if (result.success) {
-          onGenotypeIdFound?.(result.data ?? null);
+          onAccessionNameFound?.(result.data ?? null);
         } else {
-          onGenotypeIdFound?.(null);
+          onAccessionNameFound?.(null);
         }
       } catch (error) {
-        console.error('Failed to look up genotype ID:', error);
-        onGenotypeIdFound?.(null);
+        console.error('Failed to look up accession name:', error);
+        onAccessionNameFound?.(null);
       }
     };
 
-    lookupGenotypeId();
-  }, [value, experimentId]); // onGenotypeIdFound omitted from deps - it's a callback, not data
+    lookupAccessionName();
+  }, [value, experimentId]); // onAccessionNameFound omitted from deps - it's a callback, not data
 
   // Validate on value change
   useEffect(() => {

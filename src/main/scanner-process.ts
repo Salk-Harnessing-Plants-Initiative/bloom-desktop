@@ -225,7 +225,7 @@ export class ScannerProcess extends EventEmitter {
         phenotyper_id: metadata.phenotyper_id,
         scanner_name: metadata.scanner_name,
         plant_id: metadata.plant_id,
-        accession_id: metadata.accession_id,
+        accession_name: metadata.accession_name,
         plant_age_days: metadata.plant_age_days,
         wave_number: metadata.wave_number,
 
