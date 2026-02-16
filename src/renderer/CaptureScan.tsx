@@ -143,6 +143,35 @@ export function CaptureScan() {
     loadMachineConfig();
   }, []);
 
+  // Load recent scans from database on mount
+  useEffect(() => {
+    const loadRecentScans = async () => {
+      try {
+        const result = await window.electron.database.scans.getRecent({
+          limit: 10,
+        });
+
+        if (result.success && result.data) {
+          // Convert database scans to ScanSummary format
+          const dbScans: ScanSummary[] = result.data.map((scan) => ({
+            id: scan.id,
+            plantQrCode: scan.plant_id,
+            timestamp: new Date(scan.capture_date),
+            framesCaptured: scan.num_frames,
+            success: true,
+            outputPath: scan.path,
+          }));
+
+          setRecentScans(dbScans);
+        }
+      } catch (error) {
+        console.error('Failed to load recent scans:', error);
+      }
+    };
+
+    loadRecentScans();
+  }, []);
+
   // Load session state on mount (persisted metadata across navigation)
   useEffect(() => {
     const loadSessionState = async () => {
@@ -541,7 +570,12 @@ export function CaptureScan() {
                     Please fill in all required fields
                   </p>
                 )}
-                {!cameraConfigured && isFormValid && (
+                {barcodeValidationError && isFormValid && (
+                  <p className="text-sm text-red-600 mt-2">
+                    {barcodeValidationError}
+                  </p>
+                )}
+                {!cameraConfigured && isFormValid && !barcodeValidationError && (
                   <p className="text-sm text-red-600 mt-2">
                     Camera not configured
                   </p>

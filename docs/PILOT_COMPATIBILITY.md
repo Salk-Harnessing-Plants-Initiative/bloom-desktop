@@ -2,7 +2,7 @@
 
 This document describes compatibility between bloom-desktop and bloom-desktop-pilot.
 
-**Last Verified:** 2026-02-13
+**Last Verified:** 2026-02-16
 **Pilot Reference:** https://github.com/eberrigan/bloom-desktop-pilot/blob/dev/app/prisma/schema.prisma
 
 ## Important: Schema Differences
@@ -62,6 +62,48 @@ All fields match pilot schema exactly:
 **Relationships:**
 
 - ✅ `scan` → Scan
+
+## UI Behavior Compatibility
+
+These UI behaviors match the pilot application to ensure consistent user experience.
+
+### Accession File Requirement
+
+The pilot UI enforces that scanning is **blocked** when the selected experiment has no accession file linked. bloom-desktop implements the same behavior:
+
+| Scenario | Pilot Behavior | Our Behavior |
+|----------|---------------|--------------|
+| Experiment has accession linked | ✅ Scanning allowed | ✅ Scanning allowed |
+| Experiment has NO accession linked | ❌ Scanning blocked | ❌ Scanning blocked |
+| Barcode not in accession file | ❌ Validation error | ❌ Validation error |
+| Valid barcode in accession file | ✅ Accession name auto-populated | ✅ Accession name auto-populated |
+
+**Implementation Details:**
+- `PlantBarcodeInput` validates that an accession is linked before accepting barcodes
+- `MetadataForm` shows a prominent warning when no accession is linked
+- `CaptureScan` disables the Start Scan button with a clear error message
+- The error message guides users to link an accession file in Scientists & Experiments
+
+**Note:** While `Scan.accession_name` is optional in the database schema (for backward compatibility), the UI enforces stricter validation to match pilot workflow.
+
+### Barcode Validation
+
+Plant barcodes must exist in the experiment's accession file:
+
+1. User selects an experiment
+2. System fetches plant barcodes from the experiment's linked accession
+3. When user enters a barcode:
+   - If barcode exists → Accession name is auto-populated
+   - If barcode doesn't exist → Validation error shown, scanning blocked
+
+### Duplicate Scan Prevention
+
+The UI warns users when attempting to scan a plant that was already scanned today:
+
+| Feature | Pilot | Ours |
+|---------|-------|------|
+| Duplicate warning | ⚠️ Warning message | ⚠️ Warning message |
+| Scanning blocked | ❌ No (warning only) | ❌ No (warning only) |
 
 ## Implementation Compatibility
 

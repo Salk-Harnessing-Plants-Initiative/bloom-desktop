@@ -674,6 +674,67 @@ export function registerDatabaseHandlers() {
     }
   );
 
+  ipcMain.handle(
+    'db:scans:getRecent',
+    async (
+      _event,
+      options?: { limit?: number; experimentId?: string }
+    ): Promise<DatabaseResponse> => {
+      try {
+        const limit = options?.limit ?? 10;
+
+        // Calculate today's date range
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        // Build where clause
+        const where: {
+          capture_date: { gte: Date; lt: Date };
+          deleted: boolean;
+          experiment_id?: string;
+        } = {
+          capture_date: {
+            gte: today,
+            lt: tomorrow,
+          },
+          deleted: false,
+        };
+
+        // Optional experiment filter
+        if (options?.experimentId) {
+          where.experiment_id = options.experimentId;
+        }
+
+        const scans = await db.scan.findMany({
+          where,
+          orderBy: { capture_date: 'desc' },
+          take: limit,
+          include: {
+            experiment: {
+              select: { name: true },
+            },
+          },
+        });
+
+        logDatabaseOperation(
+          'READ',
+          'Scan',
+          `getRecent count=${scans.length} limit=${limit}`
+        );
+
+        return { success: true, data: scans };
+      } catch (error) {
+        console.error('[DB] Failed to get recent scans:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
   // ============================================
   // Images
   // ============================================

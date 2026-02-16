@@ -377,6 +377,19 @@ window.electron.database.scans.get(id: string)
 // Create new scan
 window.electron.database.scans.create(data: ScanCreateData)
 // Returns: DatabaseResponse<Scan>
+
+// Get recent scans (today only, for CaptureScan page)
+window.electron.database.scans.getRecent(options?: {
+  limit?: number          // Default: 10
+  experimentId?: string   // Optional filter by experiment
+})
+// Returns: DatabaseResponse<ScanWithRelations[]>
+// Note: Returns scans from today, sorted by capture_date (most recent first)
+
+// Get most recent scan date for a plant in an experiment
+window.electron.database.scans.getMostRecentScanDate(plantId: string, experimentId: string)
+// Returns: DatabaseResponse<Date | null>
+// Note: Used for duplicate scan prevention
 ```
 
 ### Phenotypers
@@ -421,6 +434,16 @@ window.electron.database.accessions.create(data: {
   name: string
 })
 // Returns: DatabaseResponse<Accessions>
+
+// Get plant barcodes for an accession
+window.electron.database.accessions.getPlantBarcodes(accessionId: string)
+// Returns: DatabaseResponse<string[]>
+// Note: Returns all plant_barcode values from PlantAccessionMappings
+
+// Get accession name (genotype ID) for a barcode in an experiment
+window.electron.database.accessions.getAccessionNameByBarcode(barcode: string, experimentId: string)
+// Returns: DatabaseResponse<string | null>
+// Note: Looks up via experiment → accession → PlantAccessionMappings
 ```
 
 ### Images

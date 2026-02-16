@@ -282,6 +282,10 @@ export interface DatabaseAPI {
       plantId: string,
       experimentId: string
     ) => Promise<DatabaseResponse<string | null>>;
+    getRecent: (options?: {
+      limit?: number;
+      experimentId?: string;
+    }) => Promise<DatabaseResponse<ScanWithRelations[]>>;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;

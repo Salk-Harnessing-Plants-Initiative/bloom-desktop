@@ -125,8 +125,18 @@ export function PlantBarcodeInput({
   // Validate barcode against accession
   const validateBarcode = useCallback(
     (barcode: string) => {
-      // Skip validation if no accession (user can enter any barcode)
-      if (!accessionId || plantBarcodes.length === 0) {
+      // STRICT VALIDATION: Accession file is REQUIRED for scanning (pilot parity)
+      // If no accession is linked to the experiment, validation fails
+      if (!accessionId) {
+        const error = 'Accession file required';
+        setValidationError(error);
+        onValidationChange?.(false, error);
+        return false;
+      }
+
+      // Wait for plant barcodes to load
+      if (plantBarcodes.length === 0) {
+        // Still loading or accession has no mappings
         setValidationError(null);
         onValidationChange?.(true);
         return true;

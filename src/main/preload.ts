@@ -191,6 +191,8 @@ const databaseAPI: DatabaseAPI = {
         plantId,
         experimentId
       ),
+    getRecent: (options?: { limit?: number; experimentId?: string }) =>
+      ipcRenderer.invoke('db:scans:getRecent', options),
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),

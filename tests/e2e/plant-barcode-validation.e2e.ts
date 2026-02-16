@@ -790,6 +790,162 @@ test.describe('UI: Barcode Autocomplete', () => {
 });
 
 // ============================================================================
+// UI Tests - Accession Requirement for Scanning
+// ============================================================================
+
+test.describe('UI: Accession Requirement for Scanning', () => {
+  test('should disable Start Scan when experiment has no accession linked', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. NoAccession', email: 'noaccession@example.com' },
+    });
+
+    // Create phenotyper
+    await prisma.phenotyper.create({
+      data: { name: 'NoAcc Phenotyper', email: 'noaccpheno@example.com' },
+    });
+
+    // Create experiment WITHOUT accession linked
+    await prisma.experiment.create({
+      data: {
+        name: 'Experiment Without Accession',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        // No accession_id - this is the key!
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for dropdowns to load
+    await window.waitForSelector('.experiment-chooser');
+    await window.waitForSelector('.phenotyper-chooser');
+
+    // Select experiment (the one without accession)
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    // Select phenotyper
+    await window.selectOption('.phenotyper-chooser', { index: 1 });
+
+    // Enter a plant barcode
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.waitFor({ state: 'visible', timeout: 5000 });
+    await plantBarcodeInput.fill('SOME_PLANT_001');
+    await plantBarcodeInput.blur();
+
+    // Start Scan button should be disabled
+    const startScanButton = window.locator('button:has-text("Start Scan")');
+    await expect(startScanButton).toBeDisabled({ timeout: 5000 });
+
+    // Should show error message about accession requirement
+    await expect(
+      window.locator('text=Accession file required')
+    ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('should show guidance message to link accession file', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. NeedAccession', email: 'needacc@example.com' },
+    });
+
+    // Create phenotyper
+    await prisma.phenotyper.create({
+      data: { name: 'NeedAcc Phenotyper', email: 'needaccpheno@example.com' },
+    });
+
+    // Create experiment WITHOUT accession linked
+    await prisma.experiment.create({
+      data: {
+        name: 'Experiment Needs Accession',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Select experiment
+    await window.waitForSelector('.experiment-chooser');
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    // Should show guidance to link accession file
+    await expect(
+      window.locator('text=Link an accession file')
+    ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('should enable Start Scan when experiment has valid accession and barcode', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. ValidAccession', email: 'validacc@example.com' },
+    });
+
+    // Create phenotyper
+    await prisma.phenotyper.create({
+      data: { name: 'Valid Phenotyper', email: 'validpheno@example.com' },
+    });
+
+    // Create accession with plant mapping
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Valid Test Accession',
+        mappings: {
+          create: [
+            {
+              plant_barcode: 'VALID_BARCODE_001',
+              accession_name: 'GT_VALID',
+            },
+          ],
+        },
+      },
+    });
+
+    // Create experiment WITH accession linked
+    await prisma.experiment.create({
+      data: {
+        name: 'Experiment With Accession',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for dropdowns to load
+    await window.waitForSelector('.experiment-chooser');
+    await window.waitForSelector('.phenotyper-chooser');
+
+    // Select experiment
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    // Select phenotyper
+    await window.selectOption('.phenotyper-chooser', { index: 1 });
+
+    // Enter a valid plant barcode
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.waitFor({ state: 'visible', timeout: 5000 });
+    await plantBarcodeInput.fill('VALID_BARCODE_001');
+    await plantBarcodeInput.blur();
+
+    // Should NOT show accession required error
+    await expect(
+      window.locator('text=Accession file required')
+    ).not.toBeVisible({ timeout: 3000 });
+
+    // Note: Start Scan may still be disabled due to camera/scanner requirements
+    // but the accession-specific error should not be shown
+  });
+});
+
+// ============================================================================
 // UI Tests - Barcode Sanitization
 // ============================================================================
 

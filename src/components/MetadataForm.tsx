@@ -216,6 +216,35 @@ export function MetadataForm({
         )}
       </div>
 
+      {/* Accession Requirement Warning */}
+      {values.experimentId && !experimentAccessionId && (
+        <div
+          className="bg-red-50 border-2 border-red-400 rounded-lg p-3"
+          data-testid="accession-required-warning"
+        >
+          <div className="flex items-start">
+            <svg
+              className="h-5 w-5 text-red-600 mr-2 mt-0.5 flex-shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div>
+              <p className="font-medium text-red-800">Accession file required</p>
+              <p className="text-sm text-red-700 mt-1">
+                Link an accession file to this experiment to enable scanning.
+                Go to <a href="#/scientists" className="underline font-medium">Scientists & Experiments</a> to manage experiments.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Plant Barcode / QR Code - using PlantBarcodeInput with validation */}
       <div>
         <label htmlFor="plantQrCode" className={labelClassName}>
