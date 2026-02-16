@@ -2,6 +2,20 @@
 
 Guide for creating and managing Prisma database migrations for schema changes.
 
+## Environment Setup
+
+Prisma CLI commands require the `BLOOM_DATABASE_URL` environment variable to be set. The app sets this automatically at runtime, but for CLI commands you need to set it manually:
+
+```bash
+# Set for current session (recommended)
+export BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db"
+
+# Or prefix individual commands
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:reset
+```
+
+**Note**: The database path is not hardcoded to allow flexibility for Machine Configuration. Development uses `~/.bloom/dev.db` by convention.
+
 ## Commands
 
 ### Create Migration
@@ -27,8 +41,8 @@ npm run prisma:generate
 ### View Database
 
 ```bash
-# Open Prisma Studio for dev database
-npm run prisma:studio
+# Open Prisma Studio for dev database (requires BLOOM_DATABASE_URL)
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:studio
 
 # Open Prisma Studio for production database
 npm run studio:production
@@ -54,10 +68,11 @@ Use this when:
 
 ```bash
 # Delete dev database and create fresh from migrations
-npm run prisma:reset
+# Requires BLOOM_DATABASE_URL to be set (see Environment Setup above)
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:reset
 
 # Reset and seed with test data
-npm run prisma:reset:seed
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:reset:seed
 
 # WARNING: This deletes all data! Only use in development.
 ```

@@ -189,35 +189,44 @@ model Image {
 
 ## Prisma Commands
 
+**Important**: Most Prisma CLI commands require the `BLOOM_DATABASE_URL` environment variable:
+
+```bash
+# Set for your shell session
+export BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db"
+```
+
+The database path is intentionally not hardcoded in npm scripts to allow flexibility for Machine Configuration.
+
 ### Development Workflow
 
 ```bash
-# Generate Prisma Client (run after schema changes)
+# Generate Prisma Client (run after schema changes) - no env var needed
 npm run prisma:generate
 
 # Create and apply migrations
-npm run prisma:migrate
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:migrate
 
 # Seed database with test data
-npm run prisma:seed
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:seed
 
 # Open Prisma Studio (visual database browser)
-npm run prisma:studio
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:studio
 ```
 
 ### Advanced Commands
 
 ```bash
 # Create migration without applying
-npx prisma migrate dev --create-only
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npx prisma migrate dev --create-only
 
 # Apply migrations in production
-npx prisma migrate deploy
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npx prisma migrate deploy
 
 # View migration status
-npx prisma migrate status
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npx prisma migrate status
 
-# Format schema file
+# Format schema file (no env var needed)
 npx prisma format
 ```
 
@@ -287,15 +296,25 @@ Use this workflow when you want a fresh database (data loss is acceptable).
 
 ### Usage
 
+Prisma CLI commands require the `BLOOM_DATABASE_URL` environment variable:
+
 ```bash
+# Set for current session
+export BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db"
+
 # Reset database and apply migrations
 npm run prisma:reset
 
 # Reset database and seed with test data
 npm run prisma:reset:seed
+
+# Or prefix individual commands
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:reset
 ```
 
 **⚠️ WARNING**: Reset deletes all local data. Use `npm run db:upgrade` if you need to preserve data.
+
+**Note**: The database path is not hardcoded in npm scripts to allow flexibility for Machine Configuration. The app sets this path dynamically at runtime.
 
 ### How It Works
 
