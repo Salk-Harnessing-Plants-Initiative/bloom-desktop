@@ -1341,6 +1341,58 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
   });
 });
 
+test.describe('Renderer Database IPC - Scans getRecent', () => {
+  test('should get recent scans from today', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Recent Scientist', email: 'recent@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Recent Phenotyper', email: 'recentpheno@test.com' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Recent Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Create a scan from today
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'RECENT_SCAN_001',
+        path: './scans/test/RECENT_SCAN_001',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Call getRecent via IPC
+    const result = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.database.scans.getRecent();
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeDefined();
+    expect(Array.isArray(result.data)).toBe(true);
+    expect(result.data!.length).toBeGreaterThan(0);
+    expect(result.data![0].plant_id).toBe('RECENT_SCAN_001');
+  });
+});
+
 test.describe('Renderer Database IPC - Context Isolation', () => {
   test('should not expose require() to renderer', async () => {
     const hasRequire = await window.evaluate(() => {

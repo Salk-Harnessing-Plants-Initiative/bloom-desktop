@@ -840,9 +840,9 @@ test.describe('UI: Accession Requirement for Scanning', () => {
     await expect(startScanButton).toBeDisabled({ timeout: 5000 });
 
     // Should show error message about accession requirement
-    await expect(
-      window.locator('text=Accession file required')
-    ).toBeVisible({ timeout: 5000 });
+    await expect(window.locator('text=Accession file required')).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('should show guidance message to link accession file', async () => {
@@ -874,9 +874,9 @@ test.describe('UI: Accession Requirement for Scanning', () => {
     await window.selectOption('.experiment-chooser', { index: 1 });
 
     // Should show guidance to link accession file
-    await expect(
-      window.locator('text=Link an accession file')
-    ).toBeVisible({ timeout: 5000 });
+    await expect(window.locator('text=Link an accession file')).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('should enable Start Scan when experiment has valid accession and barcode', async () => {
@@ -1060,27 +1060,27 @@ test.describe('UI: Recent Scans Persistence', () => {
     await window.waitForLoadState('networkidle');
 
     // Wait for recent scans to load and verify scan appears
-    await expect(
-      window.locator('text=RECENT_PLANT_001')
-    ).toBeVisible({ timeout: 10000 });
+    await expect(window.locator('text=RECENT_PLANT_001')).toBeVisible({
+      timeout: 10000,
+    });
 
     // Navigate away to Scientists page
     await window.click('text=Scientists');
     await window.waitForLoadState('networkidle');
 
     // Verify we're on a different page (scan should not be visible)
-    await expect(
-      window.locator('text=RECENT_PLANT_001')
-    ).not.toBeVisible({ timeout: 3000 });
+    await expect(window.locator('text=RECENT_PLANT_001')).not.toBeVisible({
+      timeout: 3000,
+    });
 
     // Navigate back to CaptureScan page
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
 
     // Verify scan still appears (loaded from database on mount)
-    await expect(
-      window.locator('text=RECENT_PLANT_001')
-    ).toBeVisible({ timeout: 10000 });
+    await expect(window.locator('text=RECENT_PLANT_001')).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('should show only today scans in recent scans list', async () => {
@@ -1154,13 +1154,13 @@ test.describe('UI: Recent Scans Persistence', () => {
     await window.waitForLoadState('networkidle');
 
     // Today's scan should be visible
-    await expect(
-      window.locator('text=TODAY_PLANT_001')
-    ).toBeVisible({ timeout: 10000 });
+    await expect(window.locator('text=TODAY_PLANT_001')).toBeVisible({
+      timeout: 10000,
+    });
 
     // Yesterday's scan should NOT be visible
-    await expect(
-      window.locator('text=YESTERDAY_PLANT_001')
-    ).not.toBeVisible({ timeout: 3000 });
+    await expect(window.locator('text=YESTERDAY_PLANT_001')).not.toBeVisible({
+      timeout: 3000,
+    });
   });
 });

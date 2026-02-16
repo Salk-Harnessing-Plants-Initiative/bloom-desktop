@@ -1,6 +1,7 @@
 ## 1. Recent Scans Persistence
 
 ### TDD: Write Tests First
+
 - [x] 1.1 Write integration test for `db:scans:getRecent` IPC handler
   - Test returns today's scans sorted by capture_date desc
   - Test limits results (default 10)
@@ -15,12 +16,14 @@
   - Verify scan still appears (loaded from database)
 
 ### Implementation
+
 - [x] 1.3 Add `db:scans:getRecent` IPC handler in database-handlers.ts
 - [x] 1.4 Add `database.scans.getRecent` to preload.ts API
 - [x] 1.5 Add `useEffect` in CaptureScan.tsx to load recent scans on mount
 - [x] 1.6 Update RecentScansPreview to handle combined scans (not needed - existing component works)
 
 ### Validation
+
 - [ ] 1.7 Run integration tests: `npm run test:ipc`
 - [ ] 1.8 Run unit tests: `npm run test:unit`
 - [x] 1.9 Manual test: Navigate away and back, verify scans persist (covered by E2E test 1.2b)
@@ -28,6 +31,7 @@
 ## 2. Strict Barcode Validation (Pilot Parity)
 
 ### TDD: Write Tests First
+
 - [x] 2.1 Write E2E test: Scan blocked when experiment has no accession
   - Select experiment without accession
   - Enter plant barcode
@@ -42,6 +46,7 @@
   - Test validation error state prevents scanning
 
 ### Implementation
+
 - [x] 2.4 Update PlantBarcodeInput to require accession (not skip validation)
 - [x] 2.5 Add `noAccessionLinked` validation state to CaptureScan (via barcodeValidationError)
 - [x] 2.6 Update canStartScan to check for accession requirement (already uses barcodeValidationError)
@@ -49,6 +54,7 @@
 - [ ] 2.8 Update ExperimentChooser to show accession status more prominently (deferred - MetadataForm shows warning)
 
 ### Validation
+
 - [ ] 2.9 Run E2E tests: `npm run test:e2e`
 - [ ] 2.10 Run unit tests: `npm run test:unit`
 - [ ] 2.11 Manual test: Try to scan with experiment without accession
@@ -56,13 +62,16 @@
 ## 3. Seed Data Fix
 
 ### Analysis
+
 Current seed data creates:
+
 - 2 accessions (ACC-001-Amaranth-Wild, ACC-002-Amaranth-Cultivated)
 - 2 experiments linked to those accessions
 - 2 scans with plant_id PLANT-001 and PLANT-002
 - **Missing: PlantAccessionMappings for the accessions**
 
 ### Implementation
+
 - [x] 3.1 Add PlantAccessionMappings for ACC-001-Amaranth-Wild:
   ```
   PLANT-001 → Col-0 (matches existing scan)
@@ -83,6 +92,7 @@ Current seed data creates:
 ## 4. Documentation Updates
 
 ### PILOT_COMPATIBILITY.md
+
 - [x] 4.1 Add section documenting UI behavior requirements:
   - Accession file required for scanning (UI enforcement)
   - Barcode must exist in accession mappings
@@ -90,10 +100,12 @@ Current seed data creates:
 - [x] 4.2 Add table comparing pilot vs our UI behavior
 
 ### DATABASE.md
+
 - [x] 4.3 Document new `db:scans:getRecent` IPC handler
 - [x] 4.4 Update IPC handlers list with accession barcode handlers
 
 ### Claude Commands
+
 - [x] 4.5 Review `.claude/commands/database-migration.md` - already up-to-date
 - [x] 4.6 Check other relevant commands for accuracy (no changes needed)
 

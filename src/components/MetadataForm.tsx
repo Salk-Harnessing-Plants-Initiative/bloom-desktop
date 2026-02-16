@@ -235,10 +235,16 @@ export function MetadataForm({
               />
             </svg>
             <div>
-              <p className="font-medium text-red-800">Accession file required</p>
+              <p className="font-medium text-red-800">
+                Accession file required
+              </p>
               <p className="text-sm text-red-700 mt-1">
-                Link an accession file to this experiment to enable scanning.
-                Go to <a href="#/scientists" className="underline font-medium">Scientists & Experiments</a> to manage experiments.
+                Link an accession file to this experiment to enable scanning. Go
+                to{' '}
+                <a href="#/scientists" className="underline font-medium">
+                  Scientists & Experiments
+                </a>{' '}
+                to manage experiments.
               </p>
             </div>
           </div>

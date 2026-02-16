@@ -6,6 +6,7 @@ The scan capture workflow has two broken features that affect usability and data
 2. **Barcode validation too permissive**: Currently allows scanning with any barcode when experiment has no accession linked - pilot UI enforces strict validation
 
 **Pilot Compatibility Gap**: The pilot implementation enforces that scanning is ONLY allowed when:
+
 - The experiment has an accession file linked AND
 - The plant barcode exists in that accession file's mappings
 
@@ -14,22 +15,26 @@ Our current implementation skips validation when no accession is linked, allowin
 ## What Changes
 
 ### Recent Scans Persistence
+
 - Add `db:scans:getRecent` IPC handler to fetch today's scans from database
 - Add `useEffect` in CaptureScan to load recent scans on mount
 - Display persisted scans alongside session scans
 
 ### Strict Barcode Validation (Pilot Parity)
+
 - **Block scanning** when experiment has no accession linked (show clear error message)
 - **Block scanning** when plant barcode is not found in accession mappings
 - Update `canStartScan` validation to match pilot behavior
 - Show user-friendly messages explaining why scan is disabled
 
 ### Seed Data Fix
+
 - Add PlantAccessionMappings for each seeded accession
 - Ensure seed plant barcodes (PLANT-001, PLANT-002) exist in mappings
 - Add realistic accession names (genotype IDs) to mappings
 
 ### Documentation Updates
+
 - Update `docs/PILOT_COMPATIBILITY.md` to document UI enforcement of accession requirements
 - Update `docs/DATABASE.md` if needed for new IPC handler
 - Ensure claude commands are up-to-date

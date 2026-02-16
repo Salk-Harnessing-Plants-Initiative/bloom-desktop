@@ -575,11 +575,13 @@ export function CaptureScan() {
                     {barcodeValidationError}
                   </p>
                 )}
-                {!cameraConfigured && isFormValid && !barcodeValidationError && (
-                  <p className="text-sm text-red-600 mt-2">
-                    Camera not configured
-                  </p>
-                )}
+                {!cameraConfigured &&
+                  isFormValid &&
+                  !barcodeValidationError && (
+                    <p className="text-sm text-red-600 mt-2">
+                      Camera not configured
+                    </p>
+                  )}
               </div>
             </div>
           </div>

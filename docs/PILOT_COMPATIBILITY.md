@@ -71,14 +71,15 @@ These UI behaviors match the pilot application to ensure consistent user experie
 
 The pilot UI enforces that scanning is **blocked** when the selected experiment has no accession file linked. bloom-desktop implements the same behavior:
 
-| Scenario | Pilot Behavior | Our Behavior |
-|----------|---------------|--------------|
-| Experiment has accession linked | ✅ Scanning allowed | ✅ Scanning allowed |
-| Experiment has NO accession linked | ❌ Scanning blocked | ❌ Scanning blocked |
-| Barcode not in accession file | ❌ Validation error | ❌ Validation error |
-| Valid barcode in accession file | ✅ Accession name auto-populated | ✅ Accession name auto-populated |
+| Scenario                           | Pilot Behavior                   | Our Behavior                     |
+| ---------------------------------- | -------------------------------- | -------------------------------- |
+| Experiment has accession linked    | ✅ Scanning allowed              | ✅ Scanning allowed              |
+| Experiment has NO accession linked | ❌ Scanning blocked              | ❌ Scanning blocked              |
+| Barcode not in accession file      | ❌ Validation error              | ❌ Validation error              |
+| Valid barcode in accession file    | ✅ Accession name auto-populated | ✅ Accession name auto-populated |
 
 **Implementation Details:**
+
 - `PlantBarcodeInput` validates that an accession is linked before accepting barcodes
 - `MetadataForm` shows a prominent warning when no accession is linked
 - `CaptureScan` disables the Start Scan button with a clear error message
@@ -100,10 +101,10 @@ Plant barcodes must exist in the experiment's accession file:
 
 The UI warns users when attempting to scan a plant that was already scanned today:
 
-| Feature | Pilot | Ours |
-|---------|-------|------|
-| Duplicate warning | ⚠️ Warning message | ⚠️ Warning message |
-| Scanning blocked | ❌ No (warning only) | ❌ No (warning only) |
+| Feature           | Pilot                | Ours                 |
+| ----------------- | -------------------- | -------------------- |
+| Duplicate warning | ⚠️ Warning message   | ⚠️ Warning message   |
+| Scanning blocked  | ❌ No (warning only) | ❌ No (warning only) |
 
 ## Implementation Compatibility
 
