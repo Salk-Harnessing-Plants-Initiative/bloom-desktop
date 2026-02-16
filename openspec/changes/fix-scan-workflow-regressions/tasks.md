@@ -7,6 +7,12 @@
   - Test filters by experiment_id (optional)
   - Test excludes deleted scans
 - [x] 1.2 Write unit test for CaptureScan recent scans loading (skipped - existing component tests have React setup issues)
+- [x] 1.2b Write E2E test for recent scans persistence across navigation
+  - Insert scan via Prisma
+  - Navigate to CaptureScan, verify scan appears in Recent Scans
+  - Navigate away (Scientists page)
+  - Navigate back to CaptureScan
+  - Verify scan still appears (loaded from database)
 
 ### Implementation
 - [x] 1.3 Add `db:scans:getRecent` IPC handler in database-handlers.ts
@@ -17,7 +23,7 @@
 ### Validation
 - [ ] 1.7 Run integration tests: `npm run test:ipc`
 - [ ] 1.8 Run unit tests: `npm run test:unit`
-- [ ] 1.9 Manual test: Navigate away and back, verify scans persist
+- [x] 1.9 Manual test: Navigate away and back, verify scans persist (covered by E2E test 1.2b)
 
 ## 2. Strict Barcode Validation (Pilot Parity)
 

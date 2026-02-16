@@ -990,3 +990,177 @@ test.describe('UI: Barcode Sanitization', () => {
     await expect(plantBarcodeInput).toHaveValue('PLANT001TEST');
   });
 });
+
+// ============================================================================
+// UI Tests - Recent Scans Persistence
+// ============================================================================
+
+test.describe('UI: Recent Scans Persistence', () => {
+  test('should persist recent scans across navigation', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. RecentScans', email: 'recentscans@example.com' },
+    });
+
+    // Create phenotyper
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Recent Phenotyper', email: 'recentpheno@example.com' },
+    });
+
+    // Create accession with plant mapping
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Recent Test Accession',
+        mappings: {
+          create: [
+            {
+              plant_barcode: 'RECENT_PLANT_001',
+              accession_name: 'GT_RECENT',
+            },
+          ],
+        },
+      },
+    });
+
+    // Create experiment with accession linked
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Recent Scans Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
+    // Insert a scan directly via Prisma (simulating a completed scan)
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'RECENT_PLANT_001',
+        accession_name: 'GT_RECENT',
+        path: './scans/test/RECENT_PLANT_001_persistence_test',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for recent scans to load and verify scan appears
+    await expect(
+      window.locator('text=RECENT_PLANT_001')
+    ).toBeVisible({ timeout: 10000 });
+
+    // Navigate away to Scientists page
+    await window.click('text=Scientists');
+    await window.waitForLoadState('networkidle');
+
+    // Verify we're on a different page (scan should not be visible)
+    await expect(
+      window.locator('text=RECENT_PLANT_001')
+    ).not.toBeVisible({ timeout: 3000 });
+
+    // Navigate back to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Verify scan still appears (loaded from database on mount)
+    await expect(
+      window.locator('text=RECENT_PLANT_001')
+    ).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should show only today scans in recent scans list', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. TodayScans', email: 'todayscans@example.com' },
+    });
+
+    // Create phenotyper
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Today Phenotyper', email: 'todaypheno@example.com' },
+    });
+
+    // Create experiment
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Today Scans Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Insert a scan from today
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'TODAY_PLANT_001',
+        path: './scans/test/TODAY_PLANT_001',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Insert a scan from yesterday (should NOT appear)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'YESTERDAY_PLANT_001',
+        path: './scans/test/YESTERDAY_PLANT_001',
+        capture_date: yesterday,
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Today's scan should be visible
+    await expect(
+      window.locator('text=TODAY_PLANT_001')
+    ).toBeVisible({ timeout: 10000 });
+
+    // Yesterday's scan should NOT be visible
+    await expect(
+      window.locator('text=YESTERDAY_PLANT_001')
+    ).not.toBeVisible({ timeout: 3000 });
+  });
+});
