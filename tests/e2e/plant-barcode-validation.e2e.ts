@@ -840,7 +840,10 @@ test.describe('UI: Accession Requirement for Scanning', () => {
     await expect(startScanButton).toBeDisabled({ timeout: 5000 });
 
     // Should show error message about accession requirement
-    await expect(window.locator('text=Accession file required')).toBeVisible({
+    // Use data-testid to avoid ambiguity (message appears in both warning panel and barcode input)
+    await expect(
+      window.locator('[data-testid="accession-required-warning"]')
+    ).toBeVisible({
       timeout: 5000,
     });
   });
@@ -935,9 +938,14 @@ test.describe('UI: Accession Requirement for Scanning', () => {
     await plantBarcodeInput.fill('VALID_BARCODE_001');
     await plantBarcodeInput.blur();
 
-    // Should NOT show accession required error
+    // Should NOT show accession required warning panel
     await expect(
-      window.locator('text=Accession file required')
+      window.locator('[data-testid="accession-required-warning"]')
+    ).not.toBeVisible({ timeout: 3000 });
+
+    // Should NOT show barcode validation error
+    await expect(
+      window.locator('[data-testid="plant-barcode-error"]')
     ).not.toBeVisible({ timeout: 3000 });
 
     // Note: Start Scan may still be disabled due to camera/scanner requirements
