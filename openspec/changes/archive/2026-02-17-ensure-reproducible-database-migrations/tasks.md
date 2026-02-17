@@ -166,12 +166,24 @@ After all tasks complete:
 
 **Testing:**
 
-1. [ ] Unit tests pass: `npm run test:unit` includes schema detection tests
-2. [ ] Integration tests pass: `npm run test:db-upgrade` covers all upgrade paths
-3. [ ] Test coverage: schema detection has 100% coverage
-4. [ ] Test coverage: upgrade script has >80% coverage
-5. [ ] CI runs upgrade tests on every PR
+1. [x] Unit tests pass: `npm run test:unit` includes schema detection tests
+2. [x] Integration tests pass: `npm run test:db-upgrade` covers all upgrade paths
+3. [x] Test coverage: schema detection has 100% coverage
+4. [x] Test coverage: upgrade script has >80% coverage
+5. [x] CI runs upgrade tests on every PR
 
-**Functionality:** 6. [ ] `npm run db:upgrade` upgrades v1 databases while preserving data 7. [ ] `npm run db:upgrade` upgrades v2 databases while preserving data 8. [ ] `npm run db:upgrade` upgrades pilot databases while preserving data 9. [ ] `npm run db:upgrade` creates backup before modifying database 10. [ ] `npm run prisma:reset` creates fresh database from migrations
+**Functionality:**
 
-**Documentation:** 11. [ ] `project.md` shows correct database paths 12. [ ] `DATABASE.md` includes upgrade and reset workflows 13. [ ] `PILOT_COMPATIBILITY.md` reflects current schema and upgrade path 14. [ ] `/database-migration` command documents both upgrade and reset 15. [ ] `openspec validate ensure-reproducible-database-migrations` passes
+6. [x] `npm run db:upgrade` upgrades v1 databases while preserving data
+7. [x] `npm run db:upgrade` upgrades v2 databases while preserving data
+8. [x] `npm run db:upgrade` upgrades pilot databases while preserving data
+9. [x] `npm run db:upgrade` creates backup before modifying database
+10. [x] `npm run prisma:reset` creates fresh database from migrations
+
+**Documentation:**
+
+11. [x] `project.md` shows correct database paths
+12. [x] `DATABASE.md` includes upgrade and reset workflows
+13. [x] `PILOT_COMPATIBILITY.md` reflects current schema and upgrade path
+14. [x] `/database-migration` command documents both upgrade and reset
+15. [x] `openspec validate ensure-reproducible-database-migrations` passes
