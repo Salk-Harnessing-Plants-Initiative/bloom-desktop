@@ -40,5 +40,11 @@
 - [x] 5.1 Run unit tests (228 passed)
 - [x] 5.2 Run database upgrade tests (22 passed)
 - [x] 5.3 Run zero value E2E tests (5 passed)
-- [ ] 5.4 Run full E2E test suite
-- [ ] 5.5 Commit and push
+- [x] 5.4 Run full E2E test suite (181 passed, 2 skipped - all platforms passing in CI)
+- [x] 5.5 Commit and push (b101f14)
+
+## Additional Fixes
+
+- [x] 7.1 Fix E2E startup delay - increased from 100ms to 500ms for consistent test runs
+- [x] 7.2 Updated E2E_TESTING.md documentation
+- [x] 7.3 Updated Serena memory with new empirical results
