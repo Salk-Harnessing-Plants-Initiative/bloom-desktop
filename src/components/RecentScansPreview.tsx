@@ -68,7 +68,10 @@ export function RecentScansPreview({
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <div className="flex items-center space-x-3">
-                  <span className="font-medium text-gray-900">
+                  <span
+                    className="font-medium text-gray-900"
+                    data-testid={`recent-scan-plant-${scan.plantQrCode}`}
+                  >
                     {scan.plantQrCode}
                   </span>
                   <span className="text-sm text-gray-500">

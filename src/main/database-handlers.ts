@@ -681,7 +681,21 @@ export function registerDatabaseHandlers() {
       options?: { limit?: number; experimentId?: string }
     ): Promise<DatabaseResponse> => {
       try {
-        const limit = options?.limit ?? 10;
+        // Validate and clamp limit to safe range
+        const MAX_LIMIT = 100;
+        const DEFAULT_LIMIT = 10;
+        const requestedLimit = options?.limit;
+        let limit = DEFAULT_LIMIT;
+
+        if (
+          typeof requestedLimit === 'number' &&
+          Number.isFinite(requestedLimit)
+        ) {
+          const normalizedLimit = Math.floor(requestedLimit);
+          if (normalizedLimit >= 1) {
+            limit = Math.min(normalizedLimit, MAX_LIMIT);
+          }
+        }
 
         // Calculate today's date range
         const today = new Date();

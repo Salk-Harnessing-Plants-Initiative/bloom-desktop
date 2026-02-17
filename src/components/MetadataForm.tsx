@@ -180,8 +180,8 @@ export function MetadataForm({
         <input
           id="waveNumber"
           type="number"
-          min="1"
-          value={values.waveNumber || ''}
+          min="0"
+          value={values.waveNumber ?? ''}
           onChange={(e) =>
             handleFieldChange('waveNumber', parseInt(e.target.value, 10) || 0)
           }
@@ -203,7 +203,7 @@ export function MetadataForm({
           id="plantAgeDays"
           type="number"
           min="0"
-          value={values.plantAgeDays || ''}
+          value={values.plantAgeDays ?? ''}
           onChange={(e) =>
             handleFieldChange('plantAgeDays', parseInt(e.target.value, 10) || 0)
           }

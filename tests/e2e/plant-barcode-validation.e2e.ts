@@ -1068,7 +1068,10 @@ test.describe('UI: Recent Scans Persistence', () => {
     await window.waitForLoadState('networkidle');
 
     // Wait for recent scans to load and verify scan appears
-    await expect(window.locator('text=RECENT_PLANT_001')).toBeVisible({
+    // Use data-testid selector to avoid strict mode violation
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-RECENT_PLANT_001"]')
+    ).toBeVisible({
       timeout: 10000,
     });
 
@@ -1077,7 +1080,9 @@ test.describe('UI: Recent Scans Persistence', () => {
     await window.waitForLoadState('networkidle');
 
     // Verify we're on a different page (scan should not be visible)
-    await expect(window.locator('text=RECENT_PLANT_001')).not.toBeVisible({
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-RECENT_PLANT_001"]')
+    ).not.toBeVisible({
       timeout: 3000,
     });
 
@@ -1086,7 +1091,9 @@ test.describe('UI: Recent Scans Persistence', () => {
     await window.waitForLoadState('networkidle');
 
     // Verify scan still appears (loaded from database on mount)
-    await expect(window.locator('text=RECENT_PLANT_001')).toBeVisible({
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-RECENT_PLANT_001"]')
+    ).toBeVisible({
       timeout: 10000,
     });
   });
@@ -1162,13 +1169,96 @@ test.describe('UI: Recent Scans Persistence', () => {
     await window.waitForLoadState('networkidle');
 
     // Today's scan should be visible
-    await expect(window.locator('text=TODAY_PLANT_001')).toBeVisible({
+    // Use data-testid selector to avoid strict mode violation
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-TODAY_PLANT_001"]')
+    ).toBeVisible({
       timeout: 10000,
     });
 
     // Yesterday's scan should NOT be visible
-    await expect(window.locator('text=YESTERDAY_PLANT_001')).not.toBeVisible({
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-YESTERDAY_PLANT_001"]')
+    ).not.toBeVisible({
       timeout: 3000,
     });
+  });
+});
+
+// ============================================================================
+// UI Tests - Session State Persistence with Zero Values
+// ============================================================================
+
+test.describe('UI: Session State Zero Value Persistence', () => {
+  test('should persist waveNumber = 0 across navigation', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. ZeroWave', email: 'zerowave@example.com' },
+    });
+
+    await prisma.phenotyper.create({
+      data: { name: 'Zero Phenotyper', email: 'zeropheno@example.com' },
+    });
+
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Zero Test Accession',
+        mappings: {
+          create: [
+            { plant_barcode: 'ZERO_PLANT_001', accession_name: 'GT_ZERO' },
+          ],
+        },
+      },
+    });
+
+    await prisma.experiment.create({
+      data: {
+        name: 'Zero Wave Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Fill in form with waveNumber = 0
+    await window.waitForSelector('.experiment-chooser');
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    await window.waitForSelector('.phenotyper-chooser');
+    await window.selectOption('.phenotyper-chooser', { index: 1 });
+
+    // Set wave number to 0 (valid value)
+    const waveNumberInput = window.locator('#waveNumber');
+    await waveNumberInput.fill('0');
+
+    // Set plant age to 0 (valid value - e.g., day of planting)
+    const plantAgeInput = window.locator('#plantAgeDays');
+    await plantAgeInput.fill('0');
+
+    // Wait for session save debounce (300ms + buffer)
+    await window.waitForTimeout(500);
+
+    // Navigate away
+    await window.click('text=Scientists');
+    await window.waitForLoadState('networkidle');
+
+    // Navigate back
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for session restore
+    await window.waitForTimeout(500);
+
+    // Verify wave number is still 0 (not empty or reset)
+    const restoredWaveNumber = await window.locator('#waveNumber').inputValue();
+    const restoredPlantAge = await window.locator('#plantAgeDays').inputValue();
+
+    // These should be '0', not '' (empty)
+    expect(restoredWaveNumber).toBe('0');
+    expect(restoredPlantAge).toBe('0');
   });
 });

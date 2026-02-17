@@ -178,19 +178,20 @@ export function CaptureScan() {
       try {
         const session = await window.electron.session.get();
         // Only apply if there's any saved state
+        // Use explicit null checks to allow 0 as a valid value for numeric fields
         if (
-          session.phenotyperId ||
-          session.experimentId ||
-          session.waveNumber ||
-          session.plantAgeDays
+          session.phenotyperId !== null ||
+          session.experimentId !== null ||
+          session.waveNumber !== null ||
+          session.plantAgeDays !== null
         ) {
           setMetadata((prev) => ({
             ...prev,
-            phenotyper: session.phenotyperId || '',
-            experimentId: session.experimentId || '',
-            waveNumber: session.waveNumber || 0,
-            plantAgeDays: session.plantAgeDays || 0,
-            accessionName: session.accessionName || '',
+            phenotyper: session.phenotyperId ?? '',
+            experimentId: session.experimentId ?? '',
+            waveNumber: session.waveNumber ?? 0,
+            plantAgeDays: session.plantAgeDays ?? 0,
+            accessionName: session.accessionName ?? '',
             // Note: plantQrCode is NOT restored - it's unique per scan
           }));
         }
@@ -210,11 +211,14 @@ export function CaptureScan() {
 
     const saveTimeout = setTimeout(async () => {
       try {
+        // Use explicit checks to preserve 0 as valid numeric values
+        // String fields: empty string → null
+        // Numeric fields: preserve 0 as valid, only convert undefined to null
         await window.electron.session.set({
           phenotyperId: metadata.phenotyper || null,
           experimentId: metadata.experimentId || null,
-          waveNumber: metadata.waveNumber || null,
-          plantAgeDays: metadata.plantAgeDays || null,
+          waveNumber: metadata.waveNumber,
+          plantAgeDays: metadata.plantAgeDays,
           accessionName: metadata.accessionName || null,
           // Note: plantQrCode is NOT saved - it's unique per scan
         });

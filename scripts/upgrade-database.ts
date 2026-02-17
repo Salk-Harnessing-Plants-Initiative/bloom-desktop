@@ -30,19 +30,20 @@ export interface UpgradeResult {
 
 /**
  * Known migrations with their checksums
- * Checksums are from actual Prisma migration files
+ * Checksums are SHA-256 hashes of migration.sql files (computed by Prisma)
+ * These must match exactly for `prisma migrate status` to pass
  */
 const MIGRATIONS: Record<string, { checksum: string; name: string }> = {
   '20251028040530_init': {
-    checksum: 'init-checksum-placeholder',
+    checksum: '30988f39ce45f569219c734eae8c18587c0f79326b3f7dbd6f4c9b84f72f1240',
     name: '20251028040530_init',
   },
   '20251125180403_add_genotype_id_to_plant_mappings': {
-    checksum: 'add-genotype-checksum-placeholder',
+    checksum: '428b3a040b4abac2721c37eb047f5259552b1141737e3ef19c1cca3455abf54a',
     name: '20251125180403_add_genotype_id_to_plant_mappings',
   },
   '20260211195433_cleanup_accession_fields': {
-    checksum: 'cleanup-checksum-placeholder',
+    checksum: 'ed0532a62d4c4c49ad2d06101e11e4ada508e235121a82e73a20d6fb09f89036',
     name: '20260211195433_cleanup_accession_fields',
   },
 };

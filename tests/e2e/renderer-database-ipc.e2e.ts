@@ -1433,3 +1433,121 @@ test.describe('Renderer Database IPC - Context Isolation', () => {
     expect(electronAPIs.hasScanner).toBe(true);
   });
 });
+
+// ============================================================================
+// Session State IPC Tests - Zero Value Persistence
+// ============================================================================
+
+test.describe('Renderer Session IPC - Zero Value Persistence', () => {
+  test('should persist waveNumber = 0 correctly', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Set waveNumber to 0 (valid value that should persist)
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: 0,
+      });
+    });
+
+    // Get session state back
+    const session = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+
+    // waveNumber should be 0, not null
+    expect(session.waveNumber).toBe(0);
+  });
+
+  test('should persist plantAgeDays = 0 correctly', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Set plantAgeDays to 0 (valid value that should persist)
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        plantAgeDays: 0,
+      });
+    });
+
+    // Get session state back
+    const session = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+
+    // plantAgeDays should be 0, not null
+    expect(session.plantAgeDays).toBe(0);
+  });
+
+  test('should persist both waveNumber and plantAgeDays as 0 together', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Set both to 0
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: 0,
+        plantAgeDays: 0,
+        experimentId: 'test-experiment-id',
+      });
+    });
+
+    // Get session state back
+    const session = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+
+    // Both should be 0, not null
+    expect(session.waveNumber).toBe(0);
+    expect(session.plantAgeDays).toBe(0);
+    expect(session.experimentId).toBe('test-experiment-id');
+  });
+
+  test('should distinguish between 0 and null', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Verify initial state is null
+    const initialSession = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+    expect(initialSession.waveNumber).toBeNull();
+    expect(initialSession.plantAgeDays).toBeNull();
+
+    // Set to 0
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: 0,
+        plantAgeDays: 0,
+      });
+    });
+
+    const afterSetSession = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+    expect(afterSetSession.waveNumber).toBe(0);
+    expect(afterSetSession.plantAgeDays).toBe(0);
+
+    // Set back to null explicitly
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: null,
+        plantAgeDays: null,
+      });
+    });
+
+    const finalSession = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+    expect(finalSession.waveNumber).toBeNull();
+    expect(finalSession.plantAgeDays).toBeNull();
+  });
+});

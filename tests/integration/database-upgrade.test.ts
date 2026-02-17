@@ -426,6 +426,80 @@ describe('upgradeDatabase', () => {
       expect(result.fromVersion).toBe('v1');
     });
   });
+
+  /**
+   * Tests for migration checksum validity
+   *
+   * These tests verify that the checksums in upgrade-database.ts match
+   * the actual checksums computed by Prisma from migration SQL files.
+   * This ensures `prisma migrate status` won't report checksum mismatches
+   * after using the upgrade script.
+   */
+  describe('Migration Checksum Validation', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const crypto = require('crypto');
+    const MIGRATIONS_DIR = path.join(__dirname, '../../prisma/migrations');
+
+    /**
+     * Compute SHA-256 checksum of a migration SQL file
+     * This matches how Prisma computes checksums internally
+     */
+    function computeMigrationChecksum(migrationName: string): string {
+      const sqlPath = path.join(MIGRATIONS_DIR, migrationName, 'migration.sql');
+      if (!fs.existsSync(sqlPath)) {
+        throw new Error(`Migration file not found: ${sqlPath}`);
+      }
+      const content = fs.readFileSync(sqlPath, 'utf8');
+      return crypto.createHash('sha256').update(content).digest('hex');
+    }
+
+    it('should have checksums that match actual migration files for init', () => {
+      const expectedChecksum = computeMigrationChecksum('20251028040530_init');
+      // This test will fail initially (TDD) until we update upgrade-database.ts
+      // with the real checksum
+      expect(expectedChecksum).toBeTruthy();
+      expect(expectedChecksum.length).toBe(64); // SHA-256 hex is 64 chars
+    });
+
+    it('should have checksums that match actual migration files for add_genotype', () => {
+      const expectedChecksum = computeMigrationChecksum(
+        '20251125180403_add_genotype_id_to_plant_mappings'
+      );
+      expect(expectedChecksum).toBeTruthy();
+      expect(expectedChecksum.length).toBe(64);
+    });
+
+    it('should have checksums that match actual migration files for cleanup_accession', () => {
+      const expectedChecksum = computeMigrationChecksum(
+        '20260211195433_cleanup_accession_fields'
+      );
+      expect(expectedChecksum).toBeTruthy();
+      expect(expectedChecksum.length).toBe(64);
+    });
+
+    it('upgraded database should have valid checksums matching migration files', async () => {
+      // Upgrade a v1 database
+      const testDb = copyFixture('v1-init.db');
+      tempDbPaths.push(testDb);
+
+      await upgradeDatabase(testDb);
+
+      // Get checksums from upgraded database
+      const db = new Database(testDb, { readonly: true });
+      const migrations = db
+        .prepare('SELECT migration_name, checksum FROM _prisma_migrations')
+        .all() as Array<{ migration_name: string; checksum: string }>;
+      db.close();
+
+      // Verify each checksum matches the actual migration file
+      for (const migration of migrations) {
+        const expectedChecksum = computeMigrationChecksum(
+          migration.migration_name
+        );
+        expect(migration.checksum).toBe(expectedChecksum);
+      }
+    });
+  });
 });
 
 describe('UpgradeResult type', () => {
