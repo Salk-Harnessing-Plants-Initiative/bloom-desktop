@@ -7,7 +7,6 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { randomUUID } from 'crypto';
 
 // Use dev database for testing
 // Tests will clean up after themselves
@@ -267,7 +266,7 @@ describe('Database Schema', () => {
           phenotyper_id: phenotyper.id,
           scanner_name: 'Station-A',
           plant_id: 'PLANT-001',
-          accession_id: accession.id,
+          accession_name: 'Col-0',
           path: './scans/test/PLANT-001',
           capture_date: new Date(),
           num_frames: 72,
@@ -396,6 +395,322 @@ describe('Database Schema', () => {
 
       expect(scans).toHaveLength(1);
       expect(scans[0].plant_id).toBe('PLANT-001');
+    });
+
+    describe('getRecent scans query', () => {
+      it('should return today scans sorted by capture_date desc', async () => {
+        const now = new Date();
+        const earlier = new Date(now.getTime() - 60000); // 1 minute earlier
+
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-EARLIER',
+            path: './scans/test/PLANT-EARLIER',
+            capture_date: earlier,
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+          },
+        });
+
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-LATER',
+            path: './scans/test/PLANT-LATER',
+            capture_date: now,
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+          },
+        });
+
+        // Query for today's scans, sorted by capture_date desc
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const scans = await prisma.scan.findMany({
+          where: {
+            capture_date: {
+              gte: today,
+              lt: tomorrow,
+            },
+            deleted: false,
+          },
+          orderBy: { capture_date: 'desc' },
+        });
+
+        expect(scans).toHaveLength(2);
+        expect(scans[0].plant_id).toBe('PLANT-LATER'); // Most recent first
+        expect(scans[1].plant_id).toBe('PLANT-EARLIER');
+      });
+
+      it('should limit results to specified count', async () => {
+        // Create 15 scans
+        for (let i = 0; i < 15; i++) {
+          await prisma.scan.create({
+            data: {
+              experiment_id: experiment.id,
+              phenotyper_id: phenotyper.id,
+              scanner_name: 'Station-A',
+              plant_id: `PLANT-${i.toString().padStart(3, '0')}`,
+              path: `./scans/test/PLANT-${i}`,
+              capture_date: new Date(),
+              num_frames: 72,
+              exposure_time: 10000,
+              gain: 5.0,
+              brightness: 0.5,
+              contrast: 1.0,
+              gamma: 1.0,
+              seconds_per_rot: 36.0,
+              wave_number: 1,
+              plant_age_days: 14,
+            },
+          });
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const scans = await prisma.scan.findMany({
+          where: {
+            capture_date: {
+              gte: today,
+              lt: tomorrow,
+            },
+            deleted: false,
+          },
+          orderBy: { capture_date: 'desc' },
+          take: 10, // Limit to 10
+        });
+
+        expect(scans).toHaveLength(10);
+      });
+
+      it('should exclude deleted scans', async () => {
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-ACTIVE',
+            path: './scans/test/PLANT-ACTIVE',
+            capture_date: new Date(),
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+            deleted: false,
+          },
+        });
+
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-DELETED',
+            path: './scans/test/PLANT-DELETED',
+            capture_date: new Date(),
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+            deleted: true,
+          },
+        });
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const scans = await prisma.scan.findMany({
+          where: {
+            capture_date: {
+              gte: today,
+              lt: tomorrow,
+            },
+            deleted: false,
+          },
+          orderBy: { capture_date: 'desc' },
+        });
+
+        expect(scans).toHaveLength(1);
+        expect(scans[0].plant_id).toBe('PLANT-ACTIVE');
+      });
+
+      it('should filter by experiment_id when provided', async () => {
+        // Create a second experiment
+        const scientist2 = await prisma.scientist.create({
+          data: {
+            name: 'Dr. Other',
+            email: 'other@salk.edu',
+          },
+        });
+        const experiment2 = await prisma.experiment.create({
+          data: {
+            name: 'other-experiment',
+            species: 'Amaranthus',
+            scientist_id: scientist2.id,
+          },
+        });
+
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-EXP1',
+            path: './scans/test/PLANT-EXP1',
+            capture_date: new Date(),
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+          },
+        });
+
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment2.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-EXP2',
+            path: './scans/test/PLANT-EXP2',
+            capture_date: new Date(),
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+          },
+        });
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const scans = await prisma.scan.findMany({
+          where: {
+            experiment_id: experiment.id,
+            capture_date: {
+              gte: today,
+              lt: tomorrow,
+            },
+            deleted: false,
+          },
+          orderBy: { capture_date: 'desc' },
+        });
+
+        expect(scans).toHaveLength(1);
+        expect(scans[0].plant_id).toBe('PLANT-EXP1');
+      });
+
+      it('should exclude scans from previous days', async () => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-TODAY',
+            path: './scans/test/PLANT-TODAY',
+            capture_date: new Date(),
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+          },
+        });
+
+        await prisma.scan.create({
+          data: {
+            experiment_id: experiment.id,
+            phenotyper_id: phenotyper.id,
+            scanner_name: 'Station-A',
+            plant_id: 'PLANT-YESTERDAY',
+            path: './scans/test/PLANT-YESTERDAY',
+            capture_date: yesterday,
+            num_frames: 72,
+            exposure_time: 10000,
+            gain: 5.0,
+            brightness: 0.5,
+            contrast: 1.0,
+            gamma: 1.0,
+            seconds_per_rot: 36.0,
+            wave_number: 1,
+            plant_age_days: 14,
+          },
+        });
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const scans = await prisma.scan.findMany({
+          where: {
+            capture_date: {
+              gte: today,
+              lt: tomorrow,
+            },
+            deleted: false,
+          },
+          orderBy: { capture_date: 'desc' },
+        });
+
+        expect(scans).toHaveLength(1);
+        expect(scans[0].plant_id).toBe('PLANT-TODAY');
+      });
     });
   });
 
@@ -535,8 +850,8 @@ describe('Database Schema', () => {
     it('should create a plant-accession mapping', async () => {
       const mapping = await prisma.plantAccessionMappings.create({
         data: {
-          accession_id: randomUUID(),
           plant_barcode: 'PLANT-001',
+          accession_name: 'Col-0',
           accession_file_id: accession.id,
         },
       });
@@ -544,13 +859,14 @@ describe('Database Schema', () => {
       expect(mapping).toBeDefined();
       expect(mapping.id).toBeTruthy();
       expect(mapping.plant_barcode).toBe('PLANT-001');
+      expect(mapping.accession_name).toBe('Col-0');
     });
 
     it('should include accession in query', async () => {
       await prisma.plantAccessionMappings.create({
         data: {
-          accession_id: randomUUID(),
           plant_barcode: 'PLANT-001',
+          accession_name: 'Col-0',
           accession_file_id: accession.id,
         },
       });

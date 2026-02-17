@@ -45,9 +45,10 @@ The database schema is **100% compatible** with the [bloom-desktop-pilot schema]
 
 ### Development
 
-- **Path**: `./prisma/dev.db`
-- **Created by**: `prisma migrate dev`
+- **Path**: `~/.bloom/dev.db`
+- **Created by**: `prisma migrate deploy` or `npm run prisma:reset`
 - **Used when**: `NODE_ENV=development`
+- **Rationale**: Database stored outside project directory to persist across branches and avoid accidental Git commits
 
 ### Production
 
@@ -131,8 +132,8 @@ Many-to-many relationship between plants and accessions.
 ```prisma
 model PlantAccessionMappings {
   id                String     @id @default(uuid())
-  accession_id      String
   plant_barcode     String
+  accession_name    String?    // Renamed from genotype_id in v3 migration
   accession_file_id String
   accession         Accessions @relation(fields: [accession_file_id], references: [id])
 }
@@ -147,7 +148,7 @@ model Scan {
   phenotyper_id   String
   scanner_name    String
   plant_id        String
-  accession_id    String?
+  accession_name  String?    // Renamed from accession_id in v3 migration
   path            String
   capture_date    DateTime   @default(now())
   num_frames      Int
@@ -188,40 +189,139 @@ model Image {
 
 ## Prisma Commands
 
+**Important**: Most Prisma CLI commands require the `BLOOM_DATABASE_URL` environment variable:
+
+```bash
+# Set for your shell session
+export BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db"
+```
+
+The database path is intentionally not hardcoded in npm scripts to allow flexibility for Machine Configuration.
+
 ### Development Workflow
 
 ```bash
-# Generate Prisma Client (run after schema changes)
+# Generate Prisma Client (run after schema changes) - no env var needed
 npm run prisma:generate
 
 # Create and apply migrations
-npm run prisma:migrate
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:migrate
 
 # Seed database with test data
-npm run prisma:seed
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:seed
 
 # Open Prisma Studio (visual database browser)
-npm run prisma:studio
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:studio
 ```
 
 ### Advanced Commands
 
 ```bash
 # Create migration without applying
-npx prisma migrate dev --create-only
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npx prisma migrate dev --create-only
 
 # Apply migrations in production
-npx prisma migrate deploy
-
-# Reset database (WARNING: deletes all data)
-npx prisma migrate reset
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npx prisma migrate deploy
 
 # View migration status
-npx prisma migrate status
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npx prisma migrate status
 
-# Format schema file
+# Format schema file (no env var needed)
 npx prisma format
 ```
+
+## Database Upgrade Workflow
+
+Use this workflow when you have an existing database with data that needs to be upgraded to the current schema version.
+
+### When to Use Upgrade
+
+- You have a database created with `prisma db push` (no `_prisma_migrations` table)
+- You have a database from bloom-desktop-pilot
+- Your database is missing recent schema changes but has valuable data you want to preserve
+
+### How It Works
+
+The upgrade script:
+
+1. Creates a backup of your database before any modifications
+2. Detects the current schema version by inspecting table columns
+3. Creates the `_prisma_migrations` table with appropriate records
+4. Applies any necessary schema migrations while preserving data
+
+### Usage
+
+```bash
+# Upgrade development database (~/.bloom/dev.db)
+npm run db:upgrade
+
+# Upgrade a specific database file
+npx ts-node scripts/upgrade-database.ts /path/to/database.db
+```
+
+### Schema Versions
+
+The upgrade script handles these schema versions:
+
+| Version      | Description           | Key Characteristics                                                        |
+| ------------ | --------------------- | -------------------------------------------------------------------------- |
+| v1 (init)    | Original/pilot schema | `PlantAccessionMappings` has `accession_id`                                |
+| v2           | Add genotype          | `PlantAccessionMappings` has `genotype_id`                                 |
+| v3 (current) | Cleanup fields        | `PlantAccessionMappings` has `accession_name`, `Scan` has `accession_name` |
+
+### Upgrade Paths
+
+- **v1 → v3**: Copies `accession_id` to `accession_name`, removes old columns
+- **v2 → v3**: Copies `genotype_id` to `accession_name`, removes old columns
+- **Pilot → v3**: Same as v1 → v3 (pilot uses v1 schema)
+
+### Backup and Recovery
+
+The upgrade script always creates a backup at `<database>.backup` before modifications:
+
+```bash
+# If upgrade fails, restore from backup
+cp ~/.bloom/dev.db.backup ~/.bloom/dev.db
+```
+
+## Database Reset Workflow
+
+Use this workflow when you want a fresh database (data loss is acceptable).
+
+### When to Use Reset
+
+- Setting up a new development environment
+- Your database has irrecoverable schema issues
+- You want to start with a clean slate
+
+### Usage
+
+Prisma CLI commands require the `BLOOM_DATABASE_URL` environment variable:
+
+```bash
+# Set for current session
+export BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db"
+
+# Reset database and apply migrations
+npm run prisma:reset
+
+# Reset database and seed with test data
+npm run prisma:reset:seed
+
+# Or prefix individual commands
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:reset
+```
+
+**⚠️ WARNING**: Reset deletes all local data. Use `npm run db:upgrade` if you need to preserve data.
+
+**Note**: The database path is not hardcoded in npm scripts to allow flexibility for Machine Configuration. The app sets this path dynamically at runtime.
+
+### How It Works
+
+The reset script:
+
+1. Deletes the development database at `~/.bloom/dev.db`
+2. Runs `prisma migrate deploy` to create a fresh database with all migrations
 
 ## IPC API Reference
 
@@ -277,6 +377,19 @@ window.electron.database.scans.get(id: string)
 // Create new scan
 window.electron.database.scans.create(data: ScanCreateData)
 // Returns: DatabaseResponse<Scan>
+
+// Get recent scans (today only, for CaptureScan page)
+window.electron.database.scans.getRecent(options?: {
+  limit?: number          // Default: 10
+  experimentId?: string   // Optional filter by experiment
+})
+// Returns: DatabaseResponse<ScanWithRelations[]>
+// Note: Returns scans from today, sorted by capture_date (most recent first)
+
+// Get most recent scan date for a plant in an experiment
+window.electron.database.scans.getMostRecentScanDate(plantId: string, experimentId: string)
+// Returns: DatabaseResponse<Date | null>
+// Note: Used for duplicate scan prevention
 ```
 
 ### Phenotypers
@@ -321,6 +434,16 @@ window.electron.database.accessions.create(data: {
   name: string
 })
 // Returns: DatabaseResponse<Accessions>
+
+// Get plant barcodes for an accession
+window.electron.database.accessions.getPlantBarcodes(accessionId: string)
+// Returns: DatabaseResponse<string[]>
+// Note: Returns all plant_barcode values from PlantAccessionMappings
+
+// Get accession name (genotype ID) for a barcode in an experiment
+window.electron.database.accessions.getAccessionNameByBarcode(barcode: string, experimentId: string)
+// Returns: DatabaseResponse<string | null>
+// Note: Looks up via experiment → accession → PlantAccessionMappings
 ```
 
 ### Images

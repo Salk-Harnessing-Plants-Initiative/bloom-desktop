@@ -12,17 +12,16 @@ The Machine Configuration feature (commit a6d3cd6) added an async IPC call (`con
 
 ## The Fix
 
-A startup delay in `src/main/database.ts` during E2E mode:
+A 500ms startup delay in `src/main/database.ts` during E2E mode:
 
 ```typescript
 if (process.env.E2E_TEST === 'true') {
-  const delay = process.env.CI === 'true' ? 500 : 100;
+  const delay = 500;
   await new Promise((resolve) => setTimeout(resolve, delay));
 }
 ```
 
-- **Local:** 100ms delay
-- **CI (GitHub Actions):** 500ms delay (slower/variable runner performance)
+- **Both Local and CI:** 500ms delay (100ms was found to be insufficient for local)
 
 ## Key Files
 
@@ -35,8 +34,8 @@ if (process.env.E2E_TEST === 'true') {
 ## Empirical Results
 
 - Without delay: ~15% tests pass (4/27)
-- With 100ms delay (local): 100% pass (27/27)
-- With 500ms delay (CI): All tests pass
+- With 100ms delay: Inconsistent - some tests fail intermittently
+- With 500ms delay: 100% pass (181/181) - required for both local and CI
 
 ## Debugging Similar Issues
 

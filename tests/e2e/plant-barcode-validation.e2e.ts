@@ -141,18 +141,15 @@ test.describe('IPC: db:accessions:getPlantBarcodes', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_A',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_A',
             },
             {
               plant_barcode: 'PLANT_002',
-              genotype_id: 'GT_B',
-              accession_id: 'ACC_002',
+              accession_name: 'GT_B',
             },
             {
               plant_barcode: 'OTHER_001',
-              genotype_id: 'GT_C',
-              accession_id: 'ACC_003',
+              accession_name: 'GT_C',
             },
           ],
         },
@@ -200,10 +197,10 @@ test.describe('IPC: db:accessions:getPlantBarcodes', () => {
 });
 
 // ============================================================================
-// IPC Handler Tests - db:accessions:getGenotypeByBarcode
+// IPC Handler Tests - db:accessions:getAccessionNameByBarcode
 // ============================================================================
 
-test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
+test.describe('IPC: db:accessions:getAccessionNameByBarcode', () => {
   test('should return genotype ID for valid plant barcode and experiment', async () => {
     // Create scientist
     const scientist = await prisma.scientist.create({
@@ -218,8 +215,7 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_ABC123',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_ABC123',
             },
           ],
         },
@@ -240,7 +236,10 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_001', expId: experiment.id }
     );
@@ -261,8 +260,7 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_ABC123',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_ABC123',
             },
           ],
         },
@@ -282,7 +280,10 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'INVALID_BARCODE', expId: experiment.id }
     );
@@ -309,7 +310,10 @@ test.describe('IPC: db:accessions:getGenotypeByBarcode', () => {
       ({ barcode, expId }) => {
         return (
           window as unknown as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_001', expId: experiment.id }
     );
@@ -486,8 +490,7 @@ test.describe('UI: Plant Barcode Validation', () => {
           create: [
             {
               plant_barcode: 'VALID_PLANT_001',
-              genotype_id: 'GT_001',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_001',
             },
           ],
         },
@@ -549,8 +552,7 @@ test.describe('UI: Plant Barcode Validation', () => {
           create: [
             {
               plant_barcode: 'PLANT_WITH_GENOTYPE',
-              genotype_id: 'AUTO_GENOTYPE_123',
-              accession_id: 'ACC_001', // Accession identifier from mapping structure
+              accession_name: 'AUTO_GENOTYPE_123',
             },
           ],
         },
@@ -579,8 +581,8 @@ test.describe('UI: Plant Barcode Validation', () => {
     await plantBarcodeInput.blur();
 
     // Genotype ID should be auto-populated
-    const genotypeInput = window.locator('#genotypeId');
-    await expect(genotypeInput).toHaveValue('AUTO_GENOTYPE_123', {
+    const accessionInput = window.locator('#accessionName');
+    await expect(accessionInput).toHaveValue('AUTO_GENOTYPE_123', {
       timeout: 5000,
     });
   });
@@ -670,23 +672,19 @@ test.describe('UI: Barcode Autocomplete', () => {
           create: [
             {
               plant_barcode: 'PLANT_001',
-              genotype_id: 'GT_001',
-              accession_id: 'ACC_001',
+              accession_name: 'GT_001',
             },
             {
               plant_barcode: 'PLANT_002',
-              genotype_id: 'GT_002',
-              accession_id: 'ACC_002',
+              accession_name: 'GT_002',
             },
             {
               plant_barcode: 'PLANT_003',
-              genotype_id: 'GT_003',
-              accession_id: 'ACC_003',
+              accession_name: 'GT_003',
             },
             {
               plant_barcode: 'OTHER_001',
-              genotype_id: 'GT_004',
-              accession_id: 'ACC_004',
+              accession_name: 'GT_004',
             },
           ],
         },
@@ -745,8 +743,7 @@ test.describe('UI: Barcode Autocomplete', () => {
           create: [
             {
               plant_barcode: 'SELECTABLE_PLANT',
-              genotype_id: 'SELECTED_GENOTYPE',
-              accession_id: 'ACC_001',
+              accession_name: 'SELECTED_GENOTYPE',
             },
           ],
         },
@@ -785,10 +782,174 @@ test.describe('UI: Barcode Autocomplete', () => {
     await expect(plantBarcodeInput).toHaveValue('SELECTABLE_PLANT');
 
     // Genotype should be auto-populated
-    const genotypeInput = window.locator('#genotypeId');
-    await expect(genotypeInput).toHaveValue('SELECTED_GENOTYPE', {
+    const accessionInput = window.locator('#accessionName');
+    await expect(accessionInput).toHaveValue('SELECTED_GENOTYPE', {
       timeout: 5000,
     });
+  });
+});
+
+// ============================================================================
+// UI Tests - Accession Requirement for Scanning
+// ============================================================================
+
+test.describe('UI: Accession Requirement for Scanning', () => {
+  test('should disable Start Scan when experiment has no accession linked', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. NoAccession', email: 'noaccession@example.com' },
+    });
+
+    // Create phenotyper
+    await prisma.phenotyper.create({
+      data: { name: 'NoAcc Phenotyper', email: 'noaccpheno@example.com' },
+    });
+
+    // Create experiment WITHOUT accession linked
+    await prisma.experiment.create({
+      data: {
+        name: 'Experiment Without Accession',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        // No accession_id - this is the key!
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for dropdowns to load
+    await window.waitForSelector('.experiment-chooser');
+    await window.waitForSelector('.phenotyper-chooser');
+
+    // Select experiment (the one without accession)
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    // Select phenotyper
+    await window.selectOption('.phenotyper-chooser', { index: 1 });
+
+    // Enter a plant barcode
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.waitFor({ state: 'visible', timeout: 5000 });
+    await plantBarcodeInput.fill('SOME_PLANT_001');
+    await plantBarcodeInput.blur();
+
+    // Start Scan button should be disabled
+    const startScanButton = window.locator('button:has-text("Start Scan")');
+    await expect(startScanButton).toBeDisabled({ timeout: 5000 });
+
+    // Should show error message about accession requirement
+    // Use data-testid to avoid ambiguity (message appears in both warning panel and barcode input)
+    await expect(
+      window.locator('[data-testid="accession-required-warning"]')
+    ).toBeVisible({
+      timeout: 5000,
+    });
+  });
+
+  test('should show guidance message to link accession file', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. NeedAccession', email: 'needacc@example.com' },
+    });
+
+    // Create phenotyper
+    await prisma.phenotyper.create({
+      data: { name: 'NeedAcc Phenotyper', email: 'needaccpheno@example.com' },
+    });
+
+    // Create experiment WITHOUT accession linked
+    await prisma.experiment.create({
+      data: {
+        name: 'Experiment Needs Accession',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Select experiment
+    await window.waitForSelector('.experiment-chooser');
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    // Should show guidance to link accession file
+    await expect(window.locator('text=Link an accession file')).toBeVisible({
+      timeout: 5000,
+    });
+  });
+
+  test('should enable Start Scan when experiment has valid accession and barcode', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. ValidAccession', email: 'validacc@example.com' },
+    });
+
+    // Create phenotyper
+    await prisma.phenotyper.create({
+      data: { name: 'Valid Phenotyper', email: 'validpheno@example.com' },
+    });
+
+    // Create accession with plant mapping
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Valid Test Accession',
+        mappings: {
+          create: [
+            {
+              plant_barcode: 'VALID_BARCODE_001',
+              accession_name: 'GT_VALID',
+            },
+          ],
+        },
+      },
+    });
+
+    // Create experiment WITH accession linked
+    await prisma.experiment.create({
+      data: {
+        name: 'Experiment With Accession',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for dropdowns to load
+    await window.waitForSelector('.experiment-chooser');
+    await window.waitForSelector('.phenotyper-chooser');
+
+    // Select experiment
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    // Select phenotyper
+    await window.selectOption('.phenotyper-chooser', { index: 1 });
+
+    // Enter a valid plant barcode
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.waitFor({ state: 'visible', timeout: 5000 });
+    await plantBarcodeInput.fill('VALID_BARCODE_001');
+    await plantBarcodeInput.blur();
+
+    // Should NOT show accession required warning panel
+    await expect(
+      window.locator('[data-testid="accession-required-warning"]')
+    ).not.toBeVisible({ timeout: 3000 });
+
+    // Should NOT show barcode validation error
+    await expect(
+      window.locator('[data-testid="plant-barcode-error"]')
+    ).not.toBeVisible({ timeout: 3000 });
+
+    // Note: Start Scan may still be disabled due to camera/scanner requirements
+    // but the accession-specific error should not be shown
   });
 });
 
@@ -835,5 +996,269 @@ test.describe('UI: Barcode Sanitization', () => {
     await plantBarcodeInput.fill('PLANT@001#TEST!');
 
     await expect(plantBarcodeInput).toHaveValue('PLANT001TEST');
+  });
+});
+
+// ============================================================================
+// UI Tests - Recent Scans Persistence
+// ============================================================================
+
+test.describe('UI: Recent Scans Persistence', () => {
+  test('should persist recent scans across navigation', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. RecentScans', email: 'recentscans@example.com' },
+    });
+
+    // Create phenotyper
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Recent Phenotyper', email: 'recentpheno@example.com' },
+    });
+
+    // Create accession with plant mapping
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Recent Test Accession',
+        mappings: {
+          create: [
+            {
+              plant_barcode: 'RECENT_PLANT_001',
+              accession_name: 'GT_RECENT',
+            },
+          ],
+        },
+      },
+    });
+
+    // Create experiment with accession linked
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Recent Scans Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
+    // Insert a scan directly via Prisma (simulating a completed scan)
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'RECENT_PLANT_001',
+        accession_name: 'GT_RECENT',
+        path: './scans/test/RECENT_PLANT_001_persistence_test',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for recent scans to load and verify scan appears
+    // Use data-testid selector to avoid strict mode violation
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-RECENT_PLANT_001"]')
+    ).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Navigate away to Scientists page
+    await window.click('text=Scientists');
+    await window.waitForLoadState('networkidle');
+
+    // Verify we're on a different page (scan should not be visible)
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-RECENT_PLANT_001"]')
+    ).not.toBeVisible({
+      timeout: 3000,
+    });
+
+    // Navigate back to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Verify scan still appears (loaded from database on mount)
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-RECENT_PLANT_001"]')
+    ).toBeVisible({
+      timeout: 10000,
+    });
+  });
+
+  test('should show only today scans in recent scans list', async () => {
+    // Create scientist
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. TodayScans', email: 'todayscans@example.com' },
+    });
+
+    // Create phenotyper
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Today Phenotyper', email: 'todaypheno@example.com' },
+    });
+
+    // Create experiment
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Today Scans Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Insert a scan from today
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'TODAY_PLANT_001',
+        path: './scans/test/TODAY_PLANT_001',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Insert a scan from yesterday (should NOT appear)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'YESTERDAY_PLANT_001',
+        path: './scans/test/YESTERDAY_PLANT_001',
+        capture_date: yesterday,
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Today's scan should be visible
+    // Use data-testid selector to avoid strict mode violation
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-TODAY_PLANT_001"]')
+    ).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Yesterday's scan should NOT be visible
+    await expect(
+      window.locator('[data-testid="recent-scan-plant-YESTERDAY_PLANT_001"]')
+    ).not.toBeVisible({
+      timeout: 3000,
+    });
+  });
+});
+
+// ============================================================================
+// UI Tests - Session State Persistence with Zero Values
+// ============================================================================
+
+test.describe('UI: Session State Zero Value Persistence', () => {
+  test('should persist waveNumber = 0 across navigation', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. ZeroWave', email: 'zerowave@example.com' },
+    });
+
+    await prisma.phenotyper.create({
+      data: { name: 'Zero Phenotyper', email: 'zeropheno@example.com' },
+    });
+
+    const accession = await prisma.accessions.create({
+      data: {
+        name: 'Zero Test Accession',
+        mappings: {
+          create: [
+            { plant_barcode: 'ZERO_PLANT_001', accession_name: 'GT_ZERO' },
+          ],
+        },
+      },
+    });
+
+    await prisma.experiment.create({
+      data: {
+        name: 'Zero Wave Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        accession_id: accession.id,
+      },
+    });
+
+    // Navigate to CaptureScan page
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Fill in form with waveNumber = 0
+    await window.waitForSelector('.experiment-chooser');
+    await window.selectOption('.experiment-chooser', { index: 1 });
+
+    await window.waitForSelector('.phenotyper-chooser');
+    await window.selectOption('.phenotyper-chooser', { index: 1 });
+
+    // Set wave number to 0 (valid value)
+    const waveNumberInput = window.locator('#waveNumber');
+    await waveNumberInput.fill('0');
+
+    // Set plant age to 0 (valid value - e.g., day of planting)
+    const plantAgeInput = window.locator('#plantAgeDays');
+    await plantAgeInput.fill('0');
+
+    // Wait for session save debounce (300ms + buffer)
+    await window.waitForTimeout(500);
+
+    // Navigate away
+    await window.click('text=Scientists');
+    await window.waitForLoadState('networkidle');
+
+    // Navigate back
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    // Wait for session restore
+    await window.waitForTimeout(500);
+
+    // Verify wave number is still 0 (not empty or reset)
+    const restoredWaveNumber = await window.locator('#waveNumber').inputValue();
+    const restoredPlantAge = await window.locator('#plantAgeDays').inputValue();
+
+    // These should be '0', not '' (empty)
+    expect(restoredWaveNumber).toBe('0');
+    expect(restoredPlantAge).toBe('0');
   });
 });

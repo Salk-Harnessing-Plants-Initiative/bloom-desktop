@@ -29,9 +29,11 @@ export function CaptureScan() {
     waveNumber: 0,
     plantAgeDays: 0,
     plantQrCode: '',
-    accessionId: '',
-    genotypeId: '',
+    accessionName: '',
   });
+
+  // Session state loaded flag
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   // Camera settings state
   const [cameraSettings, setCameraSettings] = useState<CameraSettings>(
@@ -140,6 +142,100 @@ export function CaptureScan() {
     };
     loadMachineConfig();
   }, []);
+
+  // Load recent scans from database on mount
+  useEffect(() => {
+    const loadRecentScans = async () => {
+      try {
+        const result = await window.electron.database.scans.getRecent({
+          limit: 10,
+        });
+
+        if (result.success && result.data) {
+          // Convert database scans to ScanSummary format
+          const dbScans: ScanSummary[] = result.data.map((scan) => ({
+            id: scan.id,
+            plantQrCode: scan.plant_id,
+            timestamp: new Date(scan.capture_date),
+            framesCaptured: scan.num_frames,
+            success: true,
+            outputPath: scan.path,
+          }));
+
+          setRecentScans(dbScans);
+        }
+      } catch (error) {
+        console.error('Failed to load recent scans:', error);
+      }
+    };
+
+    loadRecentScans();
+  }, []);
+
+  // Load session state on mount (persisted metadata across navigation)
+  useEffect(() => {
+    const loadSessionState = async () => {
+      try {
+        const session = await window.electron.session.get();
+        // Only apply if there's any saved state
+        // Use explicit null checks to allow 0 as a valid value for numeric fields
+        if (
+          session.phenotyperId !== null ||
+          session.experimentId !== null ||
+          session.waveNumber !== null ||
+          session.plantAgeDays !== null
+        ) {
+          setMetadata((prev) => ({
+            ...prev,
+            phenotyper: session.phenotyperId ?? '',
+            experimentId: session.experimentId ?? '',
+            waveNumber: session.waveNumber ?? 0,
+            plantAgeDays: session.plantAgeDays ?? 0,
+            accessionName: session.accessionName ?? '',
+            // Note: plantQrCode is NOT restored - it's unique per scan
+          }));
+        }
+        setSessionLoaded(true);
+      } catch (error) {
+        console.error('Failed to load session state:', error);
+        setSessionLoaded(true);
+      }
+    };
+    loadSessionState();
+  }, []);
+
+  // Save session state when metadata changes (debounced to avoid excessive IPC)
+  useEffect(() => {
+    // Don't save until session is loaded (avoid overwriting with initial empty state)
+    if (!sessionLoaded) return;
+
+    const saveTimeout = setTimeout(async () => {
+      try {
+        // Use explicit checks to preserve 0 as valid numeric values
+        // String fields: empty string → null
+        // Numeric fields: preserve 0 as valid, only convert undefined to null
+        await window.electron.session.set({
+          phenotyperId: metadata.phenotyper || null,
+          experimentId: metadata.experimentId || null,
+          waveNumber: metadata.waveNumber,
+          plantAgeDays: metadata.plantAgeDays,
+          accessionName: metadata.accessionName || null,
+          // Note: plantQrCode is NOT saved - it's unique per scan
+        });
+      } catch (error) {
+        console.error('Failed to save session state:', error);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(saveTimeout);
+  }, [
+    sessionLoaded,
+    metadata.phenotyper,
+    metadata.experimentId,
+    metadata.waveNumber,
+    metadata.plantAgeDays,
+    metadata.accessionName,
+  ]);
 
   // Check camera configuration on mount
   useEffect(() => {
@@ -291,7 +387,7 @@ export function CaptureScan() {
           phenotyper_id: metadata.phenotyper,
           scanner_name: scannerName,
           plant_id: metadata.plantQrCode,
-          accession_id: metadata.accessionId || undefined,
+          accession_name: metadata.accessionName || undefined,
           plant_age_days: metadata.plantAgeDays,
           wave_number: metadata.waveNumber,
         },
@@ -478,11 +574,18 @@ export function CaptureScan() {
                     Please fill in all required fields
                   </p>
                 )}
-                {!cameraConfigured && isFormValid && (
+                {barcodeValidationError && isFormValid && (
                   <p className="text-sm text-red-600 mt-2">
-                    Camera not configured
+                    {barcodeValidationError}
                   </p>
                 )}
+                {!cameraConfigured &&
+                  isFormValid &&
+                  !barcodeValidationError && (
+                    <p className="text-sm text-red-600 mt-2">
+                      Camera not configured
+                    </p>
+                  )}
               </div>
             </div>
           </div>

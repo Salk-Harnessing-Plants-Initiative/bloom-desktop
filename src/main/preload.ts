@@ -191,6 +191,8 @@ const databaseAPI: DatabaseAPI = {
         plantId,
         experimentId
       ),
+    getRecent: (options?: { limit?: number; experimentId?: string }) =>
+      ipcRenderer.invoke('db:scans:getRecent', options),
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),
@@ -208,7 +210,7 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:accessions:create', data),
     createWithMappings: (
       accessionData: { name: string },
-      mappings: { plant_barcode: string; genotype_id?: string }[]
+      mappings: { plant_barcode: string; accession_name?: string }[]
     ) =>
       ipcRenderer.invoke(
         'db:accessions:createWithMappings',
@@ -220,13 +222,13 @@ const databaseAPI: DatabaseAPI = {
     update: (id: string, data: { name: string }) =>
       ipcRenderer.invoke('db:accessions:update', id, data),
     delete: (id: string) => ipcRenderer.invoke('db:accessions:delete', id),
-    updateMapping: (mappingId: string, data: { genotype_id: string }) =>
+    updateMapping: (mappingId: string, data: { accession_name: string }) =>
       ipcRenderer.invoke('db:accessions:updateMapping', mappingId, data),
     getPlantBarcodes: (accessionId: string) =>
       ipcRenderer.invoke('db:accessions:getPlantBarcodes', accessionId),
-    getGenotypeByBarcode: (plantBarcode: string, experimentId: string) =>
+    getAccessionNameByBarcode: (plantBarcode: string, experimentId: string) =>
       ipcRenderer.invoke(
-        'db:accessions:getGenotypeByBarcode',
+        'db:accessions:getAccessionNameByBarcode',
         plantBarcode,
         experimentId
       ),
@@ -258,6 +260,22 @@ const configAPI: ConfigAPI = {
 };
 
 /**
+ * Session API exposed to renderer
+ * Manages in-memory session state that persists across page navigation
+ */
+const sessionAPI = {
+  get: () => ipcRenderer.invoke('session:get'),
+  set: (updates: {
+    phenotyperId?: string | null;
+    experimentId?: string | null;
+    waveNumber?: number | null;
+    plantAgeDays?: number | null;
+    accessionName?: string | null;
+  }) => ipcRenderer.invoke('session:set', updates),
+  reset: () => ipcRenderer.invoke('session:reset'),
+};
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
@@ -267,4 +285,5 @@ contextBridge.exposeInMainWorld('electron', {
   scanner: scannerAPI,
   database: databaseAPI,
   config: configAPI,
+  session: sessionAPI,
 });

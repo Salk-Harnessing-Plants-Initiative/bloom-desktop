@@ -413,11 +413,11 @@ test.describe('Renderer Database IPC - Accessions', () => {
         [
           {
             plant_barcode: 'PLANT001',
-            genotype_id: 'GENOTYPE_A',
+            accession_name: 'GENOTYPE_A',
           },
           {
             plant_barcode: 'PLANT002',
-            genotype_id: 'GENOTYPE_B',
+            accession_name: 'GENOTYPE_B',
           },
         ]
       );
@@ -444,16 +444,12 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              // accession_id is set automatically by Prisma via the parent relation
-              accession_id: 'dummy',
               plant_barcode: 'PLANT001',
-              genotype_id: 'GENOTYPE_A',
+              accession_name: 'GENOTYPE_A',
             },
             {
-              // accession_id is set automatically by Prisma via the parent relation
-              accession_id: 'dummy',
               plant_barcode: 'PLANT002',
-              genotype_id: 'GENOTYPE_B',
+              accession_name: 'GENOTYPE_B',
             },
           ],
         },
@@ -480,19 +476,16 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_A_01',
-              genotype_id: 'GENO_A',
+              accession_name: 'GENO_A',
             },
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_B_02',
-              genotype_id: 'GENO_B',
+              accession_name: 'GENO_B',
             },
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_C_03',
-              genotype_id: 'GENO_C',
+              accession_name: 'GENO_C',
             },
           ],
         },
@@ -512,7 +505,7 @@ test.describe('Renderer Database IPC - Accessions', () => {
     expect(result.data).toContain('PLANT_C_03');
   });
 
-  test('should get genotype ID by barcode from renderer', async () => {
+  test('should get accession name by barcode from renderer', async () => {
     // Seed scientist
     const scientist = await prisma.scientist.create({
       data: {
@@ -528,14 +521,12 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'ACC_001', // Accession ID from the file
               plant_barcode: 'PLANT_X_01',
-              genotype_id: 'GENOTYPE_X',
+              accession_name: 'GENOTYPE_X',
             },
             {
-              accession_id: 'ACC_001', // Accession ID from the file
               plant_barcode: 'PLANT_Y_02',
-              genotype_id: 'GENOTYPE_Y',
+              accession_name: 'GENOTYPE_Y',
             },
           ],
         },
@@ -556,7 +547,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
       ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_X_01', expId: experiment.id }
     );
@@ -581,9 +575,8 @@ test.describe('Renderer Database IPC - Accessions', () => {
         mappings: {
           create: [
             {
-              accession_id: 'dummy',
               plant_barcode: 'PLANT_VALID',
-              genotype_id: 'GENO_VALID',
+              accession_name: 'GENO_VALID',
             },
           ],
         },
@@ -604,7 +597,10 @@ test.describe('Renderer Database IPC - Accessions', () => {
       ({ barcode, expId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.accessions.getGenotypeByBarcode(barcode, expId);
+        ).electron.database.accessions.getAccessionNameByBarcode(
+          barcode,
+          expId
+        );
       },
       { barcode: 'PLANT_INVALID', expId: experiment.id }
     );
@@ -1345,6 +1341,58 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
   });
 });
 
+test.describe('Renderer Database IPC - Scans getRecent', () => {
+  test('should get recent scans from today', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Recent Scientist', email: 'recent@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Recent Phenotyper', email: 'recentpheno@test.com' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Recent Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Create a scan from today
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'RECENT_SCAN_001',
+        path: './scans/test/RECENT_SCAN_001',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Call getRecent via IPC
+    const result = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.database.scans.getRecent();
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeDefined();
+    expect(Array.isArray(result.data)).toBe(true);
+    expect(result.data!.length).toBeGreaterThan(0);
+    expect(result.data![0].plant_id).toBe('RECENT_SCAN_001');
+  });
+});
+
 test.describe('Renderer Database IPC - Context Isolation', () => {
   test('should not expose require() to renderer', async () => {
     const hasRequire = await window.evaluate(() => {
@@ -1383,5 +1431,123 @@ test.describe('Renderer Database IPC - Context Isolation', () => {
     expect(electronAPIs.hasDatabase).toBe(true);
     expect(electronAPIs.hasCamera).toBe(true);
     expect(electronAPIs.hasScanner).toBe(true);
+  });
+});
+
+// ============================================================================
+// Session State IPC Tests - Zero Value Persistence
+// ============================================================================
+
+test.describe('Renderer Session IPC - Zero Value Persistence', () => {
+  test('should persist waveNumber = 0 correctly', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Set waveNumber to 0 (valid value that should persist)
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: 0,
+      });
+    });
+
+    // Get session state back
+    const session = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+
+    // waveNumber should be 0, not null
+    expect(session.waveNumber).toBe(0);
+  });
+
+  test('should persist plantAgeDays = 0 correctly', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Set plantAgeDays to 0 (valid value that should persist)
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        plantAgeDays: 0,
+      });
+    });
+
+    // Get session state back
+    const session = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+
+    // plantAgeDays should be 0, not null
+    expect(session.plantAgeDays).toBe(0);
+  });
+
+  test('should persist both waveNumber and plantAgeDays as 0 together', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Set both to 0
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: 0,
+        plantAgeDays: 0,
+        experimentId: 'test-experiment-id',
+      });
+    });
+
+    // Get session state back
+    const session = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+
+    // Both should be 0, not null
+    expect(session.waveNumber).toBe(0);
+    expect(session.plantAgeDays).toBe(0);
+    expect(session.experimentId).toBe('test-experiment-id');
+  });
+
+  test('should distinguish between 0 and null', async () => {
+    // Reset session first
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.reset();
+    });
+
+    // Verify initial state is null
+    const initialSession = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+    expect(initialSession.waveNumber).toBeNull();
+    expect(initialSession.plantAgeDays).toBeNull();
+
+    // Set to 0
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: 0,
+        plantAgeDays: 0,
+      });
+    });
+
+    const afterSetSession = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+    expect(afterSetSession.waveNumber).toBe(0);
+    expect(afterSetSession.plantAgeDays).toBe(0);
+
+    // Set back to null explicitly
+    await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.set({
+        waveNumber: null,
+        plantAgeDays: null,
+      });
+    });
+
+    const finalSession = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.session.get();
+    });
+    expect(finalSession.waveNumber).toBeNull();
+    expect(finalSession.plantAgeDays).toBeNull();
   });
 });

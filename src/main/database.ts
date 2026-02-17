@@ -244,10 +244,10 @@ export async function initializeDatabaseAsync(
   // connection to stabilize before the app fully initializes. Without this
   // delay, tests fail intermittently because the Electron app starts processing
   // before Playwright has fully connected via the debugging port.
-  // CI environments need a longer delay due to slower/variable runner performance.
+  // 500ms is required for both local and CI environments - 100ms is not sufficient.
   // See: docs/E2E_TESTING.md and commit daaba62
   if (process.env.E2E_TEST === 'true') {
-    const delay = process.env.CI === 'true' ? 500 : 100;
+    const delay = 500;
     console.log(
       `[Database] E2E mode - ${delay}ms delay for Playwright connection`
     );
