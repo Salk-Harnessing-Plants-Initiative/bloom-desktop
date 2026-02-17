@@ -41,6 +41,7 @@ The `db:scans:getRecent` handler accepts a `limit` parameter without validation,
 ### Solution
 
 Validate and clamp the limit parameter:
+
 - Default: 10
 - Max: 100
 - Handle invalid types and negative values
@@ -66,11 +67,11 @@ the checksum and compares. Mismatches indicate drift.
 
 Computed from the actual migration.sql files:
 
-| Migration | Checksum |
-|-----------|----------|
-| `20251028040530_init` | `30988f39ce45f569219c734eae8c18587c0f79326b3f7dbd6f4c9b84f72f1240` |
+| Migration                                          | Checksum                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------ |
+| `20251028040530_init`                              | `30988f39ce45f569219c734eae8c18587c0f79326b3f7dbd6f4c9b84f72f1240` |
 | `20251125180403_add_genotype_id_to_plant_mappings` | `428b3a040b4abac2721c37eb047f5259552b1141737e3ef19c1cca3455abf54a` |
-| `20260211195433_cleanup_accession_fields` | `ed0532a62d4c4c49ad2d06101e11e4ada508e235121a82e73a20d6fb09f89036` |
+| `20260211195433_cleanup_accession_fields`          | `ed0532a62d4c4c49ad2d06101e11e4ada508e235121a82e73a20d6fb09f89036` |
 
 ### Use Cases
 
@@ -108,6 +109,7 @@ Playwright strict mode violations in CI.
 ### Root Cause
 
 Tests use `locator('text=RECENT_PLANT_001')` which matches both:
+
 1. The plant barcode in test data setup
 2. The plant barcode displayed in the recent scans list
 
