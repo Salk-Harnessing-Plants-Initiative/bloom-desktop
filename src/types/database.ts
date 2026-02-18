@@ -47,11 +47,15 @@ export type ExperimentWithRelations = Prisma.ExperimentGetPayload<{
 }>;
 
 /**
- * Scan with related experiment, phenotyper, and images
+ * Scan with related experiment (including scientist), phenotyper, and images
  */
 export type ScanWithRelations = Prisma.ScanGetPayload<{
   include: {
-    experiment: true;
+    experiment: {
+      include: {
+        scientist: true;
+      };
+    };
     phenotyper: true;
     images: true;
   };

@@ -262,8 +262,10 @@ export function ScanPreview() {
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
-                    target.parentElement!.innerHTML =
-                      '<p class="text-sm text-gray-500">Image not found</p>';
+                    if (target.parentElement) {
+                      target.parentElement.innerHTML =
+                        '<p class="text-sm text-gray-500">Image not found</p>';
+                    }
                   }}
                 />
               </div>
@@ -322,6 +324,12 @@ export function ScanPreview() {
                       {scan.experiment?.species || '-'}
                     </dd>
                   </div>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Scientist</dt>
+                    <dd className="font-medium">
+                      {scan.experiment?.scientist?.name || '-'}
+                    </dd>
+                  </div>
                 </dl>
               </div>
 
@@ -350,6 +358,12 @@ export function ScanPreview() {
                   <div className="flex justify-between">
                     <dt className="text-gray-500">Total Frames</dt>
                     <dd className="font-medium">{totalFrames}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Rotation</dt>
+                    <dd className="font-medium">
+                      {scan.seconds_per_rot ? `${scan.seconds_per_rot} sec/rot` : '-'}
+                    </dd>
                   </div>
                 </dl>
               </div>

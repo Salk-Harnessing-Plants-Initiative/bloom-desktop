@@ -652,7 +652,11 @@ export function registerDatabaseHandlers() {
             db.scan.findMany({
               where,
               include: {
-                experiment: true,
+                experiment: {
+                  include: {
+                    scientist: true,
+                  },
+                },
                 phenotyper: true,
                 images: true,
               },
@@ -686,7 +690,11 @@ export function registerDatabaseHandlers() {
               plant_id: filters?.plant_id,
             },
             include: {
-              experiment: true,
+              experiment: {
+                include: {
+                  scientist: true,
+                },
+              },
               phenotyper: true,
               images: { select: { id: true, status: true } }, // Just id/status, not full image data
             },
@@ -711,7 +719,11 @@ export function registerDatabaseHandlers() {
         const scan = await db.scan.findUnique({
           where: { id },
           include: {
-            experiment: true,
+            experiment: {
+              include: {
+                scientist: true,
+              },
+            },
             phenotyper: true,
             images: {
               orderBy: { frame_number: 'asc' },

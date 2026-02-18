@@ -189,6 +189,64 @@ All quick fixes have been implemented:
 - [x] Capture: Date, Phenotyper, Scanner, Total Frames
 - [x] Camera Settings: Exposure, Gain, Gamma, Brightness, Contrast
 
+### 4.11 Missing Metadata Fields
+
+**Issue**: The following fields from the database are not displayed in ScanPreview:
+
+1. **Scientist** - Linked to Experiment via `experiment.scientist` relation
+2. **Rotation Speed** - `scan.seconds_per_rot` field (seconds per rotation)
+
+**Required Changes:**
+
+1. Update `ScanWithRelations` type to include nested `experiment.scientist`
+2. Update `db:scans:get` and `db:scans:list` handlers to include scientist relation
+3. Update ScanPreview to display these fields
+
+**RED** - Add tests to `tests/e2e/scan-preview.e2e.ts`:
+
+```typescript
+test('should display scientist attached to experiment', async () => {
+  await createTestScan({ plant_id: 'PLANT-SCIENTIST-TEST' });
+  await window.click('text=Browse Scans');
+  await window.click('text=PLANT-SCIENTIST-TEST');
+
+  // Scientist is linked to experiment
+  await expect(window.locator('text=Scientist')).toBeVisible();
+  await expect(window.locator('text=Test Scientist')).toBeVisible();
+});
+
+test('should display rotation speed', async () => {
+  await createTestScan({ plant_id: 'PLANT-ROTATION-TEST' });
+  await window.click('text=Browse Scans');
+  await window.click('text=PLANT-ROTATION-TEST');
+
+  await expect(window.locator('text=Rotation')).toBeVisible();
+});
+```
+
+- [x] Test: Scientist name displayed in metadata panel
+- [x] Test: Rotation speed (seconds_per_rot) displayed
+
+**GREEN** - Implementation:
+
+- [x] Update `ScanWithRelations` type in `src/types/database.ts` to include `experiment.scientist`
+- [x] Update `db:scans:get` handler to include scientist
+- [x] Update `db:scans:list` handler to include scientist
+- [x] Add Scientist row to ScanPreview Experiment section
+- [x] Add Rotation Speed row to ScanPreview Capture section
+
+### 4.12 E2E Test Fixes ✅
+
+**Issues discovered during E2E testing:**
+
+1. **MemoryRouter URL assertions** - The app uses `MemoryRouter` which doesn't change browser URLs. Fixed by replacing `toHaveURL()` assertions with element visibility checks.
+
+2. **Image onError null reference** - The `onError` handler in ScanPreview assumed `parentElement` existed. Fixed by adding null check.
+
+3. **Navigation timing** - Tests needed to wait for destination page elements before asserting.
+
+**Documentation:** See `docs/E2E_TESTING.md` Pitfalls 10-11 for detailed explanation.
+
 ---
 
 ## Phase 5: Upload to Bloom Storage
