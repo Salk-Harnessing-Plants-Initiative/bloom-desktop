@@ -101,12 +101,42 @@ export interface DatabaseResponse<T = unknown> {
 // ============================================
 
 /**
- * Filters for scanning queries
+ * Filters for scanning queries (legacy - simple list)
  */
 export interface ScanFilters {
   experiment_id?: string;
   phenotyper_id?: string;
   plant_id?: string;
+}
+
+/**
+ * Filters for paginated scan queries (BrowseScans feature)
+ */
+export interface PaginatedScanFilters {
+  /** 1-indexed page number */
+  page: number;
+  /** Number of items per page */
+  pageSize: number;
+  /** Filter by experiment ID */
+  experimentId?: string;
+  /** Filter by start date (ISO string, inclusive) */
+  dateFrom?: string;
+  /** Filter by end date (ISO string, inclusive) */
+  dateTo?: string;
+}
+
+/**
+ * Response for paginated scan queries
+ */
+export interface PaginatedScansResponse {
+  /** Scans for the current page */
+  scans: ScanWithRelations[];
+  /** Total count of matching scans (for pagination) */
+  total: number;
+  /** Current page number (1-indexed) */
+  page: number;
+  /** Number of items per page */
+  pageSize: number;
 }
 
 // ============================================

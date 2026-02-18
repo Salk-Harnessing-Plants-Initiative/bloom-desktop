@@ -38,6 +38,7 @@ import type {
   AccessionCreateData,
   ImageCreateData,
   ScanFilters,
+  PaginatedScanFilters,
 } from '../types/database';
 
 /**
@@ -180,7 +181,7 @@ const databaseAPI: DatabaseAPI = {
       ),
   },
   scans: {
-    list: (filters?: ScanFilters) =>
+    list: (filters?: ScanFilters | PaginatedScanFilters) =>
       ipcRenderer.invoke('db:scans:list', filters),
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>
@@ -193,6 +194,7 @@ const databaseAPI: DatabaseAPI = {
       ),
     getRecent: (options?: { limit?: number; experimentId?: string }) =>
       ipcRenderer.invoke('db:scans:getRecent', options),
+    delete: (id: string) => ipcRenderer.invoke('db:scans:delete', id),
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),

@@ -10,6 +10,7 @@ import { Scientists } from './Scientists';
 import { Phenotypers } from './Phenotypers';
 import { Accessions } from './Accessions';
 import { Experiments } from './Experiments';
+import { BrowseScans } from './BrowseScans';
 import { MachineConfiguration } from './MachineConfiguration';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="phenotypers" element={<Phenotypers />} />
           <Route path="accessions" element={<Accessions />} />
           <Route path="experiments" element={<Experiments />} />
+          <Route path="browse-scans" element={<BrowseScans />} />
           <Route path="machine-config" element={<MachineConfiguration />} />
         </Route>
       </Routes>
