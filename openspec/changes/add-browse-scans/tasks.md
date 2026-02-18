@@ -298,6 +298,55 @@ test('Plant ID should be styled as a link', async () => {
 <Route path="scan/:scanId" element={<div>Scan Preview (Coming Soon)</div>} />
 ```
 
+### 2.5.4 Add View Button to Actions Column
+
+**Issue**: Per spec (line 20), "Actions column includes View, Delete, and Upload buttons". Currently only Delete is implemented.
+
+**File**: `src/renderer/BrowseScans.tsx`
+
+**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
+
+```typescript
+test('should have View button in Actions column', async () => {
+  // Seed a scan
+  const scan = await prisma.scan.create({
+    data: { plant_id: 'PLANT-VIEW-BTN', /* ... */ },
+  });
+
+  await page.click('text=Browse Scans');
+
+  // View button should be visible in the row
+  const row = page.locator('tr').filter({ hasText: 'PLANT-VIEW-BTN' });
+  const viewButton = row.locator('button[title="View scan"]');
+  await expect(viewButton).toBeVisible();
+});
+
+test('should navigate to ScanPreview when clicking View button', async () => {
+  const scan = await prisma.scan.create({
+    data: { plant_id: 'PLANT-VIEW-NAV', /* ... */ },
+  });
+
+  await page.click('text=Browse Scans');
+
+  // Click View button
+  const row = page.locator('tr').filter({ hasText: 'PLANT-VIEW-NAV' });
+  await row.locator('button[title="View scan"]').click();
+
+  // Should navigate to scan preview
+  await expect(page).toHaveURL(`/scan/${scan.id}`);
+});
+```
+
+- [ ] Test: View button (eye icon) is visible in Actions column
+- [ ] Test: View button has title="View scan" for accessibility
+- [ ] Test: Clicking View button navigates to `/scan/:scanId`
+
+**GREEN** - Implementation:
+
+- [ ] Add View button (eye icon SVG) before Delete button in Actions cell
+- [ ] Add `onClick={() => navigate(`/scan/${scan.id}`)}`
+- [ ] Style: `className="text-blue-600 hover:text-blue-800 mr-2"`
+
 ---
 
 ## Phase 3: Delete Functionality ✅ COMPLETE
