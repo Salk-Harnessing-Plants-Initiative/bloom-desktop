@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   MetadataForm,
   ScanMetadata,
@@ -22,6 +23,8 @@ import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { sanitizePath } from '../utils/path-sanitizer';
 
 export function CaptureScan() {
+  const navigate = useNavigate();
+
   // Metadata state
   const [metadata, setMetadata] = useState<ScanMetadata>({
     phenotyper: '',
@@ -658,10 +661,7 @@ export function CaptureScan() {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <RecentScansPreview
             scans={recentScans}
-            onViewAll={() => {
-              // Future: Navigate to BrowseScans page
-              console.log('View all scans (future feature)');
-            }}
+            onViewAll={() => navigate('/browse-scans')}
           />
         </div>
       </div>

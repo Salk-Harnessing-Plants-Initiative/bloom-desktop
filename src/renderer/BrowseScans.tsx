@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import type {
   ScanWithRelations,
   PaginatedScansResponse,
@@ -10,6 +11,8 @@ import type {
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export function BrowseScans() {
+  const navigate = useNavigate();
+
   // Data state
   const [scans, setScans] = useState<ScanWithRelations[]>([]);
   const [experiments, setExperiments] = useState<ExperimentWithRelations[]>([]);
@@ -280,6 +283,9 @@ export function BrowseScans() {
                   Plant ID
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-700">
+                  Accession
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-700">
                   Capture Date
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-700">
@@ -310,7 +316,17 @@ export function BrowseScans() {
                 const uploadStatus = getUploadStatus(scan.images);
                 return (
                   <tr key={scan.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{scan.plant_id}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <Link
+                        to={`/scan/${scan.id}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {scan.plant_id}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3">
+                      {scan.accession_name || '-'}
+                    </td>
                     <td className="px-4 py-3">
                       {formatDate(scan.capture_date)}
                     </td>
@@ -328,7 +344,33 @@ export function BrowseScans() {
                     <td className={`px-4 py-3 ${uploadStatus.color}`}>
                       {uploadStatus.text}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/scan/${scan.id}`)}
+                        className="text-blue-600 hover:text-blue-800"
+                        title="View scan"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                          stroke="currentColor"
+                          className="w-5 h-5"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                          />
+                        </svg>
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(scan.id)}
