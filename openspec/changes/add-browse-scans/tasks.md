@@ -147,28 +147,156 @@ This plan follows Test-Driven Development (TDD): write tests first (RED), implem
 
 ---
 
-## Phase 2.5: Quick Fixes for Feature Parity (NEW)
+## Phase 2.5: Quick Fixes for Feature Parity
+
+These are small fixes needed to complete BrowseScans feature parity before moving to ScanPreview.
 
 ### 2.5.1 View Scans Button Navigation
 
-**Issue**: The "View All Scans →" button in `RecentScansPreview` on CaptureScan page currently logs to console instead of navigating.
+**Issue**: The "View All Scans →" button in `RecentScansPreview` on CaptureScan page currently logs `console.log('View all scans (future feature)')` instead of navigating.
 
-- [ ] Test: Clicking "View All Scans" on CaptureScan page navigates to `/browse-scans`
-- [ ] Fix: Update `CaptureScan.tsx` to pass `onViewAll={() => navigate('/browse-scans')}` to `RecentScansPreview`
+**File**: `src/renderer/CaptureScan.tsx` line 663
+
+**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
+
+```typescript
+test('should navigate to Browse Scans from CaptureScan View All button', async () => {
+  // Navigate to CaptureScan page
+  await page.click('text=Capture Scan');
+  await expect(page).toHaveURL('/capture-scan');
+
+  // Click "View All Scans" button in RecentScansPreview
+  await page.click('text=View All Scans');
+
+  // Should navigate to Browse Scans
+  await expect(page).toHaveURL('/browse-scans');
+  await expect(page.locator('h1')).toHaveText('Browse Scans');
+});
+```
+
+- [ ] Test: Navigate to CaptureScan page
+- [ ] Test: Click "View All Scans →" button
+- [ ] Test: Verify URL changes to `/browse-scans`
+- [ ] Test: Verify Browse Scans page heading is visible
+
+**GREEN** - Implementation:
+
+- [ ] Import `useNavigate` in `CaptureScan.tsx`
+- [ ] Create `navigate` instance: `const navigate = useNavigate();`
+- [ ] Update `onViewAll` prop: `onViewAll={() => navigate('/browse-scans')}`
 
 ### 2.5.2 Add Accession Column to BrowseScans Table
 
-**Issue**: The `accession_name` field exists in the Scan model but is not displayed in the table.
+**Issue**: The `accession_name` field exists in the Scan model but is not displayed in the table. The pilot shows Accession in the scan list.
 
-- [ ] Test: Accession column displays in BrowseScans table
-- [ ] Fix: Add Accession column between Plant ID and Experiment columns
+**File**: `src/renderer/BrowseScans.tsx`
 
-### 2.5.3 Make Plant ID Clickable
+**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
 
-**Issue**: Plant ID in BrowseScans table should link to ScanPreview page.
+```typescript
+test('should display Accession column in scans table', async () => {
+  // Seed a scan with accession_name
+  await prisma.scan.create({
+    data: {
+      // ... other fields
+      accession_name: 'ACC-001',
+    },
+  });
+
+  // Navigate to Browse Scans
+  await page.click('text=Browse Scans');
+
+  // Verify Accession column header exists
+  await expect(page.locator('th:has-text("Accession")')).toBeVisible();
+
+  // Verify accession value is displayed in row
+  await expect(page.locator('td:has-text("ACC-001")')).toBeVisible();
+});
+
+test('should display dash when accession_name is null', async () => {
+  // Seed a scan without accession_name
+  await prisma.scan.create({
+    data: {
+      // ... other fields
+      accession_name: null,
+    },
+  });
+
+  // Navigate and verify dash is shown
+  await page.click('text=Browse Scans');
+  const row = page.locator('tr').filter({ hasText: 'PLANT-ID' });
+  await expect(row.locator('td').nth(1)).toHaveText('-'); // Accession column
+});
+```
+
+- [ ] Test: Accession column header "Accession" is visible in table
+- [ ] Test: Accession value displays when `accession_name` is set
+- [ ] Test: Shows "-" when `accession_name` is null
+
+**GREEN** - Implementation:
+
+- [ ] Add `<th>` for "Accession" after "Plant ID" column
+- [ ] Add `<td>` displaying `scan.accession_name || '-'`
+
+### 2.5.3 Make Plant ID Clickable (Link to ScanPreview)
+
+**Issue**: Plant ID in BrowseScans table should link to ScanPreview page at `/scan/:scanId`.
+
+**Note**: This requires Phase 4 (ScanPreview route) to be partially implemented first. The route must exist even if the page is a placeholder.
+
+**File**: `src/renderer/BrowseScans.tsx`
+
+**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
+
+```typescript
+test('should navigate to ScanPreview when clicking Plant ID', async () => {
+  // Seed a scan
+  const scan = await prisma.scan.create({
+    data: {
+      plant_id: 'PLANT-CLICK-TEST',
+      // ... other fields
+    },
+  });
+
+  // Navigate to Browse Scans
+  await page.click('text=Browse Scans');
+
+  // Click on Plant ID link
+  await page.click('text=PLANT-CLICK-TEST');
+
+  // Should navigate to scan preview
+  await expect(page).toHaveURL(`/scan/${scan.id}`);
+});
+
+test('Plant ID should be styled as a link', async () => {
+  // Seed a scan
+  await prisma.scan.create({
+    data: { plant_id: 'PLANT-LINK-STYLE', /* ... */ },
+  });
+
+  await page.click('text=Browse Scans');
+
+  // Plant ID should have link styling (blue, underline on hover)
+  const plantIdLink = page.locator('a:has-text("PLANT-LINK-STYLE")');
+  await expect(plantIdLink).toBeVisible();
+  await expect(plantIdLink).toHaveCSS('color', /blue|rgb\(37, 99, 235\)/);
+});
+```
 
 - [ ] Test: Clicking Plant ID navigates to `/scan/:scanId`
-- [ ] Fix: Wrap Plant ID cell in Link component (requires ScanPreview page from Phase 4)
+- [ ] Test: Plant ID is rendered as `<Link>` or `<a>` element
+- [ ] Test: Plant ID has link styling (blue color, underline on hover)
+
+**GREEN** - Implementation:
+
+- [ ] Import `Link` from `react-router-dom` in `BrowseScans.tsx`
+- [ ] Wrap Plant ID cell content in `<Link to={`/scan/${scan.id}`}>`
+- [ ] Add styling: `className="text-blue-600 hover:text-blue-800 hover:underline"`
+
+**Prerequisite**: Add placeholder route for `/scan/:scanId` in `App.tsx`:
+```typescript
+<Route path="scan/:scanId" element={<div>Scan Preview (Coming Soon)</div>} />
+```
 
 ---
 
