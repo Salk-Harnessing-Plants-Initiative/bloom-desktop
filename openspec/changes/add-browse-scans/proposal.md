@@ -34,8 +34,8 @@ This is a critical gap for production use, blocking the transition from pilot to
 **New Components:**
 
 - `BrowseScans.tsx` - Main page component ✅ IMPLEMENTED
-- `ScanPreview.tsx` - Image viewer page
-- `ZoomableImage.tsx` - Zoom/pan image component
+- `ScanPreview.tsx` - Image viewer page ✅ IMPLEMENTED
+- `ZoomableImage.tsx` - Zoom/pan component (integrated into ScanPreview)
 - `UploadProgress.tsx` - Upload status indicator
 
 **Quick Fixes for Feature Parity:**
@@ -59,21 +59,28 @@ This is a critical gap for production use, blocking the transition from pilot to
 - Soft delete `db:scans:delete`
 - Timezone-correct date filtering (fixed bug where same-day filters failed)
 
-### Phase 2-3: BrowseScans Page ✅ MOSTLY COMPLETE
+### Phase 2-3: BrowseScans Page ✅ COMPLETE
 
 - Table with pagination (10/25/50/100 per page)
+- All columns: Plant ID, Accession, Capture Date, Experiment, Phenotyper, Wave, Age, Images, Upload Status, Actions
 - Experiment and date range filters
 - Delete button with confirmation
-- Upload status display
-
-**Missing:**
-
-- Accession column
-- Plant ID clickable (requires Phase 4)
-- URL query param persistence for filters
+- View button with navigation to ScanPreview
+- Plant ID clickable (links to `/scan/:scanId`)
 - View Scans button navigation from CaptureScan
 
-### Phase 4: ScanPreview Page - NOT STARTED
+**Deferred to Phase 6:**
+
+- URL query param persistence for filters
+
+### Phase 4: ScanPreview Page ✅ COMPLETE
+
+- ScanPreview component with full metadata display
+- Image viewer with frame navigation (Previous/Next buttons)
+- Zoom controls (1x, 1.5x, 2x, 3x with +/- buttons and Reset)
+- Keyboard navigation (Arrow keys, Home, End)
+- Back link to Browse Scans
+- Error handling for non-existent scans
 
 ### Phase 5: Upload to Bloom Storage - NOT STARTED
 

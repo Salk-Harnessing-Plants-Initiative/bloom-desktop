@@ -79,276 +79,45 @@ This plan follows Test-Driven Development (TDD): write tests first (RED), implem
 
 ---
 
-## Phase 2: BrowseScans Page (UI) - PARTIALLY COMPLETE
+## Phase 2: BrowseScans Page (UI) ✅ COMPLETE
 
-### 2.1 Write E2E Tests for Navigation
+### 2.1-2.2 Navigation ✅
 
-**RED** - Create `tests/e2e/browse-scans.e2e.ts`:
+- [x] Route `/browse-scans` in `App.tsx`
+- [x] "Browse Scans" link in `Layout.tsx` navigation
+- [x] `BrowseScans.tsx` with empty state
 
-- [ ] Test: Navigate to `/browse-scans` via sidebar link "Browse Scans"
-- [ ] Test: Page displays "Browse Scans" heading
-- [ ] Test: Empty state shows "No scans found" when no scans exist
+### 2.3-2.4 Scans Table ✅
 
-### 2.2 Implement Navigation Foundation ✅
+- [x] Table with all columns: Plant ID, Accession, Capture Date, Experiment, Phenotyper, Wave, Age, Images, Upload Status, Actions
+- [x] Plant ID clickable (links to `/scan/:scanId`)
+- [x] Loads scans via `window.electron.database.scans.list()`
 
-**GREEN** - Make tests pass:
+### 2.5-2.6 Pagination ✅
 
-- [x] Add route `/browse-scans` to `src/renderer/App.tsx`
-- [x] Add "Browse Scans" link to `src/renderer/Layout.tsx` navigation
-- [x] Create `src/renderer/BrowseScans.tsx` with empty state
+- [x] Pagination controls (First, Previous, Next, Last)
+- [x] Page size selector (10, 25, 50, 100)
+- [x] Shows "Showing X of Y scans"
+- [ ] **TODO (Phase 6)**: URL query param persistence
 
-### 2.3 Write E2E Tests for Scans Table
+### 2.7-2.8 Filters ✅
 
-**RED** - Add tests:
-
-- [ ] Test: Table displays scans when they exist (create via Prisma in test)
-- [ ] Test: Table columns: Plant ID, Accession, Experiment, Date, Phenotyper, Wave, Age, Images, Upload Status
-- [ ] Test: Plant ID is clickable and links to `/scan/:scanId`
-
-### 2.4 Implement Scans Table ✅ (PARTIAL - missing Accession column, Plant ID not clickable)
-
-**GREEN** - Make tests pass:
-
-- [x] Create table in `BrowseScans.tsx`
-- [x] Load scans via `window.electron.database.scans.list()`
-- [ ] **TODO**: Add Accession column to table
-- [ ] **TODO**: Make Plant ID clickable (link to `/scan/:scanId`)
-
-### 2.5 Write E2E Tests for Pagination
-
-**RED** - Add tests:
-
-- [ ] Test: Pagination shows "Showing X of Y scans"
-- [ ] Test: Next/Previous/First/Last buttons navigate pages
-- [ ] Test: Page size can be changed (10, 25, 50, 100)
-
-### 2.6 Implement Pagination ✅
-
-**GREEN** - Make tests pass:
-
-- [x] Add pagination controls to `BrowseScans.tsx`
-- [ ] **TODO**: Integrate with URL query params for state persistence
-
-### 2.7 Write E2E Tests for Filters
-
-**RED** - Add tests:
-
-- [ ] Test: Experiment filter dropdown shows all experiments
-- [ ] Test: Filtering by experiment updates table
-- [ ] Test: Date range filter works (from/to)
-- [ ] Test: Clear filters button resets all filters
-
-### 2.8 Implement Filters ✅
-
-**GREEN** - Make tests pass:
-
-- [x] Add experiment dropdown filter
-- [x] Add date range inputs (from/to)
-- [x] Add Clear Filters button
-- [ ] **TODO**: URL query param sync for filter persistence
+- [x] Experiment dropdown filter
+- [x] Date range inputs (from/to)
+- [x] Clear Filters button
+- [ ] **TODO (Phase 6)**: URL query param sync
 
 ---
 
-## Phase 2.5: Quick Fixes for Feature Parity
+## Phase 2.5: Quick Fixes for Feature Parity ✅ COMPLETE
 
-These are small fixes needed to complete BrowseScans feature parity before moving to ScanPreview.
+All quick fixes have been implemented:
 
-### 2.5.1 View Scans Button Navigation
-
-**Issue**: The "View All Scans →" button in `RecentScansPreview` on CaptureScan page currently logs `console.log('View all scans (future feature)')` instead of navigating.
-
-**File**: `src/renderer/CaptureScan.tsx` line 663
-
-**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
-
-```typescript
-test('should navigate to Browse Scans from CaptureScan View All button', async () => {
-  // Navigate to CaptureScan page
-  await page.click('text=Capture Scan');
-  await expect(page).toHaveURL('/capture-scan');
-
-  // Click "View All Scans" button in RecentScansPreview
-  await page.click('text=View All Scans');
-
-  // Should navigate to Browse Scans
-  await expect(page).toHaveURL('/browse-scans');
-  await expect(page.locator('h1')).toHaveText('Browse Scans');
-});
-```
-
-- [ ] Test: Navigate to CaptureScan page
-- [ ] Test: Click "View All Scans →" button
-- [ ] Test: Verify URL changes to `/browse-scans`
-- [ ] Test: Verify Browse Scans page heading is visible
-
-**GREEN** - Implementation:
-
-- [ ] Import `useNavigate` in `CaptureScan.tsx`
-- [ ] Create `navigate` instance: `const navigate = useNavigate();`
-- [ ] Update `onViewAll` prop: `onViewAll={() => navigate('/browse-scans')}`
-
-### 2.5.2 Add Accession Column to BrowseScans Table
-
-**Issue**: The `accession_name` field exists in the Scan model but is not displayed in the table. The pilot shows Accession in the scan list.
-
-**File**: `src/renderer/BrowseScans.tsx`
-
-**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
-
-```typescript
-test('should display Accession column in scans table', async () => {
-  // Seed a scan with accession_name
-  await prisma.scan.create({
-    data: {
-      // ... other fields
-      accession_name: 'ACC-001',
-    },
-  });
-
-  // Navigate to Browse Scans
-  await page.click('text=Browse Scans');
-
-  // Verify Accession column header exists
-  await expect(page.locator('th:has-text("Accession")')).toBeVisible();
-
-  // Verify accession value is displayed in row
-  await expect(page.locator('td:has-text("ACC-001")')).toBeVisible();
-});
-
-test('should display dash when accession_name is null', async () => {
-  // Seed a scan without accession_name
-  await prisma.scan.create({
-    data: {
-      // ... other fields
-      accession_name: null,
-    },
-  });
-
-  // Navigate and verify dash is shown
-  await page.click('text=Browse Scans');
-  const row = page.locator('tr').filter({ hasText: 'PLANT-ID' });
-  await expect(row.locator('td').nth(1)).toHaveText('-'); // Accession column
-});
-```
-
-- [ ] Test: Accession column header "Accession" is visible in table
-- [ ] Test: Accession value displays when `accession_name` is set
-- [ ] Test: Shows "-" when `accession_name` is null
-
-**GREEN** - Implementation:
-
-- [ ] Add `<th>` for "Accession" after "Plant ID" column
-- [ ] Add `<td>` displaying `scan.accession_name || '-'`
-
-### 2.5.3 Make Plant ID Clickable (Link to ScanPreview)
-
-**Issue**: Plant ID in BrowseScans table should link to ScanPreview page at `/scan/:scanId`.
-
-**Note**: This requires Phase 4 (ScanPreview route) to be partially implemented first. The route must exist even if the page is a placeholder.
-
-**File**: `src/renderer/BrowseScans.tsx`
-
-**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
-
-```typescript
-test('should navigate to ScanPreview when clicking Plant ID', async () => {
-  // Seed a scan
-  const scan = await prisma.scan.create({
-    data: {
-      plant_id: 'PLANT-CLICK-TEST',
-      // ... other fields
-    },
-  });
-
-  // Navigate to Browse Scans
-  await page.click('text=Browse Scans');
-
-  // Click on Plant ID link
-  await page.click('text=PLANT-CLICK-TEST');
-
-  // Should navigate to scan preview
-  await expect(page).toHaveURL(`/scan/${scan.id}`);
-});
-
-test('Plant ID should be styled as a link', async () => {
-  // Seed a scan
-  await prisma.scan.create({
-    data: { plant_id: 'PLANT-LINK-STYLE' /* ... */ },
-  });
-
-  await page.click('text=Browse Scans');
-
-  // Plant ID should have link styling (blue, underline on hover)
-  const plantIdLink = page.locator('a:has-text("PLANT-LINK-STYLE")');
-  await expect(plantIdLink).toBeVisible();
-  await expect(plantIdLink).toHaveCSS('color', /blue|rgb\(37, 99, 235\)/);
-});
-```
-
-- [ ] Test: Clicking Plant ID navigates to `/scan/:scanId`
-- [ ] Test: Plant ID is rendered as `<Link>` or `<a>` element
-- [ ] Test: Plant ID has link styling (blue color, underline on hover)
-
-**GREEN** - Implementation:
-
-- [ ] Import `Link` from `react-router-dom` in `BrowseScans.tsx`
-- [ ] Wrap Plant ID cell content in `<Link to={`/scan/${scan.id}`}>`
-- [ ] Add styling: `className="text-blue-600 hover:text-blue-800 hover:underline"`
-
-**Prerequisite**: Add placeholder route for `/scan/:scanId` in `App.tsx`:
-
-```typescript
-<Route path="scan/:scanId" element={<div>Scan Preview (Coming Soon)</div>} />
-```
-
-### 2.5.4 Add View Button to Actions Column
-
-**Issue**: Per spec (line 20), "Actions column includes View, Delete, and Upload buttons". Currently only Delete is implemented.
-
-**File**: `src/renderer/BrowseScans.tsx`
-
-**RED** - Add E2E test to `tests/e2e/browse-scans.e2e.ts`:
-
-```typescript
-test('should have View button in Actions column', async () => {
-  // Seed a scan
-  const scan = await prisma.scan.create({
-    data: { plant_id: 'PLANT-VIEW-BTN' /* ... */ },
-  });
-
-  await page.click('text=Browse Scans');
-
-  // View button should be visible in the row
-  const row = page.locator('tr').filter({ hasText: 'PLANT-VIEW-BTN' });
-  const viewButton = row.locator('button[title="View scan"]');
-  await expect(viewButton).toBeVisible();
-});
-
-test('should navigate to ScanPreview when clicking View button', async () => {
-  const scan = await prisma.scan.create({
-    data: { plant_id: 'PLANT-VIEW-NAV' /* ... */ },
-  });
-
-  await page.click('text=Browse Scans');
-
-  // Click View button
-  const row = page.locator('tr').filter({ hasText: 'PLANT-VIEW-NAV' });
-  await row.locator('button[title="View scan"]').click();
-
-  // Should navigate to scan preview
-  await expect(page).toHaveURL(`/scan/${scan.id}`);
-});
-```
-
-- [ ] Test: View button (eye icon) is visible in Actions column
-- [ ] Test: View button has title="View scan" for accessibility
-- [ ] Test: Clicking View button navigates to `/scan/:scanId`
-
-**GREEN** - Implementation:
-
-- [ ] Add View button (eye icon SVG) before Delete button in Actions cell
-- [ ] Add `onClick={() => navigate(`/scan/${scan.id}`)}`
-- [ ] Style: `className="text-blue-600 hover:text-blue-800 mr-2"`
+- [x] **2.5.1 View Scans Button Navigation**: `CaptureScan.tsx` now uses `useNavigate` to navigate to `/browse-scans`
+- [x] **2.5.2 Accession Column**: Added to BrowseScans table after Plant ID column
+- [x] **2.5.3 Plant ID Clickable**: Wrapped in `<Link to={/scan/${scan.id}}>` with blue styling
+- [x] **2.5.4 View Button**: Added eye icon button in Actions column before Delete
+- [x] **Prerequisite**: Placeholder route `/scan/:scanId` added to App.tsx
 
 ---
 
@@ -375,91 +144,50 @@ test('should navigate to ScanPreview when clicking View button', async () => {
 
 ---
 
-## Phase 4: ScanPreview Page
+## Phase 4: ScanPreview Page ✅ COMPLETE
 
-### 4.1 Write E2E Tests for ScanPreview Navigation
+### 4.1-4.2 Navigation & Foundation ✅
 
-**RED** - Create `tests/e2e/scan-preview.e2e.ts`:
+**Tests**: `tests/e2e/scan-preview.e2e.ts`
 
-- [ ] Test: Navigate to `/scan/:scanId` from BrowseScans table
-- [ ] Test: Page displays scan Plant ID in header
-- [ ] Test: Back link navigates to `/browse-scans`
-- [ ] Test: Non-existent scanId shows error message
+- [x] Navigate to `/scan/:scanId` from BrowseScans table (Plant ID link + View button)
+- [x] Page displays scan Plant ID in header
+- [x] Back link navigates to `/browse-scans`
+- [x] Non-existent scanId shows error message
+- [x] Route `/scan/:scanId` in `App.tsx` using `ScanPreview` component
+- [x] `src/renderer/ScanPreview.tsx` created
+- [x] Loads scan via `window.electron.database.scans.get()`
 
-### 4.2 Implement ScanPreview Foundation
+### 4.3-4.4 Image Viewer ✅
 
-**GREEN** - Make tests pass:
+- [x] First image displayed by default (frame 0)
+- [x] Frame counter shows "1 / N" format
+- [x] Next/Previous buttons navigate frames
+- [x] Frame counter updates on navigation
+- [x] Shows "No images" when scan has no images
+- [x] Loads images via `file://` protocol
 
-- [ ] Add route `/scan/:scanId` to `App.tsx`
-- [ ] Create `src/renderer/ScanPreview.tsx`
-- [ ] Load scan via `window.electron.database.scans.get()`
+### 4.5-4.6 Zoom Controls ✅
 
-### 4.3 Write E2E Tests for Image Viewer
+- [x] Zoom levels: 1x, 1.5x, 2x, 3x
+- [x] Zoom in/out buttons
+- [x] Reset/Fit button
+- [x] CSS transform scale with smooth transition
 
-**RED** - Add tests:
+### 4.7-4.8 Keyboard Navigation ✅
 
-- [ ] Test: First image displayed by default
-- [ ] Test: Frame counter shows "1 / N"
-- [ ] Test: Next/Previous buttons navigate frames
-- [ ] Test: Frame counter updates on navigation
+- [x] Left Arrow → previous frame
+- [x] Right Arrow → next frame
+- [x] Home → first frame
+- [x] End → last frame
+- [x] Event listeners with cleanup
 
-### 4.4 Implement Image Viewer
+### 4.9-4.10 Metadata Panel ✅
 
-**GREEN** - Make tests pass:
-
-- [ ] Create image viewer component
-- [ ] Previous/Next navigation
-- [ ] Frame counter display
-- [ ] Load images from filesystem via `file://` protocol
-
-### 4.5 Write Unit Tests for Zoom Logic
-
-**RED** - Create `tests/unit/zoomable-image.test.ts`:
-
-- [ ] Test: Zoom levels are 1x, 1.5x, 2x, 3x
-- [ ] Test: Zoom in increases level (capped at 3x)
-- [ ] Test: Zoom out decreases level (minimum 1x)
-- [ ] Test: Reset returns to 1x
-
-### 4.6 Implement Zoom
-
-**GREEN** - Make tests pass:
-
-- [ ] Create `src/renderer/components/ZoomableImage.tsx`
-- [ ] Zoom in/out buttons
-- [ ] Reset/Fit button
-- [ ] CSS transform scale
-
-### 4.7 Write E2E Tests for Keyboard Navigation
-
-**RED** - Add tests:
-
-- [ ] Test: Left arrow goes to previous frame
-- [ ] Test: Right arrow goes to next frame
-- [ ] Test: Home key goes to first frame
-- [ ] Test: End key goes to last frame
-
-### 4.8 Implement Keyboard Navigation
-
-**GREEN** - Make tests pass:
-
-- [ ] Add keyboard event listeners
-- [ ] Handle arrow keys, Home, End
-
-### 4.9 Write E2E Tests for Metadata Display
-
-**RED** - Add tests:
-
-- [ ] Test: Metadata panel shows Plant ID, Accession, Experiment
-- [ ] Test: Metadata shows camera settings (exposure, gain, gamma)
-- [ ] Test: Metadata shows capture date and phenotyper
-
-### 4.10 Implement Metadata Panel
-
-**GREEN** - Make tests pass:
-
-- [ ] Create `src/renderer/components/ScanMetadata.tsx`
-- [ ] Display all scan metadata fields
+- [x] Plant Information: Plant ID, Accession, Wave, Age
+- [x] Experiment: Name, Species
+- [x] Capture: Date, Phenotyper, Scanner, Total Frames
+- [x] Camera Settings: Exposure, Gain, Gamma, Brightness, Contrast
 
 ---
 
