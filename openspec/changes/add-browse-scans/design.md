@@ -13,6 +13,7 @@ This design ensures feature parity with pilot while improving code quality and t
 ## Goals / Non-Goals
 
 **Goals:**
+
 - Feature parity with pilot BrowseScans and ScanPreview
 - Full upload support (single + batch) with progress tracking
 - Minimal but useful filtering (date range + experiment)
@@ -21,6 +22,7 @@ This design ensures feature parity with pilot while improving code quality and t
 - Metadata preservation for FAIR principles
 
 **Non-Goals:**
+
 - Advanced filters (phenotyper, scanner, wave number) - defer to follow-up
 - CSV/image export - defer to follow-up
 - Bulk selection beyond upload/delete - defer to follow-up
@@ -30,45 +32,55 @@ This design ensures feature parity with pilot while improving code quality and t
 ## Decisions
 
 ### Decision: Soft Delete Pattern
+
 **Choice**: Set `deleted=true` instead of removing database records
 
 **Rationale**:
+
 - Preserves data integrity and audit trail
 - Allows recovery from accidental deletion
 - Matches pilot behavior
 - Database schema already has `deleted` field
 
 ### Decision: Pagination Strategy
+
 **Choice**: Server-side pagination with Prisma `skip`/`take`
 
 **Rationale**:
+
 - Handles large datasets efficiently
 - Only loads visible rows
 - Matches pilot pattern
 - Default: 25 items per page
 
 ### Decision: Upload Architecture
+
 **Choice**: Use existing `@salk-hpi/bloom-js` SupabaseStore, upload via IPC
 
 **Rationale**:
+
 - Consistent with machine configuration fetch scanners pattern
 - Authentication already solved
 - Supabase handles file storage
 - Progress events via IPC callback
 
 ### Decision: Image Viewer Approach
+
 **Choice**: Native `<img>` with CSS transforms for zoom/pan
 
 **Rationale**:
+
 - Simple, no extra dependencies
 - Pilot uses this pattern successfully
 - Browser handles large images efficiently
 - Zoom levels: 1x, 1.5x, 2x, 3x (discrete steps)
 
 ### Decision: Filter Persistence
+
 **Choice**: URL query parameters for shareable state
 
 **Rationale**:
+
 - Bookmarkable filtered views
 - Back button works naturally
 - No local storage needed
@@ -77,12 +89,15 @@ This design ensures feature parity with pilot while improving code quality and t
 ## Risks / Trade-offs
 
 ### Risk: Large image performance
+
 **Mitigation**: Lazy load images, preload adjacent frames, use thumbnail for table
 
 ### Risk: Upload failures
+
 **Mitigation**: Retry mechanism, clear error messages, batch continues on individual failure
 
 ### Risk: Race conditions during upload
+
 **Mitigation**: Disable delete during upload, optimistic UI updates with rollback
 
 ## Migration Plan

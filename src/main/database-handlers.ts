@@ -640,7 +640,9 @@ export function registerDatabaseHandlers() {
             }
             if (filters.dateTo) {
               // End of day in local time (inclusive)
-              where.capture_date.lte = new Date(filters.dateTo + 'T23:59:59.999');
+              where.capture_date.lte = new Date(
+                filters.dateTo + 'T23:59:59.999'
+              );
             }
           }
 

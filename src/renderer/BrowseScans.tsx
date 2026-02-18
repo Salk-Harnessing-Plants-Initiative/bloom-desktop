@@ -143,7 +143,8 @@ export function BrowseScans() {
   };
 
   const getUploadStatus = (images: ImageRecord[]) => {
-    if (images.length === 0) return { text: 'No images', color: 'text-gray-400' };
+    if (images.length === 0)
+      return { text: 'No images', color: 'text-gray-400' };
 
     const uploaded = images.filter((img) => img.status === 'uploaded').length;
     const failed = images.filter((img) => img.status === 'failed').length;
@@ -155,7 +156,10 @@ export function BrowseScans() {
       return { text: `${failed} failed`, color: 'text-red-600' };
     }
     if (pending > 0) {
-      return { text: `${uploaded}/${images.length} uploaded`, color: 'text-yellow-600' };
+      return {
+        text: `${uploaded}/${images.length} uploaded`,
+        color: 'text-yellow-600',
+      };
     }
     if (uploaded === images.length) {
       return { text: 'All uploaded', color: 'text-green-600' };
@@ -324,9 +328,7 @@ export function BrowseScans() {
                         {scan.plant_id}
                       </Link>
                     </td>
-                    <td className="px-4 py-3">
-                      {scan.accession_name || '-'}
-                    </td>
+                    <td className="px-4 py-3">{scan.accession_name || '-'}</td>
                     <td className="px-4 py-3">
                       {formatDate(scan.capture_date)}
                     </td>

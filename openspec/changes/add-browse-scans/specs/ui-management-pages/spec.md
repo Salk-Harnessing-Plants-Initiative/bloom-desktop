@@ -14,6 +14,7 @@ The BrowseScans page SHALL display all non-deleted scans from the database in a 
 **And** scans are sorted by capture date descending (newest first)
 
 **Acceptance Criteria**:
+
 - Plant ID is clickable, linking to `/scan/:scanId`
 - Date is formatted as human-readable (e.g., "Feb 17, 2026 10:30 AM")
 - Frame count shows total images in scan
@@ -28,6 +29,7 @@ The BrowseScans page SHALL display all non-deleted scans from the database in a 
 **And** the message suggests capturing scans via CaptureScan page
 
 **Acceptance Criteria**:
+
 - Empty state message is clear (e.g., "No scans yet")
 - Link to CaptureScan page is provided
 
@@ -40,6 +42,7 @@ The BrowseScans page SHALL display all non-deleted scans from the database in a 
 **And** the total count is displayed (e.g., "Showing 1-25 of 342 scans")
 
 **Acceptance Criteria**:
+
 - Page size selector allows 25, 50, or 100 items
 - Page input allows jumping to specific page
 - Previous/Next buttons disabled at boundaries
@@ -59,6 +62,7 @@ The BrowseScans page SHALL allow users to filter scans by date range and experim
 **And** the filter state is reflected in the URL query parameters
 
 **Acceptance Criteria**:
+
 - Date pickers use standard date input format
 - "From" date is inclusive (start of day)
 - "To" date is inclusive (end of day)
@@ -73,6 +77,7 @@ The BrowseScans page SHALL allow users to filter scans by date range and experim
 **And** the table pagination resets to page 1
 
 **Acceptance Criteria**:
+
 - Experiment dropdown shows all experiments
 - "All Experiments" option clears the filter
 - Combined filters (date + experiment) work together
@@ -90,6 +95,7 @@ The BrowseScans page SHALL allow users to soft-delete individual scans with conf
 **And** the dialog has Cancel and Delete buttons
 
 **Acceptance Criteria**:
+
 - Delete button has destructive styling (red)
 - Confirmation dialog is modal (blocks interaction)
 - Cancel closes dialog without action
@@ -105,6 +111,7 @@ The BrowseScans page SHALL allow users to soft-delete individual scans with conf
 **And** a success message appears briefly
 
 **Acceptance Criteria**:
+
 - Database record preserved with `deleted: true`
 - Files remain in scans directory
 - Success message: "Scan deleted successfully"
@@ -122,6 +129,7 @@ The application SHALL provide navigation to the BrowseScans page via a clearly l
 **And** the scans list is fetched and displayed
 
 **Acceptance Criteria**:
+
 - Navigation link is clearly labeled "Browse Scans"
 - Link is visible in the main navigation menu
 - Route is registered in React Router
@@ -141,6 +149,7 @@ The ScanPreview page SHALL display a single scan with image navigation, zoom cap
 **And** metadata panel shows scan details
 
 **Acceptance Criteria**:
+
 - Images load from local filesystem using `file://` protocol
 - Frame counter updates on navigation
 - First frame shown by default
@@ -154,6 +163,7 @@ The ScanPreview page SHALL display a single scan with image navigation, zoom cap
 **And** the frame counter updates accordingly
 
 **Acceptance Criteria**:
+
 - Left arrow: previous frame
 - Right arrow: next frame
 - Home key: first frame
@@ -168,6 +178,7 @@ The ScanPreview page SHALL display a single scan with image navigation, zoom cap
 **And** a reset button returns to 1x (fit to container)
 
 **Acceptance Criteria**:
+
 - Zoom buttons show +/- icons
 - Current zoom level displayed (e.g., "2x")
 - Reset button labeled "Fit" or "Reset"
@@ -181,6 +192,7 @@ The ScanPreview page SHALL display a single scan with image navigation, zoom cap
 **And** the cursor changes to indicate drag mode
 
 **Acceptance Criteria**:
+
 - Panning only available when zoomed
 - Cursor shows grab/grabbing icons
 - Pan limits prevent scrolling beyond image bounds
@@ -195,6 +207,7 @@ The ScanPreview page SHALL display comprehensive scan metadata in a dedicated pa
 **Given** the user is viewing a scan
 **When** the metadata panel is visible
 **Then** the following information is displayed:
+
 - Plant ID
 - Accession name
 - Experiment name
@@ -208,6 +221,7 @@ The ScanPreview page SHALL display comprehensive scan metadata in a dedicated pa
 - Local file path
 
 **Acceptance Criteria**:
+
 - Metadata organized in logical sections
 - Empty fields show "N/A" or similar
 - Path is displayed but not editable
@@ -225,6 +239,7 @@ The ScanPreview page SHALL provide navigation back to BrowseScans and between sc
 **And** any active filters are preserved (via URL params)
 
 **Acceptance Criteria**:
+
 - Back link clearly visible at top
 - Browser back button also works
 - Filter state preserved in URL
@@ -243,6 +258,7 @@ The application SHALL allow users to upload individual scans to Bloom remote sto
 **And** success message appears when complete
 
 **Acceptance Criteria**:
+
 - Upload button available in both table and preview
 - Progress shows percentage complete
 - Status: "Uploading...", "Uploaded", or "Failed"
@@ -259,6 +275,7 @@ The application SHALL allow users to upload individual scans to Bloom remote sto
 **And** the `Image.status` field is updated to "uploading" for each image
 
 **Acceptance Criteria**:
+
 - Progress shows image count (X / Y images)
 - Per-image status tracked via `Image.status` field
 - Real-time updates via `scans:upload-progress` IPC event
@@ -276,6 +293,7 @@ The BrowseScans page SHALL allow users to select multiple scans and upload them 
 **And** a "Upload Selected" button becomes enabled
 
 **Acceptance Criteria**:
+
 - Checkbox in each row
 - "Select All" checkbox in header (selects current page)
 - Selection count updates in real-time
@@ -291,6 +309,7 @@ The BrowseScans page SHALL allow users to select multiple scans and upload them 
 **And** batch continues even if individual upload fails
 
 **Acceptance Criteria**:
+
 - Overall progress indicator
 - Per-scan status updates in table
 - Failed uploads marked, others continue
@@ -310,6 +329,7 @@ The main process SHALL provide an IPC handler for fetching paginated scan lists 
 **And** soft-deleted scans are excluded
 
 **Acceptance Criteria**:
+
 - Parameters: `{ page: number, pageSize: number, experimentId?: string, dateFrom?: string, dateTo?: string }`
 - Returns: `{ scans: ScanWithRelations[], total: number, page: number, pageSize: number }`
 - Includes phenotyper and experiment relations
@@ -329,6 +349,7 @@ The main process SHALL provide an IPC handler for soft-deleting scans.
 **And** the scan files are NOT removed from disk
 
 **Acceptance Criteria**:
+
 - Sets `deleted: true` via Prisma update
 - Does not delete Image records
 - Does not delete files from filesystem
@@ -349,6 +370,7 @@ The main process SHALL provide an IPC handler for uploading scans to Bloom remot
 **And** returns success or error status
 
 **Acceptance Criteria**:
+
 - Uses `@salk-hpi/bloom-js` SupabaseStore
 - Authenticates with stored credentials from `~/.bloom/.env`
 - Uploads each image to designated storage bucket
@@ -369,6 +391,7 @@ The BrowseScans table SHALL display per-scan upload status based on Image status
 **And** status is derived from related Image records
 
 **Acceptance Criteria**:
+
 - Status values: "Not uploaded", "X/Y uploaded", "Uploaded"
 - "Not uploaded": All images have status "pending"
 - "X/Y uploaded": Some images have status "uploaded", shown as fraction
@@ -384,6 +407,7 @@ The BrowseScans table SHALL display per-scan upload status based on Image status
 **And** no manual refresh is required
 
 **Acceptance Criteria**:
+
 - Table listens for `scans:upload-progress` event
 - Row updates without full table refresh
 - Progress bar animates during upload

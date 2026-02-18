@@ -3,11 +3,13 @@
 This plan follows Test-Driven Development (TDD): write tests first (RED), implement to pass (GREEN), then refactor.
 
 **Test Types:**
+
 - **Unit tests** (Vitest): Isolated logic, formatters, utilities - `tests/unit/*.test.ts`
 - **Integration tests**: IPC handlers with database - `tests/e2e/renderer-database-ipc.e2e.ts`
 - **E2E tests** (Playwright): Complete UI workflows - `tests/e2e/*.e2e.ts`
 
 **Test Patterns Reference:**
+
 - E2E: See `tests/e2e/scientists-management.e2e.ts` for UI workflow pattern
 - IPC: See `tests/e2e/renderer-database-ipc.e2e.ts` for IPC handler testing pattern
 - Unit: See `tests/unit/database-init.test.ts` for unit test pattern
@@ -271,7 +273,7 @@ test('should navigate to ScanPreview when clicking Plant ID', async () => {
 test('Plant ID should be styled as a link', async () => {
   // Seed a scan
   await prisma.scan.create({
-    data: { plant_id: 'PLANT-LINK-STYLE', /* ... */ },
+    data: { plant_id: 'PLANT-LINK-STYLE' /* ... */ },
   });
 
   await page.click('text=Browse Scans');
@@ -294,6 +296,7 @@ test('Plant ID should be styled as a link', async () => {
 - [ ] Add styling: `className="text-blue-600 hover:text-blue-800 hover:underline"`
 
 **Prerequisite**: Add placeholder route for `/scan/:scanId` in `App.tsx`:
+
 ```typescript
 <Route path="scan/:scanId" element={<div>Scan Preview (Coming Soon)</div>} />
 ```
@@ -310,7 +313,7 @@ test('Plant ID should be styled as a link', async () => {
 test('should have View button in Actions column', async () => {
   // Seed a scan
   const scan = await prisma.scan.create({
-    data: { plant_id: 'PLANT-VIEW-BTN', /* ... */ },
+    data: { plant_id: 'PLANT-VIEW-BTN' /* ... */ },
   });
 
   await page.click('text=Browse Scans');
@@ -323,7 +326,7 @@ test('should have View button in Actions column', async () => {
 
 test('should navigate to ScanPreview when clicking View button', async () => {
   const scan = await prisma.scan.create({
-    data: { plant_id: 'PLANT-VIEW-NAV', /* ... */ },
+    data: { plant_id: 'PLANT-VIEW-NAV' /* ... */ },
   });
 
   await page.click('text=Browse Scans');
@@ -575,10 +578,10 @@ Before marking proposal complete:
 
 ## Test Files to Create
 
-| File | Type | Purpose |
-|------|------|---------|
-| `tests/e2e/browse-scans.e2e.ts` | E2E | BrowseScans page UI workflows |
-| `tests/e2e/scan-preview.e2e.ts` | E2E | ScanPreview page UI workflows |
-| `tests/unit/zoomable-image.test.ts` | Unit | Zoom logic isolated tests |
-| `tests/unit/image-uploader.test.ts` | Unit | Upload service logic |
-| Updates to `renderer-database-ipc.e2e.ts` | Integration | Scans IPC handler tests |
+| File                                      | Type        | Purpose                       |
+| ----------------------------------------- | ----------- | ----------------------------- |
+| `tests/e2e/browse-scans.e2e.ts`           | E2E         | BrowseScans page UI workflows |
+| `tests/e2e/scan-preview.e2e.ts`           | E2E         | ScanPreview page UI workflows |
+| `tests/unit/zoomable-image.test.ts`       | Unit        | Zoom logic isolated tests     |
+| `tests/unit/image-uploader.test.ts`       | Unit        | Upload service logic          |
+| Updates to `renderer-database-ipc.e2e.ts` | Integration | Scans IPC handler tests       |

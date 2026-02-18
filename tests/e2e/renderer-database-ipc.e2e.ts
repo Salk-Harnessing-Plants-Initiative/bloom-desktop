@@ -1515,7 +1515,10 @@ test.describe('Renderer Database IPC - Scans List with Pagination', () => {
     });
 
     const phenotyper = await prisma.phenotyper.create({
-      data: { name: 'Pagination Phenotyper', email: 'paginationpheno@test.com' },
+      data: {
+        name: 'Pagination Phenotyper',
+        email: 'paginationpheno@test.com',
+      },
     });
 
     return { scientist, experiment1, experiment2, phenotyper };
