@@ -46,7 +46,6 @@ import { loadEnvConfig } from '../../src/main/config-store';
 // Import the module under test (will fail until implemented)
 import {
   ImageUploader,
-  UploadResult,
   UploadProgressCallback,
 } from '../../src/main/image-uploader';
 
