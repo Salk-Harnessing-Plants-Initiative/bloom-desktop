@@ -2411,7 +2411,9 @@ test.describe('Renderer Database IPC - Scans Upload', () => {
     // This tests the handler exists and returns proper error structure
     const result = await window.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (window as any).electron.database.scans.upload('non-existent-scan-id');
+      return (window as any).electron.database.scans.upload(
+        'non-existent-scan-id'
+      );
     });
 
     expect(result.success).toBe(false);
@@ -2543,10 +2545,13 @@ test.describe('Renderer Database IPC - Scans Upload', () => {
     });
 
     // Call batch upload - will fail due to missing credentials
-    const result = await window.evaluate((scanIds) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (window as any).electron.database.scans.uploadBatch(scanIds);
-    }, [scan1.id, scan2.id]);
+    const result = await window.evaluate(
+      (scanIds) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (window as any).electron.database.scans.uploadBatch(scanIds);
+      },
+      [scan1.id, scan2.id]
+    );
 
     // Should fail with credentials error
     expect(result.success).toBe(false);

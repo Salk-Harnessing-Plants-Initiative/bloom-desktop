@@ -557,6 +557,7 @@ URL assertions always fail, even though the app visually navigates correctly.
 **Cause:** The app uses `MemoryRouter` from react-router-dom (see `src/renderer/App.tsx`). MemoryRouter stores navigation history **in memory only** and **never changes the browser URL**. The URL stays constant (e.g., `http://localhost:9000`) regardless of which route is active.
 
 **Why MemoryRouter?** Electron apps commonly use MemoryRouter because:
+
 - File-based URLs (`file://`) don't work well with BrowserRouter
 - Hash routing can interfere with Electron's navigation
 - Memory routing is simpler for single-window apps

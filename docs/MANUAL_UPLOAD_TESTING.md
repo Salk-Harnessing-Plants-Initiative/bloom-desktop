@@ -38,8 +38,17 @@ You need at least one scan with images in the local database. Images should exis
 
 ```javascript
 // List scans to find one with images
-const result = await window.electron.database.scans.list({ page: 1, pageSize: 10 });
-console.log(result.data.scans.map(s => ({ id: s.id, plant_id: s.plant_id, images: s.images.length })));
+const result = await window.electron.database.scans.list({
+  page: 1,
+  pageSize: 10,
+});
+console.log(
+  result.data.scans.map((s) => ({
+    id: s.id,
+    plant_id: s.plant_id,
+    images: s.images.length,
+  }))
+);
 ```
 
 5. Upload a single scan:
@@ -51,6 +60,7 @@ console.log(uploadResult);
 ```
 
 **Expected response (success):**
+
 ```javascript
 {
   success: true,
@@ -66,6 +76,7 @@ console.log(uploadResult);
 ```
 
 **Expected response (credentials error):**
+
 ```javascript
 {
   success: false,
@@ -82,6 +93,7 @@ console.log(batchResult);
 ```
 
 **Expected response:**
+
 ```javascript
 {
   success: true,
@@ -102,14 +114,17 @@ After uploading, image statuses should be updated:
 ```javascript
 // Get scan with images
 const scan = await window.electron.database.scans.get('your-scan-id');
-console.log(scan.data.images.map(img => ({
-  id: img.id,
-  frame: img.frame_number,
-  status: img.status
-})));
+console.log(
+  scan.data.images.map((img) => ({
+    id: img.id,
+    frame: img.frame_number,
+    status: img.status,
+  }))
+);
 ```
 
 **Image status values:**
+
 - `pending` - Not yet uploaded
 - `uploading` - Currently uploading (transient)
 - `uploaded` - Successfully uploaded
@@ -118,6 +133,7 @@ console.log(scan.data.images.map(img => ({
 ### Check Supabase Storage
 
 Images are uploaded to the `images` bucket in Supabase with path format:
+
 ```
 scans/{scanId}/frame_{N}.png
 ```
@@ -163,6 +179,7 @@ Once the UI is implemented, you can test uploads through the BrowseScans page:
 4. Verify the status column updates to "Uploaded"
 
 For batch uploads:
+
 1. Select multiple scans using checkboxes
 2. Click **Upload Selected**
 3. Watch the batch progress indicator
@@ -170,6 +187,7 @@ For batch uploads:
 ## CI Testing
 
 The upload IPC handlers are tested in CI without real credentials:
+
 - Tests verify the handlers exist and return proper error structures
 - Tests verify "Missing Bloom credentials" error when credentials aren't configured
 - Tests verify "Scan not found" error for invalid scan IDs

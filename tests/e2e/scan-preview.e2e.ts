@@ -229,7 +229,9 @@ test.describe('ScanPreview Navigation', () => {
 
     // Should navigate to scan preview page (MemoryRouter doesn't change URL, so check content)
     await expect(window.getByText('Back to Scans')).toBeVisible();
-    await expect(window.getByRole('heading', { name: 'PLANT-NAV-TEST' })).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'PLANT-NAV-TEST' })
+    ).toBeVisible();
   });
 
   test('should navigate to ScanPreview from View button', async () => {
@@ -245,7 +247,9 @@ test.describe('ScanPreview Navigation', () => {
 
     // Should navigate to scan preview page (MemoryRouter doesn't change URL, so check content)
     await expect(window.getByText('Back to Scans')).toBeVisible();
-    await expect(window.getByRole('heading', { name: 'PLANT-VIEW-BTN' })).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'PLANT-VIEW-BTN' })
+    ).toBeVisible();
   });
 
   test('should display scan Plant ID in header', async () => {
@@ -260,7 +264,9 @@ test.describe('ScanPreview Navigation', () => {
     await expect(window.getByText('Back to Scans')).toBeVisible();
 
     // Verify Plant ID is shown in the header
-    await expect(window.getByRole('heading', { name: 'PLANT-HEADER-TEST' })).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'PLANT-HEADER-TEST' })
+    ).toBeVisible();
   });
 
   test('should have back link to Browse Scans', async () => {
@@ -289,7 +295,9 @@ test.describe('ScanPreview Navigation', () => {
     await window.click('text=PLANT-DELETE-TEST');
 
     // Verify we're on the scan preview page
-    await expect(window.getByRole('heading', { name: 'PLANT-DELETE-TEST' })).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'PLANT-DELETE-TEST' })
+    ).toBeVisible();
 
     // Delete the scan from the database directly (simulating data becoming unavailable)
     await prisma.image.deleteMany({ where: { scan_id: scan.id } });
@@ -323,7 +331,9 @@ test.describe('ScanPreview Metadata Display', () => {
     await expect(window.getByText('Back to Scans')).toBeVisible();
 
     // Verify metadata is displayed
-    await expect(window.getByRole('heading', { name: 'PLANT-META-001' })).toBeVisible();
+    await expect(
+      window.getByRole('heading', { name: 'PLANT-META-001' })
+    ).toBeVisible();
     await expect(window.getByText('Col-0')).toBeVisible();
     await expect(window.getByText('Test Experiment')).toBeVisible();
     await expect(window.getByText('Test Phenotyper')).toBeVisible();

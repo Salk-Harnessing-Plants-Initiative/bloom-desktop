@@ -318,7 +318,9 @@ export interface DatabaseAPI {
      * @param scanIds - Array of scan IDs to upload
      * @returns Promise resolving to array of upload results
      */
-    uploadBatch: (scanIds: string[]) => Promise<DatabaseResponse<UploadResult[]>>;
+    uploadBatch: (
+      scanIds: string[]
+    ) => Promise<DatabaseResponse<UploadResult[]>>;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;

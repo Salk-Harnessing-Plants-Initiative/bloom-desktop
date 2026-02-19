@@ -362,7 +362,9 @@ export function ScanPreview() {
                   <div className="flex justify-between">
                     <dt className="text-gray-500">Rotation</dt>
                     <dd className="font-medium">
-                      {scan.seconds_per_rot ? `${scan.seconds_per_rot} sec/rot` : '-'}
+                      {scan.seconds_per_rot
+                        ? `${scan.seconds_per_rot} sec/rot`
+                        : '-'}
                     </dd>
                   </div>
                 </dl>

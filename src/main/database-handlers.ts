@@ -879,10 +879,7 @@ export function registerDatabaseHandlers() {
    */
   ipcMain.handle(
     'db:scans:upload',
-    async (
-      _event,
-      scanId: string
-    ): Promise<DatabaseResponse<UploadResult>> => {
+    async (_event, scanId: string): Promise<DatabaseResponse<UploadResult>> => {
       try {
         const uploader = new ImageUploader(db);
         await uploader.authenticate();
