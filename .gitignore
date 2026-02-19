@@ -75,7 +75,7 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 .uv/
-uv.lock
+# Note: uv.lock is committed for reproducible CI builds (--frozen)
 .coverage
 htmlcov/
 
