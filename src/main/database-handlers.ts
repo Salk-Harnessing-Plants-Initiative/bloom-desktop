@@ -8,6 +8,7 @@
 import { ipcMain } from 'electron';
 import { getDatabase } from './database';
 import type { Prisma } from '@prisma/client';
+import { ImageUploader, UploadResult } from './image-uploader';
 
 /**
  * Standard response format for database operations
@@ -864,6 +865,68 @@ export function registerDatabaseHandlers() {
         return { success: true, data: scan };
       } catch (error) {
         console.error('[DB] Failed to delete scan:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  /**
+   * Upload a scan's images to Bloom remote storage
+   * Uses credentials from ~/.bloom/.env (machine configuration)
+   */
+  ipcMain.handle(
+    'db:scans:upload',
+    async (
+      _event,
+      scanId: string
+    ): Promise<DatabaseResponse<UploadResult>> => {
+      try {
+        const uploader = new ImageUploader(db);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan(scanId);
+        logDatabaseOperation(
+          'UPDATE',
+          'Scan',
+          `id=${scanId} uploaded ${result.uploaded}/${result.total} images`
+        );
+        return { success: true, data: result };
+      } catch (error) {
+        console.error('[DB] Failed to upload scan:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  /**
+   * Upload multiple scans' images to Bloom remote storage (batch)
+   * Uses credentials from ~/.bloom/.env (machine configuration)
+   */
+  ipcMain.handle(
+    'db:scans:uploadBatch',
+    async (
+      _event,
+      scanIds: string[]
+    ): Promise<DatabaseResponse<UploadResult[]>> => {
+      try {
+        const uploader = new ImageUploader(db);
+        await uploader.authenticate();
+        const results = await uploader.uploadBatch(scanIds);
+        const totalUploaded = results.reduce((sum, r) => sum + r.uploaded, 0);
+        const totalImages = results.reduce((sum, r) => sum + r.total, 0);
+        logDatabaseOperation(
+          'UPDATE',
+          'Scan',
+          `batch upload: ${scanIds.length} scans, ${totalUploaded}/${totalImages} images`
+        );
+        return { success: true, data: results };
+      } catch (error) {
+        console.error('[DB] Failed to batch upload scans:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',

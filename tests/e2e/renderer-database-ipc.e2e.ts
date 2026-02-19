@@ -2394,6 +2394,167 @@ test.describe('Renderer Database IPC - Scans getRecent', () => {
   });
 });
 
+/**
+ * Scans Upload IPC Tests
+ *
+ * These tests verify the upload IPC handlers work correctly.
+ * Since CI doesn't have real Bloom credentials, we test error handling paths:
+ * - Missing credentials error
+ * - Non-existent scan error
+ * - Response structure validation
+ *
+ * For manual testing with real uploads, see: docs/MANUAL_UPLOAD_TESTING.md
+ */
+test.describe('Renderer Database IPC - Scans Upload', () => {
+  test('db:scans:upload should return error for non-existent scan', async () => {
+    // Call upload with a fake scan ID
+    // This tests the handler exists and returns proper error structure
+    const result = await window.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.upload('non-existent-scan-id');
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    // Should fail with either "Scan not found" or "Missing Bloom credentials"
+    // depending on whether credentials check happens first
+    expect(result.error).toMatch(/Scan not found|Missing Bloom credentials/);
+  });
+
+  test('db:scans:upload should return structured response', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Upload Test Scientist', email: 'uploadtest@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Upload Test Phenotyper', email: 'uploadpheno@test.com' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Upload Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'UPLOAD_TEST_SCAN',
+        path: './scans/test/UPLOAD_TEST_SCAN',
+        capture_date: new Date(),
+        num_frames: 1,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Call upload - will fail due to missing credentials in CI
+    // but validates the handler exists and response structure
+    const result = await window.evaluate((scanId) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.upload(scanId);
+    }, scan.id);
+
+    // Should fail with credentials error (scan exists but no credentials)
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('Missing Bloom credentials');
+  });
+
+  test('db:scans:uploadBatch should return error for empty array', async () => {
+    // Call batch upload with empty array
+    const result = await window.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.uploadBatch([]);
+    });
+
+    // Should fail with credentials error (checked before processing scans)
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('Missing Bloom credentials');
+  });
+
+  test('db:scans:uploadBatch should return structured response', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Batch Upload Scientist', email: 'batchupload@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Batch Upload Phenotyper', email: 'batchpheno@test.com' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Batch Upload Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const scan1 = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'BATCH_UPLOAD_001',
+        path: './scans/test/BATCH_UPLOAD_001',
+        capture_date: new Date(),
+        num_frames: 1,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    const scan2 = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'BATCH_UPLOAD_002',
+        path: './scans/test/BATCH_UPLOAD_002',
+        capture_date: new Date(),
+        num_frames: 1,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Call batch upload - will fail due to missing credentials
+    const result = await window.evaluate((scanIds) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.uploadBatch(scanIds);
+    }, [scan1.id, scan2.id]);
+
+    // Should fail with credentials error
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('Missing Bloom credentials');
+  });
+});
+
 test.describe('Renderer Database IPC - Context Isolation', () => {
   test('should not expose require() to renderer', async () => {
     const hasRequire = await window.evaluate(() => {

@@ -37,6 +37,7 @@ import {
   PaginatedScanFilters,
   PaginatedScansResponse,
 } from './database';
+import { UploadResult } from '../main/image-uploader';
 
 /**
  * Python backend API
@@ -304,6 +305,20 @@ export interface DatabaseAPI {
      * @returns Promise resolving to delete result
      */
     delete: (id: string) => Promise<DatabaseResponse<Scan>>;
+    /**
+     * Upload a scan's images to Bloom remote storage
+     * Uses credentials from ~/.bloom/.env (machine configuration)
+     * @param scanId - Scan ID to upload
+     * @returns Promise resolving to upload result with statistics
+     */
+    upload: (scanId: string) => Promise<DatabaseResponse<UploadResult>>;
+    /**
+     * Upload multiple scans' images to Bloom remote storage (batch)
+     * Uses credentials from ~/.bloom/.env (machine configuration)
+     * @param scanIds - Array of scan IDs to upload
+     * @returns Promise resolving to array of upload results
+     */
+    uploadBatch: (scanIds: string[]) => Promise<DatabaseResponse<UploadResult[]>>;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;

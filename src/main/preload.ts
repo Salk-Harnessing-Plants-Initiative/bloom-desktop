@@ -195,6 +195,9 @@ const databaseAPI: DatabaseAPI = {
     getRecent: (options?: { limit?: number; experimentId?: string }) =>
       ipcRenderer.invoke('db:scans:getRecent', options),
     delete: (id: string) => ipcRenderer.invoke('db:scans:delete', id),
+    upload: (scanId: string) => ipcRenderer.invoke('db:scans:upload', scanId),
+    uploadBatch: (scanIds: string[]) =>
+      ipcRenderer.invoke('db:scans:uploadBatch', scanIds),
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),
