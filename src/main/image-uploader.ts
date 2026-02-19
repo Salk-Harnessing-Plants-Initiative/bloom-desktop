@@ -4,11 +4,13 @@
  * Handles uploading scan images to Bloom remote storage via Supabase.
  * Uses SupabaseUploader from @salk-hpi/bloom-js for image compression and upload.
  *
+ * IMPORTANT: Uses dynamic imports for @supabase/supabase-js and @salk-hpi/bloom-js
+ * to avoid loading these modules at app startup. This prevents startup issues
+ * in the packaged app, matching the pattern used in config-store.ts.
+ *
  * Related: openspec/changes/add-browse-scans (Phase 5)
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SupabaseUploader } from '@salk-hpi/bloom-js';
 import { PrismaClient } from '@prisma/client';
 import { loadEnvConfig } from './config-store';
 import path from 'path';
@@ -66,11 +68,16 @@ export type BatchProgressCallback = (progress: BatchProgress) => void;
 
 /**
  * Image uploader service for uploading scan images to Bloom storage
+ *
+ * Uses dynamic imports to load Supabase modules only when upload is initiated,
+ * preventing startup issues in the packaged app.
  */
 export class ImageUploader {
   private prisma: PrismaClient;
-  private supabase: SupabaseClient | null = null;
-  private uploader: SupabaseUploader | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private supabase: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private uploader: any = null;
   private authenticated = false;
 
   constructor(prisma: PrismaClient) {
@@ -80,6 +87,9 @@ export class ImageUploader {
   /**
    * Authenticate with Bloom/Supabase using stored credentials
    * Must be called before uploading
+   *
+   * Note: Uses dynamic imports to avoid loading Supabase at app startup,
+   * matching the pattern in config-store.ts fetchScannersFromBloom()
    */
   async authenticate(): Promise<void> {
     // Load credentials from config
@@ -93,6 +103,10 @@ export class ImageUploader {
     if (!config.bloom_anon_key) {
       throw new Error('Missing Bloom credentials');
     }
+
+    // Dynamic imports to avoid loading at app startup
+    const { createClient } = await import('@supabase/supabase-js');
+    const { SupabaseUploader } = await import('@salk-hpi/bloom-js');
 
     // Create Supabase client
     this.supabase = createClient(config.bloom_api_url, config.bloom_anon_key);
