@@ -402,6 +402,10 @@ test.describe('ScanPreview Image Viewer', () => {
     await window.click('text=Browse Scans');
     await window.click('text=PLANT-NEXT-001');
 
+    // Wait for ScanPreview page to load
+    await expect(window.getByText('Back to Scans')).toBeVisible();
+    await expect(window.getByText('1 / 5')).toBeVisible();
+
     // Click Next button
     await window.click('button[title="Next frame"]');
 
