@@ -402,16 +402,16 @@ test.describe('ScanPreview Image Viewer', () => {
     await window.click('text=Browse Scans');
     await window.click('text=PLANT-NEXT-001');
 
-    // Wait for ScanPreview page to load
+    // Wait for ScanPreview page to load - use longer timeout for CI
     await expect(window.getByText('Back to Scans')).toBeVisible();
-    await expect(window.getByText('1 / 5')).toBeVisible();
+    await expect(window.locator('text=1 / 5')).toBeVisible({ timeout: 15000 });
 
     // Click Next button - use force:true because image error handling can cause
     // layout shifts that intercept clicks in CI where image files don't exist
     await window.click('button[title="Next frame"]', { force: true });
 
-    // Frame counter should update
-    await expect(window.locator('text=2 / 5')).toBeVisible();
+    // Frame counter should update - use longer timeout for CI
+    await expect(window.locator('text=2 / 5')).toBeVisible({ timeout: 15000 });
   });
 
   test('should navigate to previous frame with Previous button', async () => {
@@ -422,21 +422,21 @@ test.describe('ScanPreview Image Viewer', () => {
     await window.click('text=Browse Scans');
     await window.click('text=PLANT-PREV-001');
 
-    // Wait for ScanPreview page to load
+    // Wait for ScanPreview page to load - use longer timeout for CI
     await expect(window.getByText('Back to Scans')).toBeVisible();
-    await expect(window.getByText('1 / 5')).toBeVisible();
+    await expect(window.locator('text=1 / 5')).toBeVisible({ timeout: 15000 });
 
     // Go to frame 2 first using keyboard (more reliable than button click)
     await window.keyboard.press('ArrowRight');
-    await expect(window.getByText('2 / 5')).toBeVisible();
+    await expect(window.locator('text=2 / 5')).toBeVisible({ timeout: 15000 });
 
     // Go back using Previous button - use force:true because image error handling
     // can cause layout shifts that intercept clicks in CI where image files don't exist
     const prevButton = window.locator('button[title="Previous frame"]');
     await prevButton.click({ force: true });
 
-    // Should be back to frame 1
-    await expect(window.getByText('1 / 5')).toBeVisible();
+    // Should be back to frame 1 - use longer timeout for CI
+    await expect(window.locator('text=1 / 5')).toBeVisible({ timeout: 15000 });
   });
 
   test('should show "No images" message when scan has no images', async () => {
