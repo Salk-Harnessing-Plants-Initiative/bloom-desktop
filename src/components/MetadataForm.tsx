@@ -14,8 +14,10 @@ import { PlantBarcodeInput } from './PlantBarcodeInput';
 export interface ScanMetadata {
   phenotyper: string;
   experimentId: string;
-  waveNumber: number;
-  plantAgeDays: number;
+  /** Wave number as string to support validation of decimals */
+  waveNumber: string;
+  /** Plant age in days as string to support validation of decimals */
+  plantAgeDays: string;
   plantQrCode: string;
   accessionName: string;
 }
@@ -179,15 +181,14 @@ export function MetadataForm({
         </label>
         <input
           id="waveNumber"
-          type="number"
-          min="0"
-          value={values.waveNumber ?? ''}
-          onChange={(e) =>
-            handleFieldChange('waveNumber', parseInt(e.target.value, 10) || 0)
-          }
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={values.waveNumber}
+          onChange={(e) => handleFieldChange('waveNumber', e.target.value)}
           disabled={disabled}
           className={inputClassName}
-          placeholder="1"
+          placeholder="e.g., 1"
         />
         {errors.waveNumber && (
           <p className={errorClassName}>{errors.waveNumber}</p>
@@ -201,12 +202,11 @@ export function MetadataForm({
         </label>
         <input
           id="plantAgeDays"
-          type="number"
-          min="0"
-          value={values.plantAgeDays ?? ''}
-          onChange={(e) =>
-            handleFieldChange('plantAgeDays', parseInt(e.target.value, 10) || 0)
-          }
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={values.plantAgeDays}
+          onChange={(e) => handleFieldChange('plantAgeDays', e.target.value)}
           disabled={disabled}
           className={inputClassName}
           placeholder="e.g., 14"

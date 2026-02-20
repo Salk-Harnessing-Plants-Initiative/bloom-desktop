@@ -21,16 +21,20 @@ import type { ScanProgress as ScanProgressData } from '../types/scanner';
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { sanitizePath } from '../utils/path-sanitizer';
+import {
+  validateWaveNumber,
+  validatePlantAgeDays,
+} from '../utils/metadata-validation';
 
 export function CaptureScan() {
   const navigate = useNavigate();
 
-  // Metadata state
+  // Metadata state - waveNumber and plantAgeDays are strings for validation
   const [metadata, setMetadata] = useState<ScanMetadata>({
     phenotyper: '',
     experimentId: '',
-    waveNumber: 0,
-    plantAgeDays: 0,
+    waveNumber: '',
+    plantAgeDays: '',
     plantQrCode: '',
     accessionName: '',
   });
@@ -192,8 +196,11 @@ export function CaptureScan() {
             ...prev,
             phenotyper: session.phenotyperId ?? '',
             experimentId: session.experimentId ?? '',
-            waveNumber: session.waveNumber ?? 0,
-            plantAgeDays: session.plantAgeDays ?? 0,
+            // Convert numbers from session to strings for form state
+            waveNumber:
+              session.waveNumber !== null ? String(session.waveNumber) : '',
+            plantAgeDays:
+              session.plantAgeDays !== null ? String(session.plantAgeDays) : '',
             accessionName: session.accessionName ?? '',
             // Note: plantQrCode is NOT restored - it's unique per scan
           }));
@@ -216,12 +223,14 @@ export function CaptureScan() {
       try {
         // Use explicit checks to preserve 0 as valid numeric values
         // String fields: empty string → null
-        // Numeric fields: preserve 0 as valid, only convert undefined to null
+        // Numeric fields: parse strings to numbers, empty string → null
+        const waveNum = metadata.waveNumber.trim();
+        const ageNum = metadata.plantAgeDays.trim();
         await window.electron.session.set({
           phenotyperId: metadata.phenotyper || null,
           experimentId: metadata.experimentId || null,
-          waveNumber: metadata.waveNumber,
-          plantAgeDays: metadata.plantAgeDays,
+          waveNumber: waveNum !== '' ? parseInt(waveNum, 10) : null,
+          plantAgeDays: ageNum !== '' ? parseInt(ageNum, 10) : null,
           accessionName: metadata.accessionName || null,
           // Note: plantQrCode is NOT saved - it's unique per scan
         });
@@ -339,12 +348,19 @@ export function CaptureScan() {
     if (!metadata.experimentId.trim()) {
       errors.experimentId = 'Experiment ID is required';
     }
-    if (metadata.waveNumber <= 0) {
-      errors.waveNumber = 'Wave number must be greater than 0';
+
+    // Validate wave number using utility (allows 0, rejects decimals)
+    const waveNumberResult = validateWaveNumber(metadata.waveNumber);
+    if (!waveNumberResult.isValid) {
+      errors.waveNumber = waveNumberResult.error;
     }
-    if (metadata.plantAgeDays < 0) {
-      errors.plantAgeDays = 'Plant age must be 0 or greater';
+
+    // Validate plant age using utility (allows 0, rejects decimals)
+    const plantAgeResult = validatePlantAgeDays(metadata.plantAgeDays);
+    if (!plantAgeResult.isValid) {
+      errors.plantAgeDays = plantAgeResult.error;
     }
+
     if (!metadata.plantQrCode.trim()) {
       errors.plantQrCode = 'Plant ID is required';
     }
@@ -391,8 +407,8 @@ export function CaptureScan() {
           scanner_name: scannerName,
           plant_id: metadata.plantQrCode,
           accession_name: metadata.accessionName || undefined,
-          plant_age_days: metadata.plantAgeDays,
-          wave_number: metadata.waveNumber,
+          plant_age_days: parseInt(metadata.plantAgeDays, 10),
+          wave_number: parseInt(metadata.waveNumber, 10),
         },
       });
 
