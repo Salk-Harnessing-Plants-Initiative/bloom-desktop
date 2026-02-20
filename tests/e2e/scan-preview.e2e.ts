@@ -406,8 +406,9 @@ test.describe('ScanPreview Image Viewer', () => {
     await expect(window.getByText('Back to Scans')).toBeVisible();
     await expect(window.getByText('1 / 5')).toBeVisible();
 
-    // Click Next button
-    await window.click('button[title="Next frame"]');
+    // Click Next button - use force:true because image error handling can cause
+    // layout shifts that intercept clicks in CI where image files don't exist
+    await window.click('button[title="Next frame"]', { force: true });
 
     // Frame counter should update
     await expect(window.locator('text=2 / 5')).toBeVisible();
@@ -429,9 +430,10 @@ test.describe('ScanPreview Image Viewer', () => {
     await window.keyboard.press('ArrowRight');
     await expect(window.getByText('2 / 5')).toBeVisible();
 
-    // Go back using Previous button
+    // Go back using Previous button - use force:true because image error handling
+    // can cause layout shifts that intercept clicks in CI where image files don't exist
     const prevButton = window.locator('button[title="Previous frame"]');
-    await prevButton.click();
+    await prevButton.click({ force: true });
 
     // Should be back to frame 1
     await expect(window.getByText('1 / 5')).toBeVisible();
