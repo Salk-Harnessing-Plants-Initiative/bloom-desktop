@@ -502,16 +502,21 @@ test.describe('ScanPreview Keyboard Navigation', () => {
     await window.click('text=Browse Scans');
     await window.click('text=PLANT-KEY-HOME');
 
+    // Wait for page to load
+    await expect(window.locator('text=1 / 5')).toBeVisible({ timeout: 15000 });
+    await window.waitForTimeout(500);
+
     // Go to frame 3
     await window.keyboard.press('ArrowRight');
+    await expect(window.locator('text=2 / 5')).toBeVisible({ timeout: 15000 });
     await window.keyboard.press('ArrowRight');
-    await expect(window.locator('text=3 / 5')).toBeVisible();
+    await expect(window.locator('text=3 / 5')).toBeVisible({ timeout: 15000 });
 
     // Press Home
     await window.keyboard.press('Home');
 
     // Should be on frame 1
-    await expect(window.locator('text=1 / 5')).toBeVisible();
+    await expect(window.locator('text=1 / 5')).toBeVisible({ timeout: 15000 });
   });
 
   test('should go to last frame with End key', async () => {
