@@ -132,15 +132,19 @@ export function ScanPreview() {
 
   // Calculate upload status for display
   const getUploadStatus = () => {
-    if (!scan || scan.images.length === 0) return { text: 'No images', canUpload: false };
+    if (!scan || scan.images.length === 0)
+      return { text: 'No images', canUpload: false };
 
-    const uploaded = scan.images.filter((img) => img.status === 'uploaded').length;
+    const uploaded = scan.images.filter(
+      (img) => img.status === 'uploaded'
+    ).length;
     const failed = scan.images.filter((img) => img.status === 'failed').length;
     const total = scan.images.length;
 
     if (uploaded === total) return { text: 'All uploaded', canUpload: false };
     if (failed > 0) return { text: `${failed} failed`, canUpload: true };
-    if (uploaded > 0) return { text: `${uploaded}/${total} uploaded`, canUpload: true };
+    if (uploaded > 0)
+      return { text: `${uploaded}/${total} uploaded`, canUpload: true };
     return { text: 'Not uploaded', canUpload: true };
   };
 

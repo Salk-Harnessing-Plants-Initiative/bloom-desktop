@@ -579,7 +579,9 @@ test.describe('ScanPreview Upload', () => {
     await window.click('text=PLANT-UPLOAD-BTN');
 
     // Upload button should be visible in the toolbar
-    await expect(window.locator('button[title="Upload to Bloom"]')).toBeVisible();
+    await expect(
+      window.locator('button[title="Upload to Bloom"]')
+    ).toBeVisible();
   });
 
   test('should display upload button in table row actions', async () => {
@@ -593,7 +595,9 @@ test.describe('ScanPreview Upload', () => {
     await expect(window.locator('text=PLANT-TABLE-UPLOAD')).toBeVisible();
 
     // Upload button should be visible in the actions column
-    const row = window.locator('tr', { has: window.locator('text=PLANT-TABLE-UPLOAD') });
+    const row = window.locator('tr', {
+      has: window.locator('text=PLANT-TABLE-UPLOAD'),
+    });
     await expect(row.locator('button[title="Upload to Bloom"]')).toBeVisible();
   });
 
@@ -608,7 +612,9 @@ test.describe('ScanPreview Upload', () => {
     await expect(window.locator('text=PLANT-STATUS-TEST')).toBeVisible();
 
     // Upload status should show pending state (0/3 uploaded)
-    const row = window.locator('tr', { has: window.locator('text=PLANT-STATUS-TEST') });
+    const row = window.locator('tr', {
+      has: window.locator('text=PLANT-STATUS-TEST'),
+    });
     await expect(row.locator('text=/0\\/3/')).toBeVisible();
   });
 });
@@ -630,8 +636,12 @@ test.describe('Batch Upload', () => {
     await expect(window.locator('text=PLANT-BATCH-2')).toBeVisible();
 
     // Each row should have a checkbox
-    const row1 = window.locator('tr', { has: window.locator('text=PLANT-BATCH-1') });
-    const row2 = window.locator('tr', { has: window.locator('text=PLANT-BATCH-2') });
+    const row1 = window.locator('tr', {
+      has: window.locator('text=PLANT-BATCH-1'),
+    });
+    const row2 = window.locator('tr', {
+      has: window.locator('text=PLANT-BATCH-2'),
+    });
 
     await expect(row1.locator('input[type="checkbox"]')).toBeVisible();
     await expect(row2.locator('input[type="checkbox"]')).toBeVisible();
@@ -649,14 +659,20 @@ test.describe('Batch Upload', () => {
     await expect(window.locator('text=PLANT-SELECT-1')).toBeVisible();
 
     // Initially, "Upload Selected" button should not be visible
-    await expect(window.locator('button:has-text("Upload Selected")')).not.toBeVisible();
+    await expect(
+      window.locator('button:has-text("Upload Selected")')
+    ).not.toBeVisible();
 
     // Select a row
-    const row1 = window.locator('tr', { has: window.locator('text=PLANT-SELECT-1') });
+    const row1 = window.locator('tr', {
+      has: window.locator('text=PLANT-SELECT-1'),
+    });
     await row1.locator('input[type="checkbox"]').click();
 
     // Now "Upload Selected" button should be visible
-    await expect(window.locator('button:has-text("Upload Selected")')).toBeVisible();
+    await expect(
+      window.locator('button:has-text("Upload Selected")')
+    ).toBeVisible();
   });
 
   test('should show selected count in "Upload Selected" button', async () => {
@@ -671,12 +687,18 @@ test.describe('Batch Upload', () => {
     await expect(window.locator('text=PLANT-COUNT-1')).toBeVisible();
 
     // Select both rows
-    const row1 = window.locator('tr', { has: window.locator('text=PLANT-COUNT-1') });
-    const row2 = window.locator('tr', { has: window.locator('text=PLANT-COUNT-2') });
+    const row1 = window.locator('tr', {
+      has: window.locator('text=PLANT-COUNT-1'),
+    });
+    const row2 = window.locator('tr', {
+      has: window.locator('text=PLANT-COUNT-2'),
+    });
     await row1.locator('input[type="checkbox"]').click();
     await row2.locator('input[type="checkbox"]').click();
 
     // Button should show count
-    await expect(window.locator('button:has-text("Upload Selected (2)")')).toBeVisible();
+    await expect(
+      window.locator('button:has-text("Upload Selected (2)")')
+    ).toBeVisible();
   });
 });
