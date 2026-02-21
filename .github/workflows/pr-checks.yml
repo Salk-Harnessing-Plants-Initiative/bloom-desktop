@@ -77,8 +77,9 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Install Python dependencies
-        run: uv sync --all-extras
+        run: uv sync --all-extras --frozen
         # Installs both regular and dev dependencies (black, ruff, mypy)
+        # Uses --frozen to respect uv.lock for reproducible CI builds
 
       - name: Check black formatting
         run: uv run black --check python/
@@ -214,8 +215,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: uv sync --all-extras
+        run: uv sync --all-extras --frozen
         # Required for pytest, pytest-cov, and other test dependencies
+        # Uses --frozen to respect uv.lock for reproducible CI builds
 
       - name: Run Python tests with coverage
         run: npm run test:python
@@ -272,7 +274,7 @@ jobs:
 
       - name: Build Python executable
         run: |
-          uv sync --extra dev
+          uv sync --extra dev --frozen
           uv run pyinstaller python/main.spec
 
       - name: Upload Python executable

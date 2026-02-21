@@ -8,6 +8,7 @@
 import { ipcMain } from 'electron';
 import { getDatabase } from './database';
 import type { Prisma } from '@prisma/client';
+import { ImageUploader, UploadResult } from './image-uploader';
 
 /**
  * Standard response format for database operations
@@ -591,22 +592,117 @@ export function registerDatabaseHandlers() {
     async (
       _event,
       filters?: {
+        // Legacy filters (simple list)
         experiment_id?: string;
         phenotyper_id?: string;
         plant_id?: string;
+        // New pagination filters (BrowseScans feature)
+        page?: number;
+        pageSize?: number;
+        experimentId?: string;
+        dateFrom?: string;
+        dateTo?: string;
       }
     ): Promise<DatabaseResponse> => {
       try {
-        const scans = await db.scan.findMany({
-          where: filters,
-          include: {
-            experiment: true,
-            phenotyper: true,
-            images: { select: { id: true, status: true } }, // Just id/status, not full image data
-          },
-          orderBy: { capture_date: 'desc' },
-        });
-        return { success: true, data: scans };
+        // Check if pagination params are provided
+        const isPaginated =
+          typeof filters?.page === 'number' &&
+          typeof filters?.pageSize === 'number';
+
+        if (isPaginated) {
+          // Paginated query (BrowseScans feature)
+          const page = Math.max(1, filters.page!);
+          const pageSize = Math.min(100, Math.max(1, filters.pageSize!));
+          const skip = (page - 1) * pageSize;
+
+          // Build where clause - always exclude soft-deleted scans
+          const where: {
+            deleted: boolean;
+            experiment_id?: string;
+            capture_date?: { gte?: Date; lte?: Date };
+          } = {
+            deleted: false,
+          };
+
+          // Experiment filter
+          if (filters.experimentId) {
+            where.experiment_id = filters.experimentId;
+          }
+
+          // Date range filter
+          // Note: Append 'T00:00:00' to parse as local time, not UTC
+          // (plain date strings like "2025-02-17" are parsed as UTC midnight)
+          if (filters.dateFrom || filters.dateTo) {
+            where.capture_date = {};
+            if (filters.dateFrom) {
+              // Start of day in local time
+              where.capture_date.gte = new Date(filters.dateFrom + 'T00:00:00');
+            }
+            if (filters.dateTo) {
+              // End of day in local time (inclusive)
+              where.capture_date.lte = new Date(
+                filters.dateTo + 'T23:59:59.999'
+              );
+            }
+          }
+
+          // Execute count and findMany in parallel
+          const [total, scans] = await Promise.all([
+            db.scan.count({ where }),
+            db.scan.findMany({
+              where,
+              include: {
+                experiment: {
+                  include: {
+                    scientist: true,
+                  },
+                },
+                phenotyper: true,
+                images: true,
+              },
+              orderBy: { capture_date: 'desc' },
+              skip,
+              take: pageSize,
+            }),
+          ]);
+
+          logDatabaseOperation(
+            'READ',
+            'Scan',
+            `list paginated page=${page} pageSize=${pageSize} total=${total}`
+          );
+
+          return {
+            success: true,
+            data: {
+              scans,
+              total,
+              page,
+              pageSize,
+            },
+          };
+        } else {
+          // Legacy query (simple list without pagination)
+          const scans = await db.scan.findMany({
+            where: {
+              experiment_id: filters?.experiment_id,
+              phenotyper_id: filters?.phenotyper_id,
+              plant_id: filters?.plant_id,
+            },
+            include: {
+              experiment: {
+                include: {
+                  scientist: true,
+                },
+              },
+              phenotyper: true,
+              images: { select: { id: true, status: true } }, // Just id/status, not full image data
+            },
+            orderBy: { capture_date: 'desc' },
+          });
+          return { success: true, data: scans };
+        }
       } catch (error) {
         console.error('[DB] Failed to list scans:', error);
         return {
@@ -624,7 +720,11 @@ export function registerDatabaseHandlers() {
         const scan = await db.scan.findUnique({
           where: { id },
           include: {
-            experiment: true,
+            experiment: {
+              include: {
+                scientist: true,
+              },
+            },
             phenotyper: true,
             images: {
               orderBy: { frame_number: 'asc' },
@@ -741,6 +841,89 @@ export function registerDatabaseHandlers() {
         return { success: true, data: scans };
       } catch (error) {
         console.error('[DB] Failed to get recent scans:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  /**
+   * Soft delete a scan by setting deleted=true
+   * Does NOT delete associated Image records
+   */
+  ipcMain.handle(
+    'db:scans:delete',
+    async (_event, id: string): Promise<DatabaseResponse> => {
+      try {
+        const scan = await db.scan.update({
+          where: { id },
+          data: { deleted: true },
+        });
+        logDatabaseOperation('DELETE', 'Scan', `id=${id} (soft delete)`);
+        return { success: true, data: scan };
+      } catch (error) {
+        console.error('[DB] Failed to delete scan:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  /**
+   * Upload a scan's images to Bloom remote storage
+   * Uses credentials from ~/.bloom/.env (machine configuration)
+   */
+  ipcMain.handle(
+    'db:scans:upload',
+    async (_event, scanId: string): Promise<DatabaseResponse<UploadResult>> => {
+      try {
+        const uploader = new ImageUploader(db);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan(scanId);
+        logDatabaseOperation(
+          'UPDATE',
+          'Scan',
+          `id=${scanId} uploaded ${result.uploaded}/${result.total} images`
+        );
+        return { success: true, data: result };
+      } catch (error) {
+        console.error('[DB] Failed to upload scan:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  /**
+   * Upload multiple scans' images to Bloom remote storage (batch)
+   * Uses credentials from ~/.bloom/.env (machine configuration)
+   */
+  ipcMain.handle(
+    'db:scans:uploadBatch',
+    async (
+      _event,
+      scanIds: string[]
+    ): Promise<DatabaseResponse<UploadResult[]>> => {
+      try {
+        const uploader = new ImageUploader(db);
+        await uploader.authenticate();
+        const results = await uploader.uploadBatch(scanIds);
+        const totalUploaded = results.reduce((sum, r) => sum + r.uploaded, 0);
+        const totalImages = results.reduce((sum, r) => sum + r.total, 0);
+        logDatabaseOperation(
+          'UPDATE',
+          'Scan',
+          `batch upload: ${scanIds.length} scans, ${totalUploaded}/${totalImages} images`
+        );
+        return { success: true, data: results };
+      } catch (error) {
+        console.error('[DB] Failed to batch upload scans:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
