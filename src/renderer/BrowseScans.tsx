@@ -32,7 +32,9 @@ export function BrowseScans() {
   const [error, setError] = useState<string | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
   const [uploadInProgress, setUploadInProgress] = useState<string | null>(null);
-  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
+  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(
+    new Set()
+  );
   const [batchUploadInProgress, setBatchUploadInProgress] = useState(false);
 
   const totalPages = Math.ceil(total / pageSize);
@@ -384,7 +386,8 @@ export function BrowseScans() {
                       scans.every(
                         (scan) =>
                           selectedScanIds.has(scan.id) ||
-                          getUploadStatus(scan.images).text === 'All uploaded' ||
+                          getUploadStatus(scan.images).text ===
+                            'All uploaded' ||
                           getUploadStatus(scan.images).text === 'No images'
                       )
                     }
