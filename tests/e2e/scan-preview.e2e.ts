@@ -612,3 +612,71 @@ test.describe('ScanPreview Upload', () => {
     await expect(row.locator('text=/0\\/3/')).toBeVisible();
   });
 });
+
+/**
+ * Batch Upload Tests - Phase 5.7-5.8
+ */
+test.describe('Batch Upload', () => {
+  test('should display checkbox in each table row', async () => {
+    // Create test scans
+    await createTestScan({ plant_id: 'PLANT-BATCH-1', withImages: 2 });
+    await createTestScan({ plant_id: 'PLANT-BATCH-2', withImages: 2 });
+
+    // Navigate to BrowseScans
+    await window.click('text=Browse Scans');
+
+    // Wait for table to load
+    await expect(window.locator('text=PLANT-BATCH-1')).toBeVisible();
+    await expect(window.locator('text=PLANT-BATCH-2')).toBeVisible();
+
+    // Each row should have a checkbox
+    const row1 = window.locator('tr', { has: window.locator('text=PLANT-BATCH-1') });
+    const row2 = window.locator('tr', { has: window.locator('text=PLANT-BATCH-2') });
+
+    await expect(row1.locator('input[type="checkbox"]')).toBeVisible();
+    await expect(row2.locator('input[type="checkbox"]')).toBeVisible();
+  });
+
+  test('should show "Upload Selected" button when rows are selected', async () => {
+    // Create test scans
+    await createTestScan({ plant_id: 'PLANT-SELECT-1', withImages: 2 });
+    await createTestScan({ plant_id: 'PLANT-SELECT-2', withImages: 2 });
+
+    // Navigate to BrowseScans
+    await window.click('text=Browse Scans');
+
+    // Wait for table to load
+    await expect(window.locator('text=PLANT-SELECT-1')).toBeVisible();
+
+    // Initially, "Upload Selected" button should not be visible
+    await expect(window.locator('button:has-text("Upload Selected")')).not.toBeVisible();
+
+    // Select a row
+    const row1 = window.locator('tr', { has: window.locator('text=PLANT-SELECT-1') });
+    await row1.locator('input[type="checkbox"]').click();
+
+    // Now "Upload Selected" button should be visible
+    await expect(window.locator('button:has-text("Upload Selected")')).toBeVisible();
+  });
+
+  test('should show selected count in "Upload Selected" button', async () => {
+    // Create test scans
+    await createTestScan({ plant_id: 'PLANT-COUNT-1', withImages: 2 });
+    await createTestScan({ plant_id: 'PLANT-COUNT-2', withImages: 2 });
+
+    // Navigate to BrowseScans
+    await window.click('text=Browse Scans');
+
+    // Wait for table to load
+    await expect(window.locator('text=PLANT-COUNT-1')).toBeVisible();
+
+    // Select both rows
+    const row1 = window.locator('tr', { has: window.locator('text=PLANT-COUNT-1') });
+    const row2 = window.locator('tr', { has: window.locator('text=PLANT-COUNT-2') });
+    await row1.locator('input[type="checkbox"]').click();
+    await row2.locator('input[type="checkbox"]').click();
+
+    // Button should show count
+    await expect(window.locator('button:has-text("Upload Selected (2)")')).toBeVisible();
+  });
+});

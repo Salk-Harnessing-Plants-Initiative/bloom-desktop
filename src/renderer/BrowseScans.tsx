@@ -32,6 +32,8 @@ export function BrowseScans() {
   const [error, setError] = useState<string | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
   const [uploadInProgress, setUploadInProgress] = useState<string | null>(null);
+  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(new Set());
+  const [batchUploadInProgress, setBatchUploadInProgress] = useState(false);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -141,6 +143,55 @@ export function BrowseScans() {
       setError('An unexpected error occurred while uploading scan');
     } finally {
       setUploadInProgress(null);
+    }
+  };
+
+  const handleSelectScan = (scanId: string, checked: boolean) => {
+    setSelectedScanIds((prev) => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(scanId);
+      } else {
+        newSet.delete(scanId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      // Select all scans that can be uploaded (not already fully uploaded)
+      const uploadableIds = scans
+        .filter((scan) => {
+          const status = getUploadStatus(scan.images);
+          return status.text !== 'All uploaded' && status.text !== 'No images';
+        })
+        .map((scan) => scan.id);
+      setSelectedScanIds(new Set(uploadableIds));
+    } else {
+      setSelectedScanIds(new Set());
+    }
+  };
+
+  const handleBatchUpload = async () => {
+    if (selectedScanIds.size === 0 || batchUploadInProgress) return;
+
+    setBatchUploadInProgress(true);
+    try {
+      const scanIds = Array.from(selectedScanIds);
+      const result = await window.electron.database.scans.uploadBatch(scanIds);
+      if (result.success) {
+        // Clear selection and refresh
+        setSelectedScanIds(new Set());
+        fetchScans();
+      } else {
+        setError(result.error || 'Batch upload failed');
+      }
+    } catch (err) {
+      console.error('Error during batch upload:', err);
+      setError('An unexpected error occurred during batch upload');
+    } finally {
+      setBatchUploadInProgress(false);
     }
   };
 
@@ -288,6 +339,29 @@ export function BrowseScans() {
         </div>
       )}
 
+      {/* Batch Actions */}
+      {selectedScanIds.size > 0 && (
+        <div className="mb-4 flex items-center gap-4">
+          <button
+            type="button"
+            onClick={handleBatchUpload}
+            disabled={batchUploadInProgress}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {batchUploadInProgress
+              ? 'Uploading...'
+              : `Upload Selected (${selectedScanIds.size})`}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedScanIds(new Set())}
+            className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            Clear Selection
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
         {isLoading ? (
@@ -302,6 +376,23 @@ export function BrowseScans() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-700 w-10">
+                  <input
+                    type="checkbox"
+                    checked={
+                      scans.length > 0 &&
+                      scans.every(
+                        (scan) =>
+                          selectedScanIds.has(scan.id) ||
+                          getUploadStatus(scan.images).text === 'All uploaded' ||
+                          getUploadStatus(scan.images).text === 'No images'
+                      )
+                    }
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300"
+                    title="Select all"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-700">
                   Plant ID
                 </th>
@@ -337,8 +428,22 @@ export function BrowseScans() {
             <tbody className="divide-y divide-gray-100">
               {scans.map((scan) => {
                 const uploadStatus = getUploadStatus(scan.images);
+                const canUpload =
+                  uploadStatus.text !== 'All uploaded' &&
+                  uploadStatus.text !== 'No images';
                 return (
                   <tr key={scan.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedScanIds.has(scan.id)}
+                        onChange={(e) =>
+                          handleSelectScan(scan.id, e.target.checked)
+                        }
+                        disabled={!canUpload}
+                        className="w-4 h-4 rounded border-gray-300 disabled:opacity-50"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium">
                       <Link
                         to={`/scan/${scan.id}`}
