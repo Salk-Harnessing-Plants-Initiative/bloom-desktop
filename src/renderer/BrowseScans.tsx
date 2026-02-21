@@ -31,6 +31,7 @@ export function BrowseScans() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
+  const [uploadInProgress, setUploadInProgress] = useState<string | null>(null);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -122,6 +123,24 @@ export function BrowseScans() {
       setError('An unexpected error occurred while deleting scan');
     } finally {
       setDeleteInProgress(null);
+    }
+  };
+
+  const handleUpload = async (scanId: string) => {
+    setUploadInProgress(scanId);
+    try {
+      const result = await window.electron.database.scans.upload(scanId);
+      if (result.success) {
+        // Refresh the list to show updated status
+        fetchScans();
+      } else {
+        setError(result.error || 'Failed to upload scan');
+      }
+    } catch (err) {
+      console.error('Error uploading scan:', err);
+      setError('An unexpected error occurred while uploading scan');
+    } finally {
+      setUploadInProgress(null);
     }
   };
 
@@ -372,6 +391,36 @@ export function BrowseScans() {
                             d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
                           />
                         </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUpload(scan.id)}
+                        disabled={
+                          uploadInProgress === scan.id ||
+                          uploadStatus.text === 'All uploaded' ||
+                          uploadStatus.text === 'No images'
+                        }
+                        className="text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Upload to Bloom"
+                      >
+                        {uploadInProgress === scan.id ? (
+                          'Uploading...'
+                        ) : (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={1.5}
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+                            />
+                          </svg>
+                        )}
                       </button>
                       <button
                         type="button"

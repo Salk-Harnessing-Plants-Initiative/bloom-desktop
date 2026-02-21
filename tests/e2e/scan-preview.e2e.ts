@@ -565,3 +565,50 @@ test.describe('ScanPreview Zoom Controls', () => {
     await expect(window.locator('button[title="Reset zoom"]')).toBeVisible();
   });
 });
+
+/**
+ * Upload UI Tests - Phase 5.5-5.6
+ */
+test.describe('ScanPreview Upload', () => {
+  test('should display upload button in ScanPreview', async () => {
+    // Create a test scan with images (pending status)
+    await createTestScan({ plant_id: 'PLANT-UPLOAD-BTN', withImages: 3 });
+
+    // Navigate to ScanPreview
+    await window.click('text=Browse Scans');
+    await window.click('text=PLANT-UPLOAD-BTN');
+
+    // Upload button should be visible in the toolbar
+    await expect(window.locator('button[title="Upload to Bloom"]')).toBeVisible();
+  });
+
+  test('should display upload button in table row actions', async () => {
+    // Create a test scan with images
+    await createTestScan({ plant_id: 'PLANT-TABLE-UPLOAD', withImages: 3 });
+
+    // Navigate to BrowseScans
+    await window.click('text=Browse Scans');
+
+    // Wait for table to load
+    await expect(window.locator('text=PLANT-TABLE-UPLOAD')).toBeVisible();
+
+    // Upload button should be visible in the actions column
+    const row = window.locator('tr', { has: window.locator('text=PLANT-TABLE-UPLOAD') });
+    await expect(row.locator('button[title="Upload to Bloom"]')).toBeVisible();
+  });
+
+  test('should show upload status in table', async () => {
+    // Create a test scan with pending images
+    await createTestScan({ plant_id: 'PLANT-STATUS-TEST', withImages: 3 });
+
+    // Navigate to BrowseScans
+    await window.click('text=Browse Scans');
+
+    // Wait for table to load
+    await expect(window.locator('text=PLANT-STATUS-TEST')).toBeVisible();
+
+    // Upload status should show pending state (0/3 uploaded)
+    const row = window.locator('tr', { has: window.locator('text=PLANT-STATUS-TEST') });
+    await expect(row.locator('text=/0\\/3/')).toBeVisible();
+  });
+});

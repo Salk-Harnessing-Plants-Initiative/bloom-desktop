@@ -17,6 +17,10 @@ export function ScanPreview() {
   const [currentFrame, setCurrentFrame] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(1);
 
+  // Upload state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   // Fetch scan data
   const fetchScan = useCallback(async () => {
     if (!scanId) return;
@@ -103,6 +107,41 @@ export function ScanPreview() {
 
   const handleResetZoom = () => {
     setZoomLevel(1);
+  };
+
+  const handleUpload = async () => {
+    if (!scanId || isUploading) return;
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      const result = await window.electron.database.scans.upload(scanId);
+      if (!result.success) {
+        setUploadError(result.error || 'Upload failed');
+      } else {
+        // Refresh scan data to show updated upload status
+        fetchScan();
+      }
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Calculate upload status for display
+  const getUploadStatus = () => {
+    if (!scan || scan.images.length === 0) return { text: 'No images', canUpload: false };
+
+    const uploaded = scan.images.filter((img) => img.status === 'uploaded').length;
+    const failed = scan.images.filter((img) => img.status === 'failed').length;
+    const total = scan.images.length;
+
+    if (uploaded === total) return { text: 'All uploaded', canUpload: false };
+    if (failed > 0) return { text: `${failed} failed`, canUpload: true };
+    if (uploaded > 0) return { text: `${uploaded}/${total} uploaded`, canUpload: true };
+    return { text: 'Not uploaded', canUpload: true };
   };
 
   const formatDate = (date: Date | string) => {
@@ -239,6 +278,25 @@ export function ScanPreview() {
                 title="Reset zoom"
               >
                 Fit
+              </button>
+            </div>
+
+            {/* Upload button */}
+            <div className="flex items-center gap-2">
+              {uploadError && (
+                <span className="text-sm text-red-600">{uploadError}</span>
+              )}
+              <span className="text-sm text-gray-600">
+                {getUploadStatus().text}
+              </span>
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={isUploading || !getUploadStatus().canUpload}
+                className="px-3 py-1 text-sm border rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Upload to Bloom"
+              >
+                {isUploading ? 'Uploading...' : 'Upload'}
               </button>
             </div>
           </div>
