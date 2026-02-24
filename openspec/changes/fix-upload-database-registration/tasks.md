@@ -40,13 +40,13 @@ From `bloom-desktop-pilot/app/src/main/imageuploader.ts`:
 
 ### 1.1 Unit Tests (`tests/unit/image-uploader.test.ts`)
 
-- [ ] Test `buildCylImageMetadata()` returns correct metadata structure
-- [ ] Test metadata includes experiment.species from relation
-- [ ] Test metadata includes phenotyper name/email from relation
-- [ ] Test metadata includes scientist name/email from experiment.scientist
-- [ ] Test metadata has correct frame_number from image
-- [ ] Test `uploadScan()` calls `uploadImages` with correct arguments
-- [ ] Run tests to confirm they fail (RED)
+- [x] Test `buildCylImageMetadata()` returns correct metadata structure
+- [x] Test metadata includes experiment.species from relation
+- [x] Test metadata includes phenotyper name/email from relation
+- [x] Test metadata includes scientist name/email from experiment.scientist
+- [x] Test metadata has correct frame_number from image
+- [x] Test `uploadScan()` calls `uploadImages` with correct arguments
+- [x] Run tests to confirm they fail (RED)
 
 ### 1.2 Integration Tests (`tests/integration/upload-database.ts`)
 
@@ -68,11 +68,11 @@ From `bloom-desktop-pilot/app/src/main/imageuploader.ts`:
 
 ### 2.1 Update ImageUploader Class
 
-- [ ] Import `uploadImages`, `CylImageMetadata` from `@salk-hpi/bloom-fs`
-- [ ] Import `SupabaseStore` from `@salk-hpi/bloom-js`
-- [ ] Add `store: SupabaseStore` property
-- [ ] Update `authenticate()` to create both `SupabaseStore` and `SupabaseUploader`
-- [ ] Add `buildCylImageMetadata()` helper method
+- [x] Import `uploadImages`, `CylImageMetadata` from `@salk-hpi/bloom-fs`
+- [x] Import `SupabaseStore` from `@salk-hpi/bloom-js`
+- [x] Add `store: SupabaseStore` property
+- [x] Update `authenticate()` to create both `SupabaseStore` and `SupabaseUploader`
+- [x] Add `buildCylImageMetadata()` helper method
 
 ### 2.2 Implement buildCylImageMetadata
 
@@ -110,16 +110,16 @@ private buildCylImageMetadata(
 
 ### 2.3 Refactor uploadScan()
 
-- [ ] Update Prisma query to include experiment, phenotyper, scientist relations
-- [ ] Build `CylImageMetadata[]` array for all images
-- [ ] Collect image paths array
-- [ ] Replace direct `uploader.uploadImage()` loop with single `uploadImages()` call
-- [ ] Use `before` callback for progress updates
-- [ ] Use `result` callback for status tracking and error handling
+- [x] Update Prisma query to include experiment, phenotyper, scientist relations
+- [x] Build `CylImageMetadata[]` array for all images
+- [x] Collect image paths array
+- [x] Replace direct `uploader.uploadImage()` loop with single `uploadImages()` call
+- [x] Use `before` callback for progress updates
+- [x] Use `result` callback for status tracking and error handling
 
 ### 2.4 Verify Tests Pass
 
-- [ ] Run `npm run test:unit` - unit tests should pass
+- [x] Run `npm run test:unit` - unit tests should pass (34/34)
 - [ ] Run `npm run test:integration` - integration tests should pass (if Supabase available)
 - [ ] Run `npm run test:e2e` - E2E tests should pass
 
@@ -130,18 +130,18 @@ private buildCylImageMetadata(
 ### 3.1 Code Quality
 
 - [ ] Remove `any` type annotations (use proper types from bloom-fs/bloom-js)
-- [ ] Add JSDoc comments to new methods
-- [ ] Ensure error messages are descriptive
+- [x] Add JSDoc comments to new methods
+- [x] Ensure error messages are descriptive
 
 ### 3.2 Linting
 
-- [ ] Run `npm run lint` - fix any issues
-- [ ] Run `npm run format` - format code
+- [x] Run `npm run lint` - fix any issues
+- [x] Run `npm run format` - format code
 
 ### 3.3 Type Safety
 
-- [ ] Define `ScanWithRelations` type for Prisma include query
-- [ ] Ensure all CylImageMetadata fields are correctly typed
+- [x] Define `ScanWithRelations` type for Prisma include query
+- [x] Ensure all CylImageMetadata fields are correctly typed
 
 ---
 
