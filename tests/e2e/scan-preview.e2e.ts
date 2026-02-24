@@ -798,7 +798,9 @@ test.describe('ScanPreview Image Loading', () => {
 
     // Get the image element - use the correct classes from ScanPreview.tsx
     // The container has: className="flex-1 overflow-auto bg-gray-100 flex items-center justify-center p-4"
-    const imageContainer = window.locator('.overflow-auto.flex.items-center.justify-center');
+    const imageContainer = window.locator(
+      '.overflow-auto.flex.items-center.justify-center'
+    );
     await expect(imageContainer).toBeVisible({ timeout: 10000 });
 
     // Check that "Image not found" is NOT shown (image loaded successfully)

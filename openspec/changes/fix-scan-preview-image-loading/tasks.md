@@ -7,6 +7,7 @@ ScanPreview cannot load images in development mode due to cross-origin security 
 ### Pilot Reference
 
 The pilot uses `webSecurity: false` in BrowserWindow webPreferences:
+
 - **app/src/main/main.ts:39**: `webSecurity: false, // TODO: remove this`
 
 ---

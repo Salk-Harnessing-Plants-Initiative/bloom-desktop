@@ -14,6 +14,7 @@ The `Scanner.perform_scan()` method in `python/hardware/scanner.py` captures fra
 ### Pilot Reference for File Naming
 
 The pilot implementation uses this filename format:
+
 - **pylon.py:62-63**: `fname = output_path / f'{i + 1:03d}.png'` → `001.png`, `002.png`, etc.
 - **pylon_rot.py:45**: `image_paths = [f'{idx + 1}.png' for idx in range(len(frames))]`
 - Source: https://github.com/eberrigan/bloom-desktop-pilot/tree/main/pylon
@@ -22,13 +23,13 @@ Our `camera.py:251` also uses: `fname = output_path / f"{i + 1:03d}.png"`
 
 ### Current Test Behavior
 
-| Test File | Current Behavior | Change Needed |
-|-----------|-----------------|---------------|
-| `test_scanner.py` | Tests pass without verifying file creation | Add image file verification |
-| `test-scanner-database.ts` | Comment says "mock doesn't create files" (line 285) | Update to expect images after fix |
-| `scan-preview.e2e.ts` | Creates DB records with fake paths, doesn't load real files | No change - tests UI interactions |
-| `renderer-database-ipc.e2e.ts` | Creates DB records with fake paths | No change - tests IPC handlers |
-| `image-uploader.test.ts` | Uses Prisma mocks | No change - unit tests |
+| Test File                      | Current Behavior                                            | Change Needed                     |
+| ------------------------------ | ----------------------------------------------------------- | --------------------------------- |
+| `test_scanner.py`              | Tests pass without verifying file creation                  | Add image file verification       |
+| `test-scanner-database.ts`     | Comment says "mock doesn't create files" (line 285)         | Update to expect images after fix |
+| `scan-preview.e2e.ts`          | Creates DB records with fake paths, doesn't load real files | No change - tests UI interactions |
+| `renderer-database-ipc.e2e.ts` | Creates DB records with fake paths                          | No change - tests IPC handlers    |
+| `image-uploader.test.ts`       | Uses Prisma mocks                                           | No change - unit tests            |
 
 ### CI Disk Space Impact
 

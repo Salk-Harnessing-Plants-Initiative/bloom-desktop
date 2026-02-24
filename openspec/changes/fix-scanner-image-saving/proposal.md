@@ -13,6 +13,7 @@ The Scanner.perform_scan() method captures frames via camera.grab_frame() but ne
 ### Pilot Reference
 
 The filename format matches the pilot implementation:
+
 - **pylon.py:62-63**: `fname = output_path / f'{i + 1:03d}.png'`
 - **pylon_rot.py:45**: `image_paths = [f'{idx + 1}.png' for idx in range(len(frames))]`
 - Source: https://github.com/eberrigan/bloom-desktop-pilot/tree/main/pylon

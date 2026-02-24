@@ -114,3 +114,7 @@ tests/e2e/**/*.db-journal
 scripts/*.js
 !scripts/examples/*.js
 .env.old-backup
+
+# Test scan artifacts
+test-scans/
+test-scans-no-meta/

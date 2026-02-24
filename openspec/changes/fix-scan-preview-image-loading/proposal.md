@@ -13,6 +13,7 @@ ScanPreview cannot load images in development mode because webpack-dev-server se
 ### Pilot Reference
 
 The pilot implementation uses the same approach:
+
 - **app/src/main/main.ts:39**: `webSecurity: false, // TODO: remove this`
 - Source: https://github.com/eberrigan/bloom-desktop-pilot
 

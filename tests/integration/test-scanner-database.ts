@@ -312,7 +312,9 @@ async function runTest(): Promise<void> {
     if (!firstImagePath || !firstImagePath.match(/\d{3}\.png$/)) {
       throw new Error(`Image path format incorrect: ${firstImagePath}`);
     }
-    console.log('[PASS] Image paths have correct format (pilot-compatible NNN.png)');
+    console.log(
+      '[PASS] Image paths have correct format (pilot-compatible NNN.png)'
+    );
     console.log('[PASS] Database integration working correctly');
 
     // Test: Scan without metadata (should not save to database)
