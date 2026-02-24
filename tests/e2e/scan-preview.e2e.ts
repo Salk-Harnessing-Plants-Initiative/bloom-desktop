@@ -710,3 +710,109 @@ test.describe('Batch Upload', () => {
     ).toBeVisible();
   });
 });
+
+test.describe('ScanPreview Image Loading', () => {
+  /**
+   * Test that images load from file:// URLs.
+   *
+   * This test verifies that webSecurity: false is properly configured,
+   * allowing the renderer (served from http://localhost in dev) to load
+   * local file:// URLs.
+   *
+   * See: openspec/changes/fix-scan-preview-image-loading/
+   * Reference: pilot app/src/main/main.ts:39 uses webSecurity: false
+   */
+  test('should load images from local filesystem', async () => {
+    // Use a sample image from test fixtures
+    const fixturesDir = path.join(__dirname, '../fixtures/sample_scan');
+    const testImagePath = path.join(fixturesDir, '1.png');
+
+    // Verify fixture exists
+    if (!fs.existsSync(testImagePath)) {
+      throw new Error(`Test fixture not found: ${testImagePath}`);
+    }
+
+    // Create scientist for experiment
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Image Test Scientist',
+        email: `image-test-${Date.now()}@example.com`,
+      },
+    });
+
+    // Create experiment
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Image Test Experiment',
+        species: 'Test Species',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Create phenotyper
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Image Test Phenotyper',
+        email: `image-test-${Date.now()}@example.com`,
+      },
+    });
+
+    // Create scan with path to actual image directory
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        plant_id: 'PLANT-REAL-IMG',
+        accession_name: 'real-img-accession',
+        wave_number: 1,
+        plant_age_days: 14,
+        scanner_name: 'TestScanner',
+        path: fixturesDir,
+        num_frames: 1,
+        exposure_time: 1000,
+        gain: 1.5,
+        gamma: 1.0,
+        brightness: 50,
+        contrast: 50,
+        seconds_per_rot: 60,
+        deleted: false,
+      },
+    });
+
+    // Create image record with actual file path
+    await prisma.image.create({
+      data: {
+        scan_id: scan.id,
+        frame_number: 1,
+        path: testImagePath,
+        status: 'pending',
+      },
+    });
+
+    // Navigate to ScanPreview
+    await window.click('text=Browse Scans');
+    await window.click('text=PLANT-REAL-IMG');
+
+    // Wait for ScanPreview to load
+    await expect(window.getByText('Back to Scans')).toBeVisible();
+
+    // Get the image element - use the correct classes from ScanPreview.tsx
+    // The container has: className="flex-1 overflow-auto bg-gray-100 flex items-center justify-center p-4"
+    const imageContainer = window.locator('.overflow-auto.flex.items-center.justify-center');
+    await expect(imageContainer).toBeVisible({ timeout: 10000 });
+
+    // Check that "Image not found" is NOT shown (image loaded successfully)
+    const imageNotFound = window.locator('text=Image not found');
+    await expect(imageNotFound).not.toBeVisible({ timeout: 5000 });
+
+    // Verify the img element exists and has loaded
+    const imgElement = imageContainer.locator('img');
+    await expect(imgElement).toBeVisible({ timeout: 5000 });
+
+    // Check that image has valid dimensions (naturalWidth > 0 means it loaded)
+    const naturalWidth = await imgElement.evaluate(
+      (img: HTMLImageElement) => img.naturalWidth
+    );
+    expect(naturalWidth).toBeGreaterThan(0);
+  });
+});
