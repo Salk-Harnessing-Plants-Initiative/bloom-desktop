@@ -2,16 +2,19 @@
  * Image Upload Service
  *
  * Handles uploading scan images to Bloom remote storage via Supabase.
- * Uses SupabaseUploader from @salk-hpi/bloom-js for image compression and upload.
+ * Uses @salk-hpi/bloom-fs for coordinated storage and database operations,
+ * matching the pilot implementation for feature parity.
  *
- * IMPORTANT: Uses dynamic imports for @supabase/supabase-js and @salk-hpi/bloom-js
- * to avoid loading these modules at app startup. This prevents startup issues
- * in the packaged app, matching the pattern used in config-store.ts.
+ * IMPORTANT: Uses dynamic imports for @supabase/supabase-js, @salk-hpi/bloom-js,
+ * and @salk-hpi/bloom-fs to avoid loading these modules at app startup.
+ * This prevents startup issues in the packaged app, matching the pattern
+ * used in config-store.ts.
  *
  * Related: openspec/changes/add-browse-scans (Phase 5)
+ * Related: openspec/changes/fix-upload-database-registration
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { loadEnvConfig } from './config-store';
 import path from 'path';
 import os from 'os';
@@ -67,7 +70,25 @@ export interface BatchProgress {
 export type BatchProgressCallback = (progress: BatchProgress) => void;
 
 /**
+ * Type for scan with all required relations for building CylImageMetadata
+ */
+type ScanWithRelations = Prisma.ScanGetPayload<{
+  include: {
+    images: true;
+    experiment: {
+      include: {
+        scientist: true;
+      };
+    };
+    phenotyper: true;
+  };
+}>;
+
+/**
  * Image uploader service for uploading scan images to Bloom storage
+ *
+ * Uses @salk-hpi/bloom-fs uploadImages function to coordinate both
+ * storage upload and database registration, matching pilot behavior.
  *
  * Uses dynamic imports to load Supabase modules only when upload is initiated,
  * preventing startup issues in the packaged app.
@@ -78,6 +99,10 @@ export class ImageUploader {
   private supabase: any = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private uploader: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private store: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private uploadImagesFn: any = null;
   private authenticated = false;
 
   constructor(prisma: PrismaClient) {
@@ -106,7 +131,10 @@ export class ImageUploader {
 
     // Dynamic imports to avoid loading at app startup
     const { createClient } = await import('@supabase/supabase-js');
-    const { SupabaseUploader } = await import('@salk-hpi/bloom-js');
+    const { SupabaseUploader, SupabaseStore } = await import(
+      '@salk-hpi/bloom-js'
+    );
+    const { uploadImages } = await import('@salk-hpi/bloom-fs');
 
     // Create Supabase client
     this.supabase = createClient(config.bloom_api_url, config.bloom_anon_key);
@@ -121,13 +149,54 @@ export class ImageUploader {
       throw new Error(`Authentication failed: ${authError.message}`);
     }
 
-    // Create uploader instance
+    // Create uploader and store instances for both storage and database operations
     this.uploader = new SupabaseUploader(this.supabase);
+    this.store = new SupabaseStore(this.supabase);
+    this.uploadImagesFn = uploadImages;
     this.authenticated = true;
   }
 
   /**
+   * Build CylImageMetadata for a single image
+   *
+   * Constructs the metadata object required by @salk-hpi/bloom-fs uploadImages,
+   * matching the pilot implementation structure.
+   */
+  private buildCylImageMetadata(
+    scan: ScanWithRelations,
+    image: ScanWithRelations['images'][0]
+  ) {
+    return {
+      species: scan.experiment?.species,
+      experiment: scan.experiment?.name,
+      wave_number: scan.wave_number ?? undefined,
+      germ_day: 0,
+      germ_day_color: 'none',
+      plant_age_days: scan.plant_age_days ?? undefined,
+      date_scanned: scan.capture_date?.toISOString(),
+      device_name: scan.scanner_name ?? undefined,
+      plant_qr_code: scan.plant_id,
+      frame_number: image.frame_number,
+      accession_name: scan.accession_name ?? undefined,
+      phenotyper_name: scan.phenotyper?.name || 'unknown',
+      phenotyper_email: scan.phenotyper?.email || 'unknown',
+      scientist_name: scan.experiment?.scientist?.name || 'unknown',
+      scientist_email: scan.experiment?.scientist?.email || 'unknown',
+      num_frames: scan.num_frames || 0,
+      exposure_time: scan.exposure_time || 0,
+      gain: scan.gain || 0,
+      brightness: scan.brightness || 0,
+      contrast: scan.contrast || 0,
+      gamma: scan.gamma || 0,
+      seconds_per_rot: scan.seconds_per_rot || 0,
+    };
+  }
+
+  /**
    * Upload all images for a single scan
+   *
+   * Uses @salk-hpi/bloom-fs uploadImages to coordinate both storage upload
+   * and database registration, ensuring images are visible in Bloom web interface.
    *
    * @param scanId - The scan ID to upload
    * @param onProgress - Optional callback for progress updates
@@ -137,14 +206,22 @@ export class ImageUploader {
     scanId: string,
     onProgress?: UploadProgressCallback
   ): Promise<UploadResult> {
-    if (!this.authenticated || !this.uploader) {
+    if (!this.authenticated || !this.uploader || !this.store) {
       throw new Error('Not authenticated. Call authenticate() first.');
     }
 
-    // Fetch scan with images
+    // Fetch scan with all required relations for building CylImageMetadata
     const scan = await this.prisma.scan.findUnique({
       where: { id: scanId },
-      include: { images: true },
+      include: {
+        images: true,
+        experiment: {
+          include: {
+            scientist: true,
+          },
+        },
+        phenotyper: true,
+      },
     });
 
     if (!scan) {
@@ -160,30 +237,43 @@ export class ImageUploader {
       errors: [],
     };
 
-    // Upload each image
-    for (let i = 0; i < scan.images.length; i++) {
-      const image = scan.images[i];
+    // Handle empty scan
+    if (scan.images.length === 0) {
+      return result;
+    }
 
-      // Mark as uploading
+    // Build image paths and metadata arrays for bloom-fs uploadImages
+    const imagePaths = scan.images.map((image) => image.path);
+    const metadata = scan.images.map((image) =>
+      this.buildCylImageMetadata(scan, image)
+    );
+
+    // Mark all images as uploading
+    for (const image of scan.images) {
       await this.prisma.image.update({
         where: { id: image.id },
         data: { status: 'uploading' },
       });
+    }
 
-      // Generate destination path
-      const filename = path.basename(image.path);
-      const destPath = `scans/${scanId}/${filename}`;
+    // Use bloom-fs uploadImages for coordinated storage + database upload
+    await this.uploadImagesFn(imagePaths, metadata, this.uploader, this.store, {
+      nWorkers: 4,
+      pngCompression: 9,
+      bucket: STORAGE_BUCKET,
+      before: (index: number) => {
+        // Called before each image upload starts
+        console.log(`Uploading image ${index + 1}/${scan.images.length}`);
+      },
+      result: async (
+        index: number,
+        _m: unknown,
+        created: number | null,
+        error: unknown
+      ) => {
+        const image = scan.images[index];
 
-      try {
-        // Upload image
-        const { error: uploadError } = await this.uploader.uploadImage(
-          image.path,
-          destPath,
-          STORAGE_BUCKET,
-          { pngCompression: 9 }
-        );
-
-        if (uploadError) {
+        if (error || created === null) {
           // Mark as failed
           await this.prisma.image.update({
             where: { id: image.id },
@@ -191,14 +281,13 @@ export class ImageUploader {
           });
           result.failed++;
           result.errors.push(
-            `Image ${image.id}: ${uploadError.message || 'Upload failed'}`
+            `Image ${image.id}: ${error instanceof Error ? error.message : 'Upload failed'}`
           );
 
-          // Report progress with failed status
           onProgress?.({
-            current: i + 1,
+            current: index + 1,
             total: scan.images.length,
-            percentage: Math.round(((i + 1) / scan.images.length) * 100),
+            percentage: Math.round(((index + 1) / scan.images.length) * 100),
             imageId: image.id,
             status: 'failed',
           });
@@ -210,35 +299,16 @@ export class ImageUploader {
           });
           result.uploaded++;
 
-          // Report progress with uploaded status
           onProgress?.({
-            current: i + 1,
+            current: index + 1,
             total: scan.images.length,
-            percentage: Math.round(((i + 1) / scan.images.length) * 100),
+            percentage: Math.round(((index + 1) / scan.images.length) * 100),
             imageId: image.id,
             status: 'uploaded',
           });
         }
-      } catch (err) {
-        // Handle unexpected errors
-        await this.prisma.image.update({
-          where: { id: image.id },
-          data: { status: 'failed' },
-        });
-        result.failed++;
-        result.errors.push(
-          `Image ${image.id}: ${err instanceof Error ? err.message : 'Unknown error'}`
-        );
-
-        onProgress?.({
-          current: i + 1,
-          total: scan.images.length,
-          percentage: Math.round(((i + 1) / scan.images.length) * 100),
-          imageId: image.id,
-          status: 'failed',
-        });
-      }
-    }
+      },
+    });
 
     // Set overall success based on failures
     result.success = result.failed === 0 || result.uploaded > 0;

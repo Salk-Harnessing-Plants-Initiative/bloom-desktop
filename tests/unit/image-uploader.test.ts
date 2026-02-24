@@ -5,6 +5,7 @@
  * The tests define the expected behavior of the image upload service.
  *
  * Related: openspec/changes/add-browse-scans (Phase 5)
+ * Related: openspec/changes/fix-upload-database-registration
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
@@ -18,10 +19,40 @@ interface MockImage {
   status: string;
 }
 
+interface MockExperiment {
+  id: string;
+  name: string;
+  species: string;
+  scientist?: {
+    name: string;
+    email: string;
+  };
+}
+
+interface MockPhenotyper {
+  id: string;
+  name: string;
+  email: string;
+}
+
 interface MockScan {
   id: string;
   plant_id: string;
+  accession_name?: string;
+  wave_number?: number;
+  plant_age_days?: number;
+  capture_date?: Date;
+  scanner_name?: string;
+  num_frames?: number;
+  exposure_time?: number;
+  gain?: number;
+  brightness?: number;
+  contrast?: number;
+  gamma?: number;
+  seconds_per_rot?: number;
   images: MockImage[];
+  experiment?: MockExperiment;
+  phenotyper?: MockPhenotyper;
 }
 
 // Mock modules before importing
@@ -31,6 +62,11 @@ vi.mock('@supabase/supabase-js', () => ({
 
 vi.mock('@salk-hpi/bloom-js', () => ({
   SupabaseUploader: vi.fn(),
+  SupabaseStore: vi.fn(),
+}));
+
+vi.mock('@salk-hpi/bloom-fs', () => ({
+  uploadImages: vi.fn(),
 }));
 
 // Mock config-store
@@ -40,7 +76,8 @@ vi.mock('../../src/main/config-store', () => ({
 
 // Import after mocking
 import { createClient } from '@supabase/supabase-js';
-import { SupabaseUploader } from '@salk-hpi/bloom-js';
+import { SupabaseUploader, SupabaseStore } from '@salk-hpi/bloom-js';
+import { uploadImages } from '@salk-hpi/bloom-fs';
 import { loadEnvConfig } from '../../src/main/config-store';
 
 // Import the module under test (will fail until implemented)
@@ -56,6 +93,8 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockUploader: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockStore: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockPrismaClient: any;
 
   // Test data
@@ -69,29 +108,59 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
     bloom_anon_key: 'test-anon-key',
   };
 
+  const mockExperiment: MockExperiment = {
+    id: 'exp-1',
+    name: 'Test Experiment',
+    species: 'arabidopsis',
+    scientist: {
+      name: 'Dr. Test Scientist',
+      email: 'scientist@salk.edu',
+    },
+  };
+
+  const mockPhenotyper: MockPhenotyper = {
+    id: 'phen-1',
+    name: 'Test Phenotyper',
+    email: 'phenotyper@salk.edu',
+  };
+
   const mockScan: MockScan = {
     id: 'scan-123',
     plant_id: 'PLANT-001',
+    accession_name: 'ACC-001',
+    wave_number: 1,
+    plant_age_days: 14,
+    capture_date: new Date('2024-01-15T10:30:00Z'),
+    scanner_name: 'TestScanner',
+    num_frames: 3,
+    exposure_time: 100,
+    gain: 1.0,
+    brightness: 50,
+    contrast: 50,
+    gamma: 1.0,
+    seconds_per_rot: 60,
+    experiment: mockExperiment,
+    phenotyper: mockPhenotyper,
     images: [
       {
         id: 'img-1',
         scan_id: 'scan-123',
-        frame_number: 0,
-        path: '/test/scans/PLANT-001/frame_0.png',
+        frame_number: 1,
+        path: '/test/scans/PLANT-001/001.png',
         status: 'pending',
       },
       {
         id: 'img-2',
         scan_id: 'scan-123',
-        frame_number: 1,
-        path: '/test/scans/PLANT-001/frame_1.png',
+        frame_number: 2,
+        path: '/test/scans/PLANT-001/002.png',
         status: 'pending',
       },
       {
         id: 'img-3',
         scan_id: 'scan-123',
-        frame_number: 2,
-        path: '/test/scans/PLANT-001/frame_2.png',
+        frame_number: 3,
+        path: '/test/scans/PLANT-001/003.png',
         status: 'pending',
       },
     ],
@@ -120,6 +189,38 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
     };
     (SupabaseUploader as unknown as Mock).mockImplementation(
       () => mockUploader
+    );
+
+    // Setup mock SupabaseStore
+    mockStore = {
+      insertImageMetadata: vi.fn().mockResolvedValue({ id: 1 }),
+    };
+    (SupabaseStore as unknown as Mock).mockImplementation(() => mockStore);
+
+    // Setup mock uploadImages from bloom-fs that simulates calling callbacks
+    (uploadImages as Mock).mockImplementation(
+      async (
+        _paths: string[],
+        metadata: unknown[],
+        _uploader: unknown,
+        _store: unknown,
+        opts?: {
+          before?: (index: number) => void;
+          result?: (
+            index: number,
+            m: unknown,
+            created: number | null,
+            error: unknown
+          ) => void;
+        }
+      ) => {
+        // Simulate uploading each image
+        for (let i = 0; i < metadata.length; i++) {
+          opts?.before?.(i);
+          // Simulate successful upload - created ID is i+1
+          await opts?.result?.(i, metadata[i], i + 1, null);
+        }
+      }
     );
 
     // Setup mock config
@@ -214,22 +315,24 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         }
       });
 
-      it('should call SupabaseUploader.uploadImage for each image', async () => {
+      it('should call bloom-fs uploadImages with all image paths', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
         await uploader.uploadScan('scan-123');
 
-        expect(mockUploader.uploadImage).toHaveBeenCalledTimes(3);
-
-        // Verify upload was called with correct paths
-        for (const image of mockScan.images) {
-          expect(mockUploader.uploadImage).toHaveBeenCalledWith(
-            image.path,
-            expect.stringContaining('scan-123'), // destination path includes scan ID
-            expect.any(String), // bucket name
-            expect.any(Object) // options
-          );
-        }
+        // Verify uploadImages was called once with all paths
+        expect(uploadImages).toHaveBeenCalledTimes(1);
+        expect(uploadImages).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            mockScan.images[0].path,
+            mockScan.images[1].path,
+            mockScan.images[2].path,
+          ]),
+          expect.any(Array), // metadata
+          expect.any(Object), // uploader
+          expect.any(Object), // store
+          expect.any(Object) // options
+        );
       });
 
       it('should update Image.status to "uploaded" after successful upload', async () => {
@@ -247,11 +350,39 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
       });
 
       it('should update Image.status to "failed" on upload failure', async () => {
-        // Make second image upload fail
-        mockUploader.uploadImage
-          .mockResolvedValueOnce({ error: null })
-          .mockResolvedValueOnce({ error: { message: 'Upload failed' } })
-          .mockResolvedValueOnce({ error: null });
+        // Make second image upload fail via uploadImages mock
+        (uploadImages as Mock).mockImplementation(
+          async (
+            _paths: string[],
+            metadata: unknown[],
+            _uploader: unknown,
+            _store: unknown,
+            opts?: {
+              before?: (index: number) => void;
+              result?: (
+                index: number,
+                m: unknown,
+                created: number | null,
+                error: unknown
+              ) => void;
+            }
+          ) => {
+            for (let i = 0; i < metadata.length; i++) {
+              opts?.before?.(i);
+              if (i === 1) {
+                // Second image fails
+                await opts?.result?.(
+                  i,
+                  metadata[i],
+                  null,
+                  new Error('Upload failed')
+                );
+              } else {
+                await opts?.result?.(i, metadata[i], i + 1, null);
+              }
+            }
+          }
+        );
 
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
@@ -275,18 +406,46 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
       });
 
       it('should continue uploading after individual image failure', async () => {
-        // Make first image upload fail
-        mockUploader.uploadImage
-          .mockResolvedValueOnce({ error: { message: 'Upload failed' } })
-          .mockResolvedValueOnce({ error: null })
-          .mockResolvedValueOnce({ error: null });
+        // Make first image upload fail via uploadImages mock
+        (uploadImages as Mock).mockImplementation(
+          async (
+            _paths: string[],
+            metadata: unknown[],
+            _uploader: unknown,
+            _store: unknown,
+            opts?: {
+              before?: (index: number) => void;
+              result?: (
+                index: number,
+                m: unknown,
+                created: number | null,
+                error: unknown
+              ) => void;
+            }
+          ) => {
+            for (let i = 0; i < metadata.length; i++) {
+              opts?.before?.(i);
+              if (i === 0) {
+                // First image fails
+                await opts?.result?.(
+                  i,
+                  metadata[i],
+                  null,
+                  new Error('Upload failed')
+                );
+              } else {
+                await opts?.result?.(i, metadata[i], i + 1, null);
+              }
+            }
+          }
+        );
 
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
         const result = await uploader.uploadScan('scan-123');
 
-        // Should still upload all 3 images
-        expect(mockUploader.uploadImage).toHaveBeenCalledTimes(3);
+        // uploadImages was called once (it handles all images internally)
+        expect(uploadImages).toHaveBeenCalledTimes(1);
 
         // Result should reflect partial success
         expect(result.success).toBe(true);
@@ -311,9 +470,35 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
       });
 
       it('should return success=false when all uploads fail', async () => {
-        mockUploader.uploadImage.mockResolvedValue({
-          error: { message: 'All uploads failed' },
-        });
+        // Make all uploads fail via uploadImages mock
+        (uploadImages as Mock).mockImplementation(
+          async (
+            _paths: string[],
+            metadata: unknown[],
+            _uploader: unknown,
+            _store: unknown,
+            opts?: {
+              before?: (index: number) => void;
+              result?: (
+                index: number,
+                m: unknown,
+                created: number | null,
+                error: unknown
+              ) => void;
+            }
+          ) => {
+            for (let i = 0; i < metadata.length; i++) {
+              opts?.before?.(i);
+              // All images fail
+              await opts?.result?.(
+                i,
+                metadata[i],
+                null,
+                new Error('All uploads failed')
+              );
+            }
+          }
+        );
 
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
@@ -400,10 +585,38 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
       });
 
       it('should report failed status in progress callback', async () => {
-        mockUploader.uploadImage
-          .mockResolvedValueOnce({ error: null })
-          .mockResolvedValueOnce({ error: { message: 'Upload failed' } })
-          .mockResolvedValueOnce({ error: null });
+        // Make second image fail via uploadImages mock
+        (uploadImages as Mock).mockImplementation(
+          async (
+            _paths: string[],
+            metadata: unknown[],
+            _uploader: unknown,
+            _store: unknown,
+            opts?: {
+              before?: (index: number) => void;
+              result?: (
+                index: number,
+                m: unknown,
+                created: number | null,
+                error: unknown
+              ) => void;
+            }
+          ) => {
+            for (let i = 0; i < metadata.length; i++) {
+              opts?.before?.(i);
+              if (i === 1) {
+                await opts?.result?.(
+                  i,
+                  metadata[i],
+                  null,
+                  new Error('Upload failed')
+                );
+              } else {
+                await opts?.result?.(i, metadata[i], i + 1, null);
+              }
+            }
+          }
+        );
 
         const progressCallback: UploadProgressCallback = vi.fn();
 
@@ -456,17 +669,44 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         expect(results[0].scanId).toBe('scan-123');
         expect(results[1].scanId).toBe('scan-456');
 
-        // Total uploads: 3 + 1 = 4
-        expect(mockUploader.uploadImage).toHaveBeenCalledTimes(4);
+        // uploadImages called once per scan (2 scans total)
+        expect(uploadImages).toHaveBeenCalledTimes(2);
       });
 
       it('should continue batch on individual scan failure', async () => {
-        // Make all uploads for first scan fail
-        mockUploader.uploadImage
-          .mockResolvedValueOnce({ error: { message: 'Failed 1' } })
-          .mockResolvedValueOnce({ error: { message: 'Failed 2' } })
-          .mockResolvedValueOnce({ error: { message: 'Failed 3' } })
-          .mockResolvedValueOnce({ error: null }); // Second scan succeeds
+        // Track which scan is being processed
+        let callCount = 0;
+
+        // Make all uploads for first scan fail, second scan succeeds
+        (uploadImages as Mock).mockImplementation(
+          async (
+            _paths: string[],
+            metadata: unknown[],
+            _uploader: unknown,
+            _store: unknown,
+            opts?: {
+              before?: (index: number) => void;
+              result?: (
+                index: number,
+                m: unknown,
+                created: number | null,
+                error: unknown
+              ) => void;
+            }
+          ) => {
+            callCount++;
+            for (let i = 0; i < metadata.length; i++) {
+              opts?.before?.(i);
+              if (callCount === 1) {
+                // First scan - all images fail
+                await opts?.result?.(i, metadata[i], null, new Error('Failed'));
+              } else {
+                // Second scan - succeeds
+                await opts?.result?.(i, metadata[i], i + 1, null);
+              }
+            }
+          }
+        );
 
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
@@ -508,33 +748,256 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
       });
     });
 
-    describe('destination path generation', () => {
-      it('should generate correct storage path for images', async () => {
+    describe('uploadImages options', () => {
+      it('should pass correct image paths to uploadImages', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
         await uploader.uploadScan('scan-123');
 
-        // Verify destination path format: scans/{scanId}/frame_{N}.png
-        expect(mockUploader.uploadImage).toHaveBeenCalledWith(
-          mockScan.images[0].path,
-          expect.stringMatching(/scans\/scan-123\/frame_0\.png/),
-          expect.any(String),
+        // Verify all image paths are passed to uploadImages
+        expect(uploadImages).toHaveBeenCalledWith(
+          [
+            mockScan.images[0].path,
+            mockScan.images[1].path,
+            mockScan.images[2].path,
+          ],
+          expect.any(Array),
+          expect.any(Object),
+          expect.any(Object),
           expect.any(Object)
         );
       });
 
-      it('should use correct storage bucket', async () => {
+      it('should pass correct bucket in options', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
         await uploader.uploadScan('scan-123');
 
-        // Should use the correct bucket name (e.g., 'images' or configured bucket)
-        expect(mockUploader.uploadImage).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.any(String),
-          'images', // Expected bucket name
-          expect.any(Object)
+        // Verify options include correct bucket
+        expect(uploadImages).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.any(Array),
+          expect.any(Object),
+          expect.any(Object),
+          expect.objectContaining({
+            bucket: 'images',
+          })
         );
+      });
+    });
+
+    /**
+     * Database Registration Tests (fix-upload-database-registration)
+     *
+     * These tests verify that uploads create records in the Supabase database
+     * using @salk-hpi/bloom-fs uploadImages function, matching pilot behavior.
+     */
+    describe('database registration (bloom-fs integration)', () => {
+      it('should create SupabaseStore during authentication', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+
+        // Should create both SupabaseUploader and SupabaseStore
+        expect(SupabaseUploader).toHaveBeenCalledWith(mockSupabaseClient);
+        expect(SupabaseStore).toHaveBeenCalledWith(mockSupabaseClient);
+      });
+
+      it('should call uploadImages from bloom-fs instead of direct uploader', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        // Should call bloom-fs uploadImages
+        expect(uploadImages).toHaveBeenCalledTimes(1);
+
+        // Should pass image paths as first argument
+        expect(uploadImages).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            mockScan.images[0].path,
+            mockScan.images[1].path,
+            mockScan.images[2].path,
+          ]),
+          expect.any(Array), // metadata
+          expect.any(Object), // uploader
+          expect.any(Object), // store
+          expect.any(Object) // options
+        );
+      });
+
+      it('should build CylImageMetadata with correct experiment fields', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        // Get the metadata passed to uploadImages
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        // First image metadata
+        expect(metadata[0]).toMatchObject({
+          species: 'arabidopsis',
+          experiment: 'Test Experiment',
+          scientist_name: 'Dr. Test Scientist',
+          scientist_email: 'scientist@salk.edu',
+        });
+      });
+
+      it('should build CylImageMetadata with correct phenotyper fields', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        expect(metadata[0]).toMatchObject({
+          phenotyper_name: 'Test Phenotyper',
+          phenotyper_email: 'phenotyper@salk.edu',
+        });
+      });
+
+      it('should build CylImageMetadata with correct scan fields', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        expect(metadata[0]).toMatchObject({
+          plant_qr_code: 'PLANT-001',
+          accession_name: 'ACC-001',
+          wave_number: 1,
+          plant_age_days: 14,
+          device_name: 'TestScanner',
+          num_frames: 3,
+        });
+      });
+
+      it('should build CylImageMetadata with correct camera settings', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        expect(metadata[0]).toMatchObject({
+          exposure_time: 100,
+          gain: 1.0,
+          brightness: 50,
+          contrast: 50,
+          gamma: 1.0,
+          seconds_per_rot: 60,
+        });
+      });
+
+      it('should set frame_number from each image', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        // Each image should have its own frame_number
+        expect(metadata[0].frame_number).toBe(1);
+        expect(metadata[1].frame_number).toBe(2);
+        expect(metadata[2].frame_number).toBe(3);
+      });
+
+      it('should use "unknown" for missing phenotyper fields', async () => {
+        // Scan without phenotyper
+        const scanWithoutPhenotyper = {
+          ...mockScan,
+          phenotyper: undefined,
+        };
+        mockPrismaClient.scan.findUnique.mockResolvedValue(
+          scanWithoutPhenotyper
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        expect(metadata[0]).toMatchObject({
+          phenotyper_name: 'unknown',
+          phenotyper_email: 'unknown',
+        });
+      });
+
+      it('should use "unknown" for missing scientist fields', async () => {
+        // Scan without scientist in experiment
+        const scanWithoutScientist = {
+          ...mockScan,
+          experiment: {
+            ...mockExperiment,
+            scientist: undefined,
+          },
+        };
+        mockPrismaClient.scan.findUnique.mockResolvedValue(
+          scanWithoutScientist
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        expect(metadata[0]).toMatchObject({
+          scientist_name: 'unknown',
+          scientist_email: 'unknown',
+        });
+      });
+
+      it('should include date_scanned as ISO string', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const metadata = uploadImagesCall[1];
+
+        expect(metadata[0].date_scanned).toBe('2024-01-15T10:30:00.000Z');
+      });
+
+      it('should pass SupabaseUploader and SupabaseStore to uploadImages', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadImagesCall = (uploadImages as Mock).mock.calls[0];
+        const passedUploader = uploadImagesCall[2];
+        const passedStore = uploadImagesCall[3];
+
+        // Should be the mock instances
+        expect(passedUploader).toBe(mockUploader);
+        expect(passedStore).toBe(mockStore);
+      });
+
+      it('should fetch scan with experiment, phenotyper, and scientist relations', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        // Verify Prisma query includes necessary relations
+        expect(mockPrismaClient.scan.findUnique).toHaveBeenCalledWith({
+          where: { id: 'scan-123' },
+          include: {
+            images: true,
+            experiment: {
+              include: {
+                scientist: true,
+              },
+            },
+            phenotyper: true,
+          },
+        });
       });
     });
   });
