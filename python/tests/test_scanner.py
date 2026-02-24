@@ -5,6 +5,7 @@ Tests the Scanner class which coordinates Camera and DAQ for automated
 cylinder scanning workflows. Uses mock hardware with real test fixtures.
 """
 
+import glob
 import os
 
 import pytest
@@ -278,7 +279,8 @@ class TestScannerScan:
 
         assert result.success is True
         assert result.frames_captured == 5
-        assert result.output_path == "./test-scans"
+        # Path is normalized by pathlib (./test-scans -> test-scans)
+        assert result.output_path == "test-scans"
         assert result.error is None
 
         scanner.cleanup()
@@ -423,3 +425,207 @@ class TestScannerEdgeCases:
 
         assert result_with_error.success is False
         assert result_with_error.error == "Camera disconnected"
+
+
+class TestScannerImagePersistence:
+    """Test that Scanner saves captured images to disk.
+
+    These tests verify the fix for the bug where Scanner.perform_scan()
+    captured frames but never saved them to disk.
+
+    See: openspec/changes/fix-scanner-image-saving/
+    """
+
+    def test_perform_scan_creates_output_directory(self, tmp_path):
+        """Test that perform_scan creates output directory if it doesn't exist."""
+        output_dir = tmp_path / "new_scan_output"
+        assert not output_dir.exists()
+
+        settings = ScannerSettings(
+            camera={
+                "exposure_time": 10000,
+                "gain": 0.0,
+                "camera_ip_address": None,
+                "gamma": 1.0,
+                "num_frames": 3,
+                "seconds_per_rot": 36.0,
+            },
+            daq={
+                "device_name": "cDAQ1Mod1",
+                "sampling_rate": 40000,
+                "step_pin": 0,
+                "dir_pin": 1,
+                "steps_per_revolution": 6400,
+                "num_frames": 3,
+                "seconds_per_rot": 36.0,
+            },
+            num_frames=3,
+            output_path=str(output_dir),
+        )
+
+        scanner = Scanner(settings)
+        scanner.initialize()
+        scanner.perform_scan()
+        scanner.cleanup()
+
+        assert output_dir.exists()
+        assert output_dir.is_dir()
+
+    def test_perform_scan_saves_images_to_disk(self, tmp_path):
+        """Test that perform_scan saves PNG files to output directory."""
+        output_dir = tmp_path / "scan_with_images"
+
+        settings = ScannerSettings(
+            camera={
+                "exposure_time": 10000,
+                "gain": 0.0,
+                "camera_ip_address": None,
+                "gamma": 1.0,
+                "num_frames": 5,
+                "seconds_per_rot": 36.0,
+            },
+            daq={
+                "device_name": "cDAQ1Mod1",
+                "sampling_rate": 40000,
+                "step_pin": 0,
+                "dir_pin": 1,
+                "steps_per_revolution": 6400,
+                "num_frames": 5,
+                "seconds_per_rot": 36.0,
+            },
+            num_frames=5,
+            output_path=str(output_dir),
+        )
+
+        scanner = Scanner(settings)
+        scanner.initialize()
+        result = scanner.perform_scan()
+        scanner.cleanup()
+
+        # Verify images were saved
+        png_files = glob.glob(str(output_dir / "*.png"))
+        assert len(png_files) == 5, f"Expected 5 PNG files, found {len(png_files)}"
+        assert result.frames_captured == 5
+
+    def test_perform_scan_image_filenames_are_correct(self, tmp_path):
+        """Test that saved images have correct zero-padded filenames."""
+        output_dir = tmp_path / "scan_filenames"
+
+        settings = ScannerSettings(
+            camera={
+                "exposure_time": 10000,
+                "gain": 0.0,
+                "camera_ip_address": None,
+                "gamma": 1.0,
+                "num_frames": 3,
+                "seconds_per_rot": 36.0,
+            },
+            daq={
+                "device_name": "cDAQ1Mod1",
+                "sampling_rate": 40000,
+                "step_pin": 0,
+                "dir_pin": 1,
+                "steps_per_revolution": 6400,
+                "num_frames": 3,
+                "seconds_per_rot": 36.0,
+            },
+            num_frames=3,
+            output_path=str(output_dir),
+        )
+
+        scanner = Scanner(settings)
+        scanner.initialize()
+        scanner.perform_scan()
+        scanner.cleanup()
+
+        # Verify filenames follow NNN.png pattern (1-indexed, pilot-compatible)
+        # Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
+        expected_files = [
+            output_dir / "001.png",
+            output_dir / "002.png",
+            output_dir / "003.png",
+        ]
+        for expected_file in expected_files:
+            assert expected_file.exists(), f"Expected file not found: {expected_file}"
+
+    def test_perform_scan_image_count_matches_frames_captured(self, tmp_path):
+        """Test that file count equals frames_captured in result."""
+        output_dir = tmp_path / "scan_count_match"
+
+        settings = ScannerSettings(
+            camera={
+                "exposure_time": 10000,
+                "gain": 0.0,
+                "camera_ip_address": None,
+                "gamma": 1.0,
+                "num_frames": 7,
+                "seconds_per_rot": 36.0,
+            },
+            daq={
+                "device_name": "cDAQ1Mod1",
+                "sampling_rate": 40000,
+                "step_pin": 0,
+                "dir_pin": 1,
+                "steps_per_revolution": 6400,
+                "num_frames": 7,
+                "seconds_per_rot": 36.0,
+            },
+            num_frames=7,
+            output_path=str(output_dir),
+        )
+
+        scanner = Scanner(settings)
+        scanner.initialize()
+        result = scanner.perform_scan()
+        scanner.cleanup()
+
+        # Verify file count matches frames_captured
+        png_files = glob.glob(str(output_dir / "*.png"))
+        assert len(png_files) == result.frames_captured
+
+    def test_perform_scan_images_are_readable(self, tmp_path):
+        """Test that saved images can be read back with imageio.
+
+        This verifies cross-platform path handling works correctly.
+        Images saved using Path.as_posix() should be readable on any OS.
+        """
+        import imageio.v2 as iio
+
+        output_dir = tmp_path / "scan_readable"
+
+        settings = ScannerSettings(
+            camera={
+                "exposure_time": 10000,
+                "gain": 0.0,
+                "camera_ip_address": None,
+                "gamma": 1.0,
+                "num_frames": 3,
+                "seconds_per_rot": 36.0,
+            },
+            daq={
+                "device_name": "cDAQ1Mod1",
+                "sampling_rate": 40000,
+                "step_pin": 0,
+                "dir_pin": 1,
+                "steps_per_revolution": 6400,
+                "num_frames": 3,
+                "seconds_per_rot": 36.0,
+            },
+            num_frames=3,
+            output_path=str(output_dir),
+        )
+
+        scanner = Scanner(settings)
+        scanner.initialize()
+        scanner.perform_scan()
+        scanner.cleanup()
+
+        # Verify each image can be read back
+        for i in range(1, 4):
+            filepath = output_dir / f"{i:03d}.png"
+            assert filepath.exists(), f"Image file not found: {filepath}"
+
+            # Read image back using POSIX path (cross-platform)
+            image = iio.imread(filepath.as_posix())
+            assert image is not None, f"Failed to read image: {filepath}"
+            assert image.shape[0] > 0 and image.shape[1] > 0, f"Invalid image dimensions: {filepath}"

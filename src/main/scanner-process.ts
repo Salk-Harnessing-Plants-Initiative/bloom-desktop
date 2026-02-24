@@ -200,12 +200,14 @@ export class ScannerProcess extends EventEmitter {
 
       for (const file of files) {
         const imagePath = path.join(scanResult.output_path, file);
-        // Extract frame number from filename (e.g., "frame_0000.png" -> 0)
-        const frameMatch = file.match(/frame_(\d+)/);
+        // Extract frame number from filename (e.g., "001.png" -> 1)
+        // Pilot-compatible naming: NNN.png where NNN is 1-indexed
+        // Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
+        const frameMatch = file.match(/^(\d+)\.png$/);
         if (frameMatch) {
           const frameNumber = parseInt(frameMatch[1], 10);
           images.push({
-            frame_number: frameNumber + 1, // Convert 0-indexed to 1-indexed (pilot compatible)
+            frame_number: frameNumber, // Already 1-indexed (pilot compatible)
             path: imagePath,
             status: 'CAPTURED',
           });
