@@ -628,4 +628,6 @@ class TestScannerImagePersistence:
             # Read image back using POSIX path (cross-platform)
             image = iio.imread(filepath.as_posix())
             assert image is not None, f"Failed to read image: {filepath}"
-            assert image.shape[0] > 0 and image.shape[1] > 0, f"Invalid image dimensions: {filepath}"
+            assert (
+                image.shape[0] > 0 and image.shape[1] > 0
+            ), f"Invalid image dimensions: {filepath}"
