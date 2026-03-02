@@ -249,7 +249,13 @@ test('should display rotation speed', async () => {
 
 ---
 
-## Phase 5: Upload to Bloom Storage
+## Phase 5: Upload to Bloom Storage — BLOCKED by #95
+
+> Upload backend is implemented and unit-tested, but end-to-end upload fails due to
+> Supabase `insert_image_v3_0` RPC using INTEGER types for float camera settings.
+> See: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/95
+>
+> Upload UI work (5.5-5.8) is deferred until #95 is resolved and upload can be verified.
 
 ### 5.1 Write Unit Tests for Upload Service ✅ COMPLETE
 
@@ -293,36 +299,14 @@ test('should display rotation speed', async () => {
 
 **Note:** Progress events deferred - not needed for basic upload functionality.
 
-### 5.5 Write E2E Tests for Upload UI
-
-**RED** - Add tests:
-
-- [ ] Test: Upload button visible in ScanPreview
-- [ ] Test: Upload button visible in table row actions
-- [ ] Test: Upload shows progress indicator
-- [ ] Test: Upload status column shows state (Not uploaded, Uploading, Uploaded)
-
-### 5.6 Implement Upload UI
-
-**GREEN** - Make tests pass:
+### 5.5 Upload UI (deferred until #95 resolved)
 
 - [ ] Add upload button to ScanPreview
 - [ ] Add upload button to table rows
 - [ ] Create `UploadProgress.tsx` component
 - [ ] Add upload status column to table
 
-### 5.7 Write E2E Tests for Batch Upload
-
-**RED** - Add tests:
-
-- [ ] Test: Checkbox selection in table rows
-- [ ] Test: "Upload Selected" button appears when rows selected
-- [ ] Test: Batch upload shows overall progress
-- [ ] Test: Batch continues when individual upload fails
-
-### 5.8 Implement Batch Upload
-
-**GREEN** - Make tests pass:
+### 5.6 Batch Upload (deferred until #95 resolved)
 
 - [ ] Add row selection checkboxes
 - [ ] Add "Upload Selected" button

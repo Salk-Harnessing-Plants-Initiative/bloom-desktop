@@ -91,46 +91,45 @@ Our `camera.py:251` also uses: `fname = output_path / f"{i + 1:03d}.png"`
 
 ---
 
-## Phase 3: REFACTOR - Clean Up and Verify
+## Phase 3: REFACTOR - Clean Up and Verify ✅ COMPLETE
 
 ### 3.1 Test Cleanup
 
-- [ ] Ensure Python tests use temp directories and clean up (pytest `tmp_path` fixture)
-- [ ] Verify no leftover test files
+- [x] Ensure Python tests use temp directories and clean up (pytest `tmp_path` fixture)
+- [x] Verify no leftover test files
 
 ### 3.2 Linting
 
-- [ ] Run `uv run ruff check python/` - fix any issues
-- [ ] Run `npm run lint` - verify TypeScript unchanged
+- [x] Run `uv run ruff check python/` - fix any issues
+- [x] Run `npm run lint` - verify TypeScript unchanged
 
 ### 3.3 CI Verification
 
-- [ ] Run full CI locally: `npm run test:unit && npm run test:ipc && npm run test:e2e`
-- [ ] Verify CI completes without timeout or disk space issues
+- [x] CI passes (GitHub Actions)
 
 ---
 
-## Phase 4: Manual Verification
+## Phase 4: Manual Verification ✅ COMPLETE
 
-- [ ] Start app in mock mode: `npm run start`
-- [ ] Navigate to Capture Scan
-- [ ] Create a scan with metadata (experiment, phenotyper, plant ID)
-- [ ] Complete mock capture (72 frames)
-- [ ] Verify files exist in `SCANS_DIR/{experimentId}/{plantId}_{timestamp}/`
-- [ ] Verify files are named `001.png` through `072.png`
-- [ ] Navigate to Browse Scans
-- [ ] Verify scan shows "Images: 72"
-- [ ] Click scan to open ScanPreview
-- [ ] Verify images load and frame navigation works
+- [x] Start app in mock mode: `npm run start`
+- [x] Navigate to Capture Scan
+- [x] Create a scan with metadata (experiment, phenotyper, plant ID)
+- [x] Complete mock capture (72 frames)
+- [x] Verify files exist in `SCANS_DIR/{experimentId}/{plantId}_{timestamp}/`
+- [x] Verify files are named `001.png` through `072.png`
+- [x] Navigate to Browse Scans
+- [x] Verify scan shows "Images: 72"
+- [x] Click scan to open ScanPreview
+- [x] Verify images load and frame navigation works
 
 ---
 
 ## Verification Checklist
 
-- [ ] All Python scanner tests pass
-- [ ] Integration test `test-scanner-database.ts` passes with images > 0
-- [ ] E2E tests still pass (unchanged, use fake DB records)
-- [ ] CI completes successfully
-- [ ] Mock capture creates real PNG files with pilot-compatible naming (`001.png`)
-- [ ] Scan saved to database includes Image records with correct paths
-- [ ] Images load correctly in ScanPreview
+- [x] All Python scanner tests pass
+- [x] Integration test `test-scanner-database.ts` passes with images > 0
+- [x] E2E tests still pass (unchanged, use fake DB records)
+- [x] CI completes successfully
+- [x] Mock capture creates real PNG files with pilot-compatible naming (`001.png`)
+- [x] Scan saved to database includes Image records with correct paths
+- [x] Images load correctly in ScanPreview

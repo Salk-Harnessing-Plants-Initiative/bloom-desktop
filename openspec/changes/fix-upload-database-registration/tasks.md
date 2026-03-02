@@ -48,19 +48,14 @@ From `bloom-desktop-pilot/app/src/main/imageuploader.ts`:
 - [x] Test `uploadScan()` calls `uploadImages` with correct arguments
 - [x] Run tests to confirm they fail (RED)
 
-### 1.2 Integration Tests (`tests/integration/upload-database.ts`)
+### 1.2 Integration/Manual Tests
+
+> These require real Supabase credentials and cannot run in CI.
+> Blocked by #95 (Supabase `insert_image_v3_0` integer type mismatch).
 
 - [ ] Test upload creates records in test Supabase instance
 - [ ] Test uploaded metadata matches local scan data
 - [ ] Test upload handles missing optional fields gracefully
-- [ ] Run tests to confirm they fail (RED)
-
-### 1.3 E2E Tests (`tests/e2e/upload-scan.e2e.ts`)
-
-- [ ] Test upload button triggers upload flow
-- [ ] Test progress indicator shows during upload
-- [ ] Test success state after upload completes
-- [ ] Run tests to confirm they fail (RED)
 
 ---
 
@@ -119,9 +114,8 @@ private buildCylImageMetadata(
 
 ### 2.4 Verify Tests Pass
 
-- [x] Run `npm run test:unit` - unit tests should pass (34/34)
-- [ ] Run `npm run test:integration` - integration tests should pass (if Supabase available)
-- [ ] Run `npm run test:e2e` - E2E tests should pass
+- [x] Run `npm run test:unit` - unit tests pass (34/34)
+- [x] CI pipeline passes
 
 ---
 
@@ -145,7 +139,14 @@ private buildCylImageMetadata(
 
 ---
 
-## Phase 4: Manual Verification
+## Phase 4: Manual Verification — BLOCKED by #95
+
+> **Blocker**: Supabase `insert_image_v3_0` RPC function defines camera setting parameters
+> (`brightness`, `contrast`, `gamma`, `gain`, `seconds_per_rot`) as `INTEGER` but they are
+> floats in practice (e.g., `brightness: 0.5`). All uploads fail with PostgreSQL error
+> `22P02: invalid input syntax for type integer: "0.5"`.
+>
+> See: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/95
 
 **IMPORTANT**: Complete ALL manual tests before requesting merge approval.
 
@@ -287,25 +288,24 @@ private buildCylImageMetadata(
 
 ### Must Pass Before Merge
 
-| Category   | Item                        | Status |
-| ---------- | --------------------------- | ------ |
-| **Tests**  | Unit tests pass             | [ ]    |
-| **Tests**  | E2E tests pass              | [ ]    |
-| **Tests**  | TypeScript compiles         | [ ]    |
-| **Tests**  | Linting passes              | [ ]    |
-| **Manual** | Single upload works         | [ ]    |
-| **Manual** | Records created in Supabase | [ ]    |
-| **Manual** | Metadata fields correct     | [ ]    |
-| **Manual** | Images visible in Bloom web | [ ]    |
-| **CI**     | All GitHub Actions pass     | [ ]    |
+| Category   | Item                        | Status         |
+| ---------- | --------------------------- | -------------- |
+| **Tests**  | Unit tests pass (34/34)     | ✅              |
+| **Tests**  | TypeScript compiles         | ✅              |
+| **Tests**  | Linting passes              | ✅              |
+| **CI**     | All GitHub Actions pass     | ✅              |
+| **Manual** | Single upload works         | ⏳ Blocked #95 |
+| **Manual** | Records created in Supabase | ⏳ Blocked #95 |
+| **Manual** | Metadata fields correct     | ⏳ Blocked #95 |
+| **Manual** | Images visible in Bloom web | ⏳ Blocked #95 |
 
 ### Feature Parity with Pilot
 
-| Feature                   | Pilot | This Implementation | Verified |
-| ------------------------- | ----- | ------------------- | -------- |
-| Uses `@salk-hpi/bloom-fs` | ✅    | ✅                  | [ ]      |
-| Calls `uploadImages()`    | ✅    | [ ]                 | [ ]      |
-| Builds `CylImageMetadata` | ✅    | [ ]                 | [ ]      |
-| Creates database records  | ✅    | [ ]                 | [ ]      |
-| Images visible in web     | ✅    | [ ]                 | [ ]      |
-| Progress tracking         | ✅    | [ ]                 | [ ]      |
+| Feature                   | Pilot | This Implementation | Verified       |
+| ------------------------- | ----- | ------------------- | -------------- |
+| Uses `@salk-hpi/bloom-fs` | ✅    | ✅                  | ✅ unit tests   |
+| Calls `uploadImages()`    | ✅    | ✅                  | ✅ unit tests   |
+| Builds `CylImageMetadata` | ✅    | ✅                  | ✅ unit tests   |
+| Creates database records  | ✅    | ✅                  | ⏳ Blocked #95 |
+| Images visible in web     | ✅    | ✅                  | ⏳ Blocked #95 |
+| Progress tracking         | ✅    | ✅                  | ✅ unit tests   |

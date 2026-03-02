@@ -23,9 +23,6 @@ import os from 'os';
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
 const ENV_PATH = path.join(BLOOM_DIR, '.env');
 
-// Storage bucket name for images
-const STORAGE_BUCKET = 'images';
-
 /**
  * Result of uploading a single scan
  */
@@ -257,10 +254,10 @@ export class ImageUploader {
     }
 
     // Use bloom-fs uploadImages for coordinated storage + database upload
+    // Note: bucket is hardcoded to "images" inside bloom-fs
     await this.uploadImagesFn(imagePaths, metadata, this.uploader, this.store, {
       nWorkers: 4,
       pngCompression: 9,
-      bucket: STORAGE_BUCKET,
       before: (index: number) => {
         // Called before each image upload starts
         console.log(`Uploading image ${index + 1}/${scan.images.length}`);
@@ -274,15 +271,24 @@ export class ImageUploader {
         const image = scan.images[index];
 
         if (error || created === null) {
+          const errorMsg =
+            error instanceof Error
+              ? error.message
+              : error
+                ? JSON.stringify(error, null, 2)
+                : 'Upload failed (created=null)';
+          console.error(
+            `[Upload] Image ${index + 1}/${scan.images.length} FAILED:`,
+            error instanceof Error ? errorMsg : error
+          );
+
           // Mark as failed
           await this.prisma.image.update({
             where: { id: image.id },
             data: { status: 'failed' },
           });
           result.failed++;
-          result.errors.push(
-            `Image ${image.id}: ${error instanceof Error ? error.message : 'Upload failed'}`
-          );
+          result.errors.push(`Image ${image.id}: ${errorMsg}`);
 
           onProgress?.({
             current: index + 1,
@@ -292,6 +298,9 @@ export class ImageUploader {
             status: 'failed',
           });
         } else {
+          console.log(
+            `[Upload] Image ${index + 1}/${scan.images.length} OK (id=${created})`
+          );
           // Mark as uploaded
           await this.prisma.image.update({
             where: { id: image.id },

@@ -82,7 +82,13 @@ This is a critical gap for production use, blocking the transition from pilot to
 - Back link to Browse Scans
 - Error handling for non-existent scans
 
-### Phase 5: Upload to Bloom Storage - NOT STARTED
+### Phase 5: Upload to Bloom Storage — PARTIALLY COMPLETE, BLOCKED by #95
+
+- Backend: `ImageUploader` class with `@salk-hpi/bloom-fs` integration ✅
+- IPC handlers: `db:scans:upload`, `db:scans:uploadBatch` ✅
+- Unit tests: 34/34 passing ✅
+- Upload UI: Deferred until #95 resolved
+- **Blocker**: Supabase `insert_image_v3_0` RPC rejects float camera settings (#95)
 
 ### Phase 6: Polish - NOT STARTED
 

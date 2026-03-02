@@ -768,19 +768,21 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         );
       });
 
-      it('should pass correct bucket in options', async () => {
+      it('should pass nWorkers and pngCompression in options', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
         await uploader.uploadScan('scan-123');
 
-        // Verify options include correct bucket
+        // Verify options include worker and compression settings
+        // Note: bucket is hardcoded inside bloom-fs, not passed as an option
         expect(uploadImages).toHaveBeenCalledWith(
           expect.any(Array),
           expect.any(Array),
           expect.any(Object),
           expect.any(Object),
           expect.objectContaining({
-            bucket: 'images',
+            nWorkers: 4,
+            pngCompression: 9,
           })
         );
       });

@@ -26,15 +26,15 @@ The pilot uses `webSecurity: false` in BrowserWindow webPreferences:
 - [x] Reference pilot implementation in comment
 - [x] Run E2E test to confirm it passes
 
-## Phase 3: Manual Verification
+## Phase 3: Manual Verification ✅ COMPLETE
 
-- [ ] Start app in development mode: `npm run start`
-- [ ] Navigate to Capture Scan
-- [ ] Complete a mock capture
-- [ ] Navigate to Browse Scans
-- [ ] Click on the scan to open ScanPreview
-- [ ] Verify images load correctly
-- [ ] Verify frame navigation works
+- [x] Start app in development mode: `npm run start`
+- [x] Navigate to Capture Scan
+- [x] Complete a mock capture
+- [x] Navigate to Browse Scans
+- [x] Click on the scan to open ScanPreview
+- [x] Verify images load correctly
+- [x] Verify frame navigation works
 
 ## Phase 4: Create GitHub Issue
 
@@ -48,7 +48,7 @@ The pilot uses `webSecurity: false` in BrowserWindow webPreferences:
 ## Verification Checklist
 
 - [x] E2E test passes for image loading
-- [ ] Images load in ScanPreview (development mode)
-- [ ] Frame navigation works
-- [ ] No console errors related to CORS/security
-- [x] GitHub issue created for future improvement
+- [x] Images load in ScanPreview (development mode)
+- [x] Frame navigation works
+- [x] No console errors related to CORS/security
+- [x] GitHub issue created for future improvement (#93)
