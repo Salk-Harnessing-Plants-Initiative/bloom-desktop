@@ -290,10 +290,10 @@ private buildCylImageMetadata(
 
 | Category   | Item                        | Status         |
 | ---------- | --------------------------- | -------------- |
-| **Tests**  | Unit tests pass (34/34)     | ✅              |
-| **Tests**  | TypeScript compiles         | ✅              |
-| **Tests**  | Linting passes              | ✅              |
-| **CI**     | All GitHub Actions pass     | ✅              |
+| **Tests**  | Unit tests pass (34/34)     | ✅             |
+| **Tests**  | TypeScript compiles         | ✅             |
+| **Tests**  | Linting passes              | ✅             |
+| **CI**     | All GitHub Actions pass     | ✅             |
 | **Manual** | Single upload works         | ⏳ Blocked #95 |
 | **Manual** | Records created in Supabase | ⏳ Blocked #95 |
 | **Manual** | Metadata fields correct     | ⏳ Blocked #95 |
@@ -303,9 +303,9 @@ private buildCylImageMetadata(
 
 | Feature                   | Pilot | This Implementation | Verified       |
 | ------------------------- | ----- | ------------------- | -------------- |
-| Uses `@salk-hpi/bloom-fs` | ✅    | ✅                  | ✅ unit tests   |
-| Calls `uploadImages()`    | ✅    | ✅                  | ✅ unit tests   |
-| Builds `CylImageMetadata` | ✅    | ✅                  | ✅ unit tests   |
+| Uses `@salk-hpi/bloom-fs` | ✅    | ✅                  | ✅ unit tests  |
+| Calls `uploadImages()`    | ✅    | ✅                  | ✅ unit tests  |
+| Builds `CylImageMetadata` | ✅    | ✅                  | ✅ unit tests  |
 | Creates database records  | ✅    | ✅                  | ⏳ Blocked #95 |
 | Images visible in web     | ✅    | ✅                  | ⏳ Blocked #95 |
-| Progress tracking         | ✅    | ✅                  | ✅ unit tests   |
+| Progress tracking         | ✅    | ✅                  | ✅ unit tests  |

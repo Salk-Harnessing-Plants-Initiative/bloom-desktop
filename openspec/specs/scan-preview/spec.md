@@ -1,8 +1,11 @@
 # scan-preview Specification
 
 ## Purpose
+
 TBD - created by archiving change fix-scan-preview-image-loading. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: ScanPreview Image Loading
 
 The ScanPreview component SHALL load and display scan images from the local filesystem in both development and production modes.
@@ -40,4 +43,3 @@ The BrowserWindow SHALL be configured with `webSecurity: false` to allow loading
 - **WHEN** configuring BrowserWindow webPreferences
 - **THEN** the same setting SHALL be used for compatibility
 - **AND** a TODO comment SHALL indicate future improvement needed
-
