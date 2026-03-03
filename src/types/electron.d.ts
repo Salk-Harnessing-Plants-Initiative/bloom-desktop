@@ -34,7 +34,10 @@ import {
   AccessionCreateData,
   ImageCreateData,
   ScanFilters,
+  PaginatedScanFilters,
+  PaginatedScansResponse,
 } from './database';
+import { UploadResult } from '../main/image-uploader';
 
 /**
  * Python backend API
@@ -273,9 +276,19 @@ export interface DatabaseAPI {
     ) => Promise<DatabaseResponse<ExperimentWithRelations>>;
   };
   scans: {
-    list: (
-      filters?: ScanFilters
-    ) => Promise<DatabaseResponse<ScanWithRelations[]>>;
+    /**
+     * List scans with optional filters
+     * @param filters - Legacy simple filters OR paginated filters
+     * @returns Array of scans (legacy) OR paginated response object
+     */
+    list: {
+      // Overload 1: Paginated list (when page/pageSize provided)
+      (
+        filters: PaginatedScanFilters
+      ): Promise<DatabaseResponse<PaginatedScansResponse>>;
+      // Overload 2: Legacy list (simple array)
+      (filters?: ScanFilters): Promise<DatabaseResponse<ScanWithRelations[]>>;
+    };
     get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
     create: (data: ScanCreateData) => Promise<DatabaseResponse<Scan>>;
     getMostRecentScanDate: (
@@ -286,6 +299,28 @@ export interface DatabaseAPI {
       limit?: number;
       experimentId?: string;
     }) => Promise<DatabaseResponse<ScanWithRelations[]>>;
+    /**
+     * Soft delete a scan (sets deleted=true, does NOT delete images)
+     * @param id - Scan ID to delete
+     * @returns Promise resolving to delete result
+     */
+    delete: (id: string) => Promise<DatabaseResponse<Scan>>;
+    /**
+     * Upload a scan's images to Bloom remote storage
+     * Uses credentials from ~/.bloom/.env (machine configuration)
+     * @param scanId - Scan ID to upload
+     * @returns Promise resolving to upload result with statistics
+     */
+    upload: (scanId: string) => Promise<DatabaseResponse<UploadResult>>;
+    /**
+     * Upload multiple scans' images to Bloom remote storage (batch)
+     * Uses credentials from ~/.bloom/.env (machine configuration)
+     * @param scanIds - Array of scan IDs to upload
+     * @returns Promise resolving to array of upload results
+     */
+    uploadBatch: (
+      scanIds: string[]
+    ) => Promise<DatabaseResponse<UploadResult[]>>;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;

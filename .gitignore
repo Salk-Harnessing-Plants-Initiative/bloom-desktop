@@ -75,7 +75,7 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 .uv/
-uv.lock
+# Note: uv.lock is committed for reproducible CI builds (--frozen)
 .coverage
 htmlcov/
 
@@ -114,3 +114,7 @@ tests/e2e/**/*.db-journal
 scripts/*.js
 !scripts/examples/*.js
 .env.old-backup
+
+# Test scan artifacts
+test-scans/
+test-scans-no-meta/

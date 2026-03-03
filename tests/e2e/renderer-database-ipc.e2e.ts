@@ -1107,6 +1107,114 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     expect(result.data.experiment.name).toBe('Get Scan Experiment');
   });
 
+  test('should get scan with images sorted by frame_number', async () => {
+    // Seed phenotyper and experiment
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Image Sort Phenotyper',
+        email: 'imagesort@test.com',
+      },
+    });
+
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Image Sort Scientist',
+        email: 'imagesortscientist@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Image Sort Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    // Create scan
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-IMAGES',
+        path: '/test/scans/PLANT-IMAGES',
+        capture_date: new Date('2025-01-20'),
+        num_frames: 5,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+      },
+    });
+
+    // Create images in non-sequential order
+    await prisma.image.createMany({
+      data: [
+        {
+          scan_id: scan.id,
+          frame_number: 3,
+          path: '/test/scans/PLANT-IMAGES/frame_003.png',
+          status: 'pending',
+        },
+        {
+          scan_id: scan.id,
+          frame_number: 1,
+          path: '/test/scans/PLANT-IMAGES/frame_001.png',
+          status: 'pending',
+        },
+        {
+          scan_id: scan.id,
+          frame_number: 5,
+          path: '/test/scans/PLANT-IMAGES/frame_005.png',
+          status: 'pending',
+        },
+        {
+          scan_id: scan.id,
+          frame_number: 2,
+          path: '/test/scans/PLANT-IMAGES/frame_002.png',
+          status: 'pending',
+        },
+        {
+          scan_id: scan.id,
+          frame_number: 4,
+          path: '/test/scans/PLANT-IMAGES/frame_004.png',
+          status: 'pending',
+        },
+      ],
+    });
+
+    const result = await window.evaluate((scanId) => {
+      return (window as WindowWithElectron).electron.database.scans.get(scanId);
+    }, scan.id);
+
+    expect(result.success).toBe(true);
+    expect(result.data!.images).toHaveLength(5);
+
+    // Verify images are sorted by frame_number ascending
+    const frameNumbers = result.data!.images.map(
+      (img: { frame_number: number }) => img.frame_number
+    );
+    expect(frameNumbers).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test('should return null for non-existent scan ID', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await window.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.get(
+        'non-existent-scan-id-12345'
+      );
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toBeNull();
+  });
+
   test('should create scan from renderer', async () => {
     // Seed scientist, experiment, and phenotyper
     const scientist = await prisma.scientist.create({
@@ -1341,6 +1449,899 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
   });
 });
 
+/**
+ * TDD Tests for Paginated Scans List API
+ *
+ * These tests are written BEFORE the implementation exists (RED phase).
+ * They will fail until Phase 1.2 implements the paginated scans.list() handler.
+ *
+ * The API will add new parameters to scans.list():
+ * - page: number (1-indexed)
+ * - pageSize: number
+ * - experimentId?: string
+ * - dateFrom?: string (ISO date)
+ * - dateTo?: string (ISO date)
+ *
+ * And return a new response shape:
+ * - { scans: ScanWithRelations[], total: number, page: number, pageSize: number }
+ */
+test.describe('Renderer Database IPC - Scans List with Pagination', () => {
+  // Type for the new paginated response (will be added in Phase 1.2)
+  interface PaginatedScansResponse {
+    scans: Array<{
+      plant_id: string;
+      phenotyper: { name: string; email: string };
+      experiment: { name: string; species: string };
+    }>;
+    total: number;
+    page: number;
+    pageSize: number;
+  }
+
+  // Type for new paginated list params (will be added in Phase 1.2)
+  interface PaginatedListParams {
+    page: number;
+    pageSize: number;
+    experimentId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }
+
+  /**
+   * Helper to create test data for pagination/filtering tests
+   */
+  async function createTestScanData() {
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Pagination Test Scientist',
+        email: 'paginationsci@test.com',
+      },
+    });
+
+    const experiment1 = await prisma.experiment.create({
+      data: {
+        name: 'Pagination Experiment 1',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const experiment2 = await prisma.experiment.create({
+      data: {
+        name: 'Pagination Experiment 2',
+        species: 'Sorghum bicolor',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Pagination Phenotyper',
+        email: 'paginationpheno@test.com',
+      },
+    });
+
+    return { scientist, experiment1, experiment2, phenotyper };
+  }
+
+  /**
+   * Helper to call paginated list via IPC
+   * Uses type assertions since the API doesn't exist yet (TDD RED phase)
+   */
+  async function callPaginatedList(
+    params: PaginatedListParams
+  ): Promise<{ success: boolean; data: PaginatedScansResponse }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await window.evaluate((p: PaginatedListParams) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.list(p);
+    }, params);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return result as any;
+  }
+
+  /**
+   * Helper to call paginated list with experimentId filter
+   */
+  async function callPaginatedListWithExperiment(
+    params: PaginatedListParams,
+    experimentId: string
+  ): Promise<{ success: boolean; data: PaginatedScansResponse }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await window.evaluate(
+      ({ p, expId }: { p: PaginatedListParams; expId: string }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (window as any).electron.database.scans.list({
+          ...p,
+          experimentId: expId,
+        });
+      },
+      { p: params, expId: experimentId }
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return result as any;
+  }
+
+  test('should return paginated results with page and pageSize', async () => {
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    // Create 30 scans to test pagination
+    for (let i = 0; i < 30; i++) {
+      await prisma.scan.create({
+        data: {
+          experiment_id: experiment1.id,
+          phenotyper_id: phenotyper.id,
+          scanner_name: 'Scanner1',
+          plant_id: `PLANT-PAGE-${String(i).padStart(3, '0')}`,
+          path: `/test/scans/page/PLANT-PAGE-${String(i).padStart(3, '0')}`,
+          capture_date: new Date(`2025-01-${String(i + 1).padStart(2, '0')}`),
+          num_frames: 36,
+          exposure_time: 100,
+          gain: 1.0,
+          brightness: 0.5,
+          contrast: 1.0,
+          gamma: 1.0,
+          seconds_per_rot: 10.0,
+          wave_number: 1,
+          plant_age_days: 14,
+          deleted: false,
+        },
+      });
+    }
+
+    // Request page 1 with 10 items per page
+    const result = await callPaginatedList({ page: 1, pageSize: 10 });
+
+    expect(result.success).toBe(true);
+    expect(result.data.scans).toHaveLength(10);
+    expect(result.data.total).toBe(30);
+    expect(result.data.page).toBe(1);
+    expect(result.data.pageSize).toBe(10);
+  });
+
+  test('should exclude soft-deleted scans (deleted: true)', async () => {
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    // Create active scans
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-ACTIVE-001',
+        path: '/test/scans/active/PLANT-ACTIVE-001',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-ACTIVE-002',
+        path: '/test/scans/active/PLANT-ACTIVE-002',
+        capture_date: new Date('2025-01-16'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Create soft-deleted scan
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-DELETED-001',
+        path: '/test/scans/deleted/PLANT-DELETED-001',
+        capture_date: new Date('2025-01-17'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: true, // Soft deleted
+      },
+    });
+
+    const result = await callPaginatedList({ page: 1, pageSize: 25 });
+
+    expect(result.success).toBe(true);
+    expect(result.data.scans).toHaveLength(2);
+    expect(result.data.total).toBe(2);
+
+    // Verify deleted scan is not in results
+    const plantIds = result.data.scans.map((s) => s.plant_id);
+    expect(plantIds).toContain('PLANT-ACTIVE-001');
+    expect(plantIds).toContain('PLANT-ACTIVE-002');
+    expect(plantIds).not.toContain('PLANT-DELETED-001');
+  });
+
+  test('should filter by experimentId', async () => {
+    const { experiment1, experiment2, phenotyper } = await createTestScanData();
+
+    // Create scans for experiment1
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-EXP1-001',
+        path: '/test/scans/exp1/PLANT-EXP1-001',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-EXP1-002',
+        path: '/test/scans/exp1/PLANT-EXP1-002',
+        capture_date: new Date('2025-01-16'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Create scan for experiment2
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment2.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-EXP2-001',
+        path: '/test/scans/exp2/PLANT-EXP2-001',
+        capture_date: new Date('2025-01-17'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Filter by experiment1
+    const result = await callPaginatedListWithExperiment(
+      { page: 1, pageSize: 25 },
+      experiment1.id
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.scans).toHaveLength(2);
+    expect(result.data.total).toBe(2);
+
+    // Verify only experiment1 scans returned
+    const plantIds = result.data.scans.map((s) => s.plant_id);
+    expect(plantIds).toContain('PLANT-EXP1-001');
+    expect(plantIds).toContain('PLANT-EXP1-002');
+    expect(plantIds).not.toContain('PLANT-EXP2-001');
+  });
+
+  test('should filter by date range (dateFrom, dateTo)', async () => {
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    // Create scans with different dates
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-DATE-JAN10',
+        path: '/test/scans/date/PLANT-DATE-JAN10',
+        capture_date: new Date('2025-01-10'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-DATE-JAN15',
+        path: '/test/scans/date/PLANT-DATE-JAN15',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-DATE-JAN20',
+        path: '/test/scans/date/PLANT-DATE-JAN20',
+        capture_date: new Date('2025-01-20'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-DATE-JAN25',
+        path: '/test/scans/date/PLANT-DATE-JAN25',
+        capture_date: new Date('2025-01-25'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Filter by date range: Jan 12 to Jan 22
+    const result = await callPaginatedList({
+      page: 1,
+      pageSize: 25,
+      dateFrom: '2025-01-12',
+      dateTo: '2025-01-22',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.scans).toHaveLength(2);
+    expect(result.data.total).toBe(2);
+
+    // Verify only scans within date range returned
+    const plantIds = result.data.scans.map((s) => s.plant_id);
+    expect(plantIds).toContain('PLANT-DATE-JAN15');
+    expect(plantIds).toContain('PLANT-DATE-JAN20');
+    expect(plantIds).not.toContain('PLANT-DATE-JAN10');
+    expect(plantIds).not.toContain('PLANT-DATE-JAN25');
+  });
+
+  test('should filter same-day scans correctly (timezone handling)', async () => {
+    // This test verifies that filtering by "today to today" works correctly
+    // regardless of timezone. The bug was that date strings like "2025-02-17"
+    // were parsed as UTC midnight, causing scans captured later in the day
+    // to be excluded from the filter.
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    // Create a scan with a specific time during the day (e.g., 2pm local)
+    // Using a fixed date to make the test deterministic
+    const testDate = new Date('2025-02-17T14:30:00'); // 2:30pm local time
+    const dateString = testDate.toISOString().split('T')[0]; // "2025-02-17"
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-SAME-DAY',
+        path: '/test/scans/sameday/PLANT-SAME-DAY',
+        capture_date: testDate,
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Filter by the same day (from "2025-02-17" to "2025-02-17")
+    const result = await callPaginatedList({
+      page: 1,
+      pageSize: 25,
+      dateFrom: dateString,
+      dateTo: dateString,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.total).toBeGreaterThanOrEqual(1);
+
+    // The scan created at 2:30pm should be included
+    const plantIds = result.data.scans.map((s) => s.plant_id);
+    expect(plantIds).toContain('PLANT-SAME-DAY');
+  });
+
+  test('should include phenotyper and experiment relations', async () => {
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-RELATIONS-001',
+        path: '/test/scans/relations/PLANT-RELATIONS-001',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    const result = await callPaginatedList({ page: 1, pageSize: 25 });
+
+    expect(result.success).toBe(true);
+    expect(result.data.scans).toHaveLength(1);
+
+    const scan = result.data.scans[0];
+
+    // Verify phenotyper relation is included
+    expect(scan.phenotyper).toBeDefined();
+    expect(scan.phenotyper.name).toBe('Pagination Phenotyper');
+    expect(scan.phenotyper.email).toBe('paginationpheno@test.com');
+
+    // Verify experiment relation is included
+    expect(scan.experiment).toBeDefined();
+    expect(scan.experiment.name).toBe('Pagination Experiment 1');
+    expect(scan.experiment.species).toBe('Arabidopsis thaliana');
+  });
+
+  test('should return total count for pagination', async () => {
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    // Create 15 scans
+    for (let i = 0; i < 15; i++) {
+      await prisma.scan.create({
+        data: {
+          experiment_id: experiment1.id,
+          phenotyper_id: phenotyper.id,
+          scanner_name: 'Scanner1',
+          plant_id: `PLANT-TOTAL-${String(i).padStart(3, '0')}`,
+          path: `/test/scans/total/PLANT-TOTAL-${String(i).padStart(3, '0')}`,
+          capture_date: new Date(`2025-01-${String(i + 1).padStart(2, '0')}`),
+          num_frames: 36,
+          exposure_time: 100,
+          gain: 1.0,
+          brightness: 0.5,
+          contrast: 1.0,
+          gamma: 1.0,
+          seconds_per_rot: 10.0,
+          wave_number: 1,
+          plant_age_days: 14,
+          deleted: false,
+        },
+      });
+    }
+
+    // Request page 1 with 5 items per page
+    const result = await callPaginatedList({ page: 1, pageSize: 5 });
+
+    expect(result.success).toBe(true);
+    expect(result.data.scans).toHaveLength(5);
+    expect(result.data.total).toBe(15);
+    expect(result.data.page).toBe(1);
+    expect(result.data.pageSize).toBe(5);
+
+    // Request page 2
+    const page2Result = await callPaginatedList({ page: 2, pageSize: 5 });
+
+    expect(page2Result.success).toBe(true);
+    expect(page2Result.data.scans).toHaveLength(5);
+    expect(page2Result.data.total).toBe(15);
+    expect(page2Result.data.page).toBe(2);
+  });
+
+  test('should order by capture_date descending', async () => {
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    // Create scans with different dates (not in order)
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-ORDER-MID',
+        path: '/test/scans/order/PLANT-ORDER-MID',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-ORDER-OLDEST',
+        path: '/test/scans/order/PLANT-ORDER-OLDEST',
+        capture_date: new Date('2025-01-10'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-ORDER-NEWEST',
+        path: '/test/scans/order/PLANT-ORDER-NEWEST',
+        capture_date: new Date('2025-01-20'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    const result = await callPaginatedList({ page: 1, pageSize: 25 });
+
+    expect(result.success).toBe(true);
+    expect(result.data.scans).toHaveLength(3);
+
+    // Verify order: newest first (descending)
+    expect(result.data.scans[0].plant_id).toBe('PLANT-ORDER-NEWEST');
+    expect(result.data.scans[1].plant_id).toBe('PLANT-ORDER-MID');
+    expect(result.data.scans[2].plant_id).toBe('PLANT-ORDER-OLDEST');
+  });
+});
+
+/**
+ * TDD Tests for Soft Delete Scans API
+ *
+ * These tests verify the soft delete behavior where scans are marked
+ * as deleted (deleted: true) rather than being permanently removed.
+ */
+test.describe('Renderer Database IPC - Scans Delete (Soft Delete)', () => {
+  test('should soft delete scan by setting deleted: true', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Delete Test Scientist', email: 'deletesci@test.com' },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Delete Test Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Delete Test Phenotyper', email: 'deletepheno@test.com' },
+    });
+
+    // Create scan to delete
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-TO-DELETE',
+        path: '/test/scans/delete/PLANT-TO-DELETE',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Call delete via IPC
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await window.evaluate((scanId: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.delete(scanId);
+    }, scan.id);
+
+    expect(result.success).toBe(true);
+
+    // Verify scan was soft deleted (not removed from database)
+    const deletedScan = await prisma.scan.findUnique({
+      where: { id: scan.id },
+    });
+    expect(deletedScan).not.toBeNull();
+    expect(deletedScan!.deleted).toBe(true);
+  });
+
+  test('should NOT delete Image records when soft deleting scan', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Image Preserve Scientist',
+        email: 'imagepreservesci@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Image Preserve Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Image Preserve Phenotyper',
+        email: 'imagepreservepheno@test.com',
+      },
+    });
+
+    // Create scan with images
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-WITH-IMAGES',
+        path: '/test/scans/delete/PLANT-WITH-IMAGES',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 3,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Create images for the scan
+    await prisma.image.createMany({
+      data: [
+        {
+          scan_id: scan.id,
+          frame_number: 1,
+          path: '/test/scans/delete/PLANT-WITH-IMAGES/frame_001.png',
+          status: 'pending',
+        },
+        {
+          scan_id: scan.id,
+          frame_number: 2,
+          path: '/test/scans/delete/PLANT-WITH-IMAGES/frame_002.png',
+          status: 'uploaded',
+        },
+        {
+          scan_id: scan.id,
+          frame_number: 3,
+          path: '/test/scans/delete/PLANT-WITH-IMAGES/frame_003.png',
+          status: 'pending',
+        },
+      ],
+    });
+
+    // Call delete via IPC
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await window.evaluate((scanId: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.delete(scanId);
+    }, scan.id);
+
+    expect(result.success).toBe(true);
+
+    // Verify images still exist
+    const images = await prisma.image.findMany({
+      where: { scan_id: scan.id },
+    });
+    expect(images).toHaveLength(3);
+
+    // Verify image statuses are preserved
+    const statuses = images.map((img) => img.status);
+    expect(statuses).toContain('pending');
+    expect(statuses).toContain('uploaded');
+  });
+
+  test('should exclude deleted scans from paginated list results', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Exclude Deleted Scientist',
+        email: 'excludedeleted@test.com',
+      },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Exclude Deleted Experiment',
+        species: 'Arabidopsis thaliana',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Exclude Deleted Phenotyper',
+        email: 'excludedeletedpheno@test.com',
+      },
+    });
+
+    // Create active scan
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-STILL-ACTIVE',
+        path: '/test/scans/exclude/PLANT-STILL-ACTIVE',
+        capture_date: new Date('2025-01-15'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Create scan and then delete it
+    const scanToDelete = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-WILL-DELETE',
+        path: '/test/scans/exclude/PLANT-WILL-DELETE',
+        capture_date: new Date('2025-01-16'),
+        num_frames: 36,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Soft delete the scan
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await window.evaluate((scanId: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.delete(scanId);
+    }, scanToDelete.id);
+
+    // List scans with pagination
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await window.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.list({
+        page: 1,
+        pageSize: 25,
+      });
+    });
+
+    expect(result.success).toBe(true);
+
+    // Get all plant_ids in results
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const plantIds = result.data.scans.map((s: any) => s.plant_id);
+
+    // Active scan should be in results
+    expect(plantIds).toContain('PLANT-STILL-ACTIVE');
+
+    // Deleted scan should NOT be in results
+    expect(plantIds).not.toContain('PLANT-WILL-DELETE');
+  });
+});
+
 test.describe('Renderer Database IPC - Scans getRecent', () => {
   test('should get recent scans from today', async () => {
     // Create test data
@@ -1390,6 +2391,172 @@ test.describe('Renderer Database IPC - Scans getRecent', () => {
     expect(Array.isArray(result.data)).toBe(true);
     expect(result.data!.length).toBeGreaterThan(0);
     expect(result.data![0].plant_id).toBe('RECENT_SCAN_001');
+  });
+});
+
+/**
+ * Scans Upload IPC Tests
+ *
+ * These tests verify the upload IPC handlers work correctly.
+ * Since CI doesn't have real Bloom credentials, we test error handling paths:
+ * - Missing credentials error
+ * - Non-existent scan error
+ * - Response structure validation
+ *
+ * For manual testing with real uploads, see: docs/MANUAL_UPLOAD_TESTING.md
+ */
+test.describe('Renderer Database IPC - Scans Upload', () => {
+  test('db:scans:upload should return error for non-existent scan', async () => {
+    // Call upload with a fake scan ID
+    // This tests the handler exists and returns proper error structure
+    const result = await window.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.upload(
+        'non-existent-scan-id'
+      );
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    // Should fail with either "Scan not found" or "Missing Bloom credentials"
+    // depending on whether credentials check happens first
+    expect(result.error).toMatch(/Scan not found|Missing Bloom credentials/);
+  });
+
+  test('db:scans:upload should return structured response', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Upload Test Scientist', email: 'uploadtest@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Upload Test Phenotyper', email: 'uploadpheno@test.com' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Upload Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'UPLOAD_TEST_SCAN',
+        path: './scans/test/UPLOAD_TEST_SCAN',
+        capture_date: new Date(),
+        num_frames: 1,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Call upload - will fail due to missing credentials in CI
+    // but validates the handler exists and response structure
+    const result = await window.evaluate((scanId) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.upload(scanId);
+    }, scan.id);
+
+    // Should fail with credentials error (scan exists but no credentials)
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('Missing Bloom credentials');
+  });
+
+  test('db:scans:uploadBatch should return error for empty array', async () => {
+    // Call batch upload with empty array
+    const result = await window.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).electron.database.scans.uploadBatch([]);
+    });
+
+    // Should fail with credentials error (checked before processing scans)
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('Missing Bloom credentials');
+  });
+
+  test('db:scans:uploadBatch should return structured response', async () => {
+    // Create test data
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Batch Upload Scientist', email: 'batchupload@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Batch Upload Phenotyper', email: 'batchpheno@test.com' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Batch Upload Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const scan1 = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'BATCH_UPLOAD_001',
+        path: './scans/test/BATCH_UPLOAD_001',
+        capture_date: new Date(),
+        num_frames: 1,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    const scan2 = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'BATCH_UPLOAD_002',
+        path: './scans/test/BATCH_UPLOAD_002',
+        capture_date: new Date(),
+        num_frames: 1,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+
+    // Call batch upload - will fail due to missing credentials
+    const result = await window.evaluate(
+      (scanIds) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (window as any).electron.database.scans.uploadBatch(scanIds);
+      },
+      [scan1.id, scan2.id]
+    );
+
+    // Should fail with credentials error
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('Missing Bloom credentials');
   });
 });
 

@@ -103,6 +103,11 @@ const createWindow = (): void => {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
       nodeIntegration: false,
+      // TODO: Replace webSecurity: false with a custom protocol handler for file:// URLs
+      // This is needed to load local scan images from HTTP context (webpack-dev-server)
+      // Reference: pilot implementation uses same approach
+      // See: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/93
+      webSecurity: false,
     },
   });
 

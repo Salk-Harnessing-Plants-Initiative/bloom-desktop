@@ -279,15 +279,43 @@ async function runTest(): Promise<void> {
     }
     console.log('[PASS] Scan camera settings saved correctly');
 
-    // Note: Mock hardware doesn't create actual image files, so image count will be 0
-    // In production with real hardware, image files would be present and saved to database
+    // Mock hardware now creates actual image files (fix-scanner-image-saving)
+    // Images are saved as PNG files and recorded in the database
+    console.log(`[INFO] Images in database: ${savedScan.images.length}`);
+
+    if (savedScan.images.length === 0) {
+      throw new Error(
+        'No images found in database. Scanner should save images to disk.'
+      );
+    }
+    console.log('[PASS] Scan saved with images');
+
+    // Verify images have correct frame numbers (1-indexed, sequential)
+    const frameNumbers = savedScan.images
+      .map((img: { frame_number: number }) => img.frame_number)
+      .sort((a: number, b: number) => a - b);
+    const firstFrame = frameNumbers[0];
+    const lastFrame = frameNumbers[frameNumbers.length - 1];
+    if (firstFrame !== 1) {
+      throw new Error(`First frame should be 1, got ${firstFrame}`);
+    }
+    if (lastFrame !== frameNumbers.length) {
+      throw new Error(
+        `Frame numbers not sequential: first=${firstFrame}, last=${lastFrame}, count=${frameNumbers.length}`
+      );
+    }
+    console.log(`[PASS] Image frame numbers are correct (1 to ${lastFrame})`);
+
+    // Verify image paths have correct format (pilot-compatible: NNN.png)
+    // Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
+    const firstImagePath = savedScan.images[0]?.path;
+    if (!firstImagePath || !firstImagePath.match(/\d{3}\.png$/)) {
+      throw new Error(`Image path format incorrect: ${firstImagePath}`);
+    }
     console.log(
-      `[INFO] Images in database: ${savedScan.images.length} (mock hardware doesn't create files)`
+      '[PASS] Image paths have correct format (pilot-compatible NNN.png)'
     );
     console.log('[PASS] Database integration working correctly');
-
-    // Note: Since mock hardware doesn't create files, we can't verify image-specific logic
-    // With real hardware, images would be saved with 1-indexed frame numbers and CAPTURED status
 
     // Test: Scan without metadata (should not save to database)
     console.log('\n[INFO] Testing scan without metadata...');
