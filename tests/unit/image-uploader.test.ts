@@ -748,6 +748,75 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
       });
     });
 
+    describe('logging behavior', () => {
+      it('should use console.debug (not console.log) for non-error upload messages', async () => {
+        const debugSpy = vi
+          .spyOn(console, 'debug')
+          .mockImplementation(() => {});
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        // Should use console.debug for progress/success messages
+        expect(debugSpy).toHaveBeenCalled();
+
+        // console.log should NOT be called for upload progress
+        const logCalls = logSpy.mock.calls.filter(
+          (call) => typeof call[0] === 'string' && call[0].includes('[Upload]')
+        );
+        expect(logCalls).toHaveLength(0);
+
+        debugSpy.mockRestore();
+        logSpy.mockRestore();
+      });
+
+      it('should use console.error for failed uploads', async () => {
+        const errorSpy = vi
+          .spyOn(console, 'error')
+          .mockImplementation(() => {});
+
+        // Make all uploads fail
+        (uploadImages as Mock).mockImplementation(
+          async (
+            _paths: string[],
+            metadata: unknown[],
+            _uploader: unknown,
+            _store: unknown,
+            opts?: {
+              before?: (index: number) => void;
+              result?: (
+                index: number,
+                m: unknown,
+                created: number | null,
+                error: unknown
+              ) => void;
+            }
+          ) => {
+            for (let i = 0; i < metadata.length; i++) {
+              opts?.before?.(i);
+              await opts?.result?.(
+                i,
+                metadata[i],
+                null,
+                new Error('Upload failed')
+              );
+            }
+          }
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        // Should use console.error for failures
+        expect(errorSpy).toHaveBeenCalled();
+
+        errorSpy.mockRestore();
+      });
+    });
+
     describe('uploadImages options', () => {
       it('should pass correct image paths to uploadImages', async () => {
         const uploader = new ImageUploader(mockPrismaClient);

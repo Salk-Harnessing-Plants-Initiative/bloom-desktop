@@ -17,6 +17,9 @@ export function ScanPreview() {
   const [currentFrame, setCurrentFrame] = useState(0);
   const [zoomLevel, setZoomLevel] = useState(1);
 
+  // Image error state
+  const [imageError, setImageError] = useState(false);
+
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -58,22 +61,28 @@ export function ScanPreview() {
   }, [fetchScan]);
 
   // Keyboard navigation
+  // Uses functional state updates and inline logic to avoid stale closures
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!scan || scan.images.length === 0) return;
+      const maxFrame = scan.images.length - 1;
 
       switch (e.key) {
         case 'ArrowRight':
-          goToNextFrame();
+          setCurrentFrame((prev) => Math.min(prev + 1, maxFrame));
+          setImageError(false);
           break;
         case 'ArrowLeft':
-          goToPreviousFrame();
+          setCurrentFrame((prev) => Math.max(prev - 1, 0));
+          setImageError(false);
           break;
         case 'Home':
           setCurrentFrame(0);
+          setImageError(false);
           break;
         case 'End':
-          setCurrentFrame(scan.images.length - 1);
+          setCurrentFrame(maxFrame);
+          setImageError(false);
           break;
       }
     };
@@ -85,10 +94,12 @@ export function ScanPreview() {
   const goToNextFrame = () => {
     if (!scan) return;
     setCurrentFrame((prev) => Math.min(prev + 1, scan.images.length - 1));
+    setImageError(false);
   };
 
   const goToPreviousFrame = () => {
     setCurrentFrame((prev) => Math.max(prev - 1, 0));
+    setImageError(false);
   };
 
   const handleZoomIn = () => {
@@ -317,19 +328,16 @@ export function ScanPreview() {
                   transition: 'transform 0.2s ease-out',
                 }}
               >
-                <img
-                  src={`file://${currentImage.path}`}
-                  alt={`Frame ${currentFrame + 1}`}
-                  className="max-w-full max-h-full object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    if (target.parentElement) {
-                      target.parentElement.innerHTML =
-                        '<p class="text-sm text-gray-500">Image not found</p>';
-                    }
-                  }}
-                />
+                {imageError ? (
+                  <p className="text-sm text-gray-500">Image not found</p>
+                ) : (
+                  <img
+                    src={`file://${currentImage.path}`}
+                    alt={`Frame ${currentFrame + 1}`}
+                    className="max-w-full max-h-full object-contain"
+                    onError={() => setImageError(true)}
+                  />
+                )}
               </div>
             ) : null}
           </div>

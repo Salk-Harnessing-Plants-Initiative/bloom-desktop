@@ -260,7 +260,9 @@ export class ImageUploader {
       pngCompression: 9,
       before: (index: number) => {
         // Called before each image upload starts
-        console.log(`Uploading image ${index + 1}/${scan.images.length}`);
+        console.debug(
+          `[Upload] Uploading image ${index + 1}/${scan.images.length}`
+        );
       },
       result: async (
         index: number,
@@ -298,7 +300,7 @@ export class ImageUploader {
             status: 'failed',
           });
         } else {
-          console.log(
+          console.debug(
             `[Upload] Image ${index + 1}/${scan.images.length} OK (id=${created})`
           );
           // Mark as uploaded

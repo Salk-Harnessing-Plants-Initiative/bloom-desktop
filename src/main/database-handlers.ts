@@ -634,6 +634,21 @@ export function registerDatabaseHandlers() {
           // Note: Append 'T00:00:00' to parse as local time, not UTC
           // (plain date strings like "2025-02-17" are parsed as UTC midnight)
           if (filters.dateFrom || filters.dateTo) {
+            // Validate date format (YYYY-MM-DD)
+            const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+            if (filters.dateFrom && !datePattern.test(filters.dateFrom)) {
+              return {
+                success: false,
+                error: `Invalid dateFrom format: "${filters.dateFrom}". Expected YYYY-MM-DD.`,
+              };
+            }
+            if (filters.dateTo && !datePattern.test(filters.dateTo)) {
+              return {
+                success: false,
+                error: `Invalid dateTo format: "${filters.dateTo}". Expected YYYY-MM-DD.`,
+              };
+            }
+
             where.capture_date = {};
             if (filters.dateFrom) {
               // Start of day in local time

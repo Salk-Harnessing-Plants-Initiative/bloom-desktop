@@ -209,7 +209,7 @@ export class ScannerProcess extends EventEmitter {
           images.push({
             frame_number: frameNumber, // Already 1-indexed (pilot compatible)
             path: imagePath,
-            status: 'CAPTURED',
+            status: 'pending',
           });
         }
       }
