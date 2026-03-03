@@ -1,6 +1,6 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: Scan Preview Image Viewer
+### Requirement: Scan Preview Image Error Handling
 
 The system SHALL display scan images using React-managed state for all rendering, including error states. When an image fails to load, the system SHALL display an error message using React conditional rendering (not direct DOM manipulation). The error state SHALL reset when navigating to a different frame.
 
@@ -30,17 +30,3 @@ The system SHALL support keyboard navigation through scan frames using arrow key
 - **THEN** the viewer navigates to the first frame
 - **WHEN** the user presses End
 - **THEN** the viewer navigates to the last frame
-
-### Requirement: Date Filter Validation
-
-The system SHALL validate date filter inputs in the scan list handler. Malformed date strings SHALL be rejected with a descriptive error message rather than producing invalid Date objects.
-
-#### Scenario: Malformed date rejected
-
-- **WHEN** a malformed date string (e.g., `'not-a-date'`) is passed as dateFrom or dateTo
-- **THEN** the system returns an error response with a descriptive message
-
-#### Scenario: Valid date accepted
-
-- **WHEN** a valid ISO date string (e.g., `'2025-02-17'`) is passed as dateFrom
-- **THEN** the system parses it correctly and filters scans accordingly

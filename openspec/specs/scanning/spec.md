@@ -3,9 +3,7 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -87,7 +85,7 @@ Numeric input fields (Wave Number, Plant Age) SHALL allow users to clear the fie
 
 ### Requirement: Numeric Field Integer Validation
 
-Wave Number and Plant Age fields SHALL only accept non-negative integers (whole numbers including 0). Non-integer values SHALL display a validation error to inform the user.
+Wave Number and Plant Age fields SHALL only accept non-negative integers (whole numbers including 0). Non-integer values SHALL display a validation error to inform the user. Leading zeros SHALL be accepted and parsed to their numeric value (e.g., "01" → 1).
 
 #### Scenario: Decimal values show validation error
 
@@ -108,6 +106,13 @@ Wave Number and Plant Age fields SHALL only accept non-negative integers (whole 
 - **GIVEN** the user is on the Capture Scan page
 - **WHEN** the user enters a whole number (e.g., "0", "1", "14") in Wave Number or Plant Age
 - **THEN** the value SHALL be accepted without error
+
+#### Scenario: Leading zeros are accepted
+
+- **GIVEN** the user is on the Capture Scan page
+- **WHEN** the user enters a value with leading zeros (e.g., "01", "007") in Wave Number or Plant Age
+- **THEN** the value SHALL be accepted without error
+- **AND** the parsed value SHALL be the numeric equivalent (e.g., "01" → 1, "007" → 7)
 
 ### Requirement: Wave Number Zero Validation
 
@@ -197,3 +202,4 @@ The scanner-process.ts SHALL extract frame numbers from filenames using the pilo
 - **WHEN** scanner-process.ts parses the filename
 - **THEN** frame_number SHALL be set to 1 (extracted directly, no conversion needed)
 - **AND** this matches pilot database convention (1-indexed frame numbers)
+
