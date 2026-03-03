@@ -1,11 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type {
-  ScanWithRelations,
+  ScanWithImageSummary,
   PaginatedScansResponse,
   PaginatedScanFilters,
   ExperimentWithRelations,
-  Image as ImageRecord,
 } from '../types/database';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -14,7 +13,7 @@ export function BrowseScans() {
   const navigate = useNavigate();
 
   // Data state
-  const [scans, setScans] = useState<ScanWithRelations[]>([]);
+  const [scans, setScans] = useState<ScanWithImageSummary[]>([]);
   const [experiments, setExperiments] = useState<ExperimentWithRelations[]>([]);
   const [total, setTotal] = useState(0);
 
@@ -98,11 +97,6 @@ export function BrowseScans() {
   useEffect(() => {
     fetchScans();
   }, [fetchScans]);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [experimentId, dateFrom, dateTo, pageSize]);
 
   const handleDelete = async (scanId: string) => {
     if (
@@ -201,6 +195,7 @@ export function BrowseScans() {
     setExperimentId('');
     setDateFrom('');
     setDateTo('');
+    setPage(1);
   };
 
   const formatDate = (date: Date | string) => {
@@ -214,7 +209,7 @@ export function BrowseScans() {
     });
   };
 
-  const getUploadStatus = (images: ImageRecord[]) => {
+  const getUploadStatus = (images: { id: string; status: string }[]) => {
     if (images.length === 0)
       return { text: 'No images', color: 'text-gray-400' };
 
@@ -258,7 +253,10 @@ export function BrowseScans() {
               id="experiment-filter"
               className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={experimentId}
-              onChange={(e) => setExperimentId(e.target.value)}
+              onChange={(e) => {
+                setExperimentId(e.target.value);
+                setPage(1);
+              }}
             >
               <option value="">All Experiments</option>
               {experiments.map((exp) => (
@@ -279,7 +277,10 @@ export function BrowseScans() {
               type="date"
               className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
             />
           </div>
 
@@ -293,7 +294,10 @@ export function BrowseScans() {
               type="date"
               className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setPage(1);
+              }}
             />
           </div>
 
@@ -323,7 +327,10 @@ export function BrowseScans() {
             id="page-size"
             className="p-1 rounded-md bg-white text-sm border border-gray-300 focus:outline-none"
             value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
           >
             {PAGE_SIZE_OPTIONS.map((size) => (
               <option key={size} value={size}>

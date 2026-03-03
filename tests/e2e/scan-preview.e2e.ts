@@ -286,8 +286,8 @@ test.describe('ScanPreview Navigation', () => {
     ).toBeVisible();
   });
 
-  test('should show error for non-existent scan ID', async () => {
-    // Create a scan and then delete it from the database
+  test('should handle deleted scan gracefully when navigating back', async () => {
+    // Create a scan, view it, delete from DB, and navigate back
     const { scan } = await createTestScan({ plant_id: 'PLANT-DELETE-TEST' });
 
     // Navigate to Browse Scans and view the scan

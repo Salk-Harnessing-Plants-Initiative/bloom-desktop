@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { ScanWithRelations } from '../types/database';
+import { pathToFileUrl } from '../utils/file-url';
 
 // Zoom levels as specified in design.md
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
@@ -59,6 +60,12 @@ export function ScanPreview() {
   useEffect(() => {
     fetchScan();
   }, [fetchScan]);
+
+  // Reset frame when navigating to a different scan
+  useEffect(() => {
+    setCurrentFrame(0);
+    setImageError(false);
+  }, [scanId]);
 
   // Keyboard navigation
   // Uses functional state updates and inline logic to avoid stale closures
@@ -332,7 +339,7 @@ export function ScanPreview() {
                   <p className="text-sm text-gray-500">Image not found</p>
                 ) : (
                   <img
-                    src={`file://${currentImage.path}`}
+                    src={pathToFileUrl(currentImage.path)}
                     alt={`Frame ${currentFrame + 1}`}
                     className="max-w-full max-h-full object-contain"
                     onError={() => setImageError(true)}

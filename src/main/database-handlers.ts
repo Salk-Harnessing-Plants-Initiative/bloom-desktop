@@ -674,7 +674,7 @@ export function registerDatabaseHandlers() {
                   },
                 },
                 phenotyper: true,
-                images: true,
+                images: { select: { id: true, status: true } },
               },
               orderBy: { capture_date: 'desc' },
               skip,

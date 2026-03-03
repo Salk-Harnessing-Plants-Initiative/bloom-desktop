@@ -31,6 +31,24 @@ describe('validateWaveNumber', () => {
     it('should return parsed integer value', () => {
       expect(validateWaveNumber('42').value).toBe(42);
     });
+
+    it('should accept leading zeros "01" as valid with value 1', () => {
+      const result = validateWaveNumber('01');
+      expect(result.isValid).toBe(true);
+      expect(result.value).toBe(1);
+    });
+
+    it('should accept leading zeros "007" as valid with value 7', () => {
+      const result = validateWaveNumber('007');
+      expect(result.isValid).toBe(true);
+      expect(result.value).toBe(7);
+    });
+
+    it('should trim whitespace before validating', () => {
+      const result = validateWaveNumber('  5  ');
+      expect(result.isValid).toBe(true);
+      expect(result.value).toBe(5);
+    });
   });
 
   describe('Invalid values - empty/null', () => {
@@ -119,6 +137,12 @@ describe('validatePlantAgeDays', () => {
 
     it('should return parsed integer value', () => {
       expect(validatePlantAgeDays('14').value).toBe(14);
+    });
+
+    it('should accept leading zeros "01" as valid with value 1', () => {
+      const result = validatePlantAgeDays('01');
+      expect(result.isValid).toBe(true);
+      expect(result.value).toBe(1);
     });
   });
 

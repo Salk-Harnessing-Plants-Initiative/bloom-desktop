@@ -226,11 +226,15 @@ export function CaptureScan() {
         // Numeric fields: parse strings to numbers, empty string → null
         const waveNum = metadata.waveNumber.trim();
         const ageNum = metadata.plantAgeDays.trim();
+        const waveValidation =
+          waveNum !== '' ? validateWaveNumber(waveNum) : null;
+        const ageValidation =
+          ageNum !== '' ? validatePlantAgeDays(ageNum) : null;
         await window.electron.session.set({
           phenotyperId: metadata.phenotyper || null,
           experimentId: metadata.experimentId || null,
-          waveNumber: waveNum !== '' ? parseInt(waveNum, 10) : null,
-          plantAgeDays: ageNum !== '' ? parseInt(ageNum, 10) : null,
+          waveNumber: waveValidation?.isValid ? waveValidation.value! : null,
+          plantAgeDays: ageValidation?.isValid ? ageValidation.value! : null,
           accessionName: metadata.accessionName || null,
           // Note: plantQrCode is NOT saved - it's unique per scan
         });

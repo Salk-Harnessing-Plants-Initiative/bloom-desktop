@@ -33,23 +33,18 @@ function validateNonNegativeInteger(
     return { isValid: false, error: `${fieldName} must be a whole number` };
   }
 
-  // Parse as integer
-  const parsed = parseInt(trimmed, 10);
-
-  // Check if parsing failed (non-numeric input)
-  if (isNaN(parsed)) {
-    return { isValid: false, error: `${fieldName} must be a whole number` };
-  }
-
-  // Check if the string representation differs (e.g., "12a" parses to 12)
-  if (parsed.toString() !== trimmed) {
-    return { isValid: false, error: `${fieldName} must be a whole number` };
-  }
-
-  // Check for negative values
-  if (parsed < 0) {
+  // Check for negative values (before regex, since "-1" doesn't match /^\d+$/)
+  if (trimmed.startsWith('-')) {
     return { isValid: false, error: `${fieldName} must be 0 or greater` };
   }
+
+  // Check if the string contains only digits (allows leading zeros like "01")
+  if (!/^\d+$/.test(trimmed)) {
+    return { isValid: false, error: `${fieldName} must be a whole number` };
+  }
+
+  // Parse as integer (safe after regex validation)
+  const parsed = parseInt(trimmed, 10);
 
   return { isValid: true, value: parsed };
 }

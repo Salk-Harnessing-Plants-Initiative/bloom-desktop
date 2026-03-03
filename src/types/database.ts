@@ -134,7 +134,7 @@ export interface PaginatedScanFilters {
  */
 export interface PaginatedScansResponse {
   /** Scans for the current page */
-  scans: ScanWithRelations[];
+  scans: ScanWithImageSummary[];
   /** Total count of matching scans (for pagination) */
   total: number;
   /** Current page number (1-indexed) */
