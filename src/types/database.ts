@@ -17,6 +17,18 @@ import type {
 } from '@prisma/client';
 
 // ============================================
+// Domain Types
+// ============================================
+
+/**
+ * Valid image upload status values.
+ *
+ * Uses a TypeScript union type (not a Prisma enum) so that status mismatches
+ * are caught at compile time without requiring a database migration.
+ */
+export type ImageStatus = 'pending' | 'uploading' | 'uploaded' | 'failed';
+
+// ============================================
 // Re-export base Prisma types
 // ============================================
 

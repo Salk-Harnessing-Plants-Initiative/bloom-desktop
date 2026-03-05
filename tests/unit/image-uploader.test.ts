@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+import type { ImageStatus } from '../../src/types/database';
 
 // Types for testing
 interface MockImage {
@@ -16,7 +17,7 @@ interface MockImage {
   scan_id: string;
   frame_number: number;
   path: string;
-  status: string;
+  status: ImageStatus;
 }
 
 interface MockExperiment {
