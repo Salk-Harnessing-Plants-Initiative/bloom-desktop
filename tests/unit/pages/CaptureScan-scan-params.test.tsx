@@ -23,8 +23,7 @@ function buildScannerInitArgs(cameraSettings: CameraSettings) {
       ...DEFAULT_DAQ_SETTINGS,
       seconds_per_rot:
         cameraSettings.seconds_per_rot ?? DEFAULT_DAQ_SETTINGS.seconds_per_rot,
-      num_frames:
-        cameraSettings.num_frames ?? DEFAULT_DAQ_SETTINGS.num_frames,
+      num_frames: cameraSettings.num_frames ?? DEFAULT_DAQ_SETTINGS.num_frames,
     },
     num_frames: cameraSettings.num_frames ?? 72,
   };
