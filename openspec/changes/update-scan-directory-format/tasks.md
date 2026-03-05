@@ -44,9 +44,34 @@
 - [x] 6.3 Review: added UUID uniqueness unit test — `tests/unit/scan-path.test.ts` (now 24 tests)
 - [x] 6.4 Review: added local timezone E2E test — `tests/e2e/scan-directory-format.e2e.ts` (now 6 tests)
 
-### Phase 7: Pre-merge
+### Phase 7: Windows Cross-Platform Path Fix (CI Bug)
 
-- [x] 7.1 Unit tests — 326 passed, 0 failed
-- [x] 7.2 TypeScript — clean
-- [x] 7.3 ESLint — clean
-- [ ] 7.4 Open PR referencing #100
+#### Phase 7a: RED — Unit Tests (written FIRST, all FAIL)
+
+- [x] 7a.1 Write unit tests for `isAbsolutePath()` — `tests/unit/scan-path.test.ts` (6 tests)
+  - Unix absolute: `/Users/test/scans/image.png` → true
+  - Windows drive uppercase: `C:\Users\test\scans\image.png` → true
+  - Windows drive lowercase: `d:/scans/image.png` → true
+  - Relative pilot-format: `2026-03-04/PLANT-001/uuid/001.png` → false
+  - Relative bare filename: `001.png` → false
+  - Empty string: `` → false
+- [x] 7a.2 **Verified all 6 new tests FAIL (RED) — `isAbsolutePath` not exported yet**
+
+#### Phase 7b: GREEN — Implementation
+
+- [x] 7b.1 Implement `isAbsolutePath()` in `src/utils/scan-path.ts` — regex `/^[A-Za-z]:[/\\]/` for Windows + `startsWith('/')` for Unix
+- [x] 7b.2 **All 30 scan-path tests PASS (GREEN)**
+
+#### Phase 7c: Integration
+
+- [x] 7c.1 Update `src/renderer/ScanPreview.tsx` — replace `startsWith('/')` with `isAbsolutePath()`
+- [x] 7c.2 Update `src/main/image-uploader.ts` — replace `startsWith('/')` with `path.isAbsolute()`
+- [x] 7c.3 **All 332 unit tests PASS (GREEN)**
+
+### Phase 8: Pre-merge
+
+- [ ] 8.1 Unit tests — all pass
+- [ ] 8.2 TypeScript — clean
+- [ ] 8.3 ESLint — clean
+- [ ] 8.4 Prettier — clean
+- [ ] 8.5 Push and all CI checks pass (including Windows E2E)

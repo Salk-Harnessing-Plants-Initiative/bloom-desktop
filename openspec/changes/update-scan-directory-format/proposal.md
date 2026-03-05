@@ -37,6 +37,15 @@ Related Issues: #100, #99 (metadata.json)
 - **`src/components/RecentScansPreview.tsx:90-93`** — Displays `outputPath` as text (relative is actually better for display, no change needed)
 - **`src/renderer/CaptureScan.tsx:169`** — Maps `scan.path` to `outputPath` for display (no change needed)
 
+### Cross-platform absolute path detection
+
+For backward compatibility, consumers must detect whether a stored path is absolute (use as-is) or relative (prepend `scans_dir`). The initial implementation used `path.startsWith('/')` which only works on Unix. On Windows, absolute paths start with drive letters (e.g., `C:\`, `D:/`).
+
+- **New `isAbsolutePath()` in `src/utils/scan-path.ts`** — Pure string check (no Node `path` dependency), works in both renderer and main process
+- **`src/renderer/ScanPreview.tsx`** — Replace `startsWith('/')` with `isAbsolutePath()`
+- **`src/main/image-uploader.ts`** — Replace `startsWith('/')` with `path.isAbsolute()` (Node context)
+- **Note**: The pilot never needs this check because it always stores relative paths and has no backward-compat code path. Bloom-desktop needs it because existing scans in the dev database have absolute paths.
+
 ## Impact
 
 - **Affected specs**: `scanning`

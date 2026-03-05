@@ -6,7 +6,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildScanPath, toRelativeScanPath } from '../../src/utils/scan-path';
+import {
+  buildScanPath,
+  toRelativeScanPath,
+  isAbsolutePath,
+} from '../../src/utils/scan-path';
 
 describe('buildScanPath', () => {
   const fixedDate = new Date(2026, 2, 4, 12, 0, 0); // March 4, 2026
@@ -202,5 +206,31 @@ describe('toRelativeScanPath', () => {
       '/Users/test/.bloom/scans'
     );
     expect(result).toBe('2026-03-04/PLANT-001/abc-uuid/001.png');
+  });
+});
+
+describe('isAbsolutePath', () => {
+  it('should detect Unix absolute paths', () => {
+    expect(isAbsolutePath('/Users/test/scans/image.png')).toBe(true);
+  });
+
+  it('should detect Windows drive letter (uppercase)', () => {
+    expect(isAbsolutePath('C:\\Users\\test\\scans\\image.png')).toBe(true);
+  });
+
+  it('should detect Windows drive letter (lowercase with forward slash)', () => {
+    expect(isAbsolutePath('d:/scans/image.png')).toBe(true);
+  });
+
+  it('should return false for relative pilot-format paths', () => {
+    expect(isAbsolutePath('2026-03-04/PLANT-001/uuid/001.png')).toBe(false);
+  });
+
+  it('should return false for relative bare filenames', () => {
+    expect(isAbsolutePath('001.png')).toBe(false);
+  });
+
+  it('should return false for empty string', () => {
+    expect(isAbsolutePath('')).toBe(false);
   });
 });

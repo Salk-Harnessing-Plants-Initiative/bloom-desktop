@@ -44,3 +44,13 @@ The system SHALL generate scan output directories following the pilot-compatible
 - **WHEN** each scan generates its directory path
 - **THEN** each scan SHALL have a unique UUID directory name
 - **AND** the two scan directories SHALL not conflict
+
+#### Scenario: Backward-compatible absolute path detection on all platforms
+
+- **GIVEN** existing scans may have absolute paths stored in `Scan.path` or `Image.path`
+- **AND** the application runs on macOS, Linux, or Windows
+- **WHEN** a consumer (ScanPreview, image-uploader) resolves an image path
+- **THEN** the system SHALL detect Unix absolute paths (starting with `/`)
+- **AND** the system SHALL detect Windows absolute paths (starting with a drive letter like `C:\` or `D:/`)
+- **AND** absolute paths SHALL be used as-is without prepending `scans_dir`
+- **AND** relative paths SHALL have `scans_dir` prepended to construct the full path

@@ -50,3 +50,18 @@ export function toRelativeScanPath(
   // If the path doesn't start with scansDir, return as-is
   return normalizedAbsolute;
 }
+
+/**
+ * Check if a path is absolute on any platform.
+ *
+ * Detects Unix absolute paths (starting with `/`) and Windows absolute paths
+ * (starting with a drive letter like `C:\` or `D:/`). Pure string check with
+ * no Node `path` dependency, safe for use in the renderer process.
+ */
+export function isAbsolutePath(filePath: string): boolean {
+  if (!filePath) return false;
+  // Unix absolute
+  if (filePath.startsWith('/')) return true;
+  // Windows drive letter: e.g. C:\ or D:/
+  return /^[A-Za-z]:[/\\]/.test(filePath);
+}

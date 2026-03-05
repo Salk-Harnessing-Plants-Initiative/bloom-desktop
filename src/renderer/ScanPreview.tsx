@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { ScanWithRelations } from '../types/database';
 import { pathToFileUrl } from '../utils/file-url';
+import { isAbsolutePath } from '../utils/scan-path';
 
 // Zoom levels as specified in design.md
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
@@ -358,7 +359,7 @@ export function ScanPreview() {
                 ) : (
                   <img
                     src={pathToFileUrl(
-                      currentImage.path.startsWith('/')
+                      isAbsolutePath(currentImage.path)
                         ? currentImage.path
                         : `${scansDir}/${currentImage.path}`
                     )}

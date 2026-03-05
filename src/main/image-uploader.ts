@@ -252,7 +252,7 @@ export class ImageUploader {
     // Image.path stores relative paths (pilot-compatible), so prepend scansDir
     const scansDir = await this.getScansDir();
     const imagePaths = scan.images.map((image) =>
-      image.path.startsWith('/') ? image.path : path.join(scansDir, image.path)
+      path.isAbsolute(image.path) ? image.path : path.join(scansDir, image.path)
     );
     const metadata = scan.images.map((image) =>
       this.buildCylImageMetadata(scan, image)
