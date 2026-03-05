@@ -147,6 +147,52 @@ describe('SessionStore', () => {
     });
   });
 
+  describe('resetSessionState (idle reset integration)', () => {
+    it('should clear all fields to null on idle reset', () => {
+      setSessionState({
+        phenotyperId: 'pheno-idle',
+        experimentId: 'exp-idle',
+        waveNumber: 5,
+        plantAgeDays: 30,
+        accessionName: 'Ws-2',
+      });
+
+      resetSessionState();
+
+      const state = getSessionState();
+      expect(state.phenotyperId).toBeNull();
+      expect(state.experimentId).toBeNull();
+      expect(state.waveNumber).toBeNull();
+      expect(state.plantAgeDays).toBeNull();
+      expect(state.accessionName).toBeNull();
+    });
+
+    it('should fully reset all five session fields', () => {
+      setSessionState({
+        phenotyperId: 'p1',
+        experimentId: 'e1',
+        waveNumber: 1,
+        plantAgeDays: 7,
+        accessionName: 'Col-0',
+      });
+
+      resetSessionState();
+
+      const state = getSessionState();
+      const expectedKeys: (keyof SessionState)[] = [
+        'phenotyperId',
+        'experimentId',
+        'waveNumber',
+        'plantAgeDays',
+        'accessionName',
+      ];
+
+      for (const key of expectedKeys) {
+        expect(state[key]).toBeNull();
+      }
+    });
+  });
+
   describe('Type Safety', () => {
     it('should return a complete SessionState object', () => {
       const state = getSessionState();
