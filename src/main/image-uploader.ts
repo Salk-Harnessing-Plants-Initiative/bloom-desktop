@@ -15,6 +15,7 @@
  */
 
 import { PrismaClient, Prisma } from '@prisma/client';
+import type { ImageStatus } from '../types/database';
 import { loadEnvConfig } from './config-store';
 import path from 'path';
 import os from 'os';
@@ -43,7 +44,7 @@ export interface UploadProgress {
   total: number;
   percentage: number;
   imageId: string;
-  status: 'uploaded' | 'failed';
+  status: Extract<ImageStatus, 'uploaded' | 'failed'>;
 }
 
 /**
