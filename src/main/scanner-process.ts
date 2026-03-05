@@ -9,7 +9,6 @@ import { EventEmitter } from 'events';
 import { PythonProcess } from './python-process';
 import { getDatabase } from './database';
 import * as fs from 'fs';
-import * as path from 'path';
 import type {
   ScannerSettings,
   ScanResult,
@@ -189,6 +188,10 @@ export class ScannerProcess extends EventEmitter {
       output_path: scanResult.output_path,
     });
 
+    // Use relative scan path from metadata (set by CaptureScan)
+    // Matches pilot behavior: Scan.path stores relative path (e.g., "2026-03-04/PLANT-001/uuid")
+    const relativeScanPath = metadata.scan_path || scanResult.output_path;
+
     // Read actual image files from output directory
     // This is more reliable than progress events since files are guaranteed to exist
     const images = [];
@@ -199,7 +202,9 @@ export class ScannerProcess extends EventEmitter {
         .sort(); // Sort to ensure correct order
 
       for (const file of files) {
-        const imagePath = path.join(scanResult.output_path, file);
+        // Store relative image path (e.g., "2026-03-04/PLANT-001/uuid/001.png")
+        // Matches pilot behavior: scanner.ts line 89
+        const imagePath = `${relativeScanPath}/${file}`;
         // Extract frame number from filename (e.g., "001.png" -> 1)
         // Pilot-compatible naming: NNN.png where NNN is 1-indexed
         // Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
@@ -231,8 +236,8 @@ export class ScannerProcess extends EventEmitter {
         plant_age_days: metadata.plant_age_days,
         wave_number: metadata.wave_number,
 
-        // Scan parameters
-        path: scanResult.output_path,
+        // Scan parameters — store relative path (pilot compatible)
+        path: relativeScanPath,
         num_frames: scanResult.frames_captured,
         exposure_time: cameraSettings.exposure_time,
         gain: cameraSettings.gain,

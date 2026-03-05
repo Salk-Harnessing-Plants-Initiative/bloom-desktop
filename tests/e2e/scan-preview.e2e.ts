@@ -482,6 +482,9 @@ test.describe('ScanPreview Keyboard Navigation', () => {
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
     await window.click('text=PLANT-KEY-LEFT');
+    await expect(window.locator('text=1 / 5')).toBeVisible({
+      timeout: 15000,
+    });
 
     // Go to frame 2 first
     await window.keyboard.press('ArrowRight');

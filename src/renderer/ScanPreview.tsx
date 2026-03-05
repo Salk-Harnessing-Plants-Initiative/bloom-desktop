@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { ScanWithRelations } from '../types/database';
 import { pathToFileUrl } from '../utils/file-url';
+import { isAbsolutePath } from '../utils/scan-path';
 
 // Zoom levels as specified in design.md
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
@@ -20,6 +21,9 @@ export function ScanPreview() {
 
   // Image error state
   const [imageError, setImageError] = useState(false);
+
+  // Machine config state for resolving relative paths
+  const [scansDir, setScansDir] = useState('');
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
@@ -60,6 +64,21 @@ export function ScanPreview() {
   useEffect(() => {
     fetchScan();
   }, [fetchScan]);
+
+  // Load scansDir from machine config for resolving relative image paths
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const { config } = await window.electron.config.get();
+        if (config.scans_dir) {
+          setScansDir(config.scans_dir);
+        }
+      } catch (err) {
+        console.error('Failed to load machine config:', err);
+      }
+    };
+    loadConfig();
+  }, []);
 
   // Reset frame when navigating to a different scan
   useEffect(() => {
@@ -339,7 +358,11 @@ export function ScanPreview() {
                   <p className="text-sm text-gray-500">Image not found</p>
                 ) : (
                   <img
-                    src={pathToFileUrl(currentImage.path)}
+                    src={pathToFileUrl(
+                      isAbsolutePath(currentImage.path)
+                        ? currentImage.path
+                        : `${scansDir}/${currentImage.path}`
+                    )}
                     alt={`Frame ${currentFrame + 1}`}
                     className="max-w-full max-h-full object-contain"
                     onError={() => setImageError(true)}

@@ -32,6 +32,9 @@ export interface ScanMetadata {
 
   /** Wave number for this scan (typically 1-4 for multiple time points) */
   wave_number: number;
+
+  /** Relative scan directory path (e.g., "2026-03-04/PLANT-001/uuid"), pilot-compatible */
+  scan_path?: string;
 }
 
 /**

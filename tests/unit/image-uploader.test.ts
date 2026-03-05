@@ -146,21 +146,21 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         id: 'img-1',
         scan_id: 'scan-123',
         frame_number: 1,
-        path: '/test/scans/PLANT-001/001.png',
+        path: '2024-01-15/PLANT-001/scan-uuid/001.png',
         status: 'pending',
       },
       {
         id: 'img-2',
         scan_id: 'scan-123',
         frame_number: 2,
-        path: '/test/scans/PLANT-001/002.png',
+        path: '2024-01-15/PLANT-001/scan-uuid/002.png',
         status: 'pending',
       },
       {
         id: 'img-3',
         scan_id: 'scan-123',
         frame_number: 3,
-        path: '/test/scans/PLANT-001/003.png',
+        path: '2024-01-15/PLANT-001/scan-uuid/003.png',
         status: 'pending',
       },
     ],
@@ -315,23 +315,27 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         }
       });
 
-      it('should call bloom-fs uploadImages with all image paths', async () => {
+      it('should call bloom-fs uploadImages with absolute image paths (scansDir prepended)', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
         await uploader.uploadScan('scan-123');
 
-        // Verify uploadImages was called once with all paths
+        // Verify uploadImages was called once with absolute paths
+        // Image.path stores relative paths; uploader prepends scansDir
         expect(uploadImages).toHaveBeenCalledTimes(1);
-        expect(uploadImages).toHaveBeenCalledWith(
-          expect.arrayContaining([
-            mockScan.images[0].path,
-            mockScan.images[1].path,
-            mockScan.images[2].path,
-          ]),
-          expect.any(Array), // metadata
-          expect.any(Object), // uploader
-          expect.any(Object), // store
-          expect.any(Object) // options
+        const callArgs = (uploadImages as Mock).mock.calls[0];
+        const imagePaths = callArgs[0] as string[];
+        expect(imagePaths).toHaveLength(3);
+        // scansDir from mockCredentials is '/test/scans'
+        expect(imagePaths[0]).toContain('/test/scans');
+        expect(imagePaths[0]).toContain(
+          '2024-01-15/PLANT-001/scan-uuid/001.png'
+        );
+        expect(imagePaths[1]).toContain(
+          '2024-01-15/PLANT-001/scan-uuid/002.png'
+        );
+        expect(imagePaths[2]).toContain(
+          '2024-01-15/PLANT-001/scan-uuid/003.png'
         );
       });
 
@@ -823,18 +827,13 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         await uploader.authenticate();
         await uploader.uploadScan('scan-123');
 
-        // Verify all image paths are passed to uploadImages
-        expect(uploadImages).toHaveBeenCalledWith(
-          [
-            mockScan.images[0].path,
-            mockScan.images[1].path,
-            mockScan.images[2].path,
-          ],
-          expect.any(Array),
-          expect.any(Object),
-          expect.any(Object),
-          expect.any(Object)
-        );
+        // Verify absolute image paths are passed to uploadImages
+        // Image.path stores relative paths; uploader prepends scansDir (/test/scans)
+        const callArgs = (uploadImages as Mock).mock.calls[0];
+        const imagePaths = callArgs[0] as string[];
+        expect(imagePaths).toHaveLength(3);
+        expect(imagePaths[0]).toContain('/test/scans');
+        expect(imagePaths[0]).toContain(mockScan.images[0].path);
       });
 
       it('should pass nWorkers and pngCompression in options', async () => {
@@ -881,18 +880,13 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         // Should call bloom-fs uploadImages
         expect(uploadImages).toHaveBeenCalledTimes(1);
 
-        // Should pass image paths as first argument
-        expect(uploadImages).toHaveBeenCalledWith(
-          expect.arrayContaining([
-            mockScan.images[0].path,
-            mockScan.images[1].path,
-            mockScan.images[2].path,
-          ]),
-          expect.any(Array), // metadata
-          expect.any(Object), // uploader
-          expect.any(Object), // store
-          expect.any(Object) // options
-        );
+        // Should pass absolute image paths (scansDir + relative path)
+        const callArgs = (uploadImages as Mock).mock.calls[0];
+        const imagePaths = callArgs[0] as string[];
+        expect(imagePaths).toHaveLength(3);
+        // scansDir from mockCredentials is '/test/scans'
+        expect(imagePaths[0]).toContain('/test/scans');
+        expect(imagePaths[0]).toContain(mockScan.images[0].path);
       });
 
       it('should build CylImageMetadata with correct experiment fields', async () => {

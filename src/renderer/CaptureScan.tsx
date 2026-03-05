@@ -20,7 +20,7 @@ import type { CameraSettings } from '../types/camera';
 import type { ScanProgress as ScanProgressData } from '../types/scanner';
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
-import { sanitizePath } from '../utils/path-sanitizer';
+import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
 import {
   validateWaveNumber,
   validatePlantAgeDays,
@@ -306,7 +306,7 @@ export function CaptureScan() {
           timestamp: new Date(),
           framesCaptured: result.frames_captured,
           success: true,
-          outputPath: result.output_path,
+          outputPath: toRelativeScanPath(result.output_path, scansDir),
         };
         setRecentScans((prev) => [newScan, ...prev].slice(0, 10)); // Keep last 10
 
@@ -392,13 +392,10 @@ export function CaptureScan() {
       setErrorMessage(null);
 
       // Initialize scanner
-      // Build output path from config scans_dir
-      // Sanitize user input to prevent path traversal attacks
-      const sanitizedPath = sanitizePath([
-        metadata.experimentId,
-        `${metadata.plantQrCode}_${Date.now()}`,
-      ]);
-      const outputPath = `${scansDir}/${sanitizedPath}`;
+      // Build pilot-compatible scan directory path: YYYY-MM-DD/<plant_qr_code>/<scan_uuid>
+      const scanUuid = crypto.randomUUID();
+      const relativePath = buildScanPath(metadata.plantQrCode, scanUuid);
+      const outputPath = `${scansDir}/${relativePath}`;
 
       await window.electron.scanner.initialize({
         camera: cameraSettings,
@@ -413,6 +410,7 @@ export function CaptureScan() {
           accession_name: metadata.accessionName || undefined,
           plant_age_days: parseInt(metadata.plantAgeDays, 10),
           wave_number: parseInt(metadata.waveNumber, 10),
+          scan_path: relativePath,
         },
       });
 

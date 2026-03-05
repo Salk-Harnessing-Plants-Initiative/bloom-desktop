@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -202,4 +204,3 @@ The scanner-process.ts SHALL extract frame numbers from filenames using the pilo
 - **WHEN** scanner-process.ts parses the filename
 - **THEN** frame_number SHALL be set to 1 (extracted directly, no conversion needed)
 - **AND** this matches pilot database convention (1-indexed frame numbers)
-
