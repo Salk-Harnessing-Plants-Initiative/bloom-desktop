@@ -107,6 +107,17 @@ export class ImageUploader {
   }
 
   /**
+   * Get the scans directory from machine config.
+   * Used to resolve relative Image.path values to absolute paths for upload.
+   */
+  private async getScansDir(): Promise<string> {
+    const config = loadEnvConfig(
+      path.join(os.homedir(), '.bloom', '.env')
+    );
+    return config.scans_dir || path.join(os.homedir(), '.bloom', 'scans');
+  }
+
+  /**
    * Authenticate with Bloom/Supabase using stored credentials
    * Must be called before uploading
    *
@@ -239,8 +250,12 @@ export class ImageUploader {
       return result;
     }
 
-    // Build image paths and metadata arrays for bloom-fs uploadImages
-    const imagePaths = scan.images.map((image) => image.path);
+    // Build absolute image paths for bloom-fs uploadImages
+    // Image.path stores relative paths (pilot-compatible), so prepend scansDir
+    const scansDir = await this.getScansDir();
+    const imagePaths = scan.images.map((image) =>
+      image.path.startsWith('/') ? image.path : path.join(scansDir, image.path)
+    );
     const metadata = scan.images.map((image) =>
       this.buildCylImageMetadata(scan, image)
     );
