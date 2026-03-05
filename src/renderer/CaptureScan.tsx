@@ -65,6 +65,7 @@ export function CaptureScan() {
   // UI state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [idleResetMessage, setIdleResetMessage] = useState(false);
 
   // Barcode validation state
   const [barcodeValidationError, setBarcodeValidationError] = useState<
@@ -399,8 +400,15 @@ export function CaptureScan() {
 
       await window.electron.scanner.initialize({
         camera: cameraSettings,
-        daq: DEFAULT_DAQ_SETTINGS,
-        num_frames: 72,
+        daq: {
+          ...DEFAULT_DAQ_SETTINGS,
+          seconds_per_rot:
+            cameraSettings.seconds_per_rot ??
+            DEFAULT_DAQ_SETTINGS.seconds_per_rot,
+          num_frames:
+            cameraSettings.num_frames ?? DEFAULT_DAQ_SETTINGS.num_frames,
+        },
+        num_frames: cameraSettings.num_frames ?? 72,
         output_path: outputPath,
         metadata: {
           experiment_id: metadata.experimentId,

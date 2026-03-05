@@ -351,6 +351,73 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
         </div>
       </div>
 
+      {/* Seconds per Rotation */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">
+          Seconds per Rotation
+        </label>
+        <div className="flex gap-3 items-center">
+          <input
+            type="range"
+            min="4"
+            max="10"
+            step="0.5"
+            value={settings.seconds_per_rot || 7}
+            onChange={(e) =>
+              handleSliderChange('seconds_per_rot', parseFloat(e.target.value))
+            }
+            disabled={readOnly}
+            className="flex-1"
+          />
+          <input
+            type="number"
+            value={settings.seconds_per_rot || 7}
+            onChange={(e) =>
+              handleInputChange('seconds_per_rot', e.target.value)
+            }
+            disabled={readOnly}
+            className="w-24 px-2 py-1 border border-gray-300 rounded"
+            step="0.5"
+          />
+        </div>
+        <p className="text-xs text-gray-500">
+          Time for one full turntable rotation. Lower = faster scan.
+        </p>
+      </div>
+
+      {/* Frames per Rotation */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-700">
+          Frames per Rotation
+        </label>
+        <div className="flex gap-3 items-center">
+          <input
+            type="range"
+            min="12"
+            max="360"
+            step="1"
+            value={settings.num_frames || 72}
+            onChange={(e) =>
+              handleSliderChange('num_frames', parseInt(e.target.value))
+            }
+            disabled={readOnly}
+            className="flex-1"
+          />
+          <input
+            type="number"
+            value={settings.num_frames || 72}
+            onChange={(e) => handleInputChange('num_frames', e.target.value)}
+            disabled={readOnly}
+            className="w-24 px-2 py-1 border border-gray-300 rounded"
+            step="1"
+          />
+        </div>
+        <p className="text-xs text-gray-500">
+          Number of images captured per rotation. More frames = higher
+          resolution.
+        </p>
+      </div>
+
       {/* Contrast (optional) */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">
