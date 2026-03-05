@@ -15,6 +15,7 @@ import type {
   ScannerStatus,
   ScanProgress,
 } from '../types/scanner';
+import { writeMetadataJson } from './scan-metadata-json';
 
 /**
  * Scanner process manager for coordinated scanning operations.
@@ -93,6 +94,23 @@ export class ScannerProcess extends EventEmitter {
   async scan(): Promise<ScanResult> {
     // Reset progress events for new scan
     this.progressEvents = [];
+
+    // Write metadata.json BEFORE scan command so metadata travels with images
+    if (this.currentSettings?.metadata && this.currentSettings?.output_path) {
+      try {
+        writeMetadataJson(
+          this.currentSettings.output_path,
+          this.currentSettings
+        );
+        console.log(
+          '[Scanner] metadata.json written to:',
+          this.currentSettings.output_path
+        );
+      } catch (error) {
+        console.warn('[Scanner] Failed to write metadata.json:', error);
+        // Do not abort scan — image capture is the primary operation
+      }
+    }
 
     const result = await this.pythonProcess.sendCommand({
       command: 'scanner',
