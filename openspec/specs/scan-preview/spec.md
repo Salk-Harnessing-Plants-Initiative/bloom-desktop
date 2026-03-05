@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scan-preview-image-loading. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: ScanPreview Image Loading
 
 The ScanPreview component SHALL load and display scan images from the local filesystem in both development and production modes. File paths SHALL be converted to proper file:// URLs that work on all platforms (macOS, Windows, Linux), handling backslashes, drive letters, and spaces.
@@ -91,4 +93,3 @@ The system SHALL support keyboard navigation through scan frames using arrow key
 - **THEN** the viewer navigates to the first frame
 - **WHEN** the user presses End
 - **THEN** the viewer navigates to the last frame
-

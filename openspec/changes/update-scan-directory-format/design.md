@@ -20,11 +20,11 @@ Bloom-desktop must produce scan directories compatible with the pilot applicatio
 
 ### 1. Directory Format: Pilot format
 
-| Aspect | Pilot (`scanner.ts`) | Bloom (current) | **Chosen** |
-|---|---|---|---|
-| Structure | `YYYY-MM-DD/<plant_id>/<uuid>` | `<experiment_id>/<plant_qr_code>_<ts>` | `YYYY-MM-DD/<plant_qr_code>/<uuid>` |
-| First level | Date (human-readable) | Experiment UUID (opaque) | Date |
-| Uniqueness | UUID (guaranteed) | Timestamp ms (near-unique) | UUID |
+| Aspect      | Pilot (`scanner.ts`)           | Bloom (current)                        | **Chosen**                          |
+| ----------- | ------------------------------ | -------------------------------------- | ----------------------------------- |
+| Structure   | `YYYY-MM-DD/<plant_id>/<uuid>` | `<experiment_id>/<plant_qr_code>_<ts>` | `YYYY-MM-DD/<plant_qr_code>/<uuid>` |
+| First level | Date (human-readable)          | Experiment UUID (opaque)               | Date                                |
+| Uniqueness  | UUID (guaranteed)              | Timestamp ms (near-unique)             | UUID                                |
 
 **Rationale**: Date-first is human-friendly for browsing scans on disk. The experiment UUID is opaque — it belongs in metadata.json (#99), not the directory name. UUID guarantees uniqueness.
 
@@ -37,14 +37,17 @@ We follow the same pattern: generate `uuidv4()` in `CaptureScan.tsx` before `sca
 ### 3. Path Storage: Relative paths for both Scan.path and Image.path
 
 **Pilot behavior** (confirmed from code):
+
 - `Scan.path` = `"2026-03-04/PLANT-001/abc-uuid"` (relative, `scanner.ts:211`)
 - `Image.path` = `"2026-03-04/PLANT-001/abc-uuid/001.png"` (relative, `scanner.ts:89`)
 
 **Current bloom-desktop behavior**:
+
 - `Scan.path` = `"/Users/x/.bloom/scans/exp-uuid/PLANT-001_1709500000000"` (absolute, `scanner-process.ts:235`)
 - `Image.path` = `"/Users/x/.bloom/scans/exp-uuid/PLANT-001_1709500000000/001.png"` (absolute, `scanner-process.ts:202`)
 
 **Change**: Store relative paths. Code that accesses files must prepend `scans_dir`:
+
 - `scanner-process.ts:235` — derive relative path by stripping `scans_dir` prefix from `scanResult.output_path`
 - `scanner-process.ts:202` — build `Image.path` as relative: `path.join(relativeScanPath, file)`
 - `ScanPreview.tsx:342` — `pathToFileUrl(scansDir + '/' + currentImage.path)` (needs scans_dir from config)
@@ -53,6 +56,7 @@ We follow the same pattern: generate `uuidv4()` in `CaptureScan.tsx` before `sca
 ### 4. Date Formatting: Local timezone YYYY-MM-DD
 
 Port the pilot's `getLocalDateInYYYYMMDD()` (`scanner.ts:321-327`):
+
 ```typescript
 function getLocalDateYYYYMMDD(date: Date = new Date()): string {
   const timeZoneOffsetInMs = date.getTimezoneOffset() * 60000;
@@ -77,13 +81,13 @@ The date and UUID segments are code-generated (safe). Only `plant_qr_code` comes
 
 ## Files Changed Summary
 
-| File | Change |
-|---|---|
+| File                           | Change                                              |
+| ------------------------------ | --------------------------------------------------- |
 | `src/renderer/CaptureScan.tsx` | New path generation: `buildScanPath()` + `uuidv4()` |
-| `src/main/scanner-process.ts` | Store relative `Scan.path` and `Image.path` |
-| `src/renderer/ScanPreview.tsx` | Prepend `scansDir` to `Image.path` for display |
-| `src/main/image-uploader.ts` | Prepend `scansDir` to `Image.path` for upload |
-| `src/utils/scan-path.ts` | New: `buildScanPath()` |
-| `src/utils/date-helpers.ts` | New: `getLocalDateYYYYMMDD()` |
-| `src/utils/path-sanitizer.ts` | No change (reused) |
-| Test fixtures | Update path values to use relative format |
+| `src/main/scanner-process.ts`  | Store relative `Scan.path` and `Image.path`         |
+| `src/renderer/ScanPreview.tsx` | Prepend `scansDir` to `Image.path` for display      |
+| `src/main/image-uploader.ts`   | Prepend `scansDir` to `Image.path` for upload       |
+| `src/utils/scan-path.ts`       | New: `buildScanPath()`                              |
+| `src/utils/date-helpers.ts`    | New: `getLocalDateYYYYMMDD()`                       |
+| `src/utils/path-sanitizer.ts`  | No change (reused)                                  |
+| Test fixtures                  | Update path values to use relative format           |

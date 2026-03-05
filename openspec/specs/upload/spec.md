@@ -1,8 +1,11 @@
 # upload Specification
 
 ## Purpose
+
 TBD - created by archiving change fix-upload-database-registration. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Upload Creates Database Records
 
 The ImageUploader SHALL create records in the Supabase `image_metadata` table for each uploaded image, in addition to uploading files to Supabase Storage.
@@ -81,4 +84,3 @@ The ImageUploader SHALL use the `uploadImages` function from `@salk-hpi/bloom-fs
 - **WHEN** each image completes (success or failure)
 - **THEN** the `result` callback SHALL be invoked with index, metadata, created ID, and error
 - **AND** the calling code SHALL update local image status accordingly
-
