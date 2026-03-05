@@ -409,6 +409,14 @@ export interface SessionAPI {
    * @returns Promise resolving when reset is complete
    */
   reset: () => Promise<void>;
+
+  /**
+   * Register callback for idle session reset events
+   * Fires when the session is automatically reset due to inactivity
+   * @param callback - Function to call when idle reset occurs
+   * @returns Cleanup function to remove the listener
+   */
+  onIdleReset: (callback: () => void) => () => void;
 }
 
 /**

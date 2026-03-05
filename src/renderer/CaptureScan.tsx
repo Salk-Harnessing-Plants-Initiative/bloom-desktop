@@ -84,6 +84,23 @@ export function CaptureScan() {
     []
   );
 
+  // Listen for idle session reset from main process
+  useEffect(() => {
+    const cleanup = window.electron.session.onIdleReset(() => {
+      setMetadata({
+        phenotyper: '',
+        experimentId: '',
+        waveNumber: '',
+        plantAgeDays: '',
+        plantQrCode: '',
+        accessionName: '',
+      });
+      setIdleResetMessage(true);
+      setTimeout(() => setIdleResetMessage(false), 10000);
+    });
+    return cleanup;
+  }, []);
+
   // Check for duplicate scans (same plant + experiment + today)
   useEffect(() => {
     const checkDuplicateScan = async () => {
@@ -454,6 +471,32 @@ export function CaptureScan() {
               </svg>
               <span className="font-medium text-green-800">
                 Scan completed successfully!
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Idle Reset Notification */}
+        {idleResetMessage && (
+          <div
+            className="bg-amber-50 border-2 border-amber-500 rounded-lg p-4"
+            data-testid="idle-reset-notification"
+          >
+            <div className="flex items-center">
+              <svg
+                className="h-5 w-5 text-amber-600 mr-2"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span className="font-medium text-amber-800">
+                Session reset due to inactivity. Please select your phenotyper
+                and experiment to continue.
               </span>
             </div>
           </div>
