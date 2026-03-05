@@ -328,9 +328,15 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         expect(imagePaths).toHaveLength(3);
         // scansDir from mockCredentials is '/test/scans'
         expect(imagePaths[0]).toContain('/test/scans');
-        expect(imagePaths[0]).toContain('2024-01-15/PLANT-001/scan-uuid/001.png');
-        expect(imagePaths[1]).toContain('2024-01-15/PLANT-001/scan-uuid/002.png');
-        expect(imagePaths[2]).toContain('2024-01-15/PLANT-001/scan-uuid/003.png');
+        expect(imagePaths[0]).toContain(
+          '2024-01-15/PLANT-001/scan-uuid/001.png'
+        );
+        expect(imagePaths[1]).toContain(
+          '2024-01-15/PLANT-001/scan-uuid/002.png'
+        );
+        expect(imagePaths[2]).toContain(
+          '2024-01-15/PLANT-001/scan-uuid/003.png'
+        );
       });
 
       it('should update Image.status to "uploaded" after successful upload', async () => {

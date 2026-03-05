@@ -19,8 +19,8 @@ Related Issues: #100, #99 (metadata.json)
 - **New `src/utils/date-helpers.ts`** — `getLocalDateYYYYMMDD()` matching pilot's `getLocalDateInYYYYMMDD()` (pilot `scanner.ts:321-327`)
 
 ### UUID generation
-- Generate `uuidv4()` in CaptureScan before calling `scanner.initialize()`, matching pilot (`scanner.ts:47`)
-- The pilot uses a **separate** `uuidv4()` for directory name, NOT the database `Scan.id`
+- Generate `crypto.randomUUID()` in CaptureScan before calling `scanner.initialize()`, matching pilot's `uuidv4()` pattern (`scanner.ts:47`)
+- The pilot uses a **separate** UUID for directory name, NOT the database `Scan.id`
 - Pass the UUID as part of scanner metadata so it can be used for both directory name and stored alongside scan data
 
 ### Relative path storage (main process)

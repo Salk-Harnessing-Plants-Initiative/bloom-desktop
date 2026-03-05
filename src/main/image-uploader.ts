@@ -111,9 +111,7 @@ export class ImageUploader {
    * Used to resolve relative Image.path values to absolute paths for upload.
    */
   private async getScansDir(): Promise<string> {
-    const config = loadEnvConfig(
-      path.join(os.homedir(), '.bloom', '.env')
-    );
+    const config = loadEnvConfig(path.join(os.homedir(), '.bloom', '.env'));
     return config.scans_dir || path.join(os.homedir(), '.bloom', 'scans');
   }
 

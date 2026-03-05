@@ -142,6 +142,27 @@ describe('buildScanPath', () => {
   });
 });
 
+describe('UUID uniqueness', () => {
+  it('should produce unique paths when same plant scanned twice on same date', () => {
+    const fixedDate = new Date(2026, 2, 4, 12, 0, 0);
+    const uuid1 = crypto.randomUUID();
+    const uuid2 = crypto.randomUUID();
+
+    const path1 = buildScanPath('PLANT-001', uuid1, fixedDate);
+    const path2 = buildScanPath('PLANT-001', uuid2, fixedDate);
+
+    expect(path1).not.toBe(path2);
+    // UUIDs should differ
+    expect(uuid1).not.toBe(uuid2);
+    // But date and plant segments should match
+    const segments1 = path1.split('/');
+    const segments2 = path2.split('/');
+    expect(segments1[0]).toBe(segments2[0]); // same date
+    expect(segments1[1]).toBe(segments2[1]); // same plant
+    expect(segments1[2]).not.toBe(segments2[2]); // different UUID
+  });
+});
+
 describe('toRelativeScanPath', () => {
   it('should strip scansDir prefix from absolute path', () => {
     const result = toRelativeScanPath(

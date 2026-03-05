@@ -20,7 +20,7 @@ import type { CameraSettings } from '../types/camera';
 import type { ScanProgress as ScanProgressData } from '../types/scanner';
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
-import { buildScanPath } from '../utils/scan-path';
+import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
 import {
   validateWaveNumber,
   validatePlantAgeDays,
@@ -306,7 +306,7 @@ export function CaptureScan() {
           timestamp: new Date(),
           framesCaptured: result.frames_captured,
           success: true,
-          outputPath: result.output_path,
+          outputPath: toRelativeScanPath(result.output_path, scansDir),
         };
         setRecentScans((prev) => [newScan, ...prev].slice(0, 10)); // Keep last 10
 

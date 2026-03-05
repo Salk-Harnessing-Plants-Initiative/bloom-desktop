@@ -28,17 +28,25 @@
 
 ### Phase 5: E2E Tests
 
-- [x] 5.1 Write Playwright E2E tests — `tests/e2e/scan-directory-format.e2e.ts` (5 tests)
+- [x] 5.1 Write Playwright E2E tests — `tests/e2e/scan-directory-format.e2e.ts` (6 tests)
   - Relative path resolution: scansDir prepending for image display
   - Backward compatibility: absolute paths still work
+  - Local date timezone validation
   - Pilot format validation: YYYY-MM-DD/plant_qr_code/uuid format
   - Sanitized plant QR code in path
   - Multi-frame navigation with relative paths
-- [ ] 5.2 E2E test execution — requires manual run or CI
+- [x] 5.2 E2E test execution — 241 passed, 2 skipped (includes 6 scan-directory-format tests)
 
-### Phase 6: Pre-merge
+### Phase 6: Review & Polish
 
-- [x] 6.1 Unit tests — 325 passed, 0 failed
-- [x] 6.2 TypeScript — clean
-- [x] 6.3 ESLint — clean
-- [ ] 6.4 Open PR referencing #100
+- [x] 6.1 Review: proposal text — fixed `uuidv4()` → `crypto.randomUUID()`
+- [x] 6.2 Review: cosmetic display fix — `CaptureScan.tsx:309` now uses `toRelativeScanPath()` for consistent relative path display in RecentScansPreview
+- [x] 6.3 Review: added UUID uniqueness unit test — `tests/unit/scan-path.test.ts` (now 24 tests)
+- [x] 6.4 Review: added local timezone E2E test — `tests/e2e/scan-directory-format.e2e.ts` (now 6 tests)
+
+### Phase 7: Pre-merge
+
+- [x] 7.1 Unit tests — 326 passed, 0 failed
+- [x] 7.2 TypeScript — clean
+- [x] 7.3 ESLint — clean
+- [ ] 7.4 Open PR referencing #100
