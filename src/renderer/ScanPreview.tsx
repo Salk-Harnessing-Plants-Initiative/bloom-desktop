@@ -23,7 +23,7 @@ export function ScanPreview() {
   const [imageError, setImageError] = useState(false);
 
   // Machine config state for resolving relative paths
-  const [scansDir, setScansDir] = useState('~/.bloom/scans');
+  const [scansDir, setScansDir] = useState('');
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);

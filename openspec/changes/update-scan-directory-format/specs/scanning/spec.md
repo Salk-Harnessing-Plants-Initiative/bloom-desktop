@@ -2,13 +2,13 @@
 
 ### Requirement: Scan Directory Path Format
 
-The system SHALL generate scan output directories following the pilot-compatible format `YYYY-MM-DD/<plant_qr_code>/<scan_uuid>/` relative to the configured `scans_dir`. The date SHALL use the local timezone, the plant QR code SHALL be sanitized for filesystem safety, and the scan UUID SHALL be a newly generated `uuidv4()` for each scan.
+The system SHALL generate scan output directories following the pilot-compatible format `YYYY-MM-DD/<plant_qr_code>/<scan_uuid>/` relative to the configured `scans_dir`. The date SHALL use the local timezone, the plant QR code SHALL be sanitized for filesystem safety, and the scan UUID SHALL be a newly generated `crypto.randomUUID()` for each scan.
 
 #### Scenario: Standard scan directory creation
 
 - **GIVEN** the user starts a scan with plant QR code "PLANT-001"
 - **AND** the local date is "2026-03-04"
-- **AND** a scan UUID "abc-123-def" is generated via `uuidv4()`
+- **AND** a scan UUID "abc-123-def" is generated via `crypto.randomUUID()`
 - **WHEN** the scan output directory is created
 - **THEN** the directory path SHALL be `<scans_dir>/2026-03-04/PLANT-001/abc-123-def/`
 - **AND** the `Scan.path` database field SHALL store the relative path `2026-03-04/PLANT-001/abc-123-def`
