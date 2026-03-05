@@ -230,13 +230,26 @@ test.describe('Experiments Management', () => {
     expect(listItems[2]).toContain('Zinc Study');
   });
 
-  test('should create experiment with valid name and species', async () => {
+  test('should create experiment with valid name, species, scientist, and accession', async () => {
+    // Create a scientist and accession first
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. Create Test', email: 'create@example.com' },
+    });
+
+    const accession = await prisma.accessions.create({
+      data: { name: 'Create Test Accession' },
+    });
+
     // Navigate to Experiments page
     await window.click('text=Experiments');
 
     // Fill in the form
     await window.fill('input#experiment-name', 'Drought Study 2025');
     // Species dropdown should have a default selection
+
+    // Select scientist and accession (now required)
+    await window.selectOption('select#scientist-select', scientist.id);
+    await window.selectOption('select#accession-select', accession.id);
 
     // Submit the form
     await window.click('button:has-text("Create")');
@@ -248,6 +261,53 @@ test.describe('Experiments Management', () => {
 
     // Verify form was cleared
     await expect(window.locator('input#experiment-name')).toHaveValue('');
+  });
+
+  test('should show validation error when scientist is not selected', async () => {
+    // Create an accession (but no scientist selected)
+    await prisma.accessions.create({
+      data: { name: 'Validation Test Accession' },
+    });
+
+    // Navigate to Experiments page
+    await window.click('text=Experiments');
+
+    // Fill name but skip scientist
+    await window.fill('input#experiment-name', 'No Scientist Test');
+
+    // Submit the form
+    await window.click('button:has-text("Create")');
+
+    // Verify validation error appears
+    await expect(window.locator('text=Scientist is required')).toBeVisible();
+
+    // Verify no experiment was created
+    await expect(window.locator('text=No experiments yet')).toBeVisible();
+  });
+
+  test('should show validation error when accession is not selected', async () => {
+    // Create a scientist (but no accession selected)
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. No Accession', email: 'noacc@example.com' },
+    });
+
+    // Navigate to Experiments page
+    await window.click('text=Experiments');
+
+    // Fill name and select scientist but skip accession
+    await window.fill('input#experiment-name', 'No Accession Test');
+    await window.selectOption('select#scientist-select', scientist.id);
+
+    // Submit the form
+    await window.click('button:has-text("Create")');
+
+    // Verify validation error appears
+    await expect(
+      window.locator('text=Accession file is required')
+    ).toBeVisible();
+
+    // Verify no experiment was created
+    await expect(window.locator('text=No experiments yet')).toBeVisible();
   });
 
   test('should create experiment with scientist and accession linked', async () => {
@@ -322,11 +382,22 @@ test.describe('Experiments Management', () => {
   });
 
   test('should show loading state during creation', async () => {
+    // Create scientist and accession (required for creation)
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. Loading Test', email: 'loading@example.com' },
+    });
+
+    const accession = await prisma.accessions.create({
+      data: { name: 'Loading Test Accession' },
+    });
+
     // Navigate to Experiments page
     await window.click('text=Experiments');
 
     // Fill in the form
     await window.fill('input#experiment-name', 'Loading Test');
+    await window.selectOption('select#scientist-select', scientist.id);
+    await window.selectOption('select#accession-select', accession.id);
 
     // Click submit and check button state
     const submitButton = window.locator(
