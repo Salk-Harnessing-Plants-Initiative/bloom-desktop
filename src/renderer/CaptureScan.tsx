@@ -65,7 +65,6 @@ export function CaptureScan() {
   // UI state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [idleResetMessage, setIdleResetMessage] = useState(false);
 
   // Barcode validation state
   const [barcodeValidationError, setBarcodeValidationError] = useState<
