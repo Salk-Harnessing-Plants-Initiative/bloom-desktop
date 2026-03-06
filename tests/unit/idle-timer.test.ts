@@ -239,5 +239,21 @@ describe('IdleTimer', () => {
       vi.advanceTimersByTime(DEFAULT_TIMEOUT);
       expect(onIdleSpy).not.toHaveBeenCalled();
     });
+
+    it('should not schedule a timer when resumeAfterScan is called before start', () => {
+      timer.resumeAfterScan();
+
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 2);
+      expect(onIdleSpy).not.toHaveBeenCalled();
+    });
+
+    it('should not schedule a timer when resumeAfterScan is called after stop', () => {
+      timer.start();
+      timer.stop();
+      timer.resumeAfterScan();
+
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 2);
+      expect(onIdleSpy).not.toHaveBeenCalled();
+    });
   });
 });

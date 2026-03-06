@@ -54,6 +54,7 @@ export class IdleTimer {
 
   resumeAfterScan(): void {
     this.paused = false;
+    if (!this.started) return;
     this.scheduleTimer();
   }
 
