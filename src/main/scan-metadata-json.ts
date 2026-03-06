@@ -17,6 +17,7 @@ import type { ScannerSettings } from '../types/scanner';
  * Contains all fields needed to reproduce or trace a scan.
  */
 export interface ScanMetadataJson {
+  metadata_version: number;
   experiment_id: string;
   phenotyper_id: string;
   scanner_name: string;
@@ -26,6 +27,12 @@ export interface ScanMetadataJson {
   wave_number: number;
   capture_date: string;
   num_frames: number;
+  /**
+   * Path to the scan directory. Prefers the relative path from
+   * `metadata.scan_path` (e.g. `2026-03-04/PLANT-001/uuid`) for portability.
+   * Falls back to the absolute `settings.output_path` when no relative path
+   * is available. Consumers should handle both relative and absolute paths.
+   */
   scan_path?: string;
   exposure_time: number;
   gain: number;
@@ -53,6 +60,7 @@ export function buildMetadataObject(
   const cam = settings.camera;
 
   const result: ScanMetadataJson = {
+    metadata_version: 1,
     experiment_id: meta.experiment_id,
     phenotyper_id: meta.phenotyper_id,
     scanner_name: meta.scanner_name,
@@ -60,11 +68,17 @@ export function buildMetadataObject(
     plant_age_days: meta.plant_age_days,
     wave_number: meta.wave_number,
     capture_date: captureDate.toISOString(),
+    // Top-level num_frames takes precedence over daq.num_frames (top-level
+    // is the user-facing setting; DAQ value is the hardware default).
     num_frames: settings.num_frames ?? settings.daq.num_frames,
     exposure_time: cam.exposure_time,
     gain: cam.gain,
+    // Defaults match Basler Pylon API identity values and pilot defaults.
+    // Brightness/contrast are not supported on aca2000-50gm (ace Classic)
+    // and are commented out in the pilot UI — users never change them.
+    // See: bloom-desktop-pilot/app/src/main/scanner.ts:defaultCameraSettings()
     brightness: cam.brightness ?? 0,
-    contrast: cam.contrast ?? 1,
+    contrast: cam.contrast ?? 0,
     gamma: cam.gamma ?? 1,
     seconds_per_rot: settings.daq.seconds_per_rot,
   };
@@ -102,10 +116,15 @@ export function writeMetadataJson(
   }
 
   const metadata = buildMetadataObject(settings, captureDate);
-  const json = JSON.stringify(metadata, null, 2);
+  const json = JSON.stringify(metadata, null, 2) + '\n';
 
   const finalPath = path.join(outputDir, 'metadata.json');
   const tmpPath = path.join(outputDir, 'metadata.json.tmp');
+
+  // Clean up stale .tmp from a previous failed write
+  if (fs.existsSync(tmpPath)) {
+    fs.unlinkSync(tmpPath);
+  }
 
   // Atomic write: write to .tmp, then rename
   fs.writeFileSync(tmpPath, json, 'utf-8');

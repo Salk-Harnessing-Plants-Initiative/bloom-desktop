@@ -108,11 +108,13 @@ describe('ScannerProcess metadata.json integration', () => {
   });
 
   it('continues scan if metadata.json write fails', async () => {
+    const outputDir = path.join(testDir, 'fail-write');
+
     const mockPythonProcess = {
       sendCommand: vi.fn().mockResolvedValue({
         success: true,
         frames_captured: 72,
-        output_path: '/tmp/doesnt-matter',
+        output_path: outputDir,
       }),
     };
 
@@ -131,7 +133,7 @@ describe('ScannerProcess metadata.json integration', () => {
         seconds_per_rot: 7.0,
       },
       num_frames: 72,
-      output_path: '/dev/null/impossible/path/that/will/fail',
+      output_path: outputDir,
       metadata: {
         experiment_id: 'exp-001',
         phenotyper_id: 'user-001',
@@ -140,6 +142,13 @@ describe('ScannerProcess metadata.json integration', () => {
         plant_age_days: 14,
         wave_number: 1,
       },
+    });
+
+    // Mock writeFileSync to throw after scanner is initialized
+    // (cross-platform way to simulate write failure)
+    const writeMetadata = await import('../../src/main/scan-metadata-json');
+    vi.spyOn(writeMetadata, 'writeMetadataJson').mockImplementation(() => {
+      throw new Error('Simulated write failure');
     });
 
     // Scan should still succeed even if metadata write fails

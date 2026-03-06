@@ -84,6 +84,7 @@ describe('scan-metadata-json', () => {
       const metadata = buildMetadataObject(settings, now);
 
       expect(metadata).toEqual({
+        metadata_version: 1,
         experiment_id: 'exp-001',
         phenotyper_id: 'user-001',
         scanner_name: 'TestScanner',
@@ -218,7 +219,7 @@ describe('scan-metadata-json', () => {
       expect(metadata.scan_path).toBeUndefined();
     });
 
-    it('defaults optional camera settings to 0/1 when not provided', () => {
+    it('defaults optional camera settings to Basler identity values when not provided', () => {
       const settings = makeScannerSettings();
       settings.camera = {
         exposure_time: 5000,
@@ -227,8 +228,11 @@ describe('scan-metadata-json', () => {
       };
       const metadata = buildMetadataObject(settings, new Date());
 
+      // Basler Pylon API identity values (no adjustment):
+      // brightness=0, contrast=0, gamma=1
+      // Matches pilot defaults: bloom-desktop-pilot/app/src/main/scanner.ts
       expect(metadata.brightness).toBe(0);
-      expect(metadata.contrast).toBe(1);
+      expect(metadata.contrast).toBe(0);
       expect(metadata.gamma).toBe(1);
     });
 
@@ -238,6 +242,22 @@ describe('scan-metadata-json', () => {
       expect(() => buildMetadataObject(settings, new Date())).toThrow(
         'settings.metadata is required for buildMetadataObject'
       );
+    });
+
+    it('includes metadata_version field set to 1', () => {
+      const settings = makeScannerSettings();
+      const metadata = buildMetadataObject(settings, new Date());
+
+      expect(metadata.metadata_version).toBe(1);
+    });
+
+    it('uses top-level num_frames over daq.num_frames when both differ', () => {
+      const settings = makeScannerSettings();
+      settings.num_frames = 36;
+      settings.daq.num_frames = 72;
+      const metadata = buildMetadataObject(settings, new Date());
+
+      expect(metadata.num_frames).toBe(36);
     });
   });
 
@@ -363,6 +383,41 @@ describe('scan-metadata-json', () => {
       expect(content.scan_path).toBe(outputDir);
     });
 
+    it('file ends with trailing newline', () => {
+      const outputDir = path.join(testDir, 'scan-newline');
+      fs.mkdirSync(outputDir, { recursive: true });
+      const settings = makeScannerSettings({ output_path: outputDir });
+
+      writeMetadataJson(outputDir, settings);
+
+      const raw = fs.readFileSync(
+        path.join(outputDir, 'metadata.json'),
+        'utf-8'
+      );
+      expect(raw.endsWith('\n')).toBe(true);
+    });
+
+    it('cleans up stale .tmp file before writing', () => {
+      const outputDir = path.join(testDir, 'scan-stale-tmp');
+      fs.mkdirSync(outputDir, { recursive: true });
+      const settings = makeScannerSettings({ output_path: outputDir });
+
+      // Create a stale .tmp from a "previous failed write"
+      const tmpPath = path.join(outputDir, 'metadata.json.tmp');
+      fs.writeFileSync(tmpPath, 'stale-content', 'utf-8');
+      expect(fs.existsSync(tmpPath)).toBe(true);
+
+      writeMetadataJson(outputDir, settings);
+
+      // Final state: no .tmp, valid metadata.json
+      expect(fs.existsSync(tmpPath)).toBe(false);
+      expect(fs.existsSync(path.join(outputDir, 'metadata.json'))).toBe(true);
+      const content = JSON.parse(
+        fs.readFileSync(path.join(outputDir, 'metadata.json'), 'utf-8')
+      );
+      expect(content.experiment_id).toBe('exp-001');
+    });
+
     it('output is readable and round-trips through JSON.parse', () => {
       const outputDir = path.join(testDir, 'scan-roundtrip');
       fs.mkdirSync(outputDir, { recursive: true });
@@ -379,8 +434,8 @@ describe('scan-metadata-json', () => {
       const parsed = JSON.parse(raw);
       expect(parsed).toBeDefined();
 
-      // Should round-trip cleanly
-      const reStringified = JSON.stringify(parsed, null, 2);
+      // Should round-trip cleanly (file has trailing newline)
+      const reStringified = JSON.stringify(parsed, null, 2) + '\n';
       expect(reStringified).toBe(raw);
     });
 

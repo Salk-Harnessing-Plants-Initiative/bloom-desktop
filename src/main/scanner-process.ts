@@ -260,7 +260,7 @@ export class ScannerProcess extends EventEmitter {
         exposure_time: cameraSettings.exposure_time,
         gain: cameraSettings.gain,
         brightness: cameraSettings.brightness ?? 0,
-        contrast: cameraSettings.contrast ?? 1,
+        contrast: cameraSettings.contrast ?? 0,
         gamma: cameraSettings.gamma ?? 1,
         seconds_per_rot: settings.daq.seconds_per_rot,
 
