@@ -144,7 +144,7 @@ describe('ScannerProcess metadata.json integration', () => {
       },
     });
 
-    // Mock writeFileSync to throw after scanner is initialized
+    // Mock writeMetadataJson to throw after scanner is initialized
     // (cross-platform way to simulate write failure)
     const writeMetadata = await import('../../src/main/scan-metadata-json');
     vi.spyOn(writeMetadata, 'writeMetadataJson').mockImplementation(() => {
