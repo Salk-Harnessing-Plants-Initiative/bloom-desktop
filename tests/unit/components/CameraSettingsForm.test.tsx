@@ -179,6 +179,76 @@ describe('CameraSettingsForm — Scan Parameter Controls', () => {
   });
 });
 
+describe('CameraSettingsForm — Input Validation', () => {
+  const defaultSettings: Partial<CameraSettings> = {
+    ...DEFAULT_CAMERA_SETTINGS,
+  };
+
+  it('num_frames input rounds non-integer values to integers', () => {
+    const onChange = vi.fn();
+    render(
+      <CameraSettingsForm
+        settings={defaultSettings}
+        onChange={onChange}
+        showCameraSelection={false}
+        showActions={false}
+      />
+    );
+
+    const numberInputs = screen.getAllByRole('spinbutton');
+    const numFramesInput = numberInputs.find(
+      (input) => (input as HTMLInputElement).value === '72'
+    )!;
+
+    // Typing a decimal like 36.5 should be rounded to 37
+    fireEvent.change(numFramesInput, { target: { value: '36.5' } });
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ num_frames: 37 })
+    );
+  });
+
+  it('num_frames number input has min=12 and max=360 attributes', () => {
+    const onChange = vi.fn();
+    render(
+      <CameraSettingsForm
+        settings={defaultSettings}
+        onChange={onChange}
+        showCameraSelection={false}
+        showActions={false}
+      />
+    );
+
+    const numberInputs = screen.getAllByRole('spinbutton');
+    const numFramesInput = numberInputs.find(
+      (input) => (input as HTMLInputElement).value === '72'
+    )!;
+
+    expect(numFramesInput.getAttribute('min')).toBe('12');
+    expect(numFramesInput.getAttribute('max')).toBe('360');
+  });
+
+  it('seconds_per_rot number input has min=4 and max=10 attributes', () => {
+    const onChange = vi.fn();
+    render(
+      <CameraSettingsForm
+        settings={defaultSettings}
+        onChange={onChange}
+        showCameraSelection={false}
+        showActions={false}
+      />
+    );
+
+    const numberInputs = screen.getAllByRole('spinbutton');
+    const secPerRotInput = numberInputs.find(
+      (input) => (input as HTMLInputElement).value === '7'
+    )!;
+
+    expect(secPerRotInput.getAttribute('min')).toBe('4');
+    expect(secPerRotInput.getAttribute('max')).toBe('10');
+  });
+});
+
 describe('DEFAULT_CAMERA_SETTINGS', () => {
   it('includes num_frames=72 and seconds_per_rot=7', () => {
     expect(DEFAULT_CAMERA_SETTINGS.num_frames).toBe(72);

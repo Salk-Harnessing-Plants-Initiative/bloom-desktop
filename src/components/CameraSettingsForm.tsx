@@ -136,7 +136,9 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
   const handleInputChange = (field: keyof CameraSettings, value: string) => {
     const numValue = parseFloat(value);
     if (!isNaN(numValue)) {
-      onChange({ ...settings, [field]: numValue });
+      const finalValue =
+        field === 'num_frames' ? Math.round(numValue) : numValue;
+      onChange({ ...settings, [field]: finalValue });
     }
   };
 
@@ -378,6 +380,8 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
             disabled={readOnly}
             className="w-24 px-2 py-1 border border-gray-300 rounded"
             step="0.5"
+            min="4"
+            max="10"
           />
         </div>
         <p className="text-xs text-gray-500">
@@ -410,6 +414,8 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
             disabled={readOnly}
             className="w-24 px-2 py-1 border border-gray-300 rounded"
             step="1"
+            min="12"
+            max="360"
           />
         </div>
         <p className="text-xs text-gray-500">
