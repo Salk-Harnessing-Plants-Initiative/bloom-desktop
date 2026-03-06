@@ -35,7 +35,7 @@
 - [x] 2.3 Expose `session:idle-reset` event in preload (`src/main/preload.ts`)
   - [x] 2.3.1 Add `onIdleReset` listener to session API
 - [x] 2.4 Update type definitions (`src/types/electron.d.ts`)
-  - [x] 2.4.1 Add `onIdleReset: (callback: () => void) => void` to `SessionAPI`
+  - [x] 2.4.1 Add `onIdleReset: (callback: () => void) => () => void` to `SessionAPI`
 - [x] 2.5 Handle idle reset in renderer (`src/renderer/CaptureScan.tsx`)
   - [x] 2.5.1 Listen for `session:idle-reset` event on mount
   - [x] 2.5.2 Clear metadata state (phenotyper, experiment, wave, age, accession)

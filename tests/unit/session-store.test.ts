@@ -10,6 +10,7 @@ import {
   getSessionState,
   setSessionState,
   resetSessionState,
+  hasSessionData,
   type SessionState,
 } from '../../src/main/session-store';
 
@@ -190,6 +191,30 @@ describe('SessionStore', () => {
       for (const key of expectedKeys) {
         expect(state[key]).toBeNull();
       }
+    });
+  });
+
+  describe('hasSessionData', () => {
+    it('should return false when all fields are null (initial state)', () => {
+      expect(hasSessionData()).toBe(false);
+    });
+
+    it('should return true when at least one field has a non-null value', () => {
+      setSessionState({ phenotyperId: 'pheno-1' });
+      expect(hasSessionData()).toBe(true);
+    });
+
+    it('should return true when multiple fields have non-null values', () => {
+      setSessionState({ phenotyperId: 'pheno-1', waveNumber: 3 });
+      expect(hasSessionData()).toBe(true);
+    });
+
+    it('should return false after reset', () => {
+      setSessionState({ experimentId: 'exp-1' });
+      expect(hasSessionData()).toBe(true);
+
+      resetSessionState();
+      expect(hasSessionData()).toBe(false);
     });
   });
 

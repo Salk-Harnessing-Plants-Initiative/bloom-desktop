@@ -36,6 +36,7 @@ import {
   getSessionState,
   setSessionState,
   resetSessionState,
+  hasSessionData,
   type SessionState,
 } from './session-store';
 import { IdleTimer } from './idle-timer';
@@ -1013,7 +1014,7 @@ ipcMain.handle(
   'session:set',
   async (_event, updates: Partial<SessionState>): Promise<SessionState> => {
     setSessionState(updates);
-    if (idleTimer) idleTimer.resetTimer();
+    if (idleTimer && hasSessionData()) idleTimer.resetTimer();
     return getSessionState();
   }
 );
@@ -1038,6 +1039,7 @@ app.on('ready', async () => {
   // Initialize idle timer for session auto-reset
   idleTimer = new IdleTimer({
     onIdle: () => {
+      if (!hasSessionData()) return;
       console.log('[IdleTimer] Session idle timeout — resetting session state');
       resetSessionState();
       if (mainWindow && !mainWindow.isDestroyed()) {

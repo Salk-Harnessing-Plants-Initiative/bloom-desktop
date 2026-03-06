@@ -77,3 +77,10 @@ export function setSessionState(updates: Partial<SessionState>): void {
 export function resetSessionState(): void {
   sessionState = { ...initialState };
 }
+
+/**
+ * Check if the session has any meaningful (non-null) data.
+ */
+export function hasSessionData(): boolean {
+  return Object.values(sessionState).some((v) => v !== null);
+}
