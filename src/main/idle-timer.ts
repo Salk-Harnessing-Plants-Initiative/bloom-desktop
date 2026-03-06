@@ -23,6 +23,7 @@ export class IdleTimer {
   private readonly timeoutMs: number;
   private timerId: ReturnType<typeof setTimeout> | null = null;
   private paused = false;
+  private started = false;
 
   constructor(options: IdleTimerOptions) {
     this.onIdle = options.onIdle;
@@ -30,6 +31,7 @@ export class IdleTimer {
   }
 
   start(): void {
+    this.started = true;
     this.paused = false;
     this.scheduleTimer();
   }
@@ -37,10 +39,11 @@ export class IdleTimer {
   stop(): void {
     this.clearTimer();
     this.paused = false;
+    this.started = false;
   }
 
   resetTimer(): void {
-    if (this.paused) return;
+    if (!this.started || this.paused) return;
     this.scheduleTimer();
   }
 

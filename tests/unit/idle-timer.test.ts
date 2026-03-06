@@ -196,16 +196,40 @@ describe('IdleTimer', () => {
 
   // Edge case: calling methods before start
   describe('edge cases', () => {
-    it('should handle resetTimer before start gracefully', () => {
-      expect(() => timer.resetTimer()).not.toThrow();
+    it('should not start the timer if resetTimer is called before start', () => {
+      timer.resetTimer();
+
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 2);
+      expect(onIdleSpy).not.toHaveBeenCalled();
+    });
+
+    it('should be a no-op when resetTimer is called while paused', () => {
+      timer.start();
+      timer.pauseForScan();
+      timer.resetTimer();
+
+      // Advance well past timeout — should not fire because still paused
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 3);
+      expect(onIdleSpy).not.toHaveBeenCalled();
+
+      // Resume and verify timer fires normally
+      timer.resumeAfterScan();
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT);
+      expect(onIdleSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should handle pauseForScan before start gracefully', () => {
-      expect(() => timer.pauseForScan()).not.toThrow();
+      timer.pauseForScan();
+
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 2);
+      expect(onIdleSpy).not.toHaveBeenCalled();
     });
 
     it('should handle stop before start gracefully', () => {
-      expect(() => timer.stop()).not.toThrow();
+      timer.stop();
+
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 2);
+      expect(onIdleSpy).not.toHaveBeenCalled();
     });
 
     it('should not fire callback after being stopped mid-countdown', () => {
