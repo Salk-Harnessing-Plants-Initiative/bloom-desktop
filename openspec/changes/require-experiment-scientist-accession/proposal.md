@@ -18,4 +18,3 @@ In the pilot, experiment creation requires a scientist and an accession file to 
 - Affected code:
   - `src/renderer/components/ExperimentForm.tsx` -- Zod schema, form labels, default values
   - `tests/e2e/experiments-management.e2e.ts` -- E2E test for experiment creation without optional fields
-  - `tests/fixtures/experiments.ts` -- Test data factories

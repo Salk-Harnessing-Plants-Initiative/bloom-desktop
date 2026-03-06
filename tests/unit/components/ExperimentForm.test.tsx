@@ -30,7 +30,7 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
   if (win && win.electron && win.electron.database) {
-    win.electron.database.experiments = { create: mockCreate };
+    win.electron.database.experiments.create = mockCreate;
   }
 });
 
@@ -92,6 +92,34 @@ describe('ExperimentForm', () => {
       });
 
       // Verify IPC was NOT called
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('should reject whitespace-only name', async () => {
+      const user = userEvent.setup();
+      const mockOnSuccess = vi.fn();
+      render(
+        <ExperimentForm
+          scientists={defaultScientists}
+          accessions={defaultAccessions}
+          onSuccess={mockOnSuccess}
+        />
+      );
+
+      // Fill name with only spaces, select scientist and accession
+      await user.type(screen.getByLabelText('Name'), '   ');
+      await user.selectOptions(screen.getByLabelText('Scientist'), 'sci-1');
+      await user.selectOptions(
+        screen.getByLabelText('Accession File'),
+        'acc-1'
+      );
+
+      await user.click(screen.getByRole('button', { name: /create/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Name is required')).toBeInTheDocument();
+      });
+
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
