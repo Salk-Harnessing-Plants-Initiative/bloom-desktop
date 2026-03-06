@@ -73,8 +73,9 @@ export function buildMetadataObject(
   if (meta.accession_name !== undefined) {
     result.accession_name = meta.accession_name;
   }
-  if (settings.output_path !== undefined) {
-    result.scan_path = settings.output_path;
+  const scanPath = meta.scan_path ?? settings.output_path;
+  if (scanPath !== undefined) {
+    result.scan_path = scanPath;
   }
 
   return result;

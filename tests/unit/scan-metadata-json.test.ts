@@ -165,8 +165,54 @@ describe('scan-metadata-json', () => {
       expect(metadata.accession_name).toBeUndefined();
     });
 
-    it('omits scan_path when output_path not provided', () => {
-      const settings = makeScannerSettings({ output_path: undefined });
+    it('prefers metadata.scan_path (relative) over output_path (absolute)', () => {
+      const settings = makeScannerSettings({
+        output_path: '/absolute/path/to/scan',
+        metadata: {
+          experiment_id: 'exp-001',
+          phenotyper_id: 'user-001',
+          scanner_name: 'TestScanner',
+          plant_id: 'plant-001',
+          plant_age_days: 14,
+          wave_number: 1,
+          scan_path: '2026-03-05/plant-001/abc123',
+        },
+      });
+      const metadata = buildMetadataObject(settings, new Date());
+
+      expect(metadata.scan_path).toBe('2026-03-05/plant-001/abc123');
+    });
+
+    it('falls back to output_path when metadata.scan_path is not set', () => {
+      const settings = makeScannerSettings({
+        output_path: '/absolute/path/to/scan',
+        metadata: {
+          experiment_id: 'exp-001',
+          phenotyper_id: 'user-001',
+          scanner_name: 'TestScanner',
+          plant_id: 'plant-001',
+          plant_age_days: 14,
+          wave_number: 1,
+          // scan_path intentionally omitted
+        },
+      });
+      const metadata = buildMetadataObject(settings, new Date());
+
+      expect(metadata.scan_path).toBe('/absolute/path/to/scan');
+    });
+
+    it('omits scan_path when neither metadata.scan_path nor output_path provided', () => {
+      const settings = makeScannerSettings({
+        output_path: undefined,
+        metadata: {
+          experiment_id: 'exp-001',
+          phenotyper_id: 'user-001',
+          scanner_name: 'TestScanner',
+          plant_id: 'plant-001',
+          plant_age_days: 14,
+          wave_number: 1,
+        },
+      });
       const metadata = buildMetadataObject(settings, new Date());
 
       expect(metadata.scan_path).toBeUndefined();

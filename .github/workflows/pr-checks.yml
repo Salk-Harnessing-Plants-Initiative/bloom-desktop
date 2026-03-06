@@ -10,7 +10,7 @@ on:
       - main
 
 permissions:
-  contents: read       # Read repository contents
+  contents: read # Read repository contents
   pull-requests: write # Write PR comments (for future coverage reports)
 
 jobs:
@@ -151,7 +151,7 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
 
       - name: Compile TypeScript
         run: npx tsc --noEmit
@@ -185,17 +185,17 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
 
       - name: Run Prisma migrations
         run: npx prisma migrate deploy
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
 
       - name: Run Vitest unit tests with coverage
         run: npm run test:unit:coverage
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
         # Enforces 50% minimum coverage (configured in vitest.config.ts)
 
   # Python tests with coverage
@@ -211,8 +211,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
 
       - name: Install Python dependencies
         run: uv sync --all-extras --frozen
@@ -269,8 +269,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
 
       - name: Build Python executable
         run: |
@@ -321,8 +321,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
 
       - name: Download Python executable
         uses: actions/download-artifact@v4
@@ -352,7 +352,7 @@ jobs:
       - name: Generate Prisma Client for database tests
         run: npx prisma generate
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
 
       - name: Run Scanner-Database integration tests
         run: npm run test:scanner-database
@@ -396,8 +396,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
 
       - name: Download Python executable
         uses: actions/download-artifact@v4
@@ -414,7 +414,7 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
 
       - name: Test dev mode database initialization
         run: xvfb-run --auto-servernum npm run test:dev:database
@@ -425,7 +425,7 @@ jobs:
     name: Test - E2E Dev Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # Continue running on other platforms even if one fails
+      fail-fast: false # Continue running on other platforms even if one fails
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
@@ -463,8 +463,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
 
       - name: Download Python executable
         uses: actions/download-artifact@v4
@@ -485,7 +485,7 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
 
       - name: Start Electron Forge dev server in background (Linux with Xvfb)
         if: runner.os == 'Linux'
@@ -561,8 +561,8 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-          python-version: "3.12"
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
 
       - name: Download Python executable
         uses: actions/download-artifact@v4
@@ -580,7 +580,7 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
-          BLOOM_DATABASE_URL: "file:./dev.db"
+          BLOOM_DATABASE_URL: 'file:./dev.db'
 
       - name: Package application
         run: npm run package
