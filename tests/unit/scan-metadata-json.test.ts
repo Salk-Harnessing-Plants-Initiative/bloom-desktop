@@ -185,6 +185,14 @@ describe('scan-metadata-json', () => {
       expect(metadata.contrast).toBe(1);
       expect(metadata.gamma).toBe(1);
     });
+
+    it('throws descriptive error when settings.metadata is undefined', () => {
+      const settings = makeScannerSettings({ metadata: undefined });
+
+      expect(() => buildMetadataObject(settings, new Date())).toThrow(
+        'settings.metadata is required for buildMetadataObject'
+      );
+    });
   });
 
   // ========================================

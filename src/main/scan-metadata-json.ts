@@ -46,7 +46,10 @@ export function buildMetadataObject(
   settings: ScannerSettings,
   captureDate: Date = new Date()
 ): ScanMetadataJson {
-  const meta = settings.metadata!;
+  if (!settings.metadata) {
+    throw new Error('settings.metadata is required for buildMetadataObject');
+  }
+  const meta = settings.metadata;
   const cam = settings.camera;
 
   const result: ScanMetadataJson = {
