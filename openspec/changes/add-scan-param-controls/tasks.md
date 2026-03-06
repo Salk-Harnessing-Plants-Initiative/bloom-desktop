@@ -14,6 +14,6 @@
 - [x] 2.1 Add `num_frames: 72` and `seconds_per_rot: 7.0` to DEFAULT_CAMERA_SETTINGS in `src/types/camera.ts`
 - [x] 2.2 Add seconds_per_rot slider+input control to CameraSettingsForm (after Brightness, before Contrast) following existing pattern
 - [x] 2.3 Add num_frames slider+input control to CameraSettingsForm (after seconds_per_rot) following existing pattern
-- [x] 2.4 Replace hardcoded `num_frames: 72` in CaptureScan.tsx with `cameraSettings.num_frames ?? 72`
+- [x] 2.4 Replace hardcoded `num_frames: 72` in CaptureScan.tsx with `cameraSettings.num_frames ?? DEFAULT_DAQ_SETTINGS.num_frames`
 - [x] 2.5 Override `DEFAULT_DAQ_SETTINGS.seconds_per_rot` with `cameraSettings.seconds_per_rot` when initializing scanner in CaptureScan.tsx
 - [x] 2.6 Override `DEFAULT_DAQ_SETTINGS.num_frames` with `cameraSettings.num_frames` when initializing scanner in CaptureScan.tsx

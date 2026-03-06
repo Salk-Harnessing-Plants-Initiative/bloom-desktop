@@ -407,7 +407,8 @@ export function CaptureScan() {
           num_frames:
             cameraSettings.num_frames ?? DEFAULT_DAQ_SETTINGS.num_frames,
         },
-        num_frames: cameraSettings.num_frames ?? 72,
+        num_frames:
+          cameraSettings.num_frames ?? DEFAULT_DAQ_SETTINGS.num_frames,
         output_path: outputPath,
         metadata: {
           experiment_id: metadata.experimentId,

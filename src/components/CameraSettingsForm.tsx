@@ -362,7 +362,7 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
             min="4"
             max="10"
             step="0.5"
-            value={settings.seconds_per_rot || 7}
+            value={settings.seconds_per_rot ?? 7}
             onChange={(e) =>
               handleSliderChange('seconds_per_rot', parseFloat(e.target.value))
             }
@@ -371,7 +371,7 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
           />
           <input
             type="number"
-            value={settings.seconds_per_rot || 7}
+            value={settings.seconds_per_rot ?? 7}
             onChange={(e) =>
               handleInputChange('seconds_per_rot', e.target.value)
             }
@@ -396,7 +396,7 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
             min="12"
             max="360"
             step="1"
-            value={settings.num_frames || 72}
+            value={settings.num_frames ?? 72}
             onChange={(e) =>
               handleSliderChange('num_frames', parseInt(e.target.value))
             }
@@ -405,7 +405,7 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
           />
           <input
             type="number"
-            value={settings.num_frames || 72}
+            value={settings.num_frames ?? 72}
             onChange={(e) => handleInputChange('num_frames', e.target.value)}
             disabled={readOnly}
             className="w-24 px-2 py-1 border border-gray-300 rounded"
