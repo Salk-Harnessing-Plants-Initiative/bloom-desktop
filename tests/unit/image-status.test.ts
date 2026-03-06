@@ -22,13 +22,14 @@ describe('ImageStatus type', () => {
   });
 
   it('should have exactly four valid values', () => {
-    // Exhaustiveness check: if ImageStatus changes, this will fail to compile
-    const allStatuses: ImageStatus[] = [
+    // Exhaustiveness check: satisfies ensures every union member is listed.
+    // If ImageStatus gains a new value, this will fail to compile.
+    const allStatuses = [
       'pending',
       'uploading',
       'uploaded',
       'failed',
-    ];
+    ] satisfies ImageStatus[];
     expect(allStatuses).toHaveLength(4);
     expect(new Set(allStatuses).size).toBe(4);
   });

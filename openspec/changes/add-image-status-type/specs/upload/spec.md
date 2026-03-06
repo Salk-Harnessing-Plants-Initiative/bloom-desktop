@@ -19,12 +19,7 @@ The system SHALL define an `ImageStatus` TypeScript union type constraining imag
 - **WHEN** `scanner-process.ts` creates image records with `status: 'pending'`
 - **THEN** the status literal SHALL be checked against the `ImageStatus` type at compile time
 
-#### Scenario: Upload status transitions use typed status
+#### Scenario: Upload status transitions use valid status values
 
 - **WHEN** `image-uploader.ts` updates image status to `'uploading'`, `'uploaded'`, or `'failed'`
-- **THEN** each status literal SHALL be checked against the `ImageStatus` type at compile time
-
-#### Scenario: Renderer status filtering uses typed status
-
-- **WHEN** `BrowseScans.tsx` or `ScanPreview.tsx` filters images by status
-- **THEN** the status comparison values SHALL be checked against the `ImageStatus` type at compile time
+- **THEN** each status literal used for an upload status transition SHALL be assigned through an `ImageStatus`-typed variable, checked at compile time
