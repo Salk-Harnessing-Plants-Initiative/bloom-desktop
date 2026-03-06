@@ -260,10 +260,11 @@ export class ImageUploader {
     );
 
     // Mark all images as uploading
+    const uploadingStatus: ImageStatus = 'uploading';
     for (const image of scan.images) {
       await this.prisma.image.update({
         where: { id: image.id },
-        data: { status: 'uploading' },
+        data: { status: uploadingStatus },
       });
     }
 
@@ -299,9 +300,10 @@ export class ImageUploader {
           );
 
           // Mark as failed
+          const failedStatus: ImageStatus = 'failed';
           await this.prisma.image.update({
             where: { id: image.id },
-            data: { status: 'failed' },
+            data: { status: failedStatus },
           });
           result.failed++;
           result.errors.push(`Image ${image.id}: ${errorMsg}`);
@@ -318,9 +320,10 @@ export class ImageUploader {
             `[Upload] Image ${index + 1}/${scan.images.length} OK (id=${created})`
           );
           // Mark as uploaded
+          const uploadedStatus: ImageStatus = 'uploaded';
           await this.prisma.image.update({
             where: { id: image.id },
-            data: { status: 'uploaded' },
+            data: { status: uploadedStatus },
           });
           result.uploaded++;
 
