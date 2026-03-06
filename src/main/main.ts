@@ -751,18 +751,18 @@ ipcMain.handle('scanner:scan', async () => {
     }
     if (idleTimer) idleTimer.pauseForScan();
     const response = await scannerProcess.scan();
-    if (idleTimer) idleTimer.resumeAfterScan();
     return response;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error('scanner:scan error:', error);
-    if (idleTimer) idleTimer.resumeAfterScan();
     return {
       success: false,
       frames_captured: 0,
       output_path: '',
       error: error.message,
     };
+  } finally {
+    if (idleTimer) idleTimer.resumeAfterScan();
   }
 });
 
