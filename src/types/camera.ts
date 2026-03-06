@@ -121,4 +121,6 @@ export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   camera_ip_address: 'mock',
   gamma: 1.0,
   brightness: 0.5,
+  num_frames: 72,
+  seconds_per_rot: 7.0,
 };
