@@ -65,6 +65,7 @@ export function CaptureScan() {
   // UI state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [idleResetMessage, setIdleResetMessage] = useState(false);
 
   // Barcode validation state
   const [barcodeValidationError, setBarcodeValidationError] = useState<
@@ -83,6 +84,22 @@ export function CaptureScan() {
     },
     []
   );
+
+  // Listen for idle session reset from main process
+  useEffect(() => {
+    const cleanup = window.electron.session.onIdleReset(() => {
+      setMetadata({
+        phenotyper: '',
+        experimentId: '',
+        waveNumber: '',
+        plantAgeDays: '',
+        plantQrCode: '',
+        accessionName: '',
+      });
+      setIdleResetMessage(true);
+    });
+    return cleanup;
+  }, []);
 
   // Check for duplicate scans (same plant + experiment + today)
   useEffect(() => {
@@ -455,6 +472,51 @@ export function CaptureScan() {
               <span className="font-medium text-green-800">
                 Scan completed successfully!
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* Idle Reset Notification */}
+        {idleResetMessage && (
+          <div
+            className="bg-amber-50 border-2 border-amber-500 rounded-lg p-4"
+            data-testid="idle-reset-notification"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg
+                  className="h-5 w-5 text-amber-600 mr-2"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="font-medium text-amber-800">
+                  Session reset due to inactivity. Please select your phenotyper
+                  and experiment to continue.
+                </span>
+              </div>
+              <button
+                onClick={() => setIdleResetMessage(false)}
+                className="ml-4 text-amber-600 hover:text-amber-800"
+                data-testid="idle-reset-dismiss"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
             </div>
           </div>
         )}

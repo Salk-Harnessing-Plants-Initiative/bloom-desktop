@@ -10,6 +10,7 @@ import {
   getSessionState,
   setSessionState,
   resetSessionState,
+  hasSessionData,
   type SessionState,
 } from '../../src/main/session-store';
 
@@ -144,6 +145,76 @@ describe('SessionStore', () => {
       // This test verifies isolation - state from previous test should not leak
       const state = getSessionState();
       expect(state.phenotyperId).toBeNull();
+    });
+  });
+
+  describe('resetSessionState (idle reset integration)', () => {
+    it('should clear all fields to null on idle reset', () => {
+      setSessionState({
+        phenotyperId: 'pheno-idle',
+        experimentId: 'exp-idle',
+        waveNumber: 5,
+        plantAgeDays: 30,
+        accessionName: 'Ws-2',
+      });
+
+      resetSessionState();
+
+      const state = getSessionState();
+      expect(state.phenotyperId).toBeNull();
+      expect(state.experimentId).toBeNull();
+      expect(state.waveNumber).toBeNull();
+      expect(state.plantAgeDays).toBeNull();
+      expect(state.accessionName).toBeNull();
+    });
+
+    it('should fully reset all five session fields', () => {
+      setSessionState({
+        phenotyperId: 'p1',
+        experimentId: 'e1',
+        waveNumber: 1,
+        plantAgeDays: 7,
+        accessionName: 'Col-0',
+      });
+
+      resetSessionState();
+
+      const state = getSessionState();
+      const expectedKeys: (keyof SessionState)[] = [
+        'phenotyperId',
+        'experimentId',
+        'waveNumber',
+        'plantAgeDays',
+        'accessionName',
+      ];
+
+      for (const key of expectedKeys) {
+        expect(state[key]).toBeNull();
+      }
+    });
+  });
+
+  describe('hasSessionData', () => {
+    it('should return false when all fields are null (initial state)', () => {
+      expect(hasSessionData()).toBe(false);
+    });
+
+    it('should return true when at least one field has a non-null value', () => {
+      setSessionState({ phenotyperId: 'pheno-1' });
+      expect(hasSessionData()).toBe(true);
+    });
+
+    it('should return true when multiple fields have non-null values', () => {
+      setSessionState({ phenotyperId: 'pheno-1', waveNumber: 3 });
+      expect(hasSessionData()).toBe(true);
+    });
+
+    it('should return false after reset', () => {
+      setSessionState({ experimentId: 'exp-1' });
+      expect(hasSessionData()).toBe(true);
+
+      resetSessionState();
+      expect(hasSessionData()).toBe(false);
     });
   });
 
