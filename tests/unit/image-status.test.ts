@@ -22,8 +22,10 @@ describe('ImageStatus type', () => {
   });
 
   it('should have exactly four valid values', () => {
-    // Exhaustiveness check: satisfies ensures every union member is listed.
-    // If ImageStatus gains a new value, this will fail to compile.
+    // Exhaustiveness check: satisfies ensures every entry is a valid ImageStatus.
+    // Note: satisfies ImageStatus[] does NOT guarantee all union members are listed —
+    // a missing entry would still compile. The runtime length + Set checks below
+    // catch duplicates and verify the expected count, providing a practical safeguard.
     const allStatuses = [
       'pending',
       'uploading',
@@ -38,6 +40,11 @@ describe('ImageStatus type', () => {
     // This test documents the compile-time safety guarantee.
     // We verify this by using @ts-expect-error — if the type ever
     // accepts these strings, TypeScript will report an "unused directive" error.
+    //
+    // Note: tsconfig.json excludes tests/, so `npx tsc --noEmit` does not check
+    // these directives. However, Vitest's built-in TS transpilation DOES validate
+    // them — an unused @ts-expect-error causes a Vitest compile error, so these
+    // tests fail if the type constraint is accidentally relaxed.
 
     // @ts-expect-error 'CAPTURED' is not assignable to ImageStatus
     const _captured: ImageStatus = 'CAPTURED';
