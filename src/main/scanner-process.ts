@@ -15,6 +15,7 @@ import type {
   ScannerStatus,
   ScanProgress,
 } from '../types/scanner';
+import type { ImageStatus } from '../types/database';
 
 /**
  * Scanner process manager for coordinated scanning operations.
@@ -211,10 +212,11 @@ export class ScannerProcess extends EventEmitter {
         const frameMatch = file.match(/^(\d+)\.png$/);
         if (frameMatch) {
           const frameNumber = parseInt(frameMatch[1], 10);
+          const status: ImageStatus = 'pending';
           images.push({
             frame_number: frameNumber, // Already 1-indexed (pilot compatible)
             path: imagePath,
-            status: 'pending',
+            status,
           });
         }
       }
