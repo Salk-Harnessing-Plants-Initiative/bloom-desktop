@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -257,4 +259,3 @@ The system SHALL generate scan output directories following the pilot-compatible
 - **AND** the system SHALL detect Windows absolute paths (starting with a drive letter like `C:\` or `D:/`)
 - **AND** absolute paths SHALL be used as-is without prepending `scans_dir`
 - **AND** relative paths SHALL have `scans_dir` prepended to construct the full path
-
