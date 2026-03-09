@@ -5,11 +5,6 @@
  * This feature allows users to test their Bloom API credentials and fetch the scanner
  * list without saving the entire configuration form.
  *
- * NOTE: These tests do NOT create ~/.bloom/.env, so the app automatically redirects
- * to the Machine Configuration page on startup. This follows the spec:
- * "Machine Configuration tests skip config setup - the test SHALL NOT create
- * ~/.bloom/.env to allow the natural redirect to occur"
- *
  * PREREQUISITES:
  * 1. Start Electron Forge dev server: `npm run start` (keep running in Terminal 1)
  * 2. Run E2E tests: `npm run test:e2e` (in Terminal 2)
@@ -26,9 +21,6 @@ import {
 } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
-import { closeElectronApp } from './helpers/electron-cleanup';
-import { getEnvPath, getBloomDir } from './helpers/bloom-config';
 
 // Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -38,118 +30,50 @@ let electronApp: ElectronApplication;
 let window: Page;
 
 // Test database path
-const TEST_DB_PATH = path.join(
+const E2E_DB_PATH = path.resolve(
   __dirname,
-  'machine-config-fetch-scanners-test.db'
+  '../../prisma/e2e-test-machine-config.db'
 );
-const TEST_DB_URL = `file:${TEST_DB_PATH}`;
 
-// Store original env file if it exists
-let originalEnvContent: string | null = null;
-let originalEnvExisted = false;
-
-/**
- * Helper: Launch Electron app with test database
- */
-async function launchElectronApp() {
-  const appRoot = path.join(__dirname, '../..');
-
-  // Build args for Electron
-  const args = [path.join(appRoot, '.webpack/main/index.js')];
-  if (process.platform === 'linux' && process.env.CI === 'true') {
-    args.push('--no-sandbox');
+test.beforeAll(async () => {
+  // Clean up any existing test database
+  if (fs.existsSync(E2E_DB_PATH)) {
+    fs.unlinkSync(E2E_DB_PATH);
   }
 
-  // Launch Electron with test database URL
+  // Launch Electron app
   electronApp = await electron.launch({
     executablePath: electronPath,
-    args,
-    cwd: appRoot,
+    args: [path.join(__dirname, '../../.webpack/main/index.js')],
     env: {
       ...process.env,
-      BLOOM_DATABASE_URL: TEST_DB_URL,
+      BLOOM_DATABASE_URL: `file:${E2E_DB_PATH}`,
       NODE_ENV: 'test',
-    } as Record<string, string>,
-  });
-
-  // Get the main window
-  const windows = await electronApp.windows();
-  window = windows.find((w) => w.url().includes('localhost')) || windows[0];
-
-  // Wait for window to be ready
-  await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
-}
-
-/**
- * Test setup: Create fresh database and launch app WITHOUT ~/.bloom/.env
- *
- * This test suite intentionally does NOT create the bloom config file,
- * causing the app to redirect to Machine Configuration on startup.
- */
-test.beforeEach(async () => {
-  const envPath = getEnvPath();
-  const bloomDir = getBloomDir();
-
-  // Backup existing env file if it exists
-  if (fs.existsSync(envPath)) {
-    originalEnvExisted = true;
-    originalEnvContent = fs.readFileSync(envPath, 'utf-8');
-    fs.unlinkSync(envPath); // Remove it so app redirects to Machine Config
-  } else {
-    originalEnvExisted = false;
-    originalEnvContent = null;
-  }
-
-  // Ensure .bloom directory exists (for the app to work)
-  if (!fs.existsSync(bloomDir)) {
-    fs.mkdirSync(bloomDir, { recursive: true });
-  }
-
-  // Clean up any existing test database
-  if (fs.existsSync(TEST_DB_PATH)) {
-    fs.unlinkSync(TEST_DB_PATH);
-  }
-
-  // Create the test database file and apply schema
-  const appRoot = path.join(__dirname, '../..');
-  execSync('npx prisma db push --skip-generate', {
-    cwd: appRoot,
-    env: {
-      ...process.env,
-      BLOOM_DATABASE_URL: TEST_DB_URL,
     },
-    stdio: 'pipe',
   });
 
-  // Launch Electron app - it will redirect to Machine Configuration
-  await launchElectronApp();
+  // Get the first window
+  window = await electronApp.firstWindow();
+  await window.waitForLoadState('domcontentloaded');
 });
 
-/**
- * Test teardown: Close app, restore env file, and clean up database
- */
-test.afterEach(async () => {
-  // Close Electron app and wait for process to fully terminate
-  await closeElectronApp(electronApp);
-
-  // Restore original env file if it existed
-  const envPath = getEnvPath();
-  if (originalEnvExisted && originalEnvContent !== null) {
-    fs.writeFileSync(envPath, originalEnvContent, 'utf-8');
+test.afterAll(async () => {
+  // Close app
+  if (electronApp) {
+    await electronApp.close();
   }
 
   // Clean up test database
-  if (fs.existsSync(TEST_DB_PATH)) {
-    fs.unlinkSync(TEST_DB_PATH);
+  if (fs.existsSync(E2E_DB_PATH)) {
+    fs.unlinkSync(E2E_DB_PATH);
   }
 });
 
 test.describe('Machine Configuration - Fetch Scanners Button', () => {
   test.beforeEach(async () => {
-    // Wait for Machine Configuration page to load (app auto-redirects here)
-    await expect(
-      window.getByRole('heading', { name: 'Machine Configuration' })
-    ).toBeVisible({ timeout: 15000 });
+    // Navigate to Machine Configuration
+    await window.click('text=Configuration');
+    await window.waitForSelector('text=Machine Configuration');
   });
 
   test('should display Fetch Scanners button in credentials section', async () => {

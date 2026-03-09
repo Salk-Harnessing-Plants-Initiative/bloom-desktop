@@ -12,7 +12,7 @@
  * - Drag-and-drop file upload
  * - File type and size validation
  * - Sheet selection for multi-sheet files
- * - Column mapping (Plant Barcode + Accession)
+ * - Column mapping (Plant ID + Genotype ID)
  * - Visual column highlighting
  * - Preview table display
  * - Batch upload processing
@@ -36,11 +36,6 @@ import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
-import { closeElectronApp } from './helpers/electron-cleanup';
-import {
-  createTestBloomConfig,
-  cleanupTestBloomConfig,
-} from './helpers/bloom-config';
 
 // Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -97,7 +92,7 @@ async function launchElectronApp() {
     } as Record<string, string>,
   });
 
-  // Get the main window - filter for localhost to avoid DevTools window
+  // Get the main window
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 
@@ -119,9 +114,6 @@ async function navigateToAccessions() {
  * Test setup: Create fresh database and launch app
  */
 test.beforeEach(async () => {
-  // Create minimal ~/.bloom/.env to prevent Machine Config redirect
-  createTestBloomConfig();
-
   // Clean up any existing test database
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
@@ -153,8 +145,10 @@ test.beforeEach(async () => {
  * Test cleanup: Close app and disconnect database
  */
 test.afterEach(async () => {
-  // Close Electron app and wait for process to fully terminate
-  await closeElectronApp(electronApp);
+  // Close Electron app
+  if (electronApp) {
+    await electronApp.close();
+  }
 
   // Disconnect Prisma
   if (prisma) {
@@ -165,9 +159,6 @@ test.afterEach(async () => {
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
   }
-
-  // Clean up test ~/.bloom/.env (restores original if there was one)
-  cleanupTestBloomConfig();
 });
 
 // ============================================
@@ -216,7 +207,7 @@ test.describe('File Upload', () => {
       window.locator('[data-testid="plant-id-selector"]')
     ).toBeVisible({ timeout: 5000 });
     await expect(
-      window.locator('[data-testid="accession-selector"]')
+      window.locator('[data-testid="genotype-selector"]')
     ).toBeVisible();
   });
 
@@ -345,12 +336,12 @@ test.describe('Column Mapping', () => {
 
     // Both column selectors should be visible
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await expect(plantIdSelector).toBeVisible();
-    await expect(accessionSelector).toBeVisible();
+    await expect(genotypeSelector).toBeVisible();
   });
 
   test('should populate dropdowns with column headers', async () => {
@@ -392,8 +383,8 @@ test.describe('Column Mapping', () => {
 
     const uploadButton = window.locator('[data-testid="upload-button"]');
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     // Button should be disabled initially
@@ -406,7 +397,7 @@ test.describe('Column Mapping', () => {
     await expect(uploadButton).toBeDisabled();
 
     // Select Genotype column
-    await accessionSelector.selectOption('GenotypeID');
+    await genotypeSelector.selectOption('GenotypeID');
 
     // Button should now be enabled
     await expect(uploadButton).toBeEnabled();
@@ -452,16 +443,16 @@ test.describe('Column Highlighting', () => {
     ).toBeVisible({ timeout: 5000 });
 
     // Select Genotype column
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
-    await accessionSelector.selectOption('GenotypeID');
+    await genotypeSelector.selectOption('GenotypeID');
 
     // Column header should have blue highlighting class
-    const accessionHeader = window.locator(
+    const genotypeHeader = window.locator(
       '[data-testid="preview-table"] th:has-text("GenotypeID")'
     );
-    await expect(accessionHeader).toHaveClass(/bg-blue/);
+    await expect(genotypeHeader).toHaveClass(/bg-blue/);
   });
 
   test('should show column labels in header when selected', async () => {
@@ -477,16 +468,16 @@ test.describe('Column Highlighting', () => {
 
     // Select both columns
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('PlantBarcode');
-    await accessionSelector.selectOption('GenotypeID');
+    await genotypeSelector.selectOption('GenotypeID');
 
-    // Should show Plant ID and Accession labels in headers
+    // Should show Plant ID and Genotype ID labels in headers
     await expect(window.getByText(/🌱.*plant.*id/i)).toBeVisible();
-    await expect(window.getByText(/🏷️.*accession/i)).toBeVisible();
+    await expect(window.getByText(/🏷️.*genotype.*id/i)).toBeVisible();
   });
 });
 
@@ -577,12 +568,12 @@ test.describe('Upload Processing', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('PlantBarcode');
-    await accessionSelector.selectOption('GenotypeID');
+    await genotypeSelector.selectOption('GenotypeID');
 
     // Click upload button
     const uploadButton = window.locator('[data-testid="upload-button"]');
@@ -615,12 +606,12 @@ test.describe('Upload Processing', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('Barcode');
-    await accessionSelector.selectOption('Genotype');
+    await genotypeSelector.selectOption('Genotype');
 
     // Click upload button
     const uploadButton = window.locator('[data-testid="upload-button"]');
@@ -648,12 +639,12 @@ test.describe('Upload Processing', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('PlantBarcode');
-    await accessionSelector.selectOption('GenotypeID');
+    await genotypeSelector.selectOption('GenotypeID');
 
     const uploadButton = window.locator('[data-testid="upload-button"]');
     await uploadButton.click();
@@ -679,12 +670,12 @@ test.describe('Upload Processing', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('PlantBarcode');
-    await accessionSelector.selectOption('GenotypeID');
+    await genotypeSelector.selectOption('GenotypeID');
 
     const uploadButton = window.locator('[data-testid="upload-button"]');
     await uploadButton.click();
@@ -700,7 +691,7 @@ test.describe('Upload Processing', () => {
 
     // Column selectors should be hidden
     await expect(plantIdSelector).not.toBeVisible();
-    await expect(accessionSelector).not.toBeVisible();
+    await expect(genotypeSelector).not.toBeVisible();
   });
 });
 
@@ -721,12 +712,12 @@ test.describe('Batch Processing', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('Barcode');
-    await accessionSelector.selectOption('Genotype');
+    await genotypeSelector.selectOption('Genotype');
 
     // Upload
     const uploadButton = window.locator('[data-testid="upload-button"]');
@@ -764,12 +755,12 @@ test.describe('Error Handling', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('PlantBarcode');
-    await accessionSelector.selectOption('GenotypeID');
+    await genotypeSelector.selectOption('GenotypeID');
 
     // Disconnect database to simulate error
     await prisma.$disconnect();
@@ -818,8 +809,8 @@ test.describe('Real-World Data Upload', () => {
 
     // Verify column selectors contain real column names
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     // Should have Barcode and Line columns from real data
@@ -827,12 +818,12 @@ test.describe('Real-World Data Upload', () => {
       plantIdSelector.locator('option[value="Barcode"]')
     ).toBeAttached();
     await expect(
-      accessionSelector.locator('option[value="Line"]')
+      genotypeSelector.locator('option[value="Line"]')
     ).toBeAttached();
 
     // Map columns (Barcode → Plant ID, Line → Genotype)
     await plantIdSelector.selectOption('Barcode');
-    await accessionSelector.selectOption('Line');
+    await genotypeSelector.selectOption('Line');
 
     // Upload button should be enabled
     const uploadButton = window.locator('[data-testid="upload-button"]');
@@ -901,12 +892,12 @@ test.describe('Real-World Data Upload', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('Barcode');
-    await accessionSelector.selectOption('Line');
+    await genotypeSelector.selectOption('Line');
 
     const uploadButton = window.locator('[data-testid="upload-button"]');
     await uploadButton.click();
@@ -934,12 +925,12 @@ test.describe('Real-World Data Upload', () => {
     ).toBeVisible({ timeout: 5000 });
 
     const plantIdSelector = window.locator('[data-testid="plant-id-selector"]');
-    const accessionSelector = window.locator(
-      '[data-testid="accession-selector"]'
+    const genotypeSelector = window.locator(
+      '[data-testid="genotype-selector"]'
     );
 
     await plantIdSelector.selectOption('Barcode');
-    await accessionSelector.selectOption('Line');
+    await genotypeSelector.selectOption('Line');
 
     const uploadButton = window.locator('[data-testid="upload-button"]');
     await uploadButton.click();
@@ -957,13 +948,13 @@ test.describe('Real-World Data Upload', () => {
     // Check first mapping matches first row of real data
     const firstMapping = mappings.find((m) => m.plant_barcode === '981T0FPX7B');
     expect(firstMapping).toBeDefined();
-    expect(firstMapping?.accession_name).toBe('ARV1');
+    expect(firstMapping?.genotype_id).toBe('ARV1');
 
     // Check another mapping
     const anotherMapping = mappings.find(
       (m) => m.plant_barcode === '3R9FSDZ6M0'
     );
     expect(anotherMapping).toBeDefined();
-    expect(anotherMapping?.accession_name).toBe('ARV1');
+    expect(anotherMapping?.genotype_id).toBe('ARV1');
   });
 });

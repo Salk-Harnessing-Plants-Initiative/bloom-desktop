@@ -132,148 +132,110 @@ function loadPrismaClient(): typeof PrismaClientType {
 let prisma: InstanceType<typeof PrismaClientType> | null = null;
 
 /**
- * Get the database path based on configuration.
+ * Run pending migrations on the database.
  *
- * Priority:
- * 1. Custom path (for testing)
- * 2. BLOOM_DATABASE_URL environment variable
- * 3. NODE_ENV-based defaults (dev: ~/.bloom/dev.db, prod: ~/.bloom/data/bloom.db)
+ * Reads migration SQL files from the bundled migrations directory and
+ * executes any that haven't been applied yet. Uses a _prisma_migrations
+ * table to track which migrations have run (matching Prisma's own format).
  *
- * @param customPath - Optional custom database path
- * @returns The resolved database path
+ * This is needed because the packaged app doesn't include the Prisma CLI
+ * or migration engine — only the query engine for runtime queries.
  */
-export function getDatabasePath(customPath?: string): string {
-  if (customPath) {
-    console.log('[Database] Using custom path:', customPath);
-    return customPath;
+async function runMigrations(
+  client: InstanceType<typeof PrismaClientType>
+): Promise<void> {
+  // Find migrations directory
+  const migrationsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'migrations')
+    : path.join(app.getAppPath(), 'prisma', 'migrations');
+
+  if (!fs.existsSync(migrationsDir)) {
+    console.log('[Database] No migrations directory found at:', migrationsDir);
+    return;
   }
 
-  if (process.env.BLOOM_DATABASE_URL) {
-    const envUrl = process.env.BLOOM_DATABASE_URL;
+  // Ensure _prisma_migrations table exists
+  await client.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "checksum" TEXT NOT NULL,
+      "finished_at" DATETIME,
+      "migration_name" TEXT NOT NULL UNIQUE,
+      "logs" TEXT,
+      "rolled_back_at" DATETIME,
+      "started_at" DATETIME NOT NULL DEFAULT current_timestamp,
+      "applied_steps_count" INTEGER NOT NULL DEFAULT 0
+    )
+  `);
 
-    // Check for relative path format: file:./path or file:../path
-    const relativeMatch = envUrl.match(/^file:(\.\.?\/.*)$/);
-    if (relativeMatch) {
-      const relativePath = relativeMatch[1];
-      const resolvedPath = path.resolve(app.getAppPath(), relativePath);
-      console.log(
-        '[Database] Using BLOOM_DATABASE_URL (relative):',
-        relativePath,
-        '->',
-        resolvedPath
-      );
-      return resolvedPath;
-    }
+  // Get already-applied migrations
+  const applied: Array<{ migration_name: string }> = await client.$queryRawUnsafe(
+    'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL'
+  );
+  const appliedSet = new Set(applied.map((m) => m.migration_name));
 
-    // Properly parse file:// URLs
+  // Read migration directories (sorted alphabetically = chronological order)
+  const entries = fs
+    .readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  let migrationsRun = 0;
+
+  for (const entry of entries) {
+    if (appliedSet.has(entry.name)) continue;
+
+    const sqlPath = path.join(migrationsDir, entry.name, 'migration.sql');
+    if (!fs.existsSync(sqlPath)) continue;
+
+    const sql = fs.readFileSync(sqlPath, 'utf-8');
+    console.log(`[Database] Applying migration: ${entry.name}`);
+
     try {
-      const url = new URL(envUrl);
-      if (url.protocol !== 'file:') {
-        throw new Error(
-          `BLOOM_DATABASE_URL must use file: protocol, got: ${url.protocol}`
-        );
+      // Split on semicolons, strip SQL comments, and execute each statement
+      const statements = sql
+        .split(';')
+        .map((s) =>
+          s
+            .split('\n')
+            .filter((line) => !line.trimStart().startsWith('--'))
+            .join('\n')
+            .trim()
+        )
+        .filter((s) => s.length > 0);
+
+      for (const stmt of statements) {
+        await client.$executeRawUnsafe(stmt);
       }
-      let dbPath = decodeURIComponent(url.pathname);
-      // On Windows, file: URLs produce paths like "/C:/path"
-      if (
-        process.platform === 'win32' &&
-        dbPath.startsWith('/') &&
-        dbPath[2] === ':'
-      ) {
-        dbPath = dbPath.slice(1);
-      }
-      console.log('[Database] Using BLOOM_DATABASE_URL:', dbPath);
-      return dbPath;
-    } catch {
-      // Fallback for legacy format
-      const dbPath = process.env.BLOOM_DATABASE_URL.replace(/^file:\/?\/?/, '');
-      console.log(
-        '[Database] Using BLOOM_DATABASE_URL (legacy format):',
-        dbPath
+
+      // Record migration as applied
+      const { randomUUID } = require('crypto');
+      const id = randomUUID();
+      await client.$executeRawUnsafe(
+        `INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, applied_steps_count)
+         VALUES (?, ?, datetime('now'), ?, 1)`,
+        id,
+        'bundled',
+        entry.name
       );
-      return dbPath;
+
+      migrationsRun++;
+      console.log(`[Database] Applied migration: ${entry.name}`);
+    } catch (error) {
+      console.error(`[Database] Migration ${entry.name} failed:`, error);
+      throw error;
     }
   }
 
-  // NODE_ENV-based defaults
-  const isDev = process.env.NODE_ENV === 'development';
-  const homeDir = app.getPath('home');
-
-  if (isDev) {
-    const bloomDir = path.join(homeDir, '.bloom');
-    if (!fs.existsSync(bloomDir)) {
-      console.log('[Database] Creating ~/.bloom directory:', bloomDir);
-      fs.mkdirSync(bloomDir, { recursive: true });
-    }
-    const dbPath = path.join(bloomDir, 'dev.db');
-    console.log('[Database] Development mode - using:', dbPath);
-    return dbPath;
+  if (migrationsRun > 0) {
+    console.log(`[Database] Applied ${migrationsRun} migration(s)`);
   } else {
-    const bloomDir = path.join(homeDir, '.bloom', 'data');
-    if (!fs.existsSync(bloomDir)) {
-      console.log('[Database] Creating data directory:', bloomDir);
-      fs.mkdirSync(bloomDir, { recursive: true });
-    }
-    const dbPath = path.join(bloomDir, 'bloom.db');
-    console.log('[Database] Production mode - using:', dbPath);
-    return dbPath;
+    console.log('[Database] All migrations already applied');
   }
 }
 
 /**
- * Initialize the database asynchronously.
- *
- * This creates the Prisma Client and connects to the database.
- * Database schema should be set up externally via `prisma migrate deploy`
- * or `prisma db push` before the app runs.
- *
- * @param customPath - Optional custom database path (for testing)
- * @returns PrismaClient instance
- */
-export async function initializeDatabaseAsync(
-  customPath?: string
-): Promise<InstanceType<typeof PrismaClientType>> {
-  if (prisma) {
-    console.log('[Database] Already initialized');
-    return prisma;
-  }
-
-  const dbPath = getDatabasePath(customPath);
-
-  // E2E tests: Add a delay to allow Playwright's remote debugging
-  // connection to stabilize before the app fully initializes. Without this
-  // delay, tests fail intermittently because the Electron app starts processing
-  // before Playwright has fully connected via the debugging port.
-  // 500ms is required for both local and CI environments - 100ms is not sufficient.
-  // See: docs/E2E_TESTING.md and commit daaba62
-  if (process.env.E2E_TEST === 'true') {
-    const delay = 500;
-    console.log(
-      `[Database] E2E mode - ${delay}ms delay for Playwright connection`
-    );
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-
-  // Create Prisma Client
-  const PrismaClient = loadPrismaClient();
-  const dbUrl = `file:${dbPath}`;
-
-  prisma = new PrismaClient({
-    datasources: {
-      db: { url: dbUrl },
-    },
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-  });
-
-  console.log('[Database] Initialized at:', dbPath);
-  return prisma;
-}
-
-/**
- * Initialize the database and ensure data directory exists (sync version).
- *
- * NOTE: This is the legacy synchronous version. For new code, prefer
- * initializeDatabaseAsync() which includes auto-schema setup.
+ * Initialize the database and ensure data directory exists.
  *
  * Creates the database directory if it doesn't exist and initializes
  * the Prisma Client. In production, database is stored at:
@@ -284,9 +246,9 @@ export async function initializeDatabaseAsync(
  * @param customPath - Optional custom database path (for testing)
  * @returns PrismaClient instance
  */
-export function initializeDatabase(
+export async function initializeDatabase(
   customPath?: string
-): InstanceType<typeof PrismaClientType> {
+): Promise<InstanceType<typeof PrismaClientType>> {
   if (prisma) {
     console.log('[Database] Already initialized');
     return prisma;
@@ -310,10 +272,13 @@ export function initializeDatabase(
     // This is a common developer-friendly format but file:// URLs only support absolute paths
     const relativeMatch = envUrl.match(/^file:(\.\.?\/.*)$/);
     if (relativeMatch) {
-      const relativePath = relativeMatch[1]; // "./prisma/dev.db"
-      dbPath = path.resolve(app.getAppPath(), relativePath);
+      const relativePath = relativeMatch[1]; // "./dev.db"
+      // Prisma CLI resolves relative paths from the schema directory (prisma/),
+      // so we must do the same to ensure both use the same database file
+      const prismaDir = path.resolve(app.getAppPath(), 'prisma');
+      dbPath = path.resolve(prismaDir, relativePath);
       console.log(
-        '[Database] Using BLOOM_DATABASE_URL (relative):',
+        '[Database] Using BLOOM_DATABASE_URL (relative to prisma/):',
         relativePath,
         '->',
         dbPath
@@ -401,6 +366,9 @@ export function initializeDatabase(
   });
 
   console.log('[Database] Initialized at:', dbPath);
+
+  // Run pending migrations (creates tables on fresh install)
+  await runMigrations(prisma);
 
   return prisma;
 }

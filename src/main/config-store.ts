@@ -150,20 +150,6 @@ export function loadConfig(configPath: string): MachineConfig {
  * @param configPath - Path to config.json file
  */
 export function saveConfig(config: MachineConfig, configPath: string): void {
-  // Auto-create scans directory if it doesn't exist
-  // This eliminates the UX issue where users must manually create the directory
-  if (config.scans_dir && !fs.existsSync(config.scans_dir)) {
-    try {
-      console.log('[Config] Creating scans directory:', config.scans_dir);
-      fs.mkdirSync(config.scans_dir, { recursive: true });
-      console.log('[Config] Scans directory created successfully');
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to create scans directory: ${errorMessage}`);
-    }
-  }
-
   // Ensure parent directory exists
   const dir = path.dirname(configPath);
   if (!fs.existsSync(dir)) {
@@ -319,48 +305,16 @@ export function validateConfig(config: MachineConfig): ValidationResult {
   if (!config.scans_dir || config.scans_dir.trim() === '') {
     errors.scans_dir = 'Scans directory is required';
   } else {
-    // Validate directory exists and is writable, OR parent is writable (for auto-creation)
+    // Validate that directory exists and is writable
     try {
-      if (fs.existsSync(config.scans_dir)) {
-        // Directory exists - check if writable
-        fs.accessSync(config.scans_dir, fs.constants.W_OK);
+      if (!fs.existsSync(config.scans_dir)) {
+        errors.scans_dir = 'Directory does not exist or is not writable';
       } else {
-        // Directory doesn't exist - find first existing ancestor and check writability
-        // This allows auto-creation with recursive: true
-        const checkPath = config.scans_dir;
-        let parentPath = path.dirname(checkPath);
-
-        // Walk up directory tree until we find an existing directory
-        while (
-          !fs.existsSync(parentPath) &&
-          parentPath !== path.dirname(parentPath)
-        ) {
-          parentPath = path.dirname(parentPath);
-        }
-
-        // Check if the first existing ancestor is writable
-        if (fs.existsSync(parentPath)) {
-          fs.accessSync(parentPath, fs.constants.W_OK);
-        } else {
-          // No existing ancestor found (invalid path)
-          errors.scans_dir = `Cannot create directory - invalid path: ${config.scans_dir}`;
-        }
+        // Check if directory is writable
+        fs.accessSync(config.scans_dir, fs.constants.W_OK);
       }
     } catch {
-      // Permission denied or other error
-      if (fs.existsSync(config.scans_dir)) {
-        errors.scans_dir = 'Directory is not writable';
-      } else {
-        // Find parent for error message
-        let parentPath = path.dirname(config.scans_dir);
-        while (
-          !fs.existsSync(parentPath) &&
-          parentPath !== path.dirname(parentPath)
-        ) {
-          parentPath = path.dirname(parentPath);
-        }
-        errors.scans_dir = `Cannot create directory - parent is not writable: ${parentPath}`;
-      }
+      errors.scans_dir = 'Directory does not exist or is not writable';
     }
   }
 
@@ -493,20 +447,6 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  // Auto-create scans directory if it doesn't exist
-  // This eliminates the UX issue where users must manually create the directory
-  if (config.scans_dir && !fs.existsSync(config.scans_dir)) {
-    try {
-      console.log('[Config] Creating scans directory:', config.scans_dir);
-      fs.mkdirSync(config.scans_dir, { recursive: true });
-      console.log('[Config] Scans directory created successfully');
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.error('[Config] Failed to create scans directory:', errorMessage);
-    }
-  }
-
   // Write KEY=value format with sections
   const content = [
     '# Machine Configuration',
@@ -554,10 +494,11 @@ export async function fetchScannersFromBloom(
     const supabase = createClient(apiUrl, credentials.bloom_anon_key);
 
     // Authenticate with email/password
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: credentials.bloom_scanner_username,
-      password: credentials.bloom_scanner_password,
-    });
+    const { data: authData, error: authError } =
+      await supabase.auth.signInWithPassword({
+        email: credentials.bloom_scanner_username,
+        password: credentials.bloom_scanner_password,
+      });
 
     if (authError) {
       return {

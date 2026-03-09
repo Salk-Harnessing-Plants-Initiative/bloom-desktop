@@ -6,7 +6,7 @@
  * - Sanitizes input (replaces + and spaces with _, strips other special chars)
  * - Shows autocomplete dropdown with matching barcodes from experiment's accession
  * - Validates barcode against accession's plant barcodes
- * - Auto-populates accession name via callback when valid barcode is selected
+ * - Auto-populates genotype ID via callback when valid barcode is selected
  * - Supports keyboard navigation (arrow keys, enter, escape)
  */
 
@@ -17,8 +17,8 @@ export interface PlantBarcodeInputProps {
   value: string;
   /** Callback when barcode changes */
   onChange: (barcode: string) => void;
-  /** Callback when accession name is found for the barcode */
-  onAccessionNameFound?: (accessionName: string | null) => void;
+  /** Callback when genotype ID is found for the barcode */
+  onGenotypeIdFound?: (genotypeId: string | null) => void;
   /** Callback when validation state changes */
   onValidationChange?: (isValid: boolean, error?: string) => void;
   /** The selected experiment ID (used to get accession) */
@@ -53,7 +53,7 @@ export function sanitizePlantBarcode(input: string): string {
 export function PlantBarcodeInput({
   value,
   onChange,
-  onAccessionNameFound,
+  onGenotypeIdFound,
   onValidationChange,
   experimentId,
   accessionId,
@@ -125,18 +125,8 @@ export function PlantBarcodeInput({
   // Validate barcode against accession
   const validateBarcode = useCallback(
     (barcode: string) => {
-      // STRICT VALIDATION: Accession file is REQUIRED for scanning (pilot parity)
-      // If no accession is linked to the experiment, validation fails
-      if (!accessionId) {
-        const error = 'Accession file required';
-        setValidationError(error);
-        onValidationChange?.(false, error);
-        return false;
-      }
-
-      // Wait for plant barcodes to load
-      if (plantBarcodes.length === 0) {
-        // Still loading or accession has no mappings
+      // Skip validation if no accession (user can enter any barcode)
+      if (!accessionId || plantBarcodes.length === 0) {
         setValidationError(null);
         onValidationChange?.(true);
         return true;
@@ -168,33 +158,33 @@ export function PlantBarcodeInput({
     [accessionId, plantBarcodes, onValidationChange]
   );
 
-  // Look up accession name when barcode changes
+  // Look up genotype ID when barcode changes
   useEffect(() => {
-    const lookupAccessionName = async () => {
+    const lookupGenotypeId = async () => {
       if (!experimentId || !value.trim()) {
-        onAccessionNameFound?.(null);
+        onGenotypeIdFound?.(null);
         return;
       }
 
       try {
         const result =
-          await window.electron.database.accessions.getAccessionNameByBarcode(
+          await window.electron.database.accessions.getGenotypeByBarcode(
             value,
             experimentId
           );
         if (result.success) {
-          onAccessionNameFound?.(result.data ?? null);
+          onGenotypeIdFound?.(result.data ?? null);
         } else {
-          onAccessionNameFound?.(null);
+          onGenotypeIdFound?.(null);
         }
       } catch (error) {
-        console.error('Failed to look up accession name:', error);
-        onAccessionNameFound?.(null);
+        console.error('Failed to look up genotype ID:', error);
+        onGenotypeIdFound?.(null);
       }
     };
 
-    lookupAccessionName();
-  }, [value, experimentId]); // onAccessionNameFound omitted from deps - it's a callback, not data
+    lookupGenotypeId();
+  }, [value, experimentId]); // onGenotypeIdFound omitted from deps - it's a callback, not data
 
   // Validate on value change
   useEffect(() => {

@@ -5,9 +5,7 @@ Simulates a Basler camera by loading test images from disk.
 Useful for development and testing without requiring actual camera hardware.
 """
 
-import asyncio
 import base64
-from concurrent.futures import ThreadPoolExecutor
 import glob
 from io import BytesIO
 import os
@@ -233,103 +231,3 @@ class MockCamera:
 
         return f"data:image/png;base64,{base64_data}"
 
-
-async def save_image_async(
-    executor: ThreadPoolExecutor, output_path: pathlib.Path, idx: int, array: np.ndarray
-) -> None:
-    """Asynchronously save an image to disk.
-
-    Args:
-        executor: Thread pool executor
-        output_path: Output file path
-        idx: Frame index
-        array: Image array to save
-    """
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(executor, iio.imwrite, str(output_path), array)
-
-
-async def parallel_imwrite(
-    images: List[np.ndarray], output_dir: pathlib.Path
-) -> List[str]:
-    """Write multiple images to disk in parallel.
-
-    Args:
-        images: List of image arrays
-        output_dir: Output directory path
-
-    Returns:
-        List of output file paths
-    """
-    image_paths = [f"{idx + 1:03d}.png" for idx in range(len(images))]
-    output_paths = [output_dir / image_path for image_path in image_paths]
-
-    # Create a ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        # Schedule all the save operations to run asynchronously
-        tasks = [
-            save_image_async(executor, output_paths[idx], idx, array)
-            for idx, array in enumerate(images)
-        ]
-        # Wait for all scheduled tasks to complete
-        await asyncio.gather(*tasks)
-
-    # Print image paths after saving
-    for image_path in image_paths:
-        print(f"IMAGE_PATH {image_path}", flush=True)
-        time.sleep(0.01)
-
-    return [str(p) for p in output_paths]
-
-
-def run_mock_camera_capture(
-    output_dir: str, camera_settings: Dict[str, Any]
-) -> List[str]:
-    """Run mock camera capture and save images.
-
-    This is the main entry point for the mock camera script.
-
-    Args:
-        output_dir: Directory to save captured images
-        camera_settings: Dictionary of camera settings
-
-    Returns:
-        List of output file paths
-    """
-    # Convert dict to CameraSettings object
-    settings = CameraSettings(**camera_settings)
-
-    output_path = pathlib.Path(output_dir)
-    os.makedirs(output_path, exist_ok=True)
-
-    # Create mock camera and capture frames
-    camera = MockCamera(settings)
-    camera.open()
-
-    try:
-        frames = camera.grab_frames(settings.num_frames)
-    finally:
-        camera.close()
-
-    # Save frames in parallel
-    output_files = asyncio.run(parallel_imwrite(frames, output_path))
-
-    return output_files
-
-
-if __name__ == "__main__":
-    import json
-
-    if len(sys.argv) != 3:
-        print("ERROR:Usage: camera_mock.py <output_dir> <camera_settings_json>")
-        sys.exit(1)
-
-    output_dir = sys.argv[1]
-    camera_settings = json.loads(sys.argv[2])
-
-    try:
-        output_files = run_mock_camera_capture(output_dir, camera_settings)
-        print(f"STATUS:Captured {len(output_files)} frames", flush=True)
-    except Exception as e:
-        print(f"ERROR:{str(e)}", flush=True)
-        sys.exit(1)

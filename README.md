@@ -28,6 +28,7 @@ See [Issue #1](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-deskto
 
 - **Basler Pylon SDK**: Required for camera interface
 - **NI-DAQmx Runtime**: Required for data acquisition
+- **SANE**: Required for GraviScan flatbed scanners (Linux)
 
 ## Project Structure
 
@@ -89,8 +90,17 @@ npm install
 #### Development
 
 ```bash
-# Start development server
+# Start development server (full app)
 npm start
+
+# Start GraviScan mode
+npm run start:app:graviscan
+
+# Start GraviScan with mock hardware (no scanner required)
+npm run start:app:graviscan:mock
+
+# Start CylinderScan mode
+npm run start:app:cylinderscan
 
 # Lint TypeScript/JavaScript files
 npm run lint
@@ -155,6 +165,18 @@ npm run test:scanner
 # Test scanner-database integration
 npm run test:scanner-database
 
+# Test GraviScan IPC communication (mock)
+npm run test:graviscan-ipc
+
+# Test GraviScan interactive scanning
+npm run test:graviscan-interactive
+
+# GraviScan metadata validation (included in test:unit)
+npx vitest run tests/unit/graviMetadataValidation.test.ts
+
+# GraviScan TIFF metadata (included in test:python)
+uv run pytest python/tests/test_tiff_metadata.py -v
+
 # Test database initialization in dev mode
 npm run test:dev:database
 
@@ -185,7 +207,25 @@ npm run package
 
 # Create installers (includes Python executable)
 npm run make
+
+# GraviScan Linux packaging
+npm run package:graviscan:linux
+
+# GraviScan Linux installer
+npm run make:graviscan:linux
 ```
+
+#### App Mode Packaging
+
+The `APP_MODE` environment variable controls how the app is packaged (configured in `forge.config.ts`):
+
+| Mode | App Name | Product Name |
+|------|----------|--------------|
+| `full` (default) | bloom-desktop | Bloom Desktop |
+| `graviscan` | bloom-graviscan | Bloom GraviScan |
+| `cylinderscan` | bloom-cylinderscan | Bloom CylinderScan |
+
+Each mode uses a different app name, product name, and icon. The codebase is shared across all modes.
 
 **Important**: Bloom Desktop uses Prisma ORM, which requires special packaging configuration for Electron. Prisma's binary query engines cannot be bundled inside the ASAR archive and are copied to the `Resources/` directory using dynamic module loading. See [docs/PACKAGING.md](docs/PACKAGING.md) for detailed information on:
 
@@ -205,11 +245,18 @@ npm run make
 | `npm run test:daq`              | Integration test for DAQ interface (mock)         | Python built    |
 | `npm run test:scanner`          | Integration test for scanner workflow (mock)      | Python built    |
 | `npm run test:scanner-database` | Integration test for scanner-database persistence | Python built    |
+| `npm run test:graviscan-ipc`    | GraviScan IPC integration test (mock)             | Python built    |
+| `npm run test:graviscan-interactive` | GraviScan interactive scan test              | Python built    |
 | `npm run test:dev:database`     | Test database initialization in dev mode          | Python built    |
 | `npm run test:package:database` | Test database initialization in packaged app      | Package created |
 | `npm run test:package`          | Verify Python bundled in packaged app             | Package created |
 | `npm run package`               | Create distributable app bundle                   | Python built    |
 | `npm run make`                  | Create platform-specific installers               | Python built    |
+| `npm run package:graviscan:linux` | Package GraviScan for Linux x64                 | Python built    |
+| `npm run make:graviscan:linux`  | Create GraviScan Linux installer                  | Python built    |
+| `npm run start:app:graviscan`   | Launch GraviScan mode in dev                      | None            |
+| `npm run start:app:graviscan:mock` | Launch GraviScan with mock hardware            | None            |
+| `npm run start:app:cylinderscan` | Launch CylinderScan mode in dev                  | None            |
 | `npm run lint`                  | Check TypeScript/JavaScript code style            | None            |
 | `npm run format`                | Auto-format code with Prettier                    | None            |
 | `npm run format:check`          | Check code formatting                             | None            |

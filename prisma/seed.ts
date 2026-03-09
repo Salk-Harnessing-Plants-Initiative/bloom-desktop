@@ -6,6 +6,8 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
 
@@ -54,34 +56,20 @@ async function main() {
   });
   console.log('✓ Created phenotyper:', phenotyper2.name);
 
-  // Create accessions with plant mappings
+  // Create accessions
   const accession1 = await prisma.accessions.create({
     data: {
       name: 'ACC-001-Amaranth-Wild',
-      mappings: {
-        create: [
-          { plant_barcode: 'PLANT-001', accession_name: 'Col-0' },
-          { plant_barcode: 'PLANT-003', accession_name: 'Ws-0' },
-          { plant_barcode: 'PLANT-005', accession_name: 'Ler-0' },
-        ],
-      },
     },
   });
-  console.log('✓ Created accession:', accession1.name, '(3 plant mappings)');
+  console.log('✓ Created accession:', accession1.name);
 
   const accession2 = await prisma.accessions.create({
     data: {
       name: 'ACC-002-Amaranth-Cultivated',
-      mappings: {
-        create: [
-          { plant_barcode: 'PLANT-002', accession_name: 'GT-ABC123' },
-          { plant_barcode: 'PLANT-004', accession_name: 'GT-DEF456' },
-          { plant_barcode: 'PLANT-006', accession_name: 'GT-GHI789' },
-        ],
-      },
     },
   });
-  console.log('✓ Created accession:', accession2.name, '(3 plant mappings)');
+  console.log('✓ Created accession:', accession2.name);
 
   // Create experiments
   const experiment1 = await prisma.experiment.create({
@@ -119,7 +107,7 @@ async function main() {
       phenotyper_id: phenotyper1.id,
       scanner_name: 'Station-A-Lab2',
       plant_id: 'PLANT-001',
-      accession_name: 'Col-0',
+      accession_id: accession1.id,
       path: './scans/drought-stress-2025/PLANT-001_1234567890',
       capture_date: new Date(),
       num_frames: 72,
@@ -138,12 +126,12 @@ async function main() {
 
   const scan2 = await prisma.scan.create({
     data: {
-      experiment_id: experiment2.id,
+      experiment_id: experiment1.id,
       phenotyper_id: phenotyper1.id,
       scanner_name: 'Station-A-Lab2',
       plant_id: 'PLANT-002',
-      accession_name: 'GT-ABC123',
-      path: './scans/salinity-tolerance-2025/PLANT-002_1234567891',
+      accession_id: accession1.id,
+      path: './scans/drought-stress-2025/PLANT-002_1234567891',
       capture_date: new Date(),
       num_frames: 72,
       exposure_time: 10000,

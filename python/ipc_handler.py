@@ -109,6 +109,9 @@ except ImportError:
         MockScanner = None
         ScannerSettings = None
 
+# GraviScan legacy Python modules removed — detection and scanning now handled by
+# TypeScript (lsusb-detection.ts) and per-scanner subprocesses (scan_worker.py).
+
 
 # Global camera instance
 _camera_instance: Optional[Any] = None
@@ -121,6 +124,7 @@ _use_mock_daq = os.environ.get("BLOOM_USE_MOCK_DAQ", "true").lower() == "true"
 # Global Scanner instance
 _scanner_instance: Optional[Any] = None
 _use_mock_hardware = os.environ.get("BLOOM_USE_MOCK_HARDWARE", "true").lower() == "true"
+
 
 # Global streaming state
 _streaming_thread: Optional[threading.Thread] = None

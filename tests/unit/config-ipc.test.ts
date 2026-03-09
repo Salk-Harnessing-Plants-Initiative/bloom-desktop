@@ -5,7 +5,6 @@
  * Uses mocking since we can't easily test actual Electron IPC in unit tests.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -44,16 +43,11 @@ describe('Config IPC Handler Logic', () => {
   describe('config:get handler logic', () => {
     it('should return config and masked credentials when both exist', () => {
       // Setup: Create config and credentials files
-      // Use temp directory path so saveConfig can auto-create it
-      const testScansDir = path.join(TEST_DIR, 'test-scans');
       const config: MachineConfig = {
         scanner_name: 'TestScanner',
         camera_ip_address: '10.0.0.50',
-        scans_dir: testScansDir,
+        scans_dir: '/data/scans',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-        bloom_scanner_username: '',
-        bloom_scanner_password: '',
-        bloom_anon_key: '',
       };
       saveConfig(config, CONFIG_PATH);
 
@@ -118,16 +112,11 @@ describe('Config IPC Handler Logic', () => {
 
   describe('config:set handler logic', () => {
     it('should save valid config and return success', () => {
-      // Use temp directory path so saveConfig can auto-create it
-      const testScansDir = path.join(TEST_DIR, 'new-scans');
       const config: MachineConfig = {
         scanner_name: 'NewScanner',
         camera_ip_address: '192.168.1.100',
-        scans_dir: testScansDir,
+        scans_dir: '/new/scans/path',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-        bloom_scanner_username: '',
-        bloom_scanner_password: '',
-        bloom_anon_key: '',
       };
 
       // Simulate handler logic
@@ -151,16 +140,11 @@ describe('Config IPC Handler Logic', () => {
     });
 
     it('should save credentials when provided', () => {
-      // Use temp directory path so saveConfig can auto-create it
-      const testScansDir = path.join(TEST_DIR, 'scans-with-creds');
       const config: MachineConfig = {
         scanner_name: 'Scanner1',
         camera_ip_address: 'mock',
-        scans_dir: testScansDir,
+        scans_dir: '/scans',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-        bloom_scanner_username: '',
-        bloom_scanner_password: '',
-        bloom_anon_key: '',
       };
 
       const credentials: MachineCredentials = {
@@ -191,16 +175,11 @@ describe('Config IPC Handler Logic', () => {
     });
 
     it('should return validation errors for invalid config', () => {
-      // Use temp directory path (though validation will fail before saveConfig)
-      const testScansDir = path.join(TEST_DIR, 'invalid-scans');
       const config: MachineConfig = {
         scanner_name: '', // Invalid: empty
         camera_ip_address: 'invalid-ip', // Invalid: bad format
-        scans_dir: testScansDir,
+        scans_dir: '/scans',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-        bloom_scanner_username: '',
-        bloom_scanner_password: '',
-        bloom_anon_key: '',
       };
 
       // Simulate handler logic
@@ -313,16 +292,11 @@ describe('Config IPC Handler Logic', () => {
   describe('config:exists handler logic', () => {
     it('should return true when config file exists', () => {
       // Setup: Create config file
-      // Use temp directory path so saveConfig can auto-create it
-      const testScansDir = path.join(TEST_DIR, 'existing-scans');
       const config: MachineConfig = {
         scanner_name: 'ExistingScanner',
         camera_ip_address: 'mock',
-        scans_dir: testScansDir,
+        scans_dir: '/scans',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
-        bloom_scanner_username: '',
-        bloom_scanner_password: '',
-        bloom_anon_key: '',
       };
       saveConfig(config, CONFIG_PATH);
 

@@ -9,13 +9,13 @@ import { EventEmitter } from 'events';
 import { PythonProcess } from './python-process';
 import { getDatabase } from './database';
 import * as fs from 'fs';
+import * as path from 'path';
 import type {
   ScannerSettings,
   ScanResult,
   ScannerStatus,
   ScanProgress,
 } from '../types/scanner';
-import { writeMetadataJson } from './scan-metadata-json';
 
 /**
  * Scanner process manager for coordinated scanning operations.
@@ -94,23 +94,6 @@ export class ScannerProcess extends EventEmitter {
   async scan(): Promise<ScanResult> {
     // Reset progress events for new scan
     this.progressEvents = [];
-
-    // Write metadata.json BEFORE scan command so metadata travels with images
-    if (this.currentSettings?.metadata && this.currentSettings?.output_path) {
-      try {
-        writeMetadataJson(
-          this.currentSettings.output_path,
-          this.currentSettings
-        );
-        console.log(
-          '[Scanner] metadata.json written to:',
-          this.currentSettings.output_path
-        );
-      } catch (error) {
-        console.warn('[Scanner] Failed to write metadata.json:', error);
-        // Do not abort scan — image capture is the primary operation
-      }
-    }
 
     const result = await this.pythonProcess.sendCommand({
       command: 'scanner',
@@ -206,10 +189,6 @@ export class ScannerProcess extends EventEmitter {
       output_path: scanResult.output_path,
     });
 
-    // Use relative scan path from metadata (set by CaptureScan)
-    // Matches pilot behavior: Scan.path stores relative path (e.g., "2026-03-04/PLANT-001/uuid")
-    const relativeScanPath = metadata.scan_path || scanResult.output_path;
-
     // Read actual image files from output directory
     // This is more reliable than progress events since files are guaranteed to exist
     const images = [];
@@ -220,19 +199,15 @@ export class ScannerProcess extends EventEmitter {
         .sort(); // Sort to ensure correct order
 
       for (const file of files) {
-        // Store relative image path (e.g., "2026-03-04/PLANT-001/uuid/001.png")
-        // Matches pilot behavior: scanner.ts line 89
-        const imagePath = `${relativeScanPath}/${file}`;
-        // Extract frame number from filename (e.g., "001.png" -> 1)
-        // Pilot-compatible naming: NNN.png where NNN is 1-indexed
-        // Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
-        const frameMatch = file.match(/^(\d+)\.png$/);
+        const imagePath = path.join(scanResult.output_path, file);
+        // Extract frame number from filename (e.g., "frame_0000.png" -> 0)
+        const frameMatch = file.match(/frame_(\d+)/);
         if (frameMatch) {
           const frameNumber = parseInt(frameMatch[1], 10);
           images.push({
-            frame_number: frameNumber, // Already 1-indexed (pilot compatible)
+            frame_number: frameNumber + 1, // Convert 0-indexed to 1-indexed (pilot compatible)
             path: imagePath,
-            status: 'pending',
+            status: 'CAPTURED',
           });
         }
       }
@@ -250,17 +225,17 @@ export class ScannerProcess extends EventEmitter {
         phenotyper_id: metadata.phenotyper_id,
         scanner_name: metadata.scanner_name,
         plant_id: metadata.plant_id,
-        accession_name: metadata.accession_name,
+        accession_id: metadata.accession_id,
         plant_age_days: metadata.plant_age_days,
         wave_number: metadata.wave_number,
 
-        // Scan parameters — store relative path (pilot compatible)
-        path: relativeScanPath,
+        // Scan parameters
+        path: scanResult.output_path,
         num_frames: scanResult.frames_captured,
         exposure_time: cameraSettings.exposure_time,
         gain: cameraSettings.gain,
         brightness: cameraSettings.brightness ?? 0,
-        contrast: cameraSettings.contrast ?? 0,
+        contrast: cameraSettings.contrast ?? 1,
         gamma: cameraSettings.gamma ?? 1,
         seconds_per_rot: settings.daq.seconds_per_rot,
 

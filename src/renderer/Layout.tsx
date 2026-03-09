@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 
-const links = [
+const allLinks = [
   {
     to: '/',
     label: 'Home',
+    mode: 'all' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -23,8 +24,9 @@ const links = [
     ),
   },
   {
-    to: '/capture-scan',
-    label: 'Capture Scan',
+    to: '/scanning',
+    label: 'Scanning',
+    mode: 'all' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -45,6 +47,7 @@ const links = [
   {
     to: '/browse-scans',
     label: 'Browse Scans',
+    mode: 'all' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -57,7 +60,7 @@ const links = [
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
-          d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
+          d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5a1.5 1.5 0 0 0 1.5-1.5V5.25a1.5 1.5 0 0 0-1.5-1.5H3.75a1.5 1.5 0 0 0-1.5 1.5v14.25a1.5 1.5 0 0 0 1.5 1.5ZM8.625 10.125a1.875 1.875 0 1 1-3.75 0 1.875 1.875 0 0 1 3.75 0Z"
         />
       </svg>
     ),
@@ -65,6 +68,7 @@ const links = [
   {
     to: '/camera-settings',
     label: 'Camera Settings',
+    mode: 'cylinderscan' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -90,6 +94,7 @@ const links = [
   {
     to: '/scientists',
     label: 'Scientists',
+    mode: 'all' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -110,6 +115,7 @@ const links = [
   {
     to: '/phenotypers',
     label: 'Phenotypers',
+    mode: 'all' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -128,8 +134,9 @@ const links = [
     ),
   },
   {
-    to: '/accessions',
-    label: 'Accessions',
+    to: '/metadata',
+    label: 'Metadata',
+    mode: 'all' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -150,6 +157,7 @@ const links = [
   {
     to: '/experiments',
     label: 'Experiments',
+    mode: 'all' as const,
     icon: (
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -169,9 +177,21 @@ const links = [
   },
 ];
 
+const links = allLinks.filter(
+  (link) => link.mode === 'all' || link.mode === APP_MODE || APP_MODE === 'full'
+);
+
 export function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [scannerName, setScannerName] = useState<string>('');
+  const [scanStatus, setScanStatus] = useState<{
+    isActive: boolean;
+    currentCycle?: number;
+    totalCycles?: number;
+    coordinatorState?: string;
+    isContinuous?: boolean;
+  } | null>(null);
 
   // Load scanner name from scanner identity service
   useEffect(() => {
@@ -200,9 +220,7 @@ export function Layout() {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const modifier = isMac ? event.metaKey : event.ctrlKey;
 
-      // Use event.code for layout-independent key detection
-      // (Shift+Comma produces different event.key on different layouts)
-      if (modifier && event.shiftKey && event.code === 'Comma') {
+      if (modifier && event.shiftKey && event.key === ',') {
         event.preventDefault();
         navigate('/machine-config');
       }
@@ -212,13 +230,31 @@ export function Layout() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigate]);
 
+  // Poll scan status for global progress indicator
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const status = await window.electron.graviscan.getScanStatus();
+        setScanStatus(status.isActive ? status : null);
+      } catch {
+        setScanStatus(null);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6">
           <h1 className="text-2xl font-bold text-gray-800">Bloom Desktop</h1>
-          <p className="text-sm text-gray-500 mt-1">Cylinder Scanner</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {APP_MODE === 'graviscan' ? 'GraviScan' : APP_MODE === 'cylinderscan' ? 'Cylinder Scanner' : 'Plant Scanner'}
+          </p>
         </div>
 
         <nav className="mt-6 flex-1">
@@ -251,6 +287,24 @@ export function Layout() {
 
       {/* Main content */}
       <div className="flex-1 overflow-auto">
+        {scanStatus?.isActive && location.pathname !== '/scanning' && (
+          <div
+            onClick={() => navigate('/scanning')}
+            className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-blue-700 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="animate-pulse inline-block w-2 h-2 bg-white rounded-full" />
+              <span className="text-sm font-medium">
+                Scan in Progress
+                {scanStatus.isContinuous && scanStatus.currentCycle && scanStatus.totalCycles
+                  ? ` — Cycle ${scanStatus.currentCycle}/${scanStatus.totalCycles}`
+                  : ''}
+                {scanStatus.coordinatorState === 'waiting' ? ' (waiting for next cycle)' : ''}
+              </span>
+            </div>
+            <span className="text-xs opacity-80">Click to view</span>
+          </div>
+        )}
         <Outlet />
       </div>
     </div>

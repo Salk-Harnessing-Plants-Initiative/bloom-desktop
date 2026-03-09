@@ -74,15 +74,40 @@ def ipc_mode():
     run_ipc_loop()
 
 
+def scan_worker_mode():
+    """Run as a per-scanner scan worker subprocess.
+
+    Delegates to graviscan.scan_worker.main(), which parses its own
+    --scanner-id, --device, and --mock arguments from sys.argv.
+    """
+    import sys
+
+    # Remove '--scan-worker' from argv so scan_worker's argparse sees only its own args
+    sys.argv = [sys.argv[0]] + sys.argv[sys.argv.index("--scan-worker") + 1 :]
+
+    try:
+        from python.graviscan.scan_worker import main as worker_main
+    except ModuleNotFoundError:
+        from graviscan.scan_worker import main as worker_main  # type: ignore[import-not-found]
+    worker_main()
+
+
 def main():
-    """Main entry point - routes to interactive or IPC mode."""
+    """Main entry point - routes to interactive, IPC, or scan worker mode."""
     parser = argparse.ArgumentParser(description="Bloom Hardware Interface")
     parser.add_argument(
         "--ipc", action="store_true", help="Run in IPC mode for Electron communication"
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--scan-worker",
+        action="store_true",
+        help="Run as a per-scanner scan worker (pass --scanner-id, --device, --mock after this flag)",
+    )
+    args, _ = parser.parse_known_args()
 
-    if args.ipc:
+    if args.scan_worker:
+        scan_worker_mode()
+    elif args.ipc:
         ipc_mode()
     else:
         interactive_mode()

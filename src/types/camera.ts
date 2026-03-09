@@ -102,14 +102,6 @@ export interface DetectedCamera {
 }
 
 /**
- * Camera detection response
- */
-export interface CameraDetectionResponse {
-  cameras: DetectedCamera[];
-  count: number;
-}
-
-/**
  * Default camera settings
  *
  * These are sensible default values for the Basler camera.

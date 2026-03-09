@@ -39,9 +39,9 @@ export function AccessionFileUpload({
   const [columns, setColumns] = useState<string[]>([]);
   const [data, setData] = useState<string[][]>([]);
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
-  const [selectedAccessionCol, setSelectedAccessionCol] = useState<
-    string | null
-  >(null);
+  const [selectedGenotypeId, setSelectedGenotypeId] = useState<string | null>(
+    null
+  );
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
@@ -49,7 +49,7 @@ export function AccessionFileUpload({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isUploadDisabled = !selectedPlantId || !selectedAccessionCol;
+  const isUploadDisabled = !selectedPlantId || !selectedGenotypeId;
   const hasFile = fileName !== null;
   const hasMultipleSheets = sheetNames.length > 1;
 
@@ -66,7 +66,7 @@ export function AccessionFileUpload({
     setColumns([]);
     setData([]);
     setSelectedPlantId(null);
-    setSelectedAccessionCol(null);
+    setSelectedGenotypeId(null);
     setIsUploading(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -99,7 +99,7 @@ export function AccessionFileUpload({
 
       // Reset column selections when sheet changes
       setSelectedPlantId(null);
-      setSelectedAccessionCol(null);
+      setSelectedGenotypeId(null);
     },
     []
   );
@@ -190,7 +190,7 @@ export function AccessionFileUpload({
   const handleUpload = useCallback(async () => {
     if (
       !selectedPlantId ||
-      !selectedAccessionCol ||
+      !selectedGenotypeId ||
       !workbookRef.current ||
       !selectedSheet
     ) {
@@ -214,26 +214,26 @@ export function AccessionFileUpload({
 
       const headers = allData[0] || [];
       const plantIdIndex = headers.indexOf(selectedPlantId);
-      const accessionNameIndex = headers.indexOf(selectedAccessionCol);
+      const genotypeIdIndex = headers.indexOf(selectedGenotypeId);
 
-      if (plantIdIndex === -1 || accessionNameIndex === -1) {
+      if (plantIdIndex === -1 || genotypeIdIndex === -1) {
         setError('Selected columns not found');
         setIsUploading(false);
         return;
       }
 
       // Build mappings array (skip header row)
-      const mappings: { plant_barcode: string; accession_name: string }[] = [];
+      const mappings: { plant_barcode: string; genotype_id: string }[] = [];
       for (let i = 1; i < allData.length; i++) {
         const row = allData[i] || [];
         const plantBarcode = String(row[plantIdIndex] ?? '').trim();
-        const accessionName = String(row[accessionNameIndex] ?? '').trim();
+        const genotypeId = String(row[genotypeIdIndex] ?? '').trim();
 
-        // Skip rows with empty plant barcode or accession name
-        if (plantBarcode && accessionName) {
+        // Skip rows with empty plant barcode or genotype
+        if (plantBarcode && genotypeId) {
           mappings.push({
             plant_barcode: plantBarcode,
-            accession_name: accessionName,
+            genotype_id: genotypeId,
           });
         }
       }
@@ -269,7 +269,7 @@ export function AccessionFileUpload({
     }
   }, [
     selectedPlantId,
-    selectedAccessionCol,
+    selectedGenotypeId,
     selectedSheet,
     fileName,
     resetForm,
@@ -283,7 +283,7 @@ export function AccessionFileUpload({
     if (columnName === selectedPlantId) {
       return 'bg-green-200';
     }
-    if (columnName === selectedAccessionCol) {
+    if (columnName === selectedGenotypeId) {
       return 'bg-blue-200';
     }
     return '';
@@ -296,8 +296,8 @@ export function AccessionFileUpload({
     if (columnName === selectedPlantId) {
       return '🌱 Plant ID';
     }
-    if (columnName === selectedAccessionCol) {
-      return '🏷️ Accession';
+    if (columnName === selectedGenotypeId) {
+      return '🏷️ Genotype ID';
     }
     return null;
   };
@@ -418,14 +418,12 @@ export function AccessionFileUpload({
 
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-gray-700">
-                Select Accession Column:
+                Select Genotype ID Column:
               </label>
               <select
-                data-testid="accession-selector"
-                value={selectedAccessionCol || ''}
-                onChange={(e) =>
-                  setSelectedAccessionCol(e.target.value || null)
-                }
+                data-testid="genotype-selector"
+                value={selectedGenotypeId || ''}
+                onChange={(e) => setSelectedGenotypeId(e.target.value || null)}
                 className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select...</option>

@@ -10,12 +10,17 @@ interface Scientist {
 interface Accession {
   id: string;
   name: string;
+  _count?: {
+    mappings: number;
+    graviPlateAccessions: number;
+  };
 }
 
 interface ExperimentWithScientist {
   id: string;
   name: string;
   species: string;
+  experiment_type?: string;
   scientist?: Scientist | null;
   accession?: Accession | null;
 }
@@ -47,7 +52,11 @@ export function Experiments() {
       const data = result.data as ExperimentWithScientist[];
       // Sort by name alphabetically
       const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
-      setExperiments(sorted);
+      // Filter by experiment type in single-mode builds
+      const filtered = APP_MODE !== 'full'
+        ? sorted.filter((exp) => exp.experiment_type === APP_MODE)
+        : sorted;
+      setExperiments(filtered);
 
       // Set default attach experiment if available (only if not already set)
       if (sorted.length > 0) {
@@ -227,11 +236,19 @@ export function Experiments() {
               {accessions.length === 0 ? (
                 <option value="">No accessions available</option>
               ) : (
-                accessions.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name} - {acc.id}
-                  </option>
-                ))
+                accessions.map((acc) => {
+                  const type =
+                    acc._count?.graviPlateAccessions
+                      ? 'GraviScan'
+                      : acc._count?.mappings
+                        ? 'CylScan'
+                        : '';
+                  return (
+                    <option key={acc.id} value={acc.id}>
+                      {type ? `[${type}] ` : ''}{acc.name}
+                    </option>
+                  );
+                })
               )}
             </select>
           </div>
