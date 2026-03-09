@@ -22,6 +22,7 @@ In the pilot, experiment creation requires a scientist and accession file. In bl
 ### No Database Schema Change
 
 The Prisma schema keeps `scientist_id String?` and `accession_id String?` as nullable. Rationale:
+
 1. **Pilot alignment**: The pilot schema also uses nullable fields with UI-level enforcement
 2. **Backward compatibility**: Existing experiments without scientist/accession remain queryable
 3. **Attach-after-create flow**: The "Attach Accession" feature on the Experiments page still works for legacy data
