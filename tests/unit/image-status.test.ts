@@ -37,14 +37,16 @@ describe('ImageStatus type', () => {
   });
 
   it('should reject invalid status strings at compile time', () => {
-    // This test documents the compile-time safety guarantee.
-    // We verify this by using @ts-expect-error — if the type ever
-    // accepts these strings, TypeScript will report an "unused directive" error.
+    // This test documents the intended compile-time safety guarantee.
+    // We use @ts-expect-error to express that these assignments should remain
+    // invalid; if a TypeScript typechecker is run over this file and the type
+    // is ever widened to accept these strings, it will report an "unused
+    // directive" error.
     //
-    // Note: tsconfig.json excludes tests/, so `npx tsc --noEmit` does not check
-    // these directives. However, Vitest's built-in TS transpilation DOES validate
-    // them — an unused @ts-expect-error causes a Vitest compile error, so these
-    // tests fail if the type constraint is accidentally relaxed.
+    // Note: tests/ are excluded from the main tsconfig, and Vitest is not
+    // configured to run typechecking on test files. These directives act as
+    // documentation-only unless an explicit typecheck step for tests is added
+    // (e.g. separate tsconfig, Vitest typecheck, or a dedicated type-test tool).
 
     // @ts-expect-error 'CAPTURED' is not assignable to ImageStatus
     const _captured: ImageStatus = 'CAPTURED';
