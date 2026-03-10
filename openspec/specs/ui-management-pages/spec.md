@@ -3,9 +3,7 @@
 ## Purpose
 
 This specification defines the requirements for the UI management pages for both Scientists and Phenotypers. It covers the functionality and user experience for listing, creating, editing, and deleting Scientists and Phenotypers, ensuring that users can efficiently manage these entities through intuitive interfaces, robust validation, and clear feedback. The goal is to provide a unified, consistent, and reliable management experience for both Scientists and Phenotypers within the application.
-
 ## Requirements
-
 ### Requirement: Scientists List View
 
 The Scientists page SHALL display all scientists from the database in a clean, readable list format, with support for both empty and populated states.
@@ -514,26 +512,26 @@ The Experiments page SHALL display all experiments from the database in a clean,
 
 ### Requirement: Create Experiment
 
-The Experiments page MUST allow users to create new experiments with validation (name required, species required) and optional scientist/accession linking.
+The Experiments page MUST allow users to create new experiments with validation (name required, species required, scientist required, accession required).
 
 #### Scenario: Valid Submission
 
 **Given** the user is on the `/experiments` page
 **When** the user enters a valid name (e.g., "Drought Study 2025")
 **And** the user selects a species from the dropdown
-**And** the user optionally selects a scientist
-**And** the user optionally selects an accession
+**And** the user selects a scientist from the dropdown
+**And** the user selects an accession from the dropdown
 **And** the user clicks "Create" button
-**Then** the experiment is created in the database
+**Then** the experiment is created in the database with scientist and accession linked
 **And** the form fields are cleared
 **And** the experiments list refreshes to show the new entry
 
 **Acceptance Criteria**:
 
-- Name is trimmed of leading/trailing whitespace
+- Name is trimmed of leading/trailing whitespace at the validation level
 - Species is required (dropdown, no empty option after selection)
-- Scientist is optional (dropdown from scientists list)
-- Accession is optional (dropdown from accessions list)
+- Scientist is required (dropdown from scientists list)
+- Accession is required (dropdown from accessions list)
 - Loading indicator appears during submission
 - IPC call completes successfully
 - New experiment appears in list without page refresh
@@ -552,33 +550,51 @@ The Experiments page MUST allow users to create new experiments with validation 
 - Form remains populated with selected values
 - Submit button can be clicked again after fixing error
 
+#### Scenario: Validation Failure - Whitespace-Only Name
+
+**Given** the user is on the `/experiments` page
+**When** the user enters only whitespace characters (e.g. " ")
+**And** the user selects a scientist and accession
+**And** the user clicks "Create" button
+**Then** form submission is prevented
+**And** an error message "Name is required" appears
+
+**Acceptance Criteria**:
+
+- Whitespace is trimmed before min-length validation
+- No IPC call is made to the database
+- Other form fields retain their values
+
+#### Scenario: Validation Failure - No Scientist Selected
+
+**Given** the user is on the `/experiments` page
+**And** scientists exist in the database
+**When** the user fills in name and species
+**And** the user does not select a scientist
+**And** the user clicks "Create" button
+**Then** form submission is prevented
+**And** an error message "Scientist is required" appears near the scientist field
+
+#### Scenario: Validation Failure - No Accession Selected
+
+**Given** the user is on the `/experiments` page
+**And** accessions exist in the database
+**When** the user fills in name, species, and scientist
+**And** the user does not select an accession
+**And** the user clicks "Create" button
+**Then** form submission is prevented
+**And** an error message "Accession is required" appears near the accession field
+
 #### Scenario: Species Dropdown
 
 **Given** the user is on the `/experiments` page
 **When** the user views the species dropdown
-**Then** the following species are available (alphabetically sorted):
-
-- Alfalfa
-- Amaranth
-- Arabidopsis
-- Canola
-- Lotus
-- Maize
-- Medicago
-- Pennycress
-- Rice
-- Sorghum
-- Soybean
-- Spinach
-- Sugar_Beet
-- Tomato
-- Wheat
+**Then** all supported species are available for selection
 
 **Acceptance Criteria**:
 
-- Dropdown pre-selects first species by default
-- All 15 species available
-- Species are sorted alphabetically
+- Dropdown pre-selects the first species
+- All 15 species are listed alphabetically
 
 ### Requirement: Attach Accession to Existing Experiment
 
@@ -1655,3 +1671,4 @@ The system SHALL validate date filter inputs in the scan list handler. Malformed
 
 - **WHEN** a valid ISO date string (e.g., `'2025-02-17'`) is passed as dateFrom
 - **THEN** the system parses it correctly and filters scans accordingly
+
