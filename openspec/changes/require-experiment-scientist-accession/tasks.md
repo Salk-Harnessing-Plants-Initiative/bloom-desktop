@@ -29,4 +29,4 @@ Tests are written first, verified to fail against current code, then implementat
 ### Phase 4: Verify No Regressions
 
 - [x] 4.1 Run full unit test suite (368 passed, 9 skipped, 0 failed)
-- [ ] 4.2 Run E2E test suite (requires dev server — run manually)
+- [x] 4.2 Run E2E test suite (25/25 passed)

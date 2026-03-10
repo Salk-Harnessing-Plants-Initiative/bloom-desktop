@@ -35,7 +35,7 @@ beforeEach(() => {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
-  if (win && win.electron) {
+  if (win && win.electron && win.electron.database) {
     win.electron.database.experiments = {
       create: mockCreate,
     };
@@ -46,17 +46,21 @@ beforeEach(() => {
  * Helper to get form elements by their stable IDs (independent of label text)
  */
 function getFormElements() {
+  const nameInput = document.getElementById('experiment-name');
+  const speciesSelect = document.getElementById('species-select');
+  const scientistSelect = document.getElementById('scientist-select');
+  const accessionSelect = document.getElementById('accession-select');
+
+  if (!nameInput) throw new Error('experiment-name input not found');
+  if (!speciesSelect) throw new Error('species-select not found');
+  if (!scientistSelect) throw new Error('scientist-select not found');
+  if (!accessionSelect) throw new Error('accession-select not found');
+
   return {
-    nameInput: document.getElementById('experiment-name') as HTMLInputElement,
-    speciesSelect: document.getElementById(
-      'species-select'
-    ) as HTMLSelectElement,
-    scientistSelect: document.getElementById(
-      'scientist-select'
-    ) as HTMLSelectElement,
-    accessionSelect: document.getElementById(
-      'accession-select'
-    ) as HTMLSelectElement,
+    nameInput: nameInput as HTMLInputElement,
+    speciesSelect: speciesSelect as HTMLSelectElement,
+    scientistSelect: scientistSelect as HTMLSelectElement,
+    accessionSelect: accessionSelect as HTMLSelectElement,
     submitButton: screen.getByRole('button', { name: /create/i }),
   };
 }
@@ -207,6 +211,34 @@ describe('ExperimentForm', () => {
     expect(accessionLabel).not.toBeNull();
     expect(scientistLabel!.textContent).not.toContain('optional');
     expect(accessionLabel!.textContent).not.toContain('optional');
+  });
+
+  it('should show validation error for whitespace-only name', async () => {
+    const user = userEvent.setup();
+    const mockOnSuccess = vi.fn();
+    render(
+      <ExperimentForm
+        scientists={mockScientists}
+        accessions={mockAccessions}
+        onSuccess={mockOnSuccess}
+      />
+    );
+
+    const { nameInput, scientistSelect, accessionSelect, submitButton } =
+      getFormElements();
+
+    // Enter only whitespace
+    await user.type(nameInput, '   ');
+    await user.selectOptions(scientistSelect, 'sci-1');
+    await user.selectOptions(accessionSelect, 'acc-1');
+
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText('Name is required')).toBeInTheDocument();
+    });
+
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('should show validation error for empty name', async () => {

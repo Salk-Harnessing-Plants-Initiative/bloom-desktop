@@ -26,7 +26,11 @@ export const SPECIES_LIST = [
 ] as const;
 
 const experimentSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(255, 'Name is too long'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required')
+    .max(255, 'Name is too long'),
   species: z.string().min(1, 'Species is required'),
   scientist_id: z.string().min(1, 'Scientist is required'),
   accession_id: z.string().min(1, 'Accession is required'),
@@ -80,7 +84,7 @@ export function ExperimentForm({
     try {
       // Build the create data with required scientist and accession
       const createData = {
-        name: data.name.trim(),
+        name: data.name,
         species: data.species,
         scientist: { connect: { id: data.scientist_id } },
         accession: { connect: { id: data.accession_id } },
