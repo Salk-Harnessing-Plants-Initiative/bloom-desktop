@@ -134,7 +134,8 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
   };
 
   const handleInputChange = (field: keyof CameraSettings, value: string) => {
-    const numValue = parseFloat(value);
+    // Gain must be integer (Pylon GainRaw is IInteger)
+    const numValue = field === 'gain' ? parseInt(value, 10) : parseFloat(value);
     if (!isNaN(numValue)) {
       onChange({ ...settings, [field]: numValue });
     }
@@ -261,33 +262,33 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
         </p>
       </div>
 
-      {/* Gain */}
+      {/* Gain (GainRaw: IInteger, 36-512 for acA2000-50gm) */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">Gain</label>
         <div className="flex gap-3 items-center">
           <input
             type="range"
-            min="0"
-            max="20"
-            step="0.1"
-            value={settings.gain || 0}
+            min="36"
+            max="512"
+            step="1"
+            value={settings.gain || 100}
             onChange={(e) =>
-              handleSliderChange('gain', parseFloat(e.target.value))
+              handleSliderChange('gain', parseInt(e.target.value, 10))
             }
             disabled={readOnly}
             className="flex-1"
           />
           <input
             type="number"
-            value={settings.gain || 0}
+            value={settings.gain || 100}
             onChange={(e) => handleInputChange('gain', e.target.value)}
             disabled={readOnly}
             className="w-24 px-2 py-1 border border-gray-300 rounded"
-            step="0.1"
+            step="1"
           />
         </div>
         <p className="text-xs text-gray-500">
-          Amplifies image brightness. Higher = more noise.
+          Amplifies image brightness. Higher = more noise. (GainRaw 36-512)
         </p>
       </div>
 
@@ -320,93 +321,6 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
           Adjusts tone curve. 1.0 = linear. {'<'}1.0 = darker shadows, {'>'}1.0
           = brighter shadows.
         </p>
-      </div>
-
-      {/* Brightness (optional) */}
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
-          Brightness (optional)
-        </label>
-        <div className="flex gap-3 items-center">
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={settings.brightness || 0.5}
-            onChange={(e) =>
-              handleSliderChange('brightness', parseFloat(e.target.value))
-            }
-            disabled={readOnly}
-            className="flex-1"
-          />
-          <input
-            type="number"
-            value={settings.brightness || 0.5}
-            onChange={(e) => handleInputChange('brightness', e.target.value)}
-            disabled={readOnly}
-            className="w-24 px-2 py-1 border border-gray-300 rounded"
-            step="0.01"
-          />
-        </div>
-      </div>
-
-      {/* Contrast (optional) */}
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
-          Contrast (optional)
-        </label>
-        <div className="flex gap-3 items-center">
-          <input
-            type="range"
-            min="0.5"
-            max="2.0"
-            step="0.1"
-            value={settings.contrast || 1.0}
-            onChange={(e) =>
-              handleSliderChange('contrast', parseFloat(e.target.value))
-            }
-            disabled={readOnly}
-            className="flex-1"
-          />
-          <input
-            type="number"
-            value={settings.contrast || 1.0}
-            onChange={(e) => handleInputChange('contrast', e.target.value)}
-            disabled={readOnly}
-            className="w-24 px-2 py-1 border border-gray-300 rounded"
-            step="0.1"
-          />
-        </div>
-      </div>
-
-      {/* Image Size (optional) */}
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
-          Image Size (optional - leave empty for camera default)
-        </label>
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <input
-              type="number"
-              placeholder="Width (px)"
-              value={settings.width || ''}
-              onChange={(e) => handleInputChange('width', e.target.value)}
-              disabled={readOnly}
-              className="w-full px-3 py-2 border border-gray-300 rounded"
-            />
-          </div>
-          <div className="flex-1">
-            <input
-              type="number"
-              placeholder="Height (px)"
-              value={settings.height || ''}
-              onChange={(e) => handleInputChange('height', e.target.value)}
-              disabled={readOnly}
-              className="w-full px-3 py-2 border border-gray-300 rounded"
-            />
-          </div>
-        </div>
       </div>
 
       {/* Actions */}

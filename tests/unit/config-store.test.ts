@@ -168,6 +168,8 @@ BLOOM_ANON_KEY=legacykey`;
         bloom_scanner_username: 'user@test.com',
         bloom_scanner_password: 'password123',
         bloom_anon_key: 'anonkey123',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       saveEnvConfig(config, envPath);
@@ -193,6 +195,8 @@ BLOOM_ANON_KEY=legacykey`;
         bloom_scanner_username: 'nested@test.com',
         bloom_scanner_password: 'nestedpass',
         bloom_anon_key: 'nestedkey',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       saveEnvConfig(config, nestedPath);
@@ -211,6 +215,8 @@ BLOOM_ANON_KEY=legacykey`;
         bloom_scanner_username: 'new@test.com',
         bloom_scanner_password: 'newpass',
         bloom_anon_key: 'newkey',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       saveEnvConfig(config, envPath);
 
@@ -230,6 +236,8 @@ BLOOM_ANON_KEY=legacykey`;
           bloom_scanner_username: 'test@test.com',
           bloom_scanner_password: 'testpass',
           bloom_anon_key: 'testkey',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         // Verify directory doesn't exist before save
@@ -252,6 +260,8 @@ BLOOM_ANON_KEY=legacykey`;
           bloom_scanner_username: 'test@test.com',
           bloom_scanner_password: 'testpass',
           bloom_anon_key: 'testkey',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         // Verify directories don't exist before save
@@ -276,6 +286,8 @@ BLOOM_ANON_KEY=legacykey`;
           bloom_scanner_username: 'test@test.com',
           bloom_scanner_password: 'testpass',
           bloom_anon_key: 'testkey',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         // Should not throw error
@@ -309,6 +321,11 @@ BLOOM_ANON_KEY=legacykey`;
         camera_ip_address: '10.0.0.23',
         scans_dir: '/data/scans',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       fs.writeFileSync(configPath, JSON.stringify(testConfig, null, 2));
 
@@ -366,6 +383,11 @@ BLOOM_ANON_KEY=legacykey`;
         camera_ip_address: '192.168.1.100',
         scans_dir: scansDir,
         bloom_api_url: 'https://custom.api.url',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       saveConfig(config, configPath);
@@ -383,6 +405,11 @@ BLOOM_ANON_KEY=legacykey`;
         camera_ip_address: 'mock',
         scans_dir: path.join(testDir, 'test-scans-data'),
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       saveConfig(config, nestedPath);
@@ -398,6 +425,11 @@ BLOOM_ANON_KEY=legacykey`;
         camera_ip_address: 'mock',
         scans_dir: path.join(testDir, 'initial-scans'),
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       fs.writeFileSync(configPath, JSON.stringify(initialConfig));
 
@@ -406,6 +438,11 @@ BLOOM_ANON_KEY=legacykey`;
         camera_ip_address: '10.0.0.1',
         scans_dir: path.join(testDir, 'updated-scans'),
         bloom_api_url: 'https://new.api.url',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       saveConfig(updatedConfig, configPath);
 
@@ -420,6 +457,11 @@ BLOOM_ANON_KEY=legacykey`;
         camera_ip_address: 'mock',
         scans_dir: path.join(testDir, 'test-scans-data'),
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       saveConfig(config, configPath);
@@ -455,6 +497,11 @@ BLOOM_ANON_KEY=legacykey`;
           camera_ip_address: 'mock',
           scans_dir: scansDir,
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         // Verify directory doesn't exist before save
@@ -479,6 +526,11 @@ BLOOM_ANON_KEY=legacykey`;
           camera_ip_address: 'mock',
           scans_dir: nestedScansDir,
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         // Verify directories don't exist before save
@@ -501,6 +553,11 @@ BLOOM_ANON_KEY=legacykey`;
           camera_ip_address: 'mock',
           scans_dir: existingScansDir,
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         // Should not throw error
@@ -723,6 +780,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'mock',
           scans_dir: writableDir,
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);
@@ -739,6 +801,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'mock',
           scans_dir: nonExistentPath,
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);
@@ -767,6 +834,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'mock',
           scans_dir: nonWritableDir,
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);
@@ -802,6 +874,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: 'mock',
             scans_dir: nonExistentPath,
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -820,6 +897,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: 'mock',
             scans_dir: nestedPath,
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -855,6 +937,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: 'mock',
             scans_dir: pathUnderNonWritable,
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -876,6 +963,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'mock',
           scans_dir: path.join(testDir, 'test-scans-data'),
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);
@@ -896,6 +988,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: 'mock',
             scans_dir: testDir, // Use actual writable directory
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -928,6 +1025,11 @@ OTHER_VAR=ignored`;
               camera_ip_address: 'mock',
               scans_dir: testDir, // Use actual writable directory
               bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+              bloom_scanner_username: '',
+              bloom_scanner_password: '',
+              bloom_anon_key: '',
+              num_frames: 72,
+              seconds_per_rot: 7.0,
             };
 
             const result = validateConfig(config);
@@ -949,6 +1051,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'mock',
           scans_dir: path.join(testDir, 'test-scans-data'),
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);
@@ -970,6 +1077,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: ip,
             scans_dir: path.join(testDir, 'test-scans-data'),
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -992,6 +1104,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: ip,
             scans_dir: path.join(testDir, 'test-scans-data'),
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -1009,6 +1126,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'mock',
           scans_dir: '',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);
@@ -1029,6 +1151,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: 'mock',
             scans_dir: testDir, // Use actual writable directory
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -1056,6 +1183,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: 'mock',
             scans_dir: '/data',
             bloom_api_url: url,
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -1072,6 +1204,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: 'mock',
             scans_dir: '/data',
             bloom_api_url: url,
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -1085,6 +1222,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'mock',
           scans_dir: '/data',
           bloom_api_url: 'http://localhost:3000',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);
@@ -1104,6 +1246,11 @@ OTHER_VAR=ignored`;
             camera_ip_address: '10.0.0.23',
             scans_dir: testDir, // Use actual writable directory
             bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+            bloom_scanner_username: '',
+            bloom_scanner_password: '',
+            bloom_anon_key: '',
+            num_frames: 72,
+            seconds_per_rot: 7.0,
           };
 
           const result = validateConfig(config);
@@ -1124,6 +1271,11 @@ OTHER_VAR=ignored`;
           camera_ip_address: 'invalid',
           scans_dir: '',
           bloom_api_url: 'not-a-url',
+          bloom_scanner_username: '',
+          bloom_scanner_password: '',
+          bloom_anon_key: '',
+          num_frames: 72,
+          seconds_per_rot: 7.0,
         };
 
         const result = validateConfig(config);

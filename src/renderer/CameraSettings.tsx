@@ -15,10 +15,8 @@ export function CameraSettings() {
     Partial<CameraSettings>
   >({
     exposure_time: 10000,
-    gain: 0.0,
+    gain: 100,
     gamma: 1.0,
-    brightness: 0.5,
-    contrast: 1.0,
   });
 
   const [editedSettings, setEditedSettings] = useState(currentSettings);

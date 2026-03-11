@@ -6,39 +6,28 @@
  */
 
 /**
- * Camera settings for Basler cameras
- * Note: Uses snake_case to match Python backend convention
+ * Camera settings for the Basler acA2000-50gm (ace Classic GigE)
+ *
+ * Contains only parameters supported by this camera model.
+ * Note: Uses snake_case to match Python backend convention.
+ *
+ * Removed fields (not supported on ace Classic):
+ * - brightness/contrast: BslBrightness/BslContrast are ace 2+ only
+ * - width/height: Never applied to hardware in _configure_camera()
+ * - num_frames/seconds_per_rot: Moved to MachineConfig (DAQ parameters)
  */
 export interface CameraSettings {
-  /** Exposure time in microseconds */
+  /** Exposure time in microseconds (Pylon: ExposureTimeAbs, IFloat) */
   exposure_time: number;
 
-  /** Gain (raw value) */
+  /** Gain raw value (Pylon: GainRaw, IInteger, range 36-512 for acA2000-50gm) */
   gain: number;
 
   /** Camera IP address (e.g., "10.0.0.45"). Optional for mock camera. */
   camera_ip_address?: string;
 
-  /** Brightness (0.0 - 1.0, optional) */
-  brightness?: number;
-
-  /** Gamma correction (typically 0.5 - 2.0) */
+  /** Gamma correction (Pylon: Gamma, IFloat, typically 0.5-2.0) */
   gamma?: number;
-
-  /** Number of frames to capture */
-  num_frames?: number;
-
-  /** Time for one complete rotation in seconds (for scanning) */
-  seconds_per_rot?: number;
-
-  /** Contrast (optional, not supported on all cameras) */
-  contrast?: number;
-
-  /** Image width in pixels (optional) */
-  width?: number;
-
-  /** Image height in pixels (optional) */
-  height?: number;
 }
 
 /**
@@ -110,15 +99,14 @@ export interface CameraDetectionResponse {
 }
 
 /**
- * Default camera settings
+ * Default camera settings for the Basler acA2000-50gm
  *
- * These are sensible default values for the Basler camera.
- * Exported for use in initialization and testing.
+ * - gain: 100 (~9.9 dB, pilot default for GainRaw on CMV2000 sensor)
+ * - gamma: 1.0 (linear, Basler identity value)
  */
 export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   exposure_time: 10000, // 10ms
-  gain: 0,
+  gain: 100, // GainRaw ~9.9 dB (pilot default)
   camera_ip_address: 'mock',
   gamma: 1.0,
-  brightness: 0.5,
 };

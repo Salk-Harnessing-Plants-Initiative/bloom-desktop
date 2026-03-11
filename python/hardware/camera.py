@@ -86,17 +86,14 @@ class Camera:
         # Set exposure time
         self.camera.ExposureTimeAbs.Value = self.settings.exposure_time
 
-        # Set gain
+        # Set gain (GainRaw is IInteger on acA2000-50gm — must be int)
         self.camera.GainAuto.Value = "Off"
-        self.camera.GainRaw.Value = self.settings.gain
+        self.camera.GainRaw.Value = int(self.settings.gain)
 
         # Set gamma
         self.camera.GammaEnable.Value = True
         self.camera.GammaSelector.Value = "User"
         self.camera.Gamma.Value = self.settings.gamma
-
-        # Note: Brightness and Contrast are not supported on all Basler cameras
-        # (e.g., not available on aca2000-50gm)
 
     def close(self) -> None:
         """Close the camera connection."""

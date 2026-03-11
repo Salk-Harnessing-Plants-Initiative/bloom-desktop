@@ -345,8 +345,20 @@ def get_camera_instance(settings: Dict[str, Any]) -> Any:
     if not CAMERA_AVAILABLE:
         raise RuntimeError("Camera module not available")
 
-    # Create settings object
-    camera_settings = CameraSettings(**settings)
+    # Filter to only known CameraSettings fields to prevent TypeError
+    # on removed fields (brightness, contrast, width, height)
+    import dataclasses
+    if dataclasses.is_dataclass(CameraSettings):
+        known_fields = {f.name for f in dataclasses.fields(CameraSettings)}
+        filtered_settings = {k: v for k, v in settings.items() if k in known_fields}
+    else:
+        filtered_settings = dict(settings)
+
+    # Ensure gain is int (may arrive as float from JSON deserialization)
+    if "gain" in filtered_settings:
+        filtered_settings["gain"] = int(filtered_settings["gain"])
+
+    camera_settings = CameraSettings(**filtered_settings)
 
     # Create new camera instance if needed
     if _camera_instance is None:
