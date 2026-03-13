@@ -555,6 +555,77 @@ export function MachineConfiguration() {
           </div>
         </div>
 
+        {/* Scan Parameters Section */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-lg font-semibold mb-4 text-gray-800">
+            Scan Parameters
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Controls how many images are captured per rotation and how fast the
+            turntable spins. More frames increase angular resolution but take
+            longer; faster rotation reduces scan time but may cause motion blur.
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="num-frames"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Frames per rotation
+              </label>
+              <input
+                id="num-frames"
+                type="number"
+                min={1}
+                max={720}
+                step={1}
+                value={config.num_frames}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val)) {
+                    setConfig((prev) => ({ ...prev, num_frames: val }));
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {errors.scanner_name === undefined && /* placeholder for num_frames error */ null}
+              <p className="text-xs text-gray-500 mt-1">
+                Integer 1–720. Default 72 (5° per frame). Higher values give
+                finer angular resolution but longer scans.
+              </p>
+            </div>
+
+            <div>
+              <label
+                htmlFor="seconds-per-rot"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Seconds per rotation
+              </label>
+              <input
+                id="seconds-per-rot"
+                type="number"
+                min={2.0}
+                max={120.0}
+                step={0.5}
+                value={config.seconds_per_rot}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    setConfig((prev) => ({ ...prev, seconds_per_rot: val }));
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Range 2.0–120.0 seconds. Default 7.0. Slower rotation reduces
+                motion blur; faster rotation shortens scan time.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Actions */}
         <div className="flex justify-end gap-4">
           <button
