@@ -39,11 +39,12 @@ describe('Camera Settings Types (Basler acA2000-50gm)', () => {
     };
     expect(validSettings.gain).toBe(100);
 
-    // These will error once the fields are removed from the interface:
-    // Uncomment after implementation (task 2.2.2):
-    // // @ts-expect-error brightness is removed from CameraSettings
-    // const _bad1: CameraSettings = { exposure_time: 10000, gain: 100, brightness: 0.5 };
-    // // @ts-expect-error contrast is removed from CameraSettings
-    // const _bad2: CameraSettings = { exposure_time: 10000, gain: 100, contrast: 1.0 };
+    // @ts-expect-error brightness is removed from CameraSettings
+    const _bad1: CameraSettings = { exposure_time: 10000, gain: 100, brightness: 0.5 };
+    // @ts-expect-error contrast is removed from CameraSettings
+    const _bad2: CameraSettings = { exposure_time: 10000, gain: 100, contrast: 1.0 };
+    // Suppress unused variable warnings
+    void _bad1;
+    void _bad2;
   });
 });

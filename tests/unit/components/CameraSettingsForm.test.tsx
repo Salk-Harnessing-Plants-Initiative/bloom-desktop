@@ -47,12 +47,11 @@ describe('CameraSettingsForm — Basler acA2000-50gm corrections', () => {
 
   it('1.7.1 gain slider has min=36, max=512, step=1', () => {
     renderForm();
-    // Find the range input inside the "Gain" section
-    const gainSlider = screen.getByLabelText('Gain').closest('div')?.querySelector('input[type="range"]')
-      ?? screen.getAllByRole('slider').find((el) => {
-        const parent = el.closest('.space-y-2');
-        return parent?.textContent?.includes('Gain') && !parent?.textContent?.includes('Gamma');
-      });
+    // Find the gain range input by looking for the slider in the "Gain" section
+    const gainSlider = screen.getAllByRole('slider').find((el) => {
+      const parent = el.closest('.space-y-2');
+      return parent?.textContent?.includes('Gain') && !parent?.textContent?.includes('Gamma');
+    });
 
     expect(gainSlider).toBeDefined();
     expect(gainSlider).toHaveAttribute('min', '36');

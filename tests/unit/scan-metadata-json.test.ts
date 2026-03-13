@@ -24,9 +24,7 @@ function makeScannerSettings(
 ): ScannerSettings {
   const camera: CameraSettings = {
     exposure_time: 10000,
-    gain: 5,
-    brightness: 0.5,
-    contrast: 1.2,
+    gain: 100,
     gamma: 1.0,
   };
 
@@ -96,9 +94,9 @@ describe('scan-metadata-json', () => {
         num_frames: 72,
         scan_path: '/tmp/test-scan',
         exposure_time: 10000,
-        gain: 5,
-        brightness: 0.5,
-        contrast: 1.2,
+        gain: 100,
+        brightness: 0,
+        contrast: 0,
         gamma: 1.0,
         seconds_per_rot: 7.0,
       });
@@ -117,14 +115,14 @@ describe('scan-metadata-json', () => {
       );
     });
 
-    it('includes camera settings (exposure_time, gain, brightness, contrast, gamma)', () => {
+    it('includes camera settings (exposure_time, gain, gamma) with identity defaults for removed fields', () => {
       const settings = makeScannerSettings();
       const metadata = buildMetadataObject(settings, new Date());
 
       expect(metadata.exposure_time).toBe(10000);
-      expect(metadata.gain).toBe(5);
-      expect(metadata.brightness).toBe(0.5);
-      expect(metadata.contrast).toBe(1.2);
+      expect(metadata.gain).toBe(100);
+      expect(metadata.brightness).toBe(0);
+      expect(metadata.contrast).toBe(0);
       expect(metadata.gamma).toBe(1.0);
     });
 
@@ -302,7 +300,7 @@ describe('scan-metadata-json', () => {
       expect(content.capture_date).toBeDefined();
       expect(content.num_frames).toBe(72);
       expect(content.exposure_time).toBe(10000);
-      expect(content.gain).toBe(5);
+      expect(content.gain).toBe(100);
       expect(content.seconds_per_rot).toBe(7.0);
     });
 
@@ -368,9 +366,9 @@ describe('scan-metadata-json', () => {
         fs.readFileSync(path.join(outputDir, 'metadata.json'), 'utf-8')
       );
       expect(content.exposure_time).toBe(10000);
-      expect(content.gain).toBe(5);
-      expect(content.brightness).toBe(0.5);
-      expect(content.contrast).toBe(1.2);
+      expect(content.gain).toBe(100);
+      expect(content.brightness).toBe(0);
+      expect(content.contrast).toBe(0);
       expect(content.gamma).toBe(1.0);
     });
 
