@@ -4,9 +4,8 @@ TDD tests for camera.py _configure_camera() GainRaw handling (fix-camera-scan-pa
 Tests 1.5.1-1.5.2: Validate GainRaw.Value is set as int.
 """
 
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from python.hardware.camera_types import CameraSettings
 
