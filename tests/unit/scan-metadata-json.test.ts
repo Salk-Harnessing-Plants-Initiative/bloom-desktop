@@ -236,6 +236,24 @@ describe('scan-metadata-json', () => {
       expect(metadata.gamma).toBe(1);
     });
 
+    // fix-camera-scan-params 1.9 — verify identity defaults after field removal
+    it('1.9.1 uses brightness: 0 when camera has no brightness field', () => {
+      const settings = makeScannerSettings();
+      // Simulate camera settings without brightness (post-removal)
+      delete (settings.camera as unknown as Record<string, unknown>).brightness;
+      const metadata = buildMetadataObject(settings, new Date('2026-03-13'));
+
+      expect(metadata.brightness).toBe(0);
+    });
+
+    it('1.9.2 uses contrast: 0 when camera has no contrast field', () => {
+      const settings = makeScannerSettings();
+      delete (settings.camera as unknown as Record<string, unknown>).contrast;
+      const metadata = buildMetadataObject(settings, new Date('2026-03-13'));
+
+      expect(metadata.contrast).toBe(0);
+    });
+
     it('throws descriptive error when settings.metadata is undefined', () => {
       const settings = makeScannerSettings({ metadata: undefined });
 

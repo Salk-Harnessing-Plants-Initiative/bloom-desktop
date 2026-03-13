@@ -38,6 +38,12 @@ export interface MachineConfig {
 
   /** Supabase anonymous key */
   bloom_anon_key: string;
+
+  /** Number of frames per scan rotation (integer, 1-720) */
+  num_frames: number;
+
+  /** Seconds per rotation (2.0-120.0) */
+  seconds_per_rot: number;
 }
 
 /**
@@ -68,6 +74,8 @@ export interface ValidationResult {
     camera_ip_address?: string;
     scans_dir?: string;
     bloom_api_url?: string;
+    num_frames?: string;
+    seconds_per_rot?: string;
   };
 }
 
@@ -112,6 +120,8 @@ export function getDefaultConfig(): MachineConfig {
     bloom_scanner_username: '',
     bloom_scanner_password: '',
     bloom_anon_key: '',
+    num_frames: 72,
+    seconds_per_rot: 7.0,
   };
 }
 

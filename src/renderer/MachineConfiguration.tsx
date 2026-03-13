@@ -32,6 +32,8 @@ export function MachineConfiguration() {
     bloom_scanner_username: '',
     bloom_scanner_password: '',
     bloom_anon_key: '',
+    num_frames: 72,
+    seconds_per_rot: 7.0,
   });
   const [originalConfig, setOriginalConfig] = useState<MachineConfig | null>(
     null

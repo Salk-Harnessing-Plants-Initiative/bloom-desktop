@@ -1351,4 +1351,139 @@ OTHER_VAR=ignored`;
       expect(result.scanners?.[1].name).toBeNull();
     });
   });
+
+  // ========================================
+  // SCAN PARAMETER TESTS (fix-camera-scan-params)
+  // ========================================
+
+  describe('Scan Parameter Configuration', () => {
+    it('1.1.1 MachineConfig includes num_frames and seconds_per_rot fields', () => {
+      const config = getDefaultConfig();
+      expect(config).toHaveProperty('num_frames');
+      expect(config).toHaveProperty('seconds_per_rot');
+    });
+
+    it('1.1.2 getDefaultConfig() returns num_frames=72, seconds_per_rot=7.0', () => {
+      const config = getDefaultConfig();
+      expect(config.num_frames).toBe(72);
+      expect(config.seconds_per_rot).toBe(7.0);
+    });
+
+    it('1.1.3 loadEnvConfig reads NUM_FRAMES=36 and SECONDS_PER_ROT=5.0 from .env', () => {
+      const envContent = [
+        'SCANNER_NAME=TestScanner',
+        'CAMERA_IP_ADDRESS=mock',
+        'SCANS_DIR=/tmp/scans',
+        'BLOOM_API_URL=https://api.bloom.salk.edu/proxy',
+        'BLOOM_SCANNER_USERNAME=',
+        'BLOOM_SCANNER_PASSWORD=',
+        'BLOOM_ANON_KEY=',
+        'NUM_FRAMES=36',
+        'SECONDS_PER_ROT=5.0',
+      ].join('\n');
+      fs.writeFileSync(envPath, envContent);
+
+      const config = loadEnvConfig(envPath);
+      expect(config.num_frames).toBe(36);
+      expect(config.seconds_per_rot).toBe(5.0);
+    });
+
+    it('1.1.4 saveEnvConfig writes NUM_FRAMES and SECONDS_PER_ROT to .env', () => {
+      const config: MachineConfig = {
+        ...getDefaultConfig(),
+        num_frames: 72,
+        seconds_per_rot: 7.0,
+      };
+      saveEnvConfig(config, envPath);
+
+      const content = fs.readFileSync(envPath, 'utf-8');
+      expect(content).toContain('NUM_FRAMES=72');
+      expect(content).toContain('SECONDS_PER_ROT=7');
+    });
+
+    it('1.1.5 validation rejects num_frames edge cases', () => {
+      const baseConfig: MachineConfig = {
+        ...getDefaultConfig(),
+        scanner_name: 'TestScanner',
+        camera_ip_address: 'mock',
+      };
+
+      // Reject 0
+      const r0 = validateConfig({ ...baseConfig, num_frames: 0 });
+      expect(r0.errors.num_frames).toBeDefined();
+
+      // Reject -1
+      const rNeg = validateConfig({ ...baseConfig, num_frames: -1 });
+      expect(rNeg.errors.num_frames).toBeDefined();
+
+      // Reject 1.5 (non-integer)
+      const rFloat = validateConfig({ ...baseConfig, num_frames: 1.5 });
+      expect(rFloat.errors.num_frames).toBeDefined();
+
+      // Reject 721 (above max)
+      const rMax = validateConfig({ ...baseConfig, num_frames: 721 });
+      expect(rMax.errors.num_frames).toBeDefined();
+
+      // Accept 1 (min)
+      const r1 = validateConfig({ ...baseConfig, num_frames: 1 });
+      expect(r1.errors.num_frames).toBeUndefined();
+
+      // Accept 720 (max)
+      const r720 = validateConfig({ ...baseConfig, num_frames: 720 });
+      expect(r720.errors.num_frames).toBeUndefined();
+    });
+
+    it('1.1.6 validation rejects seconds_per_rot edge cases', () => {
+      const baseConfig: MachineConfig = {
+        ...getDefaultConfig(),
+        scanner_name: 'TestScanner',
+        camera_ip_address: 'mock',
+      };
+
+      // Reject 0
+      const r0 = validateConfig({ ...baseConfig, seconds_per_rot: 0 });
+      expect(r0.errors.seconds_per_rot).toBeDefined();
+
+      // Reject -1
+      const rNeg = validateConfig({ ...baseConfig, seconds_per_rot: -1 });
+      expect(rNeg.errors.seconds_per_rot).toBeDefined();
+
+      // Reject 1.9 (below min)
+      const rLow = validateConfig({ ...baseConfig, seconds_per_rot: 1.9 });
+      expect(rLow.errors.seconds_per_rot).toBeDefined();
+
+      // Reject 121 (above max)
+      const rHigh = validateConfig({ ...baseConfig, seconds_per_rot: 121 });
+      expect(rHigh.errors.seconds_per_rot).toBeDefined();
+
+      // Accept 2.0 (min)
+      const r2 = validateConfig({ ...baseConfig, seconds_per_rot: 2.0 });
+      expect(r2.errors.seconds_per_rot).toBeUndefined();
+
+      // Accept 120.0 (max)
+      const r120 = validateConfig({ ...baseConfig, seconds_per_rot: 120.0 });
+      expect(r120.errors.seconds_per_rot).toBeUndefined();
+    });
+
+    it('1.1.7 loading .env without scan params returns defaults with other fields intact', () => {
+      const envContent = [
+        'SCANNER_NAME=MyScanner',
+        'CAMERA_IP_ADDRESS=10.0.0.50',
+        'SCANS_DIR=/tmp/scans',
+        'BLOOM_API_URL=https://api.bloom.salk.edu/proxy',
+        'BLOOM_SCANNER_USERNAME=user@salk.edu',
+        'BLOOM_SCANNER_PASSWORD=secret',
+        'BLOOM_ANON_KEY=key123',
+      ].join('\n');
+      fs.writeFileSync(envPath, envContent);
+
+      const config = loadEnvConfig(envPath);
+      // Existing fields loaded correctly
+      expect(config.scanner_name).toBe('MyScanner');
+      expect(config.camera_ip_address).toBe('10.0.0.50');
+      // New fields default
+      expect(config.num_frames).toBe(72);
+      expect(config.seconds_per_rot).toBe(7.0);
+    });
+  });
 });
