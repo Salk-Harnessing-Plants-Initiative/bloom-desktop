@@ -85,9 +85,8 @@ async function testCamera() {
     const cameraSettings: CameraSettings = {
       // camera_ip_address is optional for mock camera
       exposure_time: 5000,
-      gain: 10,
+      gain: 100,
       gamma: 1.0,
-      num_frames: 3,
     };
     const connectSuccess = await cameraProcess.connect(cameraSettings);
     console.log(`[RESPONSE] Connected: ${connectSuccess}`);
@@ -130,7 +129,7 @@ async function testCamera() {
     console.log('[TEST 4] Configuring camera settings...');
     const configSuccess = await cameraProcess.configure({
       exposure_time: 10000,
-      gain: 15,
+      gain: 100,
     });
     console.log(`[RESPONSE] Configured: ${configSuccess}`);
     if (configSuccess) {
