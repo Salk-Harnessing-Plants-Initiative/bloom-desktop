@@ -266,18 +266,23 @@ description: "Review TDD test plan"
 >    - Look for ordering dependencies: does committing section X break tests that section Y hasn't fixed yet?
 >    - Flag any "big bang" subsections where multiple cross-cutting changes must land simultaneously or tests break
 > 10. Are existing test files accounted for?
->    - Read the existing test files in `tests/unit/`, `tests/e2e/`, `tests/integration/`, and `python/tests/`
->    - Check: will ANY existing test break due to the proposed changes (removed fields, changed types, new defaults)?
->    - List specific test files and assertions that will fail, and verify tasks.md includes updating them
->    - This is CRITICAL — broken test infrastructure wastes enormous time to recover from
+>
+> - Read the existing test files in `tests/unit/`, `tests/e2e/`, `tests/integration/`, and `python/tests/`
+> - Check: will ANY existing test break due to the proposed changes (removed fields, changed types, new defaults)?
+> - List specific test files and assertions that will fail, and verify tasks.md includes updating them
+> - This is CRITICAL — broken test infrastructure wastes enormous time to recover from
+>
 > 11. Does the verification section include check gates between sections?
->    - After Section 1 (tests): `npm run lint && npx tsc --noEmit && npm run test:unit && npm run test:python`
->    - After Section 2 (implementation): same full check
->    - These gates catch cross-cutting breakage early
+>
+> - After Section 1 (tests): `npm run lint && npx tsc --noEmit && npm run test:unit && npm run test:python`
+> - After Section 2 (implementation): same full check
+> - These gates catch cross-cutting breakage early
+>
 > 12. Does the proposal account for CI platform differences?
->    - CI runs on Linux, macOS, and Windows
->    - Are there platform-specific paths or behaviors in the changes?
->    - Will integration tests pass on all platforms?
+>
+> - CI runs on Linux, macOS, and Windows
+> - Are there platform-specific paths or behaviors in the changes?
+> - Will integration tests pass on all platforms?
 >
 > **Tasks to review:**
 > {TASKS_MD}
@@ -424,6 +429,7 @@ After ALL subagents return, synthesize their findings:
 ### Commit Safety & CI Health
 
 [Findings from Subagent 4 — commit discipline section]
+
 - Existing tests that will break (list specific files)
 - Task ordering hazards (where the suite goes red between commits)
 - Missing check gates in verification section
