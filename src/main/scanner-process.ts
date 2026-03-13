@@ -261,8 +261,8 @@ export class ScannerProcess extends EventEmitter {
         num_frames: scanResult.frames_captured,
         exposure_time: cameraSettings.exposure_time,
         gain: cameraSettings.gain,
-        brightness: cameraSettings.brightness ?? 0,
-        contrast: cameraSettings.contrast ?? 0,
+        brightness: 0, // Not supported on acA2000-50gm (ace Classic)
+        contrast: 0, // Not supported on acA2000-50gm (ace Classic)
         gamma: cameraSettings.gamma ?? 1,
         seconds_per_rot: settings.daq.seconds_per_rot,
 

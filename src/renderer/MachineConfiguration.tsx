@@ -16,6 +16,8 @@ interface FormErrors {
   camera_ip_address?: string;
   scans_dir?: string;
   bloom_api_url?: string;
+  num_frames?: string;
+  seconds_per_rot?: string;
   general?: string;
 }
 
@@ -32,6 +34,8 @@ export function MachineConfiguration() {
     bloom_scanner_username: '',
     bloom_scanner_password: '',
     bloom_anon_key: '',
+    num_frames: 72,
+    seconds_per_rot: 7.0,
   });
   const [originalConfig, setOriginalConfig] = useState<MachineConfig | null>(
     null
@@ -548,6 +552,71 @@ export function MachineConfiguration() {
               </div>
               {errors.scans_dir && (
                 <p className="text-red-600 text-sm mt-1">{errors.scans_dir}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Scan Parameters Section */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4 text-gray-800">
+            Scan Parameters
+          </h2>
+          <div className="space-y-4">
+            {/* Frames per rotation */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Frames per rotation
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="720"
+                step="1"
+                value={config.num_frames}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    num_frames: parseInt(e.target.value, 10) || 72,
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Number of images captured per 360° rotation (1-720, default 72)
+              </p>
+              {errors.num_frames && (
+                <p className="text-red-600 text-sm mt-1">{errors.num_frames}</p>
+              )}
+            </div>
+
+            {/* Seconds per rotation */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Seconds per rotation
+              </label>
+              <input
+                type="number"
+                min="2.0"
+                max="120.0"
+                step="0.5"
+                value={config.seconds_per_rot}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    seconds_per_rot: parseFloat(e.target.value) || 7.0,
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Time for one complete turntable rotation (2.0-120.0s, default
+                7.0)
+              </p>
+              {errors.seconds_per_rot && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.seconds_per_rot}
+                </p>
               )}
             </div>
           </div>

@@ -23,13 +23,11 @@ def scanner_settings():
     return {
         "camera": {
             "exposure_time": 10000,
-            "gain": 0.0,
+            "gain": 100,
             "camera_ip_address": None,
             "gamma": 1.0,
             "num_frames": 72,
-            "seconds_per_rot": 36.0,
-            "width": 640,
-            "height": 480,
+            "seconds_per_rot": 7.0,
         },
         "daq": {
             "device_name": "cDAQ1Mod1",
@@ -38,7 +36,7 @@ def scanner_settings():
             "dir_pin": 1,
             "steps_per_revolution": 6400,
             "num_frames": 72,
-            "seconds_per_rot": 36.0,
+            "seconds_per_rot": 7.0,
         },
         "num_frames": 72,
         "output_path": "./test-scans",
@@ -51,13 +49,11 @@ def small_scan_settings():
     return {
         "camera": {
             "exposure_time": 10000,
-            "gain": 0.0,
+            "gain": 100,
             "camera_ip_address": None,
             "gamma": 1.0,
             "num_frames": 5,
-            "seconds_per_rot": 36.0,
-            "width": 640,
-            "height": 480,
+            "seconds_per_rot": 7.0,
         },
         "daq": {
             "device_name": "cDAQ1Mod1",
@@ -66,7 +62,7 @@ def small_scan_settings():
             "dir_pin": 1,
             "steps_per_revolution": 6400,
             "num_frames": 5,
-            "seconds_per_rot": 36.0,
+            "seconds_per_rot": 7.0,
         },
         "num_frames": 5,
         "output_path": "./test-scans",
@@ -333,11 +329,11 @@ class TestScannerScan:
             settings = ScannerSettings(
                 camera={
                     "exposure_time": 10000,
-                    "gain": 0.0,
+                    "gain": 100,
                     "camera_ip_address": None,
                     "gamma": 1.0,
                     "num_frames": num_frames,
-                    "seconds_per_rot": 36.0,
+                    "seconds_per_rot": 7.0,
                 },
                 daq={
                     "device_name": "cDAQ1Mod1",
@@ -346,7 +342,7 @@ class TestScannerScan:
                     "dir_pin": 1,
                     "steps_per_revolution": 6400,
                     "num_frames": num_frames,
-                    "seconds_per_rot": 36.0,
+                    "seconds_per_rot": 7.0,
                 },
                 num_frames=num_frames,
                 output_path="./test-scans",
@@ -444,11 +440,11 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 3,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             daq={
                 "device_name": "cDAQ1Mod1",
@@ -457,7 +453,7 @@ class TestScannerImagePersistence:
                 "dir_pin": 1,
                 "steps_per_revolution": 6400,
                 "num_frames": 3,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             num_frames=3,
             output_path=str(output_dir),
@@ -478,11 +474,11 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 5,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             daq={
                 "device_name": "cDAQ1Mod1",
@@ -491,7 +487,7 @@ class TestScannerImagePersistence:
                 "dir_pin": 1,
                 "steps_per_revolution": 6400,
                 "num_frames": 5,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             num_frames=5,
             output_path=str(output_dir),
@@ -514,11 +510,11 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 3,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             daq={
                 "device_name": "cDAQ1Mod1",
@@ -527,7 +523,7 @@ class TestScannerImagePersistence:
                 "dir_pin": 1,
                 "steps_per_revolution": 6400,
                 "num_frames": 3,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             num_frames=3,
             output_path=str(output_dir),
@@ -555,11 +551,11 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 7,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             daq={
                 "device_name": "cDAQ1Mod1",
@@ -568,7 +564,7 @@ class TestScannerImagePersistence:
                 "dir_pin": 1,
                 "steps_per_revolution": 6400,
                 "num_frames": 7,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             num_frames=7,
             output_path=str(output_dir),
@@ -596,11 +592,11 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 3,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             daq={
                 "device_name": "cDAQ1Mod1",
@@ -609,7 +605,7 @@ class TestScannerImagePersistence:
                 "dir_pin": 1,
                 "steps_per_revolution": 6400,
                 "num_frames": 3,
-                "seconds_per_rot": 36.0,
+                "seconds_per_rot": 7.0,
             },
             num_frames=3,
             output_path=str(output_dir),

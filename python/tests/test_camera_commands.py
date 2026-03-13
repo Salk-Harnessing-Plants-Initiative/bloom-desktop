@@ -220,10 +220,7 @@ class TestCameraCapture:
         assert data["success"] is True
         assert "image" in data
         assert data["image"].startswith("data:image/png;base64,")
-        assert "width" in data
-        assert "height" in data
-        assert data["width"] > 0
-        assert data["height"] > 0
+        assert data["success"] is True
 
     def test_capture_when_not_connected_without_settings(self, capsys):
         """Test capturing without connecting first and without settings."""

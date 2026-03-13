@@ -14,6 +14,7 @@ import {
   saveConfig,
   loadCredentials,
   saveCredentials,
+  loadEnvConfig,
   validateConfig,
   getDefaultConfig,
   MachineConfig,
@@ -54,6 +55,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       saveConfig(config, CONFIG_PATH);
 
@@ -128,6 +131,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       // Simulate handler logic
@@ -161,6 +166,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       const credentials: MachineCredentials = {
@@ -201,6 +208,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       // Simulate handler logic
@@ -310,6 +319,32 @@ describe('Config IPC Handler Logic', () => {
     });
   });
 
+  describe('config:get returns scan parameters (1.2.1)', () => {
+    it('should return num_frames and seconds_per_rot from loaded config', () => {
+      // Setup: Create .env file with scan parameters
+      const envContent = `SCANNER_NAME=TestScanner
+CAMERA_IP_ADDRESS=mock
+SCANS_DIR=${TEST_DIR}
+BLOOM_API_URL=https://api.bloom.salk.edu/proxy
+NUM_FRAMES=36
+SECONDS_PER_ROT=5.0
+BLOOM_SCANNER_USERNAME=test@salk.edu
+BLOOM_SCANNER_PASSWORD=testpass
+BLOOM_ANON_KEY=testkey`;
+      fs.writeFileSync(ENV_PATH, envContent);
+
+      // Simulate handler logic (loads unified config from .env)
+      const config = loadEnvConfig(ENV_PATH);
+
+      // Verify scan parameters are included in response
+      expect(config.num_frames).toBe(36);
+      expect(config.seconds_per_rot).toBe(5.0);
+      // Other fields still intact
+      expect(config.scanner_name).toBe('TestScanner');
+      expect(config.camera_ip_address).toBe('mock');
+    });
+  });
+
   describe('config:exists handler logic', () => {
     it('should return true when config file exists', () => {
       // Setup: Create config file
@@ -323,6 +358,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       saveConfig(config, CONFIG_PATH);
 

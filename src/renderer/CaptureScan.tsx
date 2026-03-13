@@ -52,6 +52,12 @@ export function CaptureScan() {
   // Machine config state
   const [scannerName, setScannerName] = useState('CaptureScan-UI');
   const [scansDir, setScansDir] = useState('~/.bloom/scans');
+  const [scanNumFrames, setScanNumFrames] = useState<number | undefined>(
+    undefined
+  );
+  const [scanSecondsPerRot, setScanSecondsPerRot] = useState<
+    number | undefined
+  >(undefined);
 
   // Scanning state
   const [isScanning, setIsScanning] = useState(false);
@@ -142,6 +148,12 @@ export function CaptureScan() {
         }
         if (config.scans_dir) {
           setScansDir(config.scans_dir);
+        }
+        if (config.num_frames !== undefined) {
+          setScanNumFrames(config.num_frames);
+        }
+        if (config.seconds_per_rot !== undefined) {
+          setScanSecondsPerRot(config.seconds_per_rot);
         }
       } catch (error) {
         console.error('Failed to load machine config:', error);
@@ -399,8 +411,12 @@ export function CaptureScan() {
 
       await window.electron.scanner.initialize({
         camera: cameraSettings,
-        daq: DEFAULT_DAQ_SETTINGS,
-        num_frames: 72,
+        daq: {
+          ...DEFAULT_DAQ_SETTINGS,
+          num_frames: scanNumFrames ?? 72,
+          seconds_per_rot: scanSecondsPerRot ?? 7.0,
+        },
+        num_frames: scanNumFrames ?? 72,
         output_path: outputPath,
         metadata: {
           experiment_id: metadata.experimentId,
@@ -575,6 +591,15 @@ export function CaptureScan() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Scan Parameters (read-only, from Machine Configuration) */}
+              <div className="mt-4 p-3 bg-gray-50 rounded border border-gray-200">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Scan params:</span>{' '}
+                  {scanNumFrames ?? 72} frames, ~{scanSecondsPerRot ?? 7.0}s
+                  rotation
+                </p>
               </div>
 
               {/* Start Scan Button */}

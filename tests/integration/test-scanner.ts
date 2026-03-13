@@ -27,13 +27,9 @@ const TEST_TIMEOUT = 300000;
 const SCANNER_SETTINGS = {
   camera: {
     exposure_time: 10000,
-    gain: 0.0,
+    gain: 100,
     camera_ip_address: '192.168.1.100',
     gamma: 1.0,
-    num_frames: 72,
-    seconds_per_rot: 36.0,
-    width: 640,
-    height: 480,
   },
   daq: {
     device_name: 'cDAQ1Mod1',
@@ -42,7 +38,7 @@ const SCANNER_SETTINGS = {
     dir_pin: 1,
     steps_per_revolution: 6400,
     num_frames: 72,
-    seconds_per_rot: 36.0,
+    seconds_per_rot: 7.0,
   },
   num_frames: 72,
   output_path: './test-scans',

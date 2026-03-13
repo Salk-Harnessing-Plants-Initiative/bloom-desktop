@@ -75,9 +75,8 @@ async function testStreaming() {
     console.log('[TEST 1] Starting stream...');
     const cameraSettings: Partial<CameraSettings> = {
       exposure_time: 10000,
-      gain: 0.0,
+      gain: 100,
       camera_ip_address: '192.168.1.100',
-      num_frames: 1,
     };
 
     const startResponse = await cameraProcess.startStream(cameraSettings);
