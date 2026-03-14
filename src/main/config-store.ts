@@ -386,8 +386,7 @@ export function validateConfig(config: MachineConfig): ValidationResult {
     config.num_frames < 1 ||
     config.num_frames > 720
   ) {
-    errors.num_frames =
-      'Number of frames must be an integer between 1 and 720';
+    errors.num_frames = 'Number of frames must be an integer between 1 and 720';
   }
 
   // Validate seconds_per_rot: number in 2.0-120.0

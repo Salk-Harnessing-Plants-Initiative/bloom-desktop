@@ -50,7 +50,10 @@ describe('CameraSettingsForm — Basler acA2000-50gm corrections', () => {
     // Find the gain range input by looking for the slider in the "Gain" section
     const gainSlider = screen.getAllByRole('slider').find((el) => {
       const parent = el.closest('.space-y-2');
-      return parent?.textContent?.includes('Gain') && !parent?.textContent?.includes('Gamma');
+      return (
+        parent?.textContent?.includes('Gain') &&
+        !parent?.textContent?.includes('Gamma')
+      );
     });
 
     expect(gainSlider).toBeDefined();
@@ -67,7 +70,10 @@ describe('CameraSettingsForm — Basler acA2000-50gm corrections', () => {
     // is that gain values are integers — tested via step="1" and parseInt in code.
     const gainSlider = screen.getAllByRole('slider').find((el) => {
       const parent = el.closest('.space-y-2');
-      return parent?.textContent?.includes('Gain') && !parent?.textContent?.includes('Gamma');
+      return (
+        parent?.textContent?.includes('Gain') &&
+        !parent?.textContent?.includes('Gamma')
+      );
     });
     expect(gainSlider).toHaveAttribute('step', '1');
   });

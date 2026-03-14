@@ -589,7 +589,8 @@ export function MachineConfiguration() {
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              {errors.scanner_name === undefined && /* placeholder for num_frames error */ null}
+              {errors.scanner_name === undefined &&
+                /* placeholder for num_frames error */ null}
               <p className="text-xs text-gray-500 mt-1">
                 Integer 1–720. Default 72 (5° per frame). Higher values give
                 finer angular resolution but longer scans.
