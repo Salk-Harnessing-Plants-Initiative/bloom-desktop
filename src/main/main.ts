@@ -826,6 +826,8 @@ ipcMain.handle('config:get', async () => {
         bloom_scanner_username: config.bloom_scanner_username,
         bloom_scanner_password: hasCredentials ? '********' : '',
         bloom_anon_key: config.bloom_anon_key,
+        num_frames: config.num_frames,
+        seconds_per_rot: config.seconds_per_rot,
       },
       hasCredentials,
     };

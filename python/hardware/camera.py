@@ -88,7 +88,7 @@ class Camera:
 
         # Set gain
         self.camera.GainAuto.Value = "Off"
-        self.camera.GainRaw.Value = self.settings.gain
+        self.camera.GainRaw.Value = int(self.settings.gain)
 
         # Set gamma
         self.camera.GammaEnable.Value = True

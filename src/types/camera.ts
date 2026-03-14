@@ -13,14 +13,11 @@ export interface CameraSettings {
   /** Exposure time in microseconds */
   exposure_time: number;
 
-  /** Gain (raw value) */
+  /** Gain (GainRaw integer value, 36-512 for acA2000-50gm) */
   gain: number;
 
   /** Camera IP address (e.g., "10.0.0.45"). Optional for mock camera. */
   camera_ip_address?: string;
-
-  /** Brightness (0.0 - 1.0, optional) */
-  brightness?: number;
 
   /** Gamma correction (typically 0.5 - 2.0) */
   gamma?: number;
@@ -30,15 +27,6 @@ export interface CameraSettings {
 
   /** Time for one complete rotation in seconds (for scanning) */
   seconds_per_rot?: number;
-
-  /** Contrast (optional, not supported on all cameras) */
-  contrast?: number;
-
-  /** Image width in pixels (optional) */
-  width?: number;
-
-  /** Image height in pixels (optional) */
-  height?: number;
 }
 
 /**
@@ -117,8 +105,7 @@ export interface CameraDetectionResponse {
  */
 export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   exposure_time: 10000, // 10ms
-  gain: 0,
+  gain: 100, // ~9.9 dB for acA2000-50gm (GainRaw integer)
   camera_ip_address: 'mock',
   gamma: 1.0,
-  brightness: 0.5,
 };

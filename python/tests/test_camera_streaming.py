@@ -39,7 +39,7 @@ class TestGrabFrameBase64:
         """Verify MockCamera.grab_frame_base64() returns valid data URI."""
         settings = CameraSettings(
             exposure_time=10000,
-            gain=0.0,
+            gain=100,
             camera_ip_address="192.168.1.100",
             num_frames=1,
         )
@@ -69,7 +69,7 @@ class TestGrabFrameBase64:
         """Verify MockCamera base64 can be decoded back to PNG image."""
         settings = CameraSettings(
             exposure_time=10000,
-            gain=0.0,
+            gain=100,
             camera_ip_address="192.168.1.100",
             num_frames=1,
         )
@@ -93,7 +93,7 @@ class TestGrabFrameBase64:
         """Verify output format matches: 'data:image/png;base64,{data}'."""
         settings = CameraSettings(
             exposure_time=10000,
-            gain=0.0,
+            gain=100,
             camera_ip_address="192.168.1.100",
             num_frames=1,
         )
@@ -112,7 +112,7 @@ class TestGrabFrameBase64:
         """Verify grab_frame_base64() raises error if camera not open."""
         settings = CameraSettings(
             exposure_time=10000,
-            gain=0.0,
+            gain=100,
             camera_ip_address="192.168.1.100",
             num_frames=1,
         )
@@ -162,7 +162,7 @@ class TestStreamingIPCActions:
             "action": "start_stream",
             "settings": {
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": "192.168.1.100",
                 "num_frames": 1,
             },
@@ -191,7 +191,7 @@ class TestStreamingIPCActions:
             "action": "connect",
             "settings": {
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": "192.168.1.100",
                 "num_frames": 1,
             },
@@ -217,7 +217,7 @@ class TestStreamingIPCActions:
             "action": "start_stream",
             "settings": {
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": "192.168.1.100",
                 "num_frames": 1,
             },
@@ -246,7 +246,7 @@ class TestStreamingIPCActions:
             "action": "start_stream",
             "settings": {
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": "192.168.1.100",
                 "num_frames": 1,
             },
@@ -292,7 +292,7 @@ class TestStreamingIPCActions:
             "action": "start_stream",
             "settings": {
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": "192.168.1.100",
                 "num_frames": 1,
             },
@@ -349,7 +349,7 @@ class TestStreamingWorkflow:
             "action": "start_stream",
             "settings": {
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": "192.168.1.100",
                 "num_frames": 1,
             },
@@ -384,7 +384,7 @@ class TestStreamingWorkflow:
             "action": "start_stream",
             "settings": {
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": "192.168.1.100",
                 "num_frames": 1,
             },

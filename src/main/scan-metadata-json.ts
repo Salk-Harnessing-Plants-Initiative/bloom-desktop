@@ -77,8 +77,10 @@ export function buildMetadataObject(
     // Brightness/contrast are not supported on aca2000-50gm (ace Classic)
     // and are commented out in the pilot UI — users never change them.
     // See: bloom-desktop-pilot/app/src/main/scanner.ts:defaultCameraSettings()
-    brightness: cam.brightness ?? 0,
-    contrast: cam.contrast ?? 0,
+    // Brightness/contrast removed from CameraSettings (unsupported on acA2000-50gm).
+    // Always write identity defaults (0) for metadata backward compatibility.
+    brightness: 0,
+    contrast: 0,
     gamma: cam.gamma ?? 1,
     seconds_per_rot: settings.daq.seconds_per_rot,
   };

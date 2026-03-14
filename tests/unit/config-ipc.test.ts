@@ -14,6 +14,7 @@ import {
   saveConfig,
   loadCredentials,
   saveCredentials,
+  loadEnvConfig,
   validateConfig,
   getDefaultConfig,
   MachineConfig,
@@ -54,6 +55,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       saveConfig(config, CONFIG_PATH);
 
@@ -128,6 +131,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       // Simulate handler logic
@@ -161,6 +166,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       const credentials: MachineCredentials = {
@@ -201,6 +208,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
 
       // Simulate handler logic
@@ -323,6 +332,8 @@ describe('Config IPC Handler Logic', () => {
         bloom_scanner_username: '',
         bloom_scanner_password: '',
         bloom_anon_key: '',
+        num_frames: 72,
+        seconds_per_rot: 7.0,
       };
       saveConfig(config, CONFIG_PATH);
 
@@ -412,6 +423,47 @@ describe('Config IPC Handler Logic', () => {
       // Verify structure
       expect(expectedFailureResult).toHaveProperty('success', false);
       expect(expectedFailureResult).toHaveProperty('error');
+    });
+  });
+
+  describe('config:get scan parameters (fix-camera-scan-params)', () => {
+    it('1.2.1 config:get returns num_frames and seconds_per_rot from loaded config', () => {
+      // Setup: write .env with scan params
+      const envContent = [
+        'SCANNER_NAME=TestScanner',
+        'CAMERA_IP_ADDRESS=mock',
+        'SCANS_DIR=/tmp/scans',
+        'BLOOM_API_URL=https://api.bloom.salk.edu/proxy',
+        'BLOOM_SCANNER_USERNAME=',
+        'BLOOM_SCANNER_PASSWORD=',
+        'BLOOM_ANON_KEY=',
+        'NUM_FRAMES=36',
+        'SECONDS_PER_ROT=5.0',
+      ].join('\n');
+      fs.writeFileSync(ENV_PATH, envContent);
+
+      // Simulate the config:get handler using loadEnvConfig (unified)
+      const config = loadEnvConfig(ENV_PATH);
+      const hasCredentials = config.bloom_scanner_password !== '';
+
+      // The handler should return ALL config fields including scan params
+      const result = {
+        config: {
+          scanner_name: config.scanner_name,
+          camera_ip_address: config.camera_ip_address,
+          scans_dir: config.scans_dir,
+          bloom_api_url: config.bloom_api_url,
+          bloom_scanner_username: config.bloom_scanner_username,
+          bloom_scanner_password: hasCredentials ? '********' : '',
+          bloom_anon_key: config.bloom_anon_key,
+          num_frames: config.num_frames,
+          seconds_per_rot: config.seconds_per_rot,
+        },
+        hasCredentials,
+      };
+
+      expect(result.config.num_frames).toBe(36);
+      expect(result.config.seconds_per_rot).toBe(5.0);
     });
   });
 });
