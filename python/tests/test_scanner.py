@@ -23,13 +23,11 @@ def scanner_settings():
     return {
         "camera": {
             "exposure_time": 10000,
-            "gain": 0.0,
+            "gain": 100,
             "camera_ip_address": None,
             "gamma": 1.0,
             "num_frames": 72,
-            "seconds_per_rot": 36.0,
-            "width": 640,
-            "height": 480,
+            "seconds_per_rot": 7.0,
         },
         "daq": {
             "device_name": "cDAQ1Mod1",
@@ -51,13 +49,11 @@ def small_scan_settings():
     return {
         "camera": {
             "exposure_time": 10000,
-            "gain": 0.0,
+            "gain": 100,
             "camera_ip_address": None,
             "gamma": 1.0,
             "num_frames": 5,
-            "seconds_per_rot": 36.0,
-            "width": 640,
-            "height": 480,
+            "seconds_per_rot": 7.0,
         },
         "daq": {
             "device_name": "cDAQ1Mod1",
@@ -333,7 +329,7 @@ class TestScannerScan:
             settings = ScannerSettings(
                 camera={
                     "exposure_time": 10000,
-                    "gain": 0.0,
+                    "gain": 100,
                     "camera_ip_address": None,
                     "gamma": 1.0,
                     "num_frames": num_frames,
@@ -444,7 +440,7 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 3,
@@ -478,7 +474,7 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 5,
@@ -514,7 +510,7 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 3,
@@ -555,7 +551,7 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 7,
@@ -596,7 +592,7 @@ class TestScannerImagePersistence:
         settings = ScannerSettings(
             camera={
                 "exposure_time": 10000,
-                "gain": 0.0,
+                "gain": 100,
                 "camera_ip_address": None,
                 "gamma": 1.0,
                 "num_frames": 3,
