@@ -12,15 +12,11 @@ import { PythonProcess } from './python-process';
  */
 export interface CameraSettings {
   exposure_time: number; // microseconds
-  gain: number;
+  gain: number; // GainRaw integer value (36-512 for acA2000-50gm)
   camera_ip_address?: string; // Optional for mock camera
   gamma?: number;
   num_frames?: number;
   seconds_per_rot?: number;
-  brightness?: number;
-  contrast?: number;
-  width?: number;
-  height?: number;
 }
 
 /**
