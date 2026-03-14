@@ -6,7 +6,6 @@ and casts gain to int before constructing CameraSettings.
 """
 
 
-
 class TestIpcHandlerCameraFiltering:
     """Test IPC handler's camera settings filtering."""
 
