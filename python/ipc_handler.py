@@ -349,6 +349,7 @@ def get_camera_instance(settings: Dict[str, Any]) -> Any:
     # Import directly from source module to avoid test monkey-patching interference.
     from python.hardware.camera_types import CameraSettings as _RealCameraSettings
     import dataclasses
+
     known_fields = {f.name for f in dataclasses.fields(_RealCameraSettings)}
     filtered = {k: v for k, v in settings.items() if k in known_fields}
 
