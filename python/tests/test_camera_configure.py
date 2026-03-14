@@ -6,7 +6,6 @@ Tests expected to fail until int() cast is added in implementation.
 """
 
 from unittest.mock import MagicMock
-import pytest
 from python.hardware.camera_types import CameraSettings
 
 
