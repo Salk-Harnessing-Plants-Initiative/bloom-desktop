@@ -155,6 +155,33 @@
 - [ ] 2.6.G `npm run dev` — Python process starts successfully (no timeout)
 - [ ] 2.6.G2 `npm run test:unit && npm run test:python` — all tests still pass
 
+## 2.7 Copilot Review Fixes (TDD)
+
+Addresses GitHub Copilot review comments on PR #122.
+
+### 2.7.1 Tests (Red Phase)
+
+- [x] 2.7.1.1 Test `loadEnvConfig` with `NUM_FRAMES=` (empty) keeps default 72 — not NaN (`config-store.test.ts`)
+- [x] 2.7.1.2 Test `loadEnvConfig` with `NUM_FRAMES=abc` (non-numeric) keeps default 72 (`config-store.test.ts`)
+- [x] 2.7.1.3 Test `loadEnvConfig` with `SECONDS_PER_ROT=` (empty) keeps default 7.0 (`config-store.test.ts`)
+- [x] 2.7.1.4 Test `loadEnvConfig` with `SECONDS_PER_ROT=xyz` (non-numeric) keeps default 7.0 (`config-store.test.ts`)
+- [x] 2.7.1.5 Test CameraSettingsForm gain onChange fires with integer value (`CameraSettingsForm.test.tsx`)
+- [x] 2.7.1.6 Test CaptureScan `handleStartScan` passes `num_frames` from config into `scanner.initialize()` (`capture-scan-config.test.tsx`)
+- [x] 2.7.1.7 Test CaptureScan `handleStartScan` passes `seconds_per_rot` from config into `scanner.initialize()` (`capture-scan-config.test.tsx`)
+
+### 2.7.2 Implementation (Green Phase)
+
+- [x] 2.7.2.1 Guard `parseInt`/`parseFloat` in `loadEnvConfig` — only assign when `!isNaN(parsed)` (`config-store.ts:487-491`)
+- [x] 2.7.2.2 Add `num_frames?` and `seconds_per_rot?` to `FormErrors` interface (`MachineConfiguration.tsx:14-20`)
+- [x] 2.7.2.3 Render `errors.num_frames` and `errors.seconds_per_rot` under scan param inputs (`MachineConfiguration.tsx:592-623`)
+- [x] 2.7.2.4 Replace `@ts-expect-error` type tests with runtime `hasOwnProperty` checks (`camera-settings.test.ts`) — tsconfig excludes tests from type-checking
+
+### CHECK GATE 8: Copilot review fixes verified
+
+- [x] 2.7.G1 `npx tsc --noEmit` — compiles cleanly
+- [x] 2.7.G2 `npm run test:unit` — all unit tests pass (400 passed)
+- [x] 2.7.G3 `npm run lint && npm run format:check` — clean
+
 ## 3. Verification (full suite)
 
 - [ ] 3.1 All unit tests pass (`npm run test:unit`)

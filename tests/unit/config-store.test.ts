@@ -1535,6 +1535,58 @@ OTHER_VAR=ignored`;
       expect(r120.errors.seconds_per_rot).toBeUndefined();
     });
 
+    it('2.7.1.1 loadEnvConfig with empty NUM_FRAMES keeps default 72', () => {
+      const envContent = [
+        'SCANNER_NAME=MyScanner',
+        'NUM_FRAMES=',
+        'SECONDS_PER_ROT=5.0',
+      ].join('\n');
+      fs.writeFileSync(envPath, envContent);
+
+      const config = loadEnvConfig(envPath);
+      expect(config.num_frames).toBe(72);
+      expect(Number.isNaN(config.num_frames)).toBe(false);
+    });
+
+    it('2.7.1.2 loadEnvConfig with non-numeric NUM_FRAMES keeps default 72', () => {
+      const envContent = [
+        'SCANNER_NAME=MyScanner',
+        'NUM_FRAMES=abc',
+        'SECONDS_PER_ROT=5.0',
+      ].join('\n');
+      fs.writeFileSync(envPath, envContent);
+
+      const config = loadEnvConfig(envPath);
+      expect(config.num_frames).toBe(72);
+      expect(Number.isNaN(config.num_frames)).toBe(false);
+    });
+
+    it('2.7.1.3 loadEnvConfig with empty SECONDS_PER_ROT keeps default 7.0', () => {
+      const envContent = [
+        'SCANNER_NAME=MyScanner',
+        'NUM_FRAMES=36',
+        'SECONDS_PER_ROT=',
+      ].join('\n');
+      fs.writeFileSync(envPath, envContent);
+
+      const config = loadEnvConfig(envPath);
+      expect(config.seconds_per_rot).toBe(7.0);
+      expect(Number.isNaN(config.seconds_per_rot)).toBe(false);
+    });
+
+    it('2.7.1.4 loadEnvConfig with non-numeric SECONDS_PER_ROT keeps default 7.0', () => {
+      const envContent = [
+        'SCANNER_NAME=MyScanner',
+        'NUM_FRAMES=36',
+        'SECONDS_PER_ROT=xyz',
+      ].join('\n');
+      fs.writeFileSync(envPath, envContent);
+
+      const config = loadEnvConfig(envPath);
+      expect(config.seconds_per_rot).toBe(7.0);
+      expect(Number.isNaN(config.seconds_per_rot)).toBe(false);
+    });
+
     it('1.1.7 loading .env without scan params returns defaults with other fields intact', () => {
       const envContent = [
         'SCANNER_NAME=MyScanner',

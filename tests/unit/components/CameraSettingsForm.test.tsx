@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { CameraSettingsForm } from '../../../src/components/CameraSettingsForm';
 import { DEFAULT_CAMERA_SETTINGS } from '../../../src/types/camera';
@@ -62,20 +62,27 @@ describe('CameraSettingsForm — Basler acA2000-50gm corrections', () => {
     expect(gainSlider).toHaveAttribute('step', '1');
   });
 
-  it('1.7.2 gain handleInputChange calls onChange with parseInt result', () => {
+  it('1.7.2 gain handleInputChange calls onChange with parseInt result (integer)', () => {
     renderForm();
-    // After implementation, the gain number input should use parseInt, not parseFloat.
-    // We verify this indirectly: the gain slider step is "1" (integer steps).
-    // The actual onChange assertion requires simulating input, but the key contract
-    // is that gain values are integers — tested via step="1" and parseInt in code.
-    const gainSlider = screen.getAllByRole('slider').find((el) => {
+    // Find the gain number input (spinbox) — not the slider
+    const gainSpinbox = screen.getAllByRole('spinbutton').find((el) => {
       const parent = el.closest('.space-y-2');
       return (
         parent?.textContent?.includes('Gain') &&
         !parent?.textContent?.includes('Gamma')
       );
     });
-    expect(gainSlider).toHaveAttribute('step', '1');
+
+    expect(gainSpinbox).toBeDefined();
+
+    // Simulate typing a float value — onChange should receive an integer
+    fireEvent.change(gainSpinbox!, { target: { value: '200.7' } });
+
+    // onChange should have been called with gain as an integer (parseInt truncates)
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
+    expect(lastCall.gain).toBe(200);
+    expect(Number.isInteger(lastCall.gain)).toBe(true);
   });
 
   it('1.7.3 Brightness control is not rendered', () => {

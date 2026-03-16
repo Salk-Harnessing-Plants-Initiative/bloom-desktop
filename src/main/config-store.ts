@@ -483,12 +483,20 @@ export function loadEnvConfig(envPath: string): MachineConfig {
           case 'BLOOM_ANON_KEY':
             envConfig.bloom_anon_key = value;
             break;
-          case 'NUM_FRAMES':
-            envConfig.num_frames = parseInt(value, 10);
+          case 'NUM_FRAMES': {
+            const parsed = parseInt(value, 10);
+            if (!isNaN(parsed)) {
+              envConfig.num_frames = parsed;
+            }
             break;
-          case 'SECONDS_PER_ROT':
-            envConfig.seconds_per_rot = parseFloat(value);
+          }
+          case 'SECONDS_PER_ROT': {
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed)) {
+              envConfig.seconds_per_rot = parsed;
+            }
             break;
+          }
         }
       }
     }

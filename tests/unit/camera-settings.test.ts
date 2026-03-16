@@ -6,10 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  DEFAULT_CAMERA_SETTINGS,
-  CameraSettings,
-} from '../../src/types/camera';
+import { DEFAULT_CAMERA_SETTINGS } from '../../src/types/camera';
 
 describe('Camera Settings Types (Basler acA2000-50gm)', () => {
   it('1.3.1 DEFAULT_CAMERA_SETTINGS.gain is 100', () => {
@@ -27,32 +24,25 @@ describe('Camera Settings Types (Basler acA2000-50gm)', () => {
     expect('height' in DEFAULT_CAMERA_SETTINGS).toBe(false);
   });
 
-  it('1.3.4 compile-time: removed fields cause TS errors', () => {
-    // These @ts-expect-error comments verify that assigning removed fields
-    // to CameraSettings causes a compile error. If the fields still exist,
-    // the @ts-expect-error itself becomes an error (unused directive).
-    // This test is validated by `tsc --noEmit` in CI.
+  it('1.3.4 CameraSettings interface does not include removed fields', () => {
+    // Runtime check: verify DEFAULT_CAMERA_SETTINGS keys don't include removed fields.
+    // Note: tsconfig.json only includes src/**/* so @ts-expect-error in tests
+    // would NOT be validated by `tsc --noEmit` in CI. Use runtime checks instead.
+    const keys = Object.keys(DEFAULT_CAMERA_SETTINGS);
+    expect(keys).not.toContain('brightness');
+    expect(keys).not.toContain('contrast');
+    expect(keys).not.toContain('width');
+    expect(keys).not.toContain('height');
 
-    const validSettings: CameraSettings = {
-      exposure_time: 10000,
-      gain: 100,
-    };
-    expect(validSettings.gain).toBe(100);
-
-    // @ts-expect-error brightness is removed from CameraSettings
-    const _bad1: CameraSettings = {
-      exposure_time: 10000,
-      gain: 100,
-      brightness: 0.5,
-    };
-    // @ts-expect-error contrast is removed from CameraSettings
-    const _bad2: CameraSettings = {
-      exposure_time: 10000,
-      gain: 100,
-      contrast: 1.0,
-    };
-    // Suppress unused variable warnings
-    void _bad1;
-    void _bad2;
+    // Verify the interface only has expected fields
+    const expectedFields = [
+      'exposure_time',
+      'gain',
+      'gamma',
+      'camera_ip_address',
+    ];
+    for (const key of keys) {
+      expect(expectedFields).toContain(key);
+    }
   });
 });

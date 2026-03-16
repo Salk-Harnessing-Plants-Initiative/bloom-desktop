@@ -16,6 +16,8 @@ interface FormErrors {
   camera_ip_address?: string;
   scans_dir?: string;
   bloom_api_url?: string;
+  num_frames?: string;
+  seconds_per_rot?: string;
   general?: string;
 }
 
@@ -587,10 +589,11 @@ export function MachineConfiguration() {
                     setConfig((prev) => ({ ...prev, num_frames: val }));
                   }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border ${errors.num_frames ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
               />
-              {errors.scanner_name === undefined &&
-                /* placeholder for num_frames error */ null}
+              {errors.num_frames && (
+                <p className="text-red-600 text-sm mt-1">{errors.num_frames}</p>
+              )}
               <p className="text-xs text-gray-500 mt-1">
                 Integer 1–720. Default 72 (5° per frame). Higher values give
                 finer angular resolution but longer scans.
@@ -617,8 +620,13 @@ export function MachineConfiguration() {
                     setConfig((prev) => ({ ...prev, seconds_per_rot: val }));
                   }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 border ${errors.seconds_per_rot ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
               />
+              {errors.seconds_per_rot && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.seconds_per_rot}
+                </p>
+              )}
               <p className="text-xs text-gray-500 mt-1">
                 Range 2.0–120.0 seconds. Default 7.0. Slower rotation reduces
                 motion blur; faster rotation shortens scan time.

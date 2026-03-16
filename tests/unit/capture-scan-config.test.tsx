@@ -9,7 +9,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { CaptureScan } from '../../src/renderer/CaptureScan';
@@ -28,6 +34,10 @@ const mockSessionSet = vi.fn();
 const mockGetRecentScans = vi.fn();
 const mockGetMostRecentScanDate = vi.fn();
 const mockDetectCameras = vi.fn();
+const mockExperimentGet = vi.fn();
+const mockExperimentGetAccession = vi.fn();
+const mockGetPlantBarcodes = vi.fn();
+const mockGetAccessionNameByBarcode = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -56,17 +66,38 @@ beforeEach(() => {
     frames_captured: 36,
     output_path: '/tmp/scan',
   });
+  // Pre-fill session with valid metadata so the form is valid
   mockSessionGet.mockResolvedValue({
-    phenotyperId: null,
-    experimentId: null,
-    waveNumber: null,
-    plantAgeDays: null,
-    accessionName: null,
+    phenotyperId: 'pheno-1',
+    experimentId: 'exp-1',
+    waveNumber: '1',
+    plantAgeDays: '14',
+    accessionName: '',
   });
   mockSessionSet.mockResolvedValue(undefined);
   mockGetRecentScans.mockResolvedValue({ success: true, data: [] });
   mockGetMostRecentScanDate.mockResolvedValue({ success: false });
   mockDetectCameras.mockResolvedValue({ success: true, cameras: [] });
+  // Provide experiment with accession so barcode validation passes
+  mockExperimentGet.mockResolvedValue({
+    success: true,
+    data: {
+      id: 'exp-1',
+      accession: { id: 'acc-1', name: 'TestAccession' },
+    },
+  });
+  mockExperimentGetAccession.mockResolvedValue({
+    success: true,
+    data: { id: 'acc-1', name: 'TestAccession', plant_barcodes: ['PLANT-001'] },
+  });
+  mockGetPlantBarcodes.mockResolvedValue({
+    success: true,
+    data: ['PLANT-001', 'PLANT-002'],
+  });
+  mockGetAccessionNameByBarcode.mockResolvedValue({
+    success: true,
+    data: 'TestAccession',
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
@@ -96,6 +127,18 @@ beforeEach(() => {
         getRecent: mockGetRecentScans,
         getMostRecentScanDate: mockGetMostRecentScanDate,
       },
+      experiments: {
+        get: mockExperimentGet,
+        getAccession: mockExperimentGetAccession,
+        list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+      },
+      accessions: {
+        getPlantBarcodes: mockGetPlantBarcodes,
+        getAccessionNameByBarcode: mockGetAccessionNameByBarcode,
+      },
+      phenotypers: {
+        list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+      },
     },
   };
 
@@ -111,6 +154,39 @@ function renderCaptureScan() {
   );
 }
 
+/**
+ * Helper: wait for the component to fully load (config, session, camera status),
+ * fill in the plant QR code (only field not pre-filled by session), and click Start Scan.
+ */
+async function fillFormAndStartScan() {
+  renderCaptureScan();
+
+  // Wait for config, session, and camera to load
+  await waitFor(() => {
+    expect(mockConfigGet).toHaveBeenCalled();
+    expect(mockSessionGet).toHaveBeenCalled();
+    expect(mockCameraGetSettings).toHaveBeenCalled();
+  });
+
+  // Fill plant QR code with a value that exists in the accession
+  const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+  await act(async () => {
+    fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+  });
+
+  // Wait for barcode validation to complete
+  await waitFor(() => {
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    expect(startButton).not.toBeDisabled();
+  });
+
+  // Click "Start Scan"
+  const startButton = screen.getByRole('button', { name: /start scan/i });
+  await act(async () => {
+    fireEvent.click(startButton);
+  });
+}
+
 describe('CaptureScan Config Integration', () => {
   it('1.8.1 calls config:get on mount and stores num_frames and seconds_per_rot', async () => {
     renderCaptureScan();
@@ -121,32 +197,28 @@ describe('CaptureScan Config Integration', () => {
   });
 
   it('1.8.2 handleStartScan passes num_frames from config into scanner.initialize()', async () => {
-    // This test will pass after CaptureScan is updated to read num_frames from config
-    // and pass it to scanner.initialize() instead of hardcoded 72
-    renderCaptureScan();
+    await fillFormAndStartScan();
 
-    // Wait for config to load
     await waitFor(() => {
-      expect(mockConfigGet).toHaveBeenCalled();
+      expect(mockScannerInitialize).toHaveBeenCalled();
     });
 
-    // The scanner.initialize call should use num_frames from config (36)
-    // not the hardcoded 72. We can't easily trigger handleStartScan without
-    // filling the form, so we verify the config was loaded.
-    // Full integration of this test requires the implementation in task 2.4.
-    expect(mockConfigGet).toHaveBeenCalledTimes(1);
+    const initArgs = mockScannerInitialize.mock.calls[0][0];
+    // num_frames=36 comes from config mock, not hardcoded 72
+    expect(initArgs.daq.num_frames).toBe(36);
+    expect(initArgs.num_frames).toBe(36);
   });
 
   it('1.8.3 handleStartScan passes seconds_per_rot from config into scanner.initialize()', async () => {
-    renderCaptureScan();
+    await fillFormAndStartScan();
 
     await waitFor(() => {
-      expect(mockConfigGet).toHaveBeenCalled();
+      expect(mockScannerInitialize).toHaveBeenCalled();
     });
 
-    // After implementation, seconds_per_rot=5.0 from config should be
-    // passed to scanner.initialize() via DAQ settings override.
-    expect(mockConfigGet).toHaveBeenCalledTimes(1);
+    const initArgs = mockScannerInitialize.mock.calls[0][0];
+    // seconds_per_rot=5.0 comes from config mock, not default 7.0
+    expect(initArgs.daq.seconds_per_rot).toBe(5.0);
   });
 
   it('1.8.4 falls back to defaults when config returns no num_frames', async () => {
@@ -154,19 +226,20 @@ describe('CaptureScan Config Integration', () => {
       config: {
         scanner_name: 'TestScanner',
         scans_dir: '~/.bloom/scans',
+        camera_ip_address: 'mock',
         // num_frames and seconds_per_rot are NOT in config
       },
     });
 
-    renderCaptureScan();
+    await fillFormAndStartScan();
 
     await waitFor(() => {
-      expect(mockConfigGet).toHaveBeenCalled();
+      expect(mockScannerInitialize).toHaveBeenCalled();
     });
 
-    // After implementation, component should fall back to 72 / 7.0
-    // when config doesn't include scan params. This is verified by
-    // the ?? 72 and ?? 7.0 fallbacks in the implementation.
-    expect(mockConfigGet).toHaveBeenCalledTimes(1);
+    const initArgs = mockScannerInitialize.mock.calls[0][0];
+    // Should fall back to defaults: 72 frames, 7.0 seconds
+    expect(initArgs.daq.num_frames).toBe(72);
+    expect(initArgs.daq.seconds_per_rot).toBe(7.0);
   });
 });
