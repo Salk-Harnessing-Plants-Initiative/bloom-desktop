@@ -41,13 +41,9 @@ const createScannerSettings = (metadata: {
 }) => ({
   camera: {
     exposure_time: 10000,
-    gain: 0.0,
+    gain: 100,
     camera_ip_address: '192.168.1.100',
     gamma: 1.0,
-    brightness: 0.5,
-    contrast: 1.0,
-    width: 640,
-    height: 480,
   },
   daq: {
     device_name: 'cDAQ1Mod1',
@@ -56,7 +52,7 @@ const createScannerSettings = (metadata: {
     dir_pin: 1,
     steps_per_revolution: 6400,
     num_frames: 36, // Use fewer frames for faster testing
-    seconds_per_rot: 18.0,
+    seconds_per_rot: 7.0,
   },
   num_frames: 36,
   output_path: './test-scans',
