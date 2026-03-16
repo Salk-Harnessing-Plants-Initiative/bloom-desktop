@@ -140,6 +140,21 @@
 
 - [ ] 2.5.G `npm run lint && npx tsc --noEmit && npm run test:unit` — metadata tests (1.9) now pass
 
+### 2.6 PyInstaller Compatibility Fix
+
+**Bug: Section 2.3.6 introduced a hardcoded `from python.hardware.camera_types` import at runtime in `get_camera_instance()` that breaks the PyInstaller bundle. The bundled app uses `hardware.*` import paths, not `python.hardware.*`.**
+
+- [ ] 2.6.1 Remove `from python.hardware.camera_types import CameraSettings as _RealCameraSettings` from `get_camera_instance()` — use the module-level `CameraSettings` reference instead
+- [ ] 2.6.2 Remove debug prints from camera module import block (`STATUS:sys.path=...`, `STATUS:Successfully imported from...`, etc.)
+- [ ] 2.6.3 Remove redundant `import sys` at line 38 (already imported at line 20)
+- [ ] 2.6.4 Remove `brightness`/`contrast`/`width`/`height` from `camera-process.ts` CameraSettings interface (missed duplicate interface)
+- [ ] 2.6.5 Fix integration test `test-streaming.ts` gain value from `0.0` to `100` (valid Basler GainRaw)
+
+### CHECK GATE 7: PyInstaller compatibility verified
+
+- [ ] 2.6.G `npm run dev` — Python process starts successfully (no timeout)
+- [ ] 2.6.G2 `npm run test:unit && npm run test:python` — all tests still pass
+
 ## 3. Verification (full suite)
 
 - [ ] 3.1 All unit tests pass (`npm run test:unit`)

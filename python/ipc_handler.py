@@ -346,11 +346,9 @@ def get_camera_instance(settings: Dict[str, Any]) -> Any:
         raise RuntimeError("Camera module not available")
 
     # Filter to only known CameraSettings fields (TypeScript may send removed fields).
-    # Import directly from source module to avoid test monkey-patching interference.
-    from python.hardware.camera_types import CameraSettings as _RealCameraSettings
     import dataclasses
 
-    known_fields = {f.name for f in dataclasses.fields(_RealCameraSettings)}
+    known_fields = {f.name for f in dataclasses.fields(CameraSettings)}
     filtered = {k: v for k, v in settings.items() if k in known_fields}
 
     # Cast gain to int (JSON deserializes numbers as float)
