@@ -747,10 +747,10 @@ ipcMain.handle('scanner:cleanup', async () => {
  */
 ipcMain.handle('scanner:scan', async () => {
   try {
+    if (idleTimer) idleTimer.pauseForScan();
     if (!scannerProcess) {
       throw new Error('Scanner not initialized. Call initialize() first.');
     }
-    if (idleTimer) idleTimer.pauseForScan();
     const response = await scannerProcess.scan();
     return response;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

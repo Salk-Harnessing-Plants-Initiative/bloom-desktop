@@ -121,6 +121,7 @@ beforeEach(() => {
     session: {
       get: mockSessionGet,
       set: mockSessionSet,
+      onIdleReset: vi.fn().mockReturnValue(() => {}),
     },
     database: {
       scans: {

@@ -41,3 +41,11 @@
   - [x] 2.5.2 Clear metadata state (phenotyper, experiment, wave, age, accession)
   - [x] 2.5.3 Show visible notification/toast to user that session was reset due to inactivity
   - [x] 2.5.4 Clean up listener on unmount
+
+## 3. Bug Fixes (review feedback)
+
+- [x] 3.1 `resumeAfterScan()` must be no-op when timer was not paused (`idle-timer.ts`)
+  - [x] 3.1.1 Write failing test: `resumeAfterScan` without prior `pauseForScan` must not reset countdown
+  - [x] 3.1.2 Guard `resumeAfterScan()` to return early when `!this.paused`
+- [x] 3.2 Move `pauseForScan()` before scanner null-check in `scanner:scan` handler (`main.ts`)
+- [x] 3.3 Fix `tasks.md` doc: `onIdleReset` return type is `() => void`, not `void`

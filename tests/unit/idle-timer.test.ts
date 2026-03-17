@@ -255,5 +255,23 @@ describe('IdleTimer', () => {
       vi.advanceTimersByTime(DEFAULT_TIMEOUT * 2);
       expect(onIdleSpy).not.toHaveBeenCalled();
     });
+
+    // 3.1.1 resumeAfterScan without prior pauseForScan must not reset countdown
+    it('should not reset countdown when resumeAfterScan is called without pauseForScan', () => {
+      timer.start();
+
+      // Advance halfway through the timeout
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT / 2);
+      expect(onIdleSpy).not.toHaveBeenCalled();
+
+      // Call resumeAfterScan without a prior pauseForScan (simulates scanner:scan
+      // throwing before pauseForScan, with finally calling resumeAfterScan)
+      timer.resumeAfterScan();
+
+      // The original countdown should NOT have been reset — it should fire
+      // after the remaining half of the timeout, not a full timeout from now
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT / 2);
+      expect(onIdleSpy).toHaveBeenCalledTimes(1);
+    });
   });
 });
