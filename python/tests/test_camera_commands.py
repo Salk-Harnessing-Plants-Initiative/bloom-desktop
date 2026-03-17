@@ -6,17 +6,34 @@ from unittest.mock import MagicMock
 import sys
 import numpy as np
 
-# Mock hardware modules before importing ipc_handler
-sys.modules["hardware.camera"] = MagicMock()
-sys.modules["hardware.camera_mock"] = MagicMock()
-sys.modules["hardware.camera_types"] = MagicMock()
+# Mock hardware modules before importing ipc_handler so the
+# `from hardware.*` import path doesn't fail during collection.
+# These are cleaned up below to prevent contaminating other test files.
+_saved_modules = {}
+for mod_name in ("hardware.camera", "hardware.camera_mock", "hardware.camera_types"):
+    _saved_modules[mod_name] = sys.modules.get(mod_name)
+    sys.modules[mod_name] = MagicMock()
 
 from python.ipc_handler import handle_command  # noqa: E402
 
+# Restore sys.modules so other test files aren't contaminated
+for mod_name, original in _saved_modules.items():
+    if original is None:
+        sys.modules.pop(mod_name, None)
+    else:
+        sys.modules[mod_name] = original
+
 
 @pytest.fixture(autouse=True)
-def setup_camera_mocks(monkeypatch):
-    """Set up camera mocks for each test."""
+def setup_camera_mocks():
+    """Set up camera mocks for each test.
+
+    NOTE: We deliberately avoid monkeypatch for ipc module attributes here.
+    The module-level sys.modules hack (above) means monkeypatch saves MagicMock
+    as the "original" value and restores it AFTER yield cleanup, overwriting
+    our manual restoration of real classes. By setting/restoring directly,
+    we guarantee real classes are restored for subsequent test files.
+    """
     import python.ipc_handler as ipc
 
     # Create a mock camera class
@@ -39,28 +56,39 @@ def setup_camera_mocks(monkeypatch):
         def _configure_camera(self):
             pass
 
-    # Create CameraSettings class with optional camera_ip_address
+    # Create CameraSettings as a real dataclass so dataclasses.fields() works
+    # in get_camera_instance()'s kwargs filter. Must match the real CameraSettings fields.
+    from dataclasses import dataclass
+    from typing import Optional
+
+    @dataclass
     class MockCameraSettings:
-        def __init__(self, exposure_time, gain, camera_ip_address=None, **kwargs):
-            self.exposure_time = exposure_time
-            self.gain = gain
-            self.camera_ip_address = camera_ip_address
-            for key, value in kwargs.items():
-                setattr(self, key, value)
+        exposure_time: float
+        gain: int
+        camera_ip_address: Optional[str] = None
+        gamma: float = 1.0
+        num_frames: int = 72
+        seconds_per_rot: float = 7.0
 
-    # Patch the camera modules
-    monkeypatch.setattr("python.ipc_handler.CAMERA_AVAILABLE", True)
-    monkeypatch.setattr("python.ipc_handler.MockCamera", MockCameraInstance)
-    monkeypatch.setattr("python.ipc_handler.Camera", MockCameraInstance)
-    monkeypatch.setattr("python.ipc_handler.CameraSettings", MockCameraSettings)
-
-    # Reset camera instance
+    # Set mocks directly (no monkeypatch)
+    ipc.CAMERA_AVAILABLE = True
+    ipc.MockCamera = MockCameraInstance
+    ipc.Camera = MockCameraInstance
+    ipc.CameraSettings = MockCameraSettings
     ipc._camera_instance = None
     ipc._use_mock_camera = True
 
     yield
 
-    # Cleanup
+    # Restore REAL classes (not the MagicMock originals that monkeypatch would restore)
+    from python.hardware.camera import Camera as RealCamera
+    from python.hardware.camera_mock import MockCamera as RealMockCamera
+    from python.hardware.camera_types import CameraSettings as RealCameraSettings
+
+    ipc.Camera = RealCamera
+    ipc.MockCamera = RealMockCamera
+    ipc.CameraSettings = RealCameraSettings
+    ipc.CAMERA_AVAILABLE = True
     ipc._camera_instance = None
 
 

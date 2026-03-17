@@ -65,9 +65,7 @@ describe('ScannerProcess metadata.json integration', () => {
     await scanner.initialize({
       camera: {
         exposure_time: 10000,
-        gain: 5,
-        brightness: 0.5,
-        contrast: 1.2,
+        gain: 100,
         gamma: 1.0,
       },
       daq: {

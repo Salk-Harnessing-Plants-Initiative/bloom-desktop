@@ -38,6 +38,12 @@ export interface MachineConfig {
 
   /** Supabase anonymous key */
   bloom_anon_key: string;
+
+  /** Number of frames per scan rotation (integer, 1-720) */
+  num_frames: number;
+
+  /** Seconds per rotation (2.0-120.0) */
+  seconds_per_rot: number;
 }
 
 /**
@@ -68,6 +74,8 @@ export interface ValidationResult {
     camera_ip_address?: string;
     scans_dir?: string;
     bloom_api_url?: string;
+    num_frames?: string;
+    seconds_per_rot?: string;
   };
 }
 
@@ -112,6 +120,8 @@ export function getDefaultConfig(): MachineConfig {
     bloom_scanner_username: '',
     bloom_scanner_password: '',
     bloom_anon_key: '',
+    num_frames: 72,
+    seconds_per_rot: 7.0,
   };
 }
 
@@ -369,6 +379,28 @@ export function validateConfig(config: MachineConfig): ValidationResult {
     errors.bloom_api_url = 'Invalid URL format';
   }
 
+  // Validate num_frames: integer in 1-720
+  if (
+    config.num_frames == null ||
+    !Number.isInteger(config.num_frames) ||
+    config.num_frames < 1 ||
+    config.num_frames > 720
+  ) {
+    errors.num_frames = 'Number of frames must be an integer between 1 and 720';
+  }
+
+  // Validate seconds_per_rot: number in 2.0-120.0
+  if (
+    config.seconds_per_rot == null ||
+    typeof config.seconds_per_rot !== 'number' ||
+    isNaN(config.seconds_per_rot) ||
+    config.seconds_per_rot < 2.0 ||
+    config.seconds_per_rot > 120.0
+  ) {
+    errors.seconds_per_rot =
+      'Seconds per rotation must be between 2.0 and 120.0';
+  }
+
   return {
     valid: Object.keys(errors).length === 0,
     errors,
@@ -451,6 +483,20 @@ export function loadEnvConfig(envPath: string): MachineConfig {
           case 'BLOOM_ANON_KEY':
             envConfig.bloom_anon_key = value;
             break;
+          case 'NUM_FRAMES': {
+            const parsed = parseInt(value, 10);
+            if (!isNaN(parsed)) {
+              envConfig.num_frames = parsed;
+            }
+            break;
+          }
+          case 'SECONDS_PER_ROT': {
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed)) {
+              envConfig.seconds_per_rot = parsed;
+            }
+            break;
+          }
         }
       }
     }
@@ -514,6 +560,10 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     `CAMERA_IP_ADDRESS=${config.camera_ip_address}`,
     `SCANS_DIR=${config.scans_dir}`,
     `BLOOM_API_URL=${config.bloom_api_url}`,
+    '',
+    '# Scan Parameters',
+    `NUM_FRAMES=${config.num_frames}`,
+    `SECONDS_PER_ROT=${config.seconds_per_rot}`,
     '',
     '# Bloom API Credentials (Supabase service account)',
     `BLOOM_SCANNER_USERNAME=${config.bloom_scanner_username}`,

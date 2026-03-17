@@ -345,8 +345,18 @@ def get_camera_instance(settings: Dict[str, Any]) -> Any:
     if not CAMERA_AVAILABLE:
         raise RuntimeError("Camera module not available")
 
+    # Filter to only known CameraSettings fields (TypeScript may send removed fields).
+    import dataclasses
+
+    known_fields = {f.name for f in dataclasses.fields(CameraSettings)}
+    filtered = {k: v for k, v in settings.items() if k in known_fields}
+
+    # Cast gain to int (JSON deserializes numbers as float)
+    if "gain" in filtered:
+        filtered["gain"] = int(filtered["gain"])
+
     # Create settings object
-    camera_settings = CameraSettings(**settings)
+    camera_settings = CameraSettings(**filtered)
 
     # Create new camera instance if needed
     if _camera_instance is None:

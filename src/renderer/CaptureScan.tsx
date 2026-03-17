@@ -52,6 +52,10 @@ export function CaptureScan() {
   // Machine config state
   const [scannerName, setScannerName] = useState('CaptureScan-UI');
   const [scansDir, setScansDir] = useState('~/.bloom/scans');
+  const [scanNumFrames, setScanNumFrames] = useState<number | null>(null);
+  const [scanSecondsPerRot, setScanSecondsPerRot] = useState<number | null>(
+    null
+  );
 
   // Scanning state
   const [isScanning, setIsScanning] = useState(false);
@@ -142,6 +146,12 @@ export function CaptureScan() {
         }
         if (config.scans_dir) {
           setScansDir(config.scans_dir);
+        }
+        if (config.num_frames != null) {
+          setScanNumFrames(config.num_frames);
+        }
+        if (config.seconds_per_rot != null) {
+          setScanSecondsPerRot(config.seconds_per_rot);
         }
       } catch (error) {
         console.error('Failed to load machine config:', error);
@@ -397,10 +407,17 @@ export function CaptureScan() {
       const relativePath = buildScanPath(metadata.plantQrCode, scanUuid);
       const outputPath = `${scansDir}/${relativePath}`;
 
+      const numFrames = scanNumFrames ?? 72;
+      const secondsPerRot = scanSecondsPerRot ?? 7.0;
+
       await window.electron.scanner.initialize({
         camera: cameraSettings,
-        daq: DEFAULT_DAQ_SETTINGS,
-        num_frames: 72,
+        daq: {
+          ...DEFAULT_DAQ_SETTINGS,
+          num_frames: numFrames,
+          seconds_per_rot: secondsPerRot,
+        },
+        num_frames: numFrames,
         output_path: outputPath,
         metadata: {
           experiment_id: metadata.experimentId,
@@ -575,6 +592,12 @@ export function CaptureScan() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Scan Parameters (read-only from Machine Configuration) */}
+              <div className="mt-4 text-sm text-gray-500">
+                {scanNumFrames ?? 72} frames, ~{scanSecondsPerRot ?? 7.0}s
+                rotation
               </div>
 
               {/* Start Scan Button */}
