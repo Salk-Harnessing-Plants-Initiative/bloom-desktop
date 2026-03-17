@@ -41,8 +41,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Zero value persistence for waveNumber and plantAgeDays fields (#91)
+  - Fixed save logic using `||` which converted 0 to null
+  - Fixed load check using truthy comparison instead of `!== null`
+  - Fixed display logic in MetadataForm using `??` instead of `||`
+  - Fixed waveNumber min attribute from "1" to "0" to allow zero
+- Migration checksum placeholders replaced with real SHA-256 hashes
+  - Ensures `prisma migrate status` passes after database upgrade
+  - Added CI tests to verify checksums match migration files
+- E2E startup delay increased from 100ms to 500ms for all environments
+  - Fixes intermittent test timeouts caused by Playwright/Electron race condition
 - Database handler using empty string instead of null for optional genotype_id field
 - E2E test selectors violating Playwright strict mode
+- Limit parameter validation in getRecent database handler (max 100, default 10)
 
 ### Changed
 

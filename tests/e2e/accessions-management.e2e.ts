@@ -17,7 +17,7 @@
  * - Form validation (client-side Zod validation)
  * - Excel file upload and parsing
  * - Sheet selection for multi-sheet files
- * - Column mapping (Plant ID + Genotype ID)
+ * - Column mapping (Plant Barcode + Accession)
  * - Visual column highlighting (green/blue)
  * - Database integration (accession creation, list refresh, plant mappings)
  * - Inline editing with keyboard shortcuts (Enter/Escape)
@@ -79,6 +79,11 @@ import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
+import { closeElectronApp } from './helpers/electron-cleanup';
+import {
+  createTestBloomConfig,
+  cleanupTestBloomConfig,
+} from './helpers/bloom-config';
 import {
   validAccession,
   createAccessionData,
@@ -134,6 +139,9 @@ async function launchElectronApp() {
  * Test setup: Create fresh database and launch app
  */
 test.beforeEach(async () => {
+  // Create minimal ~/.bloom/.env to prevent Machine Config redirect
+  createTestBloomConfig();
+
   // Clean up any existing test database
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
@@ -165,10 +173,8 @@ test.beforeEach(async () => {
  * Test cleanup: Close app and disconnect database
  */
 test.afterEach(async () => {
-  // Close Electron app
-  if (electronApp) {
-    await electronApp.close();
-  }
+  // Close Electron app and wait for process to fully terminate
+  await closeElectronApp(electronApp);
 
   // Disconnect Prisma
   if (prisma) {
@@ -179,6 +185,9 @@ test.afterEach(async () => {
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
   }
+
+  // Clean up test ~/.bloom/.env (restores original if there was one)
+  cleanupTestBloomConfig();
 });
 
 // ============================================
@@ -463,15 +472,13 @@ test.describe('Expand Accession Details', () => {
       data: [
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-001',
-          genotype_id: 'GT-001',
+          accession_name: 'GT-001',
         },
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-002',
-          genotype_id: 'GT-002',
+          accession_name: 'GT-002',
         },
       ],
     });
@@ -488,7 +495,7 @@ test.describe('Expand Accession Details', () => {
     });
   });
 
-  test('should display mappings table with Plant Barcode and Genotype ID columns', async () => {
+  test('should display mappings table with Plant Barcode and Accession columns', async () => {
     const accession = await prisma.accessions.create({
       data: createAccessionData(),
     });
@@ -498,15 +505,13 @@ test.describe('Expand Accession Details', () => {
       data: [
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-001',
-          genotype_id: 'GT-001',
+          accession_name: 'GT-001',
         },
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'PLANT-002',
-          genotype_id: 'GT-002',
+          accession_name: 'GT-002',
         },
       ],
     });
@@ -524,7 +529,7 @@ test.describe('Expand Accession Details', () => {
       mappingsTable.locator('th:has-text("Plant Barcode")')
     ).toBeVisible();
     await expect(
-      mappingsTable.locator('th:has-text("Genotype ID")')
+      mappingsTable.locator('th:has-text("Accession")')
     ).toBeVisible();
 
     // Verify actual data is displayed
@@ -569,15 +574,13 @@ test.describe('Expand Accession Details', () => {
       data: [
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'ZEBRA-001',
-          genotype_id: 'GT-Z',
+          accession_name: 'GT-Z',
         },
         {
           accession_file_id: accession.id,
-          accession_id: accession.id,
           plant_barcode: 'ALPHA-001',
-          genotype_id: 'GT-A',
+          accession_name: 'GT-A',
         },
       ],
     });
@@ -615,9 +618,8 @@ test.describe('Inline Mapping Editing', () => {
     await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
@@ -648,9 +650,8 @@ test.describe('Inline Mapping Editing', () => {
     const mapping = await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
@@ -682,7 +683,7 @@ test.describe('Inline Mapping Editing', () => {
     const updated = await prisma.plantAccessionMappings.findUnique({
       where: { id: mapping.id },
     });
-    expect(updated?.genotype_id).toBe('GT-UPDATED');
+    expect(updated?.accession_name).toBe('GT-UPDATED');
   });
 
   test('should cancel inline edit with Escape key', async () => {
@@ -693,9 +694,8 @@ test.describe('Inline Mapping Editing', () => {
     const mapping = await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
@@ -725,7 +725,7 @@ test.describe('Inline Mapping Editing', () => {
     const unchanged = await prisma.plantAccessionMappings.findUnique({
       where: { id: mapping.id },
     });
-    expect(unchanged?.genotype_id).toBe('GT-001');
+    expect(unchanged?.accession_name).toBe('GT-001');
   });
 });
 
@@ -844,9 +844,8 @@ test.describe('Delete Accession', () => {
     await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        accession_id: accession.id,
         plant_barcode: 'PLANT-001',
-        genotype_id: 'GT-001',
+        accession_name: 'GT-001',
       },
     });
 
@@ -903,36 +902,5 @@ test.describe('State Preservation', () => {
 
     // Verify accession still appears
     await expect(window.locator(`text=${validAccession.name}`)).toBeVisible();
-  });
-});
-
-/**
- * NOTE: Excel file upload tests require:
- * 1. xlsx library to be installed
- * 2. AccessionFileUpload component to be implemented
- * 3. File upload UI to be created
- *
- * These tests are placeholders and will be implemented after the basic UI is working.
- */
-
-test.describe.skip('Excel File Upload - Prerequisites Not Met', () => {
-  test.skip('should upload valid Excel file', async () => {
-    // TODO: Implement after AccessionFileUpload component exists
-  });
-
-  test.skip('should reject file larger than 15MB', async () => {
-    // TODO: Implement after file validation exists
-  });
-
-  test.skip('should allow sheet selection for multi-sheet files', async () => {
-    // TODO: Implement after sheet selection UI exists
-  });
-
-  test.skip('should highlight selected columns', async () => {
-    // TODO: Implement after column highlighting exists
-  });
-
-  test.skip('should process 500 rows in batches of 100', async () => {
-    // TODO: Implement after batch processing exists
   });
 });

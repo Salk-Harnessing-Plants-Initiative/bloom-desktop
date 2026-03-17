@@ -130,10 +130,13 @@ async function runTest(): Promise<void> {
   });
 
   // Wait for "IPC handler ready" message
+  // Use longer timeout in CI (30s) as Windows runners can be slow,
+  // especially when starting second Python process after DAQ tests
+  const startupTimeout = process.env.CI ? 30000 : 10000;
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error('Python process startup timeout'));
-    }, 10000);
+    }, startupTimeout);
 
     pythonProcess.stdout.on('data', (data: Buffer) => {
       if (data.toString().includes('STATUS:IPC handler ready')) {

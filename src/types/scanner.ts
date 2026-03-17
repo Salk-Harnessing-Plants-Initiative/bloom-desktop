@@ -24,14 +24,17 @@ export interface ScanMetadata {
   /** Plant identifier (barcode, QR code, or manual ID) */
   plant_id: string;
 
-  /** Optional accession ID if known */
-  accession_id?: string;
+  /** Optional accession name if known (e.g., "Col-0") */
+  accession_name?: string;
 
   /** Age of the plant in days at time of scan */
   plant_age_days: number;
 
   /** Wave number for this scan (typically 1-4 for multiple time points) */
   wave_number: number;
+
+  /** Relative scan directory path (e.g., "2026-03-04/PLANT-001/uuid"), pilot-compatible */
+  scan_path?: string;
 }
 
 /**
@@ -172,22 +175,25 @@ export interface ScannerAPI {
    * Event listener for scan progress updates.
    *
    * @param callback - Function called with progress updates
+   * @returns Cleanup function to remove the listener
    */
-  onProgress: (callback: (progress: ScanProgress) => void) => void;
+  onProgress: (callback: (progress: ScanProgress) => void) => () => void;
 
   /**
    * Event listener for scan completion.
    *
    * @param callback - Function called when scan completes
+   * @returns Cleanup function to remove the listener
    */
-  onComplete: (callback: (result: ScanResult) => void) => void;
+  onComplete: (callback: (result: ScanResult) => void) => () => void;
 
   /**
    * Event listener for scanner errors.
    *
    * @param callback - Function called on errors
+   * @returns Cleanup function to remove the listener
    */
-  onError: (callback: (error: string) => void) => void;
+  onError: (callback: (error: string) => void) => () => void;
 }
 
 /**

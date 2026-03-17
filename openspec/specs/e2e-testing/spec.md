@@ -172,25 +172,41 @@ The system SHALL provide npm scripts for executing E2E tests in different modes.
 
 ### Requirement: Test Cleanup and Isolation
 
-The system SHALL ensure E2E tests clean up resources and do not interfere with each other.
+The system SHALL ensure E2E tests clean up resources and do not interfere with each other, including proper process termination verification.
 
 #### Scenario: App closes after test
 
 - **GIVEN** an E2E test has completed (afterEach hook)
 - **WHEN** cleanup runs
-- **THEN** the Electron app SHALL be closed via `electronApp.close()`
+- **THEN** the Electron app SHALL be closed via `closeElectronApp()` helper
+- **AND** the helper SHALL wait for the Electron process to fully terminate
+- **AND** the helper SHALL timeout after 5 seconds if process doesn't exit gracefully
+
+#### Scenario: Process termination verified before next test
+
+- **GIVEN** an E2E test has completed its afterEach cleanup
+- **WHEN** the next test's beforeEach hook runs
+- **THEN** no Electron processes from the previous test SHALL be running
+- **AND** the new Electron instance SHALL launch within the 60-second timeout
 
 #### Scenario: Test database deleted after test
 
 - **GIVEN** an E2E test has completed (afterEach hook)
 - **WHEN** cleanup runs
-- **THEN** the test database file at `prisma/tests/e2e/test.db` SHALL be deleted
+- **THEN** the test database file at the configured path SHALL be deleted
 
 #### Scenario: Test database directory created if missing
 
 - **GIVEN** the test database directory does not exist
 - **WHEN** beforeEach hook runs
-- **THEN** the directory `prisma/tests/e2e/` SHALL be created recursively
+- **THEN** the directory SHALL be created recursively
+
+#### Scenario: Stuck process force killed
+
+- **GIVEN** an Electron process fails to exit gracefully within 5 seconds
+- **WHEN** the cleanup timeout is reached
+- **THEN** the process SHALL be forcefully terminated (SIGKILL)
+- **AND** cleanup SHALL proceed without failing the test suite
 
 ### Requirement: Real-World Data E2E Testing
 
@@ -220,3 +236,34 @@ The E2E test suite SHALL include tests using real-world experiment data files to
 - **WHEN** the column selector dropdowns are populated
 - **THEN** the dropdowns SHALL contain `Barcode` and `Line` as selectable options
 - **AND** the user SHALL be able to map these columns successfully
+
+### Requirement: Machine Configuration Setup for E2E Tests
+
+E2E tests SHALL create a minimal machine configuration file to prevent the Machine Configuration redirect.
+
+#### Scenario: Test setup creates ~/.bloom/.env
+
+- **GIVEN** an E2E test needs to test Home page or other non-configuration pages
+- **WHEN** the test's `beforeEach` hook runs
+- **THEN** a minimal `~/.bloom/.env` file SHALL be created with valid configuration values
+- **AND** the file SHALL contain at minimum: SCANNER_NAME, CAMERA_IP_ADDRESS, SCANS_DIR, BLOOM_API_URL
+
+#### Scenario: Test cleanup restores original configuration
+
+- **GIVEN** an E2E test has completed
+- **WHEN** the test's `afterEach` hook runs
+- **THEN** the test SHALL restore any original `~/.bloom/.env` that existed before the test
+- **OR** delete the test-created file if no original existed
+
+#### Scenario: Helper utility provides config management
+
+- **GIVEN** E2E tests need consistent configuration setup
+- **WHEN** tests import from `./helpers/bloom-config`
+- **THEN** `createTestBloomConfig()` SHALL create the minimal configuration
+- **AND** `cleanupTestBloomConfig()` SHALL restore/cleanup after tests
+
+#### Scenario: Machine Configuration tests skip config setup
+
+- **GIVEN** an E2E test specifically tests the Machine Configuration page
+- **WHEN** the test runs
+- **THEN** the test SHALL NOT create `~/.bloom/.env` to allow the natural redirect to occur

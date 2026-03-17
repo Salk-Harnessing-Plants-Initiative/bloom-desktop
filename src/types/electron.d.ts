@@ -6,6 +6,7 @@
  */
 
 import { CameraSettings, CapturedImage, DetectedCamera } from './camera';
+import { MachineConfig, ValidationResult, Scanner } from '../main/config-store';
 import {
   MachineConfig,
   MachineCredentials,
@@ -38,6 +39,10 @@ import {
   PhenotyperCreateData,
   ScientistCreateData,
   AccessionCreateData,
+  ImageCreateData,
+  ScanFilters,
+  PaginatedScanFilters,
+  PaginatedScansResponse,
 } from './database';
 import {
   DetectedScanner,
@@ -51,6 +56,7 @@ import {
   GraviScanPlatformInfo,
   ExperimentWithScans,
 } from './graviscan';
+import { UploadResult } from '../main/image-uploader';
 
 /**
  * Python backend API
@@ -276,10 +282,44 @@ export interface DatabaseAPI {
     ) => Promise<DatabaseResponse<ExperimentWithRelations>>;
   };
   scans: {
+    list: {
+      (
+        filters: PaginatedScanFilters
+      ): Promise<DatabaseResponse<PaginatedScansResponse>>;
+      (filters?: ScanFilters): Promise<DatabaseResponse<ScanWithRelations[]>>;
+    };
+    get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
+    create: (data: ScanCreateData) => Promise<DatabaseResponse<Scan>>;
     getMostRecentScanDate: (
       plantId: string,
       experimentId: string
     ) => Promise<DatabaseResponse<string | null>>;
+    getRecent: (options?: {
+      limit?: number;
+      experimentId?: string;
+    }) => Promise<DatabaseResponse<ScanWithRelations[]>>;
+    /**
+     * Soft delete a scan (sets deleted=true, does NOT delete images)
+     * @param id - Scan ID to delete
+     * @returns Promise resolving to delete result
+     */
+    delete: (id: string) => Promise<DatabaseResponse<Scan>>;
+    /**
+     * Upload a scan's images to Bloom remote storage
+     * Uses credentials from ~/.bloom/.env (machine configuration)
+     * @param scanId - Scan ID to upload
+     * @returns Promise resolving to upload result with statistics
+     */
+    upload: (scanId: string) => Promise<DatabaseResponse<UploadResult>>;
+    /**
+     * Upload multiple scans' images to Bloom remote storage (batch)
+     * Uses credentials from ~/.bloom/.env (machine configuration)
+     * @param scanIds - Array of scan IDs to upload
+     * @returns Promise resolving to array of upload results
+     */
+    uploadBatch: (
+      scanIds: string[]
+    ) => Promise<DatabaseResponse<UploadResult[]>>;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;
@@ -298,13 +338,13 @@ export interface DatabaseAPI {
     ) => Promise<DatabaseResponse<Accessions>>;
     createWithMappings: (
       accessionData: { name: string },
-      mappings: { plant_barcode: string; genotype_id?: string }[]
+      mappings: { plant_barcode: string; accession_name?: string }[]
     ) => Promise<DatabaseResponse<Accessions & { mappingCount: number }>>;
     getMappings: (
       accessionId: string
     ) => Promise<
       DatabaseResponse<
-        { id: string; plant_barcode: string; genotype_id: string }[]
+        { id: string; plant_barcode: string; accession_name: string }[]
       >
     >;
     update: (
@@ -314,18 +354,18 @@ export interface DatabaseAPI {
     delete: (id: string) => Promise<DatabaseResponse<Accessions>>;
     updateMapping: (
       mappingId: string,
-      data: { genotype_id: string }
+      data: { accession_name: string }
     ) => Promise<
       DatabaseResponse<{
         id: string;
         plant_barcode: string;
-        genotype_id: string;
+        accession_name: string;
       }>
     >;
     getPlantBarcodes: (
       accessionId: string
     ) => Promise<DatabaseResponse<string[]>>;
-    getGenotypeByBarcode: (
+    getAccessionNameByBarcode: (
       plantBarcode: string,
       experimentId: string
     ) => Promise<DatabaseResponse<string | null>>;
@@ -839,6 +879,104 @@ export interface GraviScanAPI {
 }
 
 /**
+ * Session State - persists across page navigation within a session
+ */
+export interface SessionState {
+  phenotyperId: string | null;
+  experimentId: string | null;
+  waveNumber: number | null;
+  plantAgeDays: number | null;
+  accessionName: string | null;
+}
+
+/**
+ * Session API - in-memory session state management
+ */
+export interface SessionAPI {
+  /**
+   * Get current session state
+   * @returns Promise resolving to session state
+   */
+  get: () => Promise<SessionState>;
+
+  /**
+   * Update session state (partial update - merges with existing)
+   * @param updates - Partial session state to merge
+   * @returns Promise resolving to updated session state
+   */
+  set: (updates: Partial<SessionState>) => Promise<SessionState>;
+
+  /**
+   * Reset session state to initial values (all null)
+   * @returns Promise resolving when reset is complete
+   */
+  reset: () => Promise<void>;
+}
+
+/**
+ * Machine Configuration API
+ */
+export interface ConfigAPI {
+  /**
+   * Get current machine configuration (unified - includes credentials)
+   * @returns Promise resolving to unified config (password masked)
+   */
+  get: () => Promise<{
+    config: MachineConfig; // Now includes credential fields
+    hasCredentials: boolean;
+  }>;
+
+  /**
+   * Save unified machine configuration
+   * @param config - Unified configuration to save (includes credentials)
+   * @returns Promise resolving to save result
+   */
+  set: (
+    config: MachineConfig
+  ) => Promise<{ success: boolean; errors?: ValidationResult['errors'] }>;
+
+  /**
+   * Test camera connection
+   * @param ipAddress - Camera IP address to test
+   * @returns Promise resolving to connection test result
+   */
+  testCamera: (
+    ipAddress: string
+  ) => Promise<{ success: boolean; error?: string }>;
+
+  /**
+   * Open native folder picker dialog
+   * @returns Promise resolving to selected path or null if cancelled
+   */
+  browseDirectory: () => Promise<string | null>;
+
+  /**
+   * Check if configuration exists (for first-run detection)
+   * @returns Promise resolving to whether config exists
+   */
+  exists: () => Promise<boolean>;
+
+  /**
+   * Fetch list of valid scanners from Bloom API
+   * @param apiUrl - Bloom API URL
+   * @param credentials - Bloom API credentials from form
+   * @returns Promise resolving to scanner list or error
+   */
+  fetchScanners: (
+    apiUrl: string,
+    credentials: {
+      bloom_scanner_username: string;
+      bloom_scanner_password: string;
+      bloom_anon_key: string;
+    }
+  ) => Promise<{
+    success: boolean;
+    scanners?: Scanner[];
+    error?: string;
+  }>;
+}
+
+/**
  * Main Electron API exposed to renderer
  */
 export interface ElectronAPI {
@@ -849,6 +987,7 @@ export interface ElectronAPI {
   database: DatabaseAPI;
   config: ConfigAPI;
   graviscan: GraviScanAPI;
+  session: SessionAPI;
 }
 
 /**

@@ -64,11 +64,13 @@ export function Home() {
     APP_MODE === 'cylinderscan' ? 'cylinderscan' : 'graviscan'
   );
 
+  // Check if this is first run (no config exists)
   useEffect(() => {
     const checkFirstRun = async () => {
       try {
         const configExists = await window.electron.config.exists();
         if (!configExists) {
+          // First run - redirect to machine configuration
           navigate('/machine-config');
         }
       } catch (error) {
@@ -80,6 +82,7 @@ export function Home() {
     checkFirstRun();
   }, [navigate]);
 
+  // Show loading while checking config
   if (isCheckingConfig) {
     return (
       <div className="p-8 flex items-center justify-center h-full">

@@ -67,7 +67,7 @@ Perform a complete pre-merge check following this workflow:
    - Check if current branch has an active OpenSpec proposal
    - Verify all tasks in `tasks.md` are completed
    - Ensure acceptance criteria are met
-   - Mark proposal as ready for archive after merge
+   - Note: After merge, use `/cleanup-branch` to archive proposals on main (do NOT archive on the feature branch)
 
 ### Phase 6: Pull Request
 

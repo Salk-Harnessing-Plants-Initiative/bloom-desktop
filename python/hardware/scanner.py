@@ -7,7 +7,10 @@ Coordinates camera and DAQ for automated cylinder scanning workflow.
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Callable, Optional, Union
+
+import imageio.v2 as iio
 
 from .camera import Camera
 from .camera_mock import MockCamera
@@ -163,11 +166,14 @@ class Scanner:
             raise RuntimeError("Scanner hardware not available")
 
         num_frames = self.settings.num_frames
-        output_path = self.settings.output_path
+        output_dir = Path(self.settings.output_path)
         frames_captured = 0
 
         self.is_scanning = True
         try:
+            # Create output directory if it doesn't exist (cross-platform)
+            output_dir.mkdir(parents=True, exist_ok=True)
+
             # Calculate rotation per frame
             degrees_per_frame = 360.0 / num_frames
 
@@ -201,6 +207,12 @@ class Scanner:
                 if image is not None:
                     frames_captured += 1
 
+                    # Save image to disk (pilot-compatible naming: 001.png, 002.png, ...)
+                    # Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
+                    # Use pathlib with .as_posix() for cross-platform path handling
+                    filepath = output_dir / f"{frame_idx + 1:03d}.png"
+                    iio.imwrite(filepath.as_posix(), image)
+
                     # Call progress callback if provided
                     if on_frame is not None:
                         on_frame(frame_idx, position)
@@ -232,7 +244,7 @@ class Scanner:
             return ScanResult(
                 success=success,
                 frames_captured=frames_captured,
-                output_path=output_path,
+                output_path=output_dir.as_posix(),
                 error=(
                     None
                     if success
@@ -254,7 +266,7 @@ class Scanner:
             return ScanResult(
                 success=False,
                 frames_captured=frames_captured,
-                output_path=output_path,
+                output_path=output_dir.as_posix(),
                 error=error_msg,
             )
 

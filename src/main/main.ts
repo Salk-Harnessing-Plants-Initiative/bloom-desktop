@@ -39,6 +39,12 @@ import {
   fetchScannersFromBloom,
   MachineConfig,
 } from './config-store';
+import {
+  getSessionState,
+  setSessionState,
+  resetSessionState,
+  type SessionState,
+} from './session-store';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -156,6 +162,11 @@ const createWindow = (): void => {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
       nodeIntegration: false,
+      // TODO: Replace webSecurity: false with a custom protocol handler for file:// URLs
+      // This is needed to load local scan images from HTTP context (webpack-dev-server)
+      // Reference: pilot implementation uses same approach
+      // See: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/93
+      webSecurity: false,
     },
   });
 
@@ -995,6 +1006,35 @@ ipcMain.handle(
     }
   }
 );
+
+// =============================================================================
+// Session State Handlers
+// =============================================================================
+
+/**
+ * Handle session:get - Get current session state
+ */
+ipcMain.handle('session:get', async (): Promise<SessionState> => {
+  return getSessionState();
+});
+
+/**
+ * Handle session:set - Update session state (partial update)
+ */
+ipcMain.handle(
+  'session:set',
+  async (_event, updates: Partial<SessionState>): Promise<SessionState> => {
+    setSessionState(updates);
+    return getSessionState();
+  }
+);
+
+/**
+ * Handle session:reset - Reset session state to initial values
+ */
+ipcMain.handle('session:reset', async (): Promise<void> => {
+  resetSessionState();
+});
 
 // =============================================================================
 // App Lifecycle

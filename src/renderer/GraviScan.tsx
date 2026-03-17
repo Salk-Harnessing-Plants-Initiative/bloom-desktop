@@ -153,7 +153,7 @@ export function GraviScan() {
   // Plant barcodes from the selected experiment's accession
   const [availableBarcodes, setAvailableBarcodes] = useState<string[]>([]);
   const [loadingBarcodes, setLoadingBarcodes] = useState(false);
-  // Map of barcode -> genotype_id for display
+  // Map of barcode -> accession_name for display
   const [barcodeGenotypes, setBarcodeGenotypes] = useState<Record<string, string | null>>({});
   // Whether the current experiment uses GraviScan plate-level metadata (vs CylScan barcodes)
   const [isGraviMetadata, setIsGraviMetadata] = useState(false);
@@ -1207,7 +1207,7 @@ export function GraviScan() {
           const mappingsResult = await window.electron.database.accessions.getMappings(accessionId);
 
           if (mappingsResult.success && mappingsResult.data && mappingsResult.data.length > 0) {
-            // CylScan metadata — plant_barcode + genotype_id
+            // CylScan metadata — plant_barcode + accession_name
             setIsGraviMetadata(false);
             setAvailablePlates([]);
 
@@ -1215,8 +1215,8 @@ export function GraviScan() {
             setAvailableBarcodes(barcodes);
 
             const genotypeMap: Record<string, string | null> = {};
-            mappingsResult.data.forEach((m: { plant_barcode: string; genotype_id: string | null }) => {
-              genotypeMap[m.plant_barcode] = m.genotype_id;
+            mappingsResult.data.forEach((m: { plant_barcode: string; accession_name: string | null }) => {
+              genotypeMap[m.plant_barcode] = m.accession_name;
             });
             setBarcodeGenotypes(genotypeMap);
           } else {

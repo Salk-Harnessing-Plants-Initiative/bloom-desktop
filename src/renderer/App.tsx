@@ -13,6 +13,7 @@ import { Experiments } from './Experiments';
 import { MachineConfiguration } from './MachineConfiguration';
 import { BrowseScans } from './BrowseScans';
 import { ExperimentDetail } from './ExperimentDetail';
+import { ScanPreview } from './ScanPreview';
 import { UploadStatusProvider } from './contexts/UploadStatusContext';
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="experiments" element={<Experiments />} />
           <Route path="browse-scans" element={<BrowseScans />} />
           <Route path="browse-scans/:experimentId" element={<ExperimentDetail />} />
+          <Route path="scan/:scanId" element={<ScanPreview />} />
           <Route path="machine-config" element={<MachineConfiguration />} />
         </Route>
       </Routes>

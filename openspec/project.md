@@ -135,7 +135,7 @@ Bloom Desktop is an Electron-based desktop application for **cylinder scanning a
 4. **Database in main process**: Prisma Client runs in main process, IPC handlers expose to renderer
 5. **Path sanitization**: All file paths validated and sanitized before use
 6. **Environment-based database paths**:
-   - Development: `./prisma/dev.db`
+   - Development: `~/.bloom/dev.db` (outside project for persistence across branches)
    - Production: `~/.bloom/data/bloom.db`
    - E2E tests: `tests/e2e/test.db`
 

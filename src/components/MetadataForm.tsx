@@ -14,11 +14,12 @@ import { PlantBarcodeInput } from './PlantBarcodeInput';
 export interface ScanMetadata {
   phenotyper: string;
   experimentId: string;
-  waveNumber: number;
-  plantAgeDays: number;
+  /** Wave number as string to support validation of decimals */
+  waveNumber: string;
+  /** Plant age in days as string to support validation of decimals */
+  plantAgeDays: string;
   plantQrCode: string;
-  accessionId: string;
-  genotypeId: string;
+  accessionName: string;
 }
 
 export interface MetadataFormProps {
@@ -99,19 +100,19 @@ export function MetadataForm({
         experimentId: experimentId || '',
         // Reset barcode-related fields when experiment changes
         plantQrCode: '',
-        genotypeId: '',
+        accessionName: '',
       });
     },
     [values, onChange]
   );
 
-  // Handle genotype ID found from barcode lookup
+  // Handle accession name found from barcode lookup
   // Uses valuesRef to avoid infinite loop (values in deps would cause re-render cycle)
-  const handleGenotypeIdFound = useCallback(
-    (genotypeId: string | null) => {
+  const handleAccessionNameFound = useCallback(
+    (accessionName: string | null) => {
       onChange({
         ...valuesRef.current,
-        genotypeId: genotypeId || '',
+        accessionName: accessionName || '',
       });
     },
     [onChange]
@@ -180,15 +181,14 @@ export function MetadataForm({
         </label>
         <input
           id="waveNumber"
-          type="number"
-          min="1"
-          value={values.waveNumber || ''}
-          onChange={(e) =>
-            handleFieldChange('waveNumber', parseInt(e.target.value, 10) || 0)
-          }
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={values.waveNumber}
+          onChange={(e) => handleFieldChange('waveNumber', e.target.value)}
           disabled={disabled}
           className={inputClassName}
-          placeholder="1"
+          placeholder="e.g., 1"
         />
         {errors.waveNumber && (
           <p className={errorClassName}>{errors.waveNumber}</p>
@@ -202,12 +202,11 @@ export function MetadataForm({
         </label>
         <input
           id="plantAgeDays"
-          type="number"
-          min="0"
-          value={values.plantAgeDays || ''}
-          onChange={(e) =>
-            handleFieldChange('plantAgeDays', parseInt(e.target.value, 10) || 0)
-          }
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={values.plantAgeDays}
+          onChange={(e) => handleFieldChange('plantAgeDays', e.target.value)}
           disabled={disabled}
           className={inputClassName}
           placeholder="e.g., 14"
@@ -216,6 +215,41 @@ export function MetadataForm({
           <p className={errorClassName}>{errors.plantAgeDays}</p>
         )}
       </div>
+
+      {/* Accession Requirement Warning */}
+      {values.experimentId && !experimentAccessionId && (
+        <div
+          className="bg-red-50 border-2 border-red-400 rounded-lg p-3"
+          data-testid="accession-required-warning"
+        >
+          <div className="flex items-start">
+            <svg
+              className="h-5 w-5 text-red-600 mr-2 mt-0.5 flex-shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div>
+              <p className="font-medium text-red-800">
+                Accession file required
+              </p>
+              <p className="text-sm text-red-700 mt-1">
+                Link an accession file to this experiment to enable scanning. Go
+                to{' '}
+                <a href="#/scientists" className="underline font-medium">
+                  Scientists & Experiments
+                </a>{' '}
+                to manage experiments.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Plant Barcode / QR Code - using PlantBarcodeInput with validation */}
       <div>
@@ -226,7 +260,7 @@ export function MetadataForm({
           id="plantQrCode"
           value={values.plantQrCode}
           onChange={handleBarcodeChange}
-          onGenotypeIdFound={handleGenotypeIdFound}
+          onAccessionNameFound={handleAccessionNameFound}
           onValidationChange={onBarcodeValidationChange}
           experimentId={values.experimentId || null}
           accessionId={experimentAccessionId}
@@ -243,29 +277,29 @@ export function MetadataForm({
         )}
       </div>
 
-      {/* Genotype ID - auto-populated from barcode lookup */}
+      {/* Accession - auto-populated from barcode lookup */}
       <div>
-        <label htmlFor="genotypeId" className={labelClassName}>
-          Genotype ID
+        <label htmlFor="accessionName" className={labelClassName}>
+          Accession
         </label>
         <input
-          id="genotypeId"
+          id="accessionName"
           type="text"
-          value={values.genotypeId}
-          onChange={(e) => handleFieldChange('genotypeId', e.target.value)}
+          value={values.accessionName}
+          onChange={(e) => handleFieldChange('accessionName', e.target.value)}
           disabled={disabled}
-          className={`${inputClassName} ${values.genotypeId ? 'bg-green-50' : ''}`}
+          className={`${inputClassName} ${values.accessionName ? 'bg-green-50' : ''}`}
           placeholder={
             experimentAccessionId
               ? 'Auto-populated from barcode'
               : 'e.g., GT_ABC123'
           }
-          readOnly={!!experimentAccessionId && !!values.genotypeId}
+          readOnly={!!experimentAccessionId && !!values.accessionName}
         />
-        {errors.genotypeId && (
-          <p className={errorClassName}>{errors.genotypeId}</p>
+        {errors.accessionName && (
+          <p className={errorClassName}>{errors.accessionName}</p>
         )}
-        {experimentAccessionId && values.genotypeId && (
+        {experimentAccessionId && values.accessionName && (
           <p className="text-xs text-green-600 mt-1">
             Auto-populated from accession mapping
           </p>

@@ -2,10 +2,15 @@
 # Packaged App Database Integration Test (Full)
 #
 # This script verifies that the database works correctly in the packaged
-# Electron application, including:
-# - Database initialization
-# - All Prisma tables exist
-# - Database schema matches expected structure
+# Electron application. It follows the production workflow:
+#
+# 1. Apply schema externally via `prisma migrate deploy` (BEFORE app launch)
+# 2. Launch the packaged app (which finds existing schema)
+# 3. Verify the app initializes successfully
+# 4. Verify all expected tables exist
+#
+# This mirrors the real production workflow where users run migrations
+# before first use, as documented in the spec.
 #
 # Exit codes:
 # 0 - Success: Database initialized and schema verified
@@ -59,9 +64,67 @@ echo ""
 rm -f "$LOG_FILE"
 rm -rf "$DB_PATH"
 
-# Launch packaged app and capture output
-echo "Launching packaged app..."
-echo "(This will run for ${TIMEOUT} seconds and then exit)"
+# =========================================
+# Step 1: Apply schema externally (BEFORE app launch)
+# =========================================
+# This is the key step - in production, users must run migrations
+# before first use because packaged apps cannot run Prisma CLI.
+echo "Step 1: Applying database schema externally"
+echo "----------------------------------------"
+echo "  Working directory: $(pwd)"
+echo "  Database path: $DB_PATH"
+echo ""
+
+# Ensure parent directory exists
+mkdir -p "$(dirname "$DB_PATH")"
+
+echo "Running: BLOOM_DATABASE_URL='file:$DB_PATH' npx prisma migrate deploy"
+echo ""
+
+if BLOOM_DATABASE_URL="file:$DB_PATH" npx prisma migrate deploy; then
+  echo ""
+  echo "[PASS] Prisma migrations completed successfully"
+else
+  MIGRATION_EXIT_CODE=$?
+  echo ""
+  echo "[FAIL] Prisma migrations failed with exit code: $MIGRATION_EXIT_CODE"
+  echo ""
+  echo "Diagnostics:"
+  echo "  - Schema file exists: $([ -f prisma/schema.prisma ] && echo YES || echo NO)"
+  echo "  - Migrations dir exists: $([ -d prisma/migrations ] && echo YES || echo NO)"
+  echo "  - Parent dir exists: $([ -d "$(dirname "$DB_PATH")" ] && echo YES || echo NO)"
+  exit 1
+fi
+
+# Verify database file was created by migration
+if [ ! -f "$DB_PATH" ]; then
+  echo "[FAIL] Database file not created by migration at: $DB_PATH"
+  echo ""
+  echo "Directory contents:"
+  ls -la "$(dirname "$DB_PATH")" 2>/dev/null || echo "Directory does not exist"
+  exit 1
+fi
+
+echo "[PASS] Database file created: $DB_PATH"
+echo ""
+
+# Verify schema was applied correctly
+echo "Verifying database schema after migration..."
+if verify_schema "$DB_PATH"; then
+  echo "[PASS] All expected tables exist after migration"
+else
+  echo "[FAIL] Database schema verification failed after migration"
+  exit 1
+fi
+
+echo ""
+
+# =========================================
+# Step 2: Launch packaged app
+# =========================================
+echo "Step 2: Launching packaged app"
+echo "----------------------------------------"
+echo "(This will run for up to ${TIMEOUT} seconds)"
 echo ""
 
 # Run app in background and capture output
@@ -122,36 +185,7 @@ fi
 echo "[PASS] Database initialization detected"
 echo ""
 
-# Create the database file by running Prisma migrations
-# The Prisma client is initialized but the SQLite file isn't created until
-# the first query or migration runs. We need to trigger this.
-echo "Creating database file with Prisma..."
-echo "  Working directory: $(pwd)"
-echo "  Database path: $DB_PATH"
-echo ""
-
-# Ensure parent directory exists
-mkdir -p "$(dirname "$DB_PATH")"
-
-echo "Running: BLOOM_DATABASE_URL='file:$DB_PATH' npx prisma migrate deploy"
-echo ""
-
-if BLOOM_DATABASE_URL="file:$DB_PATH" npx prisma migrate deploy; then
-  echo ""
-  echo "[PASS] Prisma migrations completed successfully"
-else
-  MIGRATION_EXIT_CODE=$?
-  echo ""
-  echo "[FAIL] Prisma migrations failed with exit code: $MIGRATION_EXIT_CODE"
-  echo ""
-  echo "Diagnostics:"
-  echo "  - Schema file exists: $([ -f prisma/schema.prisma ] && echo YES || echo NO)"
-  echo "  - Migrations dir exists: $([ -d prisma/migrations ] && echo YES || echo NO)"
-  echo "  - Parent dir exists: $([ -d "$(dirname "$DB_PATH")" ] && echo YES || echo NO)"
-  exit 1
-fi
-
-# Verify database file was created
+# Verify database file still exists and has correct schema
 if [ ! -f "$DB_PATH" ]; then
   echo "[FAIL] Database file not found at: $DB_PATH"
   echo ""
@@ -159,16 +193,14 @@ if [ ! -f "$DB_PATH" ]; then
   echo "------------------------"
   grep -E "\[Database\]" "$LOG_FILE" || true
   echo ""
-  echo "Directory contents:"
-  ls -la "$(dirname "$DB_PATH")" 2>/dev/null || echo "Directory does not exist"
   exit 1
 fi
 
-echo "[PASS] Database file created: $DB_PATH"
+echo "[PASS] Database file exists: $DB_PATH"
 echo ""
 
-# Verify database schema
-echo "Verifying database schema..."
+# Final schema verification
+echo "Final schema verification..."
 if verify_schema "$DB_PATH"; then
   echo "[PASS] All expected tables exist"
 else
@@ -208,6 +240,13 @@ fi
 
 if grep -q "\[DB\] Registered all database IPC handlers" "$LOG_FILE"; then
   echo "  [PASS] Database handlers registered"
+fi
+
+# Verify the app detected the database as "current" (not "missing")
+if grep -q "\[Database\] State: current" "$LOG_FILE"; then
+  echo "  [PASS] Database state detected as 'current'"
+else
+  echo "  [INFO] Database state log not found (may be OK if using different log format)"
 fi
 
 echo ""

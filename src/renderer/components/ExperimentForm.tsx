@@ -36,11 +36,15 @@ export const EXPERIMENT_TYPES = [
 export type ExperimentType = typeof EXPERIMENT_TYPES[number]['value'];
 
 const experimentSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(255, 'Name is too long'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required')
+    .max(255, 'Name is too long'),
   species: z.string().min(1, 'Species is required'),
   experiment_type: z.enum(['cylinder', 'graviscan']),
-  scientist_id: z.string().optional(),
-  accession_id: z.string().optional(),
+  scientist_id: z.string().min(1, 'Scientist is required'),
+  accession_id: z.string().min(1, 'Accession is required'),
 });
 
 type ExperimentFormData = z.infer<typeof experimentSchema>;
@@ -90,26 +94,13 @@ export function ExperimentForm({
     setSubmitError(null);
 
     try {
-      // Build the create data, only including optional fields if selected
-      const createData: {
-        name: string;
-        species: string;
-        experiment_type: string;
-        scientist?: { connect: { id: string } };
-        accession?: { connect: { id: string } };
-      } = {
+      const createData = {
         name: data.name.trim(),
         species: data.species,
         experiment_type: data.experiment_type,
+        scientist: { connect: { id: data.scientist_id } },
+        accession: { connect: { id: data.accession_id } },
       };
-
-      if (data.scientist_id) {
-        createData.scientist = { connect: { id: data.scientist_id } };
-      }
-
-      if (data.accession_id) {
-        createData.accession = { connect: { id: data.accession_id } };
-      }
 
       const result =
         await window.electron.database.experiments.create(createData);
@@ -222,7 +213,7 @@ export function ExperimentForm({
           htmlFor="scientist-select"
           className="block text-xs font-bold mb-1"
         >
-          Scientist (optional)
+          Scientist
         </label>
         <select
           id="scientist-select"
@@ -237,6 +228,11 @@ export function ExperimentForm({
             </option>
           ))}
         </select>
+        {errors.scientist_id && (
+          <p className="mt-1 text-xs text-red-600">
+            {errors.scientist_id.message}
+          </p>
+        )}
       </div>
 
       <div className="mb-4">
@@ -244,7 +240,7 @@ export function ExperimentForm({
           htmlFor="accession-select"
           className="block text-xs font-bold mb-1"
         >
-          Accession File (optional)
+          Accession File
         </label>
         <select
           id="accession-select"
@@ -259,6 +255,11 @@ export function ExperimentForm({
             </option>
           ))}
         </select>
+        {errors.accession_id && (
+          <p className="mt-1 text-xs text-red-600">
+            {errors.accession_id.message}
+          </p>
+        )}
       </div>
 
       <div className="flex justify-center">

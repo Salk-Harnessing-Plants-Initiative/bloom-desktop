@@ -509,6 +509,117 @@ Received: "Please include an '@' in the email address"
 
 **Historical Note:** This was discovered in November 2025 when E2E tests for ScientistForm validation failed. The fix was adding `noValidate` to ensure Zod validation messages are shown.
 
+---
+
+### ❌ Pitfall 9: E2E Tests Fail Intermittently Without Startup Delay
+
+**Symptom:**
+
+E2E tests fail intermittently with 60-second timeouts in the beforeEach hook. Tests that pass sometimes fail other times, with no code changes.
+
+**Cause:** The Machine Configuration feature (commit a6d3cd6) added an async IPC call (`config.exists()`) in Home.tsx that runs immediately on app startup. This new async operation during initialization creates a race condition with Playwright's remote debugging connection.
+
+**Why this wasn't a problem before:** Previous versions of the app didn't have async IPC calls firing immediately on startup. The Machine Configuration redirect check in Home.tsx is the first feature to call an IPC handler (`config:exists`) during initial render, which can interfere with Playwright's connection establishment.
+
+**Solution:** A 500ms startup delay is added in `src/main/database.ts` during E2E mode:
+
+```typescript
+if (process.env.E2E_TEST === 'true') {
+  const delay = 500;
+  await new Promise((resolve) => setTimeout(resolve, delay));
+}
+```
+
+**Empirical results:**
+
+- Without delay: ~15% of tests pass (4/27)
+- With 100ms delay: Inconsistent - some tests fail intermittently
+- With 500ms delay: 100% of tests pass (181/181) - required for both local and CI
+
+The delay allows Playwright's remote debugging connection to stabilize before the Electron app fully initializes and starts processing IPC calls.
+
+**Important:** Do NOT remove or reduce this delay. 500ms is the minimum required for reliable test execution on both local machines and CI runners. Tests were observed to fail intermittently with 100ms.
+
+---
+
+### ❌ Pitfall 10: toHaveURL() Assertions Fail with MemoryRouter
+
+**Symptom:**
+
+```
+Error: expect(page).toHaveURL(expected) failed
+Expected pattern: /\/scan\/abc-123/
+Received string:  "http://localhost:3000/main_window/index.html"
+```
+
+URL assertions always fail, even though the app visually navigates correctly.
+
+**Cause:** The app uses `MemoryRouter` from react-router-dom (see `src/renderer/App.tsx`). MemoryRouter stores navigation history **in memory only** and **never changes the browser URL**. The URL stays constant (e.g., `http://localhost:9000`) regardless of which route is active.
+
+**Why MemoryRouter?** Electron apps commonly use MemoryRouter because:
+
+- File-based URLs (`file://`) don't work well with BrowserRouter
+- Hash routing can interfere with Electron's navigation
+- Memory routing is simpler for single-window apps
+
+**Solution:** Never use `toHaveURL()` or `page.url()` to verify navigation. Instead, verify by checking for elements unique to the destination page:
+
+```typescript
+// ❌ WRONG - URL never changes with MemoryRouter
+await expect(window).toHaveURL(/\/scan\/abc-123/);
+
+// ✅ CORRECT - Check for destination page content
+await expect(window.getByText('Back to Scans')).toBeVisible();
+await expect(window.getByRole('heading', { name: 'PLANT-001' })).toBeVisible();
+```
+
+**Also applies to `goto()`:**
+
+```typescript
+// ❌ WRONG - goto() with route path won't trigger MemoryRouter
+await window.goto('http://localhost:9000/#/scan/abc-123');
+
+// ✅ CORRECT - Navigate through the UI
+await window.click('text=Browse Scans');
+await window.click('text=PLANT-001');
+await expect(window.getByText('Back to Scans')).toBeVisible();
+```
+
+**Historical Note:** Discovered in February 2026 when scan-preview E2E tests failed. The fix was replacing all `toHaveURL()` assertions with element visibility checks.
+
+---
+
+### ❌ Pitfall 11: Always Wait for Page Load After Navigation
+
+**Symptom:**
+
+Tests intermittently fail to find elements after clicking a link, even though the destination page renders correctly in screenshots.
+
+**Cause:** After clicking a navigation link, the test immediately checks for elements before React has finished rendering the new route.
+
+**Solution:** Always wait for a unique element from the destination page to be visible before making other assertions:
+
+```typescript
+// Navigate to ScanPreview
+await window.click('text=Browse Scans');
+await window.click('text=PLANT-001');
+
+// ✅ ALWAYS wait for destination page to load first
+await expect(window.getByText('Back to Scans')).toBeVisible();
+
+// Now safe to check other elements
+await expect(window.getByRole('heading', { name: 'PLANT-001' })).toBeVisible();
+await expect(window.getByText('Test Experiment')).toBeVisible();
+```
+
+**Best practices:**
+
+1. Choose a "sentinel" element that only exists on the destination page
+2. Use elements that appear early in the render (headers, navigation links)
+3. Avoid elements that depend on async data fetching for the initial wait
+
+**Historical Note:** Discovered in February 2026 alongside the MemoryRouter pitfall.
+
 ## Debugging
 
 ### Using Playwright UI Mode (Recommended)
