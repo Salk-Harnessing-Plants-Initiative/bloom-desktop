@@ -275,6 +275,21 @@ describe('IdleTimer', () => {
       ).toThrow();
     });
 
+    // 5.1.1 After stop(), resetTimer() is a no-op — timer does NOT restart.
+    // This documents why session:reset must NOT call stop(): if it does, subsequent
+    // session:set / scanner:initialize calls via resetTimer() will never restart the timer.
+    it('5.1.1 resetTimer is a no-op after stop — timer does not restart', () => {
+      timer.start();
+      timer.stop();
+
+      // Simulates session:set calling resetTimer() after session:reset called stop()
+      timer.resetTimer();
+
+      // Timer should NOT fire — it was stopped and resetTimer is a no-op when !started
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 2);
+      expect(onIdleSpy).not.toHaveBeenCalled();
+    });
+
     // 3.1.1 resumeAfterScan without prior pauseForScan must not reset countdown
     it('should not reset countdown when resumeAfterScan is called without pauseForScan', () => {
       timer.start();

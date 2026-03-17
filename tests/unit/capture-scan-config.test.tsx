@@ -287,37 +287,93 @@ describe('CaptureScan Idle Reset Notification', () => {
     expect(banner.textContent).toMatch(/accession/i);
   });
 
-  // 4.4.1 banner is hidden when user starts next scan
-  it('4.4.1 idle reset banner is cleared when the user starts a new scan', async () => {
+  // 5.2.1 banner is cleared when the user starts a new scan (strong test — no fallback branch)
+  it('5.2.1 idle reset banner is cleared when the user starts a new scan', async () => {
+    // Override list mocks so phenotyper/experiment choosers have actual options to select
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.database.phenotypers.list = vi
+      .fn()
+      .mockResolvedValue({
+        success: true,
+        data: [{ id: 'pheno-1', name: 'Test Phenotyper', email: 'test@test.com' }],
+      });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.database.experiments.list = vi
+      .fn()
+      .mockResolvedValue({
+        success: true,
+        data: [{ id: 'exp-1', name: 'Test Experiment', accession: { id: 'acc-1', name: 'TestAccession' } }],
+      });
+
     const { fireIdleReset } = await setupIdleReset();
     await fireIdleReset();
 
     expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument();
 
-    // Re-fill required fields so the scan can start
-    mockSessionGet.mockResolvedValue({
-      phenotyperId: 'pheno-1',
-      experimentId: 'exp-1',
-      waveNumber: '1',
-      plantAgeDays: '14',
-      accessionName: '',
+    // Wait for camera and choosers to finish loading (enabled = not loading)
+    await waitFor(() => {
+      expect(mockCameraGetSettings).toHaveBeenCalled();
+      // Choosers are enabled once their list mocks resolve
+      const phenotyperSel = document.getElementById('phenotyper-chooser') as HTMLSelectElement;
+      const experimentSel = document.getElementById('experiment-chooser') as HTMLSelectElement;
+      expect(phenotyperSel).not.toBeNull();
+      expect(phenotyperSel.disabled).toBe(false);
+      expect(experimentSel).not.toBeNull();
+      expect(experimentSel.disabled).toBe(false);
     });
 
-    // Trigger a scan start (simulate clicking Start Scan if enabled)
-    // We test handleStartScan clears the banner by checking state after click
-    const startBtn = screen.queryByRole('button', { name: /start scan/i });
-    if (startBtn && !startBtn.hasAttribute('disabled')) {
-      await act(async () => {
-        fireEvent.click(startBtn);
+    // Re-fill all fields cleared by idle reset.
+    // Experiment change resets plantQrCode, so QR must be filled last.
+
+    // Phenotyper dropdown — option 'pheno-1' now exists in the list
+    await act(async () => {
+      const phenotyperSel = document.getElementById('phenotyper-chooser') as HTMLSelectElement;
+      fireEvent.change(phenotyperSel, { target: { value: 'pheno-1' } });
+    });
+
+    // Experiment dropdown — option 'exp-1' now exists in the list
+    await act(async () => {
+      const experimentSel = document.getElementById('experiment-chooser') as HTMLSelectElement;
+      fireEvent.change(experimentSel, { target: { value: 'exp-1' } });
+    });
+
+    // Wait for experiment's accession fetch to complete (needed for barcode validation)
+    await waitFor(() => {
+      expect(mockExperimentGet).toHaveBeenCalledWith('exp-1');
+    });
+
+    // Wave number and plant age
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('e.g., 1'), {
+        target: { value: '1' },
       });
-      expect(
-        screen.queryByTestId('idle-reset-notification')
-      ).not.toBeInTheDocument();
-    } else {
-      // Form is disabled after idle reset — verify banner persists until dismissed
-      // (the fix will clear it at scan start; this branch verifies the pre-fix state)
-      expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument();
-    }
+      fireEvent.change(screen.getByPlaceholderText('e.g., 14'), {
+        target: { value: '14' },
+      });
+    });
+
+    // Plant QR code last (barcode validation uses accession loaded from experiment)
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('e.g., PLANT_001'), {
+        target: { value: 'PLANT-001' },
+      });
+    });
+
+    // Wait for Start Scan button to become enabled (all validation passed)
+    await waitFor(() => {
+      const startBtn = screen.getByRole('button', { name: /start scan/i });
+      expect(startBtn).not.toBeDisabled();
+    });
+
+    // Click Start Scan
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start scan/i }));
+    });
+
+    // Banner must be gone — cleared by handleStartScan (not the early-return fallback)
+    expect(
+      screen.queryByTestId('idle-reset-notification')
+    ).not.toBeInTheDocument();
   });
 });
 

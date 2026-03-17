@@ -1024,7 +1024,9 @@ ipcMain.handle(
  */
 ipcMain.handle('session:reset', async (): Promise<void> => {
   resetSessionState();
-  if (idleTimer) idleTimer.stop();
+  // Note: do NOT call idleTimer.stop() here — that would permanently disable the
+  // idle feature because resetTimer() is a no-op after stop(). The hasSessionData()
+  // guard in the onIdle callback already prevents spurious resets on empty sessions.
 });
 
 // =============================================================================

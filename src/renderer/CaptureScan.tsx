@@ -69,7 +69,7 @@ export function CaptureScan() {
   // UI state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [idleResetMessage, setIdleResetMessage] = useState(false);
+  const [showIdleResetBanner, setShowIdleResetBanner] = useState(false);
 
   // Barcode validation state
   const [barcodeValidationError, setBarcodeValidationError] = useState<
@@ -100,7 +100,7 @@ export function CaptureScan() {
         plantQrCode: '',
         accessionName: '',
       });
-      setIdleResetMessage(true);
+      setShowIdleResetBanner(true);
     });
     return cleanup;
   }, []);
@@ -417,7 +417,7 @@ export function CaptureScan() {
     try {
       setIsScanning(true);
       setErrorMessage(null);
-      setIdleResetMessage(false);
+      setShowIdleResetBanner(false);
 
       // Initialize scanner
       // Build pilot-compatible scan directory path: YYYY-MM-DD/<plant_qr_code>/<scan_uuid>
@@ -495,7 +495,7 @@ export function CaptureScan() {
         )}
 
         {/* Idle Reset Notification */}
-        {idleResetMessage && (
+        {showIdleResetBanner && (
           <div
             className="bg-amber-50 border-2 border-amber-500 rounded-lg p-4"
             data-testid="idle-reset-notification"
@@ -520,7 +520,7 @@ export function CaptureScan() {
                 </span>
               </div>
               <button
-                onClick={() => setIdleResetMessage(false)}
+                onClick={() => setShowIdleResetBanner(false)}
                 className="ml-4 text-amber-600 hover:text-amber-800"
                 data-testid="idle-reset-dismiss"
                 aria-label="Dismiss idle reset notification"

@@ -78,3 +78,14 @@
 - [x] 4.6 Fix `onIdleReset` preload listener to match `_event: unknown` pattern (`preload.ts`)
   - [x] 4.6.1 No dedicated test needed — pattern consistency fix, existing tests verify behaviour
   - [x] 4.6.2 Update `const listener = () => callback()` to `const listener = (_event: unknown) => callback()`
+
+## 5. Regression Fixes (second Copilot review)
+
+- [x] 5.1 Fix: `session:reset` calling `idleTimer.stop()` permanently disables idle feature (`main.ts`)
+  - [x] 5.1.1 Write failing test: after `session:reset`, subsequent activity restarts timer and it fires
+  - [x] 5.1.2 Remove `idleTimer.stop()` from `session:reset` — rely on `hasSessionData()` guard
+- [x] 5.2 Strengthen test 4.4.1: banner cleared on scan start must not rely on fallback branch
+  - [x] 5.2.1 Write failing test: after idle reset, re-fill all fields, start scan, assert banner gone
+- [x] 5.3 Rename `idleResetMessage` → `showIdleResetBanner` for clarity (`CaptureScan.tsx`)
+  - [x] 5.3.1 Write failing test: assert existing tests still pass after rename (refactor coverage)
+  - [x] 5.3.2 Rename state variable and all references
