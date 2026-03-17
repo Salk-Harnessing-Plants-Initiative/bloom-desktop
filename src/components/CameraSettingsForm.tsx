@@ -2,7 +2,7 @@
  * Camera Settings Form Component
  *
  * Reusable form for configuring camera settings with sliders + inputs.
- * Can be used in Camera Settings page and CaptureScan page.
+ * Can be used in Camera Settings page and CylinderScan page.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -27,7 +27,7 @@ export interface CameraSettingsFormProps {
   /** Whether Apply/Reset buttons are visible */
   showActions?: boolean;
 
-  /** Read-only mode (for review in CaptureScan) */
+  /** Read-only mode (for review in CylinderScan) */
   readOnly?: boolean;
 }
 
@@ -46,12 +46,32 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
-  // Detect cameras on mount
+  // Load default camera from machine config, then detect cameras
   useEffect(() => {
-    if (showCameraSelection && !readOnly) {
+    const initializeCamera = async () => {
+      if (!showCameraSelection || readOnly) return;
+
+      // First, try to load default camera from machine config
+      try {
+        const { config } = await window.electron.config.get();
+        if (config.camera_ip_address && !settings.camera_ip_address) {
+          // Pre-select the configured default camera
+          setSelectedCamera(config.camera_ip_address);
+          onChange({
+            ...settings,
+            camera_ip_address: config.camera_ip_address,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load camera config:', error);
+      }
+
+      // Then detect available cameras
       handleDetectCameras();
-    }
-  }, [showCameraSelection, readOnly]);
+    };
+
+    initializeCamera();
+  }, [showCameraSelection, readOnly]); // eslint-disable-line
 
   const handleDetectCameras = async () => {
     setIsDetecting(true);

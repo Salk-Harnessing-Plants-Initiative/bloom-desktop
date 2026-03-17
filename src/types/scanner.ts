@@ -159,6 +159,16 @@ export interface ScannerAPI {
   getStatus: () => Promise<ScannerStatus>;
 
   /**
+   * Get the current scanner identity (name).
+   *
+   * Returns the scanner's configured name from runtime state.
+   * Returns empty string if scanner not configured.
+   *
+   * @returns Promise resolving to scanner name
+   */
+  getScannerId: () => Promise<string>;
+
+  /**
    * Event listener for scan progress updates.
    *
    * @param callback - Function called with progress updates
@@ -212,7 +222,3 @@ export interface ScannerAPI {
  * });
  * ```
  */
-export const DEFAULT_SCANNER_SETTINGS: Partial<ScannerSettings> = {
-  num_frames: 72,
-  output_path: './scans',
-};

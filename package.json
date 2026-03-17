@@ -5,11 +5,18 @@
   "description": "Electron-react application for cylinder scanning and upload to bloom",
   "main": ".webpack/main",
   "engines": {
-    "node": ">=18.0.0",
+    "node": ">=20.0.0",
     "npm": ">=8.0.0"
   },
   "scripts": {
     "start": "electron-forge start",
+    "start:graviscan": "USE_GRAVISCAN_SUBPROCESS=true electron-forge start",
+    "start:graviscan:mock": "GRAVISCAN_MOCK=true USE_GRAVISCAN_SUBPROCESS=true electron-forge start",
+    "start:app:graviscan": "APP_MODE=graviscan USE_GRAVISCAN_SUBPROCESS=true electron-forge start",
+    "start:app:graviscan:mock": "APP_MODE=graviscan GRAVISCAN_MOCK=true USE_GRAVISCAN_SUBPROCESS=true electron-forge start",
+    "package:graviscan:linux": "APP_MODE=graviscan electron-forge package --platform linux --arch x64",
+    "start:app:cylinderscan": "APP_MODE=cylinderscan electron-forge start",
+    "make:graviscan:linux": "APP_MODE=graviscan electron-forge make --platform linux --arch x64",
     "dev": "npm run build:python && electron-forge start",
     "package": "npm run build:python && electron-forge package",
     "make": "npm run build:python && electron-forge make",
@@ -25,6 +32,8 @@
     "test:camera": "npm run test:streaming",
     "test:daq": "bash scripts/ensure-python-executable.sh && ts-node tests/integration/test-daq.ts",
     "test:scanner": "bash scripts/ensure-python-executable.sh && ts-node tests/integration/test-scanner.ts",
+    "test:graviscan-ipc": "bash scripts/ensure-python-executable.sh && GRAVISCAN_MOCK=true ts-node tests/integration/test-graviscan-ipc.ts",
+    "test:graviscan-interactive": "bash scripts/ensure-python-executable.sh && ts-node tests/integration/test-graviscan-interactive.ts",
     "test:scanner-database": "bash scripts/ensure-python-executable.sh && npm run prisma:generate && ts-node tests/integration/test-scanner-database.ts",
     "test:package": "ts-node tests/integration/test-package.ts",
     "test:package:database": "bash scripts/test-package-database-full.sh",
@@ -99,7 +108,10 @@
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
     "@prisma/client": "^6.18.0",
+    "@salk-hpi/bloom-js": "0.3.0-dev.3",
+    "@supabase/supabase-js": "^2.93.1",
     "@types/node": "^20.11.20",
+    "electron-log": "^5.4.3",
     "electron-squirrel-startup": "^1.0.0",
     "prisma": "^6.18.0",
     "react": "^18.3.1",
@@ -107,6 +119,7 @@
     "react-drag-drop-files": "^3.1.0",
     "react-hook-form": "^7.51.0",
     "react-router-dom": "^6.22.0",
+    "sharp": "^0.34.5",
     "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   }

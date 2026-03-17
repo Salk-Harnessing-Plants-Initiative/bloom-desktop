@@ -25,9 +25,20 @@ export const SPECIES_LIST = [
   'Wheat',
 ] as const;
 
+/**
+ * Experiment types available in the system
+ */
+export const EXPERIMENT_TYPES = [
+  { value: 'cylinder', label: 'Cylinder Scan', description: 'Rotational imaging with camera' },
+  { value: 'graviscan', label: 'GraviScan', description: 'Flatbed scanner imaging' },
+] as const;
+
+export type ExperimentType = typeof EXPERIMENT_TYPES[number]['value'];
+
 const experimentSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255, 'Name is too long'),
   species: z.string().min(1, 'Species is required'),
+  experiment_type: z.enum(['cylinder', 'graviscan']),
   scientist_id: z.string().optional(),
   accession_id: z.string().optional(),
 });
@@ -68,6 +79,7 @@ export function ExperimentForm({
     resolver: zodResolver(experimentSchema),
     defaultValues: {
       species: SPECIES_LIST[0],
+      experiment_type: APP_MODE === 'graviscan' ? 'graviscan' : 'cylinder',
       scientist_id: '',
       accession_id: '',
     },
@@ -82,11 +94,13 @@ export function ExperimentForm({
       const createData: {
         name: string;
         species: string;
+        experiment_type: string;
         scientist?: { connect: { id: string } };
         accession?: { connect: { id: string } };
       } = {
         name: data.name.trim(),
         species: data.species,
+        experiment_type: data.experiment_type,
       };
 
       if (data.scientist_id) {
@@ -109,6 +123,7 @@ export function ExperimentForm({
       reset({
         name: '',
         species: SPECIES_LIST[0],
+        experiment_type: APP_MODE === 'graviscan' ? 'graviscan' : 'cylinder',
         scientist_id: '',
         accession_id: '',
       });
@@ -151,6 +166,32 @@ export function ExperimentForm({
           <p className="mt-1 text-xs text-red-600">{errors.name.message}</p>
         )}
       </div>
+
+      {APP_MODE === 'full' && (
+        <div className="mb-4">
+          <label
+            htmlFor="experiment-type-select"
+            className="block text-xs font-bold mb-1"
+          >
+            Experiment Type
+          </label>
+          <select
+            id="experiment-type-select"
+            {...register('experiment_type')}
+            className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-[200px] border border-gray-300"
+            disabled={isSubmitting}
+          >
+            {EXPERIMENT_TYPES.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+          {errors.experiment_type && (
+            <p className="mt-1 text-xs text-red-600">{errors.experiment_type.message}</p>
+          )}
+        </div>
+      )}
 
       <div className="mb-4">
         <label

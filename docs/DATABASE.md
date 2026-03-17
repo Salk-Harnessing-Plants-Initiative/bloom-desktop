@@ -132,7 +132,7 @@ Many-to-many relationship between plants and accessions.
 model PlantAccessionMappings {
   id                String     @id @default(uuid())
   accession_id      String
-  plant_barcode     String
+  plate_barcode     String
   accession_file_id String
   accession         Accessions @relation(fields: [accession_file_id], references: [id])
 }
