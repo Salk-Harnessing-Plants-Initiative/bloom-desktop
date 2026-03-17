@@ -1024,6 +1024,7 @@ ipcMain.handle(
  */
 ipcMain.handle('session:reset', async (): Promise<void> => {
   resetSessionState();
+  if (idleTimer) idleTimer.stop();
 });
 
 // =============================================================================

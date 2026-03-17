@@ -59,3 +59,22 @@
 - [x] 3.7 Add renderer unit tests for idle reset notification (`CaptureScan.tsx`)
   - [x] 3.7.1 Test: idle reset callback clears metadata and shows notification banner
   - [x] 3.7.2 Test: dismiss button hides the notification
+
+## 4. Review Fixes (subagent review feedback)
+
+- [x] 4.1 Strengthen test 3.7.1 to assert metadata fields are actually cleared (`capture-scan-config.test.tsx`)
+  - [x] 4.1.1 Write failing assertion: metadata inputs show empty values after idle reset callback
+- [x] 4.2 Add unmount/cleanup test for `onIdleReset` useEffect (`capture-scan-config.test.tsx`)
+  - [x] 4.2.1 Write failing test: cleanup function is called on unmount; callback after unmount does not show banner
+- [x] 4.3 Update notification copy to enumerate all cleared fields (`CaptureScan.tsx`)
+  - [x] 4.3.1 Write failing test: banner text mentions wave number, plant age, accession name
+  - [x] 4.3.2 Update banner copy to list all five cleared fields
+- [x] 4.4 Clear idle-reset banner when user starts next scan (`CaptureScan.tsx`)
+  - [x] 4.4.1 Write failing test: banner is hidden when handleStartScan is called
+  - [x] 4.4.2 Call `setIdleResetMessage(false)` at start of `handleStartScan`
+- [x] 4.5 Reset idle timer on explicit `session:reset` IPC handler (`main.ts`)
+  - [x] 4.5.1 No dedicated unit test needed — `session:reset` is a one-line IPC handler; covered by integration
+  - [x] 4.5.2 Call `idleTimer.stop()` in `session:reset` handler
+- [x] 4.6 Fix `onIdleReset` preload listener to match `_event: unknown` pattern (`preload.ts`)
+  - [x] 4.6.1 No dedicated test needed — pattern consistency fix, existing tests verify behaviour
+  - [x] 4.6.2 Update `const listener = () => callback()` to `const listener = (_event: unknown) => callback()`

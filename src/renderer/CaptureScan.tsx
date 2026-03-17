@@ -417,6 +417,7 @@ export function CaptureScan() {
     try {
       setIsScanning(true);
       setErrorMessage(null);
+      setIdleResetMessage(false);
 
       // Initialize scanner
       // Build pilot-compatible scan directory path: YYYY-MM-DD/<plant_qr_code>/<scan_uuid>
@@ -513,8 +514,9 @@ export function CaptureScan() {
                   />
                 </svg>
                 <span className="font-medium text-amber-800">
-                  Session reset due to inactivity. Please select your phenotyper
-                  and experiment to continue.
+                  Session reset due to inactivity. Phenotyper, experiment, wave
+                  number, plant age, and accession name have been cleared.
+                  Please re-enter all fields to continue.
                 </span>
               </div>
               <button
