@@ -49,3 +49,13 @@
   - [x] 3.1.2 Guard `resumeAfterScan()` to return early when `!this.paused`
 - [x] 3.2 Move `pauseForScan()` before scanner null-check in `scanner:scan` handler (`main.ts`)
 - [x] 3.3 Fix `tasks.md` doc: `onIdleReset` return type is `() => void`, not `void`
+- [x] 3.4 Validate `timeoutMs` in `IdleTimer` constructor (`idle-timer.ts`)
+  - [x] 3.4.1 Write failing test: constructor throws on invalid timeoutMs (0, negative, NaN)
+  - [x] 3.4.2 Add validation to constructor, throw `RangeError` on invalid values
+- [x] 3.5 Clarify "configurable timeout" in spec as programmatic (for testing), not runtime
+- [x] 3.6 Add `aria-label` to idle-reset dismiss button (`CaptureScan.tsx`)
+  - [x] 3.6.1 Write failing test: dismiss button has accessible name
+  - [x] 3.6.2 Add `aria-label="Dismiss idle reset notification"` to button
+- [x] 3.7 Add renderer unit tests for idle reset notification (`CaptureScan.tsx`)
+  - [x] 3.7.1 Test: idle reset callback clears metadata and shows notification banner
+  - [x] 3.7.2 Test: dismiss button hides the notification

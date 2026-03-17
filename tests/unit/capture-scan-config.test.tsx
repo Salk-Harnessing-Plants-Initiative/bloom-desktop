@@ -188,6 +188,83 @@ async function fillFormAndStartScan() {
   });
 }
 
+describe('CaptureScan Idle Reset Notification', () => {
+  // 3.7.1 idle reset callback clears metadata and shows notification banner
+  it('3.7.1 triggers idle reset callback, clears metadata, and shows notification banner', async () => {
+    let idleResetCallback: (() => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.onIdleReset = vi
+      .fn()
+      .mockImplementation((cb: () => void) => {
+        idleResetCallback = cb;
+        return () => {};
+      });
+
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    // Fire the idle reset
+    await act(async () => {
+      idleResetCallback!();
+    });
+
+    // Notification banner should appear
+    expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument();
+  });
+
+  // 3.6.1 dismiss button has accessible name
+  it('3.6.1 dismiss button has an accessible aria-label', async () => {
+    let idleResetCallback: (() => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.onIdleReset = vi
+      .fn()
+      .mockImplementation((cb: () => void) => {
+        idleResetCallback = cb;
+        return () => {};
+      });
+
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    await act(async () => {
+      idleResetCallback!();
+    });
+
+    const dismissBtn = screen.getByTestId('idle-reset-dismiss');
+    expect(dismissBtn).toHaveAttribute('aria-label');
+    expect(dismissBtn.getAttribute('aria-label')).not.toBe('');
+  });
+
+  // 3.7.2 dismiss button hides the notification
+  it('3.7.2 clicking dismiss hides the notification banner', async () => {
+    let idleResetCallback: (() => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.onIdleReset = vi
+      .fn()
+      .mockImplementation((cb: () => void) => {
+        idleResetCallback = cb;
+        return () => {};
+      });
+
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    await act(async () => {
+      idleResetCallback!();
+    });
+
+    expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('idle-reset-dismiss'));
+    });
+
+    expect(
+      screen.queryByTestId('idle-reset-notification')
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe('CaptureScan Config Integration', () => {
   it('1.8.1 calls config:get on mount and stores num_frames and seconds_per_rot', async () => {
     renderCaptureScan();

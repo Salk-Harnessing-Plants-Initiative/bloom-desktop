@@ -256,6 +256,25 @@ describe('IdleTimer', () => {
       expect(onIdleSpy).not.toHaveBeenCalled();
     });
 
+    // 3.4.1 constructor throws on invalid timeoutMs
+    it('should throw on zero timeoutMs', () => {
+      expect(
+        () => new IdleTimer({ onIdle: onIdleSpy, timeoutMs: 0 })
+      ).toThrow();
+    });
+
+    it('should throw on negative timeoutMs', () => {
+      expect(
+        () => new IdleTimer({ onIdle: onIdleSpy, timeoutMs: -1000 })
+      ).toThrow();
+    });
+
+    it('should throw on NaN timeoutMs', () => {
+      expect(
+        () => new IdleTimer({ onIdle: onIdleSpy, timeoutMs: NaN })
+      ).toThrow();
+    });
+
     // 3.1.1 resumeAfterScan without prior pauseForScan must not reset countdown
     it('should not reset countdown when resumeAfterScan is called without pauseForScan', () => {
       timer.start();

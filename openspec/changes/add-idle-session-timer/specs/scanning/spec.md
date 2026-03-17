@@ -40,7 +40,7 @@ The system SHALL implement an idle timer in the main process that resets session
 
 ### Requirement: Configurable Idle Timeout Duration
 
-The idle timeout duration SHALL be configurable with a default value of 10 minutes (600,000 milliseconds).
+The idle timeout duration SHALL be configurable programmatically (e.g., for unit tests) with a default value of 10 minutes (600,000 milliseconds). The timeout is not configurable at runtime via environment variables or user settings.
 
 #### Scenario: Default timeout is 10 minutes
 
@@ -50,9 +50,15 @@ The idle timeout duration SHALL be configurable with a default value of 10 minut
 
 #### Scenario: Custom timeout value is respected
 
-- **GIVEN** a custom timeout value is configured
+- **GIVEN** a positive finite `timeoutMs` value is passed to the constructor
 - **WHEN** the idle timer is created with the custom value
 - **THEN** the timer SHALL use the configured duration instead of the default
+
+#### Scenario: Invalid timeout value is rejected
+
+- **GIVEN** a non-positive, non-finite, or NaN `timeoutMs` value is passed
+- **WHEN** the idle timer constructor is called
+- **THEN** the constructor SHALL throw a `RangeError`
 
 ### Requirement: Idle Reset User Notification
 

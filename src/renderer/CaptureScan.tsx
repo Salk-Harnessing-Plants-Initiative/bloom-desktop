@@ -521,6 +521,7 @@ export function CaptureScan() {
                 onClick={() => setIdleResetMessage(false)}
                 className="ml-4 text-amber-600 hover:text-amber-800"
                 data-testid="idle-reset-dismiss"
+                aria-label="Dismiss idle reset notification"
               >
                 <svg
                   className="h-5 w-5"

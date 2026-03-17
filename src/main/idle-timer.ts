@@ -27,7 +27,13 @@ export class IdleTimer {
 
   constructor(options: IdleTimerOptions) {
     this.onIdle = options.onIdle;
-    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const t = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    if (!Number.isFinite(t) || t <= 0) {
+      throw new RangeError(
+        `IdleTimer: timeoutMs must be a positive finite number, got ${t}`
+      );
+    }
+    this.timeoutMs = t;
   }
 
   start(): void {
