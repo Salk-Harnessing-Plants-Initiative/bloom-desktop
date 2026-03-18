@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Idle session timer to prevent scan misattribution in shared lab environments (#102, #116)
+  - Main process `IdleTimer` class resets session state after 10 minutes of inactivity
+  - Session fields (phenotyper, experiment, wave number, plant age, accession name) cleared on idle
+  - Amber notification banner shown in CaptureScan listing all cleared fields and the 10-minute threshold
+  - Banner persists across navigation: one-shot `wasIdleResetFlag` in session-store survives route changes
+  - Timer restarts on `session:set` (when session has data) and `scanner:initialize`; paused during active scans
+  - `session:check-idle-reset` IPC handler for on-mount banner display after navigation-away idle reset
+  - `session:reset` handler clears idle-reset flag to prevent stale banners after explicit resets
+  - `isScanningRef` updated synchronously on all scan-exit paths (start, complete, error, catch) to close race windows between `setIsScanning()` calls and `useEffect` flushes
+  - Scanner null-check moved above `pauseForScan()` to prevent spurious idle clock resets on failed scan attempts
+  - E2E tests deferred to issue #124
+
 - Plant Barcode Validation & Autocomplete in CaptureScan (#74)
   - PlantBarcodeInput component with autocomplete dropdown (top 5 matches)
   - Barcode sanitization: replaces + and spaces with \_, strips other special characters
