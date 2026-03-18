@@ -207,6 +207,9 @@ async function setupIdleReset() {
   const result = renderCaptureScan();
   await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
 
+  // Assert the component registered the callback before returning
+  await waitFor(() => expect(idleResetCallback).not.toBeNull());
+
   return {
     fireIdleReset: async () => {
       await act(async () => {

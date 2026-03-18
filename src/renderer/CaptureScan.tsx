@@ -101,9 +101,14 @@ export function CaptureScan() {
   // On mount: consume the one-shot flag so users who navigated away while idle
   // fired still see the notification when they return to this page.
   useEffect(() => {
-    window.electron.session.checkIdleReset().then((wasReset) => {
-      if (wasReset) setShowIdleResetBanner(true);
-    });
+    window.electron.session
+      .checkIdleReset()
+      .then((wasReset) => {
+        if (wasReset) setShowIdleResetBanner(true);
+      })
+      .catch((err: unknown) => {
+        console.error('[CaptureScan] checkIdleReset failed:', err);
+      });
   }, []);
 
   // Listen for idle session reset from main process
