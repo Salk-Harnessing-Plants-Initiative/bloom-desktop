@@ -407,6 +407,35 @@ class ScanWorker:
             pass
         self._device_is_open = False
 
+    def _reset_usb_device(self) -> None:
+        """Perform a kernel-level USB device reset to flush stale transfers.
+
+        Parses bus:device from the SANE device name and issues USBDEVFS_RESET.
+        This is a soft reset — the bus:device address stays the same.
+        Only runs on Linux; silently skips on other platforms.
+        """
+        import platform
+        if platform.system() != "Linux":
+            return
+
+        try:
+            import fcntl
+            parts = self.device_name.split(":")
+            if len(parts) < 4:
+                log(self.scanner_id, f"Cannot parse bus:device from '{self.device_name}', skipping USB reset")
+                return
+            bus, dev = int(parts[2]), int(parts[3])
+            usb_path = f"/dev/bus/usb/{bus:03d}/{dev:03d}"
+            USBDEVFS_RESET = ord('U') << 8 | 20
+            fd = os.open(usb_path, os.O_WRONLY)
+            try:
+                fcntl.ioctl(fd, USBDEVFS_RESET, 0)
+                log(self.scanner_id, f"USB device reset: {usb_path}")
+            finally:
+                os.close(fd)
+        except Exception as e:
+            log(self.scanner_id, f"USB reset failed (non-fatal): {e}")
+
     def _reopen_device(self) -> None:
         """Full SANE restart: exit + init + reopen to get a fresh USB connection.
 
@@ -428,6 +457,9 @@ class ScanWorker:
             self._sane.exit()
         except Exception:
             pass
+
+        # Flush stale USB bulk transfers before SANE reinit
+        self._reset_usb_device()
 
         # Let the USB bus settle after releasing the device
         time.sleep(3)
