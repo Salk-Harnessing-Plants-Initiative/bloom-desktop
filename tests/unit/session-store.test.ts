@@ -11,6 +11,8 @@ import {
   setSessionState,
   resetSessionState,
   hasSessionData,
+  setWasIdleReset,
+  consumeIdleResetFlag,
   type SessionState,
 } from '../../src/main/session-store';
 
@@ -215,6 +217,32 @@ describe('SessionStore', () => {
 
       resetSessionState();
       expect(hasSessionData()).toBe(false);
+    });
+  });
+
+  // 7.2: wasIdleResetFlag — persists across navigation, consumed once
+  describe('wasIdleResetFlag', () => {
+    beforeEach(() => {
+      // Consume any leftover flag from prior tests
+      consumeIdleResetFlag();
+    });
+
+    // 7.2.1 Regression guard: flag is false by default
+    it('7.2.1 consumeIdleResetFlag returns false before any idle reset', () => {
+      expect(consumeIdleResetFlag()).toBe(false);
+    });
+
+    // 7.2.2 Regression guard: flag is consumed exactly once
+    it('7.2.2 consumeIdleResetFlag returns true after setWasIdleReset, then false on next call', () => {
+      setWasIdleReset();
+      expect(consumeIdleResetFlag()).toBe(true);
+      expect(consumeIdleResetFlag()).toBe(false);
+    });
+
+    it('resetSessionState does not clear the wasIdleResetFlag', () => {
+      setWasIdleReset();
+      resetSessionState();
+      expect(consumeIdleResetFlag()).toBe(true);
     });
   });
 

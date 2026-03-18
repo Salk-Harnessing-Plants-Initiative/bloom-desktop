@@ -417,6 +417,13 @@ export interface SessionAPI {
    * @returns Cleanup function to remove the listener
    */
   onIdleReset: (callback: () => void) => () => void;
+
+  /**
+   * Check and consume the one-shot idle-reset flag. Returns true once after an
+   * idle reset occurred while the renderer was navigated away from CaptureScan,
+   * then false on all subsequent calls until the next idle reset.
+   */
+  checkIdleReset: () => Promise<boolean>;
 }
 
 /**

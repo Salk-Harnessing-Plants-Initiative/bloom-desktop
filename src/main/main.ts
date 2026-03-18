@@ -37,6 +37,8 @@ import {
   setSessionState,
   resetSessionState,
   hasSessionData,
+  setWasIdleReset,
+  consumeIdleResetFlag,
   type SessionState,
 } from './session-store';
 import { IdleTimer } from './idle-timer';
@@ -1008,6 +1010,15 @@ ipcMain.handle('session:get', async (): Promise<SessionState> => {
 });
 
 /**
+ * Handle session:check-idle-reset - Consume the one-shot idle-reset flag.
+ * Returns true once after an idle reset occurred while the renderer was
+ * navigated away from CaptureScan; clears the flag on read.
+ */
+ipcMain.handle('session:check-idle-reset', async (): Promise<boolean> => {
+  return consumeIdleResetFlag();
+});
+
+/**
  * Handle session:set - Update session state (partial update)
  */
 ipcMain.handle(
@@ -1045,6 +1056,7 @@ app.on('ready', async () => {
       if (!hasSessionData()) return;
       console.log('[IdleTimer] Session idle timeout — resetting session state');
       resetSessionState();
+      setWasIdleReset();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('session:idle-reset');
       }

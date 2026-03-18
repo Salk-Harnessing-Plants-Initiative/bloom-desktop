@@ -114,3 +114,25 @@
   - [x] 6.8.1 No test needed — documentation only
 - [x] 6.9 Create GitHub issue to track deferred E2E tests (1.3.1, 1.3.2)
   - [x] 6.9.1 Issue created: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/124
+
+## 7. Review Fixes (fourth review — missed items)
+
+- [x] 7.1 Test `session:set` → `hasSessionData()` conditional at IPC integration level (`tests/unit/main-idle-integration.test.ts`)
+  - [x] 7.1.1 Write test: `session:set` with empty session → `idleTimer.resetTimer()` is NOT called
+  - [x] 7.1.2 Write test: `session:set` with session data already present → `idleTimer.resetTimer()` IS called
+- [x] 7.2 Persist idle-reset flag across navigation so banner shows when user returns to CaptureScan
+  - [x] 7.2.1 Write failing unit test: `consumeIdleResetFlag()` returns `false` before any idle reset
+  - [x] 7.2.2 Write failing unit test: `consumeIdleResetFlag()` returns `true` after `setWasIdleReset()`, then `false` on subsequent call (consumed once)
+  - [x] 7.2.3 Write failing renderer test: CaptureScan shows banner on mount when `checkIdleReset()` resolves `true`
+  - [x] 7.2.4 Add `wasIdleResetFlag` + `setWasIdleReset()` + `consumeIdleResetFlag()` to `session-store.ts`
+  - [x] 7.2.5 Set flag via `setWasIdleReset()` in `onIdle` callback in `main.ts` (alongside existing `resetSessionState()` call)
+  - [x] 7.2.6 Add `session:check-idle-reset` IPC handler in `main.ts` (calls `consumeIdleResetFlag()`)
+  - [x] 7.2.7 Expose `checkIdleReset: () => Promise<boolean>` in `preload.ts` session API
+  - [x] 7.2.8 Add `checkIdleReset: () => Promise<boolean>` to `SessionAPI` in `src/types/electron.d.ts`
+  - [x] 7.2.9 On CaptureScan mount: call `checkIdleReset()`; if `true`, call `setShowIdleResetBanner(true)`
+- [x] 7.3 Strengthen `hasSessionData` guard test in `main-idle-integration.test.ts` (Copilot review 2026-03-18)
+  - [x] 7.3.1 Add `vi.spyOn` on `resetSessionState` and assert it was NOT called when session is empty
+  - [x] 7.3.2 Rename comment from "Failing test" → "Integration guard"
+- [x] 7.4 Rename "Failing test" comments to "Regression guard" in `capture-scan-config.test.tsx` (Copilot review 2026-03-18)
+  - [x] 7.4.1 Line 295: rename comment
+  - [x] 7.4.2 Line 343: rename comment

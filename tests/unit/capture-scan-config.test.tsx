@@ -122,6 +122,7 @@ beforeEach(() => {
       get: mockSessionGet,
       set: mockSessionSet,
       onIdleReset: vi.fn().mockReturnValue(() => {}),
+      checkIdleReset: vi.fn().mockResolvedValue(false),
     },
     database: {
       scans: {
@@ -288,7 +289,7 @@ describe('CaptureScan Idle Reset Notification', () => {
     ).not.toBeInTheDocument();
   });
 
-  // 6.2.1 Failing test: idle reset does NOT clear metadata or show banner when isScanning is true
+  // 6.2.1 Regression guard: idle reset does NOT clear metadata or show banner when isScanning is true
   // Note: mockScannerOnComplete never fires its callback, so isScanning stays true after Start Scan.
   it('6.2.1 idle reset is a no-op when a scan is in progress (isScanning guard)', async () => {
     const { fireIdleReset } = await setupIdleReset();
@@ -336,7 +337,7 @@ describe('CaptureScan Idle Reset Notification', () => {
     expect(banner.textContent).toMatch(/accession/i);
   });
 
-  // 6.3.1 Failing test: banner text mentions plant QR code
+  // 6.3.1 Regression guard: banner text mentions plant QR code
   it('6.3.1 notification banner text mentions plant QR code', async () => {
     const { fireIdleReset } = await setupIdleReset();
     await fireIdleReset();
@@ -448,6 +449,20 @@ describe('CaptureScan Idle Reset Notification', () => {
     expect(
       screen.queryByTestId('idle-reset-notification')
     ).not.toBeInTheDocument();
+  });
+
+  // 7.2.3 Regression guard: banner shown on mount when checkIdleReset() returns true
+  it('7.2.3 shows idle reset banner on mount when checkIdleReset returns true (navigation-away case)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.checkIdleReset = vi
+      .fn()
+      .mockResolvedValue(true);
+
+    renderCaptureScan();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument()
+    );
   });
 });
 

@@ -15,8 +15,16 @@ The system SHALL implement an idle timer in the main process that resets session
 #### Scenario: Timer resets on session changes
 
 - **GIVEN** the idle timer is running
+- **AND** at least one session field is non-null
 - **WHEN** the user changes phenotyper or experiment selection (triggering `session:set`)
 - **THEN** the idle timer SHALL restart from zero
+
+#### Scenario: Timer does not reset on session:set when no session data exists
+
+- **GIVEN** the idle timer is running
+- **AND** no session data has been set (all fields are null)
+- **WHEN** `session:set` is called with a partial update
+- **THEN** the idle timer SHALL NOT be reset
 
 #### Scenario: Timer resets on scanner initialization
 
@@ -106,3 +114,10 @@ The system SHALL visibly notify the user when a session is reset due to inactivi
 - **GIVEN** the idle timeout has expired and the session state has been reset
 - **WHEN** the renderer shows the notification banner
 - **THEN** the notification text SHALL reference all cleared fields: phenotyper, experiment, wave number, plant age, accession name, and plant QR code
+
+#### Scenario: Banner shown on CaptureScan mount after navigation-away idle reset
+
+- **GIVEN** an idle reset occurred while the user was navigated away from CaptureScan
+- **WHEN** the user navigates back to CaptureScan (component mounts)
+- **THEN** the idle reset notification banner SHALL be displayed
+- **AND** the form fields SHALL be in their empty/placeholder state

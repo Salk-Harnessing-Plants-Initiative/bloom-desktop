@@ -283,6 +283,7 @@ const sessionAPI = {
     ipcRenderer.on('session:idle-reset', listener);
     return () => ipcRenderer.removeListener('session:idle-reset', listener);
   },
+  checkIdleReset: () => ipcRenderer.invoke('session:check-idle-reset'),
 };
 
 /**
