@@ -54,6 +54,7 @@ dependencies = [
     { name = "imageio" },
     { name = "nidaqmx" },
     { name = "numpy" },
+    { name = "pillow" },
     { name = "pypylon" },
 ]
 
@@ -67,6 +68,12 @@ dev = [
     { name = "pytest-mock" },
     { name = "ruff" },
 ]
+graviscan-linux = [
+    { name = "python-sane" },
+]
+graviscan-windows = [
+    { name = "pytwain" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -75,14 +82,17 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "nidaqmx", specifier = ">=0.9.0" },
     { name = "numpy", specifier = ">=1.26.0" },
+    { name = "pillow", specifier = ">=10.0.0" },
     { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "pypylon", specifier = ">=3.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12.0" },
+    { name = "python-sane", marker = "extra == 'graviscan-linux'", specifier = ">=2.9.0" },
+    { name = "pytwain", marker = "extra == 'graviscan-windows'", specifier = ">=2.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["graviscan-linux", "graviscan-windows", "dev"]
 
 [package.metadata.requires-dev]
 dev = []
@@ -748,6 +758,12 @@ wheels = [
 ]
 
 [[package]]
+name = "python-sane"
+version = "2.9.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/e9/e8baff69fc2347606c547201204d4b4843c7ad8ecb9164eceee42016eff6/python_sane-2.9.2.tar.gz", hash = "sha256:50ab8e0b033cececad26c7231a7254f80ad8fe9ec6b5c25add2493d7e2a07bbe", size = 22513, upload-time = "2025-07-21T21:20:21.735Z" }
+
+[[package]]
 name = "pytokens"
 version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -755,6 +771,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/d4/c2/dbadcdddb412a2675
 wheels = [
     { url = "https://files.pythonhosted.org/packages/89/5a/c269ea6b348b6f2c32686635df89f32dbe05df1088dd4579302a6f8f99af/pytokens-0.2.0-py3-none-any.whl", hash = "sha256:74d4b318c67f4295c13782ddd9abcb7e297ec5630ad060eb90abf7ebbefe59f8", size = 12038, upload-time = "2025-10-15T08:02:41.694Z" },
 ]
+
+[[package]]
+name = "pytwain"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/4e/e3206ca8de413b086b3a2e42b09cdaa7157d0e2841063433c16141dd3fdc/pytwain-2.3.0.tar.gz", hash = "sha256:c64a181369577ad600929ad64cb6ad702ec41fd8cf9886d785e3b87516e7b369", size = 29049, upload-time = "2024-03-02T20:29:43.212Z" }
 
 [[package]]
 name = "pywin32-ctypes"
