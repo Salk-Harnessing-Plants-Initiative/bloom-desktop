@@ -749,10 +749,15 @@ ipcMain.handle('scanner:cleanup', async () => {
  */
 ipcMain.handle('scanner:scan', async () => {
   try {
-    if (idleTimer) idleTimer.pauseForScan();
+    // Check precondition before any side effects: if scannerProcess is null,
+    // calling pauseForScan() would trigger a spurious resumeAfterScan() in
+    // the finally block, silently resetting the 10-minute idle clock on a
+    // failed scan attempt and allowing a previous operator's session to
+    // persist longer in a shared lab environment.
     if (!scannerProcess) {
       throw new Error('Scanner not initialized. Call initialize() first.');
     }
+    if (idleTimer) idleTimer.pauseForScan();
     const response = await scannerProcess.scan();
     return response;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1015,7 +1020,12 @@ ipcMain.handle('session:get', async (): Promise<SessionState> => {
  * navigated away from CaptureScan; clears the flag on read.
  */
 ipcMain.handle('session:check-idle-reset', async (): Promise<boolean> => {
-  return consumeIdleResetFlag();
+  try {
+    return consumeIdleResetFlag();
+  } catch (err) {
+    console.error('[session:check-idle-reset] Unexpected error:', err);
+    return false;
+  }
 });
 
 /**

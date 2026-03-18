@@ -157,3 +157,26 @@
 - [x] 8.6 Update idle-reset banner copy to include the 10-minute threshold for lab scientist UX
   - [x] 8.6.1 Write failing test: banner text mentions "10 minutes" or "10-minute" — this FAILS because the current banner copy only enumerates cleared fields without stating the timeout duration
   - [x] 8.6.2 Update banner copy in `CaptureScan.tsx` to include the timeout duration, e.g. "Session reset after 10 minutes of inactivity. Phenotyper, experiment, wave number, plant age, accession name, and plant QR code have been cleared."
+
+## 9. Pre-Merge Quality Fixes (sixth review — subagent team)
+
+- [x] 9.1 Reset `isScanningRef.current = false` synchronously on all scan-exit paths (`CaptureScan.tsx`) — BLOCKING
+  - [x] 9.1.1 Write test: after scan initialization error, a subsequent `onIdleReset` callback fires and shows the banner (verifies error recovery unblocks idle reset); note: the synchronous ref-reset in the catch block closes a real-world race window (IPC arriving after `setIsScanning(false)` but before `useEffect([isScanning])` flushes) that cannot be reliably reproduced in unit tests — implement the fix because the behavioral contract documented in the spec must hold
+  - [x] 9.1.2 Add `isScanningRef.current = false;` as the first statement of the `catch` block in `handleStartScan`
+  - [x] 9.1.3 Add `isScanningRef.current = false;` as the first statement of the `handleComplete` callback (mirrors the same synchronous discipline for successful scan completion)
+  - [x] 9.1.4 Add `isScanningRef.current = false;` as the first statement of the `handleError` callback (scanner runtime error, distinct from scan init error)
+- [x] 9.2 Wrap `session:check-idle-reset` handler in try/catch to match codebase IPC pattern (`main.ts`)
+  - [x] 9.2.1 No test needed — `consumeIdleResetFlag()` is a pure boolean read that cannot throw; this is a pattern consistency fix
+  - [x] 9.2.2 Wrap `return consumeIdleResetFlag()` in try/catch; on error, log and return `false`
+- [x] 9.3 Move scanner process null-check above `pauseForScan()` in `scanner:scan` handler (`main.ts`) — **scientific**: when `scannerProcess` is null today, the `pauseForScan()` + immediate `resumeAfterScan()` roundtrip calls `scheduleTimer()`, silently resetting the 10-minute idle clock; a failed scan attempt thus extends the session lifetime, allowing a previous operator's identity to persist longer in a shared lab
+  - [x] 9.3.1 No test needed — `resumeAfterScan()` already guards against double-resume; this is a precondition-before-side-effect ordering fix
+  - [x] 9.3.2 Reorder: move `if (!scannerProcess) throw` above `idleTimer.pauseForScan()` call
+- [x] 9.4 Strengthen phenotyper and experiment field assertions in banner text tests (`capture-scan-config.test.tsx`)
+  - [x] 9.4.1 Strengthen test 4.3.1: assert `banner.textContent` matches `/phenotyper/i` and `/experiment/i`; no implementation change needed (banner copy already includes these fields)
+- [x] 9.5 Strengthen `RangeError` tests to assert error type, not just any throw (`idle-timer.test.ts`)
+  - [x] 9.5.1 Change bare `.toThrow()` calls in constructor validation tests to `.toThrow(RangeError)` to match the spec requirement "SHALL throw a RangeError"
+
+## 10. Verify
+
+- [x] 10.1 Run full test suite: `npm run lint && npx tsc --noEmit && npm run test:unit`
+  - [x] 10.1.1 Confirm all Section 9 tests pass and no regressions introduced

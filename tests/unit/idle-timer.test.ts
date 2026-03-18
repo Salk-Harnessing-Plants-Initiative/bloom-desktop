@@ -281,23 +281,23 @@ describe('IdleTimer', () => {
       expect(onIdleSpy).toHaveBeenCalledTimes(1);
     });
 
-    // 3.4.1 constructor throws on invalid timeoutMs
-    it('should throw on zero timeoutMs', () => {
-      expect(
-        () => new IdleTimer({ onIdle: onIdleSpy, timeoutMs: 0 })
-      ).toThrow();
+    // 3.4.1 / 9.5.1 constructor throws RangeError on invalid timeoutMs
+    it('should throw RangeError on zero timeoutMs', () => {
+      expect(() => new IdleTimer({ onIdle: onIdleSpy, timeoutMs: 0 })).toThrow(
+        RangeError
+      );
     });
 
-    it('should throw on negative timeoutMs', () => {
+    it('should throw RangeError on negative timeoutMs', () => {
       expect(
         () => new IdleTimer({ onIdle: onIdleSpy, timeoutMs: -1000 })
-      ).toThrow();
+      ).toThrow(RangeError);
     });
 
-    it('should throw on NaN timeoutMs', () => {
+    it('should throw RangeError on NaN timeoutMs', () => {
       expect(
         () => new IdleTimer({ onIdle: onIdleSpy, timeoutMs: NaN })
-      ).toThrow();
+      ).toThrow(RangeError);
     });
 
     // 5.1.1 After stop(), resetTimer() is a no-op — timer does NOT restart.

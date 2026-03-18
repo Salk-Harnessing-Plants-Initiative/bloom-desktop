@@ -149,7 +149,7 @@ so CaptureScan does not show a stale banner on the next mount.
 - **THEN** `consumeIdleResetFlag()` SHALL return `false` on the next call
 - **AND** a subsequent mount of CaptureScan SHALL NOT show the idle reset banner
 
-#### Scenario: isScanningRef updated synchronously on scan start
+#### Scenario: isScanningRef set to true synchronously on scan start
 
 The `onIdleReset` IPC listener is registered once with empty deps and reads `isScanningRef.current`
 to guard against clearing metadata during an active scan. Because the main process calls
@@ -162,6 +162,20 @@ update) and the `useEffect([isScanning])` flush that mirrors it into the ref.
 - **AND** the listener reads `isScanningRef.current` to guard against clearing metadata during a scan
 - **WHEN** `handleStartScan` is called
 - **THEN** `isScanningRef.current` SHALL be set to `true` synchronously as the first statement of `handleStartScan` (before any `await`)
+
+#### Scenario: isScanningRef reset to false synchronously on all scan-exit paths
+
+By the same synchronous discipline applied at scan start, `isScanningRef.current` must be reset to
+`false` synchronously on every code path that exits a scan. This closes the window between the
+`setIsScanning(false)` call (which only schedules a React state update) and the
+`useEffect([isScanning])` flush — preventing the double-click guard from blocking retries and
+ensuring idle reset IPC messages are not suppressed during error recovery or after scan completion.
+
+- **GIVEN** `isScanningRef.current` has been set to `true` at the start of `handleStartScan`
+- **WHEN** `handleStartScan` exits via the `catch` block (scan initialization error)
+- **THEN** `isScanningRef.current` SHALL be reset to `false` synchronously as the first statement of the `catch` block
+- **AND** `isScanningRef.current` SHALL be reset to `false` synchronously as the first statement of the `handleComplete` scan-complete event callback
+- **AND** `isScanningRef.current` SHALL be reset to `false` synchronously as the first statement of the `handleError` scan-error event callback
 
 #### Scenario: Mount-time checkIdleReset call does not setState after component unmounts
 

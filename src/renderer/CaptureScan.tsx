@@ -373,6 +373,9 @@ export function CaptureScan() {
       output_path: string;
       error?: string;
     }) => {
+      // Reset ref synchronously before setIsScanning(false) schedules a React update,
+      // closing the window where the useEffect([isScanning]) mirror hasn't fired yet.
+      isScanningRef.current = false;
       setIsScanning(false);
       setScanProgress(null);
 
@@ -401,6 +404,8 @@ export function CaptureScan() {
     };
 
     const handleError = (error: string) => {
+      // Reset ref synchronously before setIsScanning(false) schedules a React update.
+      isScanningRef.current = false;
       setIsScanning(false);
       setScanProgress(null);
       setErrorMessage(error);
@@ -513,6 +518,12 @@ export function CaptureScan() {
       // Start scan
       await window.electron.scanner.scan();
     } catch (error) {
+      // Reset ref synchronously before setIsScanning(false) schedules a React update,
+      // mirroring the synchronous-set discipline applied at scan start (isScanningRef = true).
+      // This closes the window between setIsScanning(false) and the useEffect([isScanning])
+      // flush, preventing the double-click guard from blocking retries and ensuring idle
+      // reset IPC messages are not suppressed during error recovery.
+      isScanningRef.current = false;
       console.error('Failed to start scan:', error);
       setErrorMessage(
         error instanceof Error ? error.message : 'Failed to start scan'

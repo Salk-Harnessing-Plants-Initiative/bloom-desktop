@@ -346,8 +346,8 @@ describe('CaptureScan Idle Reset Notification', () => {
     ).not.toBeInTheDocument();
   });
 
-  // 4.3.1 banner text mentions all cleared fields
-  it('4.3.1 notification banner text mentions wave number, plant age, and accession name', async () => {
+  // 4.3.1 banner text mentions all cleared fields (strengthened by 9.4.1 to include phenotyper + experiment)
+  it('4.3.1 notification banner text mentions wave number, plant age, accession name, phenotyper, and experiment', async () => {
     const { fireIdleReset } = await setupIdleReset();
     await fireIdleReset();
 
@@ -355,6 +355,9 @@ describe('CaptureScan Idle Reset Notification', () => {
     expect(banner.textContent).toMatch(/wave/i);
     expect(banner.textContent).toMatch(/plant age/i);
     expect(banner.textContent).toMatch(/accession/i);
+    // 9.4.1 strengthened: phenotyper and experiment must also be named
+    expect(banner.textContent).toMatch(/phenotyper/i);
+    expect(banner.textContent).toMatch(/experiment/i);
   });
 
   // 6.3.1 Regression guard: banner text mentions plant QR code
@@ -623,6 +626,58 @@ describe('CaptureScan Idle Reset Notification', () => {
 
     const banner = screen.getByTestId('idle-reset-notification');
     expect(banner.textContent).toMatch(/10.?min/i);
+  });
+
+  // 9.1.1 After scan initialization error, onIdleReset shows banner (error recovery unblocks idle reset)
+  //
+  // Note: the synchronous `isScanningRef.current = false` in the catch block closes a real-world
+  // race window (IPC arriving after setIsScanning(false) but before the useEffect([isScanning])
+  // flush). That specific window cannot be reliably reproduced in unit tests. This test verifies
+  // the behavioral contract: after a scan error, idle reset must work normally.
+  it('9.1.1 onIdleReset shows banner after scan initialization error (error recovery unblocks idle reset)', async () => {
+    let idleResetCallback: (() => void) | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.onIdleReset = vi
+      .fn()
+      .mockImplementation((cb: () => void) => {
+        idleResetCallback = cb;
+        return vi.fn();
+      });
+
+    // Make scanner.initialize reject to trigger the catch block
+    mockScannerInitialize.mockRejectedValueOnce(
+      new Error('hardware failure — scanner not ready')
+    );
+
+    renderCaptureScan();
+
+    await waitFor(() => {
+      expect(idleResetCallback).not.toBeNull();
+      expect(mockSessionGet).toHaveBeenCalled();
+    });
+
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /start scan/i })
+      ).not.toBeDisabled()
+    );
+
+    // Trigger handleStartScan — scanner.initialize will reject → catch block runs
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start scan/i }));
+    });
+
+    // After error recovery, fire onIdleReset — isScanningRef must be false so banner shows
+    await act(async () => {
+      idleResetCallback!();
+    });
+
+    expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument();
   });
 });
 
