@@ -26,6 +26,7 @@ describe('Main process onIdle callback integration', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     sessionStore.resetSessionState();
+    sessionStore.consumeIdleResetFlag();
     sendSpy = vi.fn();
 
     // Replicate the onIdle closure from main.ts (using namespace so spies intercept)
@@ -77,6 +78,21 @@ describe('Main process onIdle callback integration', () => {
     expect(sendSpy).toHaveBeenCalledWith('session:idle-reset');
     expect(sessionStore.hasSessionData()).toBe(false);
   });
+
+  // 8.4.1 onIdle closure calls setWasIdleReset when session has data
+  it('8.4.1 onIdle callback sets wasIdleResetFlag when session has data', () => {
+    sessionStore.setSessionState({
+      phenotyperId: 'pheno-1',
+      experimentId: 'exp-1',
+    });
+    expect(sessionStore.hasSessionData()).toBe(true);
+
+    vi.advanceTimersByTime(TIMEOUT_MS);
+
+    // The replicated onIdle closure calls sessionStore.setWasIdleReset(),
+    // so consumeIdleResetFlag() returns true.
+    expect(sessionStore.consumeIdleResetFlag()).toBe(true);
+  });
 });
 
 // =============================================================================
@@ -98,6 +114,7 @@ describe('session:set hasSessionData() guard (IPC integration level)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     sessionStore.resetSessionState();
+    sessionStore.consumeIdleResetFlag();
     resetTimerSpy = vi.fn();
 
     // Create a real timer but spy on resetTimer to detect calls
@@ -118,22 +135,6 @@ describe('session:set hasSessionData() guard (IPC integration level)', () => {
     timer.stop();
     vi.restoreAllMocks();
     vi.useRealTimers();
-  });
-
-  // 8.4.1 onIdle closure calls setWasIdleReset when session has data
-  it('8.4.1 onIdle callback sets wasIdleResetFlag when session has data', () => {
-    sessionStore.setSessionState({
-      phenotyperId: 'pheno-1',
-      experimentId: 'exp-1',
-    });
-    expect(sessionStore.hasSessionData()).toBe(true);
-
-    vi.advanceTimersByTime(TIMEOUT_MS);
-
-    // After 8.4.2: the replicated onIdle closure calls sessionStore.setWasIdleReset(),
-    // so consumeIdleResetFlag() returns true.
-    // Before fix: closure omits setWasIdleReset() → flag is false → assertion FAILS.
-    expect(sessionStore.consumeIdleResetFlag()).toBe(true);
   });
 
   // 7.1.1 Regression guard: session:set with null update on empty session → timer NOT reset

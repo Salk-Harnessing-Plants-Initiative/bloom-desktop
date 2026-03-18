@@ -137,7 +137,12 @@ export function CaptureScan() {
       // Consume the navigation-away flag so that if the user dismisses this
       // banner and later navigates away + back, checkIdleReset() on mount does
       // not show a stale second banner.
-      window.electron.session.checkIdleReset().catch(() => {});
+      window.electron.session.checkIdleReset().catch((err: unknown) => {
+        console.error(
+          '[CaptureScan] checkIdleReset (live handler) failed:',
+          err
+        );
+      });
       setMetadata({
         phenotyper: '',
         experimentId: '',
@@ -459,6 +464,9 @@ export function CaptureScan() {
   // Start scan handler
   const handleStartScan = async () => {
     if (!canStartScan) return;
+    // Guard against rapid re-invocation (e.g., double-click) before React
+    // re-renders with the disabled button state.
+    if (isScanningRef.current) return;
 
     // Set the ref synchronously BEFORE any await so the onIdleReset closure
     // (registered with [] deps) sees the correct scanning state immediately.
