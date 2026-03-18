@@ -68,11 +68,13 @@ description: "Review code quality and architecture"
 > Be adversarial. Read actual source files. Find real problems, not hypotheticals.
 >
 > Architecture overview:
+>
 > - Renderer (React/Vite) ↔ Preload context bridge ↔ Main (Node.js/Electron) ↔ Python subprocess (stdio JSON-lines IPC)
 > - Types live in `src/types/`, IPC handlers in `src/main/main.ts`, renderer components in `src/renderer/`
 > - Context bridge is defined in `src/preload/preload.ts` — renderer has NO direct Node access
 >
 > **Check:**
+>
 > 1. Naming: camelCase TS, snake_case Python, kebab-case filenames — any violations?
 > 2. Magic numbers/strings — are constants named and co-located?
 > 3. TypeScript: any `any` types? Are IPC payloads and responses fully typed?
@@ -91,6 +93,7 @@ description: "Review code quality and architecture"
 > {PR_BODY}
 >
 > Read any source files you need using the Read/Grep tools. Return:
+>
 > - BLOCKING issues (incorrect types, process boundary violations, swallowed errors)
 > - IMPORTANT issues (code smell, missing constants, unclear logic)
 > - SUGGESTIONS (style, readability)
@@ -112,6 +115,7 @@ description: "Review testing strategy and TDD discipline"
 > Be adversarial. Check every claim. Run mental red-green-refactor on the diff.
 >
 > **Testing infrastructure:**
+>
 > - **Vitest** (`tests/unit/`, `npm run test:unit`): pure logic, React components via `@testing-library/react`, happy-dom, v8 coverage
 > - **Playwright** (`tests/e2e/`, `npm run test:e2e`): real Electron app, sequential (1 worker), dev server on port 9000
 > - **pytest** (`python/tests/`, `npm run test:python`): Python units, 80% coverage enforced
@@ -121,6 +125,7 @@ description: "Review testing strategy and TDD discipline"
 > - **E2E**: uses Playwright MCP + `_electron.launch()`, sequential, fixtures reset DB between tests
 >
 > **Check:**
+>
 > 1. Were tests written BEFORE implementation (TDD)? Evidence: test files in earlier commits?
 > 2. Is the RIGHT framework used for each test?
 >    - Pure logic → Vitest unit
@@ -147,6 +152,7 @@ description: "Review testing strategy and TDD discipline"
 > {CI_STATUS}
 >
 > Read existing test files using Glob/Read tools before concluding. Return:
+>
 > - BLOCKING: missing tests for new code paths, tests that won't run in CI, existing tests broken by PR
 > - IMPORTANT: wrong framework choice, vague test descriptions, missing edge cases
 > - SUGGESTIONS: additional coverage, test refactors
@@ -183,6 +189,7 @@ description: "Review scientific rigor, metadata, and UX"
 >    actions (session reset, clear state) must be visibly communicated.
 >
 > **Check:**
+>
 > 1. Does the PR introduce any session state changes? Are they visibly communicated to the user?
 > 2. Could any race condition or timing issue cause scan data to be attributed to the wrong session?
 > 3. Are there silent resets or clears that a scientist might not notice?
@@ -202,6 +209,7 @@ description: "Review scientific rigor, metadata, and UX"
 > {PR_BODY}
 >
 > Return:
+>
 > - BLOCKING: data loss risks, silent state corruption, missing metadata
 > - IMPORTANT: UX gaps, threshold concerns, missing user communication
 > - SUGGESTIONS: additional safeguards, copy improvements, scenario ideas
@@ -224,6 +232,7 @@ description: "Review security and cross-platform safety"
 > **Check:**
 >
 > Security:
+>
 > 1. Are any user-controlled values used in file paths without sanitization (`path-sanitizer.ts`)?
 > 2. Are there new IPC handlers? Do they validate input before using it?
 > 3. Does any renderer code gain new access to Node.js APIs (context bridge expansion)?
@@ -231,13 +240,9 @@ description: "Review security and cross-platform safety"
 > 5. Are secrets or credentials ever logged or exposed in IPC responses?
 > 6. Does the preload bridge expose anything it shouldn't?
 >
-> Cross-platform:
-> 7. Do new file paths use `path.join()` — never string concatenation or hardcoded `/`?
-> 8. Does `setTimeout`/`setInterval` usage assume consistent timing across platforms?
->    (Windows timer resolution is ~15ms, not 1ms — does this affect idle timer accuracy?)
-> 9. Do any new IPC handlers behave differently on Windows vs macOS vs Linux?
-> 10. CI runs on Linux, macOS, and Windows — will the PR's changes pass on all three?
->     Check the CI status for platform-specific failures.
+> Cross-platform: 7. Do new file paths use `path.join()` — never string concatenation or hardcoded `/`? 8. Does `setTimeout`/`setInterval` usage assume consistent timing across platforms?
+> (Windows timer resolution is ~15ms, not 1ms — does this affect idle timer accuracy?) 9. Do any new IPC handlers behave differently on Windows vs macOS vs Linux? 10. CI runs on Linux, macOS, and Windows — will the PR's changes pass on all three?
+> Check the CI status for platform-specific failures.
 >
 > **PR diff:**
 > {PR_DIFF}
@@ -246,6 +251,7 @@ description: "Review security and cross-platform safety"
 > {CI_STATUS}
 >
 > Return:
+>
 > - BLOCKING: security vulnerabilities, path injection, context bridge overexposure
 > - IMPORTANT: platform timing assumptions, missing input validation, cross-platform risks
 > - SUGGESTIONS: defensive hardening, logging improvements
@@ -268,6 +274,7 @@ description: "Review behavioural correctness and edge cases"
 > Focus on: does the implementation actually do what the spec/PR description claims?
 >
 > **Check:**
+>
 > 1. Read the PR description's stated behaviour. Now read the diff. Does the code actually implement it?
 > 2. Trace the full call chain for each new feature end-to-end (renderer → IPC → main → response → renderer)
 > 3. What happens if:
@@ -293,6 +300,7 @@ description: "Review behavioural correctness and edge cases"
 > {COPILOT_COMMENTS}
 >
 > Read source files as needed using Read/Grep tools. Return:
+>
 > - BLOCKING: spec-implementation mismatches, cleanup leaks, impossible states
 > - IMPORTANT: edge cases not handled, rapid-trigger issues, component lifecycle bugs
 > - SUGGESTIONS: defensive guards, additional logging
@@ -316,6 +324,7 @@ After ALL subagents return:
 4. **Post the review to GitHub**:
 
 For REQUEST_CHANGES:
+
 ```bash
 gh pr review $PR_NUMBER --request-changes -b "$(cat <<'EOF'
 ## Review Summary
@@ -341,6 +350,7 @@ EOF
 ```
 
 For APPROVE:
+
 ```bash
 gh pr review $PR_NUMBER --approve -b "$(cat <<'EOF'
 ## Review Summary
@@ -358,6 +368,7 @@ EOF
 ```
 
 For COMMENT:
+
 ```bash
 gh pr review $PR_NUMBER --comment -b "..."
 ```

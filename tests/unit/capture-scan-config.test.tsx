@@ -299,7 +299,9 @@ describe('CaptureScan Idle Reset Notification', () => {
       fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
     });
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /start scan/i })).not.toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: /start scan/i })
+      ).not.toBeDisabled()
     );
 
     // Click Start Scan — isScanning becomes true
@@ -309,7 +311,9 @@ describe('CaptureScan Idle Reset Notification', () => {
 
     // Confirm isScanning is active (button shows "Scanning...")
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /scanning/i })).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /scanning/i })
+      ).toBeInTheDocument()
     );
 
     // Fire idle reset while scan is in progress — should be a no-op
@@ -349,14 +353,22 @@ describe('CaptureScan Idle Reset Notification', () => {
       .fn()
       .mockResolvedValue({
         success: true,
-        data: [{ id: 'pheno-1', name: 'Test Phenotyper', email: 'test@test.com' }],
+        data: [
+          { id: 'pheno-1', name: 'Test Phenotyper', email: 'test@test.com' },
+        ],
       });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (global.window as any).electron.database.experiments.list = vi
       .fn()
       .mockResolvedValue({
         success: true,
-        data: [{ id: 'exp-1', name: 'Test Experiment', accession: { id: 'acc-1', name: 'TestAccession' } }],
+        data: [
+          {
+            id: 'exp-1',
+            name: 'Test Experiment',
+            accession: { id: 'acc-1', name: 'TestAccession' },
+          },
+        ],
       });
 
     const { fireIdleReset } = await setupIdleReset();
@@ -368,8 +380,12 @@ describe('CaptureScan Idle Reset Notification', () => {
     await waitFor(() => {
       expect(mockCameraGetSettings).toHaveBeenCalled();
       // Choosers are enabled once their list mocks resolve
-      const phenotyperSel = document.getElementById('phenotyper-chooser') as HTMLSelectElement;
-      const experimentSel = document.getElementById('experiment-chooser') as HTMLSelectElement;
+      const phenotyperSel = document.getElementById(
+        'phenotyper-chooser'
+      ) as HTMLSelectElement;
+      const experimentSel = document.getElementById(
+        'experiment-chooser'
+      ) as HTMLSelectElement;
       expect(phenotyperSel).not.toBeNull();
       expect(phenotyperSel.disabled).toBe(false);
       expect(experimentSel).not.toBeNull();
@@ -381,13 +397,17 @@ describe('CaptureScan Idle Reset Notification', () => {
 
     // Phenotyper dropdown — option 'pheno-1' now exists in the list
     await act(async () => {
-      const phenotyperSel = document.getElementById('phenotyper-chooser') as HTMLSelectElement;
+      const phenotyperSel = document.getElementById(
+        'phenotyper-chooser'
+      ) as HTMLSelectElement;
       fireEvent.change(phenotyperSel, { target: { value: 'pheno-1' } });
     });
 
     // Experiment dropdown — option 'exp-1' now exists in the list
     await act(async () => {
-      const experimentSel = document.getElementById('experiment-chooser') as HTMLSelectElement;
+      const experimentSel = document.getElementById(
+        'experiment-chooser'
+      ) as HTMLSelectElement;
       fireEvent.change(experimentSel, { target: { value: 'exp-1' } });
     });
 

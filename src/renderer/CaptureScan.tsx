@@ -528,8 +528,8 @@ export function CaptureScan() {
                 </svg>
                 <span className="font-medium text-amber-800">
                   Session reset due to inactivity. Phenotyper, experiment, wave
-                  number, plant age, accession name, and plant QR code have
-                  been cleared. Please re-enter all fields to continue.
+                  number, plant age, accession name, and plant QR code have been
+                  cleared. Please re-enter all fields to continue.
                 </span>
               </div>
               <button
