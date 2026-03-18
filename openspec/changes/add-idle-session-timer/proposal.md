@@ -13,4 +13,4 @@ In a shared lab environment, if a phenotyper walks away without logging out, the
 ## Impact
 
 - Affected specs: scanning
-- Affected code: `src/main/idle-timer.ts` (new idle timer module), `src/main/session-store.ts` (provides `resetSessionState()`), `src/main/main.ts` (IPC handler wiring), `src/main/preload.ts` (expose idle-reset event), `src/types/electron.d.ts` (type updates), `src/renderer/CaptureScan.tsx` (idle reset handler and user notification)
+- Affected code: `src/main/idle-timer.ts` (new idle timer module), `src/main/session-store.ts` (provides `resetSessionState()`), `src/main/main.ts` (IPC handler wiring), `src/main/preload.ts` (expose idle-reset event), `src/types/electron.d.ts` (type updates), `src/renderer/CaptureScan.tsx` (idle reset handler and user notification), `tests/unit/capture-scan-config.test.tsx` (renderer unit tests), `tests/unit/main-idle-integration.test.ts` (IPC-level integration unit tests)

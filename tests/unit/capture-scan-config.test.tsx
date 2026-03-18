@@ -484,6 +484,146 @@ describe('CaptureScan Idle Reset Notification', () => {
       expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument()
     );
   });
+
+  // 8.1.1 isScanningRef synchronous guard: onIdleReset fired during scan start does not clear metadata
+  it('8.1.1 onIdleReset callback fired mid-handleStartScan does NOT clear metadata (isScanningRef synchronous guard)', async () => {
+    let idleResetCallback: (() => void) | null = null;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.onIdleReset = vi
+      .fn()
+      .mockImplementation((cb: () => void) => {
+        idleResetCallback = cb;
+        return vi.fn();
+      });
+
+    // Make scanner initialize fire the idle reset callback synchronously when called.
+    // scanner.initialize(args) is evaluated synchronously before the await suspends,
+    // so the callback fires BEFORE React flushes the setIsScanning(true) effect.
+    // Before fix: isScanningRef.current is still false → callback clears metadata.
+    // After fix: isScanningRef.current is true (set synchronously at start of handleStartScan).
+    mockScannerInitialize.mockImplementationOnce(async () => {
+      if (idleResetCallback) idleResetCallback();
+      return { success: true, initialized: true };
+    });
+
+    renderCaptureScan();
+
+    await waitFor(() => {
+      expect(idleResetCallback).not.toBeNull();
+      expect(mockSessionGet).toHaveBeenCalled();
+    });
+
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /start scan/i })
+      ).not.toBeDisabled()
+    );
+
+    // Click Start Scan — handleStartScan starts, scanner.initialize fires the callback mid-flight
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start scan/i }));
+    });
+
+    // After fix: isScanningRef.current was true when callback fired → banner NOT shown
+    // Before fix: isScanningRef.current was false → banner shown (test FAILS)
+    expect(
+      screen.queryByTestId('idle-reset-notification')
+    ).not.toBeInTheDocument();
+  });
+
+  // 8.3.1 On-mount checkIdleReset path clears metadata fields (mirrors live IPC handler)
+  it('8.3.1 on mount checkIdleReset=true clears metadata fields in addition to showing banner', async () => {
+    // Control when checkIdleReset resolves so we can verify fields were populated first
+    let resolveCheckIdleReset!: (v: boolean) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.checkIdleReset = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise<boolean>((res) => {
+            resolveCheckIdleReset = res;
+          })
+      );
+
+    // Session has data — loadSessionState will populate waveNumber, plantAgeDays etc.
+    // (Simulates a race where session.get and checkIdleReset resolve concurrently.)
+    mockSessionGet.mockResolvedValueOnce({
+      phenotyperId: 'pheno-1',
+      experimentId: 'exp-1',
+      waveNumber: 1,
+      plantAgeDays: 14,
+      accessionName: 'TestAccession',
+    });
+
+    renderCaptureScan();
+
+    // Wait for session state to populate the wave number field
+    await waitFor(() => {
+      const waveInput = screen.getByPlaceholderText(
+        'e.g., 1'
+      ) as HTMLInputElement;
+      expect(waveInput.value).toBe('1');
+    });
+
+    // Now resolve checkIdleReset — should clear fields AND show banner
+    await act(async () => {
+      resolveCheckIdleReset(true);
+    });
+
+    // After fix: fields are cleared to empty
+    // Before fix: waveNumber still shows '1' (only banner was shown, not setMetadata)
+    const waveInput = screen.getByPlaceholderText(
+      'e.g., 1'
+    ) as HTMLInputElement;
+    expect(waveInput.value).toBe('');
+
+    expect(screen.getByTestId('idle-reset-notification')).toBeInTheDocument();
+  });
+
+  // 8.5.1 Unmount-cancelled guard: promise resolving after unmount does not setState
+  it('8.5.1 unmounting before checkIdleReset resolves does not show banner', async () => {
+    let resolveCheckIdleReset!: (v: boolean) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.checkIdleReset = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise<boolean>((res) => {
+            resolveCheckIdleReset = res;
+          })
+      );
+
+    const { unmount } = renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    // Unmount BEFORE checkIdleReset resolves
+    unmount();
+
+    // Resolve after unmount — without the mounted guard, this calls setState on an unmounted component
+    await act(async () => {
+      resolveCheckIdleReset(true);
+    });
+
+    // Component is unmounted; banner should not appear in the (now empty) DOM
+    expect(
+      screen.queryByTestId('idle-reset-notification')
+    ).not.toBeInTheDocument();
+  });
+
+  // 8.6.1 Banner copy mentions the 10-minute timeout threshold
+  it('8.6.1 notification banner text mentions the 10-minute timeout threshold', async () => {
+    const { fireIdleReset } = await setupIdleReset();
+    await fireIdleReset();
+
+    const banner = screen.getByTestId('idle-reset-notification');
+    expect(banner.textContent).toMatch(/10.?min/i);
+  });
 });
 
 describe('CaptureScan Config Integration', () => {

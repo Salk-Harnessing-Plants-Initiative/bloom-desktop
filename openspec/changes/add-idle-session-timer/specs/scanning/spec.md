@@ -109,11 +109,15 @@ The system SHALL visibly notify the user when a session is reset due to inactivi
 - **THEN** the renderer SHALL NOT clear metadata state
 - **AND** the idle reset notification banner SHALL NOT be shown
 
-#### Scenario: Notification enumerates all cleared fields
+#### Scenario: Notification enumerates all cleared fields and the timeout duration
+
+Scientists need to know both what was cleared and why, so they can plan workflows around the threshold
+(e.g., pausing between scans for sample preparation).
 
 - **GIVEN** the idle timeout has expired and the session state has been reset
 - **WHEN** the renderer shows the notification banner
 - **THEN** the notification text SHALL reference all cleared fields: phenotyper, experiment, wave number, plant age, accession name, and plant QR code
+- **AND** the notification text SHALL state the idle timeout duration (10 minutes)
 
 #### Scenario: Banner shown on CaptureScan mount after navigation-away idle reset
 
@@ -121,3 +125,48 @@ The system SHALL visibly notify the user when a session is reset due to inactivi
 - **WHEN** the user navigates back to CaptureScan (component mounts)
 - **THEN** the idle reset notification banner SHALL be displayed
 - **AND** the form fields SHALL be in their empty/placeholder state
+
+#### Scenario: On-mount idle reset detection clears form fields
+
+The `onIdleReset` IPC handler clears metadata fields and shows the banner. The on-mount
+`checkIdleReset()` path must produce identical UI state so both code paths are consistent,
+regardless of whether the user was on CaptureScan when the idle reset fired.
+
+- **GIVEN** `window.electron.session.checkIdleReset` resolves `true` on mount (idle reset flag was set)
+- **WHEN** CaptureScan mounts and the `checkIdleReset()` promise resolves
+- **THEN** the component SHALL clear all metadata form fields (phenotyper, experiment, wave number, plant age, plant QR code, accession name) to empty
+- **AND** SHALL show the idle reset notification banner
+
+#### Scenario: Explicit session reset clears the idle-reset notification flag
+
+When the user explicitly resets the session, any pending idle-reset notification flag from a prior
+idle reset (that fired while the user was navigated away) is no longer meaningful and must be cleared
+so CaptureScan does not show a stale banner on the next mount.
+
+- **GIVEN** an idle reset has occurred while the user was navigated away (`wasIdleResetFlag` is set)
+- **AND** the `onIdleReset` IPC listener never fired because CaptureScan was unmounted
+- **WHEN** the user explicitly triggers a `session:reset` IPC call
+- **THEN** `consumeIdleResetFlag()` SHALL return `false` on the next call
+- **AND** a subsequent mount of CaptureScan SHALL NOT show the idle reset banner
+
+#### Scenario: isScanningRef updated synchronously on scan start
+
+The `onIdleReset` IPC listener is registered once with empty deps and reads `isScanningRef.current`
+to guard against clearing metadata during an active scan. Because the main process calls
+`pauseForScan()` before a scan starts, this guard is defense-in-depth against in-flight IPC
+messages queued before the pause. Setting the ref synchronously before any `await` in
+`handleStartScan` closes the window between `setIsScanning(true)` (which schedules a React state
+update) and the `useEffect([isScanning])` flush that mirrors it into the ref.
+
+- **GIVEN** CaptureScan has an `onIdleReset` listener registered with empty-dependency `useEffect`
+- **AND** the listener reads `isScanningRef.current` to guard against clearing metadata during a scan
+- **WHEN** `handleStartScan` is called
+- **THEN** `isScanningRef.current` SHALL be set to `true` synchronously as the first statement of `handleStartScan` (before any `await`)
+
+#### Scenario: Mount-time checkIdleReset call does not setState after component unmounts
+
+- **GIVEN** CaptureScan mounts and immediately issues a `checkIdleReset()` IPC call
+- **AND** the component unmounts before `checkIdleReset()` resolves (e.g., rapid navigation)
+- **WHEN** the `checkIdleReset()` promise resolves with any value
+- **THEN** `setShowIdleResetBanner` SHALL NOT be called
+- **AND** no setState-on-unmounted-component side-effect SHALL occur

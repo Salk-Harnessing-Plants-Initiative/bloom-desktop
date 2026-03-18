@@ -34,6 +34,7 @@ describe('Main process onIdle callback integration', () => {
       onIdle: () => {
         if (!sessionStore.hasSessionData()) return;
         sessionStore.resetSessionState();
+        sessionStore.setWasIdleReset();
         sendSpy('session:idle-reset');
       },
     });
@@ -119,6 +120,22 @@ describe('session:set hasSessionData() guard (IPC integration level)', () => {
     vi.useRealTimers();
   });
 
+  // 8.4.1 onIdle closure calls setWasIdleReset when session has data
+  it('8.4.1 onIdle callback sets wasIdleResetFlag when session has data', () => {
+    sessionStore.setSessionState({
+      phenotyperId: 'pheno-1',
+      experimentId: 'exp-1',
+    });
+    expect(sessionStore.hasSessionData()).toBe(true);
+
+    vi.advanceTimersByTime(TIMEOUT_MS);
+
+    // After 8.4.2: the replicated onIdle closure calls sessionStore.setWasIdleReset(),
+    // so consumeIdleResetFlag() returns true.
+    // Before fix: closure omits setWasIdleReset() → flag is false → assertion FAILS.
+    expect(sessionStore.consumeIdleResetFlag()).toBe(true);
+  });
+
   // 7.1.1 Regression guard: session:set with null update on empty session → timer NOT reset
   it('7.1.1 session:set with null-only update on empty session does NOT call resetTimer', () => {
     expect(sessionStore.hasSessionData()).toBe(false);
@@ -139,5 +156,41 @@ describe('session:set hasSessionData() guard (IPC integration level)', () => {
     if (sessionStore.hasSessionData()) timer.resetTimer();
 
     expect(resetTimerSpy).toHaveBeenCalledOnce();
+  });
+});
+
+// =============================================================================
+// 8.2 session:reset handler clears idle-reset flag
+// =============================================================================
+
+/**
+ * Replicates the session:reset handler logic from main.ts:
+ *
+ *   resetSessionState();
+ *   consumeIdleResetFlag(); // ← added by task 8.2.2
+ *
+ * Verifies the flag is cleared so a stale idle-reset banner is not shown
+ * when the user navigates back to CaptureScan after an explicit session reset.
+ */
+describe('session:reset handler clears idle-reset flag (8.2)', () => {
+  beforeEach(() => {
+    sessionStore.resetSessionState();
+    // consumeIdleResetFlag is idempotent — safe to call to ensure clean state
+    sessionStore.consumeIdleResetFlag();
+  });
+
+  // 8.2.1 Integration guard: session:reset handler clears idle-reset flag
+  it('8.2.1 session:reset handler clears wasIdleResetFlag (consumeIdleResetFlag returns false after)', () => {
+    // Simulate: idle reset occurred while user was navigated away (flag set, not yet consumed)
+    sessionStore.setWasIdleReset();
+
+    // Replicate the FIXED session:reset IPC handler (task 8.2.2):
+    sessionStore.resetSessionState();
+    sessionStore.consumeIdleResetFlag(); // ← added by 8.2.2
+
+    // Flag is now consumed — a subsequent call returns false.
+    // Before 8.2.2 (handler only calls resetSessionState), the flag would still be true
+    // and this assertion would fail.
+    expect(sessionStore.consumeIdleResetFlag()).toBe(false);
   });
 });

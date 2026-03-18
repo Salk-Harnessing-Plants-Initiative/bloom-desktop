@@ -1035,6 +1035,10 @@ ipcMain.handle(
  */
 ipcMain.handle('session:reset', async (): Promise<void> => {
   resetSessionState();
+  // Clear the idle-reset notification flag so a stale banner is not shown if the
+  // user navigates back to CaptureScan after explicitly resetting the session.
+  // Safe to call unconditionally — consumeIdleResetFlag() is a no-op when flag is false.
+  consumeIdleResetFlag();
   // Note: do NOT call idleTimer.stop() here — that would permanently disable the
   // idle feature because resetTimer() is a no-op after stop(). The hasSessionData()
   // guard in the onIdle callback already prevents spurious resets on empty sessions.

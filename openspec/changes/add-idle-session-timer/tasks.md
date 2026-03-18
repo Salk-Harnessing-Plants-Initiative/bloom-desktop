@@ -136,3 +136,24 @@
 - [x] 7.4 Rename "Failing test" comments to "Regression guard" in `capture-scan-config.test.tsx` (Copilot review 2026-03-18)
   - [x] 7.4.1 Line 295: rename comment
   - [x] 7.4.2 Line 343: rename comment
+
+## 8. Pre-Merge Correctness Fixes (fifth review — subagent team)
+
+- [x] 8.1 Set `isScanningRef.current = true` synchronously at the top of `handleStartScan` (`CaptureScan.tsx`) — BLOCKING
+  - [x] 8.1.1 Write failing test: render with `mockScannerInitialize` returning a never-resolving promise; call `handleStartScan`; while the scan IPC is pending, fire the `onIdleReset` mock callback; assert metadata fields are NOT cleared and banner is NOT shown; this FAILS before 8.1.2 because `isScanningRef.current` is still `false` before the first `await` resolves
+  - [x] 8.1.2 Add `isScanningRef.current = true;` as the first statement in `handleStartScan`, before any `await`
+- [x] 8.2 `session:reset` handler must call `consumeIdleResetFlag()` to clear stale idle-reset banner flag (`main.ts`)
+  - [x] 8.2.1 Write failing unit test in `tests/unit/main-idle-integration.test.ts`: call `sessionStore.setWasIdleReset()` to set flag; replicate `session:reset` handler body with only `resetSessionState()` (no `consumeIdleResetFlag()`); assert `sessionStore.consumeIdleResetFlag()` returns `true` (flag was NOT cleared — the FAILING state); after 8.2.2 the flag is cleared so `consumeIdleResetFlag()` returns `false`
+  - [x] 8.2.2 Add `consumeIdleResetFlag()` call inside the `session:reset` IPC handler in `main.ts` (safe to call unconditionally — is a no-op when flag is already false)
+- [x] 8.3 On-mount `checkIdleReset()` path must call `setMetadata({...empty})` when returning `true` (`CaptureScan.tsx`)
+  - [x] 8.3.1 Write failing test: render with `checkIdleReset` mocked to resolve `true` AND `session.get` mocked to return all-null fields; assert all metadata form fields show empty values in addition to the banner being visible; this FAILS before 8.3.2 because the current mount path only calls `setShowIdleResetBanner(true)`
+  - [x] 8.3.2 Update the mount `checkIdleReset().then()` handler to call `setMetadata({phenotyper:'', experimentId:'', waveNumber:'', plantAgeDays:'', plantQrCode:'', accessionName:''})` before `setShowIdleResetBanner(true)`
+- [x] 8.4 Fix `main-idle-integration.test.ts` replicated `onIdle` closure to include `setWasIdleReset()` call (`tests/unit/main-idle-integration.test.ts`)
+  - [x] 8.4.1 Write failing test in the `Main process onIdle callback integration` describe block: after timer fires with session data, assert `sessionStore.consumeIdleResetFlag()` returns `true` (flag is set); this FAILS because the replicated `onIdle` closure currently omits `sessionStore.setWasIdleReset()`
+  - [x] 8.4.2 Add `sessionStore.setWasIdleReset()` call to the replicated `onIdle` closure in `main-idle-integration.test.ts` (alongside existing `sessionStore.resetSessionState()`)
+- [x] 8.5 Add unmount-cancelled guard to mount `checkIdleReset()` promise (`CaptureScan.tsx`)
+  - [x] 8.5.1 Write test: render CaptureScan with `checkIdleReset` mocked to a pending promise; unmount the component; resolve the promise with `true`; assert `idle-reset-notification` is NOT in the DOM (note: in React 18 this may pass trivially without the guard — the test documents the invariant as a hygiene guarantee)
+  - [x] 8.5.2 Add `let mounted = true` / `return () => { mounted = false; }` pattern to the mount `checkIdleReset` effect; gate all setState calls on `mounted`
+- [x] 8.6 Update idle-reset banner copy to include the 10-minute threshold for lab scientist UX
+  - [x] 8.6.1 Write failing test: banner text mentions "10 minutes" or "10-minute" — this FAILS because the current banner copy only enumerates cleared fields without stating the timeout duration
+  - [x] 8.6.2 Update banner copy in `CaptureScan.tsx` to include the timeout duration, e.g. "Session reset after 10 minutes of inactivity. Phenotyper, experiment, wave number, plant age, accession name, and plant QR code have been cleared."

@@ -101,14 +101,30 @@ export function CaptureScan() {
   // On mount: consume the one-shot flag so users who navigated away while idle
   // fired still see the notification when they return to this page.
   useEffect(() => {
+    let mounted = true;
     window.electron.session
       .checkIdleReset()
       .then((wasReset) => {
-        if (wasReset) setShowIdleResetBanner(true);
+        if (!mounted) return;
+        if (wasReset) {
+          // Mirror the live onIdleReset handler: clear fields AND show banner.
+          setMetadata({
+            phenotyper: '',
+            experimentId: '',
+            waveNumber: '',
+            plantAgeDays: '',
+            plantQrCode: '',
+            accessionName: '',
+          });
+          setShowIdleResetBanner(true);
+        }
       })
       .catch((err: unknown) => {
         console.error('[CaptureScan] checkIdleReset failed:', err);
       });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Listen for idle session reset from main process
@@ -444,6 +460,13 @@ export function CaptureScan() {
   const handleStartScan = async () => {
     if (!canStartScan) return;
 
+    // Set the ref synchronously BEFORE any await so the onIdleReset closure
+    // (registered with [] deps) sees the correct scanning state immediately.
+    // setIsScanning(true) below only schedules a React update; the useEffect that
+    // mirrors it into isScanningRef runs after re-render, creating a window where
+    // in-flight IPC messages could bypass the guard without this line.
+    isScanningRef.current = true;
+
     try {
       setIsScanning(true);
       setErrorMessage(null);
@@ -544,9 +567,10 @@ export function CaptureScan() {
                   />
                 </svg>
                 <span className="font-medium text-amber-800">
-                  Session reset due to inactivity. Phenotyper, experiment, wave
-                  number, plant age, accession name, and plant QR code have been
-                  cleared. Please re-enter all fields to continue.
+                  Session reset after 10 minutes of inactivity. Phenotyper,
+                  experiment, wave number, plant age, accession name, and plant
+                  QR code have been cleared. Please re-enter all fields to
+                  continue.
                 </span>
               </div>
               <button
