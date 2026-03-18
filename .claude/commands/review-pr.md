@@ -323,10 +323,15 @@ After ALL subagents return:
 
 4. **Post the review to GitHub**:
 
-For REQUEST_CHANGES:
+> **Note:** GitHub does not allow requesting changes or approving your own PRs.
+> Always attempt the desired action first; if it fails with "Can not request changes on your own pull request"
+> or "Can not approve your own pull request", automatically fall back to `--comment` with the same body
+> and a note at the top indicating the intended verdict.
+
+For REQUEST_CHANGES (attempt first, fall back to --comment on own-PR error):
 
 ```bash
-gh pr review $PR_NUMBER --request-changes -b "$(cat <<'EOF'
+BODY="$(cat <<'EOF'
 ## Review Summary
 
 [2–3 sentence overall assessment]
@@ -347,12 +352,15 @@ gh pr review $PR_NUMBER --request-changes -b "$(cat <<'EOF'
 *Review by Claude Code subagent team (Code Quality · Testing · Scientific Rigor · Security · Behavioural Correctness)*
 EOF
 )"
+
+gh pr review $PR_NUMBER --request-changes -b "$BODY" 2>&1 || \
+gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: REQUEST\_CHANGES** (posted as comment — GitHub does not allow requesting changes on your own PR)\n\n%s' "$BODY")"
 ```
 
-For APPROVE:
+For APPROVE (attempt first, fall back to --comment on own-PR error):
 
 ```bash
-gh pr review $PR_NUMBER --approve -b "$(cat <<'EOF'
+BODY="$(cat <<'EOF'
 ## Review Summary
 
 [2–3 sentence assessment]
@@ -365,9 +373,12 @@ gh pr review $PR_NUMBER --approve -b "$(cat <<'EOF'
 *Review by Claude Code subagent team (Code Quality · Testing · Scientific Rigor · Security · Behavioural Correctness)*
 EOF
 )"
+
+gh pr review $PR_NUMBER --approve -b "$BODY" 2>&1 || \
+gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: APPROVE** (posted as comment — GitHub does not allow approving your own PR)\n\n%s' "$BODY")"
 ```
 
-For COMMENT:
+For COMMENT (no fallback needed):
 
 ```bash
 gh pr review $PR_NUMBER --comment -b "..."
