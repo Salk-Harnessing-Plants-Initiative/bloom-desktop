@@ -1,0 +1,182 @@
+## 1. Tests
+
+- [x] 1.1 Write unit tests for idle timer module (`tests/unit/idle-timer.test.ts`)
+  - [x] 1.1.1 Timer starts on first activity event
+  - [x] 1.1.2 Timer resets when `session:set` is called (phenotyper/experiment change)
+  - [x] 1.1.3 Timer resets when `scanner:initialize` is called
+  - [x] 1.1.4 Timer fires callback after configured timeout with no activity
+  - [x] 1.1.5 Timer does NOT fire during an active scan (`scanner:scan` in progress)
+  - [x] 1.1.6 Timer resumes after scan completes
+  - [x] 1.1.7 Timer does NOT reset on non-activity events (page navigation, polling)
+  - [x] 1.1.8 Configurable timeout duration (default 10 minutes)
+  - [x] 1.1.9 Timer can be stopped and restarted (cleanup on app quit)
+  - [x] 1.1.10 Multiple rapid activity events only create one timer (debounce/reset)
+- [x] 1.2 Write unit tests for session store idle reset integration (`tests/unit/session-store.test.ts`)
+  - [x] 1.2.1 `resetSessionState()` clears all fields to null on idle
+  - [x] 1.2.2 Session state is fully reset (phenotyperId, experimentId, waveNumber, plantAgeDays, accessionName)
+- [ ] 1.3 Write E2E test for idle reset notification (`tests/e2e/`)
+  - [ ] 1.3.1 After idle timeout, user sees a visible notification that session was reset
+  - [ ] 1.3.2 After idle reset, phenotyper and experiment dropdowns show placeholder/empty state
+
+## 2. Implementation
+
+- [x] 2.1 Create idle timer module (`src/main/idle-timer.ts`)
+  - [x] 2.1.1 Export `IdleTimer` class with `start()`, `stop()`, `resetTimer()`, `pauseForScan()`, `resumeAfterScan()` methods
+  - [x] 2.1.2 Accept configurable timeout (default: 10 minutes = 600000ms)
+  - [x] 2.1.3 Accept `onIdle` callback that fires when timeout expires
+- [x] 2.2 Wire idle timer into main process IPC handlers (`src/main/main.ts`)
+  - [x] 2.2.1 Create `IdleTimer` instance on app ready
+  - [x] 2.2.2 Reset timer in `session:set` handler
+  - [x] 2.2.3 Reset timer in `scanner:initialize` handler
+  - [x] 2.2.4 Pause timer when `scanner:scan` starts
+  - [x] 2.2.5 Resume timer when scan completes or errors
+  - [x] 2.2.6 On idle callback: call `resetSessionState()` and send `session:idle-reset` to renderer
+  - [x] 2.2.7 Stop timer on app `before-quit`
+- [x] 2.3 Expose `session:idle-reset` event in preload (`src/main/preload.ts`)
+  - [x] 2.3.1 Add `onIdleReset` listener to session API
+- [x] 2.4 Update type definitions (`src/types/electron.d.ts`)
+  - [x] 2.4.1 Add `onIdleReset: (callback: () => void) => () => void` to `SessionAPI`
+- [x] 2.5 Handle idle reset in renderer (`src/renderer/CaptureScan.tsx`)
+  - [x] 2.5.1 Listen for `session:idle-reset` event on mount
+  - [x] 2.5.2 Clear metadata state (phenotyper, experiment, wave, age, accession)
+  - [x] 2.5.3 Show visible notification/toast to user that session was reset due to inactivity
+  - [x] 2.5.4 Clean up listener on unmount
+
+## 3. Bug Fixes (review feedback)
+
+- [x] 3.1 `resumeAfterScan()` must be no-op when timer was not paused (`idle-timer.ts`)
+  - [x] 3.1.1 Write failing test: `resumeAfterScan` without prior `pauseForScan` must not reset countdown
+  - [x] 3.1.2 Guard `resumeAfterScan()` to return early when `!this.paused`
+- [x] 3.2 Move `pauseForScan()` before scanner null-check in `scanner:scan` handler (`main.ts`)
+- [x] 3.3 Fix `tasks.md` doc: `onIdleReset` return type is `() => void`, not `void`
+- [x] 3.4 Validate `timeoutMs` in `IdleTimer` constructor (`idle-timer.ts`)
+  - [x] 3.4.1 Write failing test: constructor throws on invalid timeoutMs (0, negative, NaN)
+  - [x] 3.4.2 Add validation to constructor, throw `RangeError` on invalid values
+- [x] 3.5 Clarify "configurable timeout" in spec as programmatic (for testing), not runtime
+- [x] 3.6 Add `aria-label` to idle-reset dismiss button (`CaptureScan.tsx`)
+  - [x] 3.6.1 Write failing test: dismiss button has accessible name
+  - [x] 3.6.2 Add `aria-label="Dismiss idle reset notification"` to button
+- [x] 3.7 Add renderer unit tests for idle reset notification (`CaptureScan.tsx`)
+  - [x] 3.7.1 Test: idle reset callback clears metadata and shows notification banner
+  - [x] 3.7.2 Test: dismiss button hides the notification
+
+## 4. Review Fixes (subagent review feedback)
+
+- [x] 4.1 Strengthen test 3.7.1 to assert metadata fields are actually cleared (`capture-scan-config.test.tsx`)
+  - [x] 4.1.1 Write failing assertion: metadata inputs show empty values after idle reset callback
+- [x] 4.2 Add unmount/cleanup test for `onIdleReset` useEffect (`capture-scan-config.test.tsx`)
+  - [x] 4.2.1 Write failing test: cleanup function is called on unmount; callback after unmount does not show banner
+- [x] 4.3 Update notification copy to enumerate all cleared fields (`CaptureScan.tsx`)
+  - [x] 4.3.1 Write failing test: banner text mentions wave number, plant age, accession name
+  - [x] 4.3.2 Update banner copy to list all five cleared fields
+- [x] 4.4 Clear idle-reset banner when user starts next scan (`CaptureScan.tsx`)
+  - [x] 4.4.1 Write failing test: banner is hidden when handleStartScan is called
+  - [x] 4.4.2 Call `setShowIdleResetBanner(false)` at start of `handleStartScan`
+- [x] 4.5 Reset idle timer on explicit `session:reset` IPC handler (`main.ts`)
+  - [x] 4.5.1 No dedicated unit test needed — `session:reset` is a one-line IPC handler; covered by integration
+  - [x] 4.5.2 Call `idleTimer.stop()` in `session:reset` handler
+- [x] 4.6 Fix `onIdleReset` preload listener — add then remove `_event: unknown` parameter (`preload.ts`)
+  - [x] 4.6.1 No dedicated test needed — pattern consistency fix, existing tests verify behaviour
+  - [x] 4.6.2 Updated `const listener = () => callback()` to `const listener = (_event: unknown) => callback()` (reverted by task 6.1 — see note there)
+
+## 5. Regression Fixes (second Copilot review)
+
+- [x] 5.1 Fix: `session:reset` calling `idleTimer.stop()` permanently disables idle feature (`main.ts`)
+  - [x] 5.1.1 Write failing test: after `session:reset`, subsequent activity restarts timer and it fires
+  - [x] 5.1.2 Remove `idleTimer.stop()` from `session:reset` — rely on `hasSessionData()` guard
+- [x] 5.2 Strengthen test 4.4.1: banner cleared on scan start must not rely on fallback branch
+  - [x] 5.2.1 Write failing test: after idle reset, re-fill all fields, start scan, assert banner gone
+- [x] 5.3 Rename `idleResetMessage` → `showIdleResetBanner` for clarity (`CaptureScan.tsx`)
+  - [x] 5.3.1 Write failing test: assert existing tests still pass after rename (refactor coverage)
+  - [x] 5.3.2 Rename state variable and all references
+
+## 6. Pre-Merge Fixes (third review — subagent team)
+
+- [x] 6.1 Revert 4.6.2: remove `_event: unknown` parameter from `onIdleReset` listener (`preload.ts`)
+  - [x] 6.1.1 No test needed — lint revert only; existing tests verify behaviour
+  - [x] 6.1.2 Change `const listener = (_event: unknown) => callback()` → `const listener = () => callback()` (ESLint flags `_event` as unused since `ipcRenderer.on` callbacks don't require it to be named)
+- [x] 6.2 Guard `onIdleReset` callback against firing during active scan (`CaptureScan.tsx`)
+  - [x] 6.2.1 Write failing test: idle reset does NOT clear metadata or show banner when `isScanning` is true
+  - [x] 6.2.2 Add `isScanningRef` to track scan state; guard `onIdleReset` callback with `if (isScanningRef.current) return`
+- [x] 6.3 Add "Plant QR Code" to idle-reset banner copy (`CaptureScan.tsx`)
+  - [x] 6.3.1 Write failing test: banner text mentions plant QR code / plant ID
+  - [x] 6.3.2 Update banner copy to include plant QR code in the cleared-fields list
+- [x] 6.4 Test `hasSessionData()` guard in the `onIdle` callback integration (`tests/unit/main-idle-integration.test.ts`)
+  - [x] 6.4.1 Write integration test: when all session fields are null, the `onIdle` callback calls neither `resetSessionState` nor `send('session:idle-reset')`. Uses real session-store module with an IdleTimer wired with the same guard logic as `main.ts`
+- [x] 6.5 Test: banner is NOT shown on initial render (regression guard)
+  - [x] 6.5.1 Write regression guard test: `idle-reset-notification` is not in DOM on mount
+- [x] 6.6 Test: `onIdle` fires exactly once (regression guard)
+  - [x] 6.6.1 Write regression guard test: advancing time to 3× timeout still calls `onIdleSpy` exactly once
+- [x] 6.7 Add `!this.started` guard to `pauseForScan()` for explicit state-machine symmetry (`idle-timer.ts`)
+  - [x] 6.7.1 Write test: `pauseForScan()` before `start()` followed by `start()` fires normally after timeout
+  - [x] 6.7.2 Add `if (!this.started) return;` guard to `pauseForScan()`
+- [x] 6.8 Document 10-min threshold in `idle-timer.ts` and add comment in `main.ts`
+  - [x] 6.8.1 No test needed — documentation only
+- [x] 6.9 Create GitHub issue to track deferred E2E tests (1.3.1, 1.3.2)
+  - [x] 6.9.1 Issue created: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/124
+
+## 7. Review Fixes (fourth review — missed items)
+
+- [x] 7.1 Test `session:set` → `hasSessionData()` conditional at IPC integration level (`tests/unit/main-idle-integration.test.ts`)
+  - [x] 7.1.1 Write test: `session:set` with empty session → `idleTimer.resetTimer()` is NOT called
+  - [x] 7.1.2 Write test: `session:set` with session data already present → `idleTimer.resetTimer()` IS called
+- [x] 7.2 Persist idle-reset flag across navigation so banner shows when user returns to CaptureScan
+  - [x] 7.2.1 Write failing unit test: `consumeIdleResetFlag()` returns `false` before any idle reset
+  - [x] 7.2.2 Write failing unit test: `consumeIdleResetFlag()` returns `true` after `setWasIdleReset()`, then `false` on subsequent call (consumed once)
+  - [x] 7.2.3 Write failing renderer test: CaptureScan shows banner on mount when `checkIdleReset()` resolves `true`
+  - [x] 7.2.4 Add `wasIdleResetFlag` + `setWasIdleReset()` + `consumeIdleResetFlag()` to `session-store.ts`
+  - [x] 7.2.5 Set flag via `setWasIdleReset()` in `onIdle` callback in `main.ts` (alongside existing `resetSessionState()` call)
+  - [x] 7.2.6 Add `session:check-idle-reset` IPC handler in `main.ts` (calls `consumeIdleResetFlag()`)
+  - [x] 7.2.7 Expose `checkIdleReset: () => Promise<boolean>` in `preload.ts` session API
+  - [x] 7.2.8 Add `checkIdleReset: () => Promise<boolean>` to `SessionAPI` in `src/types/electron.d.ts`
+  - [x] 7.2.9 On CaptureScan mount: call `checkIdleReset()`; if `true`, call `setShowIdleResetBanner(true)`
+- [x] 7.3 Strengthen `hasSessionData` guard test in `main-idle-integration.test.ts` (Copilot review 2026-03-18)
+  - [x] 7.3.1 Add `vi.spyOn` on `resetSessionState` and assert it was NOT called when session is empty
+  - [x] 7.3.2 Rename comment from "Failing test" → "Integration guard"
+- [x] 7.4 Rename "Failing test" comments to "Regression guard" in `capture-scan-config.test.tsx` (Copilot review 2026-03-18)
+  - [x] 7.4.1 Line 295: rename comment
+  - [x] 7.4.2 Line 343: rename comment
+
+## 8. Pre-Merge Correctness Fixes (fifth review — subagent team)
+
+- [x] 8.1 Set `isScanningRef.current = true` synchronously at the top of `handleStartScan` (`CaptureScan.tsx`) — BLOCKING
+  - [x] 8.1.1 Write failing test: render with `mockScannerInitialize` returning a never-resolving promise; call `handleStartScan`; while the scan IPC is pending, fire the `onIdleReset` mock callback; assert metadata fields are NOT cleared and banner is NOT shown; this FAILS before 8.1.2 because `isScanningRef.current` is still `false` before the first `await` resolves
+  - [x] 8.1.2 Add `isScanningRef.current = true;` as the first statement in `handleStartScan`, before any `await`
+- [x] 8.2 `session:reset` handler must call `consumeIdleResetFlag()` to clear stale idle-reset banner flag (`main.ts`)
+  - [x] 8.2.1 Write failing unit test in `tests/unit/main-idle-integration.test.ts`: call `sessionStore.setWasIdleReset()` to set flag; replicate `session:reset` handler body with only `resetSessionState()` (no `consumeIdleResetFlag()`); assert `sessionStore.consumeIdleResetFlag()` returns `true` (flag was NOT cleared — the FAILING state); after 8.2.2 the flag is cleared so `consumeIdleResetFlag()` returns `false`
+  - [x] 8.2.2 Add `consumeIdleResetFlag()` call inside the `session:reset` IPC handler in `main.ts` (safe to call unconditionally — is a no-op when flag is already false)
+- [x] 8.3 On-mount `checkIdleReset()` path must call `setMetadata({...empty})` when returning `true` (`CaptureScan.tsx`)
+  - [x] 8.3.1 Write failing test: render with `checkIdleReset` mocked to resolve `true` AND `session.get` mocked to return all-null fields; assert all metadata form fields show empty values in addition to the banner being visible; this FAILS before 8.3.2 because the current mount path only calls `setShowIdleResetBanner(true)`
+  - [x] 8.3.2 Update the mount `checkIdleReset().then()` handler to call `setMetadata({phenotyper:'', experimentId:'', waveNumber:'', plantAgeDays:'', plantQrCode:'', accessionName:''})` before `setShowIdleResetBanner(true)`
+- [x] 8.4 Fix `main-idle-integration.test.ts` replicated `onIdle` closure to include `setWasIdleReset()` call (`tests/unit/main-idle-integration.test.ts`)
+  - [x] 8.4.1 Write failing test in the `Main process onIdle callback integration` describe block: after timer fires with session data, assert `sessionStore.consumeIdleResetFlag()` returns `true` (flag is set); this FAILS because the replicated `onIdle` closure currently omits `sessionStore.setWasIdleReset()`
+  - [x] 8.4.2 Add `sessionStore.setWasIdleReset()` call to the replicated `onIdle` closure in `main-idle-integration.test.ts` (alongside existing `sessionStore.resetSessionState()`)
+- [x] 8.5 Add unmount-cancelled guard to mount `checkIdleReset()` promise (`CaptureScan.tsx`)
+  - [x] 8.5.1 Write test: render CaptureScan with `checkIdleReset` mocked to a pending promise; unmount the component; resolve the promise with `true`; assert `idle-reset-notification` is NOT in the DOM (note: in React 18 this may pass trivially without the guard — the test documents the invariant as a hygiene guarantee)
+  - [x] 8.5.2 Add `let mounted = true` / `return () => { mounted = false; }` pattern to the mount `checkIdleReset` effect; gate all setState calls on `mounted`
+- [x] 8.6 Update idle-reset banner copy to include the 10-minute threshold for lab scientist UX
+  - [x] 8.6.1 Write failing test: banner text mentions "10 minutes" or "10-minute" — this FAILS because the current banner copy only enumerates cleared fields without stating the timeout duration
+  - [x] 8.6.2 Update banner copy in `CaptureScan.tsx` to include the timeout duration, e.g. "Session reset after 10 minutes of inactivity. Phenotyper, experiment, wave number, plant age, accession name, and plant QR code have been cleared."
+
+## 9. Pre-Merge Quality Fixes (sixth review — subagent team)
+
+- [x] 9.1 Reset `isScanningRef.current = false` synchronously on all scan-exit paths (`CaptureScan.tsx`) — BLOCKING
+  - [x] 9.1.1 Write test: after scan initialization error, a subsequent `onIdleReset` callback fires and shows the banner (verifies error recovery unblocks idle reset); note: the synchronous ref-reset in the catch block closes a real-world race window (IPC arriving after `setIsScanning(false)` but before `useEffect([isScanning])` flushes) that cannot be reliably reproduced in unit tests — implement the fix because the behavioral contract documented in the spec must hold
+  - [x] 9.1.2 Add `isScanningRef.current = false;` as the first statement of the `catch` block in `handleStartScan`
+  - [x] 9.1.3 Add `isScanningRef.current = false;` as the first statement of the `handleComplete` callback (mirrors the same synchronous discipline for successful scan completion)
+  - [x] 9.1.4 Add `isScanningRef.current = false;` as the first statement of the `handleError` callback (scanner runtime error, distinct from scan init error)
+- [x] 9.2 Wrap `session:check-idle-reset` handler in try/catch to match codebase IPC pattern (`main.ts`)
+  - [x] 9.2.1 No test needed — `consumeIdleResetFlag()` is a pure boolean read that cannot throw; this is a pattern consistency fix
+  - [x] 9.2.2 Wrap `return consumeIdleResetFlag()` in try/catch; on error, log and return `false`
+- [x] 9.3 Move scanner process null-check above `pauseForScan()` in `scanner:scan` handler (`main.ts`) — **scientific**: when `scannerProcess` is null today, the `pauseForScan()` + immediate `resumeAfterScan()` roundtrip calls `scheduleTimer()`, silently resetting the 10-minute idle clock; a failed scan attempt thus extends the session lifetime, allowing a previous operator's identity to persist longer in a shared lab
+  - [x] 9.3.1 No test needed — `resumeAfterScan()` already guards against double-resume; this is a precondition-before-side-effect ordering fix
+  - [x] 9.3.2 Reorder: move `if (!scannerProcess) throw` above `idleTimer.pauseForScan()` call
+- [x] 9.4 Strengthen phenotyper and experiment field assertions in banner text tests (`capture-scan-config.test.tsx`)
+  - [x] 9.4.1 Strengthen test 4.3.1: assert `banner.textContent` matches `/phenotyper/i` and `/experiment/i`; no implementation change needed (banner copy already includes these fields)
+- [x] 9.5 Strengthen `RangeError` tests to assert error type, not just any throw (`idle-timer.test.ts`)
+  - [x] 9.5.1 Change bare `.toThrow()` calls in constructor validation tests to `.toThrow(RangeError)` to match the spec requirement "SHALL throw a RangeError"
+
+## 10. Verify
+
+- [x] 10.1 Run full test suite: `npm run lint && npx tsc --noEmit && npm run test:unit`
+  - [x] 10.1.1 Confirm all Section 9 tests pass and no regressions introduced

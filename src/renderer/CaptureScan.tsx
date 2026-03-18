@@ -5,7 +5,7 @@
  * Integrates camera preview, scanner control, and metadata input.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MetadataForm,
@@ -59,6 +59,9 @@ export function CaptureScan() {
 
   // Scanning state
   const [isScanning, setIsScanning] = useState(false);
+  // Ref so the onIdleReset closure ([] deps) can read current scan state without
+  // going stale. Mirrors isScanning; updated via a separate useEffect below.
+  const isScanningRef = useRef(false);
   const [scanProgress, setScanProgress] = useState<ScanProgressData | null>(
     null
   );
@@ -69,6 +72,7 @@ export function CaptureScan() {
   // UI state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showIdleResetBanner, setShowIdleResetBanner] = useState(false);
 
   // Barcode validation state
   const [barcodeValidationError, setBarcodeValidationError] = useState<
@@ -87,6 +91,70 @@ export function CaptureScan() {
     },
     []
   );
+
+  // Keep isScanningRef in sync with isScanning state so the onIdleReset closure
+  // (which has [] deps) can read the current value without going stale.
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+  }, [isScanning]);
+
+  // On mount: consume the one-shot flag so users who navigated away while idle
+  // fired still see the notification when they return to this page.
+  useEffect(() => {
+    let mounted = true;
+    window.electron.session
+      .checkIdleReset()
+      .then((wasReset) => {
+        if (!mounted) return;
+        if (wasReset) {
+          // Mirror the live onIdleReset handler: clear fields AND show banner.
+          setMetadata({
+            phenotyper: '',
+            experimentId: '',
+            waveNumber: '',
+            plantAgeDays: '',
+            plantQrCode: '',
+            accessionName: '',
+          });
+          setShowIdleResetBanner(true);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('[CaptureScan] checkIdleReset failed:', err);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Listen for idle session reset from main process
+  useEffect(() => {
+    const cleanup = window.electron.session.onIdleReset(() => {
+      // Defense-in-depth: main process already prevents the timer from firing
+      // during scans via pauseForScan(), but guard here against any in-flight
+      // IPC messages that arrived just as a scan started.
+      if (isScanningRef.current) return;
+      // Consume the navigation-away flag so that if the user dismisses this
+      // banner and later navigates away + back, checkIdleReset() on mount does
+      // not show a stale second banner.
+      window.electron.session.checkIdleReset().catch((err: unknown) => {
+        console.error(
+          '[CaptureScan] checkIdleReset (live handler) failed:',
+          err
+        );
+      });
+      setMetadata({
+        phenotyper: '',
+        experimentId: '',
+        waveNumber: '',
+        plantAgeDays: '',
+        plantQrCode: '',
+        accessionName: '',
+      });
+      setShowIdleResetBanner(true);
+    });
+    return cleanup;
+  }, []);
 
   // Check for duplicate scans (same plant + experiment + today)
   useEffect(() => {
@@ -305,6 +373,9 @@ export function CaptureScan() {
       output_path: string;
       error?: string;
     }) => {
+      // Reset ref synchronously before setIsScanning(false) schedules a React update,
+      // closing the window where the useEffect([isScanning]) mirror hasn't fired yet.
+      isScanningRef.current = false;
       setIsScanning(false);
       setScanProgress(null);
 
@@ -333,6 +404,8 @@ export function CaptureScan() {
     };
 
     const handleError = (error: string) => {
+      // Reset ref synchronously before setIsScanning(false) schedules a React update.
+      isScanningRef.current = false;
       setIsScanning(false);
       setScanProgress(null);
       setErrorMessage(error);
@@ -396,10 +469,21 @@ export function CaptureScan() {
   // Start scan handler
   const handleStartScan = async () => {
     if (!canStartScan) return;
+    // Guard against rapid re-invocation (e.g., double-click) before React
+    // re-renders with the disabled button state.
+    if (isScanningRef.current) return;
+
+    // Set the ref synchronously BEFORE any await so the onIdleReset closure
+    // (registered with [] deps) sees the correct scanning state immediately.
+    // setIsScanning(true) below only schedules a React update; the useEffect that
+    // mirrors it into isScanningRef runs after re-render, creating a window where
+    // in-flight IPC messages could bypass the guard without this line.
+    isScanningRef.current = true;
 
     try {
       setIsScanning(true);
       setErrorMessage(null);
+      setShowIdleResetBanner(false);
 
       // Initialize scanner
       // Build pilot-compatible scan directory path: YYYY-MM-DD/<plant_qr_code>/<scan_uuid>
@@ -434,6 +518,12 @@ export function CaptureScan() {
       // Start scan
       await window.electron.scanner.scan();
     } catch (error) {
+      // Reset ref synchronously before setIsScanning(false) schedules a React update,
+      // mirroring the synchronous-set discipline applied at scan start (isScanningRef = true).
+      // This closes the window between setIsScanning(false) and the useEffect([isScanning])
+      // flush, preventing the double-click guard from blocking retries and ensuring idle
+      // reset IPC messages are not suppressed during error recovery.
+      isScanningRef.current = false;
       console.error('Failed to start scan:', error);
       setErrorMessage(
         error instanceof Error ? error.message : 'Failed to start scan'
@@ -472,6 +562,54 @@ export function CaptureScan() {
               <span className="font-medium text-green-800">
                 Scan completed successfully!
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* Idle Reset Notification */}
+        {showIdleResetBanner && (
+          <div
+            className="bg-amber-50 border-2 border-amber-500 rounded-lg p-4"
+            data-testid="idle-reset-notification"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <svg
+                  className="h-5 w-5 text-amber-600 mr-2"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="font-medium text-amber-800">
+                  Session reset after 10 minutes of inactivity. Phenotyper,
+                  experiment, wave number, plant age, accession name, and plant
+                  QR code have been cleared. Please re-enter all fields to
+                  continue.
+                </span>
+              </div>
+              <button
+                onClick={() => setShowIdleResetBanner(false)}
+                className="ml-4 text-amber-600 hover:text-amber-800"
+                data-testid="idle-reset-dismiss"
+                aria-label="Dismiss idle reset notification"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
             </div>
           </div>
         )}

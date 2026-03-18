@@ -36,8 +36,12 @@ import {
   getSessionState,
   setSessionState,
   resetSessionState,
+  hasSessionData,
+  setWasIdleReset,
+  consumeIdleResetFlag,
   type SessionState,
 } from './session-store';
+import { IdleTimer } from './idle-timer';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -81,6 +85,9 @@ let scannerProcess: ScannerProcess | null = null;
 
 // Track current camera settings (in-memory, lost on app restart)
 let currentCameraSettings: CameraSettings | null = null;
+
+// Idle timer — resets session after inactivity to prevent scan misattribution
+let idleTimer: IdleTimer | null = null;
 
 /**
  * Scanner identity (runtime state)
@@ -708,6 +715,7 @@ ipcMain.handle(
   'scanner:initialize',
   async (_event, settings: ScannerSettings) => {
     try {
+      if (idleTimer) idleTimer.resetTimer();
       const scanner = await ensureScannerProcess();
       const response = await scanner.initialize(settings);
       return response;
@@ -741,9 +749,15 @@ ipcMain.handle('scanner:cleanup', async () => {
  */
 ipcMain.handle('scanner:scan', async () => {
   try {
+    // Check precondition before any side effects: if scannerProcess is null,
+    // calling pauseForScan() would trigger a spurious resumeAfterScan() in
+    // the finally block, silently resetting the 10-minute idle clock on a
+    // failed scan attempt and allowing a previous operator's session to
+    // persist longer in a shared lab environment.
     if (!scannerProcess) {
       throw new Error('Scanner not initialized. Call initialize() first.');
     }
+    if (idleTimer) idleTimer.pauseForScan();
     const response = await scannerProcess.scan();
     return response;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -755,6 +769,8 @@ ipcMain.handle('scanner:scan', async () => {
       output_path: '',
       error: error.message,
     };
+  } finally {
+    if (idleTimer) idleTimer.resumeAfterScan();
   }
 });
 
@@ -999,12 +1015,27 @@ ipcMain.handle('session:get', async (): Promise<SessionState> => {
 });
 
 /**
+ * Handle session:check-idle-reset - Consume the one-shot idle-reset flag.
+ * Returns true once after an idle reset occurred while the renderer was
+ * navigated away from CaptureScan; clears the flag on read.
+ */
+ipcMain.handle('session:check-idle-reset', async (): Promise<boolean> => {
+  try {
+    return consumeIdleResetFlag();
+  } catch (err) {
+    console.error('[session:check-idle-reset] Unexpected error:', err);
+    return false;
+  }
+});
+
+/**
  * Handle session:set - Update session state (partial update)
  */
 ipcMain.handle(
   'session:set',
   async (_event, updates: Partial<SessionState>): Promise<SessionState> => {
     setSessionState(updates);
+    if (idleTimer && hasSessionData()) idleTimer.resetTimer();
     return getSessionState();
   }
 );
@@ -1014,6 +1045,13 @@ ipcMain.handle(
  */
 ipcMain.handle('session:reset', async (): Promise<void> => {
   resetSessionState();
+  // Clear the idle-reset notification flag so a stale banner is not shown if the
+  // user navigates back to CaptureScan after explicitly resetting the session.
+  // Safe to call unconditionally — consumeIdleResetFlag() is a no-op when flag is false.
+  consumeIdleResetFlag();
+  // Note: do NOT call idleTimer.stop() here — that would permanently disable the
+  // idle feature because resetTimer() is a no-op after stop(). The hasSessionData()
+  // guard in the onIdle callback already prevents spurious resets on empty sessions.
 });
 
 // =============================================================================
@@ -1025,6 +1063,20 @@ ipcMain.handle('session:reset', async (): Promise<void> => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
   createWindow();
+
+  // Initialize idle timer for session auto-reset (default: 10 min, see idle-timer.ts)
+  idleTimer = new IdleTimer({
+    onIdle: () => {
+      if (!hasSessionData()) return;
+      console.log('[IdleTimer] Session idle timeout — resetting session state');
+      resetSessionState();
+      setWasIdleReset();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('session:idle-reset');
+      }
+    },
+  });
+  idleTimer.start();
 
   // Initialize database AFTER window is created so we can send errors to renderer
   try {
@@ -1099,6 +1151,12 @@ app.on('before-quit', async (event) => {
 
   console.log('App is quitting, cleaning up processes...');
   isQuitting = true;
+
+  // Stop idle timer
+  if (idleTimer) {
+    idleTimer.stop();
+    idleTimer = null;
+  }
 
   // Prevent immediate quit to allow cleanup
   event.preventDefault();

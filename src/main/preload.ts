@@ -278,6 +278,12 @@ const sessionAPI = {
     accessionName?: string | null;
   }) => ipcRenderer.invoke('session:set', updates),
   reset: () => ipcRenderer.invoke('session:reset'),
+  onIdleReset: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('session:idle-reset', listener);
+    return () => ipcRenderer.removeListener('session:idle-reset', listener);
+  },
+  checkIdleReset: () => ipcRenderer.invoke('session:check-idle-reset'),
 };
 
 /**

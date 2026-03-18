@@ -77,3 +77,40 @@ export function setSessionState(updates: Partial<SessionState>): void {
 export function resetSessionState(): void {
   sessionState = { ...initialState };
 }
+
+/**
+ * Check if the session has any meaningful (non-null) data.
+ */
+export function hasSessionData(): boolean {
+  return Object.values(sessionState).some((v) => v !== null);
+}
+
+// =============================================================================
+// Idle Reset Flag
+//
+// A one-shot flag that survives resetSessionState(). Set by the onIdle callback
+// so CaptureScan can show the notification banner even when the user was
+// navigated away from the page when the idle reset occurred.
+// =============================================================================
+
+let wasIdleResetFlag = false;
+
+/**
+ * Mark that an idle reset has occurred. Called from the onIdle callback in
+ * main.ts alongside resetSessionState(). Survives session resets so the flag
+ * is still readable when the user navigates back to CaptureScan.
+ */
+export function setWasIdleReset(): void {
+  wasIdleResetFlag = true;
+}
+
+/**
+ * Read and clear the idle-reset flag (consume once). Returns true the first
+ * time it is called after setWasIdleReset(), false on all subsequent calls
+ * until the next setWasIdleReset().
+ */
+export function consumeIdleResetFlag(): boolean {
+  const value = wasIdleResetFlag;
+  wasIdleResetFlag = false;
+  return value;
+}

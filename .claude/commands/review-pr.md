@@ -1,240 +1,387 @@
-# Code Review Checklist
+# PR Code Review — Subagent Team
 
-Comprehensive checklist for reviewing pull requests in bloom-desktop, covering code quality, architecture, Electron/Python concerns, and hardware integration.
+You are a senior scientific programmer reviewing a pull request for bloom-desktop
+(Electron + React + TypeScript + Python), a plant phenotyping imaging application
+used in shared lab environments. You value testing, code quality, reproducibility,
+metadata preservation, traceability, and UX above all else.
 
-## Quick Commands
+## How This Skill Works
+
+This skill launches **5 specialized subagents in parallel** to critically review the PR.
+Each subagent has a distinct review lens and is instructed to be adversarial — finding
+gaps, not rubber-stamping. After all subagents return, synthesize findings into a unified
+review and post it to GitHub.
+
+## Step 1: Gather PR Context
+
+Run the following in parallel to collect everything the subagents need:
 
 ```bash
-# View PR
-gh pr view [pr-number]
+# Get PR metadata
+gh pr view $PR_NUMBER --json title,body,baseRefName,headRefName,author,labels,files
 
-# Checkout PR locally
-gh pr checkout [pr-number]
+# Get the full diff
+gh pr diff $PR_NUMBER
 
-# View PR diff
-gh pr diff [pr-number]
+# Get CI status
+gh pr checks $PR_NUMBER
 
-# View CI status
-gh pr checks [pr-number]
-
-# Add review comment
-gh pr review [pr-number] --comment -b "Review comment"
-
-# Approve PR
-gh pr review [pr-number] --approve
-
-# Request changes
-gh pr review [pr-number] --request-changes -b "Reason for requesting changes"
+# Get any existing Copilot review comments
+gh api graphql -f query='
+query {
+  repository(owner: "Salk-Harnessing-Plants-Initiative", name: "bloom-desktop") {
+    pullRequest(number: '$PR_NUMBER') {
+      reviews(first: 10) {
+        nodes {
+          author { login }
+          comments(first: 50) {
+            nodes { path line body }
+          }
+        }
+      }
+    }
+  }
+}
+' --jq '.data.repository.pullRequest.reviews.nodes[] | select(.author.login | contains("opilot")) | .comments.nodes[] | "File: \(.path):\(.line)\n\(.body)"'
 ```
 
-## Review Checklist
+Also read any OpenSpec proposal linked in the PR body (look for `openspec/changes/` paths).
 
-### 1. Code Quality
+## Step 2: Launch Subagent Review Team
 
-#### Naming and Clarity
+Launch ALL 5 subagents in a single message (parallel execution). Embed the full diff,
+PR description, CI status, and Copilot comments in each prompt.
 
-- [ ] Variable and function names are descriptive and follow conventions (camelCase for TS/JS, snake_case for Python)
-- [ ] File names follow kebab-case convention (e.g., `camera-process.ts`, `camera_mock.py`)
-- [ ] No magic numbers or strings (use named constants)
-- [ ] Complex logic has explanatory comments
+---
 
-#### Type Safety
+### Subagent 1: Code Quality & Architecture
 
-- [ ] TypeScript: No `any` types (use `unknown` or proper types)
-- [ ] TypeScript: Interfaces defined for IPC payloads and responses
-- [ ] Python: Type hints provided for function signatures
-- [ ] Python: mypy passes without errors
+```
+subagent_type: "general-purpose"
+description: "Review code quality and architecture"
+```
 
-#### Error Handling
+**Prompt:**
 
-- [ ] Errors are caught and handled appropriately (not silently swallowed)
-- [ ] User-facing errors have clear messages
-- [ ] Python subprocess errors are logged and surfaced to TypeScript
-- [ ] IPC errors include descriptive messages and error codes
+> You are reviewing a pull request for bloom-desktop (Electron + React + TypeScript + Python).
+> Your role: **Code Quality & Architecture Reviewer**.
+> Be adversarial. Read actual source files. Find real problems, not hypotheticals.
+>
+> Architecture overview:
+>
+> - Renderer (React/Vite) ↔ Preload context bridge ↔ Main (Node.js/Electron) ↔ Python subprocess (stdio JSON-lines IPC)
+> - Types live in `src/types/`, IPC handlers in `src/main/main.ts`, renderer components in `src/renderer/`
+> - Context bridge is defined in `src/preload/preload.ts` — renderer has NO direct Node access
+>
+> **Check:**
+>
+> 1. Naming: camelCase TS, snake_case Python, kebab-case filenames — any violations?
+> 2. Magic numbers/strings — are constants named and co-located?
+> 3. TypeScript: any `any` types? Are IPC payloads and responses fully typed?
+> 4. Process boundary violations — does renderer code try to access Node APIs directly?
+> 5. IPC handler patterns — do new handlers follow the existing pattern (try/catch, typed return)?
+> 6. Error handling — are errors surfaced to the user or silently swallowed?
+> 7. Are there ripple effects in files NOT changed by the PR? (read them)
+> 8. Does the PR introduce any dead code, unreachable branches, or stale comments?
+> 9. Does the PR respect the single-responsibility principle — or is one function doing too much?
+> 10. Are there any `eslint-disable` comments added? Are they justified?
+>
+> **PR diff:**
+> {PR_DIFF}
+>
+> **PR description:**
+> {PR_BODY}
+>
+> Read any source files you need using the Read/Grep tools. Return:
+>
+> - BLOCKING issues (incorrect types, process boundary violations, swallowed errors)
+> - IMPORTANT issues (code smell, missing constants, unclear logic)
+> - SUGGESTIONS (style, readability)
+> - Overall code quality score 1–10 with justification
 
-#### Testing
+---
 
-- [ ] Unit tests added for new functionality
-- [ ] Tests are focused and test one thing at a time
-- [ ] Mock objects used appropriately (hardware, external services)
-- [ ] Edge cases and error paths are tested
-- [ ] Coverage meets thresholds (TypeScript 50%+, Python 80%+)
+### Subagent 2: Testing Strategy & TDD Discipline
 
-### 2. Architecture
+```
+subagent_type: "general-purpose"
+description: "Review testing strategy and TDD discipline"
+```
 
-#### IPC Communication
+**Prompt:**
 
-- [ ] IPC commands follow JSON-lines protocol (one JSON per line)
-- [ ] IPC handlers properly typed in `src/types/` directory
-- [ ] Commands use descriptive names (e.g., `start_stream`, not `cmd1`)
-- [ ] Responses include `success` boolean and appropriate payload
-- [ ] Errors are handled on both TypeScript and Python sides
+> You are reviewing a pull request for bloom-desktop.
+> Your role: **Testing Strategy & TDD Discipline Reviewer**.
+> Be adversarial. Check every claim. Run mental red-green-refactor on the diff.
+>
+> **Testing infrastructure:**
+>
+> - **Vitest** (`tests/unit/`, `npm run test:unit`): pure logic, React components via `@testing-library/react`, happy-dom, v8 coverage
+> - **Playwright** (`tests/e2e/`, `npm run test:e2e`): real Electron app, sequential (1 worker), dev server on port 9000
+> - **pytest** (`python/tests/`, `npm run test:python`): Python units, 80% coverage enforced
+> - **Integration tests** (`tests/integration/`): IPC, camera, DAQ, scanner — uses mock hardware
+> - **CI matrix**: Linux (all), macOS + Windows (integration + E2E only); NO real hardware in CI
+> - **IPC coverage**: `tests/ipc-coverage/` verifies every IPC handler has a test — 90%+ threshold
+> - **E2E**: uses Playwright MCP + `_electron.launch()`, sequential, fixtures reset DB between tests
+>
+> **Check:**
+>
+> 1. Were tests written BEFORE implementation (TDD)? Evidence: test files in earlier commits?
+> 2. Is the RIGHT framework used for each test?
+>    - Pure logic → Vitest unit
+>    - React component behavior → Vitest + @testing-library/react
+>    - IPC handler wiring → integration test
+>    - Full user workflow → Playwright E2E
+>    - Python logic → pytest
+> 3. Are tests specific enough? ("fires after 10 min" not "works correctly")
+> 4. Missing tests — check each of these:
+>    - Error paths and rejected promises
+>    - Boundary values (zero, negative, NaN, max)
+>    - Race conditions (async setup/teardown)
+>    - Cleanup on unmount (useEffect return value)
+>    - IPC handler coverage (is new handler in ipc-coverage list?)
+> 5. Will tests pass in CI? (no real hardware, no fixed `sleep()` waits, sequential E2E)
+> 6. Do existing tests break due to the PR? (read `tests/unit/`, `tests/integration/` for impacted files)
+> 7. Are mocks realistic? (does mock behaviour match real IPC/component contracts?)
+> 8. Is there a 1:1 mapping between spec scenarios and tests?
+>
+> **PR diff:**
+> {PR_DIFF}
+>
+> **CI status:**
+> {CI_STATUS}
+>
+> Read existing test files using Glob/Read tools before concluding. Return:
+>
+> - BLOCKING: missing tests for new code paths, tests that won't run in CI, existing tests broken by PR
+> - IMPORTANT: wrong framework choice, vague test descriptions, missing edge cases
+> - SUGGESTIONS: additional coverage, test refactors
+> - TDD verdict: was red-green-refactor actually followed?
 
-#### Subprocess Management
+---
 
-- [ ] Python subprocess lifecycle managed correctly (start, restart on crash, cleanup)
-- [ ] Subprocess stdout/stderr piped and logged
-- [ ] Ready signals used to prevent race conditions
-- [ ] Timeouts implemented for subprocess operations
+### Subagent 3: Scientific Rigor, Metadata & UX
 
-#### Module Organization
+```
+subagent_type: "general-purpose"
+description: "Review scientific rigor, metadata, and UX"
+```
 
-- [ ] TypeScript code in appropriate directory (`src/main/`, `src/renderer/`, `src/types/`)
-- [ ] Python code in `python/` or `python/hardware/`
-- [ ] Tests in `tests/` matching source structure
-- [ ] No circular dependencies
+**Prompt:**
 
-### 3. Electron & Python Integration
+> You are reviewing a pull request for bloom-desktop, a scientific imaging application
+> used for plant phenotyping in shared lab environments.
+> Your role: **Scientific Rigor, Metadata & UX Reviewer**.
+> Be adversarial. Mistakes in metadata or UX can invalidate research.
+>
+> **Core scientific values:**
+>
+> 1. **Metadata Preservation** — every parameter that affects a scan output MUST appear in
+>    `metadata.json` alongside the images. Future researchers must be able to reproduce a scan
+>    from its metadata alone.
+> 2. **Reproducibility** — units must be explicit (ms, frames, dB). Defaults must be documented.
+>    If a default changes, old data must still be interpretable.
+> 3. **Traceability** — config → scan → result must be traceable. Session state changes should
+>    not silently overwrite in-progress work.
+> 4. **Data integrity** — session resets, state clears, or IPC resets must never corrupt or
+>    lose scan data that has already been captured.
+> 5. **UX for scientists** — error messages must be meaningful to non-programmers. Destructive
+>    actions (session reset, clear state) must be visibly communicated.
+>
+> **Check:**
+>
+> 1. Does the PR introduce any session state changes? Are they visibly communicated to the user?
+> 2. Could any race condition or timing issue cause scan data to be attributed to the wrong session?
+> 3. Are there silent resets or clears that a scientist might not notice?
+> 4. Does the PR affect metadata.json generation? Is every new parameter written to disk?
+> 5. Are there UX flows where the user could lose work silently (e.g., idle reset mid-scan)?
+> 6. Is the notification/feedback clear enough for a non-programmer lab technician?
+> 7. Are dismissible notifications persistent enough? (e.g., amber banner that auto-dismisses too fast)
+> 8. Is the idle timer threshold scientifically appropriate for lab workflows?
+>    (10 min may be too short during sample preparation between scans)
+> 9. Does the PR guard against resets that fire on empty/null sessions?
+>    (a scientist should not see "session reset" if they never selected anything)
+>
+> **PR diff:**
+> {PR_DIFF}
+>
+> **PR description:**
+> {PR_BODY}
+>
+> Return:
+>
+> - BLOCKING: data loss risks, silent state corruption, missing metadata
+> - IMPORTANT: UX gaps, threshold concerns, missing user communication
+> - SUGGESTIONS: additional safeguards, copy improvements, scenario ideas
 
-#### ASAR Packaging
+---
 
-- [ ] No code reads files directly from `app.asar` (will fail in production)
-- [ ] Prisma binaries extracted to `Resources/` directory (not in ASAR)
-- [ ] Python executable packaged as extra resource
-- [ ] Resource paths use proper helpers (`python-paths.ts`)
+### Subagent 4: Security & Cross-Platform Safety
 
-#### Resource Paths
+```
+subagent_type: "general-purpose"
+description: "Review security and cross-platform safety"
+```
 
-- [ ] File paths use `path.join()` (TypeScript) or `Path()` (Python)
-- [ ] Paths work in both development and production
-- [ ] Database path respects environment variables (`BLOOM_DATABASE_URL`)
-- [ ] User data directory uses OS-appropriate location (`~/.bloom/data/`)
+**Prompt:**
 
-#### Process Boundaries
+> You are reviewing a pull request for bloom-desktop.
+> Your role: **Security & Cross-Platform Safety Reviewer**.
+> Be adversarial. Check every file path, every IPC handler, every subprocess call.
+>
+> **Check:**
+>
+> Security:
+>
+> 1. Are any user-controlled values used in file paths without sanitization (`path-sanitizer.ts`)?
+> 2. Are there new IPC handlers? Do they validate input before using it?
+> 3. Does any renderer code gain new access to Node.js APIs (context bridge expansion)?
+> 4. Are there any new `shell.openExternal()` or `exec()` calls? Are arguments validated?
+> 5. Are secrets or credentials ever logged or exposed in IPC responses?
+> 6. Does the preload bridge expose anything it shouldn't?
+>
+> Cross-platform: 7. Do new file paths use `path.join()` — never string concatenation or hardcoded `/`? 8. Does `setTimeout`/`setInterval` usage assume consistent timing across platforms?
+> (Windows timer resolution is ~15ms, not 1ms — does this affect idle timer accuracy?) 9. Do any new IPC handlers behave differently on Windows vs macOS vs Linux? 10. CI runs on Linux, macOS, and Windows — will the PR's changes pass on all three?
+> Check the CI status for platform-specific failures.
+>
+> **PR diff:**
+> {PR_DIFF}
+>
+> **CI status:**
+> {CI_STATUS}
+>
+> Return:
+>
+> - BLOCKING: security vulnerabilities, path injection, context bridge overexposure
+> - IMPORTANT: platform timing assumptions, missing input validation, cross-platform risks
+> - SUGGESTIONS: defensive hardening, logging improvements
 
-- [ ] Main process handles IPC and database operations
-- [ ] Renderer process uses context bridge (no direct Node.js access)
-- [ ] Python process handles hardware control only
-- [ ] No mixing of concerns across process boundaries
+---
 
-### 4. Python Bundling (PyInstaller)
+### Subagent 5: Behavioural Correctness & Edge Cases
 
-#### Hidden Imports
+```
+subagent_type: "general-purpose"
+description: "Review behavioural correctness and edge cases"
+```
 
-- [ ] New Python packages added to `hiddenimports` in `python/main.spec` if needed
-- [ ] Package metadata included with `copy_metadata()` if package uses `importlib.metadata`
-- [ ] DLL/dylib dependencies documented if platform-specific
+**Prompt:**
 
-#### Build Verification
+> You are reviewing a pull request for bloom-desktop.
+> Your role: **Behavioural Correctness & Edge Case Reviewer**.
+> Be adversarial. Play adversarial user. Try to break the feature.
+>
+> Focus on: does the implementation actually do what the spec/PR description claims?
+>
+> **Check:**
+>
+> 1. Read the PR description's stated behaviour. Now read the diff. Does the code actually implement it?
+> 2. Trace the full call chain for each new feature end-to-end (renderer → IPC → main → response → renderer)
+> 3. What happens if:
+>    - The feature is triggered multiple times rapidly (double-click, repeated IPC calls)?
+>    - The app is minimized or the window loses focus during a timed operation?
+>    - The user closes the app while a timer or async operation is in flight?
+>    - The renderer unmounts and remounts (navigation) while a timer/listener is active?
+>    - IPC returns an error or never resolves?
+> 4. Are cleanup functions (useEffect returns, clearTimeout, removeListener) correct and complete?
+> 5. Are there any state machine violations — can the system reach an impossible state?
+>    (e.g., timer paused but never started, resume called twice)
+> 6. Are event listeners registered multiple times if a component re-renders?
+> 7. Is the `finally` block usage correct — does it ever run code that shouldn't run on success?
+> 8. Does the Copilot review raise any issues that were not yet addressed?
+>
+> **PR diff:**
+> {PR_DIFF}
+>
+> **PR description:**
+> {PR_BODY}
+>
+> **Existing Copilot review comments:**
+> {COPILOT_COMMENTS}
+>
+> Read source files as needed using Read/Grep tools. Return:
+>
+> - BLOCKING: spec-implementation mismatches, cleanup leaks, impossible states
+> - IMPORTANT: edge cases not handled, rapid-trigger issues, component lifecycle bugs
+> - SUGGESTIONS: defensive guards, additional logging
 
-- [ ] Python executable builds successfully (`npm run build:python`)
-- [ ] Bundled executable tested manually (`echo '{"command":"check_hardware"}' | ./dist/bloom-hardware --ipc`)
-- [ ] Integration tests pass with bundled executable
+---
 
-#### PyInstaller Configuration
+## Step 3: Synthesize and Post Review
 
-- [ ] `python/main.spec` updated if new dependencies added
-- [ ] `pathex` includes both `.` and `./python` for dual import paths
-- [ ] Build cache cleaned if spec file changed (`scripts/build-python.js` handles this)
+After ALL subagents return:
 
-### 5. Hardware Integration
+1. **Deduplicate** overlapping findings
+2. **Prioritize**:
+   - **BLOCKING** — must fix before merge (data loss, broken tests, security, spec mismatch)
+   - **IMPORTANT** — should fix before merge (missing edge cases, UX gaps, platform risks)
+   - **SUGGESTION** — optional improvements
+3. **Determine verdict**:
+   - `APPROVE` — no blocking issues, all important issues are minor
+   - `COMMENT` — no blocking issues but important items worth noting
+   - `REQUEST_CHANGES` — any blocking issues present
 
-#### Mock Hardware
+4. **Post the review to GitHub**:
 
-- [ ] Mock camera (`camera_mock.py`) available for testing
-- [ ] Mock DAQ (`daq_mock.py`) available for testing
-- [ ] CI tests use mock hardware (no real devices required)
-- [ ] Mock behavior realistic enough for integration tests
+> **Note:** GitHub does not allow requesting changes or approving your own PRs.
+> Always attempt the desired action first; if it fails with "Can not request changes on your own pull request"
+> or "Can not approve your own pull request", automatically fall back to `--comment` with the same body
+> and a note at the top indicating the intended verdict.
 
-#### Real Hardware
-
-- [ ] Changes tested with real hardware if hardware interfaces modified
-- [ ] Hardware connection errors handled gracefully (device not found, permission denied)
-- [ ] Hardware disconnection during operation handled (don't crash app)
-- [ ] Hardware initialization logged with clear status messages
-
-#### Hardware Documentation
-
-- [ ] Hardware setup instructions updated if needed (`docs/CAMERA_TESTING.md`, `docs/DAQ_TESTING.md`)
-- [ ] New hardware requirements documented (SDK versions, drivers)
-
-### 6. Database (Prisma)
-
-#### Schema Changes
-
-- [ ] Migration created (`npm run prisma:migrate`)
-- [ ] Migration tested in dev and packaged app environments
-- [ ] Schema maintains compatibility with bloom-desktop-pilot (see `docs/PILOT_COMPATIBILITY.md`)
-- [ ] No breaking changes to existing tables/columns without migration path
-
-#### Queries
-
-- [ ] Prisma Client used for all database access (no raw SQL unless necessary)
-- [ ] Queries are efficient (use `include` wisely, avoid N+1 queries)
-- [ ] Transactions used for multi-step operations
-- [ ] Database errors handled and surfaced to user
-
-#### Data Validation
-
-- [ ] Input sanitized before database operations
-- [ ] File paths validated (use `path-sanitizer.ts`)
-- [ ] Foreign key relationships respected
-- [ ] Data types match schema (dates, numbers, strings)
-
-### 7. Cross-Platform Compatibility
-
-#### File Paths
-
-- [ ] No hardcoded paths (use `path.join()`, `Path()`, or environment variables)
-- [ ] No assumptions about path separators (`\` vs `/`)
-- [ ] No case-sensitive path assumptions (Windows is case-insensitive)
-
-#### Platform-Specific Code
-
-- [ ] Platform checks use `process.platform` (TypeScript) or `sys.platform` (Python)
-- [ ] Platform-specific code clearly documented
-- [ ] Alternatives provided for unsupported platforms or graceful degradation
-
-#### CI Testing
-
-- [ ] PR tested on Linux, macOS, and Windows in CI
-- [ ] Platform-specific failures investigated and fixed
-- [ ] No platform-specific test skips without good reason
-
-### 8. Security
-
-#### Path Sanitization
-
-- [ ] User-provided file paths sanitized with `path-sanitizer.ts`
-- [ ] No path traversal vulnerabilities (`../../../etc/passwd`)
-- [ ] File operations validate permissions
-
-#### Subprocess Security
-
-- [ ] Python subprocess arguments validated (no command injection)
-- [ ] Subprocess runs with appropriate permissions (not elevated)
-- [ ] Subprocess stdin/stdout handled securely
-
-#### Data Security
-
-- [ ] No secrets in code (API keys, passwords)
-- [ ] User data stored in appropriate location (`~/.bloom/data/`)
-- [ ] Database file permissions appropriate (user-readable only)
-
-## After Review
-
-### Approved
+For REQUEST_CHANGES (attempt first, fall back to --comment on own-PR error):
 
 ```bash
-gh pr review [pr-number] --approve -b "LGTM! Great work on [specific aspect]"
+BODY="$(cat <<'EOF'
+## Review Summary
+
+[2–3 sentence overall assessment]
+
+## Blocking Issues
+
+[Must fix before merge]
+
+## Important Issues
+
+[Should fix before merge]
+
+## Suggestions
+
+[Optional improvements]
+
+---
+*Review by Claude Code subagent team (Code Quality · Testing · Scientific Rigor · Security · Behavioural Correctness)*
+EOF
+)"
+
+gh pr review $PR_NUMBER --request-changes -b "$BODY" 2>&1 || \
+gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: REQUEST\_CHANGES** (posted as comment — GitHub does not allow requesting changes on your own PR)\n\n%s' "$BODY")"
 ```
 
-### Request Changes
+For APPROVE (attempt first, fall back to --comment on own-PR error):
 
 ```bash
-gh pr review [pr-number] --request-changes -b "Changes requested:
-- [Specific issue 1]
-- [Specific issue 2]"
+BODY="$(cat <<'EOF'
+## Review Summary
+
+[2–3 sentence assessment]
+
+## Notes
+
+[Any suggestions or minor observations]
+
+---
+*Review by Claude Code subagent team (Code Quality · Testing · Scientific Rigor · Security · Behavioural Correctness)*
+EOF
+)"
+
+gh pr review $PR_NUMBER --approve -b "$BODY" 2>&1 || \
+gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: APPROVE** (posted as comment — GitHub does not allow approving your own PR)\n\n%s' "$BODY")"
 ```
 
-### Add Comment (No Approval)
+For COMMENT (no fallback needed):
 
 ```bash
-gh pr review [pr-number] --comment -b "Looks good overall, but please check [specific aspect]"
+gh pr review $PR_NUMBER --comment -b "..."
 ```
 
-## Related Commands
-
-- `/pr-description` - Template that PR authors should follow
-- `/lint` - Linting checks that should pass before review
-- `/coverage` - Coverage expectations for new code
+5. After posting, show the user the full synthesized review and the GitHub link.
