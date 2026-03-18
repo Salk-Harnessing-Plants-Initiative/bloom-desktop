@@ -218,6 +218,18 @@ async function setupIdleReset() {
 }
 
 describe('CaptureScan Idle Reset Notification', () => {
+  // 6.5 Regression guard: banner is NOT shown on initial render
+  // Note: showIdleResetBanner initializes to false — this guards against future
+  // regressions where the initial state is accidentally changed to true.
+  it('6.5 idle-reset-notification is not in the DOM on initial render', async () => {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    expect(
+      screen.queryByTestId('idle-reset-notification')
+    ).not.toBeInTheDocument();
+  });
+
   // 3.7.1 idle reset callback clears metadata AND shows notification banner
   it('3.7.1 triggers idle reset callback, clears metadata, and shows notification banner', async () => {
     const { fireIdleReset } = await setupIdleReset();
@@ -276,6 +288,39 @@ describe('CaptureScan Idle Reset Notification', () => {
     ).not.toBeInTheDocument();
   });
 
+  // 6.2.1 Failing test: idle reset does NOT clear metadata or show banner when isScanning is true
+  // Note: mockScannerOnComplete never fires its callback, so isScanning stays true after Start Scan.
+  it('6.2.1 idle reset is a no-op when a scan is in progress (isScanning guard)', async () => {
+    const { fireIdleReset } = await setupIdleReset();
+
+    // Fill plant QR code (only field not pre-filled by session)
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /start scan/i })).not.toBeDisabled()
+    );
+
+    // Click Start Scan — isScanning becomes true
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start scan/i }));
+    });
+
+    // Confirm isScanning is active (button shows "Scanning...")
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /scanning/i })).toBeInTheDocument()
+    );
+
+    // Fire idle reset while scan is in progress — should be a no-op
+    await fireIdleReset();
+
+    // Banner must NOT appear
+    expect(
+      screen.queryByTestId('idle-reset-notification')
+    ).not.toBeInTheDocument();
+  });
+
   // 4.3.1 banner text mentions all cleared fields
   it('4.3.1 notification banner text mentions wave number, plant age, and accession name', async () => {
     const { fireIdleReset } = await setupIdleReset();
@@ -285,6 +330,15 @@ describe('CaptureScan Idle Reset Notification', () => {
     expect(banner.textContent).toMatch(/wave/i);
     expect(banner.textContent).toMatch(/plant age/i);
     expect(banner.textContent).toMatch(/accession/i);
+  });
+
+  // 6.3.1 Failing test: banner text mentions plant QR code
+  it('6.3.1 notification banner text mentions plant QR code', async () => {
+    const { fireIdleReset } = await setupIdleReset();
+    await fireIdleReset();
+
+    const banner = screen.getByTestId('idle-reset-notification');
+    expect(banner.textContent).toMatch(/plant qr code|plant id|qr code/i);
   });
 
   // 5.2.1 banner is cleared when the user starts a new scan (strong test — no fallback branch)

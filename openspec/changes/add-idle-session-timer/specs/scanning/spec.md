@@ -35,8 +35,23 @@ The system SHALL implement an idle timer in the main process that resets session
 #### Scenario: Timer does not reset on non-activity events
 
 - **GIVEN** the idle timer is running
-- **WHEN** the user navigates between pages or routine polling occurs
+- **WHEN** IPC events other than `session:set`, `scanner:initialize`, or `scanner:scan` are received (e.g., `scanner:status`, `camera:get-status`, page navigation)
 - **THEN** the idle timer SHALL NOT restart
+- **AND** the timer SHALL continue counting down from its current position
+
+#### Scenario: Idle timeout is a no-op when no session is active
+
+- **GIVEN** no phenotyper or experiment has been selected (all session fields are null)
+- **WHEN** the idle timeout expires
+- **THEN** `resetSessionState()` SHALL NOT be called
+- **AND** no `session:idle-reset` event SHALL be sent to the renderer
+
+#### Scenario: Idle callback fires exactly once per timeout cycle
+
+- **GIVEN** the idle timer has been started
+- **WHEN** the timeout elapses
+- **THEN** the `onIdle` callback SHALL fire exactly once
+- **AND** SHALL NOT fire again unless the timer is explicitly restarted via `start()` or `resetTimer()`
 
 ### Requirement: Configurable Idle Timeout Duration
 
@@ -72,8 +87,22 @@ The system SHALL visibly notify the user when a session is reset due to inactivi
 - **AND** the notification SHALL indicate the reset was due to inactivity
 - **AND** the phenotyper and experiment dropdowns SHALL show their empty/placeholder state
 
-#### Scenario: Notification does not block scanning
+#### Scenario: Notification is dismissed when next scan starts
 
-- **GIVEN** the idle reset notification is displayed
-- **WHEN** the user selects a new phenotyper and experiment
-- **THEN** the notification SHALL NOT prevent the user from resuming normal scanning workflow
+- **GIVEN** the idle reset notification banner is visible
+- **WHEN** the user fills all required fields and starts a new scan
+- **THEN** the notification banner SHALL no longer be visible
+- **AND** the scan SHALL proceed normally
+
+#### Scenario: Idle reset does not affect UI during an active scan
+
+- **GIVEN** a scan is actively in progress in the renderer (`isScanning` is true)
+- **WHEN** a `session:idle-reset` IPC event is received
+- **THEN** the renderer SHALL NOT clear metadata state
+- **AND** the idle reset notification banner SHALL NOT be shown
+
+#### Scenario: Notification enumerates all cleared fields
+
+- **GIVEN** the idle timeout has expired and the session state has been reset
+- **WHEN** the renderer shows the notification banner
+- **THEN** the notification text SHALL reference all cleared fields: phenotyper, experiment, wave number, plant age, accession name, and plant QR code

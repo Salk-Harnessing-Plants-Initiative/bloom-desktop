@@ -71,13 +71,13 @@
   - [x] 4.3.2 Update banner copy to list all five cleared fields
 - [x] 4.4 Clear idle-reset banner when user starts next scan (`CaptureScan.tsx`)
   - [x] 4.4.1 Write failing test: banner is hidden when handleStartScan is called
-  - [x] 4.4.2 Call `setIdleResetMessage(false)` at start of `handleStartScan`
+  - [x] 4.4.2 Call `setShowIdleResetBanner(false)` at start of `handleStartScan`
 - [x] 4.5 Reset idle timer on explicit `session:reset` IPC handler (`main.ts`)
   - [x] 4.5.1 No dedicated unit test needed — `session:reset` is a one-line IPC handler; covered by integration
   - [x] 4.5.2 Call `idleTimer.stop()` in `session:reset` handler
-- [x] 4.6 Fix `onIdleReset` preload listener to match `_event: unknown` pattern (`preload.ts`)
+- [x] 4.6 Fix `onIdleReset` preload listener — add then remove `_event: unknown` parameter (`preload.ts`)
   - [x] 4.6.1 No dedicated test needed — pattern consistency fix, existing tests verify behaviour
-  - [x] 4.6.2 Update `const listener = () => callback()` to `const listener = (_event: unknown) => callback()`
+  - [x] 4.6.2 Updated `const listener = () => callback()` to `const listener = (_event: unknown) => callback()` (reverted by task 6.1 — see note there)
 
 ## 5. Regression Fixes (second Copilot review)
 
@@ -89,3 +89,28 @@
 - [x] 5.3 Rename `idleResetMessage` → `showIdleResetBanner` for clarity (`CaptureScan.tsx`)
   - [x] 5.3.1 Write failing test: assert existing tests still pass after rename (refactor coverage)
   - [x] 5.3.2 Rename state variable and all references
+
+## 6. Pre-Merge Fixes (third review — subagent team)
+
+- [x] 6.1 Revert 4.6.2: remove `_event: unknown` parameter from `onIdleReset` listener (`preload.ts`)
+  - [x] 6.1.1 No test needed — lint revert only; existing tests verify behaviour
+  - [x] 6.1.2 Change `const listener = (_event: unknown) => callback()` → `const listener = () => callback()` (ESLint flags `_event` as unused since `ipcRenderer.on` callbacks don't require it to be named)
+- [x] 6.2 Guard `onIdleReset` callback against firing during active scan (`CaptureScan.tsx`)
+  - [x] 6.2.1 Write failing test: idle reset does NOT clear metadata or show banner when `isScanning` is true
+  - [x] 6.2.2 Add `isScanningRef` to track scan state; guard `onIdleReset` callback with `if (isScanningRef.current) return`
+- [x] 6.3 Add "Plant QR Code" to idle-reset banner copy (`CaptureScan.tsx`)
+  - [x] 6.3.1 Write failing test: banner text mentions plant QR code / plant ID
+  - [x] 6.3.2 Update banner copy to include plant QR code in the cleared-fields list
+- [x] 6.4 Test `hasSessionData()` guard in the `onIdle` callback integration (`tests/unit/main-idle-integration.test.ts`)
+  - [x] 6.4.1 Write integration test: when all session fields are null, the `onIdle` callback calls neither `resetSessionState` nor `send('session:idle-reset')`. Uses real session-store module with an IdleTimer wired with the same guard logic as `main.ts`
+- [x] 6.5 Test: banner is NOT shown on initial render (regression guard)
+  - [x] 6.5.1 Write regression guard test: `idle-reset-notification` is not in DOM on mount
+- [x] 6.6 Test: `onIdle` fires exactly once (regression guard)
+  - [x] 6.6.1 Write regression guard test: advancing time to 3× timeout still calls `onIdleSpy` exactly once
+- [x] 6.7 Add `!this.started` guard to `pauseForScan()` for explicit state-machine symmetry (`idle-timer.ts`)
+  - [x] 6.7.1 Write test: `pauseForScan()` before `start()` followed by `start()` fires normally after timeout
+  - [x] 6.7.2 Add `if (!this.started) return;` guard to `pauseForScan()`
+- [x] 6.8 Document 10-min threshold in `idle-timer.ts` and add comment in `main.ts`
+  - [x] 6.8.1 No test needed — documentation only
+- [x] 6.9 Create GitHub issue to track deferred E2E tests (1.3.1, 1.3.2)
+  - [x] 6.9.1 Issue created: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/124

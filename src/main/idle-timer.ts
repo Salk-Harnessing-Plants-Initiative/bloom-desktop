@@ -16,6 +16,8 @@ export interface IdleTimerOptions {
   timeoutMs?: number;
 }
 
+// Default: 10 minutes. Chosen for shared-lab workflows where phenotypers stay
+// near the scanner between plants. Adjust in main.ts if lab setup requires longer.
 const DEFAULT_TIMEOUT_MS = 600_000; // 10 minutes
 
 export class IdleTimer {
@@ -54,6 +56,7 @@ export class IdleTimer {
   }
 
   pauseForScan(): void {
+    if (!this.started) return;
     this.paused = true;
     this.clearTimer();
   }

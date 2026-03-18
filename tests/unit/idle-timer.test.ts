@@ -256,6 +256,31 @@ describe('IdleTimer', () => {
       expect(onIdleSpy).not.toHaveBeenCalled();
     });
 
+    // 6.6 Regression guard: onIdle fires exactly once per timeout cycle
+    // Note: setTimeout is single-fire by design — this test documents that contract
+    // and guards against future refactors to setInterval.
+    it('6.6 onIdle fires exactly once even when time advances well past timeout', () => {
+      timer.start();
+
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT * 3);
+      expect(onIdleSpy).toHaveBeenCalledTimes(1);
+    });
+
+    // 6.7.1 Regression guard: pauseForScan before start, then start fires normally
+    // Note: start() resets paused=false unconditionally, so the zombie state does
+    // not exist — this test documents the contract and guards against future changes
+    // to start() that might not reset the paused flag.
+    it('6.7.1 pauseForScan() before start() does not prevent timer from firing after start()', () => {
+      timer.pauseForScan();
+      timer.start();
+
+      vi.advanceTimersByTime(DEFAULT_TIMEOUT - 1);
+      expect(onIdleSpy).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1);
+      expect(onIdleSpy).toHaveBeenCalledTimes(1);
+    });
+
     // 3.4.1 constructor throws on invalid timeoutMs
     it('should throw on zero timeoutMs', () => {
       expect(

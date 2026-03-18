@@ -5,7 +5,7 @@
  * Integrates camera preview, scanner control, and metadata input.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MetadataForm,
@@ -59,6 +59,9 @@ export function CaptureScan() {
 
   // Scanning state
   const [isScanning, setIsScanning] = useState(false);
+  // Ref so the onIdleReset closure ([] deps) can read current scan state without
+  // going stale. Mirrors isScanning; updated via a separate useEffect below.
+  const isScanningRef = useRef(false);
   const [scanProgress, setScanProgress] = useState<ScanProgressData | null>(
     null
   );
@@ -89,9 +92,19 @@ export function CaptureScan() {
     []
   );
 
+  // Keep isScanningRef in sync with isScanning state so the onIdleReset closure
+  // (which has [] deps) can read the current value without going stale.
+  useEffect(() => {
+    isScanningRef.current = isScanning;
+  }, [isScanning]);
+
   // Listen for idle session reset from main process
   useEffect(() => {
     const cleanup = window.electron.session.onIdleReset(() => {
+      // Defense-in-depth: main process already prevents the timer from firing
+      // during scans via pauseForScan(), but guard here against any in-flight
+      // IPC messages that arrived just as a scan started.
+      if (isScanningRef.current) return;
       setMetadata({
         phenotyper: '',
         experimentId: '',
@@ -515,8 +528,8 @@ export function CaptureScan() {
                 </svg>
                 <span className="font-medium text-amber-800">
                   Session reset due to inactivity. Phenotyper, experiment, wave
-                  number, plant age, and accession name have been cleared.
-                  Please re-enter all fields to continue.
+                  number, plant age, accession name, and plant QR code have
+                  been cleared. Please re-enter all fields to continue.
                 </span>
               </div>
               <button

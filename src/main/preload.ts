@@ -279,7 +279,7 @@ const sessionAPI = {
   }) => ipcRenderer.invoke('session:set', updates),
   reset: () => ipcRenderer.invoke('session:reset'),
   onIdleReset: (callback: () => void) => {
-    const listener = (_event: unknown) => callback();
+    const listener = () => callback();
     ipcRenderer.on('session:idle-reset', listener);
     return () => ipcRenderer.removeListener('session:idle-reset', listener);
   },

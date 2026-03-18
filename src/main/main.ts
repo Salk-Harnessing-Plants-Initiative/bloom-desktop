@@ -1039,7 +1039,7 @@ ipcMain.handle('session:reset', async (): Promise<void> => {
 app.on('ready', async () => {
   createWindow();
 
-  // Initialize idle timer for session auto-reset
+  // Initialize idle timer for session auto-reset (default: 10 min, see idle-timer.ts)
   idleTimer = new IdleTimer({
     onIdle: () => {
       if (!hasSessionData()) return;
