@@ -161,10 +161,10 @@ The Scanner SHALL save captured frames to disk during the scanning workflow, cre
 
 #### Scenario: All captured frames persisted
 
-- **GIVEN** a scan with `num_frames` set to 72
+- **GIVEN** a scan with `num_frames` configured via Machine Configuration (default 72)
 - **WHEN** `perform_scan()` completes successfully
-- **THEN** 72 PNG files SHALL exist in the output directory
-- **AND** files SHALL be named `001.png` through `072.png`
+- **THEN** the configured number of PNG files SHALL exist in the output directory
+- **AND** files SHALL be named `001.png` through `{num_frames:03d}.png`
 - **AND** each file SHALL contain the image data from the corresponding frame capture
 
 #### Scenario: Frame count matches file count
@@ -275,6 +275,7 @@ The system SHALL write a `metadata.json` file to the scan output directory BEFOR
 - **GIVEN** a scan is started with experiment, phenotyper, plant, and camera metadata
 - **WHEN** `metadata.json` is written
 - **THEN** the file SHALL contain the following fields: `metadata_version`, `experiment_id`, `phenotyper_id`, `scanner_name`, `plant_id`, `capture_date`, `num_frames`, `exposure_time`, `gain`, `brightness`, `contrast`, `gamma`, `seconds_per_rot`, `wave_number`, `plant_age_days`
+- **AND** `brightness` SHALL default to 0 and `contrast` SHALL default to 0 (Basler identity values; these parameters are not supported on the acA2000-50gm)
 - **AND** optional fields (`accession_name`, `scan_path`) SHALL be included when provided
 - **AND** `metadata_version` SHALL be set to `1` for the current schema
 
@@ -302,9 +303,9 @@ The system SHALL write a `metadata.json` file to the scan output directory BEFOR
 
 #### Scenario: num_frames uses top-level setting when available
 
-- **GIVEN** `settings.num_frames` is set to 72 and `settings.daq.num_frames` is set to 36
+- **GIVEN** `settings.num_frames` is provided and `settings.daq.num_frames` is also set
 - **WHEN** `buildMetadataObject` constructs the metadata
-- **THEN** `num_frames` SHALL be 72 (top-level value takes precedence)
+- **THEN** `num_frames` SHALL use the top-level value (which originates from Machine Configuration)
 
 ### Requirement: Atomic Metadata File Write
 
