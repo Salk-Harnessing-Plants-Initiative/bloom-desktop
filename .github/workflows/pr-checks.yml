@@ -57,6 +57,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run ESLint
         run: npm run lint
@@ -115,6 +117,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify migrations match schema
         run: ./scripts/verify-migrations.sh
@@ -147,6 +151,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -181,6 +187,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -248,6 +256,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Check IPC handler test coverage
         run: npm run test:e2e:coverage
@@ -336,6 +346,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Run IPC integration tests
         run: npm run test:ipc
@@ -410,6 +422,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -478,6 +492,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
@@ -576,6 +592,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate Prisma Client
         run: npx prisma generate
