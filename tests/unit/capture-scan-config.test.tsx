@@ -249,6 +249,23 @@ describe('CaptureScan Idle Reset Notification', () => {
     expect(experimentSelect).not.toBeInTheDocument();
   });
 
+  // Regression guard: live idle-reset consumes the flag so navigation-away
+  // mount check does not show a stale second banner.
+  it('onIdleReset callback calls checkIdleReset() to consume the navigation-away flag', async () => {
+    const mockCheckIdleReset = vi.fn().mockResolvedValue(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.session.checkIdleReset = mockCheckIdleReset;
+
+    const { fireIdleReset } = await setupIdleReset();
+    // Clear the call from mount
+    mockCheckIdleReset.mockClear();
+
+    await fireIdleReset();
+
+    // The live handler must have consumed the flag
+    expect(mockCheckIdleReset).toHaveBeenCalledOnce();
+  });
+
   // 3.6.1 dismiss button has accessible name
   it('3.6.1 dismiss button has an accessible aria-label', async () => {
     const { fireIdleReset } = await setupIdleReset();

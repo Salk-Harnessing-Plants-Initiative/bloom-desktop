@@ -118,6 +118,10 @@ export function CaptureScan() {
       // during scans via pauseForScan(), but guard here against any in-flight
       // IPC messages that arrived just as a scan started.
       if (isScanningRef.current) return;
+      // Consume the navigation-away flag so that if the user dismisses this
+      // banner and later navigates away + back, checkIdleReset() on mount does
+      // not show a stale second banner.
+      window.electron.session.checkIdleReset().catch(() => {});
       setMetadata({
         phenotyper: '',
         experimentId: '',
