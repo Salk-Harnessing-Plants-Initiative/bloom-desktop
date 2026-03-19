@@ -221,6 +221,7 @@ export class CameraProcess extends PythonProcess {
       return response.cameras;
     }
 
-    throw new Error(`Failed to detect cameras: ${JSON.stringify(response)}`);
+    // Non-camera response (e.g. mismatched command routing) — return empty
+    return [];
   }
 }
