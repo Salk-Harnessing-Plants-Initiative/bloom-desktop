@@ -2,57 +2,23 @@
  * Camera Streamer Component
  *
  * Displays live camera stream with automatic lifecycle management.
+ * Uses React state + <img> tag for natural "latest frame wins" memory safety.
  * Automatically starts streaming on mount and stops on unmount.
- * Displays FPS counter and connection status.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { CameraSettings } from '../types/camera';
 
 export interface StreamerProps {
-  /**
-   * Camera settings for streaming
-   * Optional - will use camera's current settings if not provided
-   */
   settings?: Partial<CameraSettings>;
-
-  /**
-   * Width of the display canvas in pixels
-   * @default 640
-   */
   width?: number;
-
-  /**
-   * Height of the display canvas in pixels
-   * @default 480
-   */
   height?: number;
-
-  /**
-   * Whether to show FPS counter
-   * @default true
-   */
   showFps?: boolean;
-
-  /**
-   * Callback when streaming starts successfully
-   */
   onStreamStart?: () => void;
-
-  /**
-   * Callback when streaming stops
-   */
   onStreamStop?: () => void;
-
-  /**
-   * Callback when an error occurs
-   */
   onError?: (error: string) => void;
 }
 
-/**
- * Streamer component for live camera preview
- */
 export const Streamer: React.FC<StreamerProps> = ({
   settings,
   width = 640,
@@ -62,12 +28,11 @@ export const Streamer: React.FC<StreamerProps> = ({
   onStreamStop,
   onError,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [currentFrame, setCurrentFrame] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [fps, setFps] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // FPS calculation
   const frameCountRef = useRef(0);
   const lastFpsUpdateRef = useRef(Date.now());
 
@@ -76,7 +41,6 @@ export const Streamer: React.FC<StreamerProps> = ({
     const now = Date.now();
     const elapsed = now - lastFpsUpdateRef.current;
 
-    // Update FPS every second
     if (elapsed >= 1000) {
       setFps(Math.round((frameCountRef.current * 1000) / elapsed));
       frameCountRef.current = 0;
@@ -84,31 +48,14 @@ export const Streamer: React.FC<StreamerProps> = ({
     }
   }, []);
 
-  // Handle incoming frames
   const handleFrame = useCallback(
     (image: { dataUri: string; timestamp: number }) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      // Create image and draw to canvas
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        updateFps();
-      };
-      img.onerror = () => {
-        // Suppress console errors for invalid data URIs (cosmetic issue)
-        // The browser console shows ERR_INVALID_URL when displaying base64 data
-      };
-      img.src = image.dataUri;
+      setCurrentFrame(image.dataUri);
+      updateFps();
     },
     [updateFps]
   );
 
-  // Start streaming on mount
   useEffect(() => {
     let mounted = true;
 
@@ -138,13 +85,11 @@ export const Streamer: React.FC<StreamerProps> = ({
 
     startStreaming();
 
-    // Register frame callback and get cleanup function
     const removeFrameListener = window.electron.camera.onFrame(handleFrame);
 
-    // Cleanup: stop streaming and remove listener on unmount
     return () => {
       mounted = false;
-      removeFrameListener(); // Remove frame listener to prevent memory leak
+      removeFrameListener();
       window.electron.camera.stopStream().then(() => {
         setIsStreaming(false);
         onStreamStop?.();
@@ -154,18 +99,37 @@ export const Streamer: React.FC<StreamerProps> = ({
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        style={{
-          border: '1px solid #ccc',
-          display: 'block',
-          backgroundColor: '#000',
-        }}
-      />
+      {currentFrame ? (
+        <img
+          src={currentFrame}
+          alt="Camera stream"
+          style={{
+            width,
+            height,
+            objectFit: 'contain',
+            border: '1px solid #ccc',
+            display: 'block',
+            backgroundColor: '#000',
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width,
+            height,
+            border: '1px solid #ccc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#000',
+          }}
+        >
+          <span style={{ color: '#fff', fontSize: '14px' }}>
+            {error ? 'Error' : 'Connecting...'}
+          </span>
+        </div>
+      )}
 
-      {/* FPS Counter */}
       {showFps && (
         <div
           style={{
@@ -184,7 +148,6 @@ export const Streamer: React.FC<StreamerProps> = ({
         </div>
       )}
 
-      {/* Status Indicator */}
       <div
         style={{
           position: 'absolute',
@@ -213,11 +176,10 @@ export const Streamer: React.FC<StreamerProps> = ({
           }}
         />
         <span style={{ color: '#fff' }}>
-          {error ? 'Error' : isStreaming ? 'Streaming' : 'Connecting...'}
+          {error ? 'Error' : isStreaming ? 'Streaming' : 'Waiting'}
         </span>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div
           style={{
