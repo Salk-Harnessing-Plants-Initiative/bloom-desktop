@@ -8,6 +8,7 @@
  * Requires: GRAVISCAN_MOCK=true environment variable
  */
 
+// eslint-disable-next-line import/no-unresolved
 import { GraviScanProcess } from '../../src/main/graviscan-process';
 import path from 'path';
 
@@ -223,7 +224,7 @@ async function runTests() {
     await runTest('Error handling - unknown action', async () => {
       // This should NOT throw - the process should handle it gracefully
       // But we need to handle the fact that it returns an error
-      const response = await graviscanProcess.sendCommand({
+      await graviscanProcess.sendCommand({
         command: 'graviscan',
         action: 'unknown-action',
       });

@@ -18,16 +18,21 @@ import shutil
 import sys
 
 
-def build_file_index(directory: str) -> dict[str, str]:
-    """Index all .tif files by their _st_ prefix + _cy suffix (without _et_)."""
+def build_file_index(directory: str) -> tuple[dict[str, str], set[str]]:
+    """Index .tif files two ways: by stripped key (without _et_) and exact name.
+
+    Returns (stripped_key -> filename, set of all filenames on disk).
+    """
     index: dict[str, str] = {}
+    all_files: set[str] = set()
     for fname in os.listdir(directory):
         if not fname.lower().endswith((".tif", ".tiff")):
             continue
+        all_files.add(fname)
         # Strip out _et_YYYYMMDDTHHMMSS to get the lookup key
         key = re.sub(r"_et_\d{8}T\d{6}", "", fname)
         index[key] = fname
-    return index
+    return index, all_files
 
 
 def main() -> None:
@@ -41,8 +46,8 @@ def main() -> None:
         sys.exit(1)
 
     directory = os.path.dirname(os.path.abspath(csv_path))
-    file_index = build_file_index(directory)
-    print(f"Indexed {len(file_index)} image files in {directory}")
+    file_index, all_files = build_file_index(directory)
+    print(f"Indexed {len(all_files)} image files in {directory}")
 
     # Read original CSV
     with open(csv_path, newline="", encoding="utf-8") as f:
@@ -59,13 +64,19 @@ def main() -> None:
     unmatched = 0
     for row in rows:
         original = row.get("image_filename", "")
-        resolved = file_index.get(original)
-        if resolved:
-            row["file_path"] = resolved
+        if original in all_files:
+            # image_filename already has full name (with _et_) — verify it exists
+            row["file_path"] = original
             matched += 1
         else:
-            row["file_path"] = ""
-            unmatched += 1
+            # image_filename is missing _et_ — look up via stripped key
+            resolved = file_index.get(original)
+            if resolved:
+                row["file_path"] = resolved
+                matched += 1
+            else:
+                row["file_path"] = ""
+                unmatched += 1
 
     # Backup original
     backup_path = csv_path + ".bak"

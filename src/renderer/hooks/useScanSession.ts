@@ -356,8 +356,7 @@ export function useScanSession({
     const cleanupGridComplete = window.electron.graviscan.onGridComplete((data) => {
       console.log('[GraviScan] Event: grid-complete', data.gridIndex, `st=${data.scanStartedAt} et=${data.scanEndedAt}`);
 
-      let gridWritePromise: Promise<void>;
-      gridWritePromise = (async () => {
+      const gridWritePromise: Promise<void> = (async () => {
         const otherWrites = pendingDbWritesRef.current.filter(p => p !== gridWritePromise);
         if (otherWrites.length > 0) {
           await Promise.allSettled(otherWrites);

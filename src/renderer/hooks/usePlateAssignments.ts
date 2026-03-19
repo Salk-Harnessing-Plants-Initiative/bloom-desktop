@@ -145,12 +145,15 @@ export function usePlateAssignments({
               setIsGraviMetadata(true);
 
               // Build plate metadata for dropdown
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const plates: AvailablePlate[] = platesResult.data.map((plate: any) => ({
                 id: plate.id,
                 plate_id: plate.plate_id,
                 accession: plate.accession,
                 custom_note: plate.custom_note ?? null,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 sectionCount: new Set((plate.sections || []).map((s: any) => s.plate_section_id)).size,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 plantQrCodes: (plate.sections || []).map((s: any) => s.plant_qr),
               }));
               setAvailablePlates(plates);

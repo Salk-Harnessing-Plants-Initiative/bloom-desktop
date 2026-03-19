@@ -16,6 +16,7 @@
 
 import * as readline from 'readline';
 import * as path from 'path';
+// eslint-disable-next-line import/no-unresolved
 import { GraviScanProcess } from '../../src/main/graviscan-process';
 
 const rl = readline.createInterface({

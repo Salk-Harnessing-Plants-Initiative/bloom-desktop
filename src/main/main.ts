@@ -135,7 +135,7 @@ export function markScanJobRecorded(jobKey: string): void {
   }
 }
 let cameraProcess: CameraProcess | null = null;
-let daqProcess: DAQProcess | null = null;
+const daqProcess: DAQProcess | null = null;
 let scannerProcess: ScannerProcess | null = null;
 
 // Track current camera settings (in-memory, lost on app restart)

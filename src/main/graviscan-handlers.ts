@@ -1184,7 +1184,7 @@ export function registerGraviscanHandlers(
         const COPY_CONCURRENCY = 4;
         let nextIdx = 0;
 
-        async function copyNext(): Promise<void> {
+        const copyNext = async (): Promise<void> => {
           const idx = nextIdx++;
           if (idx >= filesToCopy.length) return;
           const file = filesToCopy[idx];

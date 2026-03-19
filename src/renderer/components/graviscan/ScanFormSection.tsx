@@ -245,7 +245,7 @@ export function ScanFormSection({
                         htmlFor={`plate-${scannerId}-${assignment.plateIndex}`}
                         className="text-sm font-medium text-gray-700 w-12 cursor-pointer"
                       >
-                        {getPlateLabel(assignment.plateIndex, scannerAssignment?.gridMode || '2grid')}
+                        {getPlateLabel(assignment.plateIndex)}
                       </label>
 
                       {isGraviMetadata ? (

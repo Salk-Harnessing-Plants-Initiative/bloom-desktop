@@ -16,7 +16,7 @@ import {
 } from '../types/electron';
 /* eslint-enable import/no-unresolved */
 // eslint-disable-next-line import/no-unresolved
-import { MachineConfig, MachineCredentials } from './config-store';
+import { MachineConfig } from './config-store';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -34,7 +34,6 @@ import type {
   PhenotyperCreateData,
   ScientistCreateData,
   AccessionCreateData,
-  ImageCreateData,
   ScanCreateData,
   ScanFilters,
   PaginatedScanFilters,

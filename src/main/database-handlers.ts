@@ -1255,7 +1255,7 @@ export function registerDatabaseHandlers() {
         });
 
         // Transform to expected shape
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        /* eslint-disable @typescript-eslint/no-explicit-any */
         const results = experiments.map((exp: any) => ({
           id: exp.id,
           name: exp.name,
@@ -1288,6 +1288,7 @@ export function registerDatabaseHandlers() {
             return true;
           });
         }
+        /* eslint-enable @typescript-eslint/no-explicit-any */
 
         logDatabaseOperation('BROWSE', 'Experiment+GraviScan', `offset=${offset} limit=${limit} total=${total} returned=${filtered.length}`);
         return { success: true, data: filtered, total };

@@ -26,11 +26,10 @@ export function CylinderScan() {
   const [metadata, setMetadata] = useState<ScanMetadata>({
     phenotyper: '',
     experimentId: '',
-    waveNumber: 0,
-    plantAgeDays: 0,
+    waveNumber: '',
+    plantAgeDays: '',
     plantQrCode: '',
-    accessionId: '',
-    genotypeId: '',
+    accessionName: '',
   });
 
   // Camera settings state
@@ -234,10 +233,10 @@ export function CylinderScan() {
     if (!metadata.experimentId.trim()) {
       errors.experimentId = 'Experiment ID is required';
     }
-    if (metadata.waveNumber <= 0) {
+    if (!metadata.waveNumber || Number(metadata.waveNumber) <= 0) {
       errors.waveNumber = 'Wave number must be greater than 0';
     }
-    if (metadata.plantAgeDays < 0) {
+    if (metadata.plantAgeDays !== '' && Number(metadata.plantAgeDays) < 0) {
       errors.plantAgeDays = 'Plant age must be 0 or greater';
     }
     if (!metadata.plantQrCode.trim()) {
@@ -285,9 +284,9 @@ export function CylinderScan() {
           phenotyper_id: metadata.phenotyper,
           scanner_name: scannerName,
           plant_id: metadata.plantQrCode,
-          accession_id: metadata.accessionId || undefined,
-          plant_age_days: metadata.plantAgeDays,
-          wave_number: metadata.waveNumber,
+          accession_name: metadata.accessionName || undefined,
+          plant_age_days: Number(metadata.plantAgeDays),
+          wave_number: Number(metadata.waveNumber),
         },
       });
 

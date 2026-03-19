@@ -228,7 +228,7 @@ export function useScannerConfig({
           }
           break;
 
-        case 'mismatch':
+        case 'mismatch': {
           setConfigStatus('mismatch');
           const missingNames = result.missing.map(s => s.name).join(', ');
           const newPorts = result.new.map(s => s.usb_port).join(', ');
@@ -243,6 +243,7 @@ export function useScannerConfig({
           setDetectedScanners(result.detectedScanners);
           setIsConfigCollapsed(false);
           break;
+        }
 
         case 'no-config':
           setConfigStatus('no-config');
@@ -473,7 +474,6 @@ export function useScannerConfig({
 
     return () => clearTimeout(timeoutId);
   // Note: detectedScanners intentionally excluded — detection alone shouldn't trigger saves.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerAssignments, resolution]);
 
   // Persist resolution to localStorage
@@ -564,7 +564,7 @@ export function useScannerConfig({
           setIsConfigCollapsed(false);
           setSessionValidated(false);
         }
-      } catch (error) {
+      } catch {
         setValidationWarning('Scanner validation error. Please reconfigure.');
         setIsConfigCollapsed(false);
         setSessionValidated(false);

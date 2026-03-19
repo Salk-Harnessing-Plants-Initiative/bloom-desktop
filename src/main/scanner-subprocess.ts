@@ -13,6 +13,7 @@
 
 import { ChildProcess, spawn } from 'child_process';
 import { EventEmitter } from 'events';
+import path from 'path';
 import { scanLog } from './scan-logger';
 import * as readline from 'readline';
 
@@ -112,7 +113,7 @@ export class ScannerSubprocess extends EventEmitter {
         ...process.env,
         // In dev: ensure `python/` is on PYTHONPATH so `-m graviscan.scan_worker` resolves
         PYTHONPATH: [
-          require('path').join(process.cwd(), 'python'),
+          path.join(process.cwd(), 'python'),
           process.env.PYTHONPATH,
         ].filter(Boolean).join(':'),
       },

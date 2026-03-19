@@ -8,12 +8,6 @@
 import { CameraSettings, CapturedImage, DetectedCamera } from './camera';
 import { MachineConfig, ValidationResult, Scanner } from '../main/config-store';
 import {
-  MachineConfig,
-  MachineCredentials,
-  ValidationResult,
-  Scanner,
-} from '../main/config-store';
-import {
   DAQSettings,
   DAQInitializeResponse,
   DAQCleanupResponse,
@@ -39,7 +33,6 @@ import {
   PhenotyperCreateData,
   ScientistCreateData,
   AccessionCreateData,
-  ImageCreateData,
   ScanFilters,
   PaginatedScanFilters,
   PaginatedScansResponse,
@@ -51,7 +44,6 @@ import {
   GraviScanner,
   GraviScan,
   GraviScanSession,
-  GraviScanWithRelations,
   GraviImage,
   GraviScanPlatformInfo,
   ExperimentWithScans,
@@ -911,69 +903,6 @@ export interface SessionAPI {
    * @returns Promise resolving when reset is complete
    */
   reset: () => Promise<void>;
-}
-
-/**
- * Machine Configuration API
- */
-export interface ConfigAPI {
-  /**
-   * Get current machine configuration (unified - includes credentials)
-   * @returns Promise resolving to unified config (password masked)
-   */
-  get: () => Promise<{
-    config: MachineConfig; // Now includes credential fields
-    hasCredentials: boolean;
-  }>;
-
-  /**
-   * Save unified machine configuration
-   * @param config - Unified configuration to save (includes credentials)
-   * @returns Promise resolving to save result
-   */
-  set: (
-    config: MachineConfig
-  ) => Promise<{ success: boolean; errors?: ValidationResult['errors'] }>;
-
-  /**
-   * Test camera connection
-   * @param ipAddress - Camera IP address to test
-   * @returns Promise resolving to connection test result
-   */
-  testCamera: (
-    ipAddress: string
-  ) => Promise<{ success: boolean; error?: string }>;
-
-  /**
-   * Open native folder picker dialog
-   * @returns Promise resolving to selected path or null if cancelled
-   */
-  browseDirectory: () => Promise<string | null>;
-
-  /**
-   * Check if configuration exists (for first-run detection)
-   * @returns Promise resolving to whether config exists
-   */
-  exists: () => Promise<boolean>;
-
-  /**
-   * Fetch list of valid scanners from Bloom API
-   * @param apiUrl - Bloom API URL
-   * @param credentials - Bloom API credentials from form
-   * @returns Promise resolving to scanner list or error
-   */
-  fetchScanners: (
-    apiUrl: string,
-    credentials: {
-      bloom_scanner_username: string;
-      bloom_scanner_password: string;
-      bloom_anon_key: string;
-    }
-  ) => Promise<{
-    success: boolean;
-    scanners?: Scanner[];
-    error?: string;
-  }>;
 }
 
 /**

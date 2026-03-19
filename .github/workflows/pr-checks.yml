@@ -79,9 +79,9 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Install Python dependencies
-        run: uv sync --all-extras --frozen
-        # Installs both regular and dev dependencies (black, ruff, mypy)
-        # Uses --frozen to respect uv.lock for reproducible CI builds
+        run: uv sync --extra dev --frozen
+        # Installs dev dependencies (black, ruff, mypy) without hardware extras
+        # (graviscan-linux/windows require system libs not available in CI)
 
       - name: Check black formatting
         run: uv run black --check python/
@@ -223,9 +223,9 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: uv sync --all-extras --frozen
-        # Required for pytest, pytest-cov, and other test dependencies
-        # Uses --frozen to respect uv.lock for reproducible CI builds
+        run: uv sync --extra dev --frozen
+        # Installs dev dependencies (pytest, pytest-cov) without hardware extras
+        # (graviscan-linux/windows require system libs not available in CI)
 
       - name: Run Python tests with coverage
         run: npm run test:python

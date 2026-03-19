@@ -209,7 +209,7 @@ async function runMigrations(
       }
 
       // Record migration as applied
-      const { randomUUID } = require('crypto');
+      const { randomUUID } = await import('crypto');
       const id = randomUUID();
       await client.$executeRawUnsafe(
         `INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, applied_steps_count)

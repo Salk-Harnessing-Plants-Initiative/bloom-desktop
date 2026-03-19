@@ -121,3 +121,6 @@ scripts/*.js
 # Test scan artifacts
 test-scans/
 test-scans-no-meta/
+
+# Box-related scripts (local reference copies)
+Boxrelated/

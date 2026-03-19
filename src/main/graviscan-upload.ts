@@ -247,7 +247,7 @@ async function processImageJobs(
       const storagePath = `gravi-images/${originalName}_${shortId}${ext}`;
       const uploadResult = await uploader.uploadRawFile(
         image.path, storagePath, 'graviscan-images'
-      ) as { error: any; hash?: string; sizeBytes?: number };
+      ) as { error: Error | null; hash?: string; sizeBytes?: number };
 
       if (uploadResult.error) {
         errors.push(`Upload error for ${image.path}: ${uploadResult.error.message}`);
@@ -256,6 +256,7 @@ async function processImageJobs(
         continue;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: imageError } = await (store as any).updateGraviImageMetadata(
         scanId, { object_path: storagePath, file_hash: uploadResult.hash, file_size_bytes: uploadResult.sizeBytes }
       );
@@ -333,6 +334,7 @@ async function uploadSessions(
         system_name: process.env.GRAVISCAN_SYSTEM_NAME ?? undefined,
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { created: supabaseSessionId, error } = await (store as any).insertGraviScanSession(params);
       if (error) {
         errors.push(`Session upload error for ${scan.session_id}: ${error.message}`);
@@ -406,6 +408,7 @@ async function uploadMetadata(
           })),
         };
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { created: supabaseMetadataId, error } = await (store as any).insertGraviScanMetadata(params);
         console.log('[UploadMetadata] RPC result for plate', plate.plate_id, '→ metadataId:', supabaseMetadataId, 'error:', error?.message ?? 'none');
         if (error) {

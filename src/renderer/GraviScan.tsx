@@ -12,7 +12,6 @@ import type {
   DetectedScanner,
   GraviConfig,
   GraviScanner,
-  GridMode,
   GraviScanPlatformInfo,
   ScannerPanelState,
   ScannerAssignment,
@@ -102,7 +101,7 @@ export function GraviScan() {
   });
 
   // Configuration - initialize from localStorage
-  const [config, setConfig] = useState<GraviConfig | null>(null);
+  const [, setConfig] = useState<GraviConfig | null>(null);
   // Note: gridMode is now per-scanner, stored in ScannerAssignment.gridMode
   const [resolution, setResolution] = useState<number>(() =>
     loadFromStorage(STORAGE_KEYS.resolution, 1200)
@@ -163,7 +162,7 @@ export function GraviScan() {
   // Plate assignments per scanner - each scanner has its own plate assignments (stored in database)
   // Key is scanner_id, value is array of plate assignments for that scanner
   const [scannerPlateAssignments, setScannerPlateAssignments] = useState<Record<string, PlateAssignment[]>>({});
-  const [loadingPlateAssignments, setLoadingPlateAssignments] = useState(false);
+  const [, setLoadingPlateAssignments] = useState(false);
 
   // Get assigned scanner IDs (scanners that have been assigned to slots)
   const assignedScannerIds = scannerAssignments
@@ -175,8 +174,6 @@ export function GraviScan() {
     .flat()
     .filter((p) => p.selected)
     .map((p) => p.plateIndex);
-  const plantBarcode = ''; // No longer used directly - each plate has its own barcode
-
   // Scanner panel states
   const [scannerStates, setScannerStates] = useState<ScannerPanelState[]>([]);
 
@@ -1102,7 +1099,6 @@ export function GraviScan() {
     return () => clearTimeout(timeoutId);
   // Note: detectedScanners intentionally excluded — detection alone shouldn't trigger saves.
   // The effect reads detectedScanners but only needs to re-run when assignments/resolution change.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scannerAssignments, resolution]);
 
   // Note: gridMode is now per-scanner, persisted in scannerAssignments
@@ -1227,12 +1223,15 @@ export function GraviScan() {
               setIsGraviMetadata(true);
 
               // Build plate metadata for dropdown
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const plates: AvailablePlate[] = platesResult.data.map((plate: any) => ({
                 id: plate.id,
                 plate_id: plate.plate_id,
                 accession: plate.accession,
                 custom_note: plate.custom_note ?? null,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 sectionCount: new Set((plate.sections || []).map((s: any) => s.plate_section_id)).size,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 plantQrCodes: (plate.sections || []).map((s: any) => s.plant_qr),
               }));
               setAvailablePlates(plates);
@@ -1409,7 +1408,7 @@ export function GraviScan() {
           setIsConfigCollapsed(false);
           setSessionValidated(false);
         }
-      } catch (error) {
+      } catch {
         setValidationWarning('Scanner validation error. Please reconfigure.');
         setIsConfigCollapsed(false);
         setSessionValidated(false);
@@ -1528,7 +1527,7 @@ export function GraviScan() {
           }
           break;
 
-        case 'mismatch':
+        case 'mismatch': {
           setConfigStatus('mismatch');
           const missingNames = result.missing.map(s => s.name).join(', ');
           const newPorts = result.new.map(s => s.usb_port).join(', ');
@@ -1544,6 +1543,7 @@ export function GraviScan() {
           setDetectedScanners(result.detectedScanners);
           setIsConfigCollapsed(false);
           break;
+        }
 
         case 'no-config':
           setConfigStatus('no-config');
@@ -3129,7 +3129,7 @@ export function GraviScan() {
                             htmlFor={`plate-${scannerId}-${assignment.plateIndex}`}
                             className="text-sm font-medium text-gray-700 w-12 cursor-pointer"
                           >
-                            {getPlateLabel(assignment.plateIndex, scannerAssignment?.gridMode || '2grid')}
+                            {getPlateLabel(assignment.plateIndex)}
                           </label>
 
                           {isGraviMetadata ? (

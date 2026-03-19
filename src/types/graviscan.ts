@@ -247,7 +247,7 @@ const PLATE_INDEX_LABELS: Record<string, string> = {
 /**
  * Get plate label for display - e.g., "A(00)", "B(01)", "C(10)", "D(11)".
  */
-export function getPlateLabel(plateIndex: string, _gridMode: GridMode): string {
+export function getPlateLabel(plateIndex: string): string {
   return PLATE_INDEX_LABELS[plateIndex] ?? plateIndex;
 }
 
