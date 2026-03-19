@@ -73,7 +73,12 @@ export function GraviMetadataUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const requiredMapped =
-    mapping.plateId && mapping.sectionId && mapping.plantQr && mapping.accession && mapping.medium && mapping.transplantDate;
+    mapping.plateId &&
+    mapping.sectionId &&
+    mapping.plantQr &&
+    mapping.accession &&
+    mapping.medium &&
+    mapping.transplantDate;
   const hasFile = fileName !== null;
   const hasMultipleSheets = sheetNames.length > 1;
 
@@ -88,12 +93,12 @@ export function GraviMetadataUpload({
     setData([]);
     setMapping({
       plateId: null,
-    sectionId: null,
-    plantQr: null,
-    accession: null,
-    medium: null,
-    transplantDate: null,
-    customNote: null,
+      sectionId: null,
+      plantQr: null,
+      accession: null,
+      medium: null,
+      transplantDate: null,
+      customNote: null,
     });
     setIsUploading(false);
     setMessage(null);
@@ -124,12 +129,12 @@ export function GraviMetadataUpload({
 
       setMapping({
         plateId: null,
-    sectionId: null,
-    plantQr: null,
-    accession: null,
-    medium: null,
-    transplantDate: null,
-    customNote: null,
+        sectionId: null,
+        plantQr: null,
+        accession: null,
+        medium: null,
+        transplantDate: null,
+        customNote: null,
       });
       setValidationErrors([]);
     },
@@ -166,7 +171,10 @@ export function GraviMetadataUpload({
       reader.onload = (e) => {
         try {
           const arrayBuffer = e.target?.result as ArrayBuffer;
-          const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+          const workbook = XLSX.read(arrayBuffer, {
+            type: 'array',
+            cellDates: true,
+          });
 
           workbookRef.current = workbook;
           setSheetNames(workbook.SheetNames);
@@ -246,7 +254,9 @@ export function GraviMetadataUpload({
       const accessionIdx = headers.indexOf(mapping.accession);
       const mediumIdx = headers.indexOf(mapping.medium);
       const transplantDateIdx = headers.indexOf(mapping.transplantDate);
-      const customNoteIdx = mapping.customNote ? headers.indexOf(mapping.customNote) : -1;
+      const customNoteIdx = mapping.customNote
+        ? headers.indexOf(mapping.customNote)
+        : -1;
 
       if (
         plateIdIdx === -1 ||
@@ -281,16 +291,36 @@ export function GraviMetadataUpload({
         const accession = String(row[accessionIdx] ?? '').trim();
         const medium = String(row[mediumIdx] ?? '').trim();
         const rawDate = row[transplantDateIdx];
-        const transplantDate = rawDate instanceof Date
-          ? rawDate.toISOString().split('T')[0]
-          : typeof rawDate === 'number'
-            ? new Date(Math.round((rawDate - 25569) * 86400000)).toISOString().split('T')[0]
-            : String(rawDate ?? '').trim();
+        const transplantDate =
+          rawDate instanceof Date
+            ? rawDate.toISOString().split('T')[0]
+            : typeof rawDate === 'number'
+              ? new Date(Math.round((rawDate - 25569) * 86400000))
+                  .toISOString()
+                  .split('T')[0]
+              : String(rawDate ?? '').trim();
         const customNote =
-          customNoteIdx >= 0 ? String(row[customNoteIdx] ?? '').trim() || null : null;
+          customNoteIdx >= 0
+            ? String(row[customNoteIdx] ?? '').trim() || null
+            : null;
 
-        if (plateId && sectionId && plantQr && accession && medium && transplantDate) {
-          rows.push({ plateId, sectionId, plantQr, accession, medium, transplantDate, customNote });
+        if (
+          plateId &&
+          sectionId &&
+          plantQr &&
+          accession &&
+          medium &&
+          transplantDate
+        ) {
+          rows.push({
+            plateId,
+            sectionId,
+            plantQr,
+            accession,
+            medium,
+            transplantDate,
+            customNote,
+          });
         }
       }
 
@@ -342,15 +372,13 @@ export function GraviMetadataUpload({
         });
       }
 
-      const plates = Array.from(plateMap.entries()).map(
-        ([plate_id, data]) => ({
-          plate_id,
-          accession: data.accession,
-          transplant_date: data.transplant_date,
-          custom_note: data.custom_note,
-          sections: data.sections,
-        })
-      );
+      const plates = Array.from(plateMap.entries()).map(([plate_id, data]) => ({
+        plate_id,
+        accession: data.accession,
+        transplant_date: data.transplant_date,
+        custom_note: data.custom_note,
+        sections: data.sections,
+      }));
 
       const result =
         await window.electron.database.graviPlateAccessions.createWithSections(
@@ -419,9 +447,7 @@ export function GraviMetadataUpload({
 
     return {
       uniquePlates: plates.size,
-      totalSections: data.filter(
-        (row) => row[plateIdIdx]?.trim()
-      ).length,
+      totalSections: data.filter((row) => row[plateIdIdx]?.trim()).length,
       uniqueAccessions: accessions.size,
     };
   })();
@@ -469,9 +495,7 @@ export function GraviMetadataUpload({
         </div>
       </div>
 
-      {loading && (
-        <p className="text-sm text-gray-500">Parsing file...</p>
-      )}
+      {loading && <p className="text-sm text-gray-500">Parsing file...</p>}
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-md">
@@ -524,10 +548,7 @@ export function GraviMetadataUpload({
           <h3 className="text-xs font-bold mb-2">Map Columns</h3>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {(
-              Object.entries(COLUMN_LABELS) as [
-                keyof ColumnMapping,
-                string,
-              ][]
+              Object.entries(COLUMN_LABELS) as [keyof ColumnMapping, string][]
             ).map(([field, label]) => (
               <div key={field}>
                 <label className="text-xs font-medium text-gray-600 block mb-1">

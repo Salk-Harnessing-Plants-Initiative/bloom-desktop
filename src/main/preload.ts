@@ -235,12 +235,21 @@ const databaseAPI: DatabaseAPI = {
   },
   graviscanPlateAssignments: {
     list: (experimentId: string, scannerId: string) =>
-      ipcRenderer.invoke('db:graviscanPlateAssignments:list', experimentId, scannerId),
+      ipcRenderer.invoke(
+        'db:graviscanPlateAssignments:list',
+        experimentId,
+        scannerId
+      ),
     upsert: (
       experimentId: string,
       scannerId: string,
       plateIndex: string,
-      data: { plate_barcode?: string | null; transplant_date?: string | null; custom_note?: string | null; selected?: boolean }
+      data: {
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }
     ) =>
       ipcRenderer.invoke(
         'db:graviscanPlateAssignments:upsert',
@@ -252,7 +261,13 @@ const databaseAPI: DatabaseAPI = {
     upsertMany: (
       experimentId: string,
       scannerId: string,
-      assignments: { plate_index: string; plate_barcode?: string | null; transplant_date?: string | null; custom_note?: string | null; selected?: boolean }[]
+      assignments: {
+        plate_index: string;
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }[]
     ) =>
       ipcRenderer.invoke(
         'db:graviscanPlateAssignments:upsertMany',
@@ -287,10 +302,7 @@ const databaseAPI: DatabaseAPI = {
       wave_number: number;
       plate_barcode: string;
     }) =>
-      ipcRenderer.invoke(
-        'db:graviscans:check-barcode-unique-in-wave',
-        data
-      ),
+      ipcRenderer.invoke('db:graviscans:check-barcode-unique-in-wave', data),
     updateGridTimestamps: (data: {
       ids: string[];
       scan_started_at: string;
@@ -307,7 +319,8 @@ const databaseAPI: DatabaseAPI = {
         accession?: string;
         uploadStatus?: string;
       };
-    }) => ipcRenderer.invoke('db:graviscans:browse-by-experiment', params || {}),
+    }) =>
+      ipcRenderer.invoke('db:graviscans:browse-by-experiment', params || {}),
     getExperimentDetail: (experimentId: string) =>
       ipcRenderer.invoke('db:graviscans:experiment-detail', { experimentId }),
   },
@@ -324,10 +337,8 @@ const databaseAPI: DatabaseAPI = {
       duration_seconds?: number | null;
       total_cycles?: number | null;
     }) => ipcRenderer.invoke('db:graviscan-sessions:create', data),
-    complete: (data: {
-      session_id: string;
-      cancelled?: boolean;
-    }) => ipcRenderer.invoke('db:graviscan-sessions:complete', data),
+    complete: (data: { session_id: string; cancelled?: boolean }) =>
+      ipcRenderer.invoke('db:graviscan-sessions:complete', data),
   },
   graviPlateAccessions: {
     createWithSections: (
@@ -351,8 +362,7 @@ const databaseAPI: DatabaseAPI = {
       ),
     list: (metadataFileId: string) =>
       ipcRenderer.invoke('db:graviPlateAccessions:list', metadataFileId),
-    listFiles: () =>
-      ipcRenderer.invoke('db:graviPlateAccessions:listFiles'),
+    listFiles: () => ipcRenderer.invoke('db:graviPlateAccessions:listFiles'),
     delete: (metadataFileId: string) =>
       ipcRenderer.invoke('db:graviPlateAccessions:delete', metadataFileId),
   },
@@ -386,15 +396,17 @@ const graviscanAPI = {
   getConfig: () => ipcRenderer.invoke('graviscan:get-config'),
   saveConfig: (config: GraviConfigInput) =>
     ipcRenderer.invoke('graviscan:save-config', config),
-  saveScannersDb: (scanners: Array<{
-    name: string;
-    display_name?: string | null;
-    vendor_id: string;
-    product_id: string;
-    usb_port?: string;
-    usb_bus?: number;
-    usb_device?: number;
-  }>) => ipcRenderer.invoke('graviscan:save-scanners-db', scanners),
+  saveScannersDb: (
+    scanners: Array<{
+      name: string;
+      display_name?: string | null;
+      vendor_id: string;
+      product_id: string;
+      usb_port?: string;
+      usb_bus?: number;
+      usb_device?: number;
+    }>
+  ) => ipcRenderer.invoke('graviscan:save-scanners-db', scanners),
   getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
   validateScanners: (cachedScannerIds: string[]) =>
     ipcRenderer.invoke('graviscan:validate-scanners', cachedScannerIds),
@@ -427,98 +439,255 @@ const graviscanAPI = {
     };
   }) => ipcRenderer.invoke('graviscan:start-scan', params),
   cancelScan: () => ipcRenderer.invoke('graviscan:cancel-scan'),
-  markJobRecorded: (jobKey: string) => ipcRenderer.invoke('graviscan:mark-job-recorded', jobKey),
-  getScanStatus: () => ipcRenderer.invoke('graviscan:get-scan-status') as Promise<{
-    isActive: boolean;
-    experimentId?: string;
-    phenotyperId?: string;
-    resolution?: number;
-    sessionId?: string | null;
-    jobs?: Record<string, {
-      scannerId: string; plateIndex: string; outputPath: string;
-      plantBarcode: string | null; gridMode: string;
-      status: 'pending' | 'scanning' | 'complete' | 'error';
-      imagePath?: string; error?: string; durationMs?: number;
-      dbRecorded?: boolean;
-    }>;
-    // Continuous scan timing
-    isContinuous?: boolean;
-    currentCycle?: number;
-    totalCycles?: number;
-    intervalMs?: number;
-    scanStartedAt?: number | null;
-    scanDurationMs?: number;
-    coordinatorState?: 'idle' | 'scanning' | 'waiting';
-    nextScanAt?: number | null;
-    waveNumber?: number;
-  }>,
+  markJobRecorded: (jobKey: string) =>
+    ipcRenderer.invoke('graviscan:mark-job-recorded', jobKey),
+  getScanStatus: () =>
+    ipcRenderer.invoke('graviscan:get-scan-status') as Promise<{
+      isActive: boolean;
+      experimentId?: string;
+      phenotyperId?: string;
+      resolution?: number;
+      sessionId?: string | null;
+      jobs?: Record<
+        string,
+        {
+          scannerId: string;
+          plateIndex: string;
+          outputPath: string;
+          plantBarcode: string | null;
+          gridMode: string;
+          status: 'pending' | 'scanning' | 'complete' | 'error';
+          imagePath?: string;
+          error?: string;
+          durationMs?: number;
+          dbRecorded?: boolean;
+        }
+      >;
+      // Continuous scan timing
+      isContinuous?: boolean;
+      currentCycle?: number;
+      totalCycles?: number;
+      intervalMs?: number;
+      scanStartedAt?: number | null;
+      scanDurationMs?: number;
+      coordinatorState?: 'idle' | 'scanning' | 'waiting';
+      nextScanAt?: number | null;
+      waveNumber?: number;
+    }>,
 
   // Event listeners for async scan events (push-based from scanner subprocesses)
-  onScanStarted: (callback: (data: { jobId: string; scannerId: string; plateIndex: string }) => void) => {
-    const listener = (_event: unknown, data: { jobId: string; scannerId: string; plateIndex: string }) => callback(data);
+  onScanStarted: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex: string;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: { jobId: string; scannerId: string; plateIndex: string }
+    ) => callback(data);
     ipcRenderer.on('graviscan:scan-started', listener);
     return () => ipcRenderer.removeListener('graviscan:scan-started', listener);
   },
-  onScanComplete: (callback: (data: { jobId: string; scannerId: string; plateIndex: string; imagePath: string; durationMs?: number; cycleNumber?: number; scanStartedAt?: string | null }) => void) => {
-    const listener = (_event: unknown, data: { jobId: string; scannerId: string; plateIndex: string; imagePath: string; durationMs?: number; cycleNumber?: number; scanStartedAt?: string | null }) => callback(data);
+  onScanComplete: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex: string;
+      imagePath: string;
+      durationMs?: number;
+      cycleNumber?: number;
+      scanStartedAt?: string | null;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: {
+        jobId: string;
+        scannerId: string;
+        plateIndex: string;
+        imagePath: string;
+        durationMs?: number;
+        cycleNumber?: number;
+        scanStartedAt?: string | null;
+      }
+    ) => callback(data);
     ipcRenderer.on('graviscan:scan-complete', listener);
-    return () => ipcRenderer.removeListener('graviscan:scan-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:scan-complete', listener);
   },
-  onScanError: (callback: (data: { jobId: string; scannerId: string; plateIndex?: string; error: string }) => void) => {
-    const listener = (_event: unknown, data: { jobId: string; scannerId: string; plateIndex?: string; error: string }) => callback(data);
+  onScanError: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex?: string;
+      error: string;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: {
+        jobId: string;
+        scannerId: string;
+        plateIndex?: string;
+        error: string;
+      }
+    ) => callback(data);
     ipcRenderer.on('graviscan:scan-error', listener);
     return () => ipcRenderer.removeListener('graviscan:scan-error', listener);
   },
-  onGridComplete: (callback: (data: { cycle: number; gridIndex: string; scanStartedAt: string; scanEndedAt: string; renamedFiles: { oldPath: string; newPath: string; scannerId: string }[] }) => void) => {
-    const listener = (_event: unknown, data: { cycle: number; gridIndex: string; scanStartedAt: string; scanEndedAt: string; renamedFiles: { oldPath: string; newPath: string; scannerId: string }[] }) => callback(data);
+  onGridComplete: (
+    callback: (data: {
+      cycle: number;
+      gridIndex: string;
+      scanStartedAt: string;
+      scanEndedAt: string;
+      renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: {
+        cycle: number;
+        gridIndex: string;
+        scanStartedAt: string;
+        scanEndedAt: string;
+        renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
+      }
+    ) => callback(data);
     ipcRenderer.on('graviscan:grid-complete', listener);
-    return () => ipcRenderer.removeListener('graviscan:grid-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:grid-complete', listener);
   },
   onCycleComplete: (callback: (data: { cycle: number }) => void) => {
-    const listener = (_event: unknown, data: { cycle: number }) => callback(data);
+    const listener = (_event: unknown, data: { cycle: number }) =>
+      callback(data);
     ipcRenderer.on('graviscan:cycle-complete', listener);
-    return () => ipcRenderer.removeListener('graviscan:cycle-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:cycle-complete', listener);
   },
-  onIntervalWaiting: (callback: (data: { cycle: number; totalCycles: number; nextScanMs: number }) => void) => {
-    const listener = (_event: unknown, data: { cycle: number; totalCycles: number; nextScanMs: number }) => callback(data);
+  onIntervalWaiting: (
+    callback: (data: {
+      cycle: number;
+      totalCycles: number;
+      nextScanMs: number;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: { cycle: number; totalCycles: number; nextScanMs: number }
+    ) => callback(data);
     ipcRenderer.on('graviscan:interval-waiting', listener);
-    return () => ipcRenderer.removeListener('graviscan:interval-waiting', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:interval-waiting', listener);
   },
-  onOvertime: (callback: (data: { cycle: number; totalCycles: number; overtimeMs: number }) => void) => {
-    const listener = (_event: unknown, data: { cycle: number; totalCycles: number; overtimeMs: number }) => callback(data);
+  onOvertime: (
+    callback: (data: {
+      cycle: number;
+      totalCycles: number;
+      overtimeMs: number;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: { cycle: number; totalCycles: number; overtimeMs: number }
+    ) => callback(data);
     ipcRenderer.on('graviscan:overtime', listener);
     return () => ipcRenderer.removeListener('graviscan:overtime', listener);
   },
-  onIntervalComplete: (callback: (data: { cyclesCompleted: number; totalCycles: number; cancelled: boolean; overtimeMs: number }) => void) => {
-    const listener = (_event: unknown, data: { cyclesCompleted: number; totalCycles: number; cancelled: boolean; overtimeMs: number }) => callback(data);
+  onIntervalComplete: (
+    callback: (data: {
+      cyclesCompleted: number;
+      totalCycles: number;
+      cancelled: boolean;
+      overtimeMs: number;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: {
+        cyclesCompleted: number;
+        totalCycles: number;
+        cancelled: boolean;
+        overtimeMs: number;
+      }
+    ) => callback(data);
     ipcRenderer.on('graviscan:interval-complete', listener);
-    return () => ipcRenderer.removeListener('graviscan:interval-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:interval-complete', listener);
   },
-  onIntervalStart: (callback: (data: { totalCycles: number; intervalMs: number; durationMs: number; startedAt: number }) => void) => {
-    const listener = (_event: unknown, data: { totalCycles: number; intervalMs: number; durationMs: number; startedAt: number }) => callback(data);
+  onIntervalStart: (
+    callback: (data: {
+      totalCycles: number;
+      intervalMs: number;
+      durationMs: number;
+      startedAt: number;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: {
+        totalCycles: number;
+        intervalMs: number;
+        durationMs: number;
+        startedAt: number;
+      }
+    ) => callback(data);
     ipcRenderer.on('graviscan:interval-start', listener);
-    return () => ipcRenderer.removeListener('graviscan:interval-start', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:interval-start', listener);
   },
 
   // Cloud upload
-  uploadAllScans: () =>
-    ipcRenderer.invoke('graviscan:upload-all-scans'),
-  onUploadProgress: (callback: (progress: { total: number; completed: number; failed: number; currentFile: string }) => void) => {
-    const listener = (_event: unknown, progress: { total: number; completed: number; failed: number; currentFile: string }) => callback(progress);
+  uploadAllScans: () => ipcRenderer.invoke('graviscan:upload-all-scans'),
+  onUploadProgress: (
+    callback: (progress: {
+      total: number;
+      completed: number;
+      failed: number;
+      currentFile: string;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      progress: {
+        total: number;
+        completed: number;
+        failed: number;
+        currentFile: string;
+      }
+    ) => callback(progress);
     ipcRenderer.on('graviscan:upload-progress', listener);
-    return () => ipcRenderer.removeListener('graviscan:upload-progress', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:upload-progress', listener);
   },
-  onBoxBackupProgress: (callback: (progress: { totalImages: number; completedImages: number; failedImages: number; currentExperiment: string }) => void) => {
-    const listener = (_event: unknown, progress: { totalImages: number; completedImages: number; failedImages: number; currentExperiment: string }) => callback(progress);
+  onBoxBackupProgress: (
+    callback: (progress: {
+      totalImages: number;
+      completedImages: number;
+      failedImages: number;
+      currentExperiment: string;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      progress: {
+        totalImages: number;
+        completedImages: number;
+        failedImages: number;
+        currentExperiment: string;
+      }
+    ) => callback(progress);
     ipcRenderer.on('graviscan:box-backup-progress', listener);
-    return () => ipcRenderer.removeListener('graviscan:box-backup-progress', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:box-backup-progress', listener);
   },
   downloadImages: (params: {
     experimentId: string;
     experimentName: string;
     waveNumber?: number;
   }) => ipcRenderer.invoke('graviscan:download-images', params),
-
 };
 
 /**

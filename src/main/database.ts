@@ -169,9 +169,10 @@ async function runMigrations(
   `);
 
   // Get already-applied migrations
-  const applied: Array<{ migration_name: string }> = await client.$queryRawUnsafe(
-    'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL'
-  );
+  const applied: Array<{ migration_name: string }> =
+    await client.$queryRawUnsafe(
+      'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL'
+    );
   const appliedSet = new Set(applied.map((m) => m.migration_name));
 
   // Read migration directories (sorted alphabetically = chronological order)
@@ -506,7 +507,10 @@ export async function initializeDatabase(
   console.log('[Database] Initialized at:', dbPath);
 
   // Run pending migrations (creates tables on fresh install)
-  await runMigrations(prisma);
+  // Skip when running outside Electron (e.g., ts-node integration tests)
+  if (typeof app !== 'undefined' && app !== null) {
+    await runMigrations(prisma);
+  }
 
   return prisma;
 }

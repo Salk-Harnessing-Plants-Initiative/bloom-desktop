@@ -8,11 +8,10 @@ Useful for development and testing without requiring actual camera hardware.
 import base64
 import glob
 from io import BytesIO
-import os
 import pathlib
 import sys
 import time
-from typing import Dict, List, Any, Optional
+from typing import List, Optional
 
 import imageio.v2 as iio
 import numpy as np
@@ -230,4 +229,3 @@ class MockCamera:
         base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
         return f"data:image/png;base64,{base64_data}"
-

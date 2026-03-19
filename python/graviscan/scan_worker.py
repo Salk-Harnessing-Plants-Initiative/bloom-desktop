@@ -35,16 +35,23 @@ from datetime import datetime, timezone
 
 from PIL.TiffImagePlugin import ImageFileDirectory_v2, IFDRational
 
-from .scan_regions import get_scan_region, get_row_groups, get_row_bounding_box, get_crop_box
-
+from .scan_regions import (
+    get_scan_region,
+    get_row_groups,
+    get_row_bounding_box,
+    get_crop_box,
+)
 
 # Application version embedded in TIFF metadata
 _BLOOM_VERSION = "0.1.0"
 
 
 def _build_tiff_metadata(
-    scanner_id: str, grid_mode: str, plate_index: str,
-    resolution: int, region,
+    scanner_id: str,
+    grid_mode: str,
+    plate_index: str,
+    resolution: int,
+    region,
 ) -> ImageFileDirectory_v2:
     """Build TIFF metadata tags for a scan image.
 
@@ -52,18 +59,22 @@ def _build_tiff_metadata(
     Structured metadata goes into ImageDescription as JSON.
     """
     ifd = ImageFileDirectory_v2()
-    ifd[270] = json.dumps({  # ImageDescription
-        "scanner_id": scanner_id,
-        "grid_mode": grid_mode,
-        "plate_index": plate_index,
-        "resolution_dpi": resolution,
-        "scan_region_mm": {
-            "top": region.top, "left": region.left,
-            "width": region.width, "height": region.height,
-        },
-        "capture_timestamp": datetime.now(timezone.utc).isoformat(),
-        "bloom_version": _BLOOM_VERSION,
-    })
+    ifd[270] = json.dumps(
+        {  # ImageDescription
+            "scanner_id": scanner_id,
+            "grid_mode": grid_mode,
+            "plate_index": plate_index,
+            "resolution_dpi": resolution,
+            "scan_region_mm": {
+                "top": region.top,
+                "left": region.left,
+                "width": region.width,
+                "height": region.height,
+            },
+            "capture_timestamp": datetime.now(timezone.utc).isoformat(),
+            "bloom_version": _BLOOM_VERSION,
+        }
+    )
     ifd[305] = "Bloom Desktop / GraviScan"  # Software
     ifd[282] = IFDRational(resolution, 1)  # XResolution
     ifd[283] = IFDRational(resolution, 1)  # YResolution
@@ -105,6 +116,7 @@ class ScanWorker:
 
         try:
             import sane
+
             self._sane = sane
 
             log(self.scanner_id, "Initializing SANE...")
@@ -124,13 +136,20 @@ class ScanWorker:
                     except Exception:
                         pass
                     delay = 3 * (init_attempt + 1)
-                    log(self.scanner_id, f"sane.open() failed ({init_attempt + 1}/{INIT_RETRIES}): {e} — waiting {delay}s...")
+                    log(
+                        self.scanner_id,
+                        f"sane.open() failed ({init_attempt + 1}/{INIT_RETRIES}): {e} — waiting {delay}s...",
+                    )
                     time.sleep(delay)
                     sane.init()
             else:
-                raise RuntimeError(f"Failed to open device after {INIT_RETRIES} attempts")
+                raise RuntimeError(
+                    f"Failed to open device after {INIT_RETRIES} attempts"
+                )
             self._device_is_open = True
             log(self.scanner_id, f"Device opened in {time.time() - open_start:.1f}s")
+
+            assert self._device is not None
 
             # Critical: initialize geometry by reading/writing boundary coords
             self._device.tl_x = 0
@@ -148,7 +167,7 @@ class ScanWorker:
             try:
                 opts = self._device.get_options()
                 for opt in opts:
-                    if len(opt) > 1 and opt[1] == 'resolution':
+                    if len(opt) > 1 and opt[1] == "resolution":
                         log(self.scanner_id, f"Resolution option: {opt}")
                         break
             except Exception as e:
@@ -168,11 +187,13 @@ class ScanWorker:
             return True
 
         except Exception as e:
-            emit_event({
-                "type": "error",
-                "scanner_id": self.scanner_id,
-                "error": f"Failed to initialize: {e}",
-            })
+            emit_event(
+                {
+                    "type": "error",
+                    "scanner_id": self.scanner_id,
+                    "error": f"Failed to initialize: {e}",
+                }
+            )
             return False
 
     def run(self) -> None:
@@ -230,7 +251,9 @@ class ScanWorker:
                         break
 
                 # Only include plates that were actually requested
-                row_plates = [plate_by_index[idx] for idx in row_indices if idx in plate_by_index]
+                row_plates = [
+                    plate_by_index[idx] for idx in row_indices if idx in plate_by_index
+                ]
                 if not row_plates:
                     continue
 
@@ -246,20 +269,24 @@ class ScanWorker:
                 with self._cancel_lock:
                     if self._cancel_requested:
                         job_id = str(uuid.uuid4())
-                        emit_event({
-                            "type": "scan-cancelled",
-                            "scanner_id": self.scanner_id,
-                            "plate_index": plate.get("plate_index", "?"),
-                            "job_id": job_id,
-                        })
+                        emit_event(
+                            {
+                                "type": "scan-cancelled",
+                                "scanner_id": self.scanner_id,
+                                "plate_index": plate.get("plate_index", "?"),
+                                "job_id": job_id,
+                            }
+                        )
                         break
                 self._scan_plate(plate)
 
-        emit_event({
-            "type": "cycle-done",
-            "scanner_id": self.scanner_id,
-            "cycle": self._cycle,
-        })
+        emit_event(
+            {
+                "type": "cycle-done",
+                "scanner_id": self.scanner_id,
+                "cycle": self._cycle,
+            }
+        )
 
     def _handle_cancel(self) -> None:
         """Handle a cancel command — set flag to stop after current plate."""
@@ -275,12 +302,14 @@ class ScanWorker:
         output_path = plate.get("output_path", "/tmp/scan.jpg")
         job_id = str(uuid.uuid4())
 
-        emit_event({
-            "type": "scan-started",
-            "scanner_id": self.scanner_id,
-            "plate_index": plate_index,
-            "job_id": job_id,
-        })
+        emit_event(
+            {
+                "type": "scan-started",
+                "scanner_id": self.scanner_id,
+                "plate_index": plate_index,
+                "job_id": job_id,
+            }
+        )
 
         start_time = time.time()
 
@@ -292,30 +321,38 @@ class ScanWorker:
 
             duration_ms = int((time.time() - start_time) * 1000)
 
-            emit_event({
-                "type": "scan-complete",
-                "scanner_id": self.scanner_id,
-                "plate_index": plate_index,
-                "job_id": job_id,
-                "path": output_path,
-                "duration_ms": duration_ms,
-            })
+            emit_event(
+                {
+                    "type": "scan-complete",
+                    "scanner_id": self.scanner_id,
+                    "plate_index": plate_index,
+                    "job_id": job_id,
+                    "path": output_path,
+                    "duration_ms": duration_ms,
+                }
+            )
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             log(self.scanner_id, f"Scan error (plate {plate_index}): {e}")
 
-            emit_event({
-                "type": "scan-error",
-                "scanner_id": self.scanner_id,
-                "plate_index": plate_index,
-                "job_id": job_id,
-                "error": str(e),
-                "duration_ms": duration_ms,
-            })
+            emit_event(
+                {
+                    "type": "scan-error",
+                    "scanner_id": self.scanner_id,
+                    "plate_index": plate_index,
+                    "job_id": job_id,
+                    "error": str(e),
+                    "duration_ms": duration_ms,
+                }
+            )
 
     def _sane_scan(
-        self, grid_mode: str, plate_index: str, resolution: int, output_path: str,
+        self,
+        grid_mode: str,
+        plate_index: str,
+        resolution: int,
+        output_path: str,
     ) -> None:
         """Perform a scan using python-sane directly.
 
@@ -345,13 +382,18 @@ class ScanWorker:
         for attempt in range(MAX_RETRIES):
             if attempt > 0:
                 backoff = min(2 * (attempt + 1), 15)
-                log(self.scanner_id, f"Retry backoff: waiting {backoff}s before attempt {attempt + 1}/{MAX_RETRIES}...")
+                log(
+                    self.scanner_id,
+                    f"Retry backoff: waiting {backoff}s before attempt {attempt + 1}/{MAX_RETRIES}...",
+                )
                 time.sleep(backoff)
 
             try:
                 # Reopen device if it was closed (e.g. after a previous failure)
                 if not self._device_is_open:
                     self._reopen_device()
+
+                assert self._device is not None
 
                 # Set resolution and mode BEFORE geometry (epkowa requirement)
                 self._device.x_resolution = resolution
@@ -372,8 +414,12 @@ class ScanWorker:
                     raise RuntimeError("snap() returned None")
 
                 # Save as TIFF with LZW compression and metadata
-                tiff_meta = _build_tiff_metadata(self.scanner_id, grid_mode, plate_index, resolution, region)
-                image.save(output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
+                tiff_meta = _build_tiff_metadata(
+                    self.scanner_id, grid_mode, plate_index, resolution, region
+                )
+                image.save(
+                    output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+                )
 
                 # Cancel to return device to IDLE state for next scan
                 try:
@@ -386,7 +432,10 @@ class ScanWorker:
 
             except Exception as e:
                 last_error = str(e)
-                log(self.scanner_id, f"Scan failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+                log(
+                    self.scanner_id,
+                    f"Scan failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}",
+                )
                 # Device may be in a bad state — close it so next attempt reopens fresh
                 self._close_device()
 
@@ -395,7 +444,7 @@ class ScanWorker:
 
     def _close_device(self) -> None:
         """Close python-sane device to release USB (safe to call multiple times)."""
-        if not self._device_is_open:
+        if not self._device_is_open or self._device is None:
             return
         try:
             self._device.cancel()
@@ -415,18 +464,23 @@ class ScanWorker:
         Only runs on Linux; silently skips on other platforms.
         """
         import platform
+
         if platform.system() != "Linux":
             return
 
         try:
             import fcntl
+
             parts = self.device_name.split(":")
             if len(parts) < 4:
-                log(self.scanner_id, f"Cannot parse bus:device from '{self.device_name}', skipping USB reset")
+                log(
+                    self.scanner_id,
+                    f"Cannot parse bus:device from '{self.device_name}', skipping USB reset",
+                )
                 return
             bus, dev = int(parts[2]), int(parts[3])
             usb_path = f"/dev/bus/usb/{bus:03d}/{dev:03d}"
-            USBDEVFS_RESET = ord('U') << 8 | 20
+            USBDEVFS_RESET = ord("U") << 8 | 20
             fd = os.open(usb_path, os.O_WRONLY)
             try:
                 fcntl.ioctl(fd, USBDEVFS_RESET, 0)
@@ -445,18 +499,20 @@ class ScanWorker:
         """
         REOPEN_RETRIES = 3
 
-        try:
-            self._device.cancel()
-        except Exception:
-            pass
-        try:
-            self._device.close()
-        except Exception:
-            pass
-        try:
-            self._sane.exit()
-        except Exception:
-            pass
+        if self._device is not None:
+            try:
+                self._device.cancel()
+            except Exception:
+                pass
+            try:
+                self._device.close()
+            except Exception:
+                pass
+        if self._sane is not None:
+            try:
+                self._sane.exit()
+            except Exception:
+                pass
 
         # Flush stale USB bulk transfers before SANE reinit
         self._reset_usb_device()
@@ -466,6 +522,8 @@ class ScanWorker:
 
         log(self.scanner_id, f"Full SANE reinit for device: {self.device_name}")
         open_start = time.time()
+
+        assert self._sane is not None
 
         last_err = None
         for reopen_attempt in range(REOPEN_RETRIES):
@@ -481,13 +539,20 @@ class ScanWorker:
                 except Exception:
                     pass
                 delay = 2 * (reopen_attempt + 1)
-                log(self.scanner_id, f"sane.open() failed ({reopen_attempt + 1}/{REOPEN_RETRIES}): {e} — waiting {delay}s...")
+                log(
+                    self.scanner_id,
+                    f"sane.open() failed ({reopen_attempt + 1}/{REOPEN_RETRIES}): {e} — waiting {delay}s...",
+                )
                 time.sleep(delay)
         else:
-            raise RuntimeError(f"Failed to reopen device after {REOPEN_RETRIES} attempts: {last_err}")
+            raise RuntimeError(
+                f"Failed to reopen device after {REOPEN_RETRIES} attempts: {last_err}"
+            )
 
         log(self.scanner_id, f"Device reopened in {time.time() - open_start:.1f}s")
         self._device_is_open = True
+
+        assert self._device is not None
 
         # Re-initialize geometry
         self._device.tl_x = 0
@@ -526,7 +591,9 @@ class ScanWorker:
         image = Image.fromarray(img_array, mode="RGB")
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        tiff_meta = _build_tiff_metadata(self.scanner_id, grid_mode, plate_index, resolution, region)
+        tiff_meta = _build_tiff_metadata(
+            self.scanner_id, grid_mode, plate_index, resolution, region
+        )
         image.save(output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
 
         log(self.scanner_id, f"Mock scan saved: {output_path}")
@@ -542,12 +609,14 @@ class ScanWorker:
         for plate in row_plates:
             job_id = str(uuid.uuid4())
             job_ids[plate["plate_index"]] = job_id
-            emit_event({
-                "type": "scan-started",
-                "scanner_id": self.scanner_id,
-                "plate_index": plate["plate_index"],
-                "job_id": job_id,
-            })
+            emit_event(
+                {
+                    "type": "scan-started",
+                    "scanner_id": self.scanner_id,
+                    "plate_index": plate["plate_index"],
+                    "job_id": job_id,
+                }
+            )
 
         start_time = time.time()
 
@@ -561,40 +630,57 @@ class ScanWorker:
 
             # Crop and save each plate
             for plate in row_plates:
-                crop_box = get_crop_box(grid_mode, plate["plate_index"], bbox, resolution)
+                crop_box = get_crop_box(
+                    grid_mode, plate["plate_index"], bbox, resolution
+                )
                 plate_image = row_image.crop(crop_box)
                 output_path = plate["output_path"]
                 plate_region = get_scan_region(grid_mode, plate["plate_index"])
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                tiff_meta = _build_tiff_metadata(self.scanner_id, grid_mode, plate["plate_index"], resolution, plate_region)
-                plate_image.save(output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
-                log(self.scanner_id, f"Cropped plate {plate['plate_index']} saved: {output_path}")
+                tiff_meta = _build_tiff_metadata(
+                    self.scanner_id,
+                    grid_mode,
+                    plate["plate_index"],
+                    resolution,
+                    plate_region,
+                )
+                plate_image.save(
+                    output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+                )
+                log(
+                    self.scanner_id,
+                    f"Cropped plate {plate['plate_index']} saved: {output_path}",
+                )
 
             duration_ms = int((time.time() - start_time) * 1000)
 
             # Emit scan-complete for each plate
             for plate in row_plates:
-                emit_event({
-                    "type": "scan-complete",
-                    "scanner_id": self.scanner_id,
-                    "plate_index": plate["plate_index"],
-                    "job_id": job_ids[plate["plate_index"]],
-                    "path": plate["output_path"],
-                    "duration_ms": duration_ms,
-                })
+                emit_event(
+                    {
+                        "type": "scan-complete",
+                        "scanner_id": self.scanner_id,
+                        "plate_index": plate["plate_index"],
+                        "job_id": job_ids[plate["plate_index"]],
+                        "path": plate["output_path"],
+                        "duration_ms": duration_ms,
+                    }
+                )
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             log(self.scanner_id, f"Row scan error ({plate_indices}): {e}")
             for plate in row_plates:
-                emit_event({
-                    "type": "scan-error",
-                    "scanner_id": self.scanner_id,
-                    "plate_index": plate["plate_index"],
-                    "job_id": job_ids[plate["plate_index"]],
-                    "error": str(e),
-                    "duration_ms": duration_ms,
-                })
+                emit_event(
+                    {
+                        "type": "scan-error",
+                        "scanner_id": self.scanner_id,
+                        "plate_index": plate["plate_index"],
+                        "job_id": job_ids[plate["plate_index"]],
+                        "error": str(e),
+                        "duration_ms": duration_ms,
+                    }
+                )
 
     def _sane_scan_row(self, bbox, resolution: int):
         """Scan a row bounding box and return the PIL Image (no save).
@@ -602,7 +688,6 @@ class ScanWorker:
         Uses the same python-sane approach as _sane_scan() but with
         the bounding box region and returns the image for cropping.
         """
-        from PIL import Image
 
         MAX_RETRIES = 5
         last_error = None
@@ -616,12 +701,17 @@ class ScanWorker:
         for attempt in range(MAX_RETRIES):
             if attempt > 0:
                 backoff = min(2 * (attempt + 1), 15)
-                log(self.scanner_id, f"Retry backoff: waiting {backoff}s before attempt {attempt + 1}/{MAX_RETRIES}...")
+                log(
+                    self.scanner_id,
+                    f"Retry backoff: waiting {backoff}s before attempt {attempt + 1}/{MAX_RETRIES}...",
+                )
                 time.sleep(backoff)
 
             try:
                 if not self._device_is_open:
                     self._reopen_device()
+
+                assert self._device is not None
 
                 # Set resolution and mode BEFORE geometry (epkowa requirement)
                 self._device.x_resolution = resolution
@@ -645,15 +735,23 @@ class ScanWorker:
                 except Exception:
                     pass
 
-                log(self.scanner_id, f"Row-merge scan complete: {image.size[0]}x{image.size[1]} px")
+                log(
+                    self.scanner_id,
+                    f"Row-merge scan complete: {image.size[0]}x{image.size[1]} px",
+                )
                 return image
 
             except Exception as e:
                 last_error = str(e)
-                log(self.scanner_id, f"Row scan failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+                log(
+                    self.scanner_id,
+                    f"Row scan failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}",
+                )
                 self._close_device()
 
-        raise RuntimeError(f"Row scan failed after {MAX_RETRIES} attempts: {last_error}")
+        raise RuntimeError(
+            f"Row scan failed after {MAX_RETRIES} attempts: {last_error}"
+        )
 
     def _mock_scan_row(self, bbox, resolution: int):
         """Generate a mock row scan image (checkerboard) and return PIL Image."""
@@ -699,10 +797,18 @@ class ScanWorker:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="GraviScan worker for a single scanner")
-    parser.add_argument("--device", type=str, help="SANE device name (e.g., epkowa:interpreter:001:007)")
-    parser.add_argument("--scanner-id", type=str, required=True, help="Scanner UUID from database")
-    parser.add_argument("--mock", action="store_true", help="Run in mock mode (no hardware)")
+    parser = argparse.ArgumentParser(
+        description="GraviScan worker for a single scanner"
+    )
+    parser.add_argument(
+        "--device", type=str, help="SANE device name (e.g., epkowa:interpreter:001:007)"
+    )
+    parser.add_argument(
+        "--scanner-id", type=str, required=True, help="Scanner UUID from database"
+    )
+    parser.add_argument(
+        "--mock", action="store_true", help="Run in mock mode (no hardware)"
+    )
     args = parser.parse_args()
 
     if not args.mock and not args.device:

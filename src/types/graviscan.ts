@@ -25,7 +25,7 @@ export interface DetectedScanner {
   is_available: boolean;
   vendor_id: string;
   product_id: string;
-  sane_name?: string;  // SANE device identifier (e.g., "epkowa:usb:001:005")
+  sane_name?: string; // SANE device identifier (e.g., "epkowa:usb:001:005")
 }
 
 /**
@@ -58,9 +58,9 @@ export interface GraviScanner {
   display_name: string | null; // User-assigned slot name (e.g., "Scanner 1")
   vendor_id: string;
   product_id: string;
-  usb_port: string | null;    // Stable USB port identifier (e.g., "1-2")
-  usb_bus: number | null;     // USB bus number
-  usb_device: number | null;  // USB device number (can change on replug)
+  usb_port: string | null; // Stable USB port identifier (e.g., "1-2")
+  usb_bus: number | null; // USB bus number
+  usb_device: number | null; // USB device number (can change on replug)
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -145,8 +145,6 @@ export interface GraviImage {
   box_status: string; // Box backup: "pending" | "uploaded" | "failed"
 }
 
-
-
 /**
  * Platform information for GraviScan support.
  */
@@ -182,7 +180,12 @@ export const PLATE_INDICES: Record<GridMode, string[]> = {
 /**
  * Scanner state during scan operations.
  */
-export type ScannerState = 'idle' | 'scanning' | 'waiting' | 'complete' | 'error';
+export type ScannerState =
+  | 'idle'
+  | 'scanning'
+  | 'waiting'
+  | 'complete'
+  | 'error';
 
 /**
  * Per-scanner state for tracking scan progress.
@@ -204,11 +207,11 @@ export interface ScannerPanelState {
  * Used to track which plant is on which plate position.
  */
 export interface PlateAssignment {
-  plateIndex: string;              // "00", "01", "10", "11"
-  plantBarcode: string | null;     // Plant barcode or null if not assigned
-  transplantDate: string | null;   // ISO date string (YYYY-MM-DD) or null
-  customNote: string | null;       // Free-form metadata text or null
-  selected: boolean;               // Whether this plate is selected for scanning
+  plateIndex: string; // "00", "01", "10", "11"
+  plantBarcode: string | null; // Plant barcode or null if not assigned
+  transplantDate: string | null; // ISO date string (YYYY-MM-DD) or null
+  customNote: string | null; // Free-form metadata text or null
+  selected: boolean; // Whether this plate is selected for scanning
 }
 
 /**
@@ -216,25 +219,27 @@ export interface PlateAssignment {
  * Used for plate-level assignment on the Scan page (vs barcode-level for CylScan).
  */
 export interface AvailablePlate {
-  id: string;              // GraviPlateAccession database ID
-  plate_id: string;        // Human-readable plate identifier (e.g., "PLATE_001")
-  accession: string;       // Accession/genotype line (e.g., "Ara-1")
+  id: string; // GraviPlateAccession database ID
+  plate_id: string; // Human-readable plate identifier (e.g., "PLATE_001")
+  accession: string; // Accession/genotype line (e.g., "Ara-1")
   custom_note: string | null; // User-defined note from metadata CSV
-  sectionCount: number;    // Number of sections on this plate
-  plantQrCodes: string[];  // All plant QR codes from sections
+  sectionCount: number; // Number of sections on this plate
+  plantQrCodes: string[]; // All plant QR codes from sections
 }
 
 /**
  * Create plate assignments for a grid mode.
  */
 export function createPlateAssignments(gridMode: GridMode): PlateAssignment[] {
-  return PLATE_INDICES[gridMode].map((plateIndex): PlateAssignment => ({
-    plateIndex,
-    plantBarcode: null,
-    transplantDate: null,
-    customNote: null,
-    selected: true,
-  }));
+  return PLATE_INDICES[gridMode].map(
+    (plateIndex): PlateAssignment => ({
+      plateIndex,
+      plantBarcode: null,
+      transplantDate: null,
+      customNote: null,
+      selected: true,
+    })
+  );
 }
 
 const PLATE_INDEX_LABELS: Record<string, string> = {
@@ -263,10 +268,10 @@ export function formatPlateIndex(plateIndex: string): string {
  * Used for user-selected scanner configuration.
  */
 export interface ScannerAssignment {
-  slot: string;              // "Scanner 1", "Scanner 2", etc.
-  scannerId: string | null;  // Assigned scanner ID or null if not assigned
-  usbPort: string | null;    // USB port for display (e.g., "1-2")
-  gridMode: '2grid' | '4grid';  // Per-scanner grid mode
+  slot: string; // "Scanner 1", "Scanner 2", etc.
+  scannerId: string | null; // Assigned scanner ID or null if not assigned
+  usbPort: string | null; // USB port for display (e.g., "1-2")
+  gridMode: '2grid' | '4grid'; // Per-scanner grid mode
 }
 
 /**
@@ -289,18 +294,22 @@ export function generateScannerSlotName(index: number): string {
 /**
  * Generate default scanner slot names.
  */
-export function generateScannerSlots(count: number = DEFAULT_SCANNER_SLOTS): string[] {
+export function generateScannerSlots(
+  count: number = DEFAULT_SCANNER_SLOTS
+): string[] {
   return Array.from({ length: count }, (_, i) => generateScannerSlotName(i));
 }
 
 /**
  * Create an empty scanner assignment for a slot.
  */
-export function createEmptyScannerAssignment(slotIndex: number): ScannerAssignment {
+export function createEmptyScannerAssignment(
+  slotIndex: number
+): ScannerAssignment {
   return {
     slot: generateScannerSlotName(slotIndex),
     scannerId: null,
     usbPort: null,
-    gridMode: '2grid',  // Default to 2-grid
+    gridMode: '2grid', // Default to 2-grid
   };
 }

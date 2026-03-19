@@ -28,17 +28,26 @@ function loadFromStorage<T>(key: string, defaultValue: T): T {
   try {
     const stored = localStorage.getItem(key);
     if (stored) return JSON.parse(stored);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return defaultValue;
 }
 
 function saveToStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
-export type ConfigStatus = 'loading' | 'valid' | 'mismatch' | 'no-config' | 'error';
+export type ConfigStatus =
+  | 'loading'
+  | 'valid'
+  | 'mismatch'
+  | 'no-config'
+  | 'error';
 
 interface UseScannerConfigParams {
   setScannerStates: React.Dispatch<React.SetStateAction<ScannerPanelState[]>>;
@@ -80,8 +89,14 @@ export interface UseScannerConfigReturn {
   // Handlers
   handleDetectScanners: () => Promise<void>;
   handleResetScannerConfig: (e: React.MouseEvent) => Promise<void>;
-  handleScannerAssignment: (slotIndex: number, scannerId: string | null) => void;
-  handleScannerGridMode: (slotIndex: number, gridMode: '2grid' | '4grid') => void;
+  handleScannerAssignment: (
+    slotIndex: number,
+    scannerId: string | null
+  ) => void;
+  handleScannerGridMode: (
+    slotIndex: number,
+    gridMode: '2grid' | '4grid'
+  ) => void;
   handleAddScannerSlot: () => void;
   handleRemoveScannerSlot: (slotIndex: number) => void;
   handleToggleConfigCollapse: () => void;
@@ -93,19 +108,25 @@ export function useScannerConfig({
   setScannerStates,
 }: UseScannerConfigParams): UseScannerConfigReturn {
   // Platform support
-  const [platformInfo, setPlatformInfo] = useState<GraviScanPlatformInfo | null>(null);
+  const [platformInfo, setPlatformInfo] =
+    useState<GraviScanPlatformInfo | null>(null);
   const [platformLoading, setPlatformLoading] = useState(true);
 
   // Scanner detection - initialize from localStorage
-  const [detectedScanners, setDetectedScanners] = useState<DetectedScanner[]>(() =>
-    loadFromStorage(STORAGE_KEYS.detectedScanners, [])
+  const [detectedScanners, setDetectedScanners] = useState<DetectedScanner[]>(
+    () => loadFromStorage(STORAGE_KEYS.detectedScanners, [])
   );
   const [detectingScanner, setDetectingScanner] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
 
   // Scanner assignments - maps slot names to detected scanners
-  const [scannerAssignments, setScannerAssignments] = useState<ScannerAssignment[]>(() => {
-    const stored = loadFromStorage<ScannerAssignment[]>(STORAGE_KEYS.scannerAssignments, []);
+  const [scannerAssignments, setScannerAssignments] = useState<
+    ScannerAssignment[]
+  >(() => {
+    const stored = loadFromStorage<ScannerAssignment[]>(
+      STORAGE_KEYS.scannerAssignments,
+      []
+    );
     if (stored.length > 0) return stored;
     return generateScannerSlots(DEFAULT_SCANNER_SLOTS).map((_slot, index) =>
       createEmptyScannerAssignment(index)
@@ -124,7 +145,10 @@ export function useScannerConfig({
   // Collapsible Configure Scanners section - auto-collapse if already configured
   const [isConfigCollapsed, setIsConfigCollapsed] = useState(() => {
     const savedCollapsed = loadFromStorage(STORAGE_KEYS.configCollapsed, false);
-    const isAlreadyConfigured = loadFromStorage(STORAGE_KEYS.isConfigured, false);
+    const isAlreadyConfigured = loadFromStorage(
+      STORAGE_KEYS.isConfigured,
+      false
+    );
     return isAlreadyConfigured || savedCollapsed;
   });
 
@@ -135,14 +159,19 @@ export function useScannerConfig({
 
   // Background validation state
   const [isValidating, setIsValidating] = useState(false);
-  const [validationWarning, setValidationWarning] = useState<string | null>(null);
+  const [validationWarning, setValidationWarning] = useState<string | null>(
+    null
+  );
 
   // Config validation state (Phase 3)
   const [configStatus, setConfigStatus] = useState<ConfigStatus>('loading');
-  const [configValidationMessage, setConfigValidationMessage] = useState<string>('Checking scanner configuration...');
+  const [configValidationMessage, setConfigValidationMessage] =
+    useState<string>('Checking scanner configuration...');
   const [missingScanners, setMissingScanners] = useState<GraviScanner[]>([]);
   const [newScanners, setNewScanners] = useState<DetectedScanner[]>([]);
-  const [matchedScanners, setMatchedScanners] = useState<Array<{ saved: GraviScanner; detected: DetectedScanner }>>([]);
+  const [matchedScanners, setMatchedScanners] = useState<
+    Array<{ saved: GraviScanner; detected: DetectedScanner }>
+  >([]);
 
   // Refs
   const resolutionRef = useRef(resolution);
@@ -196,7 +225,9 @@ export function useScannerConfig({
 
       if (!result.success) {
         setConfigStatus('error');
-        setConfigValidationMessage(result.error || 'Configuration validation failed');
+        setConfigValidationMessage(
+          result.error || 'Configuration validation failed'
+        );
         return;
       }
 
@@ -211,16 +242,20 @@ export function useScannerConfig({
           setConfigValidationMessage('Scanners ready');
           setDetectedScanners(result.detectedScanners);
           if (result.matched.length > 0) {
-            console.log("The Cached Scanner:",result)
-            const newAssignments: ScannerAssignment[] = result.matched.map((m, index) => {
-              const existing = scannerAssignments.find((a) => a.scannerId === m.saved.id);
-              return {
-                slot: `Scanner ${index + 1}`,
-                scannerId: m.saved.id,
-                usbPort: m.detected.usb_port,
-                gridMode: existing?.gridMode || '2grid',
-              };
-            });
+            console.log('The Cached Scanner:', result);
+            const newAssignments: ScannerAssignment[] = result.matched.map(
+              (m, index) => {
+                const existing = scannerAssignments.find(
+                  (a) => a.scannerId === m.saved.id
+                );
+                return {
+                  slot: `Scanner ${index + 1}`,
+                  scannerId: m.saved.id,
+                  usbPort: m.detected.usb_port,
+                  gridMode: existing?.gridMode || '2grid',
+                };
+              }
+            );
             setScannerAssignments(newAssignments);
             setConfigSaved(true);
             setIsConfigCollapsed(true);
@@ -230,8 +265,8 @@ export function useScannerConfig({
 
         case 'mismatch': {
           setConfigStatus('mismatch');
-          const missingNames = result.missing.map(s => s.name).join(', ');
-          const newPorts = result.new.map(s => s.usb_port).join(', ');
+          const missingNames = result.missing.map((s) => s.name).join(', ');
+          const newPorts = result.new.map((s) => s.usb_port).join(', ');
           let message = 'Scanner configuration has changed. ';
           if (result.missing.length > 0) {
             message += `Missing: ${missingNames}. `;
@@ -247,7 +282,9 @@ export function useScannerConfig({
 
         case 'no-config':
           setConfigStatus('no-config');
-          setConfigValidationMessage('No scanner configuration found. Please configure scanners.');
+          setConfigValidationMessage(
+            'No scanner configuration found. Please configure scanners.'
+          );
           setIsConfigCollapsed(false);
           break;
 
@@ -258,7 +295,9 @@ export function useScannerConfig({
     } catch (error) {
       console.error('Failed to validate scanner config:', error);
       setConfigStatus('error');
-      setConfigValidationMessage(error instanceof Error ? error.message : 'Validation failed');
+      setConfigValidationMessage(
+        error instanceof Error ? error.message : 'Validation failed'
+      );
     }
   }
 
@@ -284,7 +323,9 @@ export function useScannerConfig({
         setSessionValidated(false);
       }
     } catch (error) {
-      setDetectionError(error instanceof Error ? error.message : 'Detection failed');
+      setDetectionError(
+        error instanceof Error ? error.message : 'Detection failed'
+      );
       setSessionValidated(false);
     } finally {
       setDetectingScanner(false);
@@ -329,38 +370,49 @@ export function useScannerConfig({
     console.log('[GraviScan] Scanner configuration reset');
   }
 
-  const handleToggleScannerEnabled = useCallback((scannerId: string, enabled: boolean) => {
-    setScannerStates((prev) =>
-      prev.map((s) => (s.scannerId === scannerId ? { ...s, enabled } : s))
-    );
-  }, [setScannerStates]);
+  const handleToggleScannerEnabled = useCallback(
+    (scannerId: string, enabled: boolean) => {
+      setScannerStates((prev) =>
+        prev.map((s) => (s.scannerId === scannerId ? { ...s, enabled } : s))
+      );
+    },
+    [setScannerStates]
+  );
 
-  const handleScannerAssignment = useCallback((slotIndex: number, scannerId: string | null) => {
-    setScannerAssignments((prev) => {
-      const updated = [...prev];
-      const scanner = scannerId ? detectedScanners.find((s) => s.scanner_id === scannerId) : null;
-      updated[slotIndex] = {
-        ...updated[slotIndex],
-        scannerId,
-        usbPort: scanner?.usb_port || null,
-      };
-      return updated;
-    });
-    if (scannerId) {
-      setConfigSaved(true);
-    }
-  }, [detectedScanners]);
+  const handleScannerAssignment = useCallback(
+    (slotIndex: number, scannerId: string | null) => {
+      setScannerAssignments((prev) => {
+        const updated = [...prev];
+        const scanner = scannerId
+          ? detectedScanners.find((s) => s.scanner_id === scannerId)
+          : null;
+        updated[slotIndex] = {
+          ...updated[slotIndex],
+          scannerId,
+          usbPort: scanner?.usb_port || null,
+        };
+        return updated;
+      });
+      if (scannerId) {
+        setConfigSaved(true);
+      }
+    },
+    [detectedScanners]
+  );
 
-  const handleScannerGridMode = useCallback((slotIndex: number, gridMode: '2grid' | '4grid') => {
-    setScannerAssignments((prev) => {
-      const updated = [...prev];
-      updated[slotIndex] = {
-        ...updated[slotIndex],
-        gridMode,
-      };
-      return updated;
-    });
-  }, []);
+  const handleScannerGridMode = useCallback(
+    (slotIndex: number, gridMode: '2grid' | '4grid') => {
+      setScannerAssignments((prev) => {
+        const updated = [...prev];
+        updated[slotIndex] = {
+          ...updated[slotIndex],
+          gridMode,
+        };
+        return updated;
+      });
+    },
+    []
+  );
 
   const handleAddScannerSlot = useCallback(() => {
     setScannerAssignments((prev) => {
@@ -390,7 +442,9 @@ export function useScannerConfig({
   }, []);
 
   // Keep resolutionRef in sync
-  useEffect(() => { resolutionRef.current = resolution; }, [resolution]);
+  useEffect(() => {
+    resolutionRef.current = resolution;
+  }, [resolution]);
 
   // Persist detected scanners to localStorage
   useEffect(() => {
@@ -413,14 +467,18 @@ export function useScannerConfig({
 
     const timeoutId = setTimeout(async () => {
       try {
-        const firstAssigned = scannerAssignments.find((a) => a.scannerId !== null);
+        const firstAssigned = scannerAssignments.find(
+          (a) => a.scannerId !== null
+        );
         await window.electron.graviscan.saveConfig({
           grid_mode: firstAssigned?.gridMode || '2grid',
           resolution: resolution,
         });
 
         const scannersToSave = assignedScanners.map((s) => {
-          const assignment = scannerAssignments.find((a) => a.scannerId === s.scanner_id);
+          const assignment = scannerAssignments.find(
+            (a) => a.scannerId === s.scanner_id
+          );
           return {
             name: s.name,
             display_name: assignment?.slot || null,
@@ -432,21 +490,26 @@ export function useScannerConfig({
           };
         });
 
-        const saveResult = await window.electron.graviscan.saveScannersDb(scannersToSave);
+        const saveResult =
+          await window.electron.graviscan.saveScannersDb(scannersToSave);
         if (saveResult.success && saveResult.scanners) {
           console.log('[GraviScan] Auto-saved scanner configuration');
           setConfigSaved(true);
 
           const savedScanners = saveResult.scanners as Array<{
-            id: string; usb_bus: number | null; usb_device: number | null;
+            id: string;
+            usb_bus: number | null;
+            usb_device: number | null;
             name: string;
           }>;
           const idUpdates = new Map<string, string>();
           for (const saved of savedScanners) {
             const tempId = `new:${saved.usb_bus}:${saved.usb_device}`;
             const matched = assignedScanners.find(
-              (s) => s.scanner_id === tempId ||
-                     (s.usb_bus === saved.usb_bus && s.usb_device === saved.usb_device)
+              (s) =>
+                s.scanner_id === tempId ||
+                (s.usb_bus === saved.usb_bus &&
+                  s.usb_device === saved.usb_device)
             );
             if (matched && matched.scanner_id !== saved.id) {
               idUpdates.set(matched.scanner_id, saved.id);
@@ -454,15 +517,17 @@ export function useScannerConfig({
           }
           if (idUpdates.size > 0) {
             setDetectedScanners((prev) =>
-              prev.map((s) => idUpdates.has(s.scanner_id)
-                ? { ...s, scanner_id: idUpdates.get(s.scanner_id)! }
-                : s
+              prev.map((s) =>
+                idUpdates.has(s.scanner_id)
+                  ? { ...s, scanner_id: idUpdates.get(s.scanner_id)! }
+                  : s
               )
             );
             setScannerAssignments((prev) =>
-              prev.map((a) => a.scannerId && idUpdates.has(a.scannerId)
-                ? { ...a, scannerId: idUpdates.get(a.scannerId)! }
-                : a
+              prev.map((a) =>
+                a.scannerId && idUpdates.has(a.scannerId)
+                  ? { ...a, scannerId: idUpdates.get(a.scannerId)! }
+                  : a
               )
             );
           }
@@ -473,7 +538,7 @@ export function useScannerConfig({
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  // Note: detectedScanners intentionally excluded — detection alone shouldn't trigger saves.
+    // Note: detectedScanners intentionally excluded — detection alone shouldn't trigger saves.
   }, [scannerAssignments, resolution]);
 
   // Persist resolution to localStorage
@@ -511,10 +576,16 @@ export function useScannerConfig({
   // Validate cached scanners via main process on mount (background validation)
   useEffect(() => {
     async function validateCachedScanners() {
-      const alreadyValidated = loadFromStorage<boolean>(STORAGE_KEYS.sessionValidated, false);
+      const alreadyValidated = loadFromStorage<boolean>(
+        STORAGE_KEYS.sessionValidated,
+        false
+      );
       if (alreadyValidated) return;
 
-      const cachedScanners = loadFromStorage<DetectedScanner[]>(STORAGE_KEYS.detectedScanners, []);
+      const cachedScanners = loadFromStorage<DetectedScanner[]>(
+        STORAGE_KEYS.detectedScanners,
+        []
+      );
       if (cachedScanners.length === 0) return;
 
       const cachedScannerIds = cachedScanners
@@ -525,23 +596,32 @@ export function useScannerConfig({
       setValidationWarning(null);
 
       try {
-        const result = await window.electron.graviscan.validateScanners(cachedScannerIds);
+        const result =
+          await window.electron.graviscan.validateScanners(cachedScannerIds);
 
         if (result.isValidated) {
           setDetectedScanners(result.detectedScanners);
           setSessionValidated(true);
         } else if (result.detectedScanners.length > 0) {
-          const cachedAssignments = loadFromStorage<ScannerAssignment[]>(STORAGE_KEYS.scannerAssignments, []);
+          const cachedAssignments = loadFromStorage<ScannerAssignment[]>(
+            STORAGE_KEYS.scannerAssignments,
+            []
+          );
           let allMatched = true;
 
           const updatedAssignments = [...cachedAssignments];
 
           for (const cached of cachedScanners) {
-            const matchByName = result.detectedScanners.find((d) => d.name === cached.name);
+            const matchByName = result.detectedScanners.find(
+              (d) => d.name === cached.name
+            );
             if (matchByName) {
               for (let i = 0; i < updatedAssignments.length; i++) {
                 if (updatedAssignments[i].scannerId === cached.scanner_id) {
-                  updatedAssignments[i] = { ...updatedAssignments[i], scannerId: matchByName.scanner_id };
+                  updatedAssignments[i] = {
+                    ...updatedAssignments[i],
+                    scannerId: matchByName.scanner_id,
+                  };
                 }
               }
             } else {
@@ -554,7 +634,9 @@ export function useScannerConfig({
             setScannerAssignments(updatedAssignments);
             setSessionValidated(true);
           } else {
-            setValidationWarning(result.validationError || 'Some scanners are no longer available');
+            setValidationWarning(
+              result.validationError || 'Some scanners are no longer available'
+            );
             setDetectedScanners(result.detectedScanners);
             setIsConfigCollapsed(false);
             setConfigSaved(false);

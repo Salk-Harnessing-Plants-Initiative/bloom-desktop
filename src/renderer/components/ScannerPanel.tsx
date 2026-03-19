@@ -45,7 +45,9 @@ export function ScannerPanel({
             <input
               type="checkbox"
               checked={scanner.enabled}
-              onChange={(e) => onToggleEnabled(scanner.scannerId, e.target.checked)}
+              onChange={(e) =>
+                onToggleEnabled(scanner.scannerId, e.target.checked)
+              }
               disabled={disabled || isScanning}
               className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 disabled:opacity-50"
             />
@@ -53,7 +55,9 @@ export function ScannerPanel({
           </label>
 
           {/* Scanner Name */}
-          <span className="text-sm font-semibold text-gray-900">{scanner.name}</span>
+          <span className="text-sm font-semibold text-gray-900">
+            {scanner.name}
+          </span>
         </div>
 
         {/* LED Indicators */}
@@ -86,7 +90,9 @@ export function ScannerPanel({
       <div className="mb-2">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs text-gray-500">Progress</span>
-          <span className="text-xs font-medium text-gray-700">{scanner.progress}%</span>
+          <span className="text-xs font-medium text-gray-700">
+            {scanner.progress}%
+          </span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div

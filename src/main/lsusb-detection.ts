@@ -131,7 +131,10 @@ export function detectEpsonScanners(): {
 } {
   try {
     // Run lsusb to find Epson devices
-    const lsusbOutput = execFileSync('lsusb', [], { encoding: 'utf-8', timeout: 5000 });
+    const lsusbOutput = execFileSync('lsusb', [], {
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
     const epsonDevices = parseLsusb(lsusbOutput);
 
     if (epsonDevices.length === 0) {
@@ -141,7 +144,11 @@ export function detectEpsonScanners(): {
     // Run lsusb -t to get stable port mappings
     let treeEntries: LsusbTreeEntry[] = [];
     try {
-      const treeOutput = execFileSync('lsusb', ['-t'], { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
+      const treeOutput = execFileSync('lsusb', ['-t'], {
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'ignore'],
+      });
       treeEntries = parseLsusbTree(treeOutput);
     } catch {
       console.warn('[lsusb] lsusb -t failed, port mapping unavailable');
@@ -193,7 +200,12 @@ export function detectEpsonScanners(): {
     const message = error instanceof Error ? error.message : String(error);
 
     if (message.includes('ENOENT') || message.includes('not found')) {
-      return { success: false, scanners: [], count: 0, error: 'lsusb not available' };
+      return {
+        success: false,
+        scanners: [],
+        count: 0,
+        error: 'lsusb not available',
+      };
     }
 
     return {

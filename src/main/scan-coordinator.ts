@@ -18,7 +18,11 @@
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ScannerSubprocess, PlateConfig, ScanWorkerEvent } from './scanner-subprocess';
+import {
+  ScannerSubprocess,
+  PlateConfig,
+  ScanWorkerEvent,
+} from './scanner-subprocess';
 
 // =============================================================================
 // Types
@@ -36,7 +40,12 @@ export interface CoordinatorEvent {
   [key: string]: unknown;
 }
 
-type CoordinatorState = 'idle' | 'initializing' | 'scanning' | 'waiting' | 'shutting-down';
+type CoordinatorState =
+  | 'idle'
+  | 'initializing'
+  | 'scanning'
+  | 'waiting'
+  | 'shutting-down';
 
 // =============================================================================
 // ScanCoordinator
@@ -86,7 +95,9 @@ export class ScanCoordinator extends EventEmitter {
       }
     }
 
-    console.log(`[ScanCoordinator] Initializing ${scanners.length} scanner(s)...`);
+    console.log(
+      `[ScanCoordinator] Initializing ${scanners.length} scanner(s)...`
+    );
 
     for (const scanner of scanners) {
       if (this.cancelled) break;
@@ -94,13 +105,17 @@ export class ScanCoordinator extends EventEmitter {
       // Reuse existing subprocess if it's still alive and ready
       const existing = this.subprocesses.get(scanner.scannerId);
       if (existing && existing.isReady) {
-        console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} already ready, reusing`);
+        console.log(
+          `[ScanCoordinator] Scanner ${scanner.scannerId} already ready, reusing`
+        );
         continue;
       }
 
       // Shut down dead/stuck subprocess before respawning
       if (existing) {
-        console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} subprocess not ready, respawning`);
+        console.log(
+          `[ScanCoordinator] Scanner ${scanner.scannerId} subprocess not ready, respawning`
+        );
         existing.removeAllListeners();
         await existing.shutdown(5000);
         this.subprocesses.delete(scanner.scannerId);
@@ -125,19 +140,25 @@ export class ScanCoordinator extends EventEmitter {
       });
 
       sub.on('exit', (info: { scannerId: string; code: number | null }) => {
-        console.log(`[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`);
+        console.log(
+          `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
+        );
         this.subprocesses.delete(info.scannerId);
       });
 
       this.subprocesses.set(scanner.scannerId, sub);
 
-      console.log(`[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`);
+      console.log(
+        `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
+      );
       await sub.spawn();
       console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} ready`);
     }
 
     this.state = 'idle';
-    console.log(`[ScanCoordinator] All ${scanners.length} scanner(s) initialized`);
+    console.log(
+      `[ScanCoordinator] All ${scanners.length} scanner(s) initialized`
+    );
   }
 
   /**
@@ -174,7 +195,8 @@ export class ScanCoordinator extends EventEmitter {
     }
 
     // Group grids by row for 4grid mode (same-row grids scanned together)
-    const gridMode = platesPerScanner.values().next().value?.[0]?.grid_mode || '2grid';
+    const gridMode =
+      platesPerScanner.values().next().value?.[0]?.grid_mode || '2grid';
     const rowGroups: string[][] = [];
     if (gridMode === '4grid') {
       const topRow = gridIndices.filter((i) => ['00', '01'].includes(i));
@@ -186,14 +208,19 @@ export class ScanCoordinator extends EventEmitter {
       for (const gi of gridIndices) rowGroups.push([gi]);
     }
 
-    console.log(`[ScanCoordinator] Cycle ${this.currentCycle}: scanning ${gridIndices.length} grid(s) [${gridIndices.join(', ')}] in ${rowGroups.length} row group(s) across ${this.subprocesses.size} scanner(s)`);
+    console.log(
+      `[ScanCoordinator] Cycle ${this.currentCycle}: scanning ${gridIndices.length} grid(s) [${gridIndices.join(', ')}] in ${rowGroups.length} row group(s) across ${this.subprocesses.size} scanner(s)`
+    );
 
     // Iterate row groups sequentially
     for (const rowGrids of rowGroups) {
       if (this.cancelled) break;
 
       const gridStartedAt = new Date();
-      const stTimestamp = gridStartedAt.toISOString().replace(/[-:]/g, '').slice(0, 15);
+      const stTimestamp = gridStartedAt
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .slice(0, 15);
       this.currentGridStartedAt = gridStartedAt.toISOString();
       this.currentGridEndedAt = null;
 
@@ -206,17 +233,24 @@ export class ScanCoordinator extends EventEmitter {
         });
       }
 
-      console.log(`[ScanCoordinator] Row [${rowGrids.join(',')}]: starting (st_${stTimestamp})`);
+      console.log(
+        `[ScanCoordinator] Row [${rowGrids.join(',')}]: starting (st_${stTimestamp})`
+      );
 
       // For each scanner, find all plates in this row and send them together
-      const rowDonePromises: Promise<{ scannerId: string; outputPaths: { plateIndex: string; path: string }[] } | null>[] = [];
+      const rowDonePromises: Promise<{
+        scannerId: string;
+        outputPaths: { plateIndex: string; path: string }[];
+      } | null>[] = [];
       let isFirst = true;
 
       for (const [scannerId, sub] of this.subprocesses) {
         const allPlates = platesPerScanner.get(scannerId);
         if (!allPlates) continue;
 
-        const rowPlates = allPlates.filter((p) => rowGrids.includes(p.plate_index));
+        const rowPlates = allPlates.filter((p) =>
+          rowGrids.includes(p.plate_index)
+        );
         if (rowPlates.length === 0) continue;
 
         if (!isFirst) {
@@ -232,13 +266,19 @@ export class ScanCoordinator extends EventEmitter {
             .replace(/_cy\d+_/, `_cy${this.currentCycle}_`),
         }));
 
-        const promise = new Promise<{ scannerId: string; outputPaths: { plateIndex: string; path: string }[] } | null>((resolve) => {
+        const promise = new Promise<{
+          scannerId: string;
+          outputPaths: { plateIndex: string; path: string }[];
+        } | null>((resolve) => {
           const onCycleDone = () => {
             sub.removeListener('cycle-done', onCycleDone);
             sub.removeListener('exit', onExit);
             resolve({
               scannerId,
-              outputPaths: platesToScan.map((p) => ({ plateIndex: p.plate_index, path: p.output_path })),
+              outputPaths: platesToScan.map((p) => ({
+                plateIndex: p.plate_index,
+                path: p.output_path,
+              })),
             });
           };
           const onExit = () => {
@@ -258,13 +298,21 @@ export class ScanCoordinator extends EventEmitter {
       const results = await Promise.all(rowDonePromises);
 
       const gridEndedAt = new Date();
-      const etTimestamp = gridEndedAt.toISOString().replace(/[-:]/g, '').slice(0, 15);
+      const etTimestamp = gridEndedAt
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .slice(0, 15);
       this.currentGridEndedAt = gridEndedAt.toISOString();
 
-      console.log(`[ScanCoordinator] Row [${rowGrids.join(',')}]: complete (et_${etTimestamp})`);
+      console.log(
+        `[ScanCoordinator] Row [${rowGrids.join(',')}]: complete (et_${etTimestamp})`
+      );
 
       // Rename output files and group by grid index
-      const renamedByGrid: Map<string, { oldPath: string; newPath: string; scannerId: string }[]> = new Map();
+      const renamedByGrid: Map<
+        string,
+        { oldPath: string; newPath: string; scannerId: string }[]
+      > = new Map();
       for (const gridIndex of rowGrids) renamedByGrid.set(gridIndex, []);
 
       for (const result of results) {
@@ -283,11 +331,20 @@ export class ScanCoordinator extends EventEmitter {
 
             if (fs.existsSync(outputPath)) {
               fs.renameSync(outputPath, newPath);
-              console.log(`[ScanCoordinator] Renamed: ${path.basename(outputPath)} → ${path.basename(newPath)}`);
-              renamedByGrid.get(plateIndex)?.push({ oldPath: outputPath, newPath, scannerId: result.scannerId });
+              console.log(
+                `[ScanCoordinator] Renamed: ${path.basename(outputPath)} → ${path.basename(newPath)}`
+              );
+              renamedByGrid.get(plateIndex)?.push({
+                oldPath: outputPath,
+                newPath,
+                scannerId: result.scannerId,
+              });
             }
           } catch (err) {
-            console.error(`[ScanCoordinator] Failed to rename output file:`, err);
+            console.error(
+              `[ScanCoordinator] Failed to rename output file:`,
+              err
+            );
           }
         }
       }

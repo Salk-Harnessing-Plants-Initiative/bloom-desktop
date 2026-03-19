@@ -34,7 +34,11 @@ const iconFiles: Record<string, string> = {
 
 const appName = appNames[appMode] || appNames.full;
 const productName = productNames[appMode] || productNames.full;
-const iconPath = path.resolve(__dirname, 'assets', iconFiles[appMode] || iconFiles.full);
+const iconPath = path.resolve(
+  __dirname,
+  'assets',
+  iconFiles[appMode] || iconFiles.full
+);
 
 /**
  * Recursively copy a directory (no external deps needed).
@@ -73,13 +77,19 @@ const config: ForgeConfig = {
       './node_modules/.prisma', // Generated Prisma Client + native binaries
       './node_modules/@prisma/client', // Prisma Client package
       './prisma/schema.prisma', // Schema for runtime introspection
-      './prisma/migrations',    // Migration SQL files for first-launch DB setup
+      './prisma/migrations', // Migration SQL files for first-launch DB setup
     ],
     afterCopy: [
       // Copy sharp and all its runtime dependencies into resources/node_modules/
       // so require('sharp') resolves correctly in the packaged app.
       // Sharp is externalized in webpack because it uses platform-specific native binaries.
-      (buildPath: string, _electronVersion: string, _platform: string, _arch: string, callback: (err?: Error | null) => void) => {
+      (
+        buildPath: string,
+        _electronVersion: string,
+        _platform: string,
+        _arch: string,
+        callback: (err?: Error | null) => void
+      ) => {
         const resourcesDir = path.join(buildPath, '..');
         const nodeModulesTarget = path.join(resourcesDir, 'node_modules');
 
@@ -88,7 +98,7 @@ const config: ForgeConfig = {
           'sharp',
           'detect-libc',
           'semver',
-          '@img',          // All @img/* platform packages (native binaries + libvips)
+          '@img', // All @img/* platform packages (native binaries + libvips)
         ];
 
         try {
@@ -115,10 +125,15 @@ const config: ForgeConfig = {
             // From resources/node_modules/@prisma/client -> resources/client
             // Relative: ../../client (up from @prisma/ to node_modules/ to resources/)
             fs.symlinkSync('../../client', prismaClientSymlink);
-            console.log('[Forge] Created @prisma/client relative symlink in resources/node_modules/');
+            console.log(
+              '[Forge] Created @prisma/client relative symlink in resources/node_modules/'
+            );
           }
         } catch (err: unknown) {
-          console.error('[Forge] Failed to copy native module dependencies:', err);
+          console.error(
+            '[Forge] Failed to copy native module dependencies:',
+            err
+          );
         }
         callback();
       },

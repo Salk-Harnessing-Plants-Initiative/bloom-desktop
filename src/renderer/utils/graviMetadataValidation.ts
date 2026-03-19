@@ -41,7 +41,11 @@ export function validateGraviMetadata(rows: GraviMetadataRow[]): string[] {
     const td = rows[i].transplantDate;
     if (td) {
       const d = new Date(td);
-      if (isNaN(d.getTime()) || d.getFullYear() < 1900 || d.getFullYear() > 2100) {
+      if (
+        isNaN(d.getTime()) ||
+        d.getFullYear() < 1900 ||
+        d.getFullYear() > 2100
+      ) {
         invalidDateRows.push(i + 2); // +2 for 1-indexed + header row
       } else if (!datePattern.test(td)) {
         // Parseable but not YYYY-MM-DD — warn but don't block
@@ -59,9 +63,7 @@ export function validateGraviMetadata(rows: GraviMetadataRow[]): string[] {
   for (const row of rows) {
     const key = `${row.plateId}::${row.plantQr}`;
     if (plantKeys.has(key)) {
-      errors.push(
-        `Plate ${row.plateId} has duplicate plant QR ${row.plantQr}`
-      );
+      errors.push(`Plate ${row.plateId} has duplicate plant QR ${row.plantQr}`);
     }
     plantKeys.add(key);
   }

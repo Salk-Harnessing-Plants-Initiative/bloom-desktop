@@ -19,9 +19,7 @@ export function BrowseScans() {
       <div className="px-6 pt-6 max-w-7xl mx-auto">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Browse Scans</h1>
-          <p className="text-gray-600 mt-1">
-            View and manage scanned images
-          </p>
+          <p className="text-gray-600 mt-1">View and manage scanned images</p>
         </div>
 
         <div className="border-b border-gray-200 mt-6">

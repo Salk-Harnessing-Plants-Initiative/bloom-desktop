@@ -11,7 +11,6 @@ from python.graviscan.scan_regions import (
     GRID_2_REGIONS,
     GRID_4_REGIONS,
     SCANNER_MAX_X,
-    SCANNER_MAX_Y,
     ScanRegion,
     get_all_plate_indices,
     get_crop_box,

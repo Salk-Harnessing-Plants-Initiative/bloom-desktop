@@ -10,6 +10,10 @@ import { getDatabase } from './database';
 import type { Prisma } from '@prisma/client';
 import { ImageUploader, UploadResult } from './image-uploader';
 import type { ScanCreateData } from '../types/database';
+import type {
+  ExperimentWithGraviScans,
+  GraviScanWithAllRelations,
+} from '../types/graviscan-store';
 
 /**
  * Standard response format for database operations
@@ -537,7 +541,11 @@ export function registerDatabaseHandlers() {
 
   ipcMain.handle(
     'db:graviscanPlateAssignments:list',
-    async (_event, experimentId: string, scannerId: string): Promise<DatabaseResponse> => {
+    async (
+      _event,
+      experimentId: string,
+      scannerId: string
+    ): Promise<DatabaseResponse> => {
       try {
         const assignments = await db.graviScanPlateAssignment.findMany({
           where: {
@@ -564,7 +572,12 @@ export function registerDatabaseHandlers() {
       experimentId: string,
       scannerId: string,
       plateIndex: string,
-      data: { plate_barcode?: string | null; transplant_date?: string | null; custom_note?: string | null; selected?: boolean }
+      data: {
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }
     ): Promise<DatabaseResponse> => {
       try {
         console.log('[DB:UPSERT] Attempting plate assignment upsert:', {
@@ -583,7 +596,9 @@ export function registerDatabaseHandlers() {
           },
           update: {
             plate_barcode: data.plate_barcode,
-            transplant_date: data.transplant_date ? new Date(data.transplant_date) : data.transplant_date,
+            transplant_date: data.transplant_date
+              ? new Date(data.transplant_date)
+              : data.transplant_date,
             custom_note: data.custom_note,
             selected: data.selected,
           },
@@ -592,12 +607,17 @@ export function registerDatabaseHandlers() {
             scanner_id: scannerId,
             plate_index: plateIndex,
             plate_barcode: data.plate_barcode ?? null,
-            transplant_date: data.transplant_date ? new Date(data.transplant_date) : null,
+            transplant_date: data.transplant_date
+              ? new Date(data.transplant_date)
+              : null,
             custom_note: data.custom_note ?? null,
             selected: data.selected ?? true,
           },
         });
-        console.log('[DB:UPSERT] Plate assignment result:', JSON.stringify(assignment, null, 2));
+        console.log(
+          '[DB:UPSERT] Plate assignment result:',
+          JSON.stringify(assignment, null, 2)
+        );
         logDatabaseOperation(
           'UPDATE',
           'GraviScanPlateAssignment',
@@ -620,7 +640,13 @@ export function registerDatabaseHandlers() {
       _event,
       experimentId: string,
       scannerId: string,
-      assignments: { plate_index: string; plate_barcode?: string | null; transplant_date?: string | null; custom_note?: string | null; selected?: boolean }[]
+      assignments: {
+        plate_index: string;
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }[]
     ): Promise<DatabaseResponse> => {
       try {
         // Use transaction to upsert all assignments atomically
@@ -636,7 +662,9 @@ export function registerDatabaseHandlers() {
               },
               update: {
                 plate_barcode: assignment.plate_barcode,
-                transplant_date: assignment.transplant_date ? new Date(assignment.transplant_date) : assignment.transplant_date,
+                transplant_date: assignment.transplant_date
+                  ? new Date(assignment.transplant_date)
+                  : assignment.transplant_date,
                 custom_note: assignment.custom_note,
                 selected: assignment.selected,
               },
@@ -645,7 +673,9 @@ export function registerDatabaseHandlers() {
                 scanner_id: scannerId,
                 plate_index: assignment.plate_index,
                 plate_barcode: assignment.plate_barcode ?? null,
-                transplant_date: assignment.transplant_date ? new Date(assignment.transplant_date) : null,
+                transplant_date: assignment.transplant_date
+                  ? new Date(assignment.transplant_date)
+                  : null,
                 custom_note: assignment.custom_note ?? null,
                 selected: assignment.selected ?? true,
               },
@@ -710,10 +740,16 @@ export function registerDatabaseHandlers() {
           if (filters.dateFrom || filters.dateTo) {
             const datePattern = /^\d{4}-\d{2}-\d{2}$/;
             if (filters.dateFrom && !datePattern.test(filters.dateFrom)) {
-              return { success: false, error: `Invalid dateFrom format: "${filters.dateFrom}". Expected YYYY-MM-DD.` };
+              return {
+                success: false,
+                error: `Invalid dateFrom format: "${filters.dateFrom}". Expected YYYY-MM-DD.`,
+              };
             }
             if (filters.dateTo && !datePattern.test(filters.dateTo)) {
-              return { success: false, error: `Invalid dateTo format: "${filters.dateTo}". Expected YYYY-MM-DD.` };
+              return {
+                success: false,
+                error: `Invalid dateTo format: "${filters.dateTo}". Expected YYYY-MM-DD.`,
+              };
             }
 
             where.capture_date = {};
@@ -721,7 +757,9 @@ export function registerDatabaseHandlers() {
               where.capture_date.gte = new Date(filters.dateFrom + 'T00:00:00');
             }
             if (filters.dateTo) {
-              where.capture_date.lte = new Date(filters.dateTo + 'T23:59:59.999');
+              where.capture_date.lte = new Date(
+                filters.dateTo + 'T23:59:59.999'
+              );
             }
           }
 
@@ -740,7 +778,11 @@ export function registerDatabaseHandlers() {
             }),
           ]);
 
-          logDatabaseOperation('READ', 'Scan', `list paginated page=${page} pageSize=${pageSize} total=${total}`);
+          logDatabaseOperation(
+            'READ',
+            'Scan',
+            `list paginated page=${page} pageSize=${pageSize} total=${total}`
+          );
           return { success: true, data: { scans, total, page, pageSize } };
         } else {
           const scans = await db.scan.findMany({
@@ -760,7 +802,10 @@ export function registerDatabaseHandlers() {
         }
       } catch (error) {
         console.error('[DB] Failed to list scans:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
       }
     }
   );
@@ -780,7 +825,10 @@ export function registerDatabaseHandlers() {
         return { success: true, data: scan };
       } catch (error) {
         console.error('[DB] Failed to get scan:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
       }
     }
   );
@@ -794,7 +842,10 @@ export function registerDatabaseHandlers() {
         return { success: true, data: scan };
       } catch (error) {
         console.error('[DB] Failed to create scan:', error);
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
       }
     }
   );
@@ -1027,7 +1078,9 @@ export function registerDatabaseHandlers() {
             phenotyper_id: data.phenotyper_id,
             scanner_id: data.scanner_id,
             plate_barcode: data.plate_barcode ?? null,
-            transplant_date: data.transplant_date ? new Date(data.transplant_date) : null,
+            transplant_date: data.transplant_date
+              ? new Date(data.transplant_date)
+              : null,
             custom_note: data.custom_note ?? null,
             path: data.path,
             grid_mode: data.grid_mode,
@@ -1037,8 +1090,12 @@ export function registerDatabaseHandlers() {
             session_id: data.session_id ?? null,
             cycle_number: data.cycle_number ?? null,
             wave_number: data.wave_number ?? 0,
-            scan_started_at: data.scan_started_at ? new Date(data.scan_started_at) : null,
-            scan_ended_at: data.scan_ended_at ? new Date(data.scan_ended_at) : null,
+            scan_started_at: data.scan_started_at
+              ? new Date(data.scan_started_at)
+              : null,
+            scan_ended_at: data.scan_ended_at
+              ? new Date(data.scan_ended_at)
+              : null,
           },
         });
         logDatabaseOperation(
@@ -1060,10 +1117,7 @@ export function registerDatabaseHandlers() {
   // Get max wave_number for an experiment (for auto-suggesting next wave)
   ipcMain.handle(
     'db:graviscans:get-max-wave-number',
-    async (
-      _event,
-      experimentId: string
-    ): Promise<DatabaseResponse> => {
+    async (_event, experimentId: string): Promise<DatabaseResponse> => {
       try {
         const result = await db.graviScan.aggregate({
           where: {
@@ -1203,8 +1257,7 @@ export function registerDatabaseHandlers() {
         const filters = params.filters ?? {};
 
         // Build experiment-level where clause
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const expWhere: any = {
+        const expWhere: Prisma.ExperimentWhereInput = {
           graviscanScans: { some: { deleted: false } },
         };
 
@@ -1255,14 +1308,13 @@ export function registerDatabaseHandlers() {
         });
 
         // Transform to expected shape
-        /* eslint-disable @typescript-eslint/no-explicit-any */
-        const results = experiments.map((exp: any) => ({
+        const results = experiments.map((exp: ExperimentWithGraviScans) => ({
           id: exp.id,
           name: exp.name,
           species: exp.species,
           scientist: exp.scientist,
           accession: exp.accession,
-          scans: exp.graviscanScans.map((scan: any) => ({
+          scans: exp.graviscanScans.map((scan: GraviScanWithAllRelations) => ({
             ...scan,
             experiment: {
               id: exp.id,
@@ -1277,20 +1329,27 @@ export function registerDatabaseHandlers() {
         // Post-filter by upload status if specified
         let filtered = results;
         if (filters.uploadStatus) {
-          filtered = results.filter((exp: any) => {
+          filtered = results.filter((exp) => {
             // Aggregate all images across all scans in this experiment
-            const allImages = exp.scans.flatMap((s: any) => s.images || []);
-            if (allImages.length === 0) return filters.uploadStatus === 'pending';
-            const statuses = allImages.map((img: any) => img.status);
-            if (filters.uploadStatus === 'uploaded') return statuses.every((s: string) => s === 'uploaded');
-            if (filters.uploadStatus === 'failed') return statuses.some((s: string) => s === 'failed');
-            if (filters.uploadStatus === 'pending') return statuses.every((s: string) => s === 'pending');
+            const allImages = exp.scans.flatMap((s) => s.images || []);
+            if (allImages.length === 0)
+              return filters.uploadStatus === 'pending';
+            const statuses = allImages.map((img) => img.status);
+            if (filters.uploadStatus === 'uploaded')
+              return statuses.every((s: string) => s === 'uploaded');
+            if (filters.uploadStatus === 'failed')
+              return statuses.some((s: string) => s === 'failed');
+            if (filters.uploadStatus === 'pending')
+              return statuses.every((s: string) => s === 'pending');
             return true;
           });
         }
-        /* eslint-enable @typescript-eslint/no-explicit-any */
 
-        logDatabaseOperation('BROWSE', 'Experiment+GraviScan', `offset=${offset} limit=${limit} total=${total} returned=${filtered.length}`);
+        logDatabaseOperation(
+          'BROWSE',
+          'Experiment+GraviScan',
+          `offset=${offset} limit=${limit} total=${total} returned=${filtered.length}`
+        );
         return { success: true, data: filtered, total };
       } catch (error) {
         console.error('[DB] Failed to browse experiments with scans:', error);
@@ -1340,27 +1399,31 @@ export function registerDatabaseHandlers() {
         }
 
         // Transform to expected shape
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = {
           id: experiment.id,
           name: experiment.name,
           species: experiment.species,
           scientist: experiment.scientist,
           accession: experiment.accession,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          scans: experiment.graviscanScans.map((scan: any) => ({
-            ...scan,
-            experiment: {
-              id: experiment.id,
-              name: experiment.name,
-              species: experiment.species,
-              experiment_type: experiment.experiment_type,
-              scientist: experiment.scientist,
-            },
-          })),
+          scans: experiment.graviscanScans.map(
+            (scan: GraviScanWithAllRelations) => ({
+              ...scan,
+              experiment: {
+                id: experiment.id,
+                name: experiment.name,
+                species: experiment.species,
+                experiment_type: experiment.experiment_type,
+                scientist: experiment.scientist,
+              },
+            })
+          ),
         };
 
-        logDatabaseOperation('READ', 'Experiment+GraviScan', `experimentId=${params.experimentId} scans=${result.scans.length}`);
+        logDatabaseOperation(
+          'READ',
+          'Experiment+GraviScan',
+          `experimentId=${params.experimentId} scans=${result.scans.length}`
+        );
         return { success: true, data: result };
       } catch (error) {
         console.error('[DB] Failed to get experiment detail:', error);
@@ -1524,7 +1587,9 @@ export function registerDatabaseHandlers() {
                 metadata_file_id: metadataFile.id,
                 plate_id: plate.plate_id,
                 accession: plate.accession,
-                transplant_date: plate.transplant_date ? new Date(plate.transplant_date) : null,
+                transplant_date: plate.transplant_date
+                  ? new Date(plate.transplant_date)
+                  : null,
                 custom_note: plate.custom_note ?? null,
               },
             });
@@ -1561,10 +1626,7 @@ export function registerDatabaseHandlers() {
           },
         };
       } catch (error) {
-        console.error(
-          '[DB] Failed to create gravi plate accessions:',
-          error
-        );
+        console.error('[DB] Failed to create gravi plate accessions:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -1575,10 +1637,7 @@ export function registerDatabaseHandlers() {
 
   ipcMain.handle(
     'db:graviPlateAccessions:list',
-    async (
-      _event,
-      metadataFileId: string
-    ): Promise<DatabaseResponse> => {
+    async (_event, metadataFileId: string): Promise<DatabaseResponse> => {
       try {
         const plates = await db.graviPlateAccession.findMany({
           where: { metadata_file_id: metadataFileId },
@@ -1669,10 +1728,7 @@ export function registerDatabaseHandlers() {
 
         return { success: true };
       } catch (error) {
-        console.error(
-          '[DB] Failed to delete gravi plate accessions:',
-          error
-        );
+        console.error('[DB] Failed to delete gravi plate accessions:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',

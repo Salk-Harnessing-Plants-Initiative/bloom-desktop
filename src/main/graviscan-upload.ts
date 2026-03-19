@@ -13,34 +13,11 @@ import { createClient } from '@supabase/supabase-js';
 import { SupabaseStore, SupabaseUploader } from '@salk-hpi/bloom-js';
 import type { GraviImageMetadata } from '@salk-hpi/bloom-js';
 import { resolveGraviScanPath } from './graviscan-path-utils';
-
-// TODO: These types will be added to @salk-hpi/bloom-js in a future release
-type GraviScanSessionParams = {
-  species: string;
-  experiment: string;
-  phenotyper_name: string;
-  phenotyper_email: string;
-  scientist_name: string;
-  scientist_email: string;
-  accession_name?: string;
-  scan_mode: string;
-  interval_seconds?: number;
-  duration_seconds?: number;
-  total_cycles?: number;
-  actual_duration_seconds?: number;
-  completed_at?: string;
-  cancelled: boolean;
-  system_name?: string;
-};
-
-type GraviScanMetadataParams = {
-  accession_name: string;
-  plate_id: string;
-  wave_number?: number;
-  transplant_date: string | null;
-  custom_note: string | null;
-  sections: Array<{ plate_section_id: string; plant_qr: string; medium: string | null }>;
-};
+import type {
+  GraviScanStoreExtensions,
+  GraviScanSessionParams,
+  GraviScanMetadataParams,
+} from '../types/graviscan-store';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -84,7 +61,9 @@ function loadBloomCredentials(): {
     if (!trimmed || trimmed.startsWith('#')) continue;
     const eqIdx = trimmed.indexOf('=');
     if (eqIdx === -1) continue;
-    vars[trimmed.substring(0, eqIdx).trim()] = trimmed.substring(eqIdx + 1).trim();
+    vars[trimmed.substring(0, eqIdx).trim()] = trimmed
+      .substring(eqIdx + 1)
+      .trim();
   }
 
   const apiUrl = vars['BLOOM_API_URL'];
@@ -103,10 +82,13 @@ function loadBloomCredentials(): {
  * Create authenticated Supabase store + uploader from ~/.bloom/.env credentials.
  * Returns null with error message if credentials are missing or auth fails.
  */
-async function createAuthenticatedClients(): Promise<{
-  store: SupabaseStore;
-  uploader: SupabaseUploader;
-} | { error: string }> {
+async function createAuthenticatedClients(): Promise<
+  | {
+      store: SupabaseStore;
+      uploader: SupabaseUploader;
+    }
+  | { error: string }
+> {
   const creds = loadBloomCredentials();
   if (!creds) {
     return { error: 'Bloom credentials not found in ~/.bloom/.env' };
@@ -147,7 +129,18 @@ async function processImageJobs(
         scientist: { name: string; email: string } | null;
         accession: {
           name: string;
-          graviPlateAccessions: Array<{ id: string; plate_id: string; accession: string; transplant_date?: Date | null; custom_note?: string | null; sections: Array<{ plate_section_id: string; plant_qr: string; medium: string | null }> }>;
+          graviPlateAccessions: Array<{
+            id: string;
+            plate_id: string;
+            accession: string;
+            transplant_date?: Date | null;
+            custom_note?: string | null;
+            sections: Array<{
+              plate_section_id: string;
+              plant_qr: string;
+              medium: string | null;
+            }>;
+          }>;
         } | null;
       };
       plate_barcode: string | null;
@@ -185,14 +178,25 @@ async function processImageJobs(
       const resolvedPath = resolveGraviScanPath(image.path);
       if (!resolvedPath) {
         errors.push(`File not found: ${image.path}`);
-        await db.graviImage.update({ where: { id: image.id }, data: { status: 'failed' } });
+        await db.graviImage.update({
+          where: { id: image.id },
+          data: { status: 'failed' },
+        });
         failed++;
         continue;
       }
       if (resolvedPath !== image.path) {
-        console.log(`[GraviScan:UPLOAD] Resolved stale path: ${path.basename(image.path)} → ${path.basename(resolvedPath)}`);
-        await db.graviImage.update({ where: { id: image.id }, data: { path: resolvedPath } });
-        await db.graviScan.update({ where: { id: scan.id }, data: { path: resolvedPath } });
+        console.log(
+          `[GraviScan:UPLOAD] Resolved stale path: ${path.basename(image.path)} → ${path.basename(resolvedPath)}`
+        );
+        await db.graviImage.update({
+          where: { id: image.id },
+          data: { path: resolvedPath },
+        });
+        await db.graviScan.update({
+          where: { id: scan.id },
+          data: { path: resolvedPath },
+        });
         image.path = resolvedPath;
       }
 
@@ -208,20 +212,29 @@ async function processImageJobs(
         phenotyper_name: scan.phenotyper.name,
         phenotyper_email: scan.phenotyper.email,
         scientist_name: scan.experiment.scientist?.name || scan.phenotyper.name,
-        scientist_email: scan.experiment.scientist?.email || scan.phenotyper.email,
+        scientist_email:
+          scan.experiment.scientist?.email || scan.phenotyper.email,
         plate_barcode: scan.plate_barcode,
         capture_date: scan.capture_date.toISOString(),
         grid_mode: scan.grid_mode,
         plate_index: scan.plate_index,
         resolution: scan.resolution,
         format: scan.format,
-        accession_name: matchedPlate?.accession || scan.experiment.accession?.graviPlateAccessions[0]?.accession,
+        accession_name:
+          matchedPlate?.accession ||
+          scan.experiment.accession?.graviPlateAccessions[0]?.accession,
         cycle_number: scan.cycle_number ?? undefined,
         wave_number: scan.wave_number ?? 0,
-        session_id: scan.session_id ? sessionIdMap.get(scan.session_id) : undefined,
+        session_id: scan.session_id
+          ? sessionIdMap.get(scan.session_id)
+          : undefined,
         system_name: process.env.GRAVISCAN_SYSTEM_NAME ?? undefined,
-        metadata_id: matchedPlate ? metadataIdMap.get(matchedPlate.id) : undefined,
-        transplant_date: matchedPlate?.transplant_date ? matchedPlate.transplant_date.toISOString() : undefined,
+        metadata_id: matchedPlate
+          ? metadataIdMap.get(matchedPlate.id)
+          : undefined,
+        transplant_date: matchedPlate?.transplant_date
+          ? matchedPlate.transplant_date.toISOString()
+          : undefined,
         custom_note: matchedPlate?.custom_note ?? undefined,
       };
 
@@ -230,13 +243,19 @@ async function processImageJobs(
 
       if (rpcError) {
         errors.push(`RPC error for ${image.path}: ${rpcError.message}`);
-        await db.graviImage.update({ where: { id: image.id }, data: { status: 'failed' } });
+        await db.graviImage.update({
+          where: { id: image.id },
+          data: { status: 'failed' },
+        });
         failed++;
         continue;
       }
 
       if (scanId === null) {
-        await db.graviImage.update({ where: { id: image.id }, data: { status: 'uploaded' } });
+        await db.graviImage.update({
+          where: { id: image.id },
+          data: { status: 'uploaded' },
+        });
         skipped++;
         continue;
       }
@@ -245,40 +264,66 @@ async function processImageJobs(
       const originalName = path.basename(image.path, ext);
       const shortId = crypto.randomUUID().slice(0, 8);
       const storagePath = `gravi-images/${originalName}_${shortId}${ext}`;
-      const uploadResult = await uploader.uploadRawFile(
-        image.path, storagePath, 'graviscan-images'
-      ) as { error: Error | null; hash?: string; sizeBytes?: number };
+      const uploadResult = (await uploader.uploadRawFile(
+        image.path,
+        storagePath,
+        'graviscan-images'
+      )) as { error: Error | null; hash?: string; sizeBytes?: number };
 
       if (uploadResult.error) {
-        errors.push(`Upload error for ${image.path}: ${uploadResult.error.message}`);
-        await db.graviImage.update({ where: { id: image.id }, data: { status: 'failed' } });
+        errors.push(
+          `Upload error for ${image.path}: ${uploadResult.error.message}`
+        );
+        await db.graviImage.update({
+          where: { id: image.id },
+          data: { status: 'failed' },
+        });
         failed++;
         continue;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: imageError } = await (store as any).updateGraviImageMetadata(
-        scanId, { object_path: storagePath, file_hash: uploadResult.hash, file_size_bytes: uploadResult.sizeBytes }
-      );
+      const { error: imageError } = await (
+        store as GraviScanStoreExtensions
+      ).updateGraviImageMetadata(scanId, {
+        object_path: storagePath,
+        file_hash: uploadResult.hash,
+        file_size_bytes: uploadResult.sizeBytes,
+      });
 
       if (imageError) {
-        errors.push(`Image record error for ${image.path}: ${imageError.message}`);
-        await db.graviImage.update({ where: { id: image.id }, data: { status: 'failed' } });
+        errors.push(
+          `Image record error for ${image.path}: ${imageError.message}`
+        );
+        await db.graviImage.update({
+          where: { id: image.id },
+          data: { status: 'failed' },
+        });
         failed++;
         continue;
       }
 
-      await db.graviImage.update({ where: { id: image.id }, data: { status: 'uploaded' } });
+      await db.graviImage.update({
+        where: { id: image.id },
+        data: { status: 'uploaded' },
+      });
       uploaded++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       errors.push(`Error processing ${image.path}: ${msg}`);
-      await db.graviImage.update({ where: { id: image.id }, data: { status: 'failed' } });
+      await db.graviImage.update({
+        where: { id: image.id },
+        data: { status: 'failed' },
+      });
       failed++;
     }
   }
 
-  onProgress?.({ total, completed: uploaded + skipped + failed, failed, currentFile: '' });
+  onProgress?.({
+    total,
+    completed: uploaded + skipped + failed,
+    failed,
+    currentFile: '',
+  });
 
   return { success: failed === 0, uploaded, skipped, failed, errors };
 }
@@ -299,7 +344,15 @@ async function uploadSessions(
       completed_at: Date | null;
       cancelled: boolean;
     } | null;
-    experiment: { name: string; species: string; scientist: { name: string; email: string } | null; accession: { name: string; graviPlateAccessions: Array<{ accession: string }> } | null };
+    experiment: {
+      name: string;
+      species: string;
+      scientist: { name: string; email: string } | null;
+      accession: {
+        name: string;
+        graviPlateAccessions: Array<{ accession: string }>;
+      } | null;
+    };
     phenotyper: { name: string; email: string };
   }>
 ): Promise<{ sessionIdMap: Map<string, number>; errors: string[] }> {
@@ -308,7 +361,12 @@ async function uploadSessions(
   const seenSessionIds = new Set<string>();
 
   for (const scan of scans) {
-    if (!scan.session_id || !scan.session || seenSessionIds.has(scan.session_id)) continue;
+    if (
+      !scan.session_id ||
+      !scan.session ||
+      seenSessionIds.has(scan.session_id)
+    )
+      continue;
     seenSessionIds.add(scan.session_id);
 
     try {
@@ -318,15 +376,22 @@ async function uploadSessions(
         phenotyper_name: scan.phenotyper.name,
         phenotyper_email: scan.phenotyper.email,
         scientist_name: scan.experiment.scientist?.name || scan.phenotyper.name,
-        scientist_email: scan.experiment.scientist?.email || scan.phenotyper.email,
-        accession_name: scan.experiment.accession?.graviPlateAccessions?.[0]?.accession,
+        scientist_email:
+          scan.experiment.scientist?.email || scan.phenotyper.email,
+        accession_name:
+          scan.experiment.accession?.graviPlateAccessions?.[0]?.accession,
         scan_mode: scan.session.scan_mode,
         interval_seconds: scan.session.interval_seconds ?? undefined,
         duration_seconds: scan.session.duration_seconds ?? undefined,
         total_cycles: scan.session.total_cycles ?? undefined,
-        actual_duration_seconds: scan.session.started_at && scan.session.completed_at
-          ? Math.round((new Date(scan.session.completed_at).getTime() - new Date(scan.session.started_at).getTime()) / 1000)
-          : undefined,
+        actual_duration_seconds:
+          scan.session.started_at && scan.session.completed_at
+            ? Math.round(
+                (new Date(scan.session.completed_at).getTime() -
+                  new Date(scan.session.started_at).getTime()) /
+                  1000
+              )
+            : undefined,
         completed_at: scan.session.completed_at
           ? new Date(scan.session.completed_at).toISOString()
           : undefined,
@@ -334,10 +399,13 @@ async function uploadSessions(
         system_name: process.env.GRAVISCAN_SYSTEM_NAME ?? undefined,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { created: supabaseSessionId, error } = await (store as any).insertGraviScanSession(params);
+      const { created: supabaseSessionId, error } = await (
+        store as GraviScanStoreExtensions
+      ).insertGraviScanSession(params);
       if (error) {
-        errors.push(`Session upload error for ${scan.session_id}: ${error.message}`);
+        errors.push(
+          `Session upload error for ${scan.session_id}: ${error.message}`
+        );
       } else if (supabaseSessionId !== null) {
         sessionIdMap.set(scan.session_id, supabaseSessionId);
       }
@@ -386,20 +454,32 @@ async function uploadMetadata(
       continue;
     }
 
-    console.log('[UploadMetadata] Accession found, plates:', scan.experiment.accession.graviPlateAccessions?.length ?? 0);
+    console.log(
+      '[UploadMetadata] Accession found, plates:',
+      scan.experiment.accession.graviPlateAccessions?.length ?? 0
+    );
 
     for (const plate of scan.experiment.accession.graviPlateAccessions) {
       if (seenPlateIds.has(plate.id)) continue;
       seenPlateIds.add(plate.id);
 
       try {
-        console.log('[UploadMetadata] Uploading plate:', plate.plate_id, 'accession:', plate.accession, 'sections:', plate.sections.length);
+        console.log(
+          '[UploadMetadata] Uploading plate:',
+          plate.plate_id,
+          'accession:',
+          plate.accession,
+          'sections:',
+          plate.sections.length
+        );
 
         const params: GraviScanMetadataParams = {
           accession_name: plate.accession,
           plate_id: plate.plate_id,
           wave_number: scan.wave_number,
-          transplant_date: plate.transplant_date ? plate.transplant_date.toISOString() : null,
+          transplant_date: plate.transplant_date
+            ? plate.transplant_date.toISOString()
+            : null,
           custom_note: plate.custom_note,
           sections: plate.sections.map((s) => ({
             plate_section_id: s.plate_section_id,
@@ -408,17 +488,29 @@ async function uploadMetadata(
           })),
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { created: supabaseMetadataId, error } = await (store as any).insertGraviScanMetadata(params);
-        console.log('[UploadMetadata] RPC result for plate', plate.plate_id, '→ metadataId:', supabaseMetadataId, 'error:', error?.message ?? 'none');
+        const { created: supabaseMetadataId, error } = await (
+          store as GraviScanStoreExtensions
+        ).insertGraviScanMetadata(params);
+        console.log(
+          '[UploadMetadata] RPC result for plate',
+          plate.plate_id,
+          '→ metadataId:',
+          supabaseMetadataId,
+          'error:',
+          error?.message ?? 'none'
+        );
         if (error) {
-          errors.push(`Metadata upload error for plate ${plate.plate_id}: ${error.message}`);
+          errors.push(
+            `Metadata upload error for plate ${plate.plate_id}: ${error.message}`
+          );
         } else if (supabaseMetadataId !== null) {
           metadataIdMap.set(plate.id, supabaseMetadataId);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
-        errors.push(`Metadata upload error for plate ${plate.plate_id}: ${msg}`);
+        errors.push(
+          `Metadata upload error for plate ${plate.plate_id}: ${msg}`
+        );
       }
     }
   }
@@ -435,7 +527,13 @@ export async function uploadAllPendingScans(
 ): Promise<UploadResult> {
   const clients = await createAuthenticatedClients();
   if ('error' in clients) {
-    return { success: false, uploaded: 0, skipped: 0, failed: 0, errors: [clients.error] };
+    return {
+      success: false,
+      uploaded: 0,
+      skipped: 0,
+      failed: 0,
+      errors: [clients.error],
+    };
   }
 
   const scans = await db.graviScan.findMany({
@@ -470,18 +568,33 @@ export async function uploadAllPendingScans(
   }
 
   // Upload sessions first, then map local session IDs to Supabase session IDs
-  const { sessionIdMap, errors: sessionErrors } = await uploadSessions(clients.store, scans);
+  const { sessionIdMap, errors: sessionErrors } = await uploadSessions(
+    clients.store,
+    scans
+  );
 
   // Upload plate metadata, then map local GraviPlateAccession IDs to Supabase metadata IDs
-  const { metadataIdMap, errors: metadataErrors } = await uploadMetadata(clients.store, scans);
+  const { metadataIdMap, errors: metadataErrors } = await uploadMetadata(
+    clients.store,
+    scans
+  );
 
   const imageJobs = scans.flatMap((scan) =>
     scan.images.map((img) => ({ scan, image: img }))
   );
 
-  const result = await processImageJobs(db, clients.store, clients.uploader, imageJobs, sessionIdMap, metadataIdMap, onProgress);
+  const result = await processImageJobs(
+    db,
+    clients.store,
+    clients.uploader,
+    imageJobs,
+    sessionIdMap,
+    metadataIdMap,
+    onProgress
+  );
   result.errors = [...sessionErrors, ...metadataErrors, ...result.errors];
-  if (sessionErrors.length > 0 || metadataErrors.length > 0) result.success = false;
+  if (sessionErrors.length > 0 || metadataErrors.length > 0)
+    result.success = false;
 
   return result;
 }

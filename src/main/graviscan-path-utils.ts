@@ -38,9 +38,13 @@ export function resolveGraviScanPath(filePath: string): string | null {
     const prefix = etMatch[1];
     const suffix = etMatch[2];
     const suffixNoExt = suffix.replace(/\.[^.]+$/, '');
-    const candidates = fs.readdirSync(dir).filter(
-      (f) => f.startsWith(prefix + '_et_') && (f.endsWith(suffix) || f.includes(suffixNoExt))
-    );
+    const candidates = fs
+      .readdirSync(dir)
+      .filter(
+        (f) =>
+          f.startsWith(prefix + '_et_') &&
+          (f.endsWith(suffix) || f.includes(suffixNoExt))
+      );
     if (candidates.length === 1) {
       return path.join(dir, candidates[0]);
     }

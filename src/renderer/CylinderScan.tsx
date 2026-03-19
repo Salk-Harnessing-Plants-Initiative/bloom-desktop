@@ -429,8 +429,8 @@ export function CylinderScan() {
                   ) : (
                     <div className="text-sm text-gray-600">
                       <p className="mb-2">
-                        Camera not configured. Please configure camera
-                        settings first.
+                        Camera not configured. Please configure camera settings
+                        first.
                       </p>
                       <a
                         href="#/camera-settings"

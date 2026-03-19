@@ -21,7 +21,7 @@ import { GraviScanProcess } from '../../src/main/graviscan-process';
 
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout
+  output: process.stdout,
 });
 
 function prompt(question: string): Promise<string> {
@@ -61,8 +61,12 @@ async function main() {
   // Set up event listeners
   graviscan.on('status', (msg) => console.log('  [STATUS]', msg));
   graviscan.on('error', (msg) => console.error('  [ERROR]', msg));
-  graviscan.on('scan-complete', (event) => console.log('  [EVENT] Scan complete:', event));
-  graviscan.on('scan-error', (event) => console.error('  [EVENT] Scan error:', event));
+  graviscan.on('scan-complete', (event) =>
+    console.log('  [EVENT] Scan complete:', event)
+  );
+  graviscan.on('scan-error', (event) =>
+    console.error('  [EVENT] Scan error:', event)
+  );
 
   try {
     // Start the subprocess
@@ -81,7 +85,10 @@ async function main() {
 
     // Step 1: Setup and detect scanners
     console.log('=== Step 1: Detecting Scanners ===\n');
-    const setupResult = await graviscan.sendCommand({ command: 'graviscan', action: 'setup-scanners' });
+    const setupResult = await graviscan.sendCommand({
+      command: 'graviscan',
+      action: 'setup-scanners',
+    });
 
     if (setupResult.error) {
       console.error('Failed to setup scanners:', setupResult.error);
@@ -91,7 +98,9 @@ async function main() {
     const devices: DeviceInfo[] = setupResult.devices || [];
 
     if (devices.length === 0) {
-      console.log('No scanners detected. Make sure scanners are connected and powered on.');
+      console.log(
+        'No scanners detected. Make sure scanners are connected and powered on.'
+      );
       console.log('On Linux, you may need to run: sudo sane-find-scanner');
       return;
     }
@@ -112,14 +121,20 @@ async function main() {
     }
 
     const selectedIndex = parseInt(selection) - 1;
-    if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= devices.length) {
+    if (
+      isNaN(selectedIndex) ||
+      selectedIndex < 0 ||
+      selectedIndex >= devices.length
+    ) {
       console.error('Invalid selection');
       return;
     }
 
     const selectedDevice = devices[selectedIndex];
     const scannerId = `scanner_${selectedIndex}`;
-    console.log(`\nSelected: ${selectedDevice.vendor} ${selectedDevice.model}\n`);
+    console.log(
+      `\nSelected: ${selectedDevice.vendor} ${selectedDevice.model}\n`
+    );
 
     // Step 3: Connect to scanner
     console.log('=== Step 2: Connecting to Scanner ===\n');
@@ -127,7 +142,7 @@ async function main() {
       command: 'graviscan',
       action: 'connect-scanner',
       scanner_id: scannerId,
-      device_index: selectedIndex
+      device_index: selectedIndex,
     });
 
     if (connectResult.error) {
@@ -139,12 +154,15 @@ async function main() {
     console.log('  Scanner ID:', connectResult.scanner_id);
     console.log('  Device:', connectResult.device_name);
     if (connectResult.max_br_x && connectResult.max_br_y) {
-      console.log(`  Scan area: ${connectResult.max_br_x}mm x ${connectResult.max_br_y}mm\n`);
+      console.log(
+        `  Scan area: ${connectResult.max_br_x}mm x ${connectResult.max_br_y}mm\n`
+      );
     }
 
     // Step 4: Ask about grid mode
-    const gridMode = await prompt('Grid mode (2 or 4, default 2): ') || '2';
-    const plateIndex = await prompt('Plate index (00, 01, etc., default 00): ') || '00';
+    const gridMode = (await prompt('Grid mode (2 or 4, default 2): ')) || '2';
+    const plateIndex =
+      (await prompt('Plate index (00, 01, etc., default 00): ')) || '00';
 
     // Step 5: Perform scan
     console.log('\n=== Step 3: Scanning ===\n');
@@ -158,7 +176,7 @@ async function main() {
       grid_mode: parseInt(gridMode),
       plate_index: plateIndex,
       resolution: 300,
-      output_path: `/tmp/graviscan-test-${Date.now()}.jpg`
+      output_path: `/tmp/graviscan-test-${Date.now()}.jpg`,
     });
 
     if (scanResult.error) {
@@ -177,15 +195,17 @@ async function main() {
     await graviscan.sendCommand({
       command: 'graviscan',
       action: 'disconnect-scanner',
-      scanner_id: scannerId
+      scanner_id: scannerId,
     });
     console.log('✓ Disconnected from scanner');
 
-    await graviscan.sendCommand({ command: 'graviscan', action: 'release-scanners' });
+    await graviscan.sendCommand({
+      command: 'graviscan',
+      action: 'release-scanners',
+    });
     console.log('✓ Released all scanner resources\n');
 
     console.log('Test complete!');
-
   } catch (error) {
     console.error('Error:', error);
   } finally {

@@ -371,12 +371,23 @@ export interface DatabaseAPI {
       experimentId: string,
       scannerId: string,
       plateIndex: string,
-      data: { plate_barcode?: string | null; transplant_date?: string | null; custom_note?: string | null; selected?: boolean }
+      data: {
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }
     ) => Promise<DatabaseResponse<GraviScanPlateAssignment>>;
     upsertMany: (
       experimentId: string,
       scannerId: string,
-      assignments: { plate_index: string; plate_barcode?: string | null; transplant_date?: string | null; custom_note?: string | null; selected?: boolean }[]
+      assignments: {
+        plate_index: string;
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }[]
     ) => Promise<DatabaseResponse<GraviScanPlateAssignment[]>>;
   };
   graviscans: {
@@ -425,7 +436,9 @@ export interface DatabaseAPI {
         uploadStatus?: string;
       };
     }) => Promise<DatabaseResponse<ExperimentWithScans[]>>;
-    getExperimentDetail: (experimentId: string) => Promise<DatabaseResponse<ExperimentWithScans>>;
+    getExperimentDetail: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<ExperimentWithScans>>;
   };
   graviimages: {
     create: (data: {
@@ -604,9 +617,11 @@ export interface GraviScanAPI {
   /**
    * Get platform support information
    */
-  getPlatformInfo: () => Promise<{
-    success: boolean;
-  } & GraviScanPlatformInfo>;
+  getPlatformInfo: () => Promise<
+    {
+      success: boolean;
+    } & GraviScanPlatformInfo
+  >;
 
   /**
    * Run scanner validation with cached scanner IDs
@@ -635,8 +650,6 @@ export interface GraviScanAPI {
     detectedScanners: DetectedScanner[];
   }>;
 
-
-
   /**
    * Get the scan output directory path
    */
@@ -649,7 +662,10 @@ export interface GraviScanAPI {
   /**
    * Read a scan image file and return as base64 data URI
    */
-  readScanImage: (filePath: string, options?: { full?: boolean }) => Promise<{
+  readScanImage: (
+    filePath: string,
+    options?: { full?: boolean }
+  ) => Promise<{
     success: boolean;
     dataUri?: string;
     error?: string;
@@ -708,21 +724,24 @@ export interface GraviScanAPI {
     phenotyperId?: string;
     resolution?: number;
     sessionId?: string | null;
-    jobs?: Record<string, {
-      scannerId: string;
-      plateIndex: string;
-      outputPath: string;
-      plantBarcode: string | null;
-      transplantDate?: string | null;
-      customNote?: string | null;
-      gridMode: string;
-      status: 'pending' | 'scanning' | 'complete' | 'error';
-      imagePath?: string;
-      error?: string;
-      durationMs?: number;
-      cycleNumber?: number;
-      dbRecorded?: boolean;
-    }>;
+    jobs?: Record<
+      string,
+      {
+        scannerId: string;
+        plateIndex: string;
+        outputPath: string;
+        plantBarcode: string | null;
+        transplantDate?: string | null;
+        customNote?: string | null;
+        gridMode: string;
+        status: 'pending' | 'scanning' | 'complete' | 'error';
+        imagePath?: string;
+        error?: string;
+        durationMs?: number;
+        cycleNumber?: number;
+        dbRecorded?: boolean;
+      }
+    >;
     // Continuous scan timing (for restoring UI across tab navigation)
     isContinuous?: boolean;
     currentCycle?: number;
@@ -738,90 +757,104 @@ export interface GraviScanAPI {
   /**
    * Register callback for when all scanners complete a cycle
    */
-  onCycleComplete: (callback: (data: {
-    cycle: number;
-  }) => void) => () => void;
+  onCycleComplete: (callback: (data: { cycle: number }) => void) => () => void;
 
   /**
    * Register callback for interval waiting periods (between cycles in continuous mode)
    */
-  onIntervalWaiting: (callback: (data: {
-    cycle: number;
-    totalCycles: number;
-    nextScanMs: number;
-  }) => void) => () => void;
+  onIntervalWaiting: (
+    callback: (data: {
+      cycle: number;
+      totalCycles: number;
+      nextScanMs: number;
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for when scan session exceeds the original duration
    */
-  onOvertime: (callback: (data: {
-    cycle: number;
-    totalCycles: number;
-    overtimeMs: number;
-  }) => void) => () => void;
+  onOvertime: (
+    callback: (data: {
+      cycle: number;
+      totalCycles: number;
+      overtimeMs: number;
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for when the entire interval scan session completes
    */
-  onIntervalComplete: (callback: (data: {
-    cyclesCompleted: number;
-    totalCycles: number;
-    cancelled: boolean;
-    overtimeMs: number;
-  }) => void) => () => void;
+  onIntervalComplete: (
+    callback: (data: {
+      cyclesCompleted: number;
+      totalCycles: number;
+      cancelled: boolean;
+      overtimeMs: number;
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for when a continuous scan session begins
    */
-  onIntervalStart: (callback: (data: {
-    totalCycles: number;
-    intervalMs: number;
-    durationMs: number;
-    startedAt: number;
-  }) => void) => () => void;
+  onIntervalStart: (
+    callback: (data: {
+      totalCycles: number;
+      intervalMs: number;
+      durationMs: number;
+      startedAt: number;
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for scan started events (a subprocess began scanning a plate)
    */
-  onScanStarted: (callback: (data: {
-    jobId: string;
-    scannerId: string;
-    plateIndex: string;
-  }) => void) => () => void;
+  onScanStarted: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex: string;
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for scan complete events
    */
-  onScanComplete: (callback: (data: {
-    jobId: string;
-    scannerId: string;
-    plateIndex: string;
-    imagePath: string;
-    durationMs?: number;
-    cycleNumber?: number;
-    scanStartedAt?: string | null;
-  }) => void) => () => void;
+  onScanComplete: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex: string;
+      imagePath: string;
+      durationMs?: number;
+      cycleNumber?: number;
+      scanStartedAt?: string | null;
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for grid complete events (per-grid timestamps)
    */
-  onGridComplete: (callback: (data: {
-    cycle: number;
-    gridIndex: string;
-    scanStartedAt: string;
-    scanEndedAt: string;
-    renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
-  }) => void) => () => void;
+  onGridComplete: (
+    callback: (data: {
+      cycle: number;
+      gridIndex: string;
+      scanStartedAt: string;
+      scanEndedAt: string;
+      renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for scan error events
    */
-  onScanError: (callback: (data: {
-    jobId: string;
-    scannerId: string;
-    plateIndex?: string;
-    error: string;
-  }) => void) => () => void;
+  onScanError: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex?: string;
+      error: string;
+    }) => void
+  ) => () => void;
 
   /**
    * Upload all pending/failed scans across all experiments to Supabase cloud
@@ -837,22 +870,26 @@ export interface GraviScanAPI {
   /**
    * Register callback for upload progress events
    */
-  onUploadProgress: (callback: (progress: {
-    total: number;
-    completed: number;
-    failed: number;
-    currentFile: string;
-  }) => void) => () => void;
+  onUploadProgress: (
+    callback: (progress: {
+      total: number;
+      completed: number;
+      failed: number;
+      currentFile: string;
+    }) => void
+  ) => () => void;
 
   /**
    * Register callback for Box backup progress events
    */
-  onBoxBackupProgress: (callback: (progress: {
-    totalImages: number;
-    completedImages: number;
-    failedImages: number;
-    currentExperiment: string;
-  }) => void) => () => void;
+  onBoxBackupProgress: (
+    callback: (progress: {
+      totalImages: number;
+      completedImages: number;
+      failedImages: number;
+      currentExperiment: string;
+    }) => void
+  ) => () => void;
 
   /**
    * Download experiment images to a local folder
@@ -867,7 +904,6 @@ export interface GraviScanAPI {
     copied: number;
     errors: string[];
   }>;
-
 }
 
 /**

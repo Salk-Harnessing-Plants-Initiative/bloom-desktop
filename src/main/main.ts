@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { getErrorMessage } from '../utils/errors';
 import { PythonProcess } from './python-process';
 import { ScanCoordinator } from './scan-coordinator';
 import { CameraProcess } from './camera-process';
@@ -258,7 +259,11 @@ function initializeScanCoordinator(): void {
       pythonPath = fs.existsSync(venvPython) ? venvPython : 'python3';
     }
 
-    scanCoordinator = new ScanCoordinator(pythonPath, app.isPackaged, mockEnabled);
+    scanCoordinator = new ScanCoordinator(
+      pythonPath,
+      app.isPackaged,
+      mockEnabled
+    );
 
     // Log scan events to persistent file + forward to renderer + update session state
     scanCoordinator.on('scan-event', (event) => {
@@ -268,10 +273,14 @@ function initializeScanCoordinator(): void {
           scanLog(`[${event.scanner_id}] Scanning plate ${event.plate_index}`);
           break;
         case 'scan-complete':
-          scanLog(`[${event.scanner_id}] Plate ${event.plate_index} complete (${event.duration_ms}ms) → ${event.path}`);
+          scanLog(
+            `[${event.scanner_id}] Plate ${event.plate_index} complete (${event.duration_ms}ms) → ${event.path}`
+          );
           break;
         case 'scan-error':
-          scanLog(`[${event.scanner_id}] Plate ${event.plate_index} ERROR: ${event.error}`);
+          scanLog(
+            `[${event.scanner_id}] Plate ${event.plate_index} ERROR: ${event.error}`
+          );
           break;
         case 'scan-cancelled':
           scanLog(`[${event.scanner_id}] Plate ${event.plate_index} cancelled`);
@@ -311,22 +320,33 @@ function initializeScanCoordinator(): void {
         // until interval-complete fires.
         if (
           !scanSession.isContinuous &&
-          (event.type === 'scan-complete' || event.type === 'scan-error' || event.type === 'scan-cancelled')
+          (event.type === 'scan-complete' ||
+            event.type === 'scan-error' ||
+            event.type === 'scan-cancelled')
         ) {
           const allDone = Object.values(scanSession.jobs).every(
             (j) => j.status === 'complete' || j.status === 'error'
           );
           if (allDone) {
-            console.log('[ScanSession] All jobs finished, deactivating session');
+            console.log(
+              '[ScanSession] All jobs finished, deactivating session'
+            );
             scanSession.isActive = false;
 
             // Update session completed_at timestamp
             if (scanSession.sessionId) {
               const db = getDatabase();
-              db.graviScanSession.update({
-                where: { id: scanSession.sessionId },
-                data: { completed_at: new Date() },
-              }).catch((err: unknown) => console.error('[ScanSession] Failed to update session completed_at:', err));
+              db.graviScanSession
+                .update({
+                  where: { id: scanSession.sessionId },
+                  data: { completed_at: new Date() },
+                })
+                .catch((err: unknown) =>
+                  console.error(
+                    '[ScanSession] Failed to update session completed_at:',
+                    err
+                  )
+                );
             }
           }
         }
@@ -379,7 +399,9 @@ function initializeScanCoordinator(): void {
 
     // Forward grid-level events (per-grid timestamps for DB records)
     scanCoordinator.on('grid-complete', (data) => {
-      scanLog(`Grid ${data.gridIndex} complete: st=${data.scanStartedAt} et=${data.scanEndedAt}`);
+      scanLog(
+        `Grid ${data.gridIndex} complete: st=${data.scanStartedAt} et=${data.scanEndedAt}`
+      );
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('graviscan:grid-complete', {
           cycle: data.cycle,
@@ -393,7 +415,9 @@ function initializeScanCoordinator(): void {
 
     // Log and forward interval-level events
     scanCoordinator.on('interval-start', (data) => {
-      scanLog(`Continuous scan started: ${data.totalCycles} cycles, ${data.intervalMs}ms interval, ${data.durationMs}ms duration`);
+      scanLog(
+        `Continuous scan started: ${data.totalCycles} cycles, ${data.intervalMs}ms interval, ${data.durationMs}ms duration`
+      );
       // Persist timing to session state
       if (scanSession) {
         scanSession.totalCycles = data.totalCycles;
@@ -445,26 +469,39 @@ function initializeScanCoordinator(): void {
     });
 
     scanCoordinator.on('overtime', (data) => {
-      scanLog(`Overtime: cycle ${data.cycle}/${data.totalCycles}, +${data.overtimeMs}ms beyond duration`);
+      scanLog(
+        `Overtime: cycle ${data.cycle}/${data.totalCycles}, +${data.overtimeMs}ms beyond duration`
+      );
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('graviscan:overtime', data);
       }
     });
 
     scanCoordinator.on('interval-complete', (data) => {
-      scanLog(`Scan session complete: ${data.cyclesCompleted}/${data.totalCycles} cycles (cancelled=${data.cancelled}, overtimeMs=${data.overtimeMs})`);
+      scanLog(
+        `Scan session complete: ${data.cyclesCompleted}/${data.totalCycles} cycles (cancelled=${data.cancelled}, overtimeMs=${data.overtimeMs})`
+      );
       // Deactivate continuous session when all cycles are done
       if (scanSession?.isActive && scanSession.isContinuous) {
-        console.log('[ScanSession] Continuous scan complete, deactivating session');
+        console.log(
+          '[ScanSession] Continuous scan complete, deactivating session'
+        );
         scanSession.isActive = false;
 
         // Update session completed_at timestamp
         if (scanSession.sessionId) {
           const db = getDatabase();
-          db.graviScanSession.update({
-            where: { id: scanSession.sessionId },
-            data: { completed_at: new Date(), cancelled: data.cancelled },
-          }).catch((err: unknown) => console.error('[ScanSession] Failed to update session completed_at:', err));
+          db.graviScanSession
+            .update({
+              where: { id: scanSession.sessionId },
+              data: { completed_at: new Date(), cancelled: data.cancelled },
+            })
+            .catch((err: unknown) =>
+              console.error(
+                '[ScanSession] Failed to update session completed_at:',
+                err
+              )
+            );
         }
       }
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -472,7 +509,11 @@ function initializeScanCoordinator(): void {
       }
     });
 
-    console.log('[GraviScan] ScanCoordinator initialized (mock:', mockEnabled, ')');
+    console.log(
+      '[GraviScan] ScanCoordinator initialized (mock:',
+      mockEnabled,
+      ')'
+    );
   } catch (error) {
     console.error('[GraviScan] Failed to initialize ScanCoordinator:', error);
   }
@@ -499,10 +540,9 @@ ipcMain.handle('python:send-command', async (_event, command: object) => {
     }
     const response = await pythonProcess.sendCommand(command);
     return { success: true, data: response };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('python:send-command error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -518,8 +558,7 @@ ipcMain.handle('python:get-version', async () => {
       command: 'get_version',
     });
     return response;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('python:get-version error:', error);
     throw error;
   }
@@ -537,8 +576,7 @@ ipcMain.handle('python:check-hardware', async () => {
       command: 'check_hardware',
     });
     return response;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('python:check-hardware error:', error);
     throw error;
   }
@@ -557,10 +595,9 @@ ipcMain.handle('python:restart', async () => {
       await initializePythonProcess();
       return { success: true };
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('python:restart error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -650,10 +687,9 @@ ipcMain.handle(
       }
 
       return { success };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('camera:configure error:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 );
@@ -668,8 +704,7 @@ ipcMain.handle('camera:get-status', async () => {
     }
     const status = await cameraProcess.getStatus();
     return status;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('camera:get-status error:', error);
     return { connected: false, mock: true, available: false };
   }
@@ -696,10 +731,9 @@ ipcMain.handle(
       const camera = await ensureCameraProcess();
       const success = await camera.startStream(settings);
       return { success };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('camera:start-stream error:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 );
@@ -714,10 +748,9 @@ ipcMain.handle('camera:stop-stream', async () => {
     }
     const success = await cameraProcess.stopStream();
     return { success };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('camera:stop-stream error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error) };
   }
 });
 
@@ -781,10 +814,13 @@ ipcMain.handle(
       const scanner = await ensureScannerProcess();
       const response = await scanner.initialize(settings);
       return response;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('scanner:initialize error:', error);
-      return { success: false, initialized: false, error: error.message };
+      return {
+        success: false,
+        initialized: false,
+        error: getErrorMessage(error),
+      };
     }
   }
 );
@@ -799,14 +835,13 @@ ipcMain.handle('scanner:scan', async () => {
     }
     const response = await scannerProcess.scan();
     return response;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('scanner:scan error:', error);
     return {
       success: false,
       frames_captured: 0,
       output_path: '',
-      error: error.message,
+      error: getErrorMessage(error),
     };
   }
 });
@@ -1059,8 +1094,14 @@ app.on('ready', async () => {
     // Register GraviScan handlers early (before Python init) so renderer can call them
     // Pass null for pythonProcess initially - it will be updated after Python starts
     const db = getDatabase();
-    registerGraviscanHandlers(db, () => mainWindow, () => scanCoordinator);
-    console.log('[Main] GraviScan handlers registered (awaiting Python process)');
+    registerGraviscanHandlers(
+      db,
+      () => mainWindow,
+      () => scanCoordinator
+    );
+    console.log(
+      '[Main] GraviScan handlers registered (awaiting Python process)'
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[Main] Failed to initialize database:', errorMessage);

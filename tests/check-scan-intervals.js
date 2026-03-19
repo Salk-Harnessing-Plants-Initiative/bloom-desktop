@@ -12,7 +12,8 @@ const scanDir = path.join(__dirname, '.graviscan');
 const prefix = 'TestScan5';
 
 // Parse filename: TestScan5_st_{ts}_et_{ts}_S{N}_{plate}.jpg
-const pattern = /^TestScan5_st_(\d{8}T\d{6})_et_(\d{8}T\d{6})_(S\d+)_(\d{2})\.jpg$/;
+const pattern =
+  /^TestScan5_st_(\d{8}T\d{6})_et_(\d{8}T\d{6})_(S\d+)_(\d{2})\.jpg$/;
 
 function parseTimestamp(ts) {
   // 20260224T003007 → 2026-02-24T00:30:07
@@ -31,9 +32,10 @@ function formatDuration(ms) {
 }
 
 // Read and parse all matching files
-const files = fs.readdirSync(scanDir)
-  .filter(f => f.startsWith(prefix) && f.endsWith('.jpg'))
-  .map(f => {
+const files = fs
+  .readdirSync(scanDir)
+  .filter((f) => f.startsWith(prefix) && f.endsWith('.jpg'))
+  .map((f) => {
     const m = f.match(pattern);
     if (!m) return null;
     return {
@@ -67,7 +69,9 @@ console.log(`TestScan5 Timing Analysis — ${files.length} images found`);
 console.log('='.repeat(80));
 
 // First, show grid-level timestamp consistency (same grid across scanners)
-console.log('\n--- Grid Timestamp Consistency (same grid = same st/et across scanners) ---\n');
+console.log(
+  '\n--- Grid Timestamp Consistency (same grid = same st/et across scanners) ---\n'
+);
 const byGrid = {};
 for (const f of files) {
   const gridKey = `${f.stRaw}_${f.plate}`;
@@ -76,11 +80,13 @@ for (const f of files) {
 }
 for (const [, group] of Object.entries(byGrid).sort()) {
   if (group.length > 1) {
-    const allSameSt = group.every(g => g.stRaw === group[0].stRaw);
-    const allSameEt = group.every(g => g.etRaw === group[0].etRaw);
-    const scanners = group.map(g => g.scanner).join(', ');
+    const allSameSt = group.every((g) => g.stRaw === group[0].stRaw);
+    const allSameEt = group.every((g) => g.etRaw === group[0].etRaw);
+    const scanners = group.map((g) => g.scanner).join(', ');
     const status = allSameSt && allSameEt ? 'OK' : 'MISMATCH';
-    console.log(`  Grid ${group[0].plate} st_${group[0].stRaw}: [${scanners}] → ${status}`);
+    console.log(
+      `  Grid ${group[0].plate} st_${group[0].stRaw}: [${scanners}] → ${status}`
+    );
   }
 }
 
@@ -109,13 +115,16 @@ for (const key of Object.keys(groups).sort()) {
 // Per-cycle total scan time (first grid start → last grid end)
 console.log('--- Per-Cycle Total Scan Time ---\n');
 // Identify cycles by sorting all unique st_ times and grouping grids
-const allStarts = [...new Set(files.map(f => f.startTime.getTime()))].sort((a, b) => a - b);
+const allStarts = [...new Set(files.map((f) => f.startTime.getTime()))].sort(
+  (a, b) => a - b
+);
 // Grids within a cycle have consecutive st_ times; cycles are separated by the interval gap
 const cycles = [];
 let currentCycle = [allStarts[0]];
 for (let i = 1; i < allStarts.length; i++) {
   const gap = allStarts[i] - allStarts[i - 1];
-  if (gap > 120000) { // >2min gap = new cycle
+  if (gap > 120000) {
+    // >2min gap = new cycle
     cycles.push(currentCycle);
     currentCycle = [allStarts[i]];
   } else {
@@ -125,12 +134,20 @@ for (let i = 1; i < allStarts.length; i++) {
 cycles.push(currentCycle);
 
 for (let i = 0; i < cycles.length; i++) {
-  const cycleFiles = files.filter(f => cycles[i].includes(f.startTime.getTime()));
-  const firstStart = new Date(Math.min(...cycleFiles.map(f => f.startTime.getTime())));
-  const lastEnd = new Date(Math.max(...cycleFiles.map(f => f.endTime.getTime())));
+  const cycleFiles = files.filter((f) =>
+    cycles[i].includes(f.startTime.getTime())
+  );
+  const firstStart = new Date(
+    Math.min(...cycleFiles.map((f) => f.startTime.getTime()))
+  );
+  const lastEnd = new Date(
+    Math.max(...cycleFiles.map((f) => f.endTime.getTime()))
+  );
   const totalMs = lastEnd - firstStart;
-  const gridsInCycle = [...new Set(cycleFiles.map(f => f.plate))].sort();
-  console.log(`  Cycle ${i + 1}: ${firstStart.toISOString().slice(11, 19)} → ${lastEnd.toISOString().slice(11, 19)}  total: ${formatDuration(totalMs)}  (${gridsInCycle.length} grids)`);
+  const gridsInCycle = [...new Set(cycleFiles.map((f) => f.plate))].sort();
+  console.log(
+    `  Cycle ${i + 1}: ${firstStart.toISOString().slice(11, 19)} → ${lastEnd.toISOString().slice(11, 19)}  total: ${formatDuration(totalMs)}  (${gridsInCycle.length} grids)`
+  );
 }
 console.log();
 
@@ -146,6 +163,10 @@ if (allIntervals.length > 0) {
   const avg = allIntervals.reduce((a, b) => a + b, 0) / allIntervals.length;
   const min = Math.min(...allIntervals);
   const max = Math.max(...allIntervals);
-  console.log(`  Intervals (st→st): avg=${formatDuration(avg)}, min=${formatDuration(min)}, max=${formatDuration(max)}`);
-  console.log(`  Total scans: ${files.length} (${Object.keys(groups).length} plates × ${Math.round(files.length / Object.keys(groups).length)} cycles)`);
+  console.log(
+    `  Intervals (st→st): avg=${formatDuration(avg)}, min=${formatDuration(min)}, max=${formatDuration(max)}`
+  );
+  console.log(
+    `  Total scans: ${files.length} (${Object.keys(groups).length} plates × ${Math.round(files.length / Object.keys(groups).length)} cycles)`
+  );
 }

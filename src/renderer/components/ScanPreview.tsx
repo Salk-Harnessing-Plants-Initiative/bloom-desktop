@@ -8,7 +8,11 @@
  * - Updates in real-time as individual plates are scanned
  */
 
-import type { ScannerAssignment, PlateAssignment, GridMode } from '../../types/graviscan';
+import type {
+  ScannerAssignment,
+  PlateAssignment,
+  GridMode,
+} from '../../types/graviscan';
 import { formatPlateIndex } from '../../types/graviscan';
 
 /** Per-plate status for the preview */
@@ -76,13 +80,25 @@ function PlateCell({
         {/* Overlay with plate info */}
         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-xs font-bold text-white">{formatPlateIndex(plate.plateIndex)}</span>
-            <svg className="h-3.5 w-3.5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            <span className="font-mono text-xs font-bold text-white">
+              {formatPlateIndex(plate.plateIndex)}
+            </span>
+            <svg
+              className="h-3.5 w-3.5 text-green-400"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
             </svg>
           </div>
           {plate.plantBarcode && (
-            <span className="text-[10px] text-gray-300 truncate block">{plate.plantBarcode}</span>
+            <span className="text-[10px] text-gray-300 truncate block">
+              {plate.plantBarcode}
+            </span>
           )}
         </div>
       </div>
@@ -100,15 +116,34 @@ function PlateCell({
       >
         {/* Scanning animation */}
         <div className="relative">
-          <svg className="animate-spin h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          <svg
+            className="animate-spin h-8 w-8 text-blue-500"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
           </svg>
         </div>
         <span className="mt-2 text-xs font-bold text-blue-600">Scanning</span>
-        <span className="font-mono text-xs text-blue-400 mt-0.5">{formatPlateIndex(plate.plateIndex)}</span>
+        <span className="font-mono text-xs text-blue-400 mt-0.5">
+          {formatPlateIndex(plate.plateIndex)}
+        </span>
         {plate.plantBarcode && (
-          <span className="text-[10px] text-blue-400 truncate max-w-full px-1 mt-0.5">{plate.plantBarcode}</span>
+          <span className="text-[10px] text-blue-400 truncate max-w-full px-1 mt-0.5">
+            {plate.plantBarcode}
+          </span>
         )}
       </div>
     );
@@ -123,28 +158,42 @@ function PlateCell({
         plate.selected
           ? 'border-blue-300 bg-blue-50/50'
           : 'border-gray-200 bg-gray-50'
-      } ${
-        status === 'error' ? 'border-red-300 bg-red-50/50' : ''
-      }`}
+      } ${status === 'error' ? 'border-red-300 bg-red-50/50' : ''}`}
       title={`Plate ${formatPlateIndex(plate.plateIndex)}${plate.plantBarcode ? ` — ${plate.plantBarcode}` : ''}${!plate.selected ? ' (not selected)' : ''}`}
     >
       {/* Scanner bed icon */}
-      <svg className={`${is4Grid ? 'h-6 w-6' : 'h-8 w-8'} ${plate.selected ? 'text-blue-300' : 'text-gray-300'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      <svg
+        className={`${is4Grid ? 'h-6 w-6' : 'h-8 w-8'} ${plate.selected ? 'text-blue-300' : 'text-gray-300'}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+        />
       </svg>
 
       {/* Plate index */}
-      <span className={`font-mono font-bold mt-1 ${is4Grid ? 'text-xs' : 'text-sm'} ${plate.selected ? 'text-blue-500' : 'text-gray-400'}`}>
+      <span
+        className={`font-mono font-bold mt-1 ${is4Grid ? 'text-xs' : 'text-sm'} ${plate.selected ? 'text-blue-500' : 'text-gray-400'}`}
+      >
         {formatPlateIndex(plate.plateIndex)}
       </span>
 
       {/* Plant barcode */}
       {plate.plantBarcode ? (
-        <span className={`truncate max-w-full px-1 mt-0.5 ${is4Grid ? 'text-[9px]' : 'text-[10px]'} font-medium text-gray-500`}>
+        <span
+          className={`truncate max-w-full px-1 mt-0.5 ${is4Grid ? 'text-[9px]' : 'text-[10px]'} font-medium text-gray-500`}
+        >
           {plate.plantBarcode.slice(0, 12)}
         </span>
       ) : (
-        <span className={`${is4Grid ? 'text-[9px]' : 'text-[10px]'} text-gray-300 italic mt-0.5`}>
+        <span
+          className={`${is4Grid ? 'text-[9px]' : 'text-[10px]'} text-gray-300 italic mt-0.5`}
+        >
           {plate.selected ? 'ready' : 'skip'}
         </span>
       )}
@@ -152,15 +201,25 @@ function PlateCell({
       {/* Selection indicator */}
       {plate.selected && (
         <div className="absolute top-1 right-1">
-          <div className={`${is4Grid ? 'h-3 w-3' : 'h-3.5 w-3.5'} rounded-full bg-blue-400`} />
+          <div
+            className={`${is4Grid ? 'h-3 w-3' : 'h-3.5 w-3.5'} rounded-full bg-blue-400`}
+          />
         </div>
       )}
 
       {/* Error indicator */}
       {status === 'error' && (
         <div className="absolute top-1 left-1">
-          <svg className="h-3.5 w-3.5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          <svg
+            className="h-3.5 w-3.5 text-red-500"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+              clipRule="evenodd"
+            />
           </svg>
         </div>
       )}
@@ -206,11 +265,24 @@ function ScannerPreviewCard({
     statusBadge = (
       <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">
         <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
         </svg>
         <span className="text-xs font-bold">
-          {scanner.scanProgress !== undefined ? `${scanner.scanProgress}%` : 'Scanning'}
+          {scanner.scanProgress !== undefined
+            ? `${scanner.scanProgress}%`
+            : 'Scanning'}
         </span>
       </div>
     );
@@ -236,9 +308,13 @@ function ScannerPreviewCard({
       ? 'bg-gradient-to-br from-green-50 to-emerald-50'
       : 'bg-gradient-to-br from-red-50 to-rose-50';
     statusBadge = (
-      <div className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-        testSuccess ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-      }`}>
+      <div
+        className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+          testSuccess
+            ? 'bg-green-100 text-green-700'
+            : 'bg-red-100 text-red-700'
+        }`}
+      >
         {testSuccess ? 'Ready' : 'Error'}
       </div>
     );
@@ -253,27 +329,54 @@ function ScannerPreviewCard({
       {/* Scanner header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2.5">
-          <div className={`p-1.5 rounded-lg ${
-            scanner.isScanning ? 'bg-blue-200' :
-            completedCount > 0 ? 'bg-green-200' :
-            hasTestResult ? (testSuccess ? 'bg-green-200' : 'bg-red-200') :
-            'bg-gray-200'
-          }`}>
-            <svg className={`h-5 w-5 ${
-              scanner.isScanning ? 'text-blue-700' :
-              completedCount > 0 ? 'text-green-700' :
-              hasTestResult ? (testSuccess ? 'text-green-700' : 'text-red-700') :
-              'text-gray-600'
-            }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          <div
+            className={`p-1.5 rounded-lg ${
+              scanner.isScanning
+                ? 'bg-blue-200'
+                : completedCount > 0
+                  ? 'bg-green-200'
+                  : hasTestResult
+                    ? testSuccess
+                      ? 'bg-green-200'
+                      : 'bg-red-200'
+                    : 'bg-gray-200'
+            }`}
+          >
+            <svg
+              className={`h-5 w-5 ${
+                scanner.isScanning
+                  ? 'text-blue-700'
+                  : completedCount > 0
+                    ? 'text-green-700'
+                    : hasTestResult
+                      ? testSuccess
+                        ? 'text-green-700'
+                        : 'text-red-700'
+                      : 'text-gray-600'
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+              />
             </svg>
           </div>
           <div>
-            <span className="text-sm font-bold text-gray-800">{scanner.assignment.slot}</span>
-            <div className={`text-[10px] font-semibold mt-0.5 ${
-              is4Grid ? 'text-purple-500' : 'text-blue-500'
-            }`}>
-              {is4Grid ? '4-grid' : '2-grid'} · {totalSelected} plate{totalSelected !== 1 ? 's' : ''}
+            <span className="text-sm font-bold text-gray-800">
+              {scanner.assignment.slot}
+            </span>
+            <div
+              className={`text-[10px] font-semibold mt-0.5 ${
+                is4Grid ? 'text-purple-500' : 'text-blue-500'
+              }`}
+            >
+              {is4Grid ? '4-grid' : '2-grid'} · {totalSelected} plate
+              {totalSelected !== 1 ? 's' : ''}
             </div>
           </div>
         </div>
@@ -312,17 +415,35 @@ function ScannerPreviewCard({
 /**
  * Main ScanPreview component
  */
-export function ScanPreview({ scanners, onScannerClick, onImageClick }: ScanPreviewProps) {
+export function ScanPreview({
+  scanners,
+  onScannerClick,
+  onImageClick,
+}: ScanPreviewProps) {
   if (scanners.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 bg-gradient-to-br from-gray-50 to-slate-100 rounded-2xl border-2 border-dashed border-gray-300">
         <div className="p-4 bg-gray-200 rounded-2xl mb-4">
-          <svg className="h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          <svg
+            className="h-16 w-16 text-gray-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+            />
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-gray-600 mb-1">No Scanners Configured</h3>
-        <p className="text-sm text-gray-400">Detect and assign scanners below to see preview</p>
+        <h3 className="text-lg font-semibold text-gray-600 mb-1">
+          No Scanners Configured
+        </h3>
+        <p className="text-sm text-gray-400">
+          Detect and assign scanners below to see preview
+        </p>
       </div>
     );
   }
@@ -331,8 +452,12 @@ export function ScanPreview({ scanners, onScannerClick, onImageClick }: ScanPrev
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-800">Scanner Preview</h3>
-          <p className="text-xs text-gray-500 mt-0.5">Each cell represents a plate position on the scanner bed</p>
+          <h3 className="text-lg font-semibold text-gray-800">
+            Scanner Preview
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Each cell represents a plate position on the scanner bed
+          </p>
         </div>
         <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
           {scanners.length} scanner{scanners.length > 1 ? 's' : ''}
@@ -346,7 +471,10 @@ export function ScanPreview({ scanners, onScannerClick, onImageClick }: ScanPrev
             <ScannerPreviewCard
               key={scanner.assignment.scannerId || scanner.assignment.slot}
               scanner={scanner}
-              onClick={() => scanner.assignment.scannerId && onScannerClick?.(scanner.assignment.scannerId)}
+              onClick={() =>
+                scanner.assignment.scannerId &&
+                onScannerClick?.(scanner.assignment.scannerId)
+              }
               onImageClick={onImageClick}
             />
           ))}

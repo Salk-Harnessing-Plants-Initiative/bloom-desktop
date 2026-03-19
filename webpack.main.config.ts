@@ -28,6 +28,6 @@ export const mainConfig: Configuration = {
     '.prisma/client': 'commonjs .prisma/client',
     '@prisma/client': 'commonjs @prisma/client',
     // Sharp uses platform-specific native binaries that can't load from asar
-    'sharp': 'commonjs sharp',
+    sharp: 'commonjs sharp',
   },
 };

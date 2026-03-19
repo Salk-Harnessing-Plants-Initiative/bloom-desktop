@@ -29,11 +29,19 @@ export const SPECIES_LIST = [
  * Experiment types available in the system
  */
 export const EXPERIMENT_TYPES = [
-  { value: 'cylinder', label: 'Cylinder Scan', description: 'Rotational imaging with camera' },
-  { value: 'graviscan', label: 'GraviScan', description: 'Flatbed scanner imaging' },
+  {
+    value: 'cylinder',
+    label: 'Cylinder Scan',
+    description: 'Rotational imaging with camera',
+  },
+  {
+    value: 'graviscan',
+    label: 'GraviScan',
+    description: 'Flatbed scanner imaging',
+  },
 ] as const;
 
-export type ExperimentType = typeof EXPERIMENT_TYPES[number]['value'];
+export type ExperimentType = (typeof EXPERIMENT_TYPES)[number]['value'];
 
 const experimentSchema = z.object({
   name: z
@@ -179,7 +187,9 @@ export function ExperimentForm({
             ))}
           </select>
           {errors.experiment_type && (
-            <p className="mt-1 text-xs text-red-600">{errors.experiment_type.message}</p>
+            <p className="mt-1 text-xs text-red-600">
+              {errors.experiment_type.message}
+            </p>
           )}
         </div>
       )}

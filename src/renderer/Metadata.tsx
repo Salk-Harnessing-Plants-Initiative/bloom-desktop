@@ -133,9 +133,7 @@ export function Metadata() {
             Upload Plate Metadata (Excel)
           </h2>
           <div className="w-full max-w-2xl">
-            <GraviMetadataUpload
-              onUploadComplete={handleGraviUploadComplete}
-            />
+            <GraviMetadataUpload onUploadComplete={handleGraviUploadComplete} />
           </div>
         </div>
       </div>

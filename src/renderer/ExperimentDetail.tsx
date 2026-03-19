@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { ExperimentWithScans, GraviScanWithRelations } from '../types/graviscan';
+import type {
+  ExperimentWithScans,
+  GraviScanWithRelations,
+} from '../types/graviscan';
 import { formatPlateIndex } from '../types/graviscan';
 import { ImageLightbox } from './components/ImageLightbox';
 
@@ -25,7 +28,9 @@ export function ExperimentDetail() {
   const { experimentId } = useParams<{ experimentId: string }>();
   const navigate = useNavigate();
 
-  const [experiment, setExperiment] = useState<ExperimentWithScans | null>(null);
+  const [experiment, setExperiment] = useState<ExperimentWithScans | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +46,6 @@ export function ExperimentDetail() {
 
   // Lightbox
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-
 
   // Fetch experiment detail
   useEffect(() => {
@@ -78,16 +82,24 @@ export function ExperimentDetail() {
             if (match) {
               slotLabel = `Scanner ${match[1]}`;
             }
-            const name = slotLabel || scan.scanner?.display_name || scan.scanner?.name || 'Unknown';
+            const name =
+              slotLabel ||
+              scan.scanner?.display_name ||
+              scan.scanner?.name ||
+              'Unknown';
             map.set(id, { id, name, imageCount: scan.images.length });
           }
         }
-        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+        return Array.from(map.values()).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
       })()
     : [];
 
   const waveNumbers: number[] = experiment
-    ? [...new Set(experiment.scans.map((s) => s.wave_number))].sort((a, b) => a - b)
+    ? [...new Set(experiment.scans.map((s) => s.wave_number))].sort(
+        (a, b) => a - b
+      )
     : [];
 
   const hasMultipleWaves = waveNumbers.length > 1;
@@ -102,7 +114,11 @@ export function ExperimentDetail() {
         return scan.images.map((img) => ({
           path: img.path,
           status: img.status,
-          scannerName: scannerLabelMap.get(scannerId) || scan.scanner?.display_name || scan.scanner?.name || 'Unknown',
+          scannerName:
+            scannerLabelMap.get(scannerId) ||
+            scan.scanner?.display_name ||
+            scan.scanner?.name ||
+            'Unknown',
           scannerId,
           plateIndex: scan.plate_index,
           captureDate: scan.capture_date,
@@ -132,7 +148,10 @@ export function ExperimentDetail() {
   const scannerCounts = new Map<string, number>();
   for (const img of allFlatImages) {
     if (selectedWave !== null && img.waveNumber !== selectedWave) continue;
-    scannerCounts.set(img.scannerId, (scannerCounts.get(img.scannerId) || 0) + 1);
+    scannerCounts.set(
+      img.scannerId,
+      (scannerCounts.get(img.scannerId) || 0) + 1
+    );
   }
 
   // Lazy image loading with IntersectionObserver
@@ -159,7 +178,10 @@ export function ExperimentDetail() {
       if (fullImages[imagePath]) return;
       setFullImageLoading(true);
       try {
-        const result = await window.electron.graviscan.readScanImage(imagePath, { full: true });
+        const result = await window.electron.graviscan.readScanImage(
+          imagePath,
+          { full: true }
+        );
         if (result.success && result.dataUri) {
           setFullImages((prev) => ({ ...prev, [imagePath]: result.dataUri }));
         }
@@ -192,20 +214,24 @@ export function ExperimentDetail() {
     return () => observerRef.current?.disconnect();
   }, []);
 
-  const imageRef = useCallback(
-    (el: HTMLDivElement | null) => {
-      if (el && observerRef.current) {
-        observerRef.current.observe(el);
-      }
-    },
-    []
-  );
+  const imageRef = useCallback((el: HTMLDivElement | null) => {
+    if (el && observerRef.current) {
+      observerRef.current.observe(el);
+    }
+  }, []);
 
   // Lightbox caption
   const getLightboxCaption = (img: FlatImage) => {
     const d = new Date(img.captureDate);
-    const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const date = d.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    const time = d.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     if (hasMultipleWaves) {
       return `${img.scannerName} \u00b7 Plate ${formatPlateIndex(img.plateIndex)} \u00b7 Wave ${img.waveNumber} \u00b7 ${date}, ${time}`;
     }
@@ -214,7 +240,13 @@ export function ExperimentDetail() {
 
   // Metadata summary
   const phenotypers = experiment
-    ? [...new Set(experiment.scans.map((s: GraviScanWithRelations) => s.phenotyper?.name).filter(Boolean))]
+    ? [
+        ...new Set(
+          experiment.scans
+            .map((s: GraviScanWithRelations) => s.phenotyper?.name)
+            .filter(Boolean)
+        ),
+      ]
     : [];
   const dates = experiment
     ? experiment.scans.map((s) => new Date(s.capture_date).getTime())
@@ -240,8 +272,23 @@ export function ExperimentDetail() {
   if (error || !experiment) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
-        <button onClick={() => navigate('/browse-scans')} className="text-blue-600 hover:text-blue-800 text-sm mb-4 inline-flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        <button
+          onClick={() => navigate('/browse-scans')}
+          className="text-blue-600 hover:text-blue-800 text-sm mb-4 inline-flex items-center gap-1"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
           Browse Scans
         </button>
         <p className="text-red-500">{error || 'Experiment not found'}</p>
@@ -258,10 +305,24 @@ export function ExperimentDetail() {
             onClick={() => navigate('/browse-scans')}
             className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-flex items-center gap-1"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
             Browse Scans
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">{experiment.name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {experiment.name}
+          </h1>
         </div>
       </div>
 
@@ -285,7 +346,8 @@ export function ExperimentDetail() {
               <span className="font-medium text-gray-600">Date:</span>{' '}
               <span className="text-gray-900">
                 {earliest.toLocaleDateString()}
-                {earliest.getTime() !== latest.getTime() && ` - ${latest.toLocaleDateString()}`}
+                {earliest.getTime() !== latest.getTime() &&
+                  ` - ${latest.toLocaleDateString()}`}
               </span>
             </div>
           )}
@@ -303,7 +365,9 @@ export function ExperimentDetail() {
           </div>
           <div>
             <span className="font-medium text-gray-600">Mode:</span>{' '}
-            <span className="text-gray-900">{hasMultipleWaves ? `${waveNumbers.length} waves` : 'Single wave'}</span>
+            <span className="text-gray-900">
+              {hasMultipleWaves ? `${waveNumbers.length} waves` : 'Single wave'}
+            </span>
           </div>
           {experiment.accession && (
             <div>
@@ -324,12 +388,22 @@ export function ExperimentDetail() {
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          All ({allFlatImages.filter((img) => selectedWave === null || img.waveNumber === selectedWave).length})
+          All (
+          {
+            allFlatImages.filter(
+              (img) => selectedWave === null || img.waveNumber === selectedWave
+            ).length
+          }
+          )
         </button>
         {scanners.map((scanner) => (
           <button
             key={scanner.id}
-            onClick={() => setSelectedScanner(selectedScanner === scanner.id ? null : scanner.id)}
+            onClick={() =>
+              setSelectedScanner(
+                selectedScanner === scanner.id ? null : scanner.id
+              )
+            }
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               selectedScanner === scanner.id
                 ? 'bg-blue-600 text-white'
@@ -357,7 +431,9 @@ export function ExperimentDetail() {
           {waveNumbers.map((wave) => (
             <button
               key={wave}
-              onClick={() => setSelectedWave(selectedWave === wave ? null : wave)}
+              onClick={() =>
+                setSelectedWave(selectedWave === wave ? null : wave)
+              }
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 selectedWave === wave
                   ? 'bg-purple-600 text-white'
@@ -411,21 +487,41 @@ export function ExperimentDetail() {
                     />
                   ) : (
                     <div className="flex items-center justify-center w-full h-full text-gray-400 text-xs">
-                      <svg className="w-6 h-6 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M6.75 7.5a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+                      <svg
+                        className="w-6 h-6 animate-pulse"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M6.75 7.5a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"
+                        />
                       </svg>
                     </div>
                   )}
                 </div>
                 <div className="mt-1.5 px-0.5">
-                  <p className="text-xs font-medium text-gray-800">Plate {formatPlateIndex(img.plateIndex)}</p>
+                  <p className="text-xs font-medium text-gray-800">
+                    Plate {formatPlateIndex(img.plateIndex)}
+                  </p>
                   <p className="text-[10px] text-gray-500">
                     {img.scannerName}
                     {hasMultipleWaves && ` \u00b7 Wave ${img.waveNumber}`}
                   </p>
                   <p className="text-[10px] text-gray-400">
-                    {new Date(img.captureDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })},{' '}
-                    {new Date(img.captureDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(img.captureDate).toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                    ,{' '}
+                    {new Date(img.captureDate).toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </p>
                 </div>
               </div>
@@ -435,41 +531,50 @@ export function ExperimentDetail() {
       )}
 
       {/* Lightbox */}
-      {lightboxIndex !== null && (() => {
-        const img = filteredImages[lightboxIndex];
-        const fullSrc = img ? fullImages[img.path] : null;
-        const thumbSrc = img ? thumbnails[img.path] : null;
-        const src = fullSrc || thumbSrc;
-        if (!src || !img) return null;
+      {lightboxIndex !== null &&
+        (() => {
+          const img = filteredImages[lightboxIndex];
+          const fullSrc = img ? fullImages[img.path] : null;
+          const thumbSrc = img ? thumbnails[img.path] : null;
+          const src = fullSrc || thumbSrc;
+          if (!src || !img) return null;
 
-        return (
-          <ImageLightbox
-            src={src}
-            loading={!fullSrc && fullImageLoading}
-            alt={`Plate ${formatPlateIndex(img.plateIndex)}`}
-            caption={getLightboxCaption(img)}
-            onClose={() => setLightboxIndex(null)}
-            onPrev={lightboxIndex > 0 ? () => {
-              const newIdx = lightboxIndex - 1;
-              const prevImg = filteredImages[newIdx];
-              if (prevImg?.path) {
-                loadImage(prevImg.path);
-                loadFullImage(prevImg.path);
+          return (
+            <ImageLightbox
+              src={src}
+              loading={!fullSrc && fullImageLoading}
+              alt={`Plate ${formatPlateIndex(img.plateIndex)}`}
+              caption={getLightboxCaption(img)}
+              onClose={() => setLightboxIndex(null)}
+              onPrev={
+                lightboxIndex > 0
+                  ? () => {
+                      const newIdx = lightboxIndex - 1;
+                      const prevImg = filteredImages[newIdx];
+                      if (prevImg?.path) {
+                        loadImage(prevImg.path);
+                        loadFullImage(prevImg.path);
+                      }
+                      setLightboxIndex(newIdx);
+                    }
+                  : undefined
               }
-              setLightboxIndex(newIdx);
-            } : undefined}
-            onNext={lightboxIndex < filteredImages.length - 1 ? () => {
-              const newIdx = lightboxIndex + 1;
-              const nextImg = filteredImages[newIdx];
-              if (nextImg?.path) {
-                loadImage(nextImg.path);
-                loadFullImage(nextImg.path);
+              onNext={
+                lightboxIndex < filteredImages.length - 1
+                  ? () => {
+                      const newIdx = lightboxIndex + 1;
+                      const nextImg = filteredImages[newIdx];
+                      if (nextImg?.path) {
+                        loadImage(nextImg.path);
+                        loadFullImage(nextImg.path);
+                      }
+                      setLightboxIndex(newIdx);
+                    }
+                  : undefined
               }
-              setLightboxIndex(newIdx);
-            } : undefined}
-          />
-        );
-      })()}
+            />
+          );
+        })()}
     </div>
   );
 }

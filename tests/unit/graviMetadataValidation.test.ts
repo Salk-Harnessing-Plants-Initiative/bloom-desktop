@@ -6,11 +6,41 @@ import {
 
 describe('validateGraviMetadata', () => {
   const validRows: GraviMetadataRow[] = [
-    { plateId: 'P001', sectionId: 'S1', plantQr: 'QR-001', accession: 'Ara-1', medium: 'MS' },
-    { plateId: 'P001', sectionId: 'S1', plantQr: 'QR-002', accession: 'Ara-1', medium: 'MS' },
-    { plateId: 'P001', sectionId: 'S2', plantQr: 'QR-003', accession: 'Ara-1', medium: 'MS' },
-    { plateId: 'P002', sectionId: 'S1', plantQr: 'QR-004', accession: 'Col-0', medium: 'MS+Suc' },
-    { plateId: 'P002', sectionId: 'S1', plantQr: 'QR-005', accession: 'Col-0', medium: 'MS+Suc' },
+    {
+      plateId: 'P001',
+      sectionId: 'S1',
+      plantQr: 'QR-001',
+      accession: 'Ara-1',
+      medium: 'MS',
+    },
+    {
+      plateId: 'P001',
+      sectionId: 'S1',
+      plantQr: 'QR-002',
+      accession: 'Ara-1',
+      medium: 'MS',
+    },
+    {
+      plateId: 'P001',
+      sectionId: 'S2',
+      plantQr: 'QR-003',
+      accession: 'Ara-1',
+      medium: 'MS',
+    },
+    {
+      plateId: 'P002',
+      sectionId: 'S1',
+      plantQr: 'QR-004',
+      accession: 'Col-0',
+      medium: 'MS+Suc',
+    },
+    {
+      plateId: 'P002',
+      sectionId: 'S1',
+      plantQr: 'QR-005',
+      accession: 'Col-0',
+      medium: 'MS+Suc',
+    },
   ];
 
   it('returns no errors for valid data', () => {
@@ -26,8 +56,20 @@ describe('validateGraviMetadata', () => {
 
   it('detects inconsistent accession per plate', () => {
     const rows: GraviMetadataRow[] = [
-      { plateId: 'P001', sectionId: 'S1', plantQr: 'QR-001', accession: 'Ara-1', medium: 'MS' },
-      { plateId: 'P001', sectionId: 'S2', plantQr: 'QR-002', accession: 'Col-0', medium: 'MS' },
+      {
+        plateId: 'P001',
+        sectionId: 'S1',
+        plantQr: 'QR-001',
+        accession: 'Ara-1',
+        medium: 'MS',
+      },
+      {
+        plateId: 'P001',
+        sectionId: 'S2',
+        plantQr: 'QR-002',
+        accession: 'Col-0',
+        medium: 'MS',
+      },
     ];
 
     const errors = validateGraviMetadata(rows);
@@ -38,8 +80,20 @@ describe('validateGraviMetadata', () => {
 
   it('detects duplicate plant QR within the same plate', () => {
     const rows: GraviMetadataRow[] = [
-      { plateId: 'P001', sectionId: 'S1', plantQr: 'QR-001', accession: 'Ara-1', medium: 'MS' },
-      { plateId: 'P001', sectionId: 'S2', plantQr: 'QR-001', accession: 'Ara-1', medium: 'MS' },
+      {
+        plateId: 'P001',
+        sectionId: 'S1',
+        plantQr: 'QR-001',
+        accession: 'Ara-1',
+        medium: 'MS',
+      },
+      {
+        plateId: 'P001',
+        sectionId: 'S2',
+        plantQr: 'QR-001',
+        accession: 'Ara-1',
+        medium: 'MS',
+      },
     ];
 
     const errors = validateGraviMetadata(rows);
@@ -51,8 +105,20 @@ describe('validateGraviMetadata', () => {
 
   it('allows same plant QR on different plates', () => {
     const rows: GraviMetadataRow[] = [
-      { plateId: 'P001', sectionId: 'S1', plantQr: 'QR-001', accession: 'Ara-1', medium: 'MS' },
-      { plateId: 'P002', sectionId: 'S1', plantQr: 'QR-001', accession: 'Col-0', medium: 'MS' },
+      {
+        plateId: 'P001',
+        sectionId: 'S1',
+        plantQr: 'QR-001',
+        accession: 'Ara-1',
+        medium: 'MS',
+      },
+      {
+        plateId: 'P002',
+        sectionId: 'S1',
+        plantQr: 'QR-001',
+        accession: 'Col-0',
+        medium: 'MS',
+      },
     ];
 
     const errors = validateGraviMetadata(rows);
@@ -61,8 +127,20 @@ describe('validateGraviMetadata', () => {
 
   it('reports both accession and duplicate errors when present', () => {
     const rows: GraviMetadataRow[] = [
-      { plateId: 'P001', sectionId: 'S1', plantQr: 'QR-001', accession: 'Ara-1', medium: 'MS' },
-      { plateId: 'P001', sectionId: 'S2', plantQr: 'QR-001', accession: 'Col-0', medium: 'MS' },
+      {
+        plateId: 'P001',
+        sectionId: 'S1',
+        plantQr: 'QR-001',
+        accession: 'Ara-1',
+        medium: 'MS',
+      },
+      {
+        plateId: 'P001',
+        sectionId: 'S2',
+        plantQr: 'QR-001',
+        accession: 'Col-0',
+        medium: 'MS',
+      },
     ];
 
     const errors = validateGraviMetadata(rows);
@@ -78,7 +156,13 @@ describe('validateGraviMetadata', () => {
 
   it('handles single row', () => {
     const rows: GraviMetadataRow[] = [
-      { plateId: 'P001', sectionId: 'S1', plantQr: 'QR-001', accession: 'Ara-1', medium: null },
+      {
+        plateId: 'P001',
+        sectionId: 'S1',
+        plantQr: 'QR-001',
+        accession: 'Ara-1',
+        medium: null,
+      },
     ];
 
     const errors = validateGraviMetadata(rows);

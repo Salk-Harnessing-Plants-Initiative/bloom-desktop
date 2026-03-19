@@ -131,10 +131,7 @@ export function GraviMetadataList({ refreshTrigger }: GraviMetadataListProps) {
         const isLoadingPlates = platesLoading[file.id];
 
         return (
-          <div
-            key={file.id}
-            className="border rounded-md overflow-hidden"
-          >
+          <div key={file.id} className="border rounded-md overflow-hidden">
             {/* File header */}
             <div
               className="flex items-center justify-between px-4 py-3 bg-white hover:bg-gray-50 cursor-pointer"
@@ -165,7 +162,8 @@ export function GraviMetadataList({ refreshTrigger }: GraviMetadataListProps) {
                     {file._count.graviPlateAccessions} plate(s)
                     {file.experiments.length > 0 && (
                       <span className="ml-2">
-                        &middot; {file.experiments.map((e) => e.name).join(', ')}
+                        &middot;{' '}
+                        {file.experiments.map((e) => e.name).join(', ')}
                       </span>
                     )}
                   </p>
@@ -218,10 +216,7 @@ export function GraviMetadataList({ refreshTrigger }: GraviMetadataListProps) {
                           </thead>
                           <tbody>
                             {plate.sections.map((section) => (
-                              <tr
-                                key={section.id}
-                                className="border-t"
-                              >
+                              <tr key={section.id} className="border-t">
                                 <td className="px-2 py-1 text-gray-700">
                                   {section.plate_section_id}
                                 </td>

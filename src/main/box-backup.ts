@@ -81,9 +81,14 @@ function rcloneCopyFiles(
         }
       }
 
-      console.log(`[BoxBackup] rcloneCopyFiles: ${symlinksCreated}/${filePaths.length} files found on disk`);
+      console.log(
+        `[BoxBackup] rcloneCopyFiles: ${symlinksCreated}/${filePaths.length} files found on disk`
+      );
       if (missingFiles.length > 0) {
-        console.warn(`[BoxBackup] Missing files (first 5):`, missingFiles.slice(0, 5));
+        console.warn(
+          `[BoxBackup] Missing files (first 5):`,
+          missingFiles.slice(0, 5)
+        );
       }
 
       // If no files exist on disk, fail immediately — don't run rclone on empty dir
@@ -107,7 +112,8 @@ function rcloneCopyFiles(
         `${RCLONE_REMOTE}:${boxDestination}`,
         '--copy-links', // follow symlinks
         '--use-json-log',
-        '--log-level', 'INFO',
+        '--log-level',
+        'INFO',
       ]);
 
       const erroredFiles = new Set<string>(missingFileNames);
@@ -124,7 +130,11 @@ function rcloneCopyFiles(
             if (entry.level === 'error' && entry.msg) {
               const filename = entry.msg.split(':')[0].trim();
               if (filename) erroredFiles.add(filename);
-            } else if (entry.level === 'info' && entry.msg && /: Copied \(/.test(entry.msg)) {
+            } else if (
+              entry.level === 'info' &&
+              entry.msg &&
+              /: Copied \(/.test(entry.msg)
+            ) {
               const filename = entry.msg.split(':')[0].trim();
               if (filename) onFileComplete?.(filename);
             }
@@ -142,7 +152,11 @@ function rcloneCopyFiles(
             if (entry.level === 'error' && entry.msg) {
               const filename = entry.msg.split(':')[0].trim();
               if (filename) erroredFiles.add(filename);
-            } else if (entry.level === 'info' && entry.msg && /: Copied \(/.test(entry.msg)) {
+            } else if (
+              entry.level === 'info' &&
+              entry.msg &&
+              /: Copied \(/.test(entry.msg)
+            ) {
               const filename = entry.msg.split(':')[0].trim();
               if (filename) onFileComplete?.(filename);
             }
@@ -175,7 +189,11 @@ function rcloneCopyFiles(
         } catch {
           // ignore
         }
-        resolve({ success: false, erroredFiles: new Set(), error: err.message });
+        resolve({
+          success: false,
+          erroredFiles: new Set(),
+          error: err.message,
+        });
       });
     } catch (err) {
       try {
@@ -183,7 +201,11 @@ function rcloneCopyFiles(
       } catch {
         // ignore
       }
-      resolve({ success: false, erroredFiles: new Set(), error: err instanceof Error ? err.message : String(err) });
+      resolve({
+        success: false,
+        erroredFiles: new Set(),
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 }
@@ -206,8 +228,15 @@ function rcloneCopyFile(
     try {
       fs.copyFileSync(filePath, tmpFilePath);
     } catch (err) {
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
-      resolve({ success: false, error: `Failed to prepare file: ${err instanceof Error ? err.message : String(err)}` });
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+      resolve({
+        success: false,
+        error: `Failed to prepare file: ${err instanceof Error ? err.message : String(err)}`,
+      });
       return;
     }
 
@@ -224,16 +253,27 @@ function rcloneCopyFile(
     });
 
     proc.on('close', (code) => {
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
       if (code === 0) {
         resolve({ success: true });
       } else {
-        resolve({ success: false, error: `rclone exited with code ${code}: ${stderr}` });
+        resolve({
+          success: false,
+          error: `rclone exited with code ${code}: ${stderr}`,
+        });
       }
     });
 
     proc.on('error', (err) => {
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
       resolve({ success: false, error: err.message });
     });
   });
@@ -259,21 +299,25 @@ function exportMetadataCSV(
   scanRows: ScanRow[]
 ): string {
   const rows: string[] = [];
-  rows.push('experiment,wave_number,plate_barcode,plate_index,grid_mode,capture_date,accession,transplant_date,custom_note,image_filename');
+  rows.push(
+    'experiment,wave_number,plate_barcode,plate_index,grid_mode,capture_date,accession,transplant_date,custom_note,image_filename'
+  );
 
   for (const r of scanRows) {
-    rows.push([
-      experimentName,
-      r.wave_number,
-      r.plate_barcode ?? '',
-      r.plate_index,
-      r.grid_mode,
-      r.capture_date.toISOString(),
-      r.accession,
-      r.transplant_date ? r.transplant_date.toISOString().split('T')[0] : '',
-      r.custom_note ?? '',
-      r.image_filename,
-    ].join(','));
+    rows.push(
+      [
+        experimentName,
+        r.wave_number,
+        r.plate_barcode ?? '',
+        r.plate_index,
+        r.grid_mode,
+        r.capture_date.toISOString(),
+        r.accession,
+        r.transplant_date ? r.transplant_date.toISOString().split('T')[0] : '',
+        r.custom_note ?? '',
+        r.image_filename,
+      ].join(',')
+    );
   }
 
   return rows.join('\n') + '\n';
@@ -342,7 +386,10 @@ export async function runBoxBackup(
   // Group scans by experiment name → wave number
   const experimentWaveMap = new Map<
     string,
-    Map<number, { imageIds: string[]; imagePaths: string[]; scanRows: ScanRow[] }>
+    Map<
+      number,
+      { imageIds: string[]; imagePaths: string[]; scanRows: ScanRow[] }
+    >
   >();
 
   for (const scan of scans) {
@@ -358,7 +405,8 @@ export async function runBoxBackup(
     }
 
     // Look up accession from plate accessions if available
-    const plateAccessions = scan.experiment.accession?.graviPlateAccessions ?? [];
+    const plateAccessions =
+      scan.experiment.accession?.graviPlateAccessions ?? [];
     const matchedAccession = plateAccessions.find(
       (pa) => pa.plate_id === scan.plate_barcode
     );
@@ -401,7 +449,9 @@ export async function runBoxBackup(
       const boxDest = systemName
         ? `${BOX_BASE_PATH}/${systemName}/${expName}/wave_${waveNum}`
         : `${BOX_BASE_PATH}/${expName}/wave_${waveNum}`;
-      console.log(`[BoxBackup] Backing up ${data.imagePaths.length} images for ${expName}/wave_${waveNum}`);
+      console.log(
+        `[BoxBackup] Backing up ${data.imagePaths.length} images for ${expName}/wave_${waveNum}`
+      );
 
       // Copy image files with per-file progress
       const copyResult = await rcloneCopyFiles(data.imagePaths, boxDest, () => {
@@ -420,7 +470,9 @@ export async function runBoxBackup(
 
       if (!copyResult.success && copyResult.erroredFiles.size === 0) {
         // Total rclone failure (no per-file info) — mark ALL as failed
-        console.error(`[BoxBackup] rclone failed entirely for ${expName}/wave_${waveNum} — marking all files as failed`);
+        console.error(
+          `[BoxBackup] rclone failed entirely for ${expName}/wave_${waveNum} — marking all files as failed`
+        );
         failedIds.push(...data.imageIds);
       } else {
         for (let i = 0; i < data.imagePaths.length; i++) {
@@ -447,9 +499,14 @@ export async function runBoxBackup(
           data: { box_status: 'failed' },
         });
         failedImages += failedIds.length;
-        result.errors.push(`${expName}/wave_${waveNum}: ${failedIds.length}/${data.imagePaths.length} files failed`);
+        result.errors.push(
+          `${expName}/wave_${waveNum}: ${failedIds.length}/${data.imagePaths.length} files failed`
+        );
         result.success = false;
-        console.error(`[BoxBackup] ${failedIds.length} files failed for ${expName}/wave_${waveNum}:`, copyResult.error);
+        console.error(
+          `[BoxBackup] ${failedIds.length} files failed for ${expName}/wave_${waveNum}:`,
+          copyResult.error
+        );
         // Update progress with failed count
         onProgress?.({
           totalImages,
@@ -462,7 +519,10 @@ export async function runBoxBackup(
       // Export and copy metadata CSV per wave
       if (data.scanRows.length > 0) {
         const csvContent = exportMetadataCSV(expName, data.scanRows);
-        const tmpCsvPath = path.join(os.tmpdir(), `graviscan-metadata-${expName}-wave${waveNum}.csv`);
+        const tmpCsvPath = path.join(
+          os.tmpdir(),
+          `graviscan-metadata-${expName}-wave${waveNum}.csv`
+        );
 
         try {
           fs.writeFileSync(tmpCsvPath, csvContent, 'utf-8');
@@ -472,8 +532,13 @@ export async function runBoxBackup(
             boxDest
           );
           if (!csvResult.success) {
-            result.errors.push(`${expName}/wave_${waveNum} metadata: ${csvResult.error}`);
-            console.error(`[BoxBackup] Failed to copy metadata for ${expName}/wave_${waveNum}:`, csvResult.error);
+            result.errors.push(
+              `${expName}/wave_${waveNum} metadata: ${csvResult.error}`
+            );
+            console.error(
+              `[BoxBackup] Failed to copy metadata for ${expName}/wave_${waveNum}:`,
+              csvResult.error
+            );
           }
         } finally {
           try {

@@ -1,6 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
-export type AutoUploadStatus = 'idle' | 'waiting' | 'uploading' | 'done' | 'error';
+export type AutoUploadStatus =
+  | 'idle'
+  | 'waiting'
+  | 'uploading'
+  | 'done'
+  | 'error';
 
 export interface BoxBackupProgress {
   totalImages: number;
@@ -18,12 +23,18 @@ interface UploadStatusContextValue {
   setBoxBackupProgress: (progress: BoxBackupProgress | null) => void;
 }
 
-const UploadStatusContext = createContext<UploadStatusContextValue | null>(null);
+const UploadStatusContext = createContext<UploadStatusContextValue | null>(
+  null
+);
 
 export function UploadStatusProvider({ children }: { children: ReactNode }) {
-  const [autoUploadStatus, setAutoUploadStatus] = useState<AutoUploadStatus>('idle');
-  const [autoUploadMessage, setAutoUploadMessage] = useState<string | null>(null);
-  const [boxBackupProgress, setBoxBackupProgress] = useState<BoxBackupProgress | null>(null);
+  const [autoUploadStatus, setAutoUploadStatus] =
+    useState<AutoUploadStatus>('idle');
+  const [autoUploadMessage, setAutoUploadMessage] = useState<string | null>(
+    null
+  );
+  const [boxBackupProgress, setBoxBackupProgress] =
+    useState<BoxBackupProgress | null>(null);
 
   return (
     <UploadStatusContext.Provider
@@ -44,7 +55,9 @@ export function UploadStatusProvider({ children }: { children: ReactNode }) {
 export function useUploadStatus() {
   const context = useContext(UploadStatusContext);
   if (!context) {
-    throw new Error('useUploadStatus must be used within an UploadStatusProvider');
+    throw new Error(
+      'useUploadStatus must be used within an UploadStatusProvider'
+    );
   }
   return context;
 }

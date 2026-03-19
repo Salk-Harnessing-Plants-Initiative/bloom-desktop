@@ -8,13 +8,10 @@ Provides real hardware control for Basler GigE cameras, including:
 """
 
 import base64
-import pathlib
-import sys
 import time
 from io import BytesIO
-from typing import Dict, List, Any, Optional
+from typing import List, Optional
 
-import imageio.v2 as iio
 import numpy as np
 from PIL import Image
 from pypylon import pylon
@@ -214,4 +211,3 @@ class Camera:
         pil_img.save(buffer, format="PNG", compress_level=0)
         base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
         return base64_img
-

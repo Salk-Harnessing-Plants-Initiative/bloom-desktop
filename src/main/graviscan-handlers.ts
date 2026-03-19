@@ -116,7 +116,8 @@ export async function runStartupScannerValidation(
       if (!lsusbResult.success) {
         sessionValidation.isValidating = false;
         sessionValidation.isValidated = false;
-        sessionValidation.validationError = lsusbResult.error || 'Scanner detection failed';
+        sessionValidation.validationError =
+          lsusbResult.error || 'Scanner detection failed';
         return sessionValidation;
       }
 
@@ -125,7 +126,9 @@ export async function runStartupScannerValidation(
       // Match detected scanners against DB records
       for (const detected of detectedScanners) {
         const match = dbScanners.find(
-          (s) => s.usb_bus === detected.usb_bus && s.usb_device === detected.usb_device
+          (s) =>
+            s.usb_bus === detected.usb_bus &&
+            s.usb_device === detected.usb_device
         );
         if (match) {
           detected.scanner_id = match.id;
@@ -146,9 +149,7 @@ export async function runStartupScannerValidation(
 
     // Build set of currently available scanner IDs
     const currentIds = new Set(
-      detectedScanners
-        .filter((s) => s.is_available)
-        .map((s) => s.scanner_id)
+      detectedScanners.filter((s) => s.is_available).map((s) => s.scanner_id)
     );
 
     // Check if all cached scanners are still available
@@ -157,7 +158,8 @@ export async function runStartupScannerValidation(
     );
 
     sessionValidation.allScannersAvailable = allScannersAvailable;
-    sessionValidation.isValidated = allScannersAvailable && detectedScanners.length > 0;
+    sessionValidation.isValidated =
+      allScannersAvailable && detectedScanners.length > 0;
     sessionValidation.isValidating = false;
 
     if (!allScannersAvailable) {
@@ -212,7 +214,6 @@ export function resetSessionValidation(): void {
 // Callback to get the main BrowserWindow (for sending events to renderer in mock mode)
 let getMainWindow: (() => BrowserWindow | null) | null = null;
 let getCoordinator: (() => ScanCoordinator | null) | null = null;
-
 
 export function registerGraviscanHandlers(
   database: PrismaClient,
@@ -306,7 +307,9 @@ export function registerGraviscanHandlers(
       // Match detected scanners against DB records by usb_bus + usb_device
       for (const detected of detectedScanners) {
         const match = dbScanners.find(
-          (s) => s.usb_bus === detected.usb_bus && s.usb_device === detected.usb_device
+          (s) =>
+            s.usb_bus === detected.usb_bus &&
+            s.usb_device === detected.usb_device
         );
         if (match) {
           detected.scanner_id = match.id;
@@ -327,7 +330,11 @@ export function registerGraviscanHandlers(
         }
       }
 
-      console.log('[GraviScan:DETECT] Found', detectedScanners.length, 'Epson scanners via lsusb');
+      console.log(
+        '[GraviScan:DETECT] Found',
+        detectedScanners.length,
+        'Epson scanners via lsusb'
+      );
 
       return {
         success: true,
@@ -407,7 +414,8 @@ export function registerGraviscanHandlers(
         console.error('graviscan:save-config error:', error);
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to save config',
+          error:
+            error instanceof Error ? error.message : 'Failed to save config',
         };
       }
     }
@@ -438,34 +446,51 @@ export function registerGraviscanHandlers(
       }>
     ) => {
       try {
-        console.log('[GraviScan:SAVE] Attempting to save scanners to database:', JSON.stringify(scanners, null, 2));
+        console.log(
+          '[GraviScan:SAVE] Attempting to save scanners to database:',
+          JSON.stringify(scanners, null, 2)
+        );
         const savedScanners: GraviScanner[] = [];
 
         for (const scanner of scanners) {
           // Look up existing scanner by USB bus + device (unique physical identifier)
           let existing: GraviScanner | null = null;
           if (scanner.usb_bus != null && scanner.usb_device != null) {
-            existing = await db.graviScanner.findFirst({
-              where: { usb_bus: scanner.usb_bus, usb_device: scanner.usb_device },
-            }) as GraviScanner | null;
+            existing = (await db.graviScanner.findFirst({
+              where: {
+                usb_bus: scanner.usb_bus,
+                usb_device: scanner.usb_device,
+              },
+            })) as GraviScanner | null;
           }
           // Fallback: match by usb_port (stable across replug, unlike usb_device)
           if (!existing && scanner.usb_port) {
-            existing = await db.graviScanner.findFirst({
+            existing = (await db.graviScanner.findFirst({
               where: { usb_port: scanner.usb_port },
-            }) as GraviScanner | null;
+            })) as GraviScanner | null;
             if (existing) {
-              console.log('[GraviScan:SAVE] Matched by usb_port fallback:', existing.name, existing.id, `port:${existing.usb_port}`);
+              console.log(
+                '[GraviScan:SAVE] Matched by usb_port fallback:',
+                existing.name,
+                existing.id,
+                `port:${existing.usb_port}`
+              );
             }
           }
 
           if (existing) {
-            console.log('[GraviScan:SAVE] Updating existing scanner (matched by bus:device):', existing.name, existing.id, `bus:${existing.usb_bus} dev:${existing.usb_device}`);
+            console.log(
+              '[GraviScan:SAVE] Updating existing scanner (matched by bus:device):',
+              existing.name,
+              existing.id,
+              `bus:${existing.usb_bus} dev:${existing.usb_device}`
+            );
             const updated = await db.graviScanner.update({
               where: { id: existing.id },
               data: {
                 name: scanner.name,
-                display_name: scanner.display_name ?? existing.display_name ?? null,
+                display_name:
+                  scanner.display_name ?? existing.display_name ?? null,
                 vendor_id: scanner.vendor_id,
                 product_id: scanner.product_id,
                 usb_port: scanner.usb_port || null,
@@ -481,7 +506,11 @@ export function registerGraviscanHandlers(
             });
             savedScanners.push(updated as GraviScanner);
           } else {
-            console.log('[GraviScan:SAVE] Creating new scanner:', scanner.name, `bus:${scanner.usb_bus} dev:${scanner.usb_device}`);
+            console.log(
+              '[GraviScan:SAVE] Creating new scanner:',
+              scanner.name,
+              `bus:${scanner.usb_bus} dev:${scanner.usb_device}`
+            );
             const created = await db.graviScanner.create({
               data: {
                 name: scanner.name,
@@ -504,7 +533,9 @@ export function registerGraviscanHandlers(
           }
         }
 
-        console.log(`[GraviScan:SAVE] Successfully saved ${savedScanners.length} scanners to database`);
+        console.log(
+          `[GraviScan:SAVE] Successfully saved ${savedScanners.length} scanners to database`
+        );
 
         return {
           success: true,
@@ -515,13 +546,13 @@ export function registerGraviscanHandlers(
         console.error('[GraviScan:SAVE] Error saving scanners:', error);
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to save scanners',
+          error:
+            error instanceof Error ? error.message : 'Failed to save scanners',
           scanners: [],
         };
       }
     }
   );
-
 
   // ==========================================================================
   // Scan Operations
@@ -545,7 +576,7 @@ export function registerGraviscanHandlers(
         return {
           success: true,
           supported: true,
-          backend: 'sane' as const,  // Use 'sane' as backend type for mock mode
+          backend: 'sane' as const, // Use 'sane' as backend type for mock mode
           mock_enabled: true,
           system_name: process.env.GRAVISCAN_SYSTEM_NAME || null,
         };
@@ -554,11 +585,12 @@ export function registerGraviscanHandlers(
       // Platform detection runs entirely in TypeScript now (no Python needed)
       const platform = process.platform;
       const isSupported = platform === 'linux' || platform === 'win32';
-      const backend = platform === 'linux'
-        ? 'sane'
-        : platform === 'win32'
-          ? 'twain'
-          : 'unsupported';
+      const backend =
+        platform === 'linux'
+          ? 'sane'
+          : platform === 'win32'
+            ? 'twain'
+            : 'unsupported';
 
       return {
         success: true,
@@ -616,7 +648,9 @@ export function registerGraviscanHandlers(
 
       // If no saved scanners, return no-config status
       if (savedScanners.length === 0) {
-        console.log('[GraviScan:VALIDATE] No saved scanners - need configuration');
+        console.log(
+          '[GraviScan:VALIDATE] No saved scanners - need configuration'
+        );
         return {
           success: true,
           status: 'no-config' as const,
@@ -638,12 +672,12 @@ export function registerGraviscanHandlers(
           name: s.name,
           scanner_id: s.id,
           usb_bus: s.usb_bus || 1,
-          usb_device: s.usb_device || (i + 1),
+          usb_device: s.usb_device || i + 1,
           usb_port: s.usb_port || `1-${i + 1}`,
           is_available: true,
           vendor_id: s.vendor_id,
           product_id: s.product_id,
-          sane_name: `epkowa:interpreter:001:${String(s.usb_device || (i + 1)).padStart(3, '0')}`,
+          sane_name: `epkowa:interpreter:001:${String(s.usb_device || i + 1).padStart(3, '0')}`,
         }));
       } else {
         // Detect via lsusb (no Python needed)
@@ -665,7 +699,10 @@ export function registerGraviscanHandlers(
         detectedScanners = lsusbResult.scanners;
       }
 
-      console.log('[GraviScan:VALIDATE] Detected scanners:', detectedScanners.length);
+      console.log(
+        '[GraviScan:VALIDATE] Detected scanners:',
+        detectedScanners.length
+      );
 
       // 3. Match by usb_port
       const detectedByPort = new Map<string, DetectedScanner>();
@@ -675,7 +712,8 @@ export function registerGraviscanHandlers(
         }
       }
 
-      const matched: Array<{ saved: GraviScanner; detected: DetectedScanner }> = [];
+      const matched: Array<{ saved: GraviScanner; detected: DetectedScanner }> =
+        [];
       const missing: GraviScanner[] = [];
 
       for (const saved of savedScanners) {
@@ -692,8 +730,13 @@ export function registerGraviscanHandlers(
       const newScanners = Array.from(detectedByPort.values());
 
       // Determine status
-      const isValid = missing.length === 0 && newScanners.length === 0 && matched.length > 0;
-      const status = isValid ? 'valid' : (missing.length > 0 || newScanners.length > 0) ? 'mismatch' : 'no-config';
+      const isValid =
+        missing.length === 0 && newScanners.length === 0 && matched.length > 0;
+      const status = isValid
+        ? 'valid'
+        : missing.length > 0 || newScanners.length > 0
+          ? 'mismatch'
+          : 'no-config';
 
       console.log('[GraviScan:VALIDATE] Result:', {
         status,
@@ -770,16 +813,28 @@ export function registerGraviscanHandlers(
 
         console.log(
           `[GraviScan:START-SCAN] Starting scan with ${params.scanners.length} scanner(s)`,
-          params.interval ? `(continuous: ${params.interval.intervalSeconds}s interval, ${params.interval.durationSeconds}s duration)` : '(one-shot)'
+          params.interval
+            ? `(continuous: ${params.interval.intervalSeconds}s interval, ${params.interval.durationSeconds}s duration)`
+            : '(one-shot)'
         );
 
         // Build scan session state for persistence across renderer remounts
-        const jobs: Record<string, {
-          scannerId: string; plateIndex: string; outputPath: string;
-          plantBarcode: string | null; transplantDate: string | null; customNote: string | null; gridMode: string;
-          status: 'pending' | 'scanning' | 'complete' | 'error';
-          imagePath?: string; error?: string; durationMs?: number;
-        }> = {};
+        const jobs: Record<
+          string,
+          {
+            scannerId: string;
+            plateIndex: string;
+            outputPath: string;
+            plantBarcode: string | null;
+            transplantDate: string | null;
+            customNote: string | null;
+            gridMode: string;
+            status: 'pending' | 'scanning' | 'complete' | 'error';
+            imagePath?: string;
+            error?: string;
+            durationMs?: number;
+          }
+        > = {};
         for (const s of params.scanners) {
           for (const plate of s.plates) {
             const key = `${s.scannerId}:${plate.plate_index}`;
@@ -796,8 +851,12 @@ export function registerGraviscanHandlers(
           }
         }
 
-        const sessIntervalMs = params.interval ? params.interval.intervalSeconds * 1000 : 0;
-        const sessDurationMs = params.interval ? params.interval.durationSeconds * 1000 : 0;
+        const sessIntervalMs = params.interval
+          ? params.interval.intervalSeconds * 1000
+          : 0;
+        const sessDurationMs = params.interval
+          ? params.interval.durationSeconds * 1000
+          : 0;
 
         setScanSession({
           isActive: true,
@@ -808,7 +867,8 @@ export function registerGraviscanHandlers(
           sessionId: params.metadata?.sessionId || null,
           jobs,
           currentCycle: 0,
-          totalCycles: sessIntervalMs > 0 ? Math.ceil(sessDurationMs / sessIntervalMs) : 1,
+          totalCycles:
+            sessIntervalMs > 0 ? Math.ceil(sessDurationMs / sessIntervalMs) : 1,
           intervalMs: sessIntervalMs,
           scanStartedAt: Date.now(),
           scanDurationMs: sessDurationMs,
@@ -852,15 +912,13 @@ export function registerGraviscanHandlers(
         } else {
           // One-shot mode — runs in background, events drive the rest.
           // Subprocesses stay alive after completion for reuse.
-          coordinator
-            .scanOnce(platesPerScanner)
-            .catch((err) => {
-              console.error('[GraviScan:START-SCAN] One-shot scan error:', err);
-              setScanSession(null);
-              getMainWindow?.()?.webContents.send('graviscan:scan-error', {
-                error: err instanceof Error ? err.message : String(err),
-              });
+          coordinator.scanOnce(platesPerScanner).catch((err) => {
+            console.error('[GraviScan:START-SCAN] One-shot scan error:', err);
+            setScanSession(null);
+            getMainWindow?.()?.webContents.send('graviscan:scan-error', {
+              error: err instanceof Error ? err.message : String(err),
             });
+          });
         }
 
         return { success: true };
@@ -907,9 +965,12 @@ export function registerGraviscanHandlers(
   /**
    * Mark a scan job as DB-recorded so it won't be re-recorded on remount.
    */
-  ipcMain.handle('graviscan:mark-job-recorded', async (_event, jobKey: string) => {
-    markScanJobRecorded(jobKey);
-  });
+  ipcMain.handle(
+    'graviscan:mark-job-recorded',
+    async (_event, jobKey: string) => {
+      markScanJobRecorded(jobKey);
+    }
+  );
 
   /**
    * Cancel an in-progress scan (one-shot or continuous).
@@ -978,7 +1039,10 @@ export function registerGraviscanHandlers(
       console.error('[GraviScan] Error getting output directory:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to get output directory',
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to get output directory',
         path: null,
       };
     }
@@ -988,37 +1052,45 @@ export function registerGraviscanHandlers(
    * Read a scan image file and return as base64 data URI.
    * Used for displaying test scan previews in the renderer.
    */
-  ipcMain.handle('graviscan:read-scan-image', async (_event, filePath: string, options?: { full?: boolean }) => {
-    try {
-      // Resolve file path — handle stale DB paths (missing _et_, wrong extension)
-      const resolvedPath = resolveGraviScanPath(filePath);
-      if (!resolvedPath) {
-        console.log(`[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`);
-        return { success: false, error: 'File not found' };
+  ipcMain.handle(
+    'graviscan:read-scan-image',
+    async (_event, filePath: string, options?: { full?: boolean }) => {
+      try {
+        // Resolve file path — handle stale DB paths (missing _et_, wrong extension)
+        const resolvedPath = resolveGraviScanPath(filePath);
+        if (!resolvedPath) {
+          console.log(
+            `[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`
+          );
+          return { success: false, error: 'File not found' };
+        }
+        if (resolvedPath !== filePath) {
+          console.log(
+            `[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`
+          );
+          filePath = resolvedPath;
+        }
+        // Convert TIFF to JPEG for preview — resize to 400px thumbnail to avoid ~212MB native alloc per decode
+        const quality = options?.full ? 95 : 85;
+        const pipeline = sharp(filePath);
+        if (!options?.full) {
+          pipeline.resize(400, null, { withoutEnlargement: true });
+        }
+        const jpegBuffer = await pipeline.jpeg({ quality }).toBuffer();
+        const base64 = jpegBuffer.toString('base64');
+        return {
+          success: true,
+          dataUri: `data:image/jpeg;base64,${base64}`,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Failed to read image',
+        };
       }
-      if (resolvedPath !== filePath) {
-        console.log(`[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`);
-        filePath = resolvedPath;
-      }
-      // Convert TIFF to JPEG for preview — resize to 400px thumbnail to avoid ~212MB native alloc per decode
-      const quality = options?.full ? 95 : 85;
-      const pipeline = sharp(filePath);
-      if (!options?.full) {
-        pipeline.resize(400, null, { withoutEnlargement: true });
-      }
-      const jpegBuffer = await pipeline.jpeg({ quality }).toBuffer();
-      const base64 = jpegBuffer.toString('base64');
-      return {
-        success: true,
-        dataUri: `data:image/jpeg;base64,${base64}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to read image',
-      };
     }
-  });
+  );
 
   // ==========================================================================
   // Cloud Upload
@@ -1033,11 +1105,19 @@ export function registerGraviscanHandlers(
   ipcMain.handle('graviscan:upload-all-scans', async () => {
     if (uploadInProgress) {
       console.log('[GraviScan:UPLOAD] Upload already in progress — skipping');
-      return { success: false, uploaded: 0, skipped: 0, failed: 0, errors: ['Upload already in progress'] };
+      return {
+        success: false,
+        uploaded: 0,
+        skipped: 0,
+        failed: 0,
+        errors: ['Upload already in progress'],
+      };
     }
     uploadInProgress = true;
     try {
-      console.log('[GraviScan:UPLOAD] Bloom upload disabled (proxy size limit) — Box backup only');
+      console.log(
+        '[GraviScan:UPLOAD] Bloom upload disabled (proxy size limit) — Box backup only'
+      );
 
       const mainWindow = getMainWindow?.();
 
@@ -1089,7 +1169,12 @@ export function registerGraviscanHandlers(
       try {
         const mainWindow = getMainWindow?.();
         if (!mainWindow) {
-          return { success: false, total: 0, copied: 0, errors: ['No main window'] };
+          return {
+            success: false,
+            total: 0,
+            copied: 0,
+            errors: ['No main window'],
+          };
         }
 
         // Open native folder picker
@@ -1109,7 +1194,9 @@ export function registerGraviscanHandlers(
           where: {
             experiment_id: params.experimentId,
             deleted: false,
-            ...(params.waveNumber !== undefined && { wave_number: params.waveNumber }),
+            ...(params.waveNumber !== undefined && {
+              wave_number: params.waveNumber,
+            }),
           },
           include: {
             images: true,
@@ -1138,7 +1225,8 @@ export function registerGraviscanHandlers(
           waveGroups.get(wave)!.push(scan);
         }
 
-        const csvHeader = 'experiment,wave_number,plate_barcode,plate_index,grid_mode,capture_date,accession,transplant_date,custom_note,image_filename';
+        const csvHeader =
+          'experiment,wave_number,plate_barcode,plate_index,grid_mode,capture_date,accession,transplant_date,custom_note,image_filename';
         const filesToCopy: { src: string; dest: string }[] = [];
 
         for (const [waveNum, waveScans] of waveGroups) {
@@ -1148,8 +1236,11 @@ export function registerGraviscanHandlers(
           const csvRows: string[] = [csvHeader];
 
           for (const scan of waveScans) {
-            const plateAccessions = scan.experiment.accession?.graviPlateAccessions ?? [];
-            const matchedPlate = plateAccessions.find((p) => p.plate_id === scan.plate_barcode);
+            const plateAccessions =
+              scan.experiment.accession?.graviPlateAccessions ?? [];
+            const matchedPlate = plateAccessions.find(
+              (p) => p.plate_id === scan.plate_barcode
+            );
             const accession = matchedPlate?.accession ?? '';
 
             for (const img of scan.images) {
@@ -1157,25 +1248,36 @@ export function registerGraviscanHandlers(
               if (!srcPath) continue;
 
               const originalFilename = path.basename(srcPath);
-              filesToCopy.push({ src: srcPath, dest: path.join(waveDir, originalFilename) });
+              filesToCopy.push({
+                src: srcPath,
+                dest: path.join(waveDir, originalFilename),
+              });
 
-              csvRows.push([
-                params.experimentName,
-                scan.wave_number,
-                scan.plate_barcode ?? '',
-                scan.plate_index,
-                scan.grid_mode,
-                scan.capture_date.toISOString(),
-                accession,
-                scan.transplant_date ? scan.transplant_date.toISOString().split('T')[0] : '',
-                scan.custom_note ?? '',
-                originalFilename,
-              ].join(','));
+              csvRows.push(
+                [
+                  params.experimentName,
+                  scan.wave_number,
+                  scan.plate_barcode ?? '',
+                  scan.plate_index,
+                  scan.grid_mode,
+                  scan.capture_date.toISOString(),
+                  accession,
+                  scan.transplant_date
+                    ? scan.transplant_date.toISOString().split('T')[0]
+                    : '',
+                  scan.custom_note ?? '',
+                  originalFilename,
+                ].join(',')
+              );
             }
           }
 
           // Write metadata.csv per wave subfolder
-          fs.writeFileSync(path.join(waveDir, 'metadata.csv'), csvRows.join('\n') + '\n', 'utf-8');
+          fs.writeFileSync(
+            path.join(waveDir, 'metadata.csv'),
+            csvRows.join('\n') + '\n',
+            'utf-8'
+          );
         }
 
         // Copy files with progress (async, 4 concurrent copies)
@@ -1197,18 +1299,31 @@ export function registerGraviscanHandlers(
               currentFile: path.basename(file.dest),
             });
           } catch (err) {
-            errors.push(`${path.basename(file.src)}: ${err instanceof Error ? err.message : 'Copy failed'}`);
+            errors.push(
+              `${path.basename(file.src)}: ${err instanceof Error ? err.message : 'Copy failed'}`
+            );
           }
           return copyNext();
-        }
+        };
 
         await Promise.all(
-          Array.from({ length: Math.min(COPY_CONCURRENCY, filesToCopy.length) }, () => copyNext())
+          Array.from(
+            { length: Math.min(COPY_CONCURRENCY, filesToCopy.length) },
+            () => copyNext()
+          )
         );
 
-        const waveLabel = params.waveNumber !== undefined ? ` (wave ${params.waveNumber})` : '';
-        console.log(`[GraviScan:DOWNLOAD] Copied ${copied}/${filesToCopy.length} images${waveLabel} to ${expDir}`);
-        return { success: errors.length === 0, total: filesToCopy.length, copied, errors };
+        const waveLabel =
+          params.waveNumber !== undefined ? ` (wave ${params.waveNumber})` : '';
+        console.log(
+          `[GraviScan:DOWNLOAD] Copied ${copied}/${filesToCopy.length} images${waveLabel} to ${expDir}`
+        );
+        return {
+          success: errors.length === 0,
+          total: filesToCopy.length,
+          copied,
+          errors,
+        };
       } catch (error) {
         console.error('[GraviScan:DOWNLOAD] Error:', error);
         return {
@@ -1221,5 +1336,3 @@ export function registerGraviscanHandlers(
     }
   );
 }
-
-

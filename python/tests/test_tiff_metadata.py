@@ -4,7 +4,6 @@ import json
 import os
 import tempfile
 
-import pytest
 from PIL import Image
 
 from python.graviscan.scan_worker import ScanWorker, _build_tiff_metadata
@@ -51,7 +50,9 @@ class TestMockScanTiffMetadata:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "scan.tif")
 
-            worker = ScanWorker(scanner_id="test-scanner", device_name="mock", mock=True)
+            worker = ScanWorker(
+                scanner_id="test-scanner", device_name="mock", mock=True
+            )
             worker._mock_scan("2grid", "00", 300, output_path)
 
             # Read TIFF and check tags
@@ -81,9 +82,13 @@ class TestMockScanTiffMetadata:
         """Verify metadata reflects the actual grid mode and plate index."""
         with tempfile.TemporaryDirectory() as tmpdir:
             for grid_mode, plate_index in [("2grid", "01"), ("4grid", "10")]:
-                output_path = os.path.join(tmpdir, f"scan_{grid_mode}_{plate_index}.tif")
+                output_path = os.path.join(
+                    tmpdir, f"scan_{grid_mode}_{plate_index}.tif"
+                )
 
-                worker = ScanWorker(scanner_id="test-scanner", device_name="mock", mock=True)
+                worker = ScanWorker(
+                    scanner_id="test-scanner", device_name="mock", mock=True
+                )
                 worker._mock_scan(grid_mode, plate_index, 600, output_path)
 
                 img = Image.open(output_path)

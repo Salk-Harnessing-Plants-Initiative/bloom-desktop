@@ -170,12 +170,17 @@ async function runTests() {
       }
       // Check that names from DB records are used
       const scanner1 = response.scanners[0];
-      if (scanner1.name !== 'Lab Scanner A' || scanner1.scanner_id !== 'scanner-A') {
+      if (
+        scanner1.name !== 'Lab Scanner A' ||
+        scanner1.scanner_id !== 'scanner-A'
+      ) {
         throw new Error(
           `Expected DB record names, got: ${JSON.stringify(scanner1)}`
         );
       }
-      console.log(`[RESPONSE] Matched ${response.count} scanners with DB records`);
+      console.log(
+        `[RESPONSE] Matched ${response.count} scanners with DB records`
+      );
     });
 
     // Test 7: Scan plate (mock mode)
@@ -185,7 +190,7 @@ async function runTests() {
         action: 'scan-plate',
         scanner_id: 'scanner-A',
         grid_mode: '2grid',
-        plate_index: '00',  // Use valid plate index format
+        plate_index: '00', // Use valid plate index format
         resolution: 1200,
         output_path: '/tmp/test-scan.jpg',
       });

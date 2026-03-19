@@ -165,7 +165,10 @@ def get_row_bounding_box(grid_mode: str, plate_indices: List[str]) -> ScanRegion
 
 
 def get_crop_box(
-    grid_mode: str, plate_index: str, bbox: ScanRegion, dpi: int,
+    grid_mode: str,
+    plate_index: str,
+    bbox: ScanRegion,
+    dpi: int,
 ) -> Tuple[int, int, int, int]:
     """Get PIL crop box for a plate relative to the row bounding box.
 

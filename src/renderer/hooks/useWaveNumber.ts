@@ -21,8 +21,12 @@ export function useWaveNumber({
   scanCompletionCounter,
 }: UseWaveNumberParams): UseWaveNumberReturn {
   const [waveNumber, setWaveNumber] = useState<number>(0);
-  const [suggestedWaveNumber, setSuggestedWaveNumber] = useState<number | null>(null);
-  const [barcodeWaveConflicts, setBarcodeWaveConflicts] = useState<Record<string, string>>({});
+  const [suggestedWaveNumber, setSuggestedWaveNumber] = useState<number | null>(
+    null
+  );
+  const [barcodeWaveConflicts, setBarcodeWaveConflicts] = useState<
+    Record<string, string>
+  >({});
   const waveRestoredRef = useRef(false);
 
   // Auto-suggest wave number when experiment changes
@@ -39,17 +43,25 @@ export function useWaveNumber({
       // Still fetch suggestion for the "Suggested: N" hint, but don't override current wave
       (async () => {
         try {
-          const result = await window.electron.database.graviscans.getMaxWaveNumber(selectedExperiment);
+          const result =
+            await window.electron.database.graviscans.getMaxWaveNumber(
+              selectedExperiment
+            );
           if (result.success && result.data !== undefined) {
             setSuggestedWaveNumber((result.data as number) + 1);
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       })();
       return;
     }
     (async () => {
       try {
-        const result = await window.electron.database.graviscans.getMaxWaveNumber(selectedExperiment);
+        const result =
+          await window.electron.database.graviscans.getMaxWaveNumber(
+            selectedExperiment
+          );
         if (result.success && result.data !== undefined) {
           const next = (result.data as number) + 1;
           setSuggestedWaveNumber(next);
@@ -73,7 +85,9 @@ export function useWaveNumber({
       return;
     }
     const allAssignments = Object.values(scannerPlateAssignments).flat();
-    const assignedBarcodes = allAssignments.filter((a) => a.selected && a.plantBarcode);
+    const assignedBarcodes = allAssignments.filter(
+      (a) => a.selected && a.plantBarcode
+    );
     if (assignedBarcodes.length === 0) {
       setBarcodeWaveConflicts({});
       return;
@@ -84,13 +98,15 @@ export function useWaveNumber({
       const conflicts: Record<string, string> = {};
       for (const assignment of assignedBarcodes) {
         try {
-          const result = await window.electron.database.graviscans.checkBarcodeUniqueInWave({
-            experiment_id: selectedExperiment,
-            wave_number: waveNumber,
-            plate_barcode: assignment.plantBarcode!,
-          });
+          const result =
+            await window.electron.database.graviscans.checkBarcodeUniqueInWave({
+              experiment_id: selectedExperiment,
+              wave_number: waveNumber,
+              plate_barcode: assignment.plantBarcode!,
+            });
           if (result.success && result.data?.isDuplicate) {
-            conflicts[assignment.plateIndex] = `Barcode "${assignment.plantBarcode}" already scanned in wave ${waveNumber}`;
+            conflicts[assignment.plateIndex] =
+              `Barcode "${assignment.plantBarcode}" already scanned in wave ${waveNumber}`;
           }
         } catch (err) {
           console.warn('[GraviScan] Barcode uniqueness check failed:', err);
@@ -100,8 +116,15 @@ export function useWaveNumber({
         setBarcodeWaveConflicts(conflicts);
       }
     })();
-    return () => { cancelled = true; };
-  }, [selectedExperiment, waveNumber, scannerPlateAssignments, scanCompletionCounter]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedExperiment,
+    waveNumber,
+    scannerPlateAssignments,
+    scanCompletionCounter,
+  ]);
 
   return {
     waveNumber,

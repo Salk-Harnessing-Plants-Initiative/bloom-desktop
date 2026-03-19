@@ -185,7 +185,12 @@ const links = allLinks.filter(
 export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { autoUploadStatus, autoUploadMessage, boxBackupProgress, setAutoUploadStatus } = useUploadStatus();
+  const {
+    autoUploadStatus,
+    autoUploadMessage,
+    boxBackupProgress,
+    setAutoUploadStatus,
+  } = useUploadStatus();
   const [dismissedDone, setDismissedDone] = useState(false);
   const [scannerName, setScannerName] = useState<string>('');
   const [scanStatus, setScanStatus] = useState<{
@@ -244,7 +249,8 @@ export function Layout() {
     setDismissedDone(false);
   }, [autoUploadStatus]);
 
-  const isUploadActive = autoUploadStatus === 'waiting' || autoUploadStatus === 'uploading';
+  const isUploadActive =
+    autoUploadStatus === 'waiting' || autoUploadStatus === 'uploading';
   const showBanner =
     isUploadActive ||
     (autoUploadStatus === 'done' && !dismissedDone) ||
@@ -270,46 +276,74 @@ export function Layout() {
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Floating Upload Banner */}
       {showBanner && (
-        <div className={`flex-shrink-0 px-4 py-3 flex items-center justify-between z-50 ${
-          autoUploadStatus === 'done'
-            ? 'bg-green-600 text-white'
-            : 'bg-red-600 text-white'
-        }`}>
+        <div
+          className={`flex-shrink-0 px-4 py-3 flex items-center justify-between z-50 ${
+            autoUploadStatus === 'done'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {/* Spinner for waiting/uploading */}
             {isUploadActive && (
-              <svg className="animate-spin h-5 w-5 text-white flex-shrink-0" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              <svg
+                className="animate-spin h-5 w-5 text-white flex-shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
               </svg>
             )}
 
             {/* Status text */}
             <span className="text-sm font-medium truncate">
-              {autoUploadStatus === 'waiting' && 'Scan complete — writing to database...'}
-              {autoUploadStatus === 'uploading' && (
-                boxBackupProgress
+              {autoUploadStatus === 'waiting' &&
+                'Scan complete — writing to database...'}
+              {autoUploadStatus === 'uploading' &&
+                (boxBackupProgress
                   ? `Uploading to Box — ${boxBackupProgress.currentExperiment} (${boxBackupProgress.completedImages}/${boxBackupProgress.totalImages})`
-                  : 'Uploading to Box...'
-              )}
-              {autoUploadStatus === 'done' && (autoUploadMessage || 'Upload complete')}
-              {autoUploadStatus === 'error' && (autoUploadMessage || 'Upload failed')}
+                  : 'Uploading to Box...')}
+              {autoUploadStatus === 'done' &&
+                (autoUploadMessage || 'Upload complete')}
+              {autoUploadStatus === 'error' &&
+                (autoUploadMessage || 'Upload failed')}
             </span>
 
             {/* Progress bar for uploading */}
-            {autoUploadStatus === 'uploading' && boxBackupProgress && boxBackupProgress.totalImages > 0 && (
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <div className="w-32 h-2 bg-red-400 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-white rounded-full transition-all duration-300"
-                    style={{ width: `${Math.round((boxBackupProgress.completedImages / boxBackupProgress.totalImages) * 100)}%` }}
-                  />
+            {autoUploadStatus === 'uploading' &&
+              boxBackupProgress &&
+              boxBackupProgress.totalImages > 0 && (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="w-32 h-2 bg-red-400 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-white rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.round((boxBackupProgress.completedImages / boxBackupProgress.totalImages) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs font-mono">
+                    {Math.round(
+                      (boxBackupProgress.completedImages /
+                        boxBackupProgress.totalImages) *
+                        100
+                    )}
+                    %
+                  </span>
                 </div>
-                <span className="text-xs font-mono">
-                  {Math.round((boxBackupProgress.completedImages / boxBackupProgress.totalImages) * 100)}%
-                </span>
-              </div>
-            )}
+              )}
           </div>
 
           {/* Dismiss button for done/error */}
@@ -321,8 +355,18 @@ export function Layout() {
               }}
               className="ml-3 flex-shrink-0 text-white/80 hover:text-white"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           )}
@@ -330,70 +374,80 @@ export function Layout() {
       )}
 
       <div className="flex flex-1 min-h-0">
-      {/* Sidebar */}
-      <div className="w-64 bg-white shadow-lg flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-gray-800">Bloom Desktop</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {APP_MODE === 'graviscan' ? 'GraviScan' : APP_MODE === 'cylinderscan' ? 'Cylinder Scanner' : 'Plant Scanner'}
-          </p>
-        </div>
-
-        <nav className="mt-6 flex-1">
-          {links.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end
-              onClick={(e) => { if (isUploadActive) e.preventDefault(); }}
-              className={({ isActive }) =>
-                `flex items-center px-6 py-3 transition-colors ${
-                  isUploadActive
-                    ? 'text-gray-400 cursor-not-allowed pointer-events-auto'
-                    : `text-gray-700 hover:bg-blue-50 hover:text-blue-600 ${
-                        isActive
-                          ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'
-                          : ''
-                      }`
-                }`
-              }
-            >
-              {link.icon}
-              {link.label}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* Scanner name footer */}
-        <div className="p-4 border-t border-gray-200">
-          <p className="text-xs text-gray-500">
-            Scanner: {scannerName || 'Not configured'}
-          </p>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 overflow-auto">
-        {scanStatus?.isActive && location.pathname !== '/scanning' && (
-          <div
-            onClick={() => navigate('/scanning')}
-            className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-blue-700 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="animate-pulse inline-block w-2 h-2 bg-white rounded-full" />
-              <span className="text-sm font-medium">
-                Scan in Progress
-                {scanStatus.isContinuous && scanStatus.currentCycle && scanStatus.totalCycles
-                  ? ` — Cycle ${scanStatus.currentCycle}/${scanStatus.totalCycles}`
-                  : ''}
-                {scanStatus.coordinatorState === 'waiting' ? ' (waiting for next cycle)' : ''}
-              </span>
-            </div>
-            <span className="text-xs opacity-80">Click to view</span>
+        {/* Sidebar */}
+        <div className="w-64 bg-white shadow-lg flex flex-col">
+          <div className="p-6">
+            <h1 className="text-2xl font-bold text-gray-800">Bloom Desktop</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {APP_MODE === 'graviscan'
+                ? 'GraviScan'
+                : APP_MODE === 'cylinderscan'
+                  ? 'Cylinder Scanner'
+                  : 'Plant Scanner'}
+            </p>
           </div>
-        )}
-        <Outlet />
-      </div>
+
+          <nav className="mt-6 flex-1">
+            {links.map((link) => (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end
+                onClick={(e) => {
+                  if (isUploadActive) e.preventDefault();
+                }}
+                className={({ isActive }) =>
+                  `flex items-center px-6 py-3 transition-colors ${
+                    isUploadActive
+                      ? 'text-gray-400 cursor-not-allowed pointer-events-auto'
+                      : `text-gray-700 hover:bg-blue-50 hover:text-blue-600 ${
+                          isActive
+                            ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'
+                            : ''
+                        }`
+                  }`
+                }
+              >
+                {link.icon}
+                {link.label}
+              </NavLink>
+            ))}
+          </nav>
+
+          {/* Scanner name footer */}
+          <div className="p-4 border-t border-gray-200">
+            <p className="text-xs text-gray-500">
+              Scanner: {scannerName || 'Not configured'}
+            </p>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="flex-1 overflow-auto">
+          {scanStatus?.isActive && location.pathname !== '/scanning' && (
+            <div
+              onClick={() => navigate('/scanning')}
+              className="bg-blue-600 text-white px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-blue-700 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="animate-pulse inline-block w-2 h-2 bg-white rounded-full" />
+                <span className="text-sm font-medium">
+                  Scan in Progress
+                  {scanStatus.isContinuous &&
+                  scanStatus.currentCycle &&
+                  scanStatus.totalCycles
+                    ? ` — Cycle ${scanStatus.currentCycle}/${scanStatus.totalCycles}`
+                    : ''}
+                  {scanStatus.coordinatorState === 'waiting'
+                    ? ' (waiting for next cycle)'
+                    : ''}
+                </span>
+              </div>
+              <span className="text-xs opacity-80">Click to view</span>
+            </div>
+          )}
+          <Outlet />
+        </div>
       </div>
     </div>
   );

@@ -42,7 +42,11 @@ interface ScanFormSectionProps {
 
   // Handlers
   handleTogglePlate: (scannerId: string, plateIndex: string) => void;
-  handlePlateBarcode: (scannerId: string, plateIndex: string, barcode: string | null) => void;
+  handlePlateBarcode: (
+    scannerId: string,
+    plateIndex: string,
+    barcode: string | null
+  ) => void;
 
   // State
   isScanning: boolean;
@@ -79,7 +83,10 @@ export function ScanFormSection({
     <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
       {/* Experiment Selector */}
       <div>
-        <label htmlFor="experiment" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="experiment"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Experiment
         </label>
         <select
@@ -100,7 +107,10 @@ export function ScanFormSection({
 
       {/* Phenotyper Selector */}
       <div>
-        <label htmlFor="phenotyper" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="phenotyper"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Phenotyper
         </label>
         <select
@@ -121,7 +131,10 @@ export function ScanFormSection({
 
       {/* Wave Number Spinner */}
       <div>
-        <label htmlFor="waveNumber" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="waveNumber"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Wave Number
         </label>
         <div className="flex items-center gap-2">
@@ -138,7 +151,9 @@ export function ScanFormSection({
             type="number"
             min={0}
             value={waveNumber}
-            onChange={(e) => setWaveNumber(Math.max(0, parseInt(e.target.value) || 0))}
+            onChange={(e) =>
+              setWaveNumber(Math.max(0, parseInt(e.target.value) || 0))
+            }
             disabled={isScanning}
             className="w-20 text-center px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-100"
           />
@@ -150,24 +165,29 @@ export function ScanFormSection({
           >
             +
           </button>
-          {suggestedWaveNumber !== null && waveNumber !== suggestedWaveNumber && (
-            <button
-              type="button"
-              onClick={() => setWaveNumber(suggestedWaveNumber)}
-              className="text-xs text-blue-600 hover:text-blue-800 underline"
-            >
-              Suggested: {suggestedWaveNumber}
-            </button>
-          )}
+          {suggestedWaveNumber !== null &&
+            waveNumber !== suggestedWaveNumber && (
+              <button
+                type="button"
+                onClick={() => setWaveNumber(suggestedWaveNumber)}
+                className="text-xs text-blue-600 hover:text-blue-800 underline"
+              >
+                Suggested: {suggestedWaveNumber}
+              </button>
+            )}
         </div>
-        <p className="mt-1 text-xs text-gray-500">Experimental phase (0 = baseline)</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Experimental phase (0 = baseline)
+        </p>
         {hasBarcodeConflicts && (
           <div className="mt-2 space-y-1">
-            {Object.entries(barcodeWaveConflicts).map(([plateIndex, message]) => (
-              <p key={plateIndex} className="text-xs text-amber-600">
-                Plate {formatPlateIndex(plateIndex)}: {message}
-              </p>
-            ))}
+            {Object.entries(barcodeWaveConflicts).map(
+              ([plateIndex, message]) => (
+                <p key={plateIndex} className="text-xs text-amber-600">
+                  Plate {formatPlateIndex(plateIndex)}: {message}
+                </p>
+              )
+            )}
           </div>
         )}
       </div>
@@ -178,11 +198,15 @@ export function ScanFormSection({
           <label className="block text-sm font-medium text-gray-700">
             Plates to Scan ({selectedPlates.length} selected)
           </label>
-          {availableBarcodes.length === 0 && selectedExperiment && !loadingBarcodes && (
-            <span className="text-xs text-amber-600">
-              {isGraviMetadata ? 'No plates found for this experiment' : 'No plant barcodes found for this experiment'}
-            </span>
-          )}
+          {availableBarcodes.length === 0 &&
+            selectedExperiment &&
+            !loadingBarcodes && (
+              <span className="text-xs text-amber-600">
+                {isGraviMetadata
+                  ? 'No plates found for this experiment'
+                  : 'No plant barcodes found for this experiment'}
+              </span>
+            )}
           {loadingBarcodes && (
             <span className="text-xs text-gray-500">
               {isGraviMetadata ? 'Loading plates...' : 'Loading barcodes...'}
@@ -202,19 +226,29 @@ export function ScanFormSection({
         {/* Plate assignments grouped by scanner */}
         <div className="space-y-4">
           {assignedScannerIds.map((scannerId) => {
-            const scanner = detectedScanners.find((s) => s.scanner_id === scannerId);
-            const scannerAssignment = scannerAssignments.find((a) => a.scannerId === scannerId);
+            const scanner = detectedScanners.find(
+              (s) => s.scanner_id === scannerId
+            );
+            const scannerAssignment = scannerAssignments.find(
+              (a) => a.scannerId === scannerId
+            );
             const plateAssignments = scannerPlateAssignments[scannerId] || [];
 
             return (
-              <div key={scannerId} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div
+                key={scannerId}
+                className="border border-gray-200 rounded-lg overflow-hidden"
+              >
                 {/* Scanner Header */}
                 <div className="bg-gray-100 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
                   <span className="text-sm font-medium text-gray-700">
-                    {scannerAssignment?.slot || 'Scanner'}: {scanner?.name || scannerId}
+                    {scannerAssignment?.slot || 'Scanner'}:{' '}
+                    {scanner?.name || scannerId}
                   </span>
                   <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                    {scannerAssignment?.gridMode === '4grid' ? '4-grid' : '2-grid'}
+                    {scannerAssignment?.gridMode === '4grid'
+                      ? '4-grid'
+                      : '2-grid'}
                   </span>
                 </div>
 
@@ -229,92 +263,141 @@ export function ScanFormSection({
                           : 'bg-gray-50 border-gray-200'
                       } ${isScanning ? 'opacity-50' : ''}`}
                     >
-                    <div className="flex items-center gap-2">
-                      {/* Checkbox */}
-                      <input
-                        type="checkbox"
-                        id={`plate-${scannerId}-${assignment.plateIndex}`}
-                        checked={assignment.selected}
-                        onChange={() => handleTogglePlate(scannerId, assignment.plateIndex)}
-                        disabled={isScanning}
-                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
+                      <div className="flex items-center gap-2">
+                        {/* Checkbox */}
+                        <input
+                          type="checkbox"
+                          id={`plate-${scannerId}-${assignment.plateIndex}`}
+                          checked={assignment.selected}
+                          onChange={() =>
+                            handleTogglePlate(scannerId, assignment.plateIndex)
+                          }
+                          disabled={isScanning}
+                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
 
-                      {/* Plate Label */}
-                      <label
-                        htmlFor={`plate-${scannerId}-${assignment.plateIndex}`}
-                        className="text-sm font-medium text-gray-700 w-12 cursor-pointer"
-                      >
-                        {getPlateLabel(assignment.plateIndex)}
-                      </label>
-
-                      {isGraviMetadata ? (
-                        /* Plate ID Dropdown for GraviScan metadata */
-                        <select
-                          value={assignment.plantBarcode || ''}
-                          onChange={(e) => handlePlateBarcode(scannerId, assignment.plateIndex, e.target.value || null)}
-                          disabled={isScanning || !assignment.selected}
-                          className={`flex-1 px-3 py-1.5 text-sm border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                            !assignment.selected
-                              ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-white border-gray-300'
-                          }`}
+                        {/* Plate Label */}
+                        <label
+                          htmlFor={`plate-${scannerId}-${assignment.plateIndex}`}
+                          className="text-sm font-medium text-gray-700 w-12 cursor-pointer"
                         >
-                          <option value="">Select plate...</option>
-                          {availablePlates.map((plate) => (
-                            <option key={plate.plate_id} value={plate.plate_id}>
-                              {plate.plate_id} — {plate.accession}{plate.custom_note ? ` — ${plate.custom_note}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        /* Plant Barcode Dropdown for CylScan metadata */
-                        <select
-                          value={assignment.plantBarcode || ''}
-                          onChange={(e) => handlePlateBarcode(scannerId, assignment.plateIndex, e.target.value || null)}
-                          disabled={isScanning || !assignment.selected}
-                          className={`flex-1 px-3 py-1.5 text-sm border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                            !assignment.selected
-                              ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-white border-gray-300'
-                          }`}
-                        >
-                          <option value="">Select plant barcode...</option>
-                          {availableBarcodes.map((barcode) => (
-                            <option key={barcode} value={barcode}>
-                              {barcode}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                          {getPlateLabel(assignment.plateIndex)}
+                        </label>
 
-                      {/* Plate summary for GraviScan */}
-                      {assignment.selected && assignment.plantBarcode && isGraviMetadata && (() => {
-                        const plateInfo = availablePlates.find((p) => p.plate_id === assignment.plantBarcode);
-                        return plateInfo ? (
-                          <div className="flex items-center gap-3 text-xs min-w-[200px]">
-                            <span className="text-gray-500">Sections: <span className="font-medium text-gray-700">{plateInfo.sectionCount}</span></span>
-                            <span className="text-gray-500">Plants: <span className="font-medium text-gray-700">{plateInfo.plantQrCodes.length}</span></span>
-                            <span className="text-gray-500">Accession: <span className="font-medium text-gray-700">{plateInfo.accession}</span></span>
-                          </div>
-                        ) : null;
-                      })()}
+                        {isGraviMetadata ? (
+                          /* Plate ID Dropdown for GraviScan metadata */
+                          <select
+                            value={assignment.plantBarcode || ''}
+                            onChange={(e) =>
+                              handlePlateBarcode(
+                                scannerId,
+                                assignment.plateIndex,
+                                e.target.value || null
+                              )
+                            }
+                            disabled={isScanning || !assignment.selected}
+                            className={`flex-1 px-3 py-1.5 text-sm border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                              !assignment.selected
+                                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-white border-gray-300'
+                            }`}
+                          >
+                            <option value="">Select plate...</option>
+                            {availablePlates.map((plate) => (
+                              <option
+                                key={plate.plate_id}
+                                value={plate.plate_id}
+                              >
+                                {plate.plate_id} — {plate.accession}
+                                {plate.custom_note
+                                  ? ` — ${plate.custom_note}`
+                                  : ''}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          /* Plant Barcode Dropdown for CylScan metadata */
+                          <select
+                            value={assignment.plantBarcode || ''}
+                            onChange={(e) =>
+                              handlePlateBarcode(
+                                scannerId,
+                                assignment.plateIndex,
+                                e.target.value || null
+                              )
+                            }
+                            disabled={isScanning || !assignment.selected}
+                            className={`flex-1 px-3 py-1.5 text-sm border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                              !assignment.selected
+                                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-white border-gray-300'
+                            }`}
+                          >
+                            <option value="">Select plant barcode...</option>
+                            {availableBarcodes.map((barcode) => (
+                              <option key={barcode} value={barcode}>
+                                {barcode}
+                              </option>
+                            ))}
+                          </select>
+                        )}
 
-                      {/* Genotype display for CylScan */}
-                      {assignment.selected && assignment.plantBarcode && !isGraviMetadata && (
-                        <span className="text-xs text-gray-600 min-w-[80px]">
-                          {barcodeGenotypes[assignment.plantBarcode] || '-'}
-                        </span>
-                      )}
+                        {/* Plate summary for GraviScan */}
+                        {assignment.selected &&
+                          assignment.plantBarcode &&
+                          isGraviMetadata &&
+                          (() => {
+                            const plateInfo = availablePlates.find(
+                              (p) => p.plate_id === assignment.plantBarcode
+                            );
+                            return plateInfo ? (
+                              <div className="flex items-center gap-3 text-xs min-w-[200px]">
+                                <span className="text-gray-500">
+                                  Sections:{' '}
+                                  <span className="font-medium text-gray-700">
+                                    {plateInfo.sectionCount}
+                                  </span>
+                                </span>
+                                <span className="text-gray-500">
+                                  Plants:{' '}
+                                  <span className="font-medium text-gray-700">
+                                    {plateInfo.plantQrCodes.length}
+                                  </span>
+                                </span>
+                                <span className="text-gray-500">
+                                  Accession:{' '}
+                                  <span className="font-medium text-gray-700">
+                                    {plateInfo.accession}
+                                  </span>
+                                </span>
+                              </div>
+                            ) : null;
+                          })()}
 
-                      {/* Status indicator */}
-                      {assignment.selected && assignment.plantBarcode && (
-                        <svg className="h-5 w-5 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
+                        {/* Genotype display for CylScan */}
+                        {assignment.selected &&
+                          assignment.plantBarcode &&
+                          !isGraviMetadata && (
+                            <span className="text-xs text-gray-600 min-w-[80px]">
+                              {barcodeGenotypes[assignment.plantBarcode] || '-'}
+                            </span>
+                          )}
 
+                        {/* Status indicator */}
+                        {assignment.selected && assignment.plantBarcode && (
+                          <svg
+                            className="h-5 w-5 text-green-500 flex-shrink-0"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -326,7 +409,9 @@ export function ScanFormSection({
         {/* Summary */}
         {selectedPlates.length > 0 && (
           <p className="mt-2 text-xs text-gray-500">
-            {selectedPlatesWithBarcodes.length} of {selectedPlates.length} selected plate(s) have {isGraviMetadata ? 'plates' : 'barcodes'} assigned
+            {selectedPlatesWithBarcodes.length} of {selectedPlates.length}{' '}
+            selected plate(s) have {isGraviMetadata ? 'plates' : 'barcodes'}{' '}
+            assigned
           </p>
         )}
       </div>

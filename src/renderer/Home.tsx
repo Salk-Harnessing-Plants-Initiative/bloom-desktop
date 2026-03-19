@@ -147,11 +147,17 @@ export function Home() {
                 </span>
                 <span className="text-xl flex-shrink-0">{step.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <span className="font-medium text-gray-800 group-hover:text-blue-700">{step.title}</span>
+                  <span className="font-medium text-gray-800 group-hover:text-blue-700">
+                    {step.title}
+                  </span>
                   <span className="text-gray-400 mx-2">&mdash;</span>
-                  <span className="text-gray-500 text-sm">{step.description}</span>
+                  <span className="text-gray-500 text-sm">
+                    {step.description}
+                  </span>
                 </div>
-                <span className="text-gray-300 group-hover:text-blue-500 transition-colors">&rarr;</span>
+                <span className="text-gray-300 group-hover:text-blue-500 transition-colors">
+                  &rarr;
+                </span>
               </button>
             ))}
           </div>
@@ -166,8 +172,8 @@ export function Home() {
               Under Construction
             </h3>
             <p className="text-blue-800">
-              This application is being migrated from the pilot repository. Hardware
-              integration and additional features coming soon!
+              This application is being migrated from the pilot repository.
+              Hardware integration and additional features coming soon!
             </p>
           </div>
 
@@ -185,7 +191,9 @@ export function Home() {
             </div>
 
             <div className="p-6 bg-white rounded-lg shadow">
-              <h3 className="text-lg font-semibold mb-2 text-gray-800">Status</h3>
+              <h3 className="text-lg font-semibold mb-2 text-gray-800">
+                Status
+              </h3>
               <ul className="text-gray-600 space-y-2">
                 <li>[OK] Application shell</li>
                 <li>[OK] Navigation</li>

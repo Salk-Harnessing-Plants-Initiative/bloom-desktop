@@ -53,9 +53,10 @@ export function Experiments() {
       // Sort by name alphabetically
       const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
       // Filter by experiment type in single-mode builds
-      const filtered = APP_MODE !== 'full'
-        ? sorted.filter((exp) => exp.experiment_type === APP_MODE)
-        : sorted;
+      const filtered =
+        APP_MODE !== 'full'
+          ? sorted.filter((exp) => exp.experiment_type === APP_MODE)
+          : sorted;
       setExperiments(filtered);
 
       // Set default attach experiment if available (only if not already set)
@@ -237,15 +238,15 @@ export function Experiments() {
                 <option value="">No accessions available</option>
               ) : (
                 accessions.map((acc) => {
-                  const type =
-                    acc._count?.graviPlateAccessions
-                      ? 'GraviScan'
-                      : acc._count?.mappings
-                        ? 'CylScan'
-                        : '';
+                  const type = acc._count?.graviPlateAccessions
+                    ? 'GraviScan'
+                    : acc._count?.mappings
+                      ? 'CylScan'
+                      : '';
                   return (
                     <option key={acc.id} value={acc.id}>
-                      {type ? `[${type}] ` : ''}{acc.name}
+                      {type ? `[${type}] ` : ''}
+                      {acc.name}
                     </option>
                   );
                 })

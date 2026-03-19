@@ -88,7 +88,9 @@ export class ScannerSubprocess extends EventEmitter {
    */
   async spawn(): Promise<void> {
     if (this.proc) {
-      throw new Error(`Subprocess for scanner ${this.scannerId} already spawned`);
+      throw new Error(
+        `Subprocess for scanner ${this.scannerId} already spawned`
+      );
     }
 
     this.state = 'starting';
@@ -104,7 +106,9 @@ export class ScannerSubprocess extends EventEmitter {
       args.push('--device', this.saneName);
     }
 
-    console.log(`[ScannerSubprocess:${this.scannerId}] Spawning: ${this.pythonPath} ${args.join(' ')}`);
+    console.log(
+      `[ScannerSubprocess:${this.scannerId}] Spawning: ${this.pythonPath} ${args.join(' ')}`
+    );
 
     this.proc = spawn(this.pythonPath, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -112,10 +116,9 @@ export class ScannerSubprocess extends EventEmitter {
       env: {
         ...process.env,
         // In dev: ensure `python/` is on PYTHONPATH so `-m graviscan.scan_worker` resolves
-        PYTHONPATH: [
-          path.join(process.cwd(), 'python'),
-          process.env.PYTHONPATH,
-        ].filter(Boolean).join(':'),
+        PYTHONPATH: [path.join(process.cwd(), 'python'), process.env.PYTHONPATH]
+          .filter(Boolean)
+          .join(':'),
       },
     });
 
@@ -132,13 +135,18 @@ export class ScannerSubprocess extends EventEmitter {
 
     // Handle process exit
     this.proc.on('exit', (code, signal) => {
-      console.log(`[ScannerSubprocess:${this.scannerId}] Exited: code=${code}, signal=${signal}`);
+      console.log(
+        `[ScannerSubprocess:${this.scannerId}] Exited: code=${code}, signal=${signal}`
+      );
       this.state = 'dead';
       this.emit('exit', { scannerId: this.scannerId, code, signal });
     });
 
     this.proc.on('error', (err) => {
-      console.error(`[ScannerSubprocess:${this.scannerId}] Process error:`, err);
+      console.error(
+        `[ScannerSubprocess:${this.scannerId}] Process error:`,
+        err
+      );
       this.state = 'dead';
       this.emit('error', { scannerId: this.scannerId, error: err.message });
     });
@@ -156,14 +164,20 @@ export class ScannerSubprocess extends EventEmitter {
         this.removeListener('ready', onReady);
         this.removeListener('init-error', onError);
         this.removeListener('exit', onExit);
-        reject(new Error(`Scanner ${this.scannerId} init failed: ${event.error}`));
+        reject(
+          new Error(`Scanner ${this.scannerId} init failed: ${event.error}`)
+        );
       };
 
       const onExit = (info: { scannerId: string; code: number | null }) => {
         this.removeListener('ready', onReady);
         this.removeListener('init-error', onError);
         this.removeListener('exit', onExit);
-        reject(new Error(`Scanner ${this.scannerId} process exited (code ${info.code}) before becoming ready`));
+        reject(
+          new Error(
+            `Scanner ${this.scannerId} process exited (code ${info.code}) before becoming ready`
+          )
+        );
       };
 
       this.on('ready', onReady);
@@ -215,7 +229,9 @@ export class ScannerSubprocess extends EventEmitter {
 
     return new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
-        console.warn(`[ScannerSubprocess:${this.scannerId}] Force-killing after timeout`);
+        console.warn(
+          `[ScannerSubprocess:${this.scannerId}] Force-killing after timeout`
+        );
         this.kill();
         resolve();
       }, timeoutMs);
@@ -233,7 +249,9 @@ export class ScannerSubprocess extends EventEmitter {
 
   private sendCommand(cmd: Record<string, unknown>): void {
     if (!this.proc || !this.proc.stdin || this.proc.killed) {
-      console.warn(`[ScannerSubprocess:${this.scannerId}] Cannot send command — process not running`);
+      console.warn(
+        `[ScannerSubprocess:${this.scannerId}] Cannot send command — process not running`
+      );
       return;
     }
     this.proc.stdin.write(JSON.stringify(cmd) + '\n');
@@ -251,7 +269,9 @@ export class ScannerSubprocess extends EventEmitter {
     try {
       event = JSON.parse(jsonStr);
     } catch {
-      console.error(`[ScannerSubprocess:${this.scannerId}] Invalid EVENT JSON: ${jsonStr}`);
+      console.error(
+        `[ScannerSubprocess:${this.scannerId}] Invalid EVENT JSON: ${jsonStr}`
+      );
       return;
     }
 
@@ -292,7 +312,9 @@ export class ScannerSubprocess extends EventEmitter {
         break;
 
       default:
-        console.log(`[ScannerSubprocess:${this.scannerId}] Unknown event: ${event.type}`);
+        console.log(
+          `[ScannerSubprocess:${this.scannerId}] Unknown event: ${event.type}`
+        );
         break;
     }
 
