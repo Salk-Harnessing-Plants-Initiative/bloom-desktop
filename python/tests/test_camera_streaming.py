@@ -108,6 +108,28 @@ class TestGrabFrameBase64:
         assert len(parts) == 2
         assert parts[0] == "data:image/png;base64"
 
+    def test_grab_frame_base64_no_resource_leak(self):
+        """Verify grab_frame_base64 does not leak file handles (context managers)."""
+        import warnings
+
+        settings = CameraSettings(
+            exposure_time=10000,
+            gain=100,
+            camera_ip_address="192.168.1.100",
+            num_frames=1,
+        )
+        camera = MockCamera(settings)
+        camera.open()
+
+        # Call multiple times and check for ResourceWarning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            for _ in range(50):
+                camera.grab_frame_base64()
+
+            resource_warnings = [x for x in w if issubclass(x.category, ResourceWarning)]
+            assert len(resource_warnings) == 0, f"Got ResourceWarnings: {resource_warnings}"
+
     def test_grab_frame_base64_requires_open_camera(self):
         """Verify grab_frame_base64() raises error if camera not open."""
         settings = CameraSettings(

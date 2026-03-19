@@ -226,10 +226,10 @@ class MockCamera:
         img = self.grab_frame()
 
         # Convert numpy array to PIL Image and encode as PNG
-        buffer = BytesIO()
-        pil_img = Image.fromarray(img)
-        pil_img.save(buffer, format="PNG", compress_level=0)
-        base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        with BytesIO() as buffer:
+            with Image.fromarray(img) as pil_img:
+                pil_img.save(buffer, format="PNG", compress_level=0)
+            base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
         return f"data:image/png;base64,{base64_data}"
 

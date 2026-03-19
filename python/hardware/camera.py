@@ -209,10 +209,10 @@ class Camera:
         Returns:
             Base64-encoded PNG string
         """
-        buffer = BytesIO()
-        pil_img = Image.fromarray(img)
-        pil_img.save(buffer, format="PNG", compress_level=0)
-        base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        with BytesIO() as buffer:
+            with Image.fromarray(img) as pil_img:
+                pil_img.save(buffer, format="PNG", compress_level=0)
+            base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
         return base64_img
 
 
