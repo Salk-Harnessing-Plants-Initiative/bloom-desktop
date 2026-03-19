@@ -401,9 +401,9 @@ def streaming_worker() -> None:
     """Background thread worker for camera streaming.
 
     Continuously captures frames from the camera and sends them via FRAME: protocol
-    while _streaming_active is set. Targets ~30 FPS (33ms per frame).
+    while _streaming_active is set. Targets ~5 FPS (200ms per frame).
     """
-    target_fps = 30
+    target_fps = 5
     frame_interval = 1.0 / target_fps
 
     send_status("Streaming worker started")

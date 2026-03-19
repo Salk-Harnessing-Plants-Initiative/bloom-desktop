@@ -162,7 +162,7 @@ export class CameraProcess extends PythonProcess {
 
   /**
    * Start streaming images from the camera.
-   * Frames will be emitted via 'frame' events at ~30 FPS.
+   * Frames will be emitted via 'frame' events at ~5 FPS.
    *
    * @param settings - Camera settings for streaming
    * @returns Promise that resolves when streaming starts

@@ -226,15 +226,16 @@ class TestStreamingIPCActions:
         handle_command(command)
         self.capsys.readouterr()  # Clear startup messages
 
-        # Wait for frames to be sent (should get ~10 frames in 0.5s at 30 FPS)
-        time.sleep(0.5)
+        # Wait for frames to be sent (should get ~7 frames in 1.5s at 5 FPS)
+        time.sleep(1.5)
         captured = self.capsys.readouterr()
 
         # Should see FRAME: protocol messages
         assert "FRAME:" in captured.out
-        # Should have multiple frames
+        # Should have frames at ~5 FPS rate (not 30 FPS)
         frame_count = captured.out.count("FRAME:")
-        assert frame_count >= 5, f"Expected at least 5 frames, got {frame_count}"
+        assert frame_count >= 3, f"Expected at least 3 frames, got {frame_count}"
+        assert frame_count <= 15, f"Expected at most 15 frames (5 FPS), got {frame_count}"
 
     def test_stop_stream_stops_thread(self):
         """Verify stop_stream signals worker to exit."""
@@ -358,10 +359,11 @@ class TestStreamingWorkflow:
         self.capsys.readouterr()  # Clear startup messages
 
         # Wait for frames
-        time.sleep(1.0)  # Should get ~30 frames
+        time.sleep(1.5)  # Should get ~7 frames at 5 FPS
         captured = self.capsys.readouterr()
         frame_count = captured.out.count("FRAME:")
-        assert frame_count >= 20, f"Expected at least 20 frames, got {frame_count}"
+        assert frame_count >= 3, f"Expected at least 3 frames, got {frame_count}"
+        assert frame_count <= 15, f"Expected at most 15 frames (5 FPS), got {frame_count}"
 
         # Stop streaming
         stop_cmd = {"command": "camera", "action": "stop_stream"}
