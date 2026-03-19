@@ -94,8 +94,10 @@ describe('Streamer', () => {
   it('1.5 shows waiting message before first frame', () => {
     render(<Streamer />);
 
-    // Before any frame arrives, should show waiting/connecting state
-    expect(screen.getByText('Connecting...')).toBeInTheDocument();
+    // Before any frame arrives, should show connecting state
+    // Both placeholder and status badge show "Connecting..."
+    const elements = screen.getAllByText('Connecting...');
+    expect(elements.length).toBeGreaterThanOrEqual(1);
   });
 
   it('1.6 stops stream on unmount', async () => {

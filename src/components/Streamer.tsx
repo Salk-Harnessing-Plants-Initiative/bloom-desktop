@@ -10,12 +10,43 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { CameraSettings } from '../types/camera';
 
 export interface StreamerProps {
+  /**
+   * Camera settings for streaming
+   * Optional - will use camera's current settings if not provided
+   */
   settings?: Partial<CameraSettings>;
+
+  /**
+   * Width of the display area in pixels
+   * @default 640
+   */
   width?: number;
+
+  /**
+   * Height of the display area in pixels
+   * @default 480
+   */
   height?: number;
+
+  /**
+   * Whether to show FPS counter
+   * @default true
+   */
   showFps?: boolean;
+
+  /**
+   * Callback when streaming starts successfully
+   */
   onStreamStart?: () => void;
+
+  /**
+   * Callback when streaming stops
+   */
   onStreamStop?: () => void;
+
+  /**
+   * Callback when an error occurs
+   */
   onError?: (error: string) => void;
 }
 
@@ -176,7 +207,7 @@ export const Streamer: React.FC<StreamerProps> = ({
           }}
         />
         <span style={{ color: '#fff' }}>
-          {error ? 'Error' : isStreaming ? 'Streaming' : 'Waiting'}
+          {error ? 'Error' : isStreaming ? 'Streaming' : 'Connecting...'}
         </span>
       </div>
 
