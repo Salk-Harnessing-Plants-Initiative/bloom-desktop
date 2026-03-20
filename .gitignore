@@ -106,7 +106,6 @@ test-results/
 .playwright/
 tests/e2e/**/*.db
 tests/e2e/**/*.db-journal
-.npmrc
 
 # Test scripts with credentials (root directory only)
 /test-bloom-api*.js
@@ -115,6 +114,15 @@ scripts/*.js
 !scripts/examples/*.js
 .env.old-backup
 
+# GraviScan images (development)
+.graviscan/
+
 # Test scan artifacts
 test-scans/
 test-scans-no-meta/
+
+# Box-related scripts (local reference copies)
+Boxrelated/
+
+# Local dev scripts (not tracked)
+scripts/local-pr-checks.sh
