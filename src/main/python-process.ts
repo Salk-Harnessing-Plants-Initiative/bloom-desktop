@@ -201,8 +201,8 @@ export class PythonProcess extends EventEmitter {
     let newlineIndex = data.indexOf(0x0a); // '\n'
 
     if (newlineIndex === -1) {
-      // No newline — just accumulate
-      this.stdoutChunks.push(data);
+      // No newline — just accumulate (copy to release parent buffer)
+      this.stdoutChunks.push(Buffer.from(data));
       return;
     }
 
@@ -210,7 +210,7 @@ export class PythonProcess extends EventEmitter {
     let offset = 0;
     while (newlineIndex !== -1) {
       // Extract the portion up to the newline
-      const chunk = data.subarray(offset, newlineIndex);
+      const chunk = Buffer.from(data.subarray(offset, newlineIndex));
       this.stdoutChunks.push(chunk);
 
       // Concatenate all accumulated chunks into one string
@@ -227,7 +227,7 @@ export class PythonProcess extends EventEmitter {
 
     // Keep any remaining data after the last newline as a partial chunk
     if (offset < data.length) {
-      this.stdoutChunks.push(data.subarray(offset));
+      this.stdoutChunks.push(Buffer.from(data.subarray(offset)));
     }
   }
 

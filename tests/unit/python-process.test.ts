@@ -172,6 +172,45 @@ describe('handleStdout', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  it('mid-line chunk is independent of parent buffer', () => {
+    const statusSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+
+    const original = Buffer.from('STATUS:hello\nSTATUS:trail');
+    mockProc.stdout.emit('data', original);
+
+    // First complete line was parsed
+    expect(statusSpy).toHaveBeenCalledWith('hello');
+
+    // Mutate the original buffer — should NOT affect the stored trailing partial
+    original.fill(0);
+
+    // Complete the trailing partial
+    mockProc.stdout.emit('data', Buffer.from('ing\n'));
+
+    // The trailing partial should NOT have been corrupted
+    expect(statusSpy).toHaveBeenCalledTimes(2);
+    expect(statusSpy).toHaveBeenNthCalledWith(2, 'trailing');
+  });
+
+  it('trailing partial is independent of parent buffer', () => {
+    const statusSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+
+    // Send data with a trailing partial (no newline at end)
+    const original = Buffer.from('STATUS:partial');
+    mockProc.stdout.emit('data', original);
+    expect(statusSpy).not.toHaveBeenCalled();
+
+    // Mutate the original buffer
+    original.fill(0);
+
+    // Complete the line — the partial should still be intact
+    mockProc.stdout.emit('data', Buffer.from('_end\n'));
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(statusSpy).toHaveBeenCalledWith('partial_end');
+  });
+
   it('clears buffer on stop', () => {
     const statusSpy = vi.fn();
     pyProc.on('status', statusSpy);
