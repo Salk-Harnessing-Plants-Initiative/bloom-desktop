@@ -92,13 +92,12 @@ describe('Streamer', () => {
     expect(img).toHaveAttribute('src', 'data:image/png;base64,frame9');
   });
 
-  it('1.5 shows waiting message before first frame', () => {
+  it('1.5 shows connecting state before first frame', () => {
     render(<Streamer />);
 
-    // Before any frame arrives, should show connecting state
-    // Both placeholder and status badge show "Connecting..."
+    // Both placeholder and status badge should show "Connecting..."
     const elements = screen.getAllByText('Connecting...');
-    expect(elements.length).toBeGreaterThanOrEqual(1);
+    expect(elements).toHaveLength(2);
   });
 
   it('1.6 stops stream on unmount', async () => {
@@ -123,5 +122,21 @@ describe('Streamer', () => {
 
     // FPS counter shows "0 FPS" initially (updates every second)
     expect(screen.getByText(/FPS/)).toBeInTheDocument();
+  });
+
+  it('1.8 renders error state when startStream fails', async () => {
+    mockStartStream.mockResolvedValueOnce({ success: false, error: 'Camera not connected' });
+
+    render(<Streamer />);
+
+    // Wait for startStream to resolve
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // Should show error text (appears in both placeholder and status badge)
+    const errorElements = screen.getAllByText('Error');
+    expect(errorElements.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Camera not connected')).toBeInTheDocument();
   });
 });

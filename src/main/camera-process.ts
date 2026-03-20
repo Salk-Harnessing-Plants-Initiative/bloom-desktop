@@ -229,6 +229,7 @@ export class CameraProcess extends PythonProcess {
     }
 
     // Non-camera success response (e.g. mismatched command routing) — return empty
+    console.warn('detectCameras: unexpected response shape', response);
     return [];
   }
 }
