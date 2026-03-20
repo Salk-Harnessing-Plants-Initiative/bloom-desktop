@@ -32,6 +32,7 @@ export function MachineConfiguration() {
     bloom_scanner_username: '',
     bloom_scanner_password: '',
     bloom_anon_key: '',
+    graviscan_system_name: '',
   });
   const [originalConfig, setOriginalConfig] = useState<MachineConfig | null>(
     null
