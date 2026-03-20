@@ -10,7 +10,7 @@
  *     - STATUS:<message> - Status updates
  *     - ERROR:<message> - Error messages
  *     - DATA:<json> - JSON data responses
- *     - IMAGE:data:image/png;base64,<base64> - Base64-encoded images (future use)
+ *     - IMAGE:data:image/jpeg;base64,<base64> - Base64-encoded images (future use)
  */
 
 import { ChildProcess, spawn } from 'child_process';
@@ -27,7 +27,7 @@ const COMMAND_TIMEOUT_MS = 180000; // 3 minutes - scanner scans can take longer 
  *   - 'status': (message: string) => void - Status update from Python
  *   - 'error': (error: string) => void - Error from Python
  *   - 'data': (data: any) => void - JSON data response from Python
- *   - 'image': (dataUri: string) => void - Base64-encoded image (data:image/png;base64,...)
+ *   - 'image': (dataUri: string) => void - Base64-encoded image (data:image/jpeg;base64,...)
  *   - 'exit': (code: number | null) => void - Process exited
  *   - 'raw': (line: string) => void - Unrecognized output line
  */

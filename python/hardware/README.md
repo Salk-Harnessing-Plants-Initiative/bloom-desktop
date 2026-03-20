@@ -26,7 +26,7 @@ Controls Basler GigE cameras via PyPylon:
 - Configure camera settings (exposure, gain, brightness, etc.)
 - Capture single images
 - Stream continuous frames
-- Return images as base64-encoded PNG
+- Return streaming images as base64-encoded JPEG (quality 85), single captures as PNG
 
 **Migrated from pilot**: `pylon/pylon.py`, `pylon/pylon_stream.py`
 

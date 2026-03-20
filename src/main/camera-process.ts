@@ -59,7 +59,7 @@ export class CameraProcess extends PythonProcess {
     if (line.startsWith('TRIGGER_CAMERA')) {
       this.emit('camera-trigger');
     } else if (line.startsWith('FRAME:')) {
-      // Streaming frame: "FRAME:data:image/png;base64,..."
+      // Streaming frame: "FRAME:data:image/jpeg;base64,..."
       const dataUri = line.substring(6); // Remove "FRAME:" prefix
       this.emit('frame', dataUri);
     } else if (line.startsWith('IMAGE ')) {

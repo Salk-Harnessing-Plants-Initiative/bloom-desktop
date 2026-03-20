@@ -60,7 +60,7 @@ Note: In development mode, the mock camera automatically loads real plant scan i
 {"command":"camera","action":"capture","settings":{}}
 ```
 
-You should see a base64-encoded PNG image in the output.
+You should see a base64-encoded JPEG image in the streaming output (FRAME: protocol).
 
 ## Testing with the Electron App
 
