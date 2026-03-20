@@ -109,9 +109,9 @@ async function launchElectronApp() {
  * Helper: Navigate to Accessions page
  */
 async function navigateToAccessions() {
-  await window.click('text=Accessions');
+  await window.click('text=Metadata');
   await expect(
-    window.getByRole('heading', { name: 'Accessions', exact: true })
+    window.getByRole('heading', { name: 'Metadata', exact: true })
   ).toBeVisible();
 }
 

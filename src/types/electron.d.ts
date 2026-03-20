@@ -30,7 +30,6 @@ import {
   GraviPlateAccession,
   GraviPlateSectionMapping,
   ExperimentCreateData,
-  ExperimentUpdateData,
   PhenotyperCreateData,
   ScientistCreateData,
   AccessionCreateData,
@@ -269,11 +268,6 @@ export interface DatabaseAPI {
     create: (
       data: ExperimentCreateData
     ) => Promise<DatabaseResponse<Experiment>>;
-    update: (
-      id: string,
-      data: ExperimentUpdateData
-    ) => Promise<DatabaseResponse<Experiment>>;
-    delete: (id: string) => Promise<DatabaseResponse>;
     attachAccession: (
       experimentId: string,
       accessionId: string

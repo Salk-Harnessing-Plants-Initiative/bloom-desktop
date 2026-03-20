@@ -96,47 +96,6 @@ export function registerDatabaseHandlers() {
   );
 
   ipcMain.handle(
-    'db:experiments:update',
-    async (
-      _event,
-      id: string,
-      data: Prisma.ExperimentUpdateInput
-    ): Promise<DatabaseResponse> => {
-      try {
-        const experiment = await db.experiment.update({
-          where: { id },
-          data,
-        });
-        logDatabaseOperation('UPDATE', 'Experiment', `id=${experiment.id}`);
-        return { success: true, data: experiment };
-      } catch (error) {
-        console.error('[DB] Failed to update experiment:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
-    }
-  );
-
-  ipcMain.handle(
-    'db:experiments:delete',
-    async (_event, id: string): Promise<DatabaseResponse> => {
-      try {
-        await db.experiment.delete({ where: { id } });
-        logDatabaseOperation('DELETE', 'Experiment', `id=${id}`);
-        return { success: true };
-      } catch (error) {
-        console.error('[DB] Failed to delete experiment:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
-    }
-  );
-
-  ipcMain.handle(
     'db:experiments:get',
     async (_event, id: string): Promise<DatabaseResponse> => {
       try {

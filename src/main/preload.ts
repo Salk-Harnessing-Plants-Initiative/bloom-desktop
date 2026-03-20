@@ -31,7 +31,6 @@ import {
 // eslint-disable-next-line import/no-unresolved
 import type {
   ExperimentCreateData,
-  ExperimentUpdateData,
   PhenotyperCreateData,
   ScientistCreateData,
   AccessionCreateData,
@@ -169,9 +168,6 @@ const databaseAPI: DatabaseAPI = {
     get: (id: string) => ipcRenderer.invoke('db:experiments:get', id),
     create: (data: ExperimentCreateData) =>
       ipcRenderer.invoke('db:experiments:create', data),
-    update: (id: string, data: ExperimentUpdateData) =>
-      ipcRenderer.invoke('db:experiments:update', id, data),
-    delete: (id: string) => ipcRenderer.invoke('db:experiments:delete', id),
     attachAccession: (experimentId: string, accessionId: string) =>
       ipcRenderer.invoke(
         'db:experiments:attachAccession',

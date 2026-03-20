@@ -17,7 +17,7 @@ const appMode = process.env.APP_MODE || 'full';
 const appNames: Record<string, string> = {
   graviscan: 'bloom-graviscan',
   cylinderscan: 'bloom-cylinderscan',
-  full: 'Bloom Desktop',
+  full: 'bloom-desktop',
 };
 
 const productNames: Record<string, string> = {
