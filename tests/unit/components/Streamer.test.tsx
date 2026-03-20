@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   capturedFrameCallback = null;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
   if (!win.electron) win.electron = {};
   win.electron.camera = {

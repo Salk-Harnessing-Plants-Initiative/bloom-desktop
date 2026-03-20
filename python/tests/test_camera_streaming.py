@@ -127,8 +127,12 @@ class TestGrabFrameBase64:
             for _ in range(50):
                 camera.grab_frame_base64()
 
-            resource_warnings = [x for x in w if issubclass(x.category, ResourceWarning)]
-            assert len(resource_warnings) == 0, f"Got ResourceWarnings: {resource_warnings}"
+            resource_warnings = [
+                x for x in w if issubclass(x.category, ResourceWarning)
+            ]
+            assert (
+                len(resource_warnings) == 0
+            ), f"Got ResourceWarnings: {resource_warnings}"
 
     def test_grab_frame_base64_requires_open_camera(self):
         """Verify grab_frame_base64() raises error if camera not open."""
@@ -257,7 +261,9 @@ class TestStreamingIPCActions:
         # Should have frames at ~5 FPS rate (not 30 FPS)
         frame_count = captured.out.count("FRAME:")
         assert frame_count >= 3, f"Expected at least 3 frames, got {frame_count}"
-        assert frame_count <= 15, f"Expected at most 15 frames (5 FPS), got {frame_count}"
+        assert (
+            frame_count <= 15
+        ), f"Expected at most 15 frames (5 FPS), got {frame_count}"
 
     def test_stop_stream_stops_thread(self):
         """Verify stop_stream signals worker to exit."""
@@ -385,7 +391,9 @@ class TestStreamingWorkflow:
         captured = self.capsys.readouterr()
         frame_count = captured.out.count("FRAME:")
         assert frame_count >= 3, f"Expected at least 3 frames, got {frame_count}"
-        assert frame_count <= 15, f"Expected at most 15 frames (5 FPS), got {frame_count}"
+        assert (
+            frame_count <= 15
+        ), f"Expected at most 15 frames (5 FPS), got {frame_count}"
 
         # Stop streaming
         stop_cmd = {"command": "camera", "action": "stop_stream"}
