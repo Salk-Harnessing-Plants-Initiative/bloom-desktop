@@ -143,17 +143,20 @@ export class PythonProcess extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
+      // Declare timeout ID before handlers to avoid TDZ reference issues
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
       // Set up one-time listeners for response
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dataHandler = (data: any) => {
-        clearTimeout(timeoutId);
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);
         resolve(data);
       };
 
       const errorHandler = (error: string) => {
-        clearTimeout(timeoutId);
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);
         reject(new Error(error));
@@ -167,7 +170,7 @@ export class PythonProcess extends EventEmitter {
       this.process.stdin!.write(`${commandJson}\n`);
 
       // Timeout for command response
-      const timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);
         reject(new Error('Command timeout'));

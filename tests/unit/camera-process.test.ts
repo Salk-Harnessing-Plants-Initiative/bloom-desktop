@@ -55,4 +55,10 @@ describe('CameraProcess.detectCameras', () => {
     const result = await camera.detectCameras();
     expect(result).toEqual([]);
   });
+
+  it('4.4 throws on error response from Python', async () => {
+    vi.spyOn(camera, 'sendCommand').mockResolvedValue({ success: false, error: 'Camera not connected' });
+
+    await expect(camera.detectCameras()).rejects.toThrow('Failed to detect cameras: Camera not connected');
+  });
 });

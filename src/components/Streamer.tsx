@@ -122,8 +122,11 @@ export const Streamer: React.FC<StreamerProps> = ({
       mounted = false;
       removeFrameListener();
       window.electron.camera.stopStream().then(() => {
+        if (!mounted) return;
         setIsStreaming(false);
         onStreamStop?.();
+      }).catch(() => {
+        // Ignore errors during cleanup
       });
     };
   }, [settings, handleFrame, onStreamStart, onStreamStop, onError]);
