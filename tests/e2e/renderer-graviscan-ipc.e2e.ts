@@ -350,7 +350,7 @@ test.describe('Renderer GraviScan IPC - GraviScans', () => {
 
     expect(result.success).toBe(true);
     expect(result.data.id).toBe(experimentId);
-    expect(result.data.graviscanScans.length).toBeGreaterThanOrEqual(1);
+    expect(result.data.scans.length).toBeGreaterThanOrEqual(1);
   });
 });
 
