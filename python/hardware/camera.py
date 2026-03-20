@@ -183,35 +183,36 @@ class Camera:
         return frames
 
     def grab_frame_base64(self) -> str:
-        """Grab a single frame and return as base64-encoded PNG.
+        """Grab a single frame and return as base64-encoded JPEG.
 
         This method is optimized for streaming use cases where frames need
-        to be transmitted over IPC as base64 data URIs.
+        to be transmitted over IPC as base64 data URIs. JPEG quality=85
+        reduces payload from ~2.9 MB (PNG) to ~266 KB per frame.
 
         Returns:
-            Base64-encoded PNG string with data URI prefix
-            Format: "data:image/png;base64,{encoded_data}"
+            Base64-encoded JPEG string with data URI prefix
+            Format: "data:image/jpeg;base64,{encoded_data}"
 
         Raises:
             RuntimeError: If camera is not open or grab fails
         """
         img = self.grab_frame()
         base64_data = self._img_to_base64(img)
-        return f"data:image/png;base64,{base64_data}"
+        return f"data:image/jpeg;base64,{base64_data}"
 
     @staticmethod
     def _img_to_base64(img: np.ndarray) -> str:
-        """Convert image array to base64-encoded PNG.
+        """Convert image array to base64-encoded JPEG.
 
         Args:
             img: Image array
 
         Returns:
-            Base64-encoded PNG string
+            Base64-encoded JPEG string
         """
         with BytesIO() as buffer:
             with Image.fromarray(img) as pil_img:
-                pil_img.save(buffer, format="PNG", compress_level=0)
+                pil_img.save(buffer, format="JPEG", quality=85)
             base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
         return base64_img
 

@@ -11,7 +11,7 @@ Protocol:
     - STATUS:<message> - Status updates
     - ERROR:<message> - Error messages
     - DATA:<json> - JSON data responses
-    - FRAME:<base64_data_uri> - Streaming frame data (base64-encoded PNG)
+    - FRAME:<base64_data_uri> - Streaming frame data (base64-encoded JPEG)
 """
 
 import base64
