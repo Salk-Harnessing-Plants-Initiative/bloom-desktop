@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
+import { spawn } from 'child_process';
 
 // Create mock streams that behave like Node streams
 function createMockProcess() {
@@ -85,5 +86,101 @@ describe('PythonProcess.sendCommand', () => {
     vi.advanceTimersByTime(180001);
 
     await expect(commandPromise).rejects.toThrow('Command timeout');
+  });
+});
+
+describe('handleStdout', () => {
+  let pyProc: PythonProcess;
+  let mockProc: ReturnType<typeof createMockProcess>;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    // Clear previous mock calls and set up a fresh mock process
+    mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as never);
+
+    pyProc = new PythonProcess('/fake/python', ['--ipc']);
+
+    // Start the process — the mock stdout listener gets wired up here
+    const startPromise = pyProc.start();
+    setTimeout(() => pyProc.emit('status', 'IPC handler ready'), 10);
+    vi.advanceTimersByTime(10);
+    await startPromise;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    pyProc.stop();
+  });
+
+  it('parses a single complete line', () => {
+    const statusSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+
+    mockProc.stdout.emit('data', Buffer.from('STATUS:ready\n'));
+
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(statusSpy).toHaveBeenCalledWith('ready');
+  });
+
+  it('reassembles a line split across two chunks', () => {
+    const statusSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+
+    mockProc.stdout.emit('data', Buffer.from('STATUS:rea'));
+    expect(statusSpy).not.toHaveBeenCalled();
+
+    mockProc.stdout.emit('data', Buffer.from('dy\n'));
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(statusSpy).toHaveBeenCalledWith('ready');
+  });
+
+  it('parses multiple lines in one chunk', () => {
+    const statusSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+
+    mockProc.stdout.emit('data', Buffer.from('STATUS:one\nSTATUS:two\n'));
+
+    expect(statusSpy).toHaveBeenCalledTimes(2);
+    expect(statusSpy).toHaveBeenNthCalledWith(1, 'one');
+    expect(statusSpy).toHaveBeenNthCalledWith(2, 'two');
+  });
+
+  it('retains trailing incomplete line for next chunk', () => {
+    const statusSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+
+    mockProc.stdout.emit('data', Buffer.from('STATUS:one\nSTATUS:tw'));
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(statusSpy).toHaveBeenCalledWith('one');
+
+    mockProc.stdout.emit('data', Buffer.from('o\n'));
+    expect(statusSpy).toHaveBeenCalledTimes(2);
+    expect(statusSpy).toHaveBeenNthCalledWith(2, 'two');
+  });
+
+  it('handles empty Buffer without error', () => {
+    const statusSpy = vi.fn();
+    const errorSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+    pyProc.on('error', errorSpy);
+
+    // Should not throw or emit any events
+    mockProc.stdout.emit('data', Buffer.alloc(0));
+
+    expect(statusSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('clears buffer on stop', () => {
+    const statusSpy = vi.fn();
+    pyProc.on('status', statusSpy);
+
+    // Emit partial data (no newline) to fill the internal buffer
+    mockProc.stdout.emit('data', Buffer.from('STATUS:partial'));
+    expect(statusSpy).not.toHaveBeenCalled();
+
+    // Stop the process — should not throw even with partial data buffered
+    expect(() => pyProc.stop()).not.toThrow();
   });
 });

@@ -35,7 +35,7 @@ export class PythonProcess extends EventEmitter {
   private process: ChildProcess | null = null;
   private pythonPath: string;
   private scriptArgs: string[];
-  private stdinBuffer: string = '';
+  private stdoutChunks: Buffer[] = [];
 
   /**
    * Create a new Python process manager.
@@ -119,6 +119,8 @@ export class PythonProcess extends EventEmitter {
       this.process.kill();
       this.process = null;
     }
+    // Clear stdout buffer
+    this.stdoutChunks = [];
   }
 
   /**
@@ -192,19 +194,40 @@ export class PythonProcess extends EventEmitter {
    * @param data - Buffer data from stdout
    */
   private handleStdout(data: Buffer): void {
-    // Accumulate data in buffer
-    this.stdinBuffer += data.toString();
+    // Skip empty chunks
+    if (data.length === 0) return;
 
-    // Process complete lines
-    const lines = this.stdinBuffer.split('\n');
-    // Keep incomplete line in buffer
-    this.stdinBuffer = lines.pop() || '';
+    // Check if this chunk contains a newline
+    let newlineIndex = data.indexOf(0x0a); // '\n'
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) continue;
+    if (newlineIndex === -1) {
+      // No newline — just accumulate
+      this.stdoutChunks.push(data);
+      return;
+    }
 
-      this.parseLine(trimmedLine);
+    // Process all complete lines in this chunk
+    let offset = 0;
+    while (newlineIndex !== -1) {
+      // Extract the portion up to the newline
+      const chunk = data.subarray(offset, newlineIndex);
+      this.stdoutChunks.push(chunk);
+
+      // Concatenate all accumulated chunks into one string
+      const line = Buffer.concat(this.stdoutChunks).toString().trim();
+      this.stdoutChunks = [];
+
+      if (line) {
+        this.parseLine(line);
+      }
+
+      offset = newlineIndex + 1;
+      newlineIndex = data.indexOf(0x0a, offset);
+    }
+
+    // Keep any remaining data after the last newline as a partial chunk
+    if (offset < data.length) {
+      this.stdoutChunks.push(data.subarray(offset));
     }
   }
 
