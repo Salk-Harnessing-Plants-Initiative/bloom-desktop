@@ -24,7 +24,7 @@ export function Scanning() {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Scanning</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Capture Scan</h1>
           <p className="text-gray-600 mt-1">
             Capture plant scans using cylinder scanner or GraviScan
           </p>

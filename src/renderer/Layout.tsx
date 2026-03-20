@@ -26,7 +26,7 @@ const allLinks = [
   },
   {
     to: '/scanning',
-    label: 'Scanning',
+    label: 'Capture Scan',
     mode: 'all' as const,
     icon: (
       <svg

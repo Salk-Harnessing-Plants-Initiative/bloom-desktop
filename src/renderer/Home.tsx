@@ -41,7 +41,7 @@ const graviscanSteps: WorkflowStep[] = [
   },
   {
     step: 5,
-    title: 'Scanning',
+    title: 'Capture Scan',
     description: 'Configure scanner, assign plates, run scans.',
     route: '/scanning',
     icon: '\u{1F5A8}\uFE0F',
