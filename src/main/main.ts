@@ -289,13 +289,23 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
       }
     });
 
+    // Latest-frame-wins: only forward the most recent frame to the renderer.
+    // Without this gate, webContents.send() queues serialized IPC messages
+    // faster than the renderer consumes them, leaking memory in the main process.
+    let pendingFrame = false;
     cameraProcess.on('frame', (dataUri: string) => {
-      // Check if window still exists and hasn't been destroyed
+      if (pendingFrame) return; // Drop frame — renderer hasn't consumed the last one
       if (mainWindow && !mainWindow.isDestroyed()) {
+        pendingFrame = true;
         mainWindow.webContents.send('camera:frame', {
           dataUri,
           timestamp: Date.now(),
         });
+        // Release the gate after a short delay to allow the renderer to process
+        // the IPC message. At 5 FPS (200ms interval), 50ms is conservative.
+        setTimeout(() => {
+          pendingFrame = false;
+        }, 50);
       }
     });
 
