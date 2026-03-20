@@ -13,6 +13,9 @@ import type {
   Accessions,
   Image,
   PlantAccessionMappings,
+  GraviScanPlateAssignment,
+  GraviPlateAccession,
+  GraviPlateSectionMapping,
   Prisma,
 } from '@prisma/client';
 
@@ -40,6 +43,9 @@ export type {
   Accessions,
   Image,
   PlantAccessionMappings,
+  GraviScanPlateAssignment,
+  GraviPlateAccession,
+  GraviPlateSectionMapping,
   Prisma,
 };
 
@@ -74,11 +80,16 @@ export type ScanWithRelations = Prisma.ScanGetPayload<{
 }>;
 
 /**
- * Scan with minimal image data (for list views)
+ * Scan with image summary (id + status only, not full image data)
+ * Used for paginated listing where full images aren't needed
  */
 export type ScanWithImageSummary = Prisma.ScanGetPayload<{
   include: {
-    experiment: true;
+    experiment: {
+      include: {
+        scientist: true;
+      };
+    };
     phenotyper: true;
     images: {
       select: {
@@ -88,16 +99,6 @@ export type ScanWithImageSummary = Prisma.ScanGetPayload<{
     };
   };
 }>;
-
-/**
- * Plant accession mapping with accession details
- */
-export type PlantAccessionMappingWithAccession =
-  Prisma.PlantAccessionMappingsGetPayload<{
-    include: {
-      accession: true;
-    };
-  }>;
 
 // ============================================
 // Database Response Types
@@ -110,6 +111,7 @@ export interface DatabaseResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
+  total?: number;
 }
 
 // ============================================
