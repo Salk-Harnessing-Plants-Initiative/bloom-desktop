@@ -261,7 +261,14 @@ test.describe.serial('GraviScan Workflow', () => {
 
   test('should display GraviScan metadata upload UI', async () => {
     // Navigate to Metadata
-    await window.click('text=Metadata');
+    // Nav label is "Accessions" in full mode, "Metadata" in graviscan mode
+    const metadataLink = window.getByRole('link', { name: 'Metadata' });
+    const accessionsLink = window.getByRole('link', { name: 'Accessions' });
+    if (await metadataLink.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await metadataLink.click();
+    } else {
+      await accessionsLink.click();
+    }
     await switchToGraviScanTab();
 
     // Verify upload section heading
@@ -291,7 +298,14 @@ test.describe.serial('GraviScan Workflow', () => {
 
   test('should upload Excel file and show column mapping', async () => {
     // Re-navigate to ensure we're on the right tab
-    await window.click('text=Metadata');
+    // Nav label is "Accessions" in full mode, "Metadata" in graviscan mode
+    const metadataLink = window.getByRole('link', { name: 'Metadata' });
+    const accessionsLink = window.getByRole('link', { name: 'Accessions' });
+    if (await metadataLink.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await metadataLink.click();
+    } else {
+      await accessionsLink.click();
+    }
     await switchToGraviScanTab();
 
     const fixturePath = path.join(

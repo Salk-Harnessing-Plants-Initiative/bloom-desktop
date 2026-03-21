@@ -22,14 +22,6 @@ export function Scanning() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Capture Scan</h1>
-          <p className="text-gray-600 mt-1">
-            Capture plant scans using cylinder scanner or GraviScan
-          </p>
-        </div>
-
         {/* Tabs */}
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">

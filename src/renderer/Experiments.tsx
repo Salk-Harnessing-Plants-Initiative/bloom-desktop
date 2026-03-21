@@ -246,7 +246,7 @@ export function Experiments() {
                   return (
                     <option key={acc.id} value={acc.id}>
                       {type ? `[${type}] ` : ''}
-                      {acc.name}
+                      {acc.name} - {acc.id}
                     </option>
                   );
                 })
