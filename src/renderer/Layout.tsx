@@ -136,7 +136,7 @@ const allLinks = [
   },
   {
     to: '/metadata',
-    label: 'Metadata',
+    label: APP_MODE === 'graviscan' ? 'Metadata' : 'Accessions',
     mode: 'all' as const,
     icon: (
       <svg

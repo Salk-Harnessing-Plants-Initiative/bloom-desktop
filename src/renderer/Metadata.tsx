@@ -21,7 +21,7 @@ type MetadataTab = 'cylscan' | 'graviscan';
 
 export function Metadata() {
   const [activeTab, setActiveTab] = useState<MetadataTab>(
-    APP_MODE === 'cylinderscan' ? 'cylscan' : 'graviscan'
+    APP_MODE === 'graviscan' ? 'graviscan' : 'cylscan'
   );
   const [accessions, setAccessions] = useState<Accession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,7 +71,7 @@ export function Metadata() {
   if (APP_MODE === 'cylinderscan') {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold mb-6">Metadata</h1>
+        <h1 className="text-2xl font-bold mb-6">Accessions</h1>
 
         <div className="mb-8">
           <h2 className="text-xs font-bold mb-2">Current Accessions</h2>
@@ -142,7 +142,7 @@ export function Metadata() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Metadata</h1>
+      <h1 className="text-2xl font-bold mb-6">Accessions</h1>
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 mb-6">

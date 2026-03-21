@@ -197,11 +197,11 @@ test.afterEach(async () => {
 test.describe('Navigation to Accessions Page', () => {
   test('should navigate to Accessions page via menu link', async () => {
     // Click Accessions link in navigation
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
 
     // Verify page heading is visible
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
   });
 });
@@ -212,9 +212,9 @@ test.describe('Navigation to Accessions Page', () => {
 
 test.describe('Empty State Display', () => {
   test('should show empty state message when no accessions exist', async () => {
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     // Verify empty state message
@@ -236,9 +236,9 @@ test.describe('Empty State Display', () => {
 
 test.describe('Create Accession', () => {
   test('should create accession with valid name', async () => {
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     // Fill in name field
@@ -269,9 +269,9 @@ test.describe('Create Accession', () => {
   });
 
   test('should show validation error for empty name', async () => {
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     // Click submit without filling name (check for either button)
@@ -294,9 +294,9 @@ test.describe('Create Accession', () => {
   });
 
   test('should clear validation error when typing', async () => {
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     // Trigger validation error (check for either button)
@@ -321,9 +321,9 @@ test.describe('Create Accession', () => {
   });
 
   test('should allow duplicate names', async () => {
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     const duplicateName = 'Duplicate Name Test';
@@ -350,9 +350,9 @@ test.describe('Create Accession', () => {
   });
 
   test.skip('should show loading state during creation', async () => {
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     await window.fill('input[name="name"]', validAccession.name);
@@ -387,9 +387,9 @@ test.describe('Accessions List Display', () => {
       await prisma.accessions.create({ data: acc });
     }
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     // Wait for list to load
@@ -421,9 +421,9 @@ test.describe('Accessions List Display', () => {
     const accession = createAccessionData();
     await prisma.accessions.create({ data: accession });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     await expect(window.locator(`text=${accession.name}`)).toBeVisible();
@@ -445,9 +445,9 @@ test.describe('Expand Accession Details', () => {
       data: createAccessionData(),
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     // Click on accession item to expand
@@ -483,9 +483,9 @@ test.describe('Expand Accession Details', () => {
       ],
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -516,9 +516,9 @@ test.describe('Expand Accession Details', () => {
       ],
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -548,9 +548,9 @@ test.describe('Expand Accession Details', () => {
       data: createAccessionData(),
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -585,9 +585,9 @@ test.describe('Expand Accession Details', () => {
       ],
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -623,9 +623,9 @@ test.describe('Inline Mapping Editing', () => {
       },
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -655,9 +655,9 @@ test.describe('Inline Mapping Editing', () => {
       },
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -699,9 +699,9 @@ test.describe('Inline Mapping Editing', () => {
       },
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -739,9 +739,9 @@ test.describe('Inline Accession Name Editing', () => {
       data: { name: 'Old Name' },
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click('text=Old Name');
 
@@ -774,9 +774,9 @@ test.describe('Inline Accession Name Editing', () => {
       data: { name: 'Original Name' },
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click('text=Original Name');
     await window.click('button:has-text("Edit")');
@@ -808,9 +808,9 @@ test.describe('Delete Accession', () => {
       data: createAccessionData(),
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -849,9 +849,9 @@ test.describe('Delete Accession', () => {
       },
     });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await window.click(`text=${accession.name}`);
 
@@ -884,9 +884,9 @@ test.describe('State Preservation', () => {
   test('should preserve accessions list across navigation', async () => {
     await prisma.accessions.create({ data: validAccession });
 
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
     await expect(window.locator(`text=${validAccession.name}`)).toBeVisible();
 
@@ -895,9 +895,9 @@ test.describe('State Preservation', () => {
     await window.waitForTimeout(500);
 
     // Navigate back
-    await window.click('text=Metadata');
+    await window.click('text=Accessions');
     await expect(
-      window.getByRole('heading', { name: 'Metadata', exact: true })
+      window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
     // Verify accession still appears

@@ -6,7 +6,7 @@ type TabType = 'cylinder' | 'graviscan';
 
 export function BrowseScans() {
   const [activeTab, setActiveTab] = useState<TabType>(
-    APP_MODE === 'cylinderscan' ? 'cylinder' : 'graviscan'
+    APP_MODE === 'graviscan' ? 'graviscan' : 'cylinder'
   );
 
   // Single-mode: render directly without tabs
@@ -15,14 +15,9 @@ export function BrowseScans() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header + Tabs */}
+      {/* Tabs */}
       <div className="px-6 pt-6 max-w-7xl mx-auto">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Browse Scans</h1>
-          <p className="text-gray-600 mt-1">View and manage scanned images</p>
-        </div>
-
-        <div className="border-b border-gray-200 mt-6">
+        <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab('cylinder')}

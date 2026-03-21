@@ -27,7 +27,7 @@ const graviscanSteps: WorkflowStep[] = [
   },
   {
     step: 3,
-    title: 'Metadata',
+    title: APP_MODE === 'graviscan' ? 'Metadata' : 'Accessions',
     description: 'Upload plate accession CSV files.',
     route: '/metadata',
     icon: '\u{1F4C2}',
@@ -61,7 +61,7 @@ export function Home() {
   const navigate = useNavigate();
   const [isCheckingConfig, setIsCheckingConfig] = useState(true);
   const [activeTab, setActiveTab] = useState<HomeTab>(
-    APP_MODE === 'cylinderscan' ? 'cylinderscan' : 'graviscan'
+    APP_MODE === 'graviscan' ? 'graviscan' : 'cylinderscan'
   );
 
   // Check if this is first run (no config exists)
