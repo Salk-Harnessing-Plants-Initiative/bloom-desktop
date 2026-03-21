@@ -8,14 +8,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import type {
-  DetectedScanner,
-  ScannerPanelState,
-} from '../types/graviscan';
-import {
-  createPlateAssignments,
-  formatPlateIndex,
-} from '../types/graviscan';
+import type { DetectedScanner, ScannerPanelState } from '../types/graviscan';
+import { createPlateAssignments, formatPlateIndex } from '../types/graviscan';
 import { ScanPreview } from './components/ScanPreview';
 import { ImageLightbox } from './components/ImageLightbox';
 import { useWaveNumber } from './hooks/useWaveNumber';
@@ -26,7 +20,10 @@ import { usePlateAssignments } from './hooks/usePlateAssignments';
 import { useScanSession } from './hooks/useScanSession';
 import { ConfigStatusBanner } from './components/graviscan/ConfigStatusBanner';
 import { ScannerConfigSection } from './components/graviscan/ScannerConfigSection';
-import { ScanFormSection, type ListItem } from './components/graviscan/ScanFormSection';
+import {
+  ScanFormSection,
+  type ListItem,
+} from './components/graviscan/ScanFormSection';
 import { ScanControlSection } from './components/graviscan/ScanControlSection';
 
 export function GraviScan() {
@@ -35,18 +32,33 @@ export function GraviScan() {
 
   // Scanner configuration (extracted hook)
   const {
-    platformInfo, platformLoading,
-    detectedScanners, detectingScanner, detectionError,
+    platformInfo,
+    platformLoading,
+    detectedScanners,
+    detectingScanner,
+    detectionError,
     scannerAssignments,
-    resolution, setResolution, configSaved, isConfigCollapsed,
-    sessionValidated, isValidating, validationWarning,
-    configStatus, configValidationMessage,
-    missingScanners, newScanners, matchedScanners,
+    resolution,
+    setResolution,
+    configSaved,
+    isConfigCollapsed,
+    sessionValidated,
+    isValidating,
+    validationWarning,
+    configStatus,
+    configValidationMessage,
+    missingScanners,
+    newScanners,
+    matchedScanners,
     resolutionRef,
-    handleDetectScanners, handleResetScannerConfig,
-    handleScannerAssignment, handleScannerGridMode,
-    handleAddScannerSlot, handleRemoveScannerSlot,
-    handleToggleConfigCollapse, handleToggleScannerEnabled,
+    handleDetectScanners,
+    handleResetScannerConfig,
+    handleScannerAssignment,
+    handleScannerGridMode,
+    handleAddScannerSlot,
+    handleRemoveScannerSlot,
+    handleToggleConfigCollapse,
+    handleToggleScannerEnabled,
     clearValidationWarning,
   } = useScannerConfig({ setScannerStates });
 
@@ -66,11 +78,20 @@ export function GraviScan() {
 
   // Plate assignments (extracted hook)
   const {
-    scannerPlateAssignments, scannerPlateAssignmentsRef,
-    availableBarcodes, loadingBarcodes,
-    barcodeGenotypes, isGraviMetadata, availablePlates,
-    handleTogglePlate, handlePlateBarcode,
-  } = usePlateAssignments({ selectedExperiment, scannerAssignments, setScanError });
+    scannerPlateAssignments,
+    scannerPlateAssignmentsRef,
+    availableBarcodes,
+    loadingBarcodes,
+    barcodeGenotypes,
+    isGraviMetadata,
+    availablePlates,
+    handleTogglePlate,
+    handlePlateBarcode,
+  } = usePlateAssignments({
+    selectedExperiment,
+    scannerAssignments,
+    setScanError,
+  });
 
   // Wave tracking (extracted hook)
   const {
@@ -79,7 +100,11 @@ export function GraviScan() {
     suggestedWaveNumber,
     barcodeWaveConflicts,
     waveRestoredRef,
-  } = useWaveNumber({ selectedExperiment, scannerPlateAssignments, scanCompletionCounter });
+  } = useWaveNumber({
+    selectedExperiment,
+    scannerPlateAssignments,
+    scanCompletionCounter,
+  });
 
   // Get assigned scanner IDs (scanners that have been assigned to slots)
   const assignedScannerIds = scannerAssignments
@@ -94,51 +119,98 @@ export function GraviScan() {
 
   // Continuous scan mode (extracted hook)
   const {
-    scanMode, setScanMode,
-    scanIntervalMinutes, setScanIntervalMinutes,
-    scanDurationMinutes, setScanDurationMinutes,
-    currentCycle, setCurrentCycle,
-    totalCycles, setTotalCycles,
-    intervalCountdown, setIntervalCountdown,
+    scanMode,
+    setScanMode,
+    scanIntervalMinutes,
+    setScanIntervalMinutes,
+    scanDurationMinutes,
+    setScanDurationMinutes,
+    currentCycle,
+    setCurrentCycle,
+    totalCycles,
+    setTotalCycles,
+    intervalCountdown,
+    setIntervalCountdown,
     overtimeMs,
     elapsedSeconds,
-    scanModeRef, cycleCompletedCountRef,
-    startElapsedTimer, startCountdown, startOvertime,
-    clearCountdownAndOvertime, clearAllTimers,
+    scanModeRef,
+    cycleCompletedCountRef,
+    startElapsedTimer,
+    startCountdown,
+    startOvertime,
+    clearCountdownAndOvertime,
+    clearAllTimers,
   } = useContinuousMode(isScanning);
 
   // Scan session (extracted hook)
   const {
-    scanImageUris, setScanImageUris,
-    scanningPlateIndex, setScanningPlateIndex,
-    handleStartScan, handleCancelScan, handleResetScanners,
+    scanImageUris,
+    setScanImageUris,
+    scanningPlateIndex,
+    setScanningPlateIndex,
+    handleStartScan,
+    handleCancelScan,
+    handleResetScanners,
   } = useScanSession({
-    scannerStates, setScannerStates,
-    isScanning, setIsScanning,
-    setScanError, setScanSuccess, setScanCompletionCounter,
-    scannerAssignments, detectedScanners, platformInfo,
-    resolution, resolutionRef, setResolution,
-    scannerPlateAssignments, scannerPlateAssignmentsRef,
-    waveNumber, setWaveNumber, waveRestoredRef,
-    scanMode, scanIntervalMinutes, scanDurationMinutes,
-    scanModeRef, cycleCompletedCountRef,
-    setCurrentCycle, setTotalCycles, setIntervalCountdown,
-    startElapsedTimer, startCountdown, startOvertime,
-    clearCountdownAndOvertime, clearAllTimers,
-    selectedExperiment, setSelectedExperiment,
-    selectedPhenotyper, setSelectedPhenotyper,
+    scannerStates,
+    setScannerStates,
+    isScanning,
+    setIsScanning,
+    setScanError,
+    setScanSuccess,
+    setScanCompletionCounter,
+    scannerAssignments,
+    detectedScanners,
+    platformInfo,
+    resolution,
+    resolutionRef,
+    setResolution,
+    scannerPlateAssignments,
+    scannerPlateAssignmentsRef,
+    waveNumber,
+    setWaveNumber,
+    waveRestoredRef,
+    scanMode,
+    scanIntervalMinutes,
+    scanDurationMinutes,
+    scanModeRef,
+    cycleCompletedCountRef,
+    setCurrentCycle,
+    setTotalCycles,
+    setIntervalCountdown,
+    startElapsedTimer,
+    startCountdown,
+    startOvertime,
+    clearCountdownAndOvertime,
+    clearAllTimers,
+    selectedExperiment,
+    setSelectedExperiment,
+    selectedPhenotyper,
+    setSelectedPhenotyper,
     experiments,
-    assignedScannerIds, selectedPlates,
+    assignedScannerIds,
+    selectedPlates,
   });
 
   // Test scanning (extracted hook)
   const {
-    isTesting, testPhase, testResults, testComplete,
+    isTesting,
+    testPhase,
+    testResults,
+    testComplete,
     handleTestAllScanners,
-  } = useTestScan({ scannerAssignments, detectedScanners, setScanningPlateIndex, setScanImageUris });
+  } = useTestScan({
+    scannerAssignments,
+    detectedScanners,
+    setScanningPlateIndex,
+    setScanImageUris,
+  });
 
   // Lightbox state for viewing scan images fullscreen
-  const [lightboxImage, setLightboxImage] = useState<{ src: string; caption: string } | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{
+    src: string;
+    caption: string;
+  } | null>(null);
 
   // Load form data on mount
   useEffect(() => {
@@ -152,21 +224,28 @@ export function GraviScan() {
     const assignedScanners = scannerAssignments
       .filter((assignment) => assignment.scannerId !== null)
       .map((assignment) => {
-        const scanner = detectedScanners.find((s) => s.scanner_id === assignment.scannerId);
+        const scanner = detectedScanners.find(
+          (s) => s.scanner_id === assignment.scannerId
+        );
         return scanner ? { scanner, slot: assignment.slot } : null;
       })
-      .filter((item): item is { scanner: DetectedScanner; slot: string } => item !== null);
+      .filter(
+        (item): item is { scanner: DetectedScanner; slot: string } =>
+          item !== null
+      );
 
-    const states: ScannerPanelState[] = assignedScanners.map(({ scanner, slot }) => ({
-      scannerId: scanner.scanner_id,
-      name: slot, // Use slot name (e.g., "Scanner 1") instead of device name
-      enabled: true,
-      isOnline: scanner.is_available,
-      isBusy: false,
-      state: 'idle',
-      progress: 0,
-      outputFilename: '',
-    }));
+    const states: ScannerPanelState[] = assignedScanners.map(
+      ({ scanner, slot }) => ({
+        scannerId: scanner.scanner_id,
+        name: slot, // Use slot name (e.g., "Scanner 1") instead of device name
+        enabled: true,
+        isOnline: scanner.is_available,
+        isBusy: false,
+        state: 'idle',
+        progress: 0,
+        outputFilename: '',
+      })
+    );
     setScannerStates(states);
   }, [detectedScanners, scannerAssignments]);
 
@@ -182,10 +261,12 @@ export function GraviScan() {
         (exp: { experiment_type?: string }) =>
           exp.experiment_type === 'graviscan'
       );
-      setExperiments(graviscanExperiments.map((exp: { id: string; name: string }) => ({
-        id: exp.id,
-        name: exp.name,
-      })));
+      setExperiments(
+        graviscanExperiments.map((exp: { id: string; name: string }) => ({
+          id: exp.id,
+          name: exp.name,
+        }))
+      );
     } catch (error) {
       console.error('Failed to load experiments:', error);
     }
@@ -198,10 +279,12 @@ export function GraviScan() {
         console.error('Failed to load phenotypers:', result.error);
         return;
       }
-      setPhenotypers(result.data.map((p: { id: string; name: string }) => ({
-        id: p.id,
-        name: p.name,
-      })));
+      setPhenotypers(
+        result.data.map((p: { id: string; name: string }) => ({
+          id: p.id,
+          name: p.name,
+        }))
+      );
     } catch (error) {
       console.error('Failed to load phenotypers:', error);
     }
@@ -247,7 +330,8 @@ export function GraviScan() {
   }
 
   // Can scan only if session is validated, config is saved, and scanners detected
-  const canScan = sessionValidated && configSaved && detectedScanners.length > 0;
+  const canScan =
+    sessionValidated && configSaved && detectedScanners.length > 0;
 
   // Count selected plates with assigned barcodes (across all scanners)
   const selectedPlatesWithBarcodes = Object.values(scannerPlateAssignments)
@@ -256,8 +340,13 @@ export function GraviScan() {
 
   // Form validation - check if all required fields are filled
   const hasBarcodeConflicts = Object.keys(barcodeWaveConflicts).length > 0;
-  const isFormValid = selectedExperiment !== '' && selectedPhenotyper !== '' && selectedPlates.length > 0 && !hasBarcodeConflicts;
-  const canStartScan = canScan && isFormValid && scannerStates.some((s) => s.enabled);
+  const isFormValid =
+    selectedExperiment !== '' &&
+    selectedPhenotyper !== '' &&
+    selectedPlates.length > 0 &&
+    !hasBarcodeConflicts;
+  const canStartScan =
+    canScan && isFormValid && scannerStates.some((s) => s.enabled);
 
   // Build validation messages for missing fields
   const validationMessages: string[] = [];
@@ -284,23 +373,35 @@ export function GraviScan() {
               const scannerId = assignment.scannerId!;
               const result = testResults[scannerId];
               const scanningInProgress = result?.error === 'Scanning...';
-              const scannerState = scannerStates.find((s) => s.scannerId === scannerId);
-              const isScanningProduction = scannerState?.state === 'scanning' && scannerState?.isBusy;
+              const scannerState = scannerStates.find(
+                (s) => s.scannerId === scannerId
+              );
+              const isScanningProduction =
+                scannerState?.state === 'scanning' && scannerState?.isBusy;
               // Show scanning state during test if this scanner hasn't completed yet
               const isTestingThisScanner = isTesting && !result?.success;
               return {
                 assignment,
-                plateAssignments: scannerPlateAssignments[scannerId] ||
+                plateAssignments:
+                  scannerPlateAssignments[scannerId] ||
                   createPlateAssignments(assignment.gridMode || '2grid'),
                 testResult: result,
                 plateImages: scanImageUris[scannerId] || {},
                 scanningPlateIndex: scanningPlateIndex[scannerId],
-                isScanning: scanningInProgress || isScanningProduction || isTestingThisScanner,
-                scanProgress: isScanningProduction ? scannerState?.progress : undefined,
+                isScanning:
+                  scanningInProgress ||
+                  isScanningProduction ||
+                  isTestingThisScanner,
+                scanProgress: isScanningProduction
+                  ? scannerState?.progress
+                  : undefined,
               };
             })}
           onImageClick={(imageUri, plateIndex) =>
-            setLightboxImage({ src: imageUri, caption: `Plate ${formatPlateIndex(plateIndex)}` })
+            setLightboxImage({
+              src: imageUri,
+              caption: `Plate ${formatPlateIndex(plateIndex)}`,
+            })
           }
         />
       </div>
@@ -341,16 +442,33 @@ export function GraviScan() {
       />
 
       {/* Scan Section */}
-      <div className={`bg-white rounded-lg shadow-sm p-6 relative ${!canScan || isValidating ? 'opacity-50' : ''}`}>
+      <div
+        className={`bg-white rounded-lg shadow-sm p-6 relative ${!canScan || isValidating ? 'opacity-50' : ''}`}
+      >
         {(!canScan || isValidating) && (
           <div className="absolute inset-0 bg-gray-100 bg-opacity-75 rounded-lg flex items-center justify-center z-10">
             <div className="text-center">
               {isValidating ? (
                 <>
                   {/* Spinner for validation in progress */}
-                  <svg className="animate-spin mx-auto h-12 w-12 text-blue-500" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin mx-auto h-12 w-12 text-blue-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   <p className="mt-2 text-sm font-medium text-gray-600">
                     Scanner Connection Validation in Progress...
@@ -362,8 +480,18 @@ export function GraviScan() {
               ) : !sessionValidated ? (
                 <>
                   {/* Refresh/Detect icon for session validation */}
-                  <svg className="mx-auto h-12 w-12 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <svg
+                    className="mx-auto h-12 w-12 text-blue-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
                   </svg>
                   <p className="mt-2 text-sm font-medium text-gray-600">
                     Detect scanners to enable scanning
@@ -375,8 +503,18 @@ export function GraviScan() {
               ) : (
                 <>
                   {/* Lock icon for configuration needed */}
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  <svg
+                    className="mx-auto h-12 w-12 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
                   </svg>
                   <p className="mt-2 text-sm font-medium text-gray-600">
                     Save configuration to enable scanning

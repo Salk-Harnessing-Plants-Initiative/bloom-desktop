@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { ExperimentWithScans, GraviScanWithRelations } from '../types/graviscan';
+import type {
+  ExperimentWithScans,
+  GraviScanWithRelations,
+} from '../types/graviscan';
 import { formatPlateIndex } from '../types/graviscan';
 
 interface FlatImage {
@@ -41,7 +44,9 @@ export function ExperimentDetail() {
   const { experimentId } = useParams<{ experimentId: string }>();
   const navigate = useNavigate();
 
-  const [experiment, setExperiment] = useState<ExperimentWithScans | null>(null);
+  const [experiment, setExperiment] = useState<ExperimentWithScans | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +56,9 @@ export function ExperimentDetail() {
 
   // Expanded row — one image at a time, released on collapse
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
-  const [expandedImageData, setExpandedImageData] = useState<string | null>(null);
+  const [expandedImageData, setExpandedImageData] = useState<string | null>(
+    null
+  );
   const [expandedImageLoading, setExpandedImageLoading] = useState(false);
   const expandedPathRef = useRef<string | null>(null);
 
@@ -59,7 +66,11 @@ export function ExperimentDetail() {
   const [colWidths, setColWidths] = useState({ ...COL_DEFAULTS });
   const colWidthsRef = useRef(colWidths);
   colWidthsRef.current = colWidths;
-  const resizeRef = useRef<{ col: ColKey; startX: number; startW: number } | null>(null);
+  const resizeRef = useRef<{
+    col: ColKey;
+    startX: number;
+    startW: number;
+  } | null>(null);
 
   // Fetch experiment detail
   useEffect(() => {
@@ -94,16 +105,24 @@ export function ExperimentDetail() {
             if (match) {
               slotLabel = `Scanner ${match[1]}`;
             }
-            const name = slotLabel || scan.scanner?.display_name || scan.scanner?.name || 'Unknown';
+            const name =
+              slotLabel ||
+              scan.scanner?.display_name ||
+              scan.scanner?.name ||
+              'Unknown';
             map.set(id, { id, name, imageCount: scan.images.length });
           }
         }
-        return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+        return Array.from(map.values()).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
       })()
     : [];
 
   const waveNumbers: number[] = experiment
-    ? [...new Set(experiment.scans.map((s) => s.wave_number))].sort((a, b) => a - b)
+    ? [...new Set(experiment.scans.map((s) => s.wave_number))].sort(
+        (a, b) => a - b
+      )
     : [];
 
   const hasMultipleWaves = waveNumbers.length > 1;
@@ -118,7 +137,11 @@ export function ExperimentDetail() {
           path: img.path,
           filename: img.path.split(/[\\/]/).pop() || img.path,
           status: img.status,
-          scannerName: scannerLabelMap.get(scannerId) || scan.scanner?.display_name || scan.scanner?.name || 'Unknown',
+          scannerName:
+            scannerLabelMap.get(scannerId) ||
+            scan.scanner?.display_name ||
+            scan.scanner?.name ||
+            'Unknown',
           scannerId,
           plateIndex: scan.plate_index,
           plateBarcode: scan.plate_barcode,
@@ -151,7 +174,10 @@ export function ExperimentDetail() {
   const scannerCounts = new Map<string, number>();
   for (const img of allFlatImages) {
     if (selectedWave !== null && img.waveNumber !== selectedWave) continue;
-    scannerCounts.set(img.scannerId, (scannerCounts.get(img.scannerId) || 0) + 1);
+    scannerCounts.set(
+      img.scannerId,
+      (scannerCounts.get(img.scannerId) || 0) + 1
+    );
   }
 
   // Toggle expand/collapse a file row
@@ -170,7 +196,11 @@ export function ExperimentDetail() {
 
     try {
       const result = await window.electron.graviscan.readScanImage(imagePath);
-      if (expandedPathRef.current === imagePath && result.success && result.dataUri) {
+      if (
+        expandedPathRef.current === imagePath &&
+        result.success &&
+        result.dataUri
+      ) {
         setExpandedImageData(result.dataUri);
       }
     } catch {
@@ -186,14 +216,21 @@ export function ExperimentDetail() {
   const onResizeStart = useCallback((col: ColKey, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    resizeRef.current = { col, startX: e.clientX, startW: colWidthsRef.current[col] };
+    resizeRef.current = {
+      col,
+      startX: e.clientX,
+      startW: colWidthsRef.current[col],
+    };
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!resizeRef.current) return;
       const diff = ev.clientX - resizeRef.current.startX;
       setColWidths((prev) => ({
         ...prev,
-        [resizeRef.current!.col]: Math.max(40, resizeRef.current!.startW + diff),
+        [resizeRef.current!.col]: Math.max(
+          40,
+          resizeRef.current!.startW + diff
+        ),
       }));
     };
 
@@ -213,7 +250,13 @@ export function ExperimentDetail() {
 
   // Metadata summary
   const phenotypers = experiment
-    ? [...new Set(experiment.scans.map((s: GraviScanWithRelations) => s.phenotyper?.name).filter(Boolean))]
+    ? [
+        ...new Set(
+          experiment.scans
+            .map((s: GraviScanWithRelations) => s.phenotyper?.name)
+            .filter(Boolean)
+        ),
+      ]
     : [];
   const dates = experiment
     ? experiment.scans.map((s) => new Date(s.capture_date).getTime())
@@ -239,8 +282,23 @@ export function ExperimentDetail() {
   if (error || !experiment) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
-        <button onClick={() => navigate('/browse-scans')} className="text-blue-600 hover:text-blue-800 text-sm mb-4 inline-flex items-center gap-1">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        <button
+          onClick={() => navigate('/browse-scans')}
+          className="text-blue-600 hover:text-blue-800 text-sm mb-4 inline-flex items-center gap-1"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M15 19l-7-7 7-7"
+            />
+          </svg>
           Browse Scans
         </button>
         <p className="text-red-500">{error || 'Experiment not found'}</p>
@@ -263,10 +321,24 @@ export function ExperimentDetail() {
             onClick={() => navigate('/browse-scans')}
             className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-flex items-center gap-1"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
             Browse Scans
           </button>
-          <h1 className="text-2xl font-bold text-gray-900">{experiment.name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {experiment.name}
+          </h1>
         </div>
       </div>
 
@@ -290,7 +362,8 @@ export function ExperimentDetail() {
               <span className="font-medium text-gray-600">Date:</span>{' '}
               <span className="text-gray-900">
                 {earliest.toLocaleDateString()}
-                {earliest.getTime() !== latest.getTime() && ` - ${latest.toLocaleDateString()}`}
+                {earliest.getTime() !== latest.getTime() &&
+                  ` - ${latest.toLocaleDateString()}`}
               </span>
             </div>
           )}
@@ -308,7 +381,9 @@ export function ExperimentDetail() {
           </div>
           <div>
             <span className="font-medium text-gray-600">Mode:</span>{' '}
-            <span className="text-gray-900">{hasMultipleWaves ? `${waveNumbers.length} waves` : 'Single wave'}</span>
+            <span className="text-gray-900">
+              {hasMultipleWaves ? `${waveNumbers.length} waves` : 'Single wave'}
+            </span>
           </div>
           {experiment.accession && (
             <div>
@@ -329,12 +404,22 @@ export function ExperimentDetail() {
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          All ({allFlatImages.filter((img) => selectedWave === null || img.waveNumber === selectedWave).length})
+          All (
+          {
+            allFlatImages.filter(
+              (img) => selectedWave === null || img.waveNumber === selectedWave
+            ).length
+          }
+          )
         </button>
         {scanners.map((scanner) => (
           <button
             key={scanner.id}
-            onClick={() => setSelectedScanner(selectedScanner === scanner.id ? null : scanner.id)}
+            onClick={() =>
+              setSelectedScanner(
+                selectedScanner === scanner.id ? null : scanner.id
+              )
+            }
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               selectedScanner === scanner.id
                 ? 'bg-blue-600 text-white'
@@ -362,7 +447,9 @@ export function ExperimentDetail() {
           {waveNumbers.map((wave) => (
             <button
               key={wave}
-              onClick={() => setSelectedWave(selectedWave === wave ? null : wave)}
+              onClick={() =>
+                setSelectedWave(selectedWave === wave ? null : wave)
+              }
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 selectedWave === wave
                   ? 'bg-purple-600 text-white'
@@ -391,25 +478,52 @@ export function ExperimentDetail() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           {/* Table header */}
           <div className="flex bg-gray-50 border-b text-xs font-medium text-gray-500 uppercase tracking-wider select-none">
-            <div style={{ width: colWidths.icon, minWidth: 40 }} className="flex-shrink-0 px-2 py-3" />
-            <div style={{ width: colWidths.filename, minWidth: 100 }} className="flex-shrink-0 px-3 py-3 relative">
+            <div
+              style={{ width: colWidths.icon, minWidth: 40 }}
+              className="flex-shrink-0 px-2 py-3"
+            />
+            <div
+              style={{ width: colWidths.filename, minWidth: 100 }}
+              className="flex-shrink-0 px-3 py-3 relative"
+            >
               Filename
-              <div style={resizeHandleStyle} className="hover:bg-blue-300" onMouseDown={(e) => onResizeStart('filename', e)} />
+              <div
+                style={resizeHandleStyle}
+                className="hover:bg-blue-300"
+                onMouseDown={(e) => onResizeStart('filename', e)}
+              />
             </div>
-            <div style={{ width: colWidths.plate, minWidth: 80 }} className="flex-shrink-0 px-3 py-3 relative">
+            <div
+              style={{ width: colWidths.plate, minWidth: 80 }}
+              className="flex-shrink-0 px-3 py-3 relative"
+            >
               Plate ID
-              <div style={resizeHandleStyle} className="hover:bg-blue-300" onMouseDown={(e) => onResizeStart('plate', e)} />
+              <div
+                style={resizeHandleStyle}
+                className="hover:bg-blue-300"
+                onMouseDown={(e) => onResizeStart('plate', e)}
+              />
             </div>
             {hasMultipleWaves && (
-              <div style={{ width: colWidths.wave, minWidth: 50 }} className="flex-shrink-0 px-3 py-3 relative">
+              <div
+                style={{ width: colWidths.wave, minWidth: 50 }}
+                className="flex-shrink-0 px-3 py-3 relative"
+              >
                 Wave
-                <div style={resizeHandleStyle} className="hover:bg-blue-300" onMouseDown={(e) => onResizeStart('wave', e)} />
+                <div
+                  style={resizeHandleStyle}
+                  className="hover:bg-blue-300"
+                  onMouseDown={(e) => onResizeStart('wave', e)}
+                />
               </div>
             )}
           </div>
 
           {/* Table body — vertically scrollable */}
-          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 420px)' }}>
+          <div
+            className="overflow-y-auto"
+            style={{ maxHeight: 'calc(100vh - 420px)' }}
+          >
             {filteredImages.map((img) => (
               <div key={img.path}>
                 {/* File row */}
@@ -422,9 +536,22 @@ export function ExperimentDetail() {
                   onClick={() => toggleExpand(img.path)}
                 >
                   {/* TIFF icon */}
-                  <div style={{ width: colWidths.icon, minWidth: 40 }} className="flex-shrink-0 px-2 py-2.5 flex items-center justify-center">
-                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  <div
+                    style={{ width: colWidths.icon, minWidth: 40 }}
+                    className="flex-shrink-0 px-2 py-2.5 flex items-center justify-center"
+                  >
+                    <svg
+                      className="w-5 h-5 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.5}
+                        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                      />
                     </svg>
                   </div>
                   {/* Filename */}
@@ -479,43 +606,73 @@ export function ExperimentDetail() {
                       {/* Metadata */}
                       <div className="text-sm space-y-2 pt-1">
                         <div>
-                          <span className="font-medium text-gray-500">Capture Date:</span>{' '}
-                          <span className="text-gray-900">{formatDate(img.captureDate)}</span>
+                          <span className="font-medium text-gray-500">
+                            Capture Date:
+                          </span>{' '}
+                          <span className="text-gray-900">
+                            {formatDate(img.captureDate)}
+                          </span>
                         </div>
                         {img.transplantDate && (
                           <div>
-                            <span className="font-medium text-gray-500">Transplant Date:</span>{' '}
-                            <span className="text-gray-900">{formatDate(img.transplantDate)}</span>
+                            <span className="font-medium text-gray-500">
+                              Transplant Date:
+                            </span>{' '}
+                            <span className="text-gray-900">
+                              {formatDate(img.transplantDate)}
+                            </span>
                           </div>
                         )}
                         {img.customNote && (
                           <div>
-                            <span className="font-medium text-gray-500">Note:</span>{' '}
-                            <span className="text-gray-900">{img.customNote}</span>
+                            <span className="font-medium text-gray-500">
+                              Note:
+                            </span>{' '}
+                            <span className="text-gray-900">
+                              {img.customNote}
+                            </span>
                           </div>
                         )}
                         {img.plateBarcode && (
                           <div>
-                            <span className="font-medium text-gray-500">Barcode:</span>{' '}
-                            <span className="text-gray-900">{img.plateBarcode}</span>
+                            <span className="font-medium text-gray-500">
+                              Barcode:
+                            </span>{' '}
+                            <span className="text-gray-900">
+                              {img.plateBarcode}
+                            </span>
                           </div>
                         )}
                         <div>
-                          <span className="font-medium text-gray-500">Scanner:</span>{' '}
-                          <span className="text-gray-900">{img.scannerName}</span>
+                          <span className="font-medium text-gray-500">
+                            Scanner:
+                          </span>{' '}
+                          <span className="text-gray-900">
+                            {img.scannerName}
+                          </span>
                         </div>
                         <div>
-                          <span className="font-medium text-gray-500">Grid:</span>{' '}
+                          <span className="font-medium text-gray-500">
+                            Grid:
+                          </span>{' '}
                           <span className="text-gray-900">{img.gridMode}</span>
                         </div>
                         <div>
-                          <span className="font-medium text-gray-500">Plate:</span>{' '}
-                          <span className="text-gray-900">{formatPlateIndex(img.plateIndex)}</span>
+                          <span className="font-medium text-gray-500">
+                            Plate:
+                          </span>{' '}
+                          <span className="text-gray-900">
+                            {formatPlateIndex(img.plateIndex)}
+                          </span>
                         </div>
                         {hasMultipleWaves && (
                           <div>
-                            <span className="font-medium text-gray-500">Wave:</span>{' '}
-                            <span className="text-gray-900">{img.waveNumber}</span>
+                            <span className="font-medium text-gray-500">
+                              Wave:
+                            </span>{' '}
+                            <span className="text-gray-900">
+                              {img.waveNumber}
+                            </span>
                           </div>
                         )}
                       </div>

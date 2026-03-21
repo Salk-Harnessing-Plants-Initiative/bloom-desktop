@@ -191,9 +191,9 @@ test.describe.serial('GraviScan Workflow', () => {
     });
 
     // Verify Start Scan button
-    await expect(
-      window.locator('button:has-text("Start Scan")')
-    ).toBeVisible({ timeout: 5000 });
+    await expect(window.locator('button:has-text("Start Scan")')).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   // =========================================================================
@@ -242,9 +242,9 @@ test.describe.serial('GraviScan Workflow', () => {
     await window.waitForLoadState('networkidle', { timeout: 10000 });
 
     // Seeded experiment should appear
-    await expect(
-      window.locator('text=GraviScan E2E Experiment')
-    ).toBeVisible({ timeout: 10000 });
+    await expect(window.locator('text=GraviScan E2E Experiment')).toBeVisible({
+      timeout: 10000,
+    });
 
     // Click experiment to view detail
     await window.click('text=GraviScan E2E Experiment');
@@ -270,9 +270,9 @@ test.describe.serial('GraviScan Workflow', () => {
     ).toBeVisible({ timeout: 10000 });
 
     // Verify Select File button
-    await expect(
-      window.locator('button:has-text("Select File")')
-    ).toBeVisible({ timeout: 5000 });
+    await expect(window.locator('button:has-text("Select File")')).toBeVisible({
+      timeout: 5000,
+    });
 
     // Verify drag and drop instruction
     await expect(
