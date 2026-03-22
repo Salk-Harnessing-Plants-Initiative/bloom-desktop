@@ -145,7 +145,9 @@ export class PythonProcess extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      // Declare timeout ID before handlers to avoid TDZ reference issues
+      // Declare timeout ID before handlers to avoid TDZ reference issues.
+      // Must be `let` (not `const`) because it is declared before handlers but assigned after.
+      // eslint-disable-next-line prefer-const
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
       // Set up one-time listeners for response
