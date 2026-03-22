@@ -20,6 +20,7 @@ Reduces frame payload from ~2.9 MB to ~270 KB (90% reduction). For a live previe
 **Scope**: Only `grab_frame_base64()` (streaming path) switches to JPEG. The `capture` action in `handle_camera_command()` remains PNG — it's a one-shot operation with no OOM risk, and its lossless contract should be preserved for diagnostic use.
 
 **Alternatives considered:**
+
 - PNG with `compress_level=6` — ~60% reduction but CPU-intensive, still ~1.2 MB per frame
 - Downscaling resolution — loses detail needed for exposure/gain tuning
 - Binary IPC (no base64) — requires architectural changes to the stdout protocol
@@ -32,6 +33,7 @@ Replace `this.stdinBuffer += data.toString()` with `Buffer[]` array accumulation
 This is a behavior-preserving refactor — the output (parsed lines) is identical. The field is also renamed from `stdinBuffer` to `stdoutChunks` to match its actual purpose (it buffers stdout, not stdin).
 
 **Alternatives considered:**
+
 - Node `readline` module — adds dependency, harder to test, same result
 - Custom Transform stream — over-engineered for this fix
 

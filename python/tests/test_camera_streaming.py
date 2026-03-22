@@ -312,7 +312,7 @@ class TestStreamingIPCActions:
         ), f"Expected at most 15 frames (5 FPS), got {frame_count}"
 
         # Verify FRAME data is JPEG, not PNG
-        frame_lines = [l for l in captured.out.split("\n") if l.startswith("FRAME:")]
+        frame_lines = [line for line in captured.out.split("\n") if line.startswith("FRAME:")]
         if frame_lines:
             frame_data = frame_lines[0][len("FRAME:") :]
             assert frame_data.startswith(

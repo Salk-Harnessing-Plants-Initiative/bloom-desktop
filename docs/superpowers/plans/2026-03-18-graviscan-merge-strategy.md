@@ -20,11 +20,11 @@ SANE (Scanner Access Now Easy) is the standard scanner API on Linux/Unix. It has
 
 ### Platform Support Matrix
 
-| Platform | Scanner Backend | Status in PR | CI Testing | Lab Use |
-|----------|----------------|-------------|------------|---------|
-| **Linux** | SANE (python-sane + libsane-dev) | ✅ Fully implemented | ✅ Unit + integration + E2E | Primary lab machines |
-| **macOS** | None (mock mode only) | ✅ Mock mode works | ✅ Mock-mode tests only | Development only |
-| **Windows** | TWAIN (pytwain) | ❌ Not yet implemented | ✅ Mock-mode tests only | Future phase |
+| Platform    | Scanner Backend                  | Status in PR           | CI Testing                  | Lab Use              |
+| ----------- | -------------------------------- | ---------------------- | --------------------------- | -------------------- |
+| **Linux**   | SANE (python-sane + libsane-dev) | ✅ Fully implemented   | ✅ Unit + integration + E2E | Primary lab machines |
+| **macOS**   | None (mock mode only)            | ✅ Mock mode works     | ✅ Mock-mode tests only     | Development only     |
+| **Windows** | TWAIN (pytwain)                  | ❌ Not yet implemented | ✅ Mock-mode tests only     | Future phase         |
 
 ### CI Strategy for SANE Tests
 
@@ -68,6 +68,7 @@ Each PR below is independently mergeable and testable. Each includes the tests f
 **Why first:** Every other PR depends on the Prisma models. These are purely additive — no existing models are broken, only extended with new relations.
 
 **Files:**
+
 - Modify: `prisma/schema.prisma` (+167 lines — 8 new models, relation extensions on Experiment/Phenotyper/Accessions)
 - Create: `prisma/migrations/20260131200258_add_graviscan_schema/migration.sql`
 - Create: `prisma/migrations/20260210194821_add_graviscan_metadata/migration.sql`
@@ -127,6 +128,7 @@ Expected: All existing tests PASS
 - [ ] **Step 5: Consider squashing 14 migrations into fewer logical groups**
 
 **Decision point (non-blocking — default to keeping as-is if Ben is unavailable):** Discuss with Ben (PR author) whether to squash the 14 incremental migrations into 2-3 logical ones:
+
 1. `add_graviscan_core_schema` (models: GraviScan, GraviScanner, GraviConfig, GraviImage, GraviScanSession)
 2. `add_graviscan_metadata` (models: GraviPlateAccession, GraviPlateSectionMapping, GraviScanPlateAssignment)
 3. `extend_existing_models` (Experiment.experiment_type, new relations)
@@ -149,6 +151,7 @@ git commit -m "feat(db): add GraviScan schema models and migrations"
 **Why second:** Build infra changes are needed before new code can pass CI.
 
 **Files:**
+
 - Modify: `.github/workflows/pr-checks.yml` (+18 lines — NPM_TOKEN env vars)
 - Modify: `forge.config.ts` (+109/-4 — APP_MODE multi-build, DEB deps, sharp bundling)
 - Modify: `package.json` (+11/-1 — new scripts, electron-log dep, @salk-hpi/bloom-js bump)
@@ -180,6 +183,7 @@ Review `package.json` — remove any scripts that reference files not yet merged
 - [ ] **Step 3: Verify forge.config.ts APP_MODE defaults safely**
 
 The `APP_MODE` env var must default to `full` (or the current mode) so that existing builds are not broken. Verify:
+
 ```typescript
 const appMode = process.env.APP_MODE || 'full';
 ```
@@ -192,6 +196,7 @@ npm run lint
 npm run compile
 npm run test:unit
 ```
+
 Expected: All PASS
 
 - [ ] **Step 5: Test packaging still works for default mode**
@@ -199,6 +204,7 @@ Expected: All PASS
 ```bash
 npm run package
 ```
+
 Expected: Builds successfully with default (non-GraviScan) mode
 
 - [ ] **Step 6: Commit and open PR**
@@ -215,6 +221,7 @@ git commit -m "chore(ci): add NPM_TOKEN, APP_MODE packaging, GraviScan build sup
 **Why third:** The Python worker and TypeScript types are the shared contracts. They must exist before main-process handlers or renderer code.
 
 **Files:**
+
 - Create: `src/types/graviscan.ts` (306 lines — all GraviScan TypeScript types)
 - Modify: `src/types/electron.d.ts` (+527/-24 — GraviScanAPI interface)
 - Modify: `src/types/database.ts` (+14/-12)
@@ -260,6 +267,7 @@ Note: `python/tests/test_scans.py` from the PR is empty (0 lines) — it's vesti
 - [ ] **Step 4: Review existing test coverage and fill gaps**
 
 The PR includes substantial tests:
+
 - `test_scan_worker.py` (938 lines) — covers IPC protocol, mock scanning, TIFF output, cancel, quit, error handling
 - `test_scan_regions.py` (195 lines) — covers 2grid/4grid geometry, DPI conversion, coordinate validation
 - `test_tiff_metadata.py` (93 lines) — covers metadata round-trip in TIFF ImageDescription
@@ -271,17 +279,17 @@ Review these for completeness. Identify any gaps (e.g., USB recovery paths, edge
 Add to `.github/workflows/pr-checks.yml`:
 
 ```yaml
-  test-graviscan-python:
-    name: "GraviScan Python Tests"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: |
-          sudo apt-get update
-          sudo apt-get install -y libsane-dev sane-utils
-      - run: uv sync --extra dev --extra graviscan-linux
-      - run: uv run pytest python/tests/test_scan_worker.py python/tests/test_scan_regions.py python/tests/test_tiff_metadata.py -v --cov=python/graviscan --cov-fail-under=80
+test-graviscan-python:
+  name: 'GraviScan Python Tests'
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: astral-sh/setup-uv@v5
+    - run: |
+        sudo apt-get update
+        sudo apt-get install -y libsane-dev sane-utils
+    - run: uv sync --extra dev --extra graviscan-linux
+    - run: uv run pytest python/tests/test_scan_worker.py python/tests/test_scan_regions.py python/tests/test_tiff_metadata.py -v --cov=python/graviscan --cov-fail-under=80
 ```
 
 - [ ] **Step 6: Run Python tests**
@@ -290,6 +298,7 @@ Add to `.github/workflows/pr-checks.yml`:
 uv sync --extra dev
 uv run pytest python/tests/test_scan_worker.py python/tests/test_scan_regions.py python/tests/test_tiff_metadata.py -v
 ```
+
 Expected: All PASS
 
 - [ ] **Step 7: Run TypeScript compilation**
@@ -297,6 +306,7 @@ Expected: All PASS
 ```bash
 npx tsc --noEmit
 ```
+
 Expected: PASS
 
 - [ ] **Step 8: Commit and open PR**
@@ -315,6 +325,7 @@ git commit -m "feat(graviscan): add types, Python SANE worker, and scan region g
 **Why fourth:** The main process is the bridge between Python worker and renderer. It depends on types and Python backend.
 
 **Files:**
+
 - Create: `src/main/graviscan-handlers.ts` (1,225 lines — 10 IPC handlers)
 - Create: `src/main/scan-coordinator.ts` (442 lines — multi-scanner orchestration)
 - Create: `src/main/scanner-subprocess.ts` (301 lines — per-scanner Python process mgmt)
@@ -344,6 +355,7 @@ git checkout feature/graviscan -- src/main/config-store.ts src/main/database.ts 
 - [ ] **Step 2: Review main.ts diff carefully**
 
 `main.ts` has +346/-311 — this is a significant restructuring. Verify:
+
 1. Existing IPC handlers (camera, DAQ, scanner, config, session, db) are preserved
 2. New GraviScan handlers are registered additively
 3. Process lifecycle (app.on('before-quit')) cleans up GraviScan subprocesses
@@ -352,6 +364,7 @@ git checkout feature/graviscan -- src/main/config-store.ts src/main/database.ts 
 - [ ] **Step 3: Review database-handlers.ts additions**
 
 +833 lines is huge. Verify:
+
 1. Existing 28 handlers are unchanged
 2. New GraviScan handlers follow the same pattern (try/catch, DatabaseResponse<T>)
 3. No `any` types in new handler signatures
@@ -380,6 +393,7 @@ npm run test:python
 npx tsc --noEmit
 npm run lint
 ```
+
 Expected: All PASS
 
 - [ ] **Step 7: Commit and open PR**
@@ -398,6 +412,7 @@ git commit -m "feat(graviscan): add main process IPC handlers, scan coordinator,
 **Why separate:** Box backup (rclone) and Supabase upload are independently testable and have external service dependencies. Isolating them reduces risk.
 
 **Files:**
+
 - Create: `src/main/box-backup.ts` (497 lines — rclone-based Box backup)
 - Create: `src/main/graviscan-upload.ts` (484 lines — Supabase metadata + image upload)
 - Create: `src/renderer/contexts/UploadStatusContext.tsx` (50 lines)
@@ -416,11 +431,13 @@ git checkout feature/graviscan -- src/renderer/contexts/UploadStatusContext.tsx
 - [ ] **Step 2: Write unit tests for backup logic**
 
 Create: `tests/unit/box-backup.test.ts`
+
 - Test: rclone command construction with correct paths
 - Test: retry logic on transient failures
 - Test: box_status state transitions (pending → uploading → uploaded/failed)
 
 Create: `tests/unit/graviscan-upload.test.ts`
+
 - Test: Supabase payload construction from GraviScan + GraviImage records
 - Test: upload batch ordering (metadata before images)
 - Test: error handling when Supabase is unreachable
@@ -431,6 +448,7 @@ Create: `tests/unit/graviscan-upload.test.ts`
 npm run test:unit
 npx tsc --noEmit
 ```
+
 Expected: All PASS
 
 - [ ] **Step 4: Commit and open PR**
@@ -447,6 +465,7 @@ git commit -m "feat(graviscan): add Box backup (rclone) and Supabase upload pipe
 **Why before components:** Hooks contain the core business logic. Testing them in isolation (via renderHook) catches logic bugs before they're buried in UI.
 
 **Files:**
+
 - Create: `src/renderer/hooks/useScanSession.ts` (1,048 lines)
 - Create: `src/renderer/hooks/useScannerConfig.ts` (610 lines)
 - Create: `src/renderer/hooks/usePlateAssignments.ts` (318 lines)
@@ -474,6 +493,7 @@ git checkout feature/graviscan -- src/renderer/utils/graviMetadataValidation.ts
 - [ ] **Step 2: Review useScanSession.ts (1,048 lines — largest hook)**
 
 This is the most complex piece. Check:
+
 1. Cleanup functions in useEffect returns (clearTimeout, removeListener)
 2. Race conditions between IPC polling and event listeners
 3. Mounted flag usage to prevent state updates after unmount
@@ -490,6 +510,7 @@ Create: `tests/unit/hooks/useWaveNumber.test.ts`
 Create: `tests/unit/utils/graviMetadataValidation.test.ts`
 
 Priority tests:
+
 - `useContinuousMode`: Timer accuracy, cycle counting, countdown display
 - `useWaveNumber`: Wave increment logic, persistence across sessions
 - `usePlateAssignments`: Plate slot CRUD, barcode validation
@@ -501,6 +522,7 @@ Priority tests:
 npm run test:unit
 npx tsc --noEmit
 ```
+
 Expected: All PASS
 
 - [ ] **Step 5: Commit and open PR**
@@ -519,6 +541,7 @@ git commit -m "feat(graviscan): add renderer hooks for scan session, scanner con
 **Why last:** UI depends on all hooks, types, and IPC handlers being in place.
 
 **Files:**
+
 - Create: `src/renderer/GraviScan.tsx` (3,464 lines — main scanning page)
 - Create: `src/renderer/BrowseGraviScans.tsx` (654 lines)
 - Create: `src/renderer/ExperimentDetail.tsx` (475 lines)
@@ -593,6 +616,7 @@ git rm src/renderer/Accessions.tsx src/types/camera.ts src/types/scanner.ts pyth
 - [ ] **Step 2: Review GraviScan.tsx (3,464 lines — needs splitting)**
 
 **This file is too large.** It should be refactored into smaller, focused components during this PR. Recommended split:
+
 - `GraviScan.tsx` → orchestrator (~500 lines, wires hooks to sub-components)
 - Move inline logic into the existing sub-components in `components/graviscan/`
 - This is a quality gate — do not merge a 3,464-line component
@@ -600,6 +624,7 @@ git rm src/renderer/Accessions.tsx src/types/camera.ts src/types/scanner.ts pyth
 - [ ] **Step 3: Review file deletions carefully**
 
 Files being deleted:
+
 - `Accessions.tsx` — verify this page's functionality is preserved elsewhere
 - `camera.ts`, `scanner.ts` (types) — verify no existing code references these
 - `camera.py`, `camera_mock.py` — verify camera functionality still works
@@ -629,6 +654,7 @@ npm run test:python
 npm run test:e2e
 npm run test:e2e:coverage  # IPC coverage must stay ≥90%
 ```
+
 Expected: All PASS
 
 - [ ] **Step 6: Commit and open PR**
@@ -644,38 +670,38 @@ git commit -m "feat(graviscan): add GraviScan UI, experiment browser, and E2E te
 
 ### Testing Coverage Requirements
 
-| Layer | Framework | Threshold | What to Test |
-|-------|-----------|-----------|-------------|
-| Python SANE worker | pytest | 80% | Mock-mode scan, TIFF metadata, scan regions, IPC protocol |
-| TypeScript types | tsc --noEmit | Compile | All new types compile, no `any` leaks |
-| Main process handlers | Vitest integration | Per-handler | Each IPC handler: happy path + error path |
-| Database handlers | Vitest integration | Per-handler | CRUD for all 8 new models |
-| Renderer hooks | Vitest + RTL | Per-hook | State transitions, cleanup, edge cases |
-| Metadata validation | Vitest | Per-function | CSV parsing, schema validation, error messages |
-| E2E workflow | Playwright | Per-flow | Mock scan, browse, metadata upload |
-| IPC coverage | check-ipc-coverage.py | 90% | All new GraviScan handlers tested in E2E |
+| Layer                 | Framework             | Threshold    | What to Test                                              |
+| --------------------- | --------------------- | ------------ | --------------------------------------------------------- |
+| Python SANE worker    | pytest                | 80%          | Mock-mode scan, TIFF metadata, scan regions, IPC protocol |
+| TypeScript types      | tsc --noEmit          | Compile      | All new types compile, no `any` leaks                     |
+| Main process handlers | Vitest integration    | Per-handler  | Each IPC handler: happy path + error path                 |
+| Database handlers     | Vitest integration    | Per-handler  | CRUD for all 8 new models                                 |
+| Renderer hooks        | Vitest + RTL          | Per-hook     | State transitions, cleanup, edge cases                    |
+| Metadata validation   | Vitest                | Per-function | CSV parsing, schema validation, error messages            |
+| E2E workflow          | Playwright            | Per-flow     | Mock scan, browse, metadata upload                        |
+| IPC coverage          | check-ipc-coverage.py | 90%          | All new GraviScan handlers tested in E2E                  |
 
 ### CI Platform Matrix for GraviScan
 
-| CI Job | Linux | macOS | Windows | Notes |
-|--------|-------|-------|---------|-------|
-| Python SANE tests | ✅ Real SANE | ❌ Skip | ❌ Skip | Needs libsane-dev |
-| Python mock tests | ✅ | ✅ | ✅ | No system deps |
-| TIFF metadata tests | ✅ | ✅ | ✅ | Pillow only |
-| Integration (IPC) | ✅ | ✅ | ✅ | Mock subprocess |
-| E2E (mock mode) | ✅ | ✅ | ✅ | No real scanner |
-| Packaging | ✅ DEB with libsane | ✅ DMG | ✅ Squirrel | Platform-specific |
+| CI Job              | Linux               | macOS   | Windows     | Notes             |
+| ------------------- | ------------------- | ------- | ----------- | ----------------- |
+| Python SANE tests   | ✅ Real SANE        | ❌ Skip | ❌ Skip     | Needs libsane-dev |
+| Python mock tests   | ✅                  | ✅      | ✅          | No system deps    |
+| TIFF metadata tests | ✅                  | ✅      | ✅          | Pillow only       |
+| Integration (IPC)   | ✅                  | ✅      | ✅          | Mock subprocess   |
+| E2E (mock mode)     | ✅                  | ✅      | ✅          | No real scanner   |
+| Packaging           | ✅ DEB with libsane | ✅ DMG  | ✅ Squirrel | Platform-specific |
 
 ### File Deletions Requiring Verification
 
-| Deleted File | Lines | Verify Before Deleting |
-|-------------|-------|----------------------|
-| `src/renderer/Accessions.tsx` | 101 | Functionality moved to new accession management |
-| `src/types/camera.ts` | 8 | Types merged into existing type files |
-| `src/types/scanner.ts` | 4 | Types merged into existing type files |
-| `python/hardware/camera.py` | 57 | Camera module still works without this |
-| `python/hardware/camera_mock.py` | 102 | Mock camera still available elsewhere |
-| `src/main/util.ts` | 15 | Verify no existing code imports from this file |
+| Deleted File                     | Lines | Verify Before Deleting                          |
+| -------------------------------- | ----- | ----------------------------------------------- |
+| `src/renderer/Accessions.tsx`    | 101   | Functionality moved to new accession management |
+| `src/types/camera.ts`            | 8     | Types merged into existing type files           |
+| `src/types/scanner.ts`           | 4     | Types merged into existing type files           |
+| `python/hardware/camera.py`      | 57    | Camera module still works without this          |
+| `python/hardware/camera_mock.py` | 102   | Mock camera still available elsewhere           |
+| `src/main/util.ts`               | 15    | Verify no existing code imports from this file  |
 
 ### Known Issues in PR #123 to Fix During Split
 

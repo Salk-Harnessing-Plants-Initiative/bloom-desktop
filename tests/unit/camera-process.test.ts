@@ -30,7 +30,15 @@ describe('CameraProcess.detectCameras', () => {
 
   it('4.1 returns array when response is array', async () => {
     const mockCameras = [
-      { ip_address: '192.168.1.100', model_name: 'acA2000-50gm', serial_number: '123', mac_address: 'aa:bb', user_defined_name: 'test', friendly_name: 'Test Cam', is_mock: false },
+      {
+        ip_address: '192.168.1.100',
+        model_name: 'acA2000-50gm',
+        serial_number: '123',
+        mac_address: 'aa:bb',
+        user_defined_name: 'test',
+        friendly_name: 'Test Cam',
+        is_mock: false,
+      },
     ];
     vi.spyOn(camera, 'sendCommand').mockResolvedValue(mockCameras);
 
@@ -40,9 +48,20 @@ describe('CameraProcess.detectCameras', () => {
 
   it('4.2 returns cameras when response has cameras field', async () => {
     const mockCameras = [
-      { ip_address: '192.168.1.100', model_name: 'acA2000-50gm', serial_number: '123', mac_address: 'aa:bb', user_defined_name: 'test', friendly_name: 'Test Cam', is_mock: false },
+      {
+        ip_address: '192.168.1.100',
+        model_name: 'acA2000-50gm',
+        serial_number: '123',
+        mac_address: 'aa:bb',
+        user_defined_name: 'test',
+        friendly_name: 'Test Cam',
+        is_mock: false,
+      },
     ];
-    vi.spyOn(camera, 'sendCommand').mockResolvedValue({ cameras: mockCameras, count: 1 });
+    vi.spyOn(camera, 'sendCommand').mockResolvedValue({
+      cameras: mockCameras,
+      count: 1,
+    });
 
     const result = await camera.detectCameras();
     expect(result).toEqual(mockCameras);
@@ -50,15 +69,23 @@ describe('CameraProcess.detectCameras', () => {
 
   it('4.3 returns empty array for non-camera success response', async () => {
     // This happens when response routing delivers a configure response to detectCameras
-    vi.spyOn(camera, 'sendCommand').mockResolvedValue({ success: true, configured: true });
+    vi.spyOn(camera, 'sendCommand').mockResolvedValue({
+      success: true,
+      configured: true,
+    });
 
     const result = await camera.detectCameras();
     expect(result).toEqual([]);
   });
 
   it('4.4 throws on error response from Python', async () => {
-    vi.spyOn(camera, 'sendCommand').mockResolvedValue({ success: false, error: 'Camera not connected' });
+    vi.spyOn(camera, 'sendCommand').mockResolvedValue({
+      success: false,
+      error: 'Camera not connected',
+    });
 
-    await expect(camera.detectCameras()).rejects.toThrow('Failed to detect cameras: Camera not connected');
+    await expect(camera.detectCameras()).rejects.toThrow(
+      'Failed to detect cameras: Camera not connected'
+    );
   });
 });

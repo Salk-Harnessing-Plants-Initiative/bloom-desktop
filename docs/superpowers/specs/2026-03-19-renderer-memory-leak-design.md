@@ -9,6 +9,7 @@
 The Streamer component (`src/components/Streamer.tsx`) creates a `new Image()` for every camera frame at ~30 FPS. Each Image holds a ~2.8 MB base64 data URI (2048x1080 PNG, compress_level=0). Images load asynchronously, so dozens coexist in memory simultaneously. Over ~20 minutes, this exhausts the renderer's V8 heap (3.8 GB OOM).
 
 Secondary issues:
+
 - `PythonProcess.sendCommand()` never clears its timeout on success, leaking closures for up to 3 minutes each.
 - `CameraProcess.detectCameras()` throws on `{success: true, configured: true}` responses, indicating a response format mismatch.
 - Python `grab_frame_base64()` doesn't use context managers for BytesIO/PIL Image, adding GC pressure.
@@ -17,6 +18,7 @@ Secondary issues:
 ## Root Cause Analysis
 
 The pilot application (`bloom-desktop-pilot`) avoided this by:
+
 1. Using React `useState` + `<img>` tag — `setBase64img()` naturally implements "latest frame wins"
 2. Running the mock streamer at 5 FPS (`time.sleep(0.2)`), not 30 FPS
 3. Using Python context managers (`with BytesIO()`, `with Image.fromarray()`) for explicit resource cleanup
@@ -30,12 +32,14 @@ Bloom Desktop's canvas-based `new Image()` pattern creates unbounded parallel im
 Replace the canvas-based `new Image()` per frame pattern with the pilot's proven approach: React `useState` holding the latest data URI rendered via an `<img>` tag.
 
 **Why `<img>` over canvas + frame-gate:**
+
 - The canvas is not used for overlays, annotations, or pixel manipulation — it provides no benefit over `<img>`
 - React state naturally implements "latest frame wins" — only one data URI is ever referenced
 - No manual busy/pending logic, no onerror edge cases, no unmount guards needed
 - Proven stable in the pilot application
 
 **Key changes to Streamer.tsx:**
+
 - Remove `canvasRef`, `new Image()`, and `ctx.drawImage()` logic
 - Add `useState<string>` for the current frame data URI
 - Replace `<canvas>` with `<img src={currentFrame}>`
@@ -69,66 +73,67 @@ Tests are written **before** implementation, following repo conventions (Vitest,
 
 ### Fix 1 Tests: `tests/unit/components/Streamer.test.tsx`
 
-| Test ID | Test Name | Asserts |
-|---------|-----------|---------|
-| 1.1 | renders img element when streaming | `<img>` present in DOM after frame received |
-| 1.2 | registers frame listener on mount | `onFrame` called once |
-| 1.3 | removes frame listener on unmount | Cleanup function called |
-| 1.4 | displays latest frame only | Fire 10 rapid frames, assert img src is the last frame's data URI |
-| 1.5 | shows connecting message before first frame | "Connecting..." text visible before any frame arrives |
-| 1.6 | stops stream on unmount | `stopStream` called |
-| 1.7 | shows FPS counter when showFps is true | FPS display element present |
+| Test ID | Test Name                                   | Asserts                                                           |
+| ------- | ------------------------------------------- | ----------------------------------------------------------------- |
+| 1.1     | renders img element when streaming          | `<img>` present in DOM after frame received                       |
+| 1.2     | registers frame listener on mount           | `onFrame` called once                                             |
+| 1.3     | removes frame listener on unmount           | Cleanup function called                                           |
+| 1.4     | displays latest frame only                  | Fire 10 rapid frames, assert img src is the last frame's data URI |
+| 1.5     | shows connecting message before first frame | "Connecting..." text visible before any frame arrives             |
+| 1.6     | stops stream on unmount                     | `stopStream` called                                               |
+| 1.7     | shows FPS counter when showFps is true      | FPS display element present                                       |
 
 ### Fix 2 Tests: `python/tests/test_camera_streaming.py` (update existing)
 
-| Test ID | Test Name | Asserts |
-|---------|-----------|---------|
-| 2.1 | streaming target FPS is 5 | Verify ~5 frames received in 1 second (not 30) |
+| Test ID | Test Name                 | Asserts                                        |
+| ------- | ------------------------- | ---------------------------------------------- |
+| 2.1     | streaming target FPS is 5 | Verify ~5 frames received in 1 second (not 30) |
 
 **Existing tests that need assertion updates:**
+
 - `test_start_stream_sends_frames`: Currently expects ~10 frames in 0.5s (30 FPS). At 5 FPS, 0.5s yields ~2-3 frames. Update sleep/assertion.
 - `test_start_stream_stop_stream_lifecycle`: Currently expects ~30 frames in 1.0s. At 5 FPS, yields ~5 frames. Update assertion.
 
 ### Fix 3 Tests: `tests/unit/python-process.test.ts`
 
-| Test ID | Test Name | Asserts |
-|---------|-----------|---------|
-| 3.1 | clears timeout when data response arrives | `clearTimeout` called |
-| 3.2 | clears timeout when error response arrives | `clearTimeout` called |
-| 3.3 | timeout still fires if no response | `reject` called after timeout |
+| Test ID | Test Name                                  | Asserts                       |
+| ------- | ------------------------------------------ | ----------------------------- |
+| 3.1     | clears timeout when data response arrives  | `clearTimeout` called         |
+| 3.2     | clears timeout when error response arrives | `clearTimeout` called         |
+| 3.3     | timeout still fires if no response         | `reject` called after timeout |
 
 ### Fix 4 Tests: `tests/unit/camera-process.test.ts`
 
-| Test ID | Test Name | Asserts |
-|---------|-----------|---------|
-| 4.1 | returns array when response is array | Direct array passthrough |
-| 4.2 | returns cameras when response has cameras field | Unwraps `{cameras: [...]}` |
-| 4.3 | returns empty array for non-camera success response | `{success: true, configured: true}` -> `[]` |
+| Test ID | Test Name                                           | Asserts                                     |
+| ------- | --------------------------------------------------- | ------------------------------------------- |
+| 4.1     | returns array when response is array                | Direct array passthrough                    |
+| 4.2     | returns cameras when response has cameras field     | Unwraps `{cameras: [...]}`                  |
+| 4.3     | returns empty array for non-camera success response | `{success: true, configured: true}` -> `[]` |
 
 ### Fix 5 Tests: `python/tests/test_camera_mock.py` (update existing)
 
-| Test ID | Test Name | Asserts |
-|---------|-----------|---------|
-| 5.1 | grab_frame_base64 returns valid data URI | Starts with `data:image/png;base64,` |
-| 5.2 | grab_frame_base64 does not leak file handles | No ResourceWarning after repeated calls |
+| Test ID | Test Name                                    | Asserts                                 |
+| ------- | -------------------------------------------- | --------------------------------------- |
+| 5.1     | grab_frame_base64 returns valid data URI     | Starts with `data:image/png;base64,`    |
+| 5.2     | grab_frame_base64 does not leak file handles | No ResourceWarning after repeated calls |
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `src/components/Streamer.tsx` | Replace canvas with `<img>` tag + useState |
-| `python/ipc_handler.py` | Change `target_fps` from 30 to 5 |
-| `src/main/python-process.ts` | Clear timeout on response |
-| `src/main/camera-process.ts` | Handle non-camera success response in detectCameras |
-| `python/hardware/camera_mock.py` | Add context managers to `grab_frame_base64()` |
-| `python/hardware/camera.py` | Add context managers to `grab_frame_base64()` |
-| `src/types/electron.d.ts` | Update "~30 FPS" JSDoc comments to "~5 FPS" (lines 157, 173) |
-| `src/main/camera-process.ts` | Update "~30 FPS" JSDoc to "~5 FPS" (line 165) |
-| `tests/unit/components/Streamer.test.tsx` | **New** — Streamer unit tests |
-| `tests/unit/python-process.test.ts` | **New** — PythonProcess unit tests |
-| `tests/unit/camera-process.test.ts` | **New** — CameraProcess unit tests |
-| `python/tests/test_camera_streaming.py` | **Updated** — Verify 5 FPS target |
-| `python/tests/test_camera_mock.py` | **Updated** — Context manager / resource tests |
+| File                                      | Change                                                       |
+| ----------------------------------------- | ------------------------------------------------------------ |
+| `src/components/Streamer.tsx`             | Replace canvas with `<img>` tag + useState                   |
+| `python/ipc_handler.py`                   | Change `target_fps` from 30 to 5                             |
+| `src/main/python-process.ts`              | Clear timeout on response                                    |
+| `src/main/camera-process.ts`              | Handle non-camera success response in detectCameras          |
+| `python/hardware/camera_mock.py`          | Add context managers to `grab_frame_base64()`                |
+| `python/hardware/camera.py`               | Add context managers to `grab_frame_base64()`                |
+| `src/types/electron.d.ts`                 | Update "~30 FPS" JSDoc comments to "~5 FPS" (lines 157, 173) |
+| `src/main/camera-process.ts`              | Update "~30 FPS" JSDoc to "~5 FPS" (line 165)                |
+| `tests/unit/components/Streamer.test.tsx` | **New** — Streamer unit tests                                |
+| `tests/unit/python-process.test.ts`       | **New** — PythonProcess unit tests                           |
+| `tests/unit/camera-process.test.ts`       | **New** — CameraProcess unit tests                           |
+| `python/tests/test_camera_streaming.py`   | **Updated** — Verify 5 FPS target                            |
+| `python/tests/test_camera_mock.py`        | **Updated** — Context manager / resource tests               |
 
 ## OpenSpec Impact
 

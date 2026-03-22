@@ -14,28 +14,29 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `tests/unit/components/Streamer.test.tsx` | Create | Streamer unit tests |
-| `src/components/Streamer.tsx` | Modify | Replace canvas with `<img>` tag + useState |
-| `python/tests/test_camera_streaming.py` | Modify | Update FPS assertions from 30 to 5 |
-| `python/ipc_handler.py:406` | Modify | Change `target_fps = 30` to `target_fps = 5` |
-| `tests/unit/python-process.test.ts` | Create | PythonProcess sendCommand timeout tests |
-| `src/main/python-process.ts:145-173` | Modify | Store and clear timeout ID |
-| `tests/unit/camera-process.test.ts` | Create | CameraProcess detectCameras tests |
-| `src/main/camera-process.ts:199-225` | Modify | Handle non-camera success responses |
-| `python/tests/test_camera_streaming.py` | Modify | Add context manager resource test |
-| `python/hardware/camera_mock.py:228-234` | Modify | Add context managers |
-| `python/hardware/camera.py:212-216` | Modify | Add context managers |
-| `src/types/electron.d.ts:157,173` | Modify | Update "~30 FPS" JSDoc to "~5 FPS" |
-| `src/main/camera-process.ts:165` | Modify | Update "~30 FPS" JSDoc to "~5 FPS" |
-| `python/ipc_handler.py:404` | Modify | Update "~30 FPS" docstring to "~5 FPS" |
+| File                                      | Action | Responsibility                               |
+| ----------------------------------------- | ------ | -------------------------------------------- |
+| `tests/unit/components/Streamer.test.tsx` | Create | Streamer unit tests                          |
+| `src/components/Streamer.tsx`             | Modify | Replace canvas with `<img>` tag + useState   |
+| `python/tests/test_camera_streaming.py`   | Modify | Update FPS assertions from 30 to 5           |
+| `python/ipc_handler.py:406`               | Modify | Change `target_fps = 30` to `target_fps = 5` |
+| `tests/unit/python-process.test.ts`       | Create | PythonProcess sendCommand timeout tests      |
+| `src/main/python-process.ts:145-173`      | Modify | Store and clear timeout ID                   |
+| `tests/unit/camera-process.test.ts`       | Create | CameraProcess detectCameras tests            |
+| `src/main/camera-process.ts:199-225`      | Modify | Handle non-camera success responses          |
+| `python/tests/test_camera_streaming.py`   | Modify | Add context manager resource test            |
+| `python/hardware/camera_mock.py:228-234`  | Modify | Add context managers                         |
+| `python/hardware/camera.py:212-216`       | Modify | Add context managers                         |
+| `src/types/electron.d.ts:157,173`         | Modify | Update "~30 FPS" JSDoc to "~5 FPS"           |
+| `src/main/camera-process.ts:165`          | Modify | Update "~30 FPS" JSDoc to "~5 FPS"           |
+| `python/ipc_handler.py:404`               | Modify | Update "~30 FPS" docstring to "~5 FPS"       |
 
 ---
 
 ### Task 1: Streamer — Write failing tests
 
 **Files:**
+
 - Create: `tests/unit/components/Streamer.test.tsx`
 
 - [ ] **Step 1: Create Streamer test file with mocks and 7 test cases**
@@ -81,7 +82,9 @@ beforeEach(() => {
     onImageCaptured: vi.fn(),
     getSettings: vi.fn().mockResolvedValue(null),
     configure: vi.fn().mockResolvedValue({ success: true }),
-    getStatus: vi.fn().mockResolvedValue({ connected: false, mock: true, available: true }),
+    getStatus: vi
+      .fn()
+      .mockResolvedValue({ connected: false, mock: true, available: true }),
     capture: vi.fn().mockResolvedValue({ success: true }),
     connect: vi.fn().mockResolvedValue({ success: true }),
     disconnect: vi.fn().mockResolvedValue({ success: true }),
@@ -186,6 +189,7 @@ git commit -m "test: add Streamer component tests for img-tag pattern (red)"
 ### Task 2: Streamer — Implement img-tag pattern
 
 **Files:**
+
 - Modify: `src/components/Streamer.tsx` (full rewrite)
 
 - [ ] **Step 1: Replace Streamer implementation**
@@ -462,6 +466,7 @@ git commit -m "fix: replace canvas with img tag in Streamer to prevent OOM"
 ### Task 3: Reduce streaming FPS from 30 to 5
 
 **Files:**
+
 - Modify: `python/tests/test_camera_streaming.py:229-237,361-364`
 - Modify: `python/ipc_handler.py:404,406`
 - Modify: `src/types/electron.d.ts:157,173`
@@ -472,6 +477,7 @@ git commit -m "fix: replace canvas with img tag in Streamer to prevent OOM"
 In `python/tests/test_camera_streaming.py`, update two tests:
 
 `test_start_stream_sends_frames` (line 229-237): Change sleep to 1.5s and assert >= 3 frames:
+
 ```python
         # Wait for frames to be sent (should get ~7 frames in 1.5s at 5 FPS)
         time.sleep(1.5)
@@ -486,6 +492,7 @@ In `python/tests/test_camera_streaming.py`, update two tests:
 ```
 
 `test_start_stream_stop_stream_lifecycle` (line 361-364): Change assert to >= 3 frames:
+
 ```python
         # Wait for frames
         time.sleep(1.5)  # Should get ~7 frames at 5 FPS
@@ -521,10 +528,12 @@ def streaming_worker() -> None:
 - [ ] **Step 4: Update JSDoc comments referencing 30 FPS**
 
 In `src/types/electron.d.ts`:
+
 - Line 157: `"at ~30 FPS"` → `"at ~5 FPS"`
 - Line 173: `"at ~30 FPS"` → `"at ~5 FPS"`
 
 In `src/main/camera-process.ts`:
+
 - Line 165: `"at ~30 FPS"` → `"at ~5 FPS"`
 
 - [ ] **Step 5: Run Python streaming tests to verify they pass**
@@ -544,6 +553,7 @@ git commit -m "fix: reduce streaming FPS from 30 to 5 for preview use case"
 ### Task 4: Fix sendCommand timeout leak
 
 **Files:**
+
 - Create: `tests/unit/python-process.test.ts`
 - Modify: `src/main/python-process.ts:145-173`
 
@@ -700,6 +710,7 @@ git commit -m "fix: clear sendCommand timeout on response to prevent closure lea
 ### Task 5: Fix detectCameras response handling
 
 **Files:**
+
 - Create: `tests/unit/camera-process.test.ts`
 - Modify: `src/main/camera-process.ts:199-225`
 
@@ -738,7 +749,15 @@ describe('CameraProcess.detectCameras', () => {
 
   it('4.1 returns array when response is array', async () => {
     const mockCameras = [
-      { ip_address: '192.168.1.100', model_name: 'acA2000-50gm', serial_number: '123', mac_address: 'aa:bb', user_defined_name: 'test', friendly_name: 'Test Cam', is_mock: false },
+      {
+        ip_address: '192.168.1.100',
+        model_name: 'acA2000-50gm',
+        serial_number: '123',
+        mac_address: 'aa:bb',
+        user_defined_name: 'test',
+        friendly_name: 'Test Cam',
+        is_mock: false,
+      },
     ];
     vi.spyOn(camera, 'sendCommand').mockResolvedValue(mockCameras);
 
@@ -748,9 +767,20 @@ describe('CameraProcess.detectCameras', () => {
 
   it('4.2 returns cameras when response has cameras field', async () => {
     const mockCameras = [
-      { ip_address: '192.168.1.100', model_name: 'acA2000-50gm', serial_number: '123', mac_address: 'aa:bb', user_defined_name: 'test', friendly_name: 'Test Cam', is_mock: false },
+      {
+        ip_address: '192.168.1.100',
+        model_name: 'acA2000-50gm',
+        serial_number: '123',
+        mac_address: 'aa:bb',
+        user_defined_name: 'test',
+        friendly_name: 'Test Cam',
+        is_mock: false,
+      },
     ];
-    vi.spyOn(camera, 'sendCommand').mockResolvedValue({ cameras: mockCameras, count: 1 });
+    vi.spyOn(camera, 'sendCommand').mockResolvedValue({
+      cameras: mockCameras,
+      count: 1,
+    });
 
     const result = await camera.detectCameras();
     expect(result).toEqual(mockCameras);
@@ -758,7 +788,10 @@ describe('CameraProcess.detectCameras', () => {
 
   it('4.3 returns empty array for non-camera success response', async () => {
     // This happens when response routing delivers a configure response to detectCameras
-    vi.spyOn(camera, 'sendCommand').mockResolvedValue({ success: true, configured: true });
+    vi.spyOn(camera, 'sendCommand').mockResolvedValue({
+      success: true,
+      configured: true,
+    });
 
     const result = await camera.detectCameras();
     expect(result).toEqual([]);
@@ -776,17 +809,17 @@ Expected: Test 4.3 FAILS (throws `Error: Failed to detect cameras`). Tests 4.1, 
 In `src/main/camera-process.ts`, replace lines 215-224:
 
 ```typescript
-    // Handle both direct array response and wrapped response
-    if (Array.isArray(response)) {
-      return response;
-    }
+// Handle both direct array response and wrapped response
+if (Array.isArray(response)) {
+  return response;
+}
 
-    if (response && response.cameras) {
-      return response.cameras;
-    }
+if (response && response.cameras) {
+  return response.cameras;
+}
 
-    // Non-camera response (e.g. mismatched command routing) — return empty
-    return [];
+// Non-camera response (e.g. mismatched command routing) — return empty
+return [];
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -806,6 +839,7 @@ git commit -m "fix: handle non-camera responses in detectCameras gracefully"
 ### Task 6: Python context managers for frame encoding
 
 **Files:**
+
 - Modify: `python/hardware/camera_mock.py:228-234`
 - Modify: `python/hardware/camera.py:212-216`
 - Modify: `python/tests/test_camera_streaming.py` (add resource test)

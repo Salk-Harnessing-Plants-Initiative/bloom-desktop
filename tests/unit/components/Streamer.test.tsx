@@ -37,7 +37,9 @@ beforeEach(() => {
     onImageCaptured: vi.fn(),
     getSettings: vi.fn().mockResolvedValue(null),
     configure: vi.fn().mockResolvedValue({ success: true }),
-    getStatus: vi.fn().mockResolvedValue({ connected: false, mock: true, available: true }),
+    getStatus: vi
+      .fn()
+      .mockResolvedValue({ connected: false, mock: true, available: true }),
     capture: vi.fn().mockResolvedValue({ success: true }),
     connect: vi.fn().mockResolvedValue({ success: true }),
     disconnect: vi.fn().mockResolvedValue({ success: true }),
@@ -125,7 +127,10 @@ describe('Streamer', () => {
   });
 
   it('1.8 renders error state when startStream fails', async () => {
-    mockStartStream.mockResolvedValueOnce({ success: false, error: 'Camera not connected' });
+    mockStartStream.mockResolvedValueOnce({
+      success: false,
+      error: 'Camera not connected',
+    });
 
     render(<Streamer />);
 

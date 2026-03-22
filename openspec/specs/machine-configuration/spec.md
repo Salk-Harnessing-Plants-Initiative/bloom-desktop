@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-machine-configuration. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Config Store Module
 
 The application SHALL provide a config store module that persists all machine-level settings and credentials to `~/.bloom/.env`.
@@ -482,4 +484,3 @@ The Camera Settings page SHALL expose only parameters supported by the Basler ac
 - **WHEN** the dict contains keys not present in the Python `CameraSettings` dataclass (e.g., `brightness`, `contrast`)
 - **THEN** unknown keys SHALL be silently filtered before constructing `CameraSettings(**kwargs)`
 - **AND** the scan SHALL proceed without error
-

@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -539,4 +541,3 @@ ensuring idle reset IPC messages are not suppressed during error recovery or aft
 - **WHEN** the `checkIdleReset()` promise resolves with any value
 - **THEN** `setShowIdleResetBanner` SHALL NOT be called
 - **AND** no setState-on-unmounted-component side-effect SHALL occur
-
