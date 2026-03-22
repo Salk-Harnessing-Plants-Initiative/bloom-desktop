@@ -290,18 +290,14 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
       }
     });
 
-    // Frame forwarding with drop gate to prevent IPC queue buildup.
-    // Gate is closure-scoped to this cameraProcess instance.
-    const forwardFrame = createFrameForwarder(
+    // Frame forwarding with latest-frame-wins drop gate to prevent IPC queue buildup.
+    // Uses a getter so sendFn is re-evaluated on each frame (handles macOS window recreation).
+    const forwardFrame = createFrameForwarder(() =>
       mainWindow && !mainWindow.isDestroyed()
         ? mainWindow.webContents.send.bind(mainWindow.webContents)
         : null
     );
-    cameraProcess.on('frame', (dataUri: string) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        forwardFrame(dataUri);
-      }
-    });
+    cameraProcess.on('frame', forwardFrame);
 
     cameraProcess.on('status', (status: string) => {
       console.log('Camera status:', status);
