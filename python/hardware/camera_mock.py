@@ -226,7 +226,7 @@ class MockCamera:
         """
         img = self.grab_frame()
 
-        # Convert numpy array to PIL Image and encode as PNG
+        # Convert numpy array to PIL Image and encode as JPEG for streaming
         with BytesIO() as buffer:
             with Image.fromarray(img) as pil_img:
                 pil_img.save(buffer, format="JPEG", quality=85)
