@@ -35,9 +35,9 @@ let mockImageInstance: {
 const OriginalImage = globalThis.Image;
 
 // Spy on URL.createObjectURL / revokeObjectURL
-const createObjectURLSpy = vi.fn().mockImplementation(
-  () => `blob:mock-${Math.random().toString(36).slice(2)}`
-);
+const createObjectURLSpy = vi
+  .fn()
+  .mockImplementation(() => `blob:mock-${Math.random().toString(36).slice(2)}`);
 const revokeObjectURLSpy = vi.fn();
 
 beforeEach(() => {
@@ -128,9 +128,7 @@ describe('Streamer', () => {
     });
     await flushFrameDecode();
 
-    const canvas = document.querySelector(
-      '[data-testid="stream-canvas"]'
-    );
+    const canvas = document.querySelector('[data-testid="stream-canvas"]');
     expect(canvas).toBeInTheDocument();
   });
 

@@ -2,7 +2,8 @@
  * Camera Streamer Component
  *
  * Displays live camera stream with automatic lifecycle management.
- * Uses React state + <img> tag for natural "latest frame wins" memory safety.
+ * Uses canvas + Blob URL rendering with explicit revocation to prevent
+ * Chromium's data-URI bitmap cache leak (Chromium issue 41067124).
  * Automatically starts streaming on mount and stops on unmount.
  */
 
@@ -59,10 +60,17 @@ export const Streamer: React.FC<StreamerProps> = ({
   onStreamStop,
   onError,
 }) => {
-  const [currentFrame, setCurrentFrame] = useState<string>('');
+  const [hasFirstFrame, setHasFirstFrame] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [fps, setFps] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const isDecodingRef = useRef(false);
+  const pendingFrameRef = useRef<string | null>(null);
+  const currentBlobUrlRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
 
   const frameCountRef = useRef(0);
   const lastFpsUpdateRef = useRef(Date.now());
@@ -79,22 +87,145 @@ export const Streamer: React.FC<StreamerProps> = ({
     }
   }, []);
 
-  const handleFrame = useCallback(
-    (image: { dataUri: string; timestamp: number }) => {
-      setCurrentFrame(image.dataUri);
-      updateFps();
+  const decodeAndDraw = useCallback(
+    (dataUri: string) => {
+      if (!mountedRef.current) return;
+      isDecodingRef.current = true;
+
+      // Decode base64 data URI to Blob
+      fetch(dataUri)
+        .then((r) => r.blob())
+        .then((blob) => {
+          if (!mountedRef.current) {
+            isDecodingRef.current = false;
+            return;
+          }
+
+          // Revoke previous Blob URL
+          if (currentBlobUrlRef.current) {
+            URL.revokeObjectURL(currentBlobUrlRef.current);
+          }
+
+          const blobUrl = URL.createObjectURL(blob);
+          currentBlobUrlRef.current = blobUrl;
+
+          const img = imgRef.current;
+          if (!img) {
+            isDecodingRef.current = false;
+            return;
+          }
+
+          img.onload = () => {
+            if (!mountedRef.current) {
+              isDecodingRef.current = false;
+              return;
+            }
+
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                // clearRect clears to transparent — CSS background provides black letterbox bars
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Calculate aspect-ratio-preserving draw rect (objectFit: contain equivalent)
+                const scale = Math.min(
+                  canvas.width / img.naturalWidth,
+                  canvas.height / img.naturalHeight
+                );
+                const drawWidth = img.naturalWidth * scale;
+                const drawHeight = img.naturalHeight * scale;
+                const x = (canvas.width - drawWidth) / 2;
+                const y = (canvas.height - drawHeight) / 2;
+
+                ctx.drawImage(img, x, y, drawWidth, drawHeight);
+              }
+            }
+
+            // Revoke Blob URL immediately after drawing — frees decoded bitmap
+            if (currentBlobUrlRef.current) {
+              URL.revokeObjectURL(currentBlobUrlRef.current);
+              currentBlobUrlRef.current = null;
+            }
+
+            if (!hasFirstFrame) {
+              setHasFirstFrame(true);
+            }
+            updateFps();
+
+            isDecodingRef.current = false;
+
+            // Drain pending frame (latest-frame-wins)
+            if (pendingFrameRef.current && mountedRef.current) {
+              const next = pendingFrameRef.current;
+              pendingFrameRef.current = null;
+              decodeAndDraw(next);
+            }
+          };
+
+          img.onerror = () => {
+            if (!mountedRef.current) {
+              isDecodingRef.current = false;
+              return;
+            }
+
+            // Revoke failed Blob URL
+            if (currentBlobUrlRef.current) {
+              URL.revokeObjectURL(currentBlobUrlRef.current);
+              currentBlobUrlRef.current = null;
+            }
+
+            isDecodingRef.current = false;
+
+            // Drain pending frame
+            if (pendingFrameRef.current && mountedRef.current) {
+              const next = pendingFrameRef.current;
+              pendingFrameRef.current = null;
+              decodeAndDraw(next);
+            }
+          };
+
+          img.src = blobUrl;
+        })
+        .catch(() => {
+          // fetch/blob conversion failed — clear gate
+          isDecodingRef.current = false;
+          if (pendingFrameRef.current && mountedRef.current) {
+            const next = pendingFrameRef.current;
+            pendingFrameRef.current = null;
+            decodeAndDraw(next);
+          }
+        });
     },
-    [updateFps]
+    [hasFirstFrame, updateFps]
   );
 
+  // Handle incoming frames — busy gate with latest-frame-wins
+  const handleFrame = useCallback(
+    (image: { dataUri: string; timestamp: number }) => {
+      if (!image.dataUri) return;
+
+      if (isDecodingRef.current) {
+        // Gate closed — buffer latest frame (overwrites previous)
+        pendingFrameRef.current = image.dataUri;
+        return;
+      }
+
+      decodeAndDraw(image.dataUri);
+    },
+    [decodeAndDraw]
+  );
+
+  // Create Image object and start streaming on mount
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
+    imgRef.current = new Image();
 
     const startStreaming = async () => {
       try {
         const response = await window.electron.camera.startStream(settings);
 
-        if (!mounted) return;
+        if (!mountedRef.current) return;
 
         if (response.success) {
           setIsStreaming(true);
@@ -106,7 +237,7 @@ export const Streamer: React.FC<StreamerProps> = ({
           onError?.(errorMsg);
         }
       } catch (err) {
-        if (!mounted) return;
+        if (!mountedRef.current) return;
 
         const errorMsg = err instanceof Error ? err.message : String(err);
         setError(errorMsg);
@@ -119,7 +250,22 @@ export const Streamer: React.FC<StreamerProps> = ({
     const removeFrameListener = window.electron.camera.onFrame(handleFrame);
 
     return () => {
-      mounted = false;
+      // Ordered cleanup: mountedRef first, then pending, then abort decode, then revoke, then listener, then stream
+      mountedRef.current = false;
+      pendingFrameRef.current = null;
+
+      if (imgRef.current) {
+        imgRef.current.onload = null;
+        imgRef.current.onerror = null;
+        imgRef.current.src = '';
+        imgRef.current = null;
+      }
+
+      if (currentBlobUrlRef.current) {
+        URL.revokeObjectURL(currentBlobUrlRef.current);
+        currentBlobUrlRef.current = null;
+      }
+
       removeFrameListener();
       window.electron.camera.stopStream().catch(() => {
         // Ignore errors during cleanup — component is unmounting
@@ -129,20 +275,20 @@ export const Streamer: React.FC<StreamerProps> = ({
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
-      {currentFrame ? (
-        <img
-          src={currentFrame}
-          alt="Camera stream"
-          style={{
-            width,
-            height,
-            objectFit: 'contain',
-            border: '1px solid #ccc',
-            display: 'block',
-            backgroundColor: '#000',
-          }}
-        />
-      ) : (
+      {/* Canvas is always in the DOM so ref is available for first draw.
+          Hidden until first frame via display:none, then shown. */}
+      <canvas
+        ref={canvasRef}
+        data-testid="stream-canvas"
+        width={width}
+        height={height}
+        style={{
+          border: '1px solid #ccc',
+          display: hasFirstFrame ? 'block' : 'none',
+          backgroundColor: '#000',
+        }}
+      />
+      {!hasFirstFrame && (
         <div
           style={{
             width,

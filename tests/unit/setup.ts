@@ -13,12 +13,15 @@ afterEach(() => {
 });
 
 // Mock canvas getContext — happy-dom returns null for getContext('2d')
+// Guard: only apply in happy-dom environment (not node environment used by some test files)
 const mockDrawImage = vi.fn();
 const mockClearRect = vi.fn();
-HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
-  drawImage: mockDrawImage,
-  clearRect: mockClearRect,
-}) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+    drawImage: mockDrawImage,
+    clearRect: mockClearRect,
+  }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+}
 
 // Export for tests that need to assert on canvas operations
 export { mockDrawImage, mockClearRect };
