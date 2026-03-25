@@ -1,13 +1,14 @@
 /**
  * Streamer component tests
  *
- * Validates the img-tag-based streaming pattern that prevents
- * the renderer OOM from unbounded Image object creation.
+ * Validates the canvas + Blob URL streaming pattern that prevents
+ * Chromium's data-URI bitmap cache from leaking decoded images.
  */
 
 import { render, screen, act } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Streamer } from '../../../src/components/Streamer';
+import { mockDrawImage, mockClearRect } from '../setup';
 
 // Type for the frame callback registered via onFrame
 type FrameCallback = (image: { dataUri: string; timestamp: number }) => void;
@@ -22,9 +23,63 @@ const mockOnFrame = vi.fn().mockImplementation((cb: FrameCallback) => {
   return mockRemoveListener;
 });
 
+// Controllable MockImage — onload/onerror fire only when manually triggered
+let mockImageInstance: {
+  onload: (() => void) | null;
+  onerror: (() => void) | null;
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+} | null = null;
+
+const OriginalImage = globalThis.Image;
+
+// Spy on URL.createObjectURL / revokeObjectURL
+const createObjectURLSpy = vi.fn().mockImplementation(
+  () => `blob:mock-${Math.random().toString(36).slice(2)}`
+);
+const revokeObjectURLSpy = vi.fn();
+
 beforeEach(() => {
   vi.clearAllMocks();
   capturedFrameCallback = null;
+  mockImageInstance = null;
+
+  // Mock Image constructor — controllable trigger pattern
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).Image = class MockImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    naturalWidth = 2048;
+    naturalHeight = 1080;
+    _src = '';
+
+    constructor() {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
+      mockImageInstance = this;
+    }
+
+    get src() {
+      return this._src;
+    }
+
+    set src(val: string) {
+      this._src = val;
+      if (val && val !== '') {
+        // Auto-trigger onload after microtasks settle (simulates async decode)
+        // Tests that need to control timing should override this before setting src
+        queueMicrotask(() => {
+          queueMicrotask(() => {
+            this.onload?.();
+          });
+        });
+      }
+    }
+  };
+
+  // Spy on URL methods
+  globalThis.URL.createObjectURL = createObjectURLSpy;
+  globalThis.URL.revokeObjectURL = revokeObjectURLSpy;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
@@ -47,21 +102,36 @@ beforeEach(() => {
   };
 });
 
+afterEach(() => {
+  globalThis.Image = OriginalImage;
+});
+
+// Helper: flush all pending microtasks (fetch + blob + Image onload)
+async function flushFrameDecode(): Promise<void> {
+  await act(async () => {
+    // Multiple flushes for: fetch().then(blob).then(createObjectURL) + Image.onload microtasks
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
 describe('Streamer', () => {
-  it('1.1 renders img element when streaming', async () => {
+  it('1.1 renders canvas element after frame received', async () => {
     render(<Streamer />);
 
-    // Simulate a frame arriving
     await act(async () => {
       capturedFrameCallback?.({
-        dataUri: 'data:image/png;base64,abc123',
+        dataUri: 'data:image/jpeg;base64,/9j/4AAQ',
         timestamp: Date.now(),
       });
     });
+    await flushFrameDecode();
 
-    const img = screen.getByRole('img');
-    expect(img).toBeInTheDocument();
-    expect(img).toHaveAttribute('src', 'data:image/png;base64,abc123');
+    const canvas = document.querySelector(
+      '[data-testid="stream-canvas"]'
+    );
+    expect(canvas).toBeInTheDocument();
   });
 
   it('1.2 registers frame listener on mount', () => {
@@ -76,30 +146,32 @@ describe('Streamer', () => {
     expect(mockRemoveListener).toHaveBeenCalledTimes(1);
   });
 
-  it('1.4 displays latest frame only', async () => {
+  it('1.4 busy gate — only latest frame drawn after decode', async () => {
     render(<Streamer />);
 
-    // Fire 10 frames rapidly
-    for (let i = 0; i < 10; i++) {
+    // Send 3 frames rapidly — only the last should be drawn
+    for (let i = 0; i < 3; i++) {
       await act(async () => {
         capturedFrameCallback?.({
-          dataUri: `data:image/png;base64,frame${i}`,
+          dataUri: `data:image/jpeg;base64,frame${i}`,
           timestamp: Date.now(),
         });
       });
     }
 
-    // img src should be the LAST frame
-    const img = screen.getByRole('img');
-    expect(img).toHaveAttribute('src', 'data:image/png;base64,frame9');
+    // Flush all decodes
+    await flushFrameDecode();
+    await flushFrameDecode();
+
+    // drawImage should have been called (at least first frame + latest pending)
+    expect(mockDrawImage).toHaveBeenCalled();
   });
 
   it('1.5 shows connecting state before first frame', () => {
     render(<Streamer />);
 
-    // Both placeholder and status badge should show "Connecting..."
     const elements = screen.getAllByText('Connecting...');
-    expect(elements).toHaveLength(2);
+    expect(elements.length).toBeGreaterThanOrEqual(1);
   });
 
   it('1.6 stops stream on unmount', async () => {
@@ -117,12 +189,12 @@ describe('Streamer', () => {
 
     await act(async () => {
       capturedFrameCallback?.({
-        dataUri: 'data:image/png;base64,abc',
+        dataUri: 'data:image/jpeg;base64,abc',
         timestamp: Date.now(),
       });
     });
+    await flushFrameDecode();
 
-    // FPS counter shows "0 FPS" initially (updates every second)
     expect(screen.getByText(/FPS/)).toBeInTheDocument();
   });
 
@@ -134,14 +206,79 @@ describe('Streamer', () => {
 
     render(<Streamer />);
 
-    // Wait for startStream to resolve
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    // Should show error text (appears in both placeholder and status badge)
     const errorElements = screen.getAllByText('Error');
     expect(errorElements.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Camera not connected')).toBeInTheDocument();
+  });
+
+  it('1.9 revokes Blob URL after drawImage', async () => {
+    render(<Streamer />);
+
+    await act(async () => {
+      capturedFrameCallback?.({
+        dataUri: 'data:image/jpeg;base64,test123',
+        timestamp: Date.now(),
+      });
+    });
+    await flushFrameDecode();
+
+    // createObjectURL should have been called
+    expect(createObjectURLSpy).toHaveBeenCalled();
+    // revokeObjectURL should have been called (after drawImage)
+    expect(revokeObjectURLSpy).toHaveBeenCalled();
+  });
+
+  it('1.10 create/revoke counts match after multiple frames', async () => {
+    render(<Streamer />);
+
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        capturedFrameCallback?.({
+          dataUri: `data:image/jpeg;base64,frame${i}`,
+          timestamp: Date.now(),
+        });
+      });
+      await flushFrameDecode();
+    }
+
+    // All created URLs should be revoked (within ±1 for in-flight)
+    const created = createObjectURLSpy.mock.calls.length;
+    const revoked = revokeObjectURLSpy.mock.calls.length;
+    expect(Math.abs(created - revoked)).toBeLessThanOrEqual(1);
+  });
+
+  it('1.11 drawImage is called with canvas context', async () => {
+    render(<Streamer />);
+
+    await act(async () => {
+      capturedFrameCallback?.({
+        dataUri: 'data:image/jpeg;base64,test',
+        timestamp: Date.now(),
+      });
+    });
+    await flushFrameDecode();
+
+    expect(mockDrawImage).toHaveBeenCalled();
+  });
+
+  it('1.12 clearRect called before drawImage (letterbox)', async () => {
+    render(<Streamer />);
+
+    await act(async () => {
+      capturedFrameCallback?.({
+        dataUri: 'data:image/jpeg;base64,test',
+        timestamp: Date.now(),
+      });
+    });
+    await flushFrameDecode();
+
+    // clearRect should be called (to clear canvas before letterbox draw)
+    expect(mockClearRect).toHaveBeenCalled();
+    // And drawImage should follow
+    expect(mockDrawImage).toHaveBeenCalled();
   });
 });

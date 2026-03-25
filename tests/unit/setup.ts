@@ -12,6 +12,17 @@ afterEach(() => {
   cleanup();
 });
 
+// Mock canvas getContext — happy-dom returns null for getContext('2d')
+const mockDrawImage = vi.fn();
+const mockClearRect = vi.fn();
+HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+  drawImage: mockDrawImage,
+  clearRect: mockClearRect,
+}) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+// Export for tests that need to assert on canvas operations
+export { mockDrawImage, mockClearRect };
+
 // Mock window.electron API for all tests
 const mockPythonAPI = {
   sendCommand: vi.fn().mockResolvedValue({ success: true }),
