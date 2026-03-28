@@ -124,6 +124,11 @@ test.describe.serial('Experiments Management', () => {
     await expect(window.locator('text=No experiments yet')).toBeVisible();
   });
 
+  test('should disable attach button when no experiments or accessions exist', async () => {
+    const attachButton = window.locator('button:has-text("Attach Accession")');
+    await expect(attachButton).toBeDisabled();
+  });
+
   test('should show all 15 species in dropdown alphabetically', async () => {
     const options = await window
       .locator('select#species-select option')
@@ -246,7 +251,7 @@ test.describe.serial('Experiments Management', () => {
     expect(listItems[2]).toContain('Loading Test');
   });
 
-  test('should display experiments with species, name, and scientist', async () => {
+  test('should display experiments list with species, name, and scientist', async () => {
     // Experiments show format: Species - Name (Scientist)
     await expect(
       window
@@ -323,7 +328,7 @@ test.describe.serial('Experiments Management', () => {
   // Phase 5: Chooser Components (on Capture Scan page)
   // =========================================================================
 
-  test('should display experiments in ExperimentChooser dropdown', async () => {
+  test('should display experiments in dropdown', async () => {
     await window.click('text=Capture Scan');
     await expect(
       window.getByRole('heading', { name: 'Capture Scan' })
@@ -336,7 +341,7 @@ test.describe.serial('Experiments Management', () => {
     expect(options.some((o) => o.includes('Drought Study 2025'))).toBe(true);
   });
 
-  test('should show ExperimentChooser placeholder when nothing selected', async () => {
+  test('should show placeholder when nothing selected', async () => {
     const experimentSelect = window.locator('select#experiment-chooser');
     const selectedValue = await experimentSelect.inputValue();
     expect(selectedValue).toBe('');
@@ -345,19 +350,19 @@ test.describe.serial('Experiments Management', () => {
     expect(options[0]).toContain('Choose an experiment');
   });
 
-  test('should have amber border on ExperimentChooser when unselected', async () => {
+  test('should have amber border when unselected', async () => {
     const experimentSelect = window.locator('select#experiment-chooser');
     await expect(experimentSelect).toHaveClass(/border-amber/);
   });
 
-  test('should have gray border on ExperimentChooser when selected', async () => {
+  test('should have gray border when selected', async () => {
     const experimentSelect = window.locator('select#experiment-chooser');
     // Select by index (first real option after placeholder)
     await experimentSelect.selectOption({ index: 1 });
     await expect(experimentSelect).toHaveClass(/border-gray/);
   });
 
-  test('should display phenotypers in PhenotyperChooser dropdown', async () => {
+  test('should display phenotypers in dropdown', async () => {
     // Seed a phenotyper
     await prisma.phenotyper.create({
       data: { name: 'Test Phenotyper', email: 'pheno@example.com' },
@@ -374,7 +379,7 @@ test.describe.serial('Experiments Management', () => {
     expect(options.some((o) => o.includes('Test Phenotyper'))).toBe(true);
   });
 
-  test('should show PhenotyperChooser placeholder when nothing selected', async () => {
+  test('should show phenotyper placeholder when nothing selected', async () => {
     const phenotyperSelect = window.locator('select#phenotyper-chooser');
     const selectedValue = await phenotyperSelect.inputValue();
     expect(selectedValue).toBe('');
@@ -383,12 +388,12 @@ test.describe.serial('Experiments Management', () => {
     expect(options[0]).toContain('Choose a phenotyper');
   });
 
-  test('should have amber border on PhenotyperChooser when unselected', async () => {
+  test('should have amber border on phenotyper when unselected', async () => {
     const phenotyperSelect = window.locator('select#phenotyper-chooser');
     await expect(phenotyperSelect).toHaveClass(/border-amber/);
   });
 
-  test('should have gray border on PhenotyperChooser when selected', async () => {
+  test('should have gray border on phenotyper when selected', async () => {
     const phenotyperSelect = window.locator('select#phenotyper-chooser');
     // Select by index (first real option after placeholder)
     await phenotyperSelect.selectOption({ index: 1 });
@@ -399,7 +404,7 @@ test.describe.serial('Experiments Management', () => {
   // Phase 5b: CaptureScan Integration
   // =========================================================================
 
-  test('should use ExperimentChooser select instead of text input', async () => {
+  test('should use ExperimentChooser instead of text input', async () => {
     const experimentSelect = window.locator('select#experiment-chooser');
     await expect(experimentSelect).toBeVisible();
 
@@ -407,7 +412,7 @@ test.describe.serial('Experiments Management', () => {
     await expect(experimentTextInput).not.toBeVisible();
   });
 
-  test('should use PhenotyperChooser select instead of text input', async () => {
+  test('should use PhenotyperChooser instead of text input', async () => {
     const phenotyperSelect = window.locator('select#phenotyper-chooser');
     await expect(phenotyperSelect).toBeVisible();
 
