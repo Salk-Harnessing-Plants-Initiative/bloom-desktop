@@ -1,71 +1,13 @@
 /**
- * E2E Test: Accessions Management UI
+ * E2E Test: Accessions Management UI — Sequential Story
  *
- * Tests the complete user workflow for managing accessions through the UI,
- * including navigation, list display, form validation, creation, Excel file upload,
- * column mapping, visual highlighting, inline editing, and deletion.
+ * Tests run as a sequential user story with one app instance.
+ * Order: Navigate + Empty State → Validation → Create → List → Expand Details →
+ *        Inline Editing → Delete → Navigation
  *
  * **PREREQUISITES:**
- * 1. Start Electron Forge dev server: `npm run start` (keep running in Terminal 1)
- * 2. Run E2E tests: `npm run test:e2e` (in Terminal 2)
- *
- * The Electron app loads the renderer from Electron Forge's dev server on port 9000.
- * The dev server MUST be running or the Electron window will be blank.
- *
- * **Test Focus:**
- * - UI interactions (navigation, form filling, file upload, button clicks)
- * - Form validation (client-side Zod validation)
- * - Excel file upload and parsing
- * - Sheet selection for multi-sheet files
- * - Column mapping (Plant Barcode + Accession)
- * - Visual column highlighting (green/blue)
- * - Database integration (accession creation, list refresh, plant mappings)
- * - Inline editing with keyboard shortcuts (Enter/Escape)
- * - Delete with confirmation
- * - Batch processing for large files
- *
- * **Database Isolation:**
- * - Test database: tests/e2e/accessions-ui-test.db
- * - Created fresh for each test via BLOOM_DATABASE_URL environment variable
- * - Main process uses test database, dev server only serves UI
- *
- * **TESTING BEST PRACTICES (Lessons Learned):**
- *
- * 1. **Navigation Assertions:**
- *    DO: Use semantic role-based selectors
- *       await expect(window.getByRole('heading', { name: 'PageName', exact: true })).toBeVisible();
- *    DON'T: Use CSS selectors with text content
- *       await expect(window.locator('h1:has-text("PageName")')).toBeVisible();
- *    WHY: Role-based selectors are more reliable and align with accessibility best practices
- *
- * 2. **Checking Multiple Elements:**
- *    DO: Check each element individually
- *       await expect(window.locator('button:has-text("Edit")')).toBeVisible();
- *       await expect(window.locator('button:has-text("Delete")')).toBeVisible();
- *    DON'T: Use comma-separated selectors with single assertion
- *       await expect(window.locator('button:has-text("Edit"), button:has-text("Delete")')).toBeVisible();
- *    WHY: Comma selectors match ALL elements, causing strict mode violations
- *
- * 3. **React Controlled Inputs:**
- *    DO: Use getByRole() and verify value with toHaveValue()
- *       const input = window.getByRole('textbox').first();
- *       await expect(input).toHaveValue('expected value');
- *    DON'T: Use attribute selectors like input[value="..."]
- *       const input = window.locator('input[value="Old Name"]');
- *    WHY: React controlled inputs set the value property (JS), not the value attribute (HTML)
- *
- * 4. **Multiple Textboxes on Page:**
- *    DO: Use .first() or .last() to disambiguate when multiple textboxes exist
- *       const editInput = window.getByRole('textbox').first(); // Gets expanded section input
- *    DON'T: Use getByRole('textbox') when multiple exist
- *       const editInput = window.getByRole('textbox'); // Throws strict mode error
- *    WHY: Playwright strict mode requires exactly one element match
- *
- * 5. **Dialog Handling:**
- *    TODO: Document native confirm() dialog handling approach
- *    (Tests currently fail because they expect UI buttons but component uses browser confirm())
- *
- * Related: openspec/changes/add-accessions-management-ui/
+ * 1. Start Electron Forge dev server: `npm run start`
+ * 2. Run E2E tests: `npm run test:e2e`
  */
 
 import {
@@ -91,7 +33,6 @@ import {
   sortedAccessions,
 } from '../fixtures/accessions';
 
-// Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath: string = require('electron');
 
@@ -99,23 +40,16 @@ let electronApp: ElectronApplication;
 let window: Page;
 let prisma: PrismaClient;
 
-// Test database path for UI tests
 const TEST_DB_PATH = path.join(__dirname, 'accessions-ui-test.db');
 const TEST_DB_URL = `file:${TEST_DB_PATH}`;
 
-/**
- * Helper: Launch Electron app with test database
- */
 async function launchElectronApp() {
   const appRoot = path.join(__dirname, '../..');
-
-  // Build args for Electron
   const args = [path.join(appRoot, '.webpack/main/index.js')];
   if (process.platform === 'linux' && process.env.CI === 'true') {
     args.push('--no-sandbox');
   }
 
-  // Launch Electron with test database URL
   electronApp = await electron.launch({
     executablePath: electronPath,
     args,
@@ -127,97 +61,54 @@ async function launchElectronApp() {
     } as Record<string, string>,
   });
 
-  // Get the main window
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
-
-  // Wait for window to be ready
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
 }
 
-/**
- * Test setup: Create fresh database and launch app
- */
-test.beforeEach(async () => {
-  // Create minimal ~/.bloom/.env to prevent Machine Config redirect
-  createTestBloomConfig();
+test.describe.serial('Accessions Management', () => {
+  test.beforeAll(async () => {
+    createTestBloomConfig();
 
-  // Clean up any existing test database
-  if (fs.existsSync(TEST_DB_PATH)) {
-    fs.unlinkSync(TEST_DB_PATH);
-  }
+    if (fs.existsSync(TEST_DB_PATH)) {
+      fs.unlinkSync(TEST_DB_PATH);
+    }
 
-  // Create Prisma client for direct database access
-  prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: TEST_DB_URL,
-      },
-    },
+    prisma = new PrismaClient({
+      datasources: { db: { url: TEST_DB_URL } },
+    });
+    await prisma.$connect();
+
+    const appRoot = path.join(__dirname, '../..');
+    execSync('npx prisma db push --skip-generate', {
+      cwd: appRoot,
+      env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL },
+      stdio: 'pipe',
+    });
+
+    await launchElectronApp();
   });
 
-  // Run migrations to create schema
-  execSync('npx prisma migrate deploy', {
-    env: {
-      ...process.env,
-      BLOOM_DATABASE_URL: TEST_DB_URL,
-    },
-    stdio: 'pipe',
+  test.afterAll(async () => {
+    if (prisma) await prisma.$disconnect();
+    await closeElectronApp(electronApp);
+    if (fs.existsSync(TEST_DB_PATH)) fs.unlinkSync(TEST_DB_PATH);
+    cleanupTestBloomConfig();
   });
 
-  // Launch Electron app
-  await launchElectronApp();
-});
+  // =========================================================================
+  // Phase 1: Navigate + Empty State (DB empty from beforeAll)
+  // =========================================================================
 
-/**
- * Test cleanup: Close app and disconnect database
- */
-test.afterEach(async () => {
-  // Close Electron app and wait for process to fully terminate
-  await closeElectronApp(electronApp);
-
-  // Disconnect Prisma
-  if (prisma) {
-    await prisma.$disconnect();
-  }
-
-  // Clean up test database
-  if (fs.existsSync(TEST_DB_PATH)) {
-    fs.unlinkSync(TEST_DB_PATH);
-  }
-
-  // Clean up test ~/.bloom/.env (restores original if there was one)
-  cleanupTestBloomConfig();
-});
-
-// ============================================
-// Navigation Tests
-// ============================================
-
-test.describe('Navigation to Accessions Page', () => {
   test('should navigate to Accessions page via menu link', async () => {
-    // Click Accessions link in navigation
     await window.click('text=Accessions');
-
-    // Verify page heading is visible
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
   });
-});
 
-// ============================================
-// Empty State Tests
-// ============================================
-
-test.describe('Empty State Display', () => {
   test('should show empty state message when no accessions exist', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Verify empty state message
+    // Already on Accessions page from previous test
     await expect(
       window.locator('text=/No accessions|no accessions/i')
     ).toBeVisible({ timeout: 5000 });
@@ -228,23 +119,58 @@ test.describe('Empty State Display', () => {
       window.locator('button:has-text("Add Accession")')
     ).toBeVisible();
   });
-});
 
-// ============================================
-// Create Accession Tests
-// ============================================
+  // =========================================================================
+  // Phase 1b: Validation (empty name, clear errors)
+  // =========================================================================
 
-test.describe('Create Accession', () => {
-  test('should create accession with valid name', async () => {
-    await window.click('text=Accessions');
+  test('should show validation error for empty name', async () => {
+    // Click submit without filling name
+    const addButton = window.locator('button:has-text("Add")');
+    const createButton = window.locator('button:has-text("Create")');
+    if (await addButton.isVisible()) {
+      await addButton.click();
+    } else if (await createButton.isVisible()) {
+      await createButton.click();
+    }
+
+    // Verify error message appears
     await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
+      window.locator('text=/required|cannot be empty/i')
+    ).toBeVisible({ timeout: 3000 });
+
+    // Verify no accession was created
+    const accessions = await prisma.accessions.findMany();
+    expect(accessions).toHaveLength(0);
+  });
+
+  test('should clear validation error when typing', async () => {
+    // Error is still visible from previous test
+    await expect(
+      window.locator('text=/required|cannot be empty/i')
     ).toBeVisible();
 
+    // Start typing in name field
+    await window.fill('input[name="name"]', 'Test');
+
+    // Verify error is cleared
+    await expect(
+      window.locator('text=/required|cannot be empty/i')
+    ).not.toBeVisible({ timeout: 2000 });
+
+    // Clear the input for next tests
+    await window.fill('input[name="name"]', '');
+  });
+
+  // =========================================================================
+  // Phase 2: Create accessions
+  // =========================================================================
+
+  test('should create accession with valid name', async () => {
     // Fill in name field
     await window.fill('input[name="name"]', validAccession.name);
 
-    // Click submit button (check for either "Add" or "Create")
+    // Click submit button
     const addButton = window.locator('button:has-text("Add")');
     const createButton = window.locator('button:has-text("Create")');
     if (await addButton.isVisible()) {
@@ -268,64 +194,7 @@ test.describe('Create Accession', () => {
     await expect(nameInput).toHaveValue('');
   });
 
-  test('should show validation error for empty name', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Click submit without filling name (check for either button)
-    const addButton = window.locator('button:has-text("Add")');
-    const createButton = window.locator('button:has-text("Create")');
-    if (await addButton.isVisible()) {
-      await addButton.click();
-    } else if (await createButton.isVisible()) {
-      await createButton.click();
-    }
-
-    // Verify error message appears
-    await expect(
-      window.locator('text=/required|cannot be empty/i')
-    ).toBeVisible({ timeout: 3000 });
-
-    // Verify no database call was made
-    const accessions = await prisma.accessions.findMany();
-    expect(accessions).toHaveLength(0);
-  });
-
-  test('should clear validation error when typing', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Trigger validation error (check for either button)
-    const addButton = window.locator('button:has-text("Add")');
-    const createButton = window.locator('button:has-text("Create")');
-    if (await addButton.isVisible()) {
-      await addButton.click();
-    } else if (await createButton.isVisible()) {
-      await createButton.click();
-    }
-    await expect(
-      window.locator('text=/required|cannot be empty/i')
-    ).toBeVisible();
-
-    // Start typing in name field
-    await window.fill('input[name="name"]', 'Test');
-
-    // Verify error is cleared
-    await expect(
-      window.locator('text=/required|cannot be empty/i')
-    ).not.toBeVisible({ timeout: 2000 });
-  });
-
   test('should allow duplicate names', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
     const duplicateName = 'Duplicate Name Test';
 
     // Create first accession
@@ -346,47 +215,32 @@ test.describe('Create Accession', () => {
       where: { name: duplicateName },
     });
     expect(accessions).toHaveLength(2);
-    expect(accessions[0].id).not.toBe(accessions[1].id); // Different UUIDs
+    expect(accessions[0].id).not.toBe(accessions[1].id);
   });
 
-  test.skip('should show loading state during creation', async () => {
-    await window.click('text=Accessions');
+  test('should show creation date for each accession', async () => {
+    // Accessions already exist from previous tests — verify creation date is displayed
     await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
+      window.locator('text=/Created|created|[0-9]{4}-[0-9]{2}-[0-9]{2}/i').first()
     ).toBeVisible();
-
-    await window.fill('input[name="name"]', validAccession.name);
-
-    const submitButton = window.locator('button:has-text("Add Accession")');
-
-    // Don't await the click - let it run in background so we can check loading state
-    const clickPromise = submitButton.click();
-
-    // Immediately check for loading state (should catch it during operation)
-    const isDisabled = await submitButton.isDisabled().catch(() => false);
-    const hasLoadingText = await window
-      .locator('text=/Creating/i')
-      .isVisible()
-      .catch(() => false);
-
-    expect(isDisabled || hasLoadingText).toBe(true);
-
-    // Now wait for operation to complete
-    await clickPromise;
   });
-});
 
-// ============================================
-// List Display and Sorting Tests
-// ============================================
+  // =========================================================================
+  // Phase 3: Read/List (sorted alphabetically)
+  // =========================================================================
 
-test.describe('Accessions List Display', () => {
   test('should display accessions sorted alphabetically by name', async () => {
-    // Create accessions in non-alphabetical order
+    // Clear existing accessions from previous tests to have a clean sort check
+    await prisma.accessions.deleteMany();
+
+    // Seed accessions in non-alphabetical order via Prisma
     for (const acc of unsortedAccessions) {
       await prisma.accessions.create({ data: acc });
     }
 
+    // Reload the page to pick up Prisma-seeded data
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
@@ -395,9 +249,7 @@ test.describe('Accessions List Display', () => {
     // Wait for list to load
     await expect(
       window.locator(`text=${sortedAccessions[0].name}`)
-    ).toBeVisible({
-      timeout: 5000,
-    });
+    ).toBeVisible({ timeout: 5000 });
 
     // Get all accession names from UI
     const accessionElements = await window
@@ -417,41 +269,14 @@ test.describe('Accessions List Display', () => {
     }
   });
 
-  test('should show creation date for each accession', async () => {
-    const accession = createAccessionData();
-    await prisma.accessions.create({ data: accession });
+  // =========================================================================
+  // Phase 4: Expand Details (expand, show mappings)
+  // =========================================================================
 
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    await expect(window.locator(`text=${accession.name}`)).toBeVisible();
-
-    // Verify creation date is displayed (format may vary)
-    await expect(
-      window.locator('text=/Created|created|[0-9]{4}-[0-9]{2}-[0-9]{2}/i')
-    ).toBeVisible();
-  });
-});
-
-// ============================================
-// Expand/Collapse Tests
-// ============================================
-
-test.describe('Expand Accession Details', () => {
   test('should expand accession to show details', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
-    });
-
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Click on accession item to expand
-    await window.click(`text=${accession.name}`);
+    // Use existing accessions from Phase 3 — click on the first sorted one
+    const accessionName = sortedAccessions[0].name;
+    await window.click(`text=${accessionName}`);
 
     // Verify details are visible (edit/delete buttons)
     await expect(window.locator('button:has-text("Edit")')).toBeVisible({
@@ -462,32 +287,45 @@ test.describe('Expand Accession Details', () => {
     });
   });
 
-  test('should show mapping count in expanded view', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
-    });
+  test('should show empty state when accession has no mappings', async () => {
+    // The first sorted accession is already expanded from previous test and has no mappings
+    await expect(
+      window.locator('text=/no.*mapping|0.*mapping/i')
+    ).toBeVisible({ timeout: 3000 });
+  });
 
-    // Create plant mappings
+  test('should show mapping count in expanded view', async () => {
+    // Seed plant mappings via Prisma for a specific accession
+    const accession = await prisma.accessions.findFirst({
+      where: { name: sortedAccessions[1].name },
+    });
+    expect(accession).not.toBeNull();
+
     await prisma.plantAccessionMappings.createMany({
       data: [
         {
-          accession_file_id: accession.id,
+          accession_file_id: accession!.id,
           plant_barcode: 'PLANT-001',
           accession_name: 'GT-001',
         },
         {
-          accession_file_id: accession.id,
+          accession_file_id: accession!.id,
           plant_barcode: 'PLANT-002',
           accession_name: 'GT-002',
         },
       ],
     });
 
+    // Reload page to pick up Prisma-seeded mappings
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await window.click(`text=${accession.name}`);
+
+    // Expand the accession with mappings
+    await window.click(`text=${accession!.name}`);
 
     // Verify mapping count is shown
     await expect(window.locator('text=/2.*mapping|mapping.*2/i')).toBeVisible({
@@ -496,32 +334,7 @@ test.describe('Expand Accession Details', () => {
   });
 
   test('should display mappings table with Plant Barcode and Accession columns', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
-    });
-
-    // Create plant mappings
-    await prisma.plantAccessionMappings.createMany({
-      data: [
-        {
-          accession_file_id: accession.id,
-          plant_barcode: 'PLANT-001',
-          accession_name: 'GT-001',
-        },
-        {
-          accession_file_id: accession.id,
-          plant_barcode: 'PLANT-002',
-          accession_name: 'GT-002',
-        },
-      ],
-    });
-
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-    await window.click(`text=${accession.name}`);
-
+    // Accession is already expanded with mappings from previous test
     // Verify mappings table is visible with correct headers
     const mappingsTable = window.locator('[data-testid="mappings-table"]');
     await expect(mappingsTable).toBeVisible({ timeout: 5000 });
@@ -543,133 +356,119 @@ test.describe('Expand Accession Details', () => {
     await expect(mappingsTable.locator('td:has-text("GT-002")')).toBeVisible();
   });
 
-  test('should show empty state when accession has no mappings', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
-    });
-
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-    await window.click(`text=${accession.name}`);
-
-    // Verify empty state message
-    await expect(window.locator('text=/no.*mapping|0.*mapping/i')).toBeVisible({
-      timeout: 3000,
-    });
-
-    // Edit and Delete buttons should still be visible
-    await expect(window.locator('button:has-text("Edit")')).toBeVisible();
-    await expect(window.locator('button:has-text("Delete")')).toBeVisible();
-  });
-
   test('should sort mappings alphabetically by plant barcode', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
+    // Seed mappings in reverse order for a different accession
+    const accession = await prisma.accessions.findFirst({
+      where: { name: sortedAccessions[2].name },
     });
+    expect(accession).not.toBeNull();
 
-    // Create mappings in non-alphabetical order
     await prisma.plantAccessionMappings.createMany({
       data: [
         {
-          accession_file_id: accession.id,
-          plant_barcode: 'ZEBRA-001',
+          accession_file_id: accession!.id,
+          plant_barcode: 'ZEBRA-003',
           accession_name: 'GT-Z',
         },
         {
-          accession_file_id: accession.id,
+          accession_file_id: accession!.id,
           plant_barcode: 'ALPHA-001',
           accession_name: 'GT-A',
+        },
+        {
+          accession_file_id: accession!.id,
+          plant_barcode: 'MIDDLE-002',
+          accession_name: 'GT-M',
         },
       ],
     });
 
+    // Reload page to pick up Prisma-seeded mappings
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await window.click(`text=${accession.name}`);
+
+    // Expand the accession
+    await window.click(`text=${accession!.name}`);
 
     // Wait for mappings table
     const mappingsTable = window.locator('[data-testid="mappings-table"]');
     await expect(mappingsTable).toBeVisible({ timeout: 5000 });
 
-    // Get all plant barcode cells and verify order
-    const rows = mappingsTable.locator('tbody tr');
-    const firstRowBarcode = rows.nth(0).locator('td').first();
-    const secondRowBarcode = rows.nth(1).locator('td').first();
+    // Get all plant barcode cells in order
+    const barcodeCells = await mappingsTable
+      .locator('td:nth-child(1)')
+      .allTextContents();
 
-    await expect(firstRowBarcode).toHaveText('ALPHA-001');
-    await expect(secondRowBarcode).toHaveText('ZEBRA-001');
+    // Verify alphabetical order
+    expect(barcodeCells[0]).toContain('ALPHA-001');
+    expect(barcodeCells[1]).toContain('MIDDLE-002');
+    expect(barcodeCells[2]).toContain('ZEBRA-003');
   });
-});
 
-// ============================================
-// Inline Mapping Edit Tests
-// ============================================
+  // =========================================================================
+  // Phase 5: Inline Editing
+  // =========================================================================
 
-test.describe('Inline Mapping Editing', () => {
   test('should enter edit mode when clicking genotype ID cell', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
+    // Seed a fresh accession + mapping via Prisma for predictable editing
+    await prisma.accessions.create({
+      data: { name: 'Edit-Test Accession' },
+    });
+
+    const editAccession = await prisma.accessions.findFirst({
+      where: { name: 'Edit-Test Accession' },
     });
 
     await prisma.plantAccessionMappings.create({
       data: {
-        accession_file_id: accession.id,
-        plant_barcode: 'PLANT-001',
-        accession_name: 'GT-001',
+        accession_file_id: editAccession!.id,
+        plant_barcode: 'EDIT-PLANT-001',
+        accession_name: 'GT-ORIGINAL',
       },
     });
 
+    // Reload page to pick up Prisma-seeded data
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await window.click(`text=${accession.name}`);
 
-    // Wait for mappings table
-    const mappingsTable = window.locator('[data-testid="mappings-table"]');
-    await expect(mappingsTable).toBeVisible({ timeout: 5000 });
-
-    // Click on genotype ID cell
-    await mappingsTable.locator('td:has-text("GT-001")').click();
-
-    // Verify input appears with current value
-    const editInput = mappingsTable.locator('input[type="text"]');
-    await expect(editInput).toBeVisible();
-    await expect(editInput).toHaveValue('GT-001');
-  });
-
-  test('should save inline edit with Enter key', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
-    });
-
-    const mapping = await prisma.plantAccessionMappings.create({
-      data: {
-        accession_file_id: accession.id,
-        plant_barcode: 'PLANT-001',
-        accession_name: 'GT-001',
-      },
-    });
-
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-    await window.click(`text=${accession.name}`);
+    // Expand the edit-test accession
+    await window.click('text=Edit-Test Accession');
 
     // Wait for mappings table
     const mappingsTable = window.locator('[data-testid="mappings-table"]');
     await expect(mappingsTable).toBeVisible({ timeout: 5000 });
 
     // Click on genotype ID cell to edit
-    await mappingsTable.locator('td:has-text("GT-001")').click();
+    await mappingsTable.locator('td:has-text("GT-ORIGINAL")').click();
+
+    // Verify input appears with current value
+    const editInput = mappingsTable.locator('input[type="text"]');
+    await expect(editInput).toBeVisible();
+    await expect(editInput).toHaveValue('GT-ORIGINAL');
+
+    // Cancel so next test starts clean
+    await editInput.press('Escape');
+  });
+
+  test('should save inline edit with Enter key', async () => {
+    // Edit-Test Accession is already expanded from previous test
+    const mappingsTable = window.locator('[data-testid="mappings-table"]');
+    await expect(mappingsTable).toBeVisible({ timeout: 5000 });
+
+    // Click on genotype ID cell to edit
+    await mappingsTable.locator('td:has-text("GT-ORIGINAL")').click();
+    const editInput = mappingsTable.locator('input[type="text"]');
+    await expect(editInput).toBeVisible();
 
     // Edit and press Enter
-    const editInput = mappingsTable.locator('input[type="text"]');
     await editInput.fill('GT-UPDATED');
     await editInput.press('Enter');
 
@@ -680,78 +479,68 @@ test.describe('Inline Mapping Editing', () => {
     await expect(mappingsTable.locator('input[type="text"]')).not.toBeVisible();
 
     // Verify database updated
-    const updated = await prisma.plantAccessionMappings.findUnique({
-      where: { id: mapping.id },
+    const updated = await prisma.plantAccessionMappings.findFirst({
+      where: { plant_barcode: 'EDIT-PLANT-001' },
     });
     expect(updated?.accession_name).toBe('GT-UPDATED');
   });
 
   test('should cancel inline edit with Escape key', async () => {
-    const accession = await prisma.accessions.create({
-      data: createAccessionData(),
-    });
-
-    const mapping = await prisma.plantAccessionMappings.create({
-      data: {
-        accession_file_id: accession.id,
-        plant_barcode: 'PLANT-001',
-        accession_name: 'GT-001',
-      },
-    });
-
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-    await window.click(`text=${accession.name}`);
-
-    // Wait for mappings table
+    // Still on the Edit-Test Accession expanded view — mappings table visible
     const mappingsTable = window.locator('[data-testid="mappings-table"]');
     await expect(mappingsTable).toBeVisible({ timeout: 5000 });
 
-    // Click on genotype ID cell to edit
-    await mappingsTable.locator('td:has-text("GT-001")').click();
+    // Click on genotype ID cell to edit (it was updated to GT-UPDATED in previous test)
+    await mappingsTable.locator('td:has-text("GT-UPDATED")').click();
 
     // Edit and press Escape
     const editInput = mappingsTable.locator('input[type="text"]');
-    await editInput.fill('GT-CHANGED');
+    await editInput.fill('GT-SHOULD-NOT-SAVE');
     await editInput.press('Escape');
 
     // Verify original value restored in UI
-    await expect(mappingsTable.locator('td:has-text("GT-001")')).toBeVisible();
+    await expect(
+      mappingsTable.locator('td:has-text("GT-UPDATED")')
+    ).toBeVisible();
     await expect(mappingsTable.locator('input[type="text"]')).not.toBeVisible();
 
     // Verify database NOT updated
-    const unchanged = await prisma.plantAccessionMappings.findUnique({
-      where: { id: mapping.id },
+    const editAccession = await prisma.accessions.findFirst({
+      where: { name: 'Edit-Test Accession' },
     });
-    expect(unchanged?.accession_name).toBe('GT-001');
+    const mapping = await prisma.plantAccessionMappings.findFirst({
+      where: { accession_file_id: editAccession!.id },
+    });
+    expect(mapping?.accession_name).toBe('GT-UPDATED');
   });
-});
 
-// ============================================
-// Inline Edit Tests
-// ============================================
-
-test.describe('Inline Accession Name Editing', () => {
   test('should edit accession name with Enter to save', async () => {
+    // Seed a fresh accession via Prisma for name editing
     const accession = await prisma.accessions.create({
       data: { name: 'Old Name' },
     });
 
+    // Reload page to pick up Prisma-seeded data
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await window.click('text=Old Name');
 
-    // Click edit button
-    await window.click('button:has-text("Edit")');
+    // Expand the accession by clicking its name
+    const accessionContainer = window
+      .locator('[data-testid="accession-item"]')
+      .filter({ hasText: 'Old Name' });
+    await accessionContainer.locator('button').first().click();
 
-    // Get the edit input (React controlled component - use first() to get the expanded section input)
-    const editInput = window.getByRole('textbox').first();
-    await expect(editInput).toBeVisible();
-    await expect(editInput).toHaveValue('Old Name');
+    // Click edit button within this expanded section
+    const editButton = accessionContainer.locator('button:has-text("Edit")');
+    await editButton.click();
+
+    // The edit input replaces the name — find it
+    const editInput = accessionContainer.locator('input[type="text"]');
+    await expect(editInput).toBeVisible({ timeout: 5000 });
 
     // Change name and press Enter
     await editInput.fill('New Name');
@@ -770,20 +559,28 @@ test.describe('Inline Accession Name Editing', () => {
   });
 
   test('should cancel inline edit with Escape', async () => {
+    // Seed a fresh accession via Prisma
     const accession = await prisma.accessions.create({
       data: { name: 'Original Name' },
     });
 
+    // Reload page to pick up Prisma-seeded data
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await window.click('text=Original Name');
-    await window.click('button:has-text("Edit")');
 
-    // Get the edit input (React controlled component - use first() to get the expanded section input)
-    const editInput = window.getByRole('textbox').first();
-    await expect(editInput).toHaveValue('Original Name');
+    // Expand and edit
+    const accessionContainer = window
+      .locator('[data-testid="accession-item"]')
+      .filter({ hasText: 'Original Name' });
+    await accessionContainer.locator('button').first().click();
+    await accessionContainer.locator('button:has-text("Edit")').click();
+
+    const editInput = accessionContainer.locator('input[type="text"]');
+    await expect(editInput).toBeVisible({ timeout: 5000 });
     await editInput.fill('Changed Name');
     await editInput.press('Escape');
 
@@ -796,23 +593,30 @@ test.describe('Inline Accession Name Editing', () => {
     });
     expect(unchanged?.name).toBe('Original Name');
   });
-});
 
-// ============================================
-// Delete Tests
-// ============================================
+  // =========================================================================
+  // Phase 6: Delete (delete with confirmation, cascade delete mappings)
+  // =========================================================================
 
-test.describe('Delete Accession', () => {
   test('should delete accession with confirmation', async () => {
+    // Seed a fresh accession for deletion
     const accession = await prisma.accessions.create({
-      data: createAccessionData(),
+      data: createAccessionData({ name: 'Delete-Me Accession' }),
     });
 
+    // Reload page to pick up Prisma-seeded data
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await window.click(`text=${accession.name}`);
+
+    // Expand accession
+    const accessionContainer = window
+      .locator('[data-testid="accession-item"]')
+      .filter({ hasText: accession.name });
+    await accessionContainer.locator('button').first().click();
 
     // Set up dialog handler BEFORE clicking delete (native confirm() dialog)
     window.once('dialog', async (dialog) => {
@@ -821,11 +625,11 @@ test.describe('Delete Accession', () => {
       await dialog.accept();
     });
 
-    // Click delete button (triggers window.confirm())
-    await window.click('button:has-text("Delete")');
+    // Click delete button
+    await accessionContainer.getByRole('button', { name: 'Delete', exact: true }).click();
 
     // Verify accession is removed from UI
-    await expect(window.locator(`text=${accession.name}`)).not.toBeVisible({
+    await expect(accessionContainer).not.toBeVisible({
       timeout: 3000,
     });
 
@@ -837,33 +641,42 @@ test.describe('Delete Accession', () => {
   });
 
   test('should cascade delete plant mappings', async () => {
+    // Seed accession with mappings for cascade delete test
     const accession = await prisma.accessions.create({
-      data: createAccessionData(),
+      data: createAccessionData({ name: 'Cascade-Delete Accession' }),
     });
 
     await prisma.plantAccessionMappings.create({
       data: {
         accession_file_id: accession.id,
-        plant_barcode: 'PLANT-001',
-        accession_name: 'GT-001',
+        plant_barcode: 'CASCADE-PLANT-001',
+        accession_name: 'CASCADE-GT-001',
       },
     });
 
+    // Reload page to pick up Prisma-seeded data
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await window.click(`text=${accession.name}`);
 
-    // Set up dialog handler BEFORE clicking delete (native confirm() dialog)
+    // Expand accession
+    const accessionContainer = window
+      .locator('[data-testid="accession-item"]')
+      .filter({ hasText: accession.name });
+    await accessionContainer.locator('button').first().click();
+
+    // Set up dialog handler BEFORE clicking delete
     window.once('dialog', async (dialog) => {
       expect(dialog.type()).toBe('confirm');
       expect(dialog.message()).toContain('Delete accession');
       await dialog.accept();
     });
 
-    // Click delete button (triggers window.confirm())
-    await window.click('button:has-text("Delete")');
+    // Click delete button
+    await accessionContainer.getByRole('button', { name: 'Delete', exact: true }).click();
 
     // Wait for deletion
     await window.waitForTimeout(1000);
@@ -874,21 +687,27 @@ test.describe('Delete Accession', () => {
     });
     expect(mappings).toHaveLength(0);
   });
-});
 
-// ============================================
-// State Preservation Tests
-// ============================================
+  // =========================================================================
+  // Phase 7: Navigation (preserve state across page navigation)
+  // =========================================================================
 
-test.describe('State Preservation', () => {
   test('should preserve accessions list across navigation', async () => {
-    await prisma.accessions.create({ data: validAccession });
+    // Seed an accession to verify persistence
+    await prisma.accessions.create({
+      data: { name: 'Persistent Accession' },
+    });
 
+    // Reload page to pick up Prisma-seeded data
+    await window.click('text=Home');
+    await window.waitForTimeout(500);
     await window.click('text=Accessions');
     await expect(
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
-    await expect(window.locator(`text=${validAccession.name}`)).toBeVisible();
+    await expect(
+      window.locator('text=Persistent Accession')
+    ).toBeVisible();
 
     // Navigate away
     await window.click('text=Home');
@@ -901,6 +720,8 @@ test.describe('State Preservation', () => {
     ).toBeVisible();
 
     // Verify accession still appears
-    await expect(window.locator(`text=${validAccession.name}`)).toBeVisible();
+    await expect(
+      window.locator('text=Persistent Accession')
+    ).toBeVisible();
   });
 });

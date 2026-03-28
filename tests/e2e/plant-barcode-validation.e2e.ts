@@ -512,14 +512,14 @@ test.describe('UI: Plant Barcode Validation', () => {
     await window.waitForLoadState('networkidle');
 
     // Wait for dropdowns to load
-    await window.waitForSelector('.experiment-chooser');
-    await window.waitForSelector('.phenotyper-chooser');
+    await window.waitForSelector('#experiment-chooser');
+    await window.waitForSelector('#phenotyper-chooser');
 
     // Select experiment
-    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.selectOption('#experiment-chooser', { index: 1 });
 
     // Select phenotyper
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
 
     // Wait for plant barcodes to be loaded from experiment's accession
     const plantBarcodeInput = window.locator('#plantQrCode');
@@ -571,9 +571,9 @@ test.describe('UI: Plant Barcode Validation', () => {
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
 
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
 
     // Enter a valid plant barcode
     const plantBarcodeInput = window.locator('#plantQrCode');
@@ -634,9 +634,9 @@ test.describe('UI: Duplicate Scan Prevention', () => {
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
 
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
 
     // Enter the already scanned plant barcode
     const plantBarcodeInput = window.locator('#plantQrCode');
@@ -703,8 +703,8 @@ test.describe('UI: Barcode Autocomplete', () => {
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
 
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
 
     // Wait for plant barcodes to be loaded
     const plantBarcodeInput = window.locator('#plantQrCode');
@@ -762,8 +762,8 @@ test.describe('UI: Barcode Autocomplete', () => {
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
 
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
 
     // Wait for plant barcodes to be loaded
     const plantBarcodeInput = window.locator('#plantQrCode');
@@ -820,14 +820,14 @@ test.describe('UI: Accession Requirement for Scanning', () => {
     await window.waitForLoadState('networkidle');
 
     // Wait for dropdowns to load
-    await window.waitForSelector('.experiment-chooser');
-    await window.waitForSelector('.phenotyper-chooser');
+    await window.waitForSelector('#experiment-chooser');
+    await window.waitForSelector('#phenotyper-chooser');
 
     // Select experiment (the one without accession)
-    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.selectOption('#experiment-chooser', { index: 1 });
 
     // Select phenotyper
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
 
     // Enter a plant barcode
     const plantBarcodeInput = window.locator('#plantQrCode');
@@ -873,8 +873,8 @@ test.describe('UI: Accession Requirement for Scanning', () => {
     await window.waitForLoadState('networkidle');
 
     // Select experiment
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
 
     // Should show guidance to link accession file
     await expect(window.locator('text=Link an accession file')).toBeVisible({
@@ -923,14 +923,14 @@ test.describe('UI: Accession Requirement for Scanning', () => {
     await window.waitForLoadState('networkidle');
 
     // Wait for dropdowns to load
-    await window.waitForSelector('.experiment-chooser');
-    await window.waitForSelector('.phenotyper-chooser');
+    await window.waitForSelector('#experiment-chooser');
+    await window.waitForSelector('#phenotyper-chooser');
 
     // Select experiment
-    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.selectOption('#experiment-chooser', { index: 1 });
 
     // Select phenotyper
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
 
     // Enter a valid plant barcode
     const plantBarcodeInput = window.locator('#plantQrCode');
@@ -1225,11 +1225,11 @@ test.describe('UI: Session State Zero Value Persistence', () => {
     await window.waitForLoadState('networkidle');
 
     // Fill in form with waveNumber = 0
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
 
-    await window.waitForSelector('.phenotyper-chooser');
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.waitForSelector('#phenotyper-chooser');
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
 
     // Set wave number to 0 (valid value)
     const waveNumberInput = window.locator('#waveNumber');

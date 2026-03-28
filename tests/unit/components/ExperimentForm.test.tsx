@@ -181,6 +181,7 @@ describe('ExperimentForm', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         name: 'Test Experiment',
         species: 'Alfalfa',
+        experiment_type: 'cylinder',
         scientist: { connect: { id: 'sci-1' } },
         accession: { connect: { id: 'acc-1' } },
       });
