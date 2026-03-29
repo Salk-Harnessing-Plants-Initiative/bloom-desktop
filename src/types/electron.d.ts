@@ -761,6 +761,34 @@ export interface GraviScanAPI {
   }>;
 
   /**
+   * Get current scanner subprocess statuses (ready/error/disconnected per scanner).
+   * Includes saved scanners from DB matched with live subprocess state.
+   */
+  getScannerStatus: () => Promise<{
+    success: boolean;
+    scanners: Array<{
+      scannerId: string;
+      displayName: string;
+      usbPort: string | null;
+      gridMode: string;
+      status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected';
+      error?: string;
+    }>;
+    error?: string;
+  }>;
+
+  /**
+   * Register callback for scanner init status events (fired during auto-init at startup).
+   */
+  onScannerInitStatus: (
+    callback: (data: {
+      scannerId: string;
+      status: string;
+      error?: string;
+    }) => void
+  ) => () => void;
+
+  /**
    * Register callback for when all scanners complete a cycle
    */
   onCycleComplete: (callback: (data: { cycle: number }) => void) => () => void;

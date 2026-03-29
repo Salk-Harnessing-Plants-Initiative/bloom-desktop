@@ -56,6 +56,7 @@ export class ScanCoordinator extends EventEmitter {
   private isPackaged: boolean;
   private mock: boolean;
   private subprocesses: Map<string, ScannerSubprocess> = new Map();
+  private initErrors: Map<string, string> = new Map();
   private state: CoordinatorState = 'idle';
   private intervalTimer: ReturnType<typeof setTimeout> | null = null;
   private cancelled = false;
@@ -75,6 +76,39 @@ export class ScanCoordinator extends EventEmitter {
 
   get isScanning(): boolean {
     return this.state === 'scanning' || this.state === 'waiting';
+  }
+
+  /**
+   * Get the current status of all managed scanner subprocesses,
+   * including ones that failed during initialization.
+   */
+  getScannerStatuses(): Array<{
+    scannerId: string;
+    status: 'ready' | 'starting' | 'error' | 'dead';
+    error?: string;
+  }> {
+    const statuses: Array<{
+      scannerId: string;
+      status: 'ready' | 'starting' | 'error' | 'dead';
+      error?: string;
+    }> = [];
+
+    // Active subprocesses
+    for (const [id, sub] of this.subprocesses) {
+      statuses.push({
+        scannerId: id,
+        status: sub.isReady ? 'ready' : sub.isAlive ? 'starting' : 'dead',
+      });
+    }
+
+    // Failed subprocesses (removed from map but tracked in initErrors)
+    for (const [id, error] of this.initErrors) {
+      if (!this.subprocesses.has(id)) {
+        statuses.push({ scannerId: id, status: 'error', error });
+      }
+    }
+
+    return statuses;
   }
 
   /**
@@ -99,6 +133,9 @@ export class ScanCoordinator extends EventEmitter {
     console.log(
       `[ScanCoordinator] Initializing ${scanners.length} scanner(s)...`
     );
+
+    // Clear previous init errors
+    this.initErrors.clear();
 
     // Phase 1: Reuse ready subprocesses, clean up dead ones (sequential, fast)
     const toSpawn: ScannerConfig[] = [];
@@ -181,6 +218,7 @@ export class ScanCoordinator extends EventEmitter {
                 `[ScanCoordinator] Scanner ${scanner.scannerId} init failed: ${error.message}`
               );
               this.subprocesses.delete(scanner.scannerId);
+              this.initErrors.set(scanner.scannerId, error.message);
               this.emit('scanner-init-status', {
                 scannerId: scanner.scannerId,
                 status: 'error',

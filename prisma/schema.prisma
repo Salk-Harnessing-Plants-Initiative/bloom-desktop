@@ -204,6 +204,7 @@ model GraviScanner {
   usb_port         String?
   usb_bus          Int?
   usb_device       Int?
+  grid_mode        String                    @default("4grid")
   enabled          Boolean                   @default(true)
   createdAt        DateTime                  @default(now())
   updatedAt        DateTime                  @updatedAt

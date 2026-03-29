@@ -61,6 +61,7 @@ export interface GraviScanner {
   usb_port: string | null; // Stable USB port identifier (e.g., "1-2")
   usb_bus: number | null; // USB bus number
   usb_device: number | null; // USB device number (can change on replug)
+  grid_mode: string; // "2grid" or "4grid"
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;

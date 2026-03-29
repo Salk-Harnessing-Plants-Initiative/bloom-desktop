@@ -31,7 +31,7 @@ import {
 } from './python-paths';
 import { initializeDatabase, closeDatabase, getDatabase } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
-import { registerGraviscanHandlers } from './graviscan-handlers';
+import { registerGraviscanHandlers, autoInitScanners } from './graviscan-handlers';
 import { scanLog, cleanupOldLogs, closeScanLog } from './scan-logger';
 import {
   loadEnvConfig,
@@ -1134,6 +1134,14 @@ app.on('ready', async () => {
   } catch (error) {
     console.error('[Scanner Identity] Failed to initialize:', error);
     scannerIdentity.name = '';
+  }
+
+  // Auto-initialize scanner subprocesses from DB config (non-blocking)
+  const database = getDatabase();
+  if (database && scanCoordinator) {
+    autoInitScanners(database, scanCoordinator, mainWindow).catch((err: unknown) =>
+      console.error('[Main] Scanner auto-init failed:', err)
+    );
   }
 });
 

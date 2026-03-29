@@ -443,6 +443,7 @@ export function registerGraviscanHandlers(
         usb_port?: string;
         usb_bus?: number;
         usb_device?: number;
+        grid_mode?: string;
       }>
     ) => {
       try {
@@ -765,6 +766,54 @@ export function registerGraviscanHandlers(
         new: [],
         savedScanners: [],
         detectedScanners: [],
+      };
+    }
+  });
+
+  // ==========================================================================
+  // Scanner Status Query
+  // ==========================================================================
+
+  /**
+   * Get current scanner subprocess statuses.
+   * Called by renderer on page mount to show which scanners are ready/error/disconnected.
+   * Also includes saved scanners from DB that weren't detected (disconnected).
+   */
+  ipcMain.handle('graviscan:get-scanner-status', async () => {
+    try {
+      const coordinator = getCoordinator?.();
+      const subprocessStatuses = coordinator?.getScannerStatuses() ?? [];
+
+      // Load saved scanners from DB to include disconnected ones
+      const savedScanners = await db.graviScanner.findMany({
+        where: { enabled: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const statusMap = new Map(
+        subprocessStatuses.map((s) => [s.scannerId, s])
+      );
+
+      const scanners = savedScanners.map((saved) => {
+        const subprocess = statusMap.get(saved.id);
+        const scanner = saved as GraviScanner;
+        return {
+          scannerId: scanner.id,
+          displayName: scanner.display_name || scanner.name,
+          usbPort: scanner.usb_port,
+          gridMode: scanner.grid_mode,
+          status: subprocess?.status ?? 'disconnected',
+          error: subprocess?.error,
+        };
+      });
+
+      return { success: true, scanners };
+    } catch (error) {
+      console.error('[GraviScan:STATUS] Error:', error);
+      return {
+        success: false,
+        scanners: [],
+        error: error instanceof Error ? error.message : 'Status query failed',
       };
     }
   });
@@ -1335,4 +1384,127 @@ export function registerGraviscanHandlers(
       }
     }
   );
+}
+
+// =============================================================================
+// Auto-Init Scanners at Startup
+// =============================================================================
+
+/**
+ * Auto-initialize scanner subprocesses using persisted DB config.
+ *
+ * Called at app startup (non-blocking). Loads enabled GraviScanner records,
+ * detects current USB scanners via lsusb, matches by usb_port to get fresh
+ * sane_name, and spawns subprocesses in parallel via the coordinator.
+ *
+ * Must be called AFTER registerGraviscanHandlers() so `db` is set.
+ */
+export async function autoInitScanners(
+  database: PrismaClient,
+  coordinator: ScanCoordinator,
+  mainWindow: BrowserWindow | null
+): Promise<void> {
+  // 1. Load saved scanners from database
+  const savedScanners = await database.graviScanner.findMany({
+    where: { enabled: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (savedScanners.length === 0) {
+    console.log('[GraviScan:AUTO-INIT] No saved scanners — skipping auto-init');
+    return;
+  }
+
+  console.log(
+    `[GraviScan:AUTO-INIT] Found ${savedScanners.length} saved scanner(s), detecting USB...`
+  );
+
+  // 2. Detect currently connected scanners
+  const mockEnabled = process.env.GRAVISCAN_MOCK?.toLowerCase() === 'true';
+  let detectedScanners: DetectedScanner[] = [];
+
+  if (mockEnabled) {
+    detectedScanners = savedScanners.map((s, i) => ({
+      name: s.name,
+      scanner_id: s.id,
+      usb_bus: s.usb_bus || 1,
+      usb_device: s.usb_device || i + 1,
+      usb_port: s.usb_port || `1-${i + 1}`,
+      is_available: true,
+      vendor_id: s.vendor_id,
+      product_id: s.product_id,
+      sane_name: `epkowa:interpreter:001:${String(s.usb_device || i + 1).padStart(3, '0')}`,
+    }));
+  } else {
+    const lsusbResult = detectEpsonScanners();
+    if (!lsusbResult.success) {
+      console.error(
+        '[GraviScan:AUTO-INIT] lsusb detection failed:',
+        lsusbResult.error
+      );
+      return;
+    }
+    detectedScanners = lsusbResult.scanners;
+  }
+
+  // 3. Match saved scanners to detected by usb_port
+  const detectedByPort = new Map<string, DetectedScanner>();
+  for (const detected of detectedScanners) {
+    if (detected.usb_port) {
+      detectedByPort.set(detected.usb_port, detected);
+    }
+  }
+
+  const scannerConfigs: ScannerConfig[] = [];
+
+  for (const saved of savedScanners) {
+    if (!saved.usb_port) {
+      console.warn(
+        `[GraviScan:AUTO-INIT] Scanner ${saved.id} has no usb_port, skipping`
+      );
+      continue;
+    }
+
+    const detected = detectedByPort.get(saved.usb_port);
+    if (!detected) {
+      console.warn(
+        `[GraviScan:AUTO-INIT] Scanner ${saved.display_name || saved.name} (port ${saved.usb_port}) not detected — disconnected?`
+      );
+      mainWindow?.webContents.send('graviscan:scanner-init-status', {
+        scannerId: saved.id,
+        status: 'disconnected',
+      });
+      continue;
+    }
+
+    scannerConfigs.push({
+      scannerId: saved.id,
+      saneName: detected.sane_name,
+      plates: [],
+    });
+  }
+
+  if (scannerConfigs.length === 0) {
+    console.warn('[GraviScan:AUTO-INIT] No matching scanners detected, skipping init');
+    return;
+  }
+
+  console.log(
+    `[GraviScan:AUTO-INIT] Initializing ${scannerConfigs.length} scanner(s)...`
+  );
+
+  // Forward coordinator init-status events to renderer
+  const onInitStatus = (event: { scannerId: string; status: string; error?: string }) => {
+    mainWindow?.webContents.send('graviscan:scanner-init-status', event);
+  };
+  coordinator.on('scanner-init-status', onInitStatus);
+
+  try {
+    await coordinator.initialize(scannerConfigs);
+    console.log('[GraviScan:AUTO-INIT] All scanners initialized');
+  } catch (err) {
+    console.error('[GraviScan:AUTO-INIT] Initialization error:', err);
+  } finally {
+    coordinator.removeListener('scanner-init-status', onInitStatus);
+  }
 }

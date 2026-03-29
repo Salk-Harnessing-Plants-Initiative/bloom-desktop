@@ -11,6 +11,7 @@ import { Phenotypers } from './Phenotypers';
 import { Metadata } from './Metadata';
 import { Experiments } from './Experiments';
 import { MachineConfiguration } from './MachineConfiguration';
+import { ConfigureScanner } from './ConfigureScanner';
 import { BrowseScans } from './BrowseScans';
 import { ExperimentDetail } from './ExperimentDetail';
 import { ScanPreview } from './ScanPreview';
@@ -38,6 +39,7 @@ export default function App() {
             />
             <Route path="scan/:scanId" element={<ScanPreview />} />
             <Route path="machine-config" element={<MachineConfiguration />} />
+            <Route path="configure-scanner" element={<ConfigureScanner />} />
           </Route>
         </Routes>
       </Router>

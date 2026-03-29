@@ -428,10 +428,9 @@ export function useScanSession({
           `st=${data.scanStartedAt} et=${data.scanEndedAt}`
         );
 
+        // Snapshot pending writes before adding this one (avoids self-reference)
+        const otherWrites = [...pendingDbWritesRef.current];
         const gridWritePromise: Promise<void> = (async () => {
-          const otherWrites = pendingDbWritesRef.current.filter(
-            (p) => p !== gridWritePromise
-          );
           if (otherWrites.length > 0) {
             await Promise.allSettled(otherWrites);
           }

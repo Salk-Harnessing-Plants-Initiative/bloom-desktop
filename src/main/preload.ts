@@ -479,6 +479,36 @@ const graviscanAPI = {
       waveNumber?: number;
     }>,
 
+  getScannerStatus: () =>
+    ipcRenderer.invoke('graviscan:get-scanner-status') as Promise<{
+      success: boolean;
+      scanners: Array<{
+        scannerId: string;
+        displayName: string;
+        usbPort: string | null;
+        gridMode: string;
+        status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected';
+        error?: string;
+      }>;
+      error?: string;
+    }>,
+
+  onScannerInitStatus: (
+    callback: (data: {
+      scannerId: string;
+      status: string;
+      error?: string;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: { scannerId: string; status: string; error?: string }
+    ) => callback(data);
+    ipcRenderer.on('graviscan:scanner-init-status', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:scanner-init-status', listener);
+  },
+
   // Event listeners for async scan events (push-based from scanner subprocesses)
   onScanStarted: (
     callback: (data: {

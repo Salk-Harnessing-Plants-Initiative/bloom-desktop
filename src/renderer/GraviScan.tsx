@@ -15,11 +15,10 @@ import { ImageLightbox } from './components/ImageLightbox';
 import { useWaveNumber } from './hooks/useWaveNumber';
 import { useContinuousMode } from './hooks/useContinuousMode';
 import { useTestScan } from './hooks/useTestScan';
-import { useScannerConfig } from './hooks/useScannerConfig';
+import { useScannerStatus } from './hooks/useScannerStatus';
 import { usePlateAssignments } from './hooks/usePlateAssignments';
 import { useScanSession } from './hooks/useScanSession';
-import { ConfigStatusBanner } from './components/graviscan/ConfigStatusBanner';
-import { ScannerConfigSection } from './components/graviscan/ScannerConfigSection';
+import { ScannerStatusPanel } from './components/graviscan/ScannerStatusPanel';
 import {
   ScanFormSection,
   type ListItem,
@@ -33,34 +32,16 @@ export function GraviScan() {
   // Scanner configuration (extracted hook)
   const {
     platformInfo,
-    platformLoading,
     detectedScanners,
-    detectingScanner,
-    detectionError,
     scannerAssignments,
     resolution,
     setResolution,
     configSaved,
-    isConfigCollapsed,
     sessionValidated,
     isValidating,
-    validationWarning,
-    configStatus,
-    configValidationMessage,
-    missingScanners,
-    newScanners,
-    matchedScanners,
     resolutionRef,
-    handleDetectScanners,
-    handleResetScannerConfig,
-    handleScannerAssignment,
-    handleScannerGridMode,
-    handleAddScannerSlot,
-    handleRemoveScannerSlot,
-    handleToggleConfigCollapse,
-    handleToggleScannerEnabled,
-    clearValidationWarning,
-  } = useScannerConfig({ setScannerStates });
+    isLoading: platformLoading,
+  } = useScannerStatus();
 
   // Scan form state
   const [experiments, setExperiments] = useState<ListItem[]>([]);
@@ -355,13 +336,42 @@ export function GraviScan() {
 
   return (
     <div className="space-y-6">
-      <ConfigStatusBanner
-        configStatus={configStatus}
-        configValidationMessage={configValidationMessage}
-        missingScanners={missingScanners}
-        newScanners={newScanners}
-        matchedScanners={matchedScanners}
-        platformInfo={platformInfo}
+      {isScanning && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <svg
+              className="animate-spin h-5 w-5 text-blue-500 mr-3"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <span className="text-blue-700 text-sm font-medium">
+              Scan in Progress
+            </span>
+          </div>
+        </div>
+      )}
+
+      <ScannerStatusPanel
+        isTesting={isTesting}
+        testPhase={testPhase}
+        testResults={testResults}
+        testComplete={testComplete}
+        handleTestAllScanners={handleTestAllScanners}
+        isScanning={isScanning}
       />
 
       {/* Scanner Preview Section - Main visual display */}
@@ -415,31 +425,7 @@ export function GraviScan() {
         />
       )}
 
-      <ScannerConfigSection
-        isConfigCollapsed={isConfigCollapsed}
-        configSaved={configSaved}
-        scannerAssignments={scannerAssignments}
-        resolution={resolution}
-        setResolution={setResolution}
-        validationWarning={validationWarning}
-        detectedScanners={detectedScanners}
-        detectingScanner={detectingScanner}
-        detectionError={detectionError}
-        isTesting={isTesting}
-        testPhase={testPhase}
-        testResults={testResults}
-        testComplete={testComplete}
-        isScanning={isScanning}
-        handleToggleConfigCollapse={handleToggleConfigCollapse}
-        handleResetScannerConfig={handleResetScannerConfig}
-        handleDetectScanners={handleDetectScanners}
-        handleScannerAssignment={handleScannerAssignment}
-        handleScannerGridMode={handleScannerGridMode}
-        handleAddScannerSlot={handleAddScannerSlot}
-        handleRemoveScannerSlot={handleRemoveScannerSlot}
-        clearValidationWarning={clearValidationWarning}
-        handleTestAllScanners={handleTestAllScanners}
-      />
+      {/* Scanner config section removed — configure scanners in Machine Config */}
 
       {/* Scan Section */}
       <div
@@ -561,7 +547,7 @@ export function GraviScan() {
           scanSuccess={scanSuccess}
           sessionValidated={sessionValidated}
           scannerStates={scannerStates}
-          handleToggleScannerEnabled={handleToggleScannerEnabled}
+          handleToggleScannerEnabled={() => {}}
           isScanning={isScanning}
           canScan={canScan}
           isFormValid={isFormValid}
