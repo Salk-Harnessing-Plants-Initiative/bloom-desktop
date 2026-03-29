@@ -89,9 +89,17 @@ export function useScannerStatus(): UseScannerStatusReturn {
         setScannerAssignments(assignments);
 
         // Build detectedScanners from DB + validation
+        // Map detected scanners to DB IDs so useTestScan can match them
         const validateResult = await window.electron.graviscan.validateConfig();
-        if (validateResult.success && validateResult.detectedScanners) {
-          setDetectedScanners(validateResult.detectedScanners);
+        if (validateResult.success) {
+          // Use matched scanners — they have both DB ID and fresh sane_name
+          const detected = (validateResult.matched || []).map(
+            (m: { saved: { id: string }; detected: DetectedScanner }) => ({
+              ...m.detected,
+              scanner_id: m.saved.id, // Map DB UUID onto detected scanner
+            })
+          );
+          setDetectedScanners(detected);
         }
       }
 
