@@ -132,6 +132,110 @@ function loadPrismaClient(): typeof PrismaClientType {
 let prisma: InstanceType<typeof PrismaClientType> | null = null;
 
 /**
+ * Run pending migrations on the database.
+ *
+ * Reads migration SQL files from the bundled migrations directory and
+ * executes any that haven't been applied yet. Uses a _prisma_migrations
+ * table to track which migrations have run (matching Prisma's own format).
+ *
+ * This is needed because the packaged app doesn't include the Prisma CLI
+ * or migration engine — only the query engine for runtime queries.
+ */
+async function runMigrations(
+  client: InstanceType<typeof PrismaClientType>
+): Promise<void> {
+  // Find migrations directory
+  const migrationsDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'migrations')
+    : path.join(app.getAppPath(), 'prisma', 'migrations');
+
+  if (!fs.existsSync(migrationsDir)) {
+    console.log('[Database] No migrations directory found at:', migrationsDir);
+    return;
+  }
+
+  // Ensure _prisma_migrations table exists
+  await client.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "checksum" TEXT NOT NULL,
+      "finished_at" DATETIME,
+      "migration_name" TEXT NOT NULL UNIQUE,
+      "logs" TEXT,
+      "rolled_back_at" DATETIME,
+      "started_at" DATETIME NOT NULL DEFAULT current_timestamp,
+      "applied_steps_count" INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  // Get already-applied migrations
+  const applied: Array<{ migration_name: string }> =
+    await client.$queryRawUnsafe(
+      'SELECT migration_name FROM "_prisma_migrations" WHERE rolled_back_at IS NULL'
+    );
+  const appliedSet = new Set(applied.map((m) => m.migration_name));
+
+  // Read migration directories (sorted alphabetically = chronological order)
+  const entries = fs
+    .readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  let migrationsRun = 0;
+
+  for (const entry of entries) {
+    if (appliedSet.has(entry.name)) continue;
+
+    const sqlPath = path.join(migrationsDir, entry.name, 'migration.sql');
+    if (!fs.existsSync(sqlPath)) continue;
+
+    const sql = fs.readFileSync(sqlPath, 'utf-8');
+    console.log(`[Database] Applying migration: ${entry.name}`);
+
+    try {
+      // Split on semicolons, strip SQL comments, and execute each statement
+      const statements = sql
+        .split(';')
+        .map((s) =>
+          s
+            .split('\n')
+            .filter((line) => !line.trimStart().startsWith('--'))
+            .join('\n')
+            .trim()
+        )
+        .filter((s) => s.length > 0);
+
+      for (const stmt of statements) {
+        await client.$executeRawUnsafe(stmt);
+      }
+
+      // Record migration as applied
+      const { randomUUID } = await import('crypto');
+      const id = randomUUID();
+      await client.$executeRawUnsafe(
+        `INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, applied_steps_count)
+         VALUES (?, ?, datetime('now'), ?, 1)`,
+        id,
+        'bundled',
+        entry.name
+      );
+
+      migrationsRun++;
+      console.log(`[Database] Applied migration: ${entry.name}`);
+    } catch (error) {
+      console.error(`[Database] Migration ${entry.name} failed:`, error);
+      throw error;
+    }
+  }
+
+  if (migrationsRun > 0) {
+    console.log(`[Database] Applied ${migrationsRun} migration(s)`);
+  } else {
+    console.log('[Database] All migrations already applied');
+  }
+}
+
+/**
  * Get the database path based on configuration.
  *
  * Priority:
@@ -270,10 +374,7 @@ export async function initializeDatabaseAsync(
 }
 
 /**
- * Initialize the database and ensure data directory exists (sync version).
- *
- * NOTE: This is the legacy synchronous version. For new code, prefer
- * initializeDatabaseAsync() which includes auto-schema setup.
+ * Initialize the database and ensure data directory exists.
  *
  * Creates the database directory if it doesn't exist and initializes
  * the Prisma Client. In production, database is stored at:
@@ -284,9 +385,9 @@ export async function initializeDatabaseAsync(
  * @param customPath - Optional custom database path (for testing)
  * @returns PrismaClient instance
  */
-export function initializeDatabase(
+export async function initializeDatabase(
   customPath?: string
-): InstanceType<typeof PrismaClientType> {
+): Promise<InstanceType<typeof PrismaClientType>> {
   if (prisma) {
     console.log('[Database] Already initialized');
     return prisma;
@@ -310,10 +411,13 @@ export function initializeDatabase(
     // This is a common developer-friendly format but file:// URLs only support absolute paths
     const relativeMatch = envUrl.match(/^file:(\.\.?\/.*)$/);
     if (relativeMatch) {
-      const relativePath = relativeMatch[1]; // "./prisma/dev.db"
-      dbPath = path.resolve(app.getAppPath(), relativePath);
+      const relativePath = relativeMatch[1]; // "./dev.db"
+      // Prisma CLI resolves relative paths from the schema directory (prisma/),
+      // so we must do the same to ensure both use the same database file
+      const prismaDir = path.resolve(app.getAppPath(), 'prisma');
+      dbPath = path.resolve(prismaDir, relativePath);
       console.log(
-        '[Database] Using BLOOM_DATABASE_URL (relative):',
+        '[Database] Using BLOOM_DATABASE_URL (relative to prisma/):',
         relativePath,
         '->',
         dbPath
@@ -401,6 +505,12 @@ export function initializeDatabase(
   });
 
   console.log('[Database] Initialized at:', dbPath);
+
+  // Run pending migrations (creates tables on fresh install)
+  // Skip when running outside Electron (e.g., ts-node integration tests)
+  if (typeof app !== 'undefined' && app !== null) {
+    await runMigrations(prisma);
+  }
 
   return prisma;
 }

@@ -544,7 +544,7 @@ test.describe('ExperimentChooser Component', () => {
     ).toBeVisible();
 
     // Find the experiment chooser dropdown
-    const experimentSelect = window.locator('select.experiment-chooser');
+    const experimentSelect = window.locator('select#experiment-chooser');
     await expect(experimentSelect).toBeVisible();
 
     // Get options
@@ -560,7 +560,7 @@ test.describe('ExperimentChooser Component', () => {
     await window.click('text=Capture Scan');
 
     // Find the experiment chooser
-    const experimentSelect = window.locator('select.experiment-chooser');
+    const experimentSelect = window.locator('select#experiment-chooser');
     await expect(experimentSelect).toBeVisible();
 
     // Verify placeholder option
@@ -577,7 +577,7 @@ test.describe('ExperimentChooser Component', () => {
     await window.click('text=Capture Scan');
 
     // Find the experiment chooser
-    const experimentSelect = window.locator('select.experiment-chooser');
+    const experimentSelect = window.locator('select#experiment-chooser');
     await expect(experimentSelect).toBeVisible();
 
     // Verify amber border class when unselected
@@ -594,7 +594,7 @@ test.describe('ExperimentChooser Component', () => {
     await window.click('text=Capture Scan');
 
     // Find and select experiment
-    const experimentSelect = window.locator('select.experiment-chooser');
+    const experimentSelect = window.locator('select#experiment-chooser');
     await experimentSelect.selectOption({ label: 'Test Selection' });
 
     // Verify gray border class when selected
@@ -621,7 +621,7 @@ test.describe('PhenotyperChooser Component', () => {
     ).toBeVisible();
 
     // Find the phenotyper chooser dropdown
-    const phenotyperSelect = window.locator('select.phenotyper-chooser');
+    const phenotyperSelect = window.locator('select#phenotyper-chooser');
     await expect(phenotyperSelect).toBeVisible();
 
     // Get options
@@ -637,7 +637,7 @@ test.describe('PhenotyperChooser Component', () => {
     await window.click('text=Capture Scan');
 
     // Find the phenotyper chooser
-    const phenotyperSelect = window.locator('select.phenotyper-chooser');
+    const phenotyperSelect = window.locator('select#phenotyper-chooser');
     await expect(phenotyperSelect).toBeVisible();
 
     // Verify placeholder option
@@ -654,7 +654,7 @@ test.describe('PhenotyperChooser Component', () => {
     await window.click('text=Capture Scan');
 
     // Find the phenotyper chooser
-    const phenotyperSelect = window.locator('select.phenotyper-chooser');
+    const phenotyperSelect = window.locator('select#phenotyper-chooser');
     await expect(phenotyperSelect).toBeVisible();
 
     // Verify amber border class when unselected
@@ -671,7 +671,7 @@ test.describe('PhenotyperChooser Component', () => {
     await window.click('text=Capture Scan');
 
     // Find and select phenotyper
-    const phenotyperSelect = window.locator('select.phenotyper-chooser');
+    const phenotyperSelect = window.locator('select#phenotyper-chooser');
     await phenotyperSelect.selectOption({ label: 'Test Phenotyper' });
 
     // Verify gray border class when selected
@@ -685,7 +685,7 @@ test.describe('CaptureScan Integration', () => {
     await window.click('text=Capture Scan');
 
     // Verify ExperimentChooser (select) exists
-    const experimentSelect = window.locator('select.experiment-chooser');
+    const experimentSelect = window.locator('select#experiment-chooser');
     await expect(experimentSelect).toBeVisible();
 
     // Verify text input does NOT exist for experiment
@@ -698,7 +698,7 @@ test.describe('CaptureScan Integration', () => {
     await window.click('text=Capture Scan');
 
     // Verify PhenotyperChooser (select) exists
-    const phenotyperSelect = window.locator('select.phenotyper-chooser');
+    const phenotyperSelect = window.locator('select#phenotyper-chooser');
     await expect(phenotyperSelect).toBeVisible();
 
     // Verify text input does NOT exist for phenotyper

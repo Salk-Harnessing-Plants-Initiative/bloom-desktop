@@ -26,7 +26,7 @@ interface ExperimentChooserProps {
 /**
  * ExperimentChooser Component
  *
- * Dropdown for selecting experiments in CaptureScan.
+ * Dropdown for selecting experiments in CylinderScan.
  * - Polls for experiments every 10 seconds
  * - Shows amber border when unselected, gray when selected
  * - Shows checkmark (✓) indicator for experiments with accessions attached
