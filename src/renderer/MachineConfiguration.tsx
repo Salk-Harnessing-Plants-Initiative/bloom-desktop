@@ -322,140 +322,179 @@ export function MachineConfiguration() {
               />
             </div>
 
-            {/* Fetch Scanners Button */}
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <button
-                onClick={fetchScanners}
-                disabled={
-                  !config.bloom_scanner_username ||
-                  !config.bloom_scanner_password ||
-                  !config.bloom_anon_key ||
-                  !config.bloom_api_url ||
-                  scannerListLoading
-                }
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {scannerListLoading ? (
-                  <>
-                    <svg
-                      className="animate-spin h-5 w-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Fetching scanners...
-                  </>
-                ) : (
-                  'Fetch Scanners from Bloom'
-                )}
-              </button>
-              {scannerList.length > 0 && !scannerListLoading && (
-                <p className="text-green-600 text-sm mt-2">
-                  ✓ Found {scannerList.length} scanner
-                  {scannerList.length !== 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Station Identity Section */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-4 text-gray-800">
-            Station Identity
-          </h2>
-
-          <div>
-            <label
-              htmlFor="scanner-name"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Scanner Name
-            </label>
-            {scannerListLoading ? (
-              <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
-                Loading scanners...
-              </div>
-            ) : scannerListError ? (
-              <>
-                <select
-                  id="scanner-name"
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
-                >
-                  <option>Unable to load scanners</option>
-                </select>
-                <p className="text-red-600 text-sm mt-1">
-                  ⚠️ {scannerListError}
-                </p>
+            {/* Fetch Scanners Button — Cylinder Scan only (populates scanner name dropdown) */}
+            {APP_MODE !== 'graviscan' && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
                 <button
                   onClick={fetchScanners}
-                  className="mt-2 px-4 py-2 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 text-sm"
-                >
-                  Retry
-                </button>
-              </>
-            ) : scannerList.length === 0 ? (
-              <>
-                <select
-                  id="scanner-name"
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
-                >
-                  <option>Enter credentials first</option>
-                </select>
-                <p className="text-gray-500 text-sm mt-1">
-                  Configure Bloom API credentials above to select a scanner.
-                </p>
-              </>
-            ) : (
-              <>
-                <select
-                  id="scanner-name"
-                  value={config.scanner_name}
-                  onChange={(e) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      scanner_name: e.target.value,
-                    }))
+                  disabled={
+                    !config.bloom_scanner_username ||
+                    !config.bloom_scanner_password ||
+                    !config.bloom_anon_key ||
+                    !config.bloom_api_url ||
+                    scannerListLoading
                   }
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.scanner_name ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  disabled={scannerList.length === 0}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  <option value="">Select a scanner...</option>
-                  {scannerList.map((scanner) => (
-                    <option key={scanner.name} value={scanner.name}>
-                      {scanner.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.scanner_name && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.scanner_name}
+                  {scannerListLoading ? (
+                    <>
+                      <svg
+                        className="animate-spin h-5 w-5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      Fetching scanners...
+                    </>
+                  ) : (
+                    'Fetch Scanners from Bloom'
+                  )}
+                </button>
+                {scannerList.length > 0 && !scannerListLoading && (
+                  <p className="text-green-600 text-sm mt-2">
+                    ✓ Found {scannerList.length} scanner
+                    {scannerList.length !== 1 ? 's' : ''}
                   </p>
                 )}
-                <p className="text-gray-500 text-sm mt-1">
-                  Scanner station registered in Bloom database
-                </p>
-              </>
+              </div>
             )}
           </div>
         </div>
+
+        {/* Station Identity Section — Cylinder Scan only */}
+        {APP_MODE !== 'graviscan' && (
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-4 text-gray-800">
+              Station Identity
+            </h2>
+
+            <div>
+              <label
+                htmlFor="scanner-name"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Scanner Name
+              </label>
+              {scannerListLoading ? (
+                <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
+                  Loading scanners...
+                </div>
+              ) : scannerListError ? (
+                <>
+                  <select
+                    id="scanner-name"
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                  >
+                    <option>Unable to load scanners</option>
+                  </select>
+                  <p className="text-red-600 text-sm mt-1">
+                    ⚠️ {scannerListError}
+                  </p>
+                  <button
+                    onClick={fetchScanners}
+                    className="mt-2 px-4 py-2 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 text-sm"
+                  >
+                    Retry
+                  </button>
+                </>
+              ) : scannerList.length === 0 ? (
+                <>
+                  <select
+                    id="scanner-name"
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                  >
+                    <option>Enter credentials first</option>
+                  </select>
+                  <p className="text-gray-500 text-sm mt-1">
+                    Configure Bloom API credentials above to select a scanner.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <select
+                    id="scanner-name"
+                    value={config.scanner_name}
+                    onChange={(e) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        scanner_name: e.target.value,
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.scanner_name ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                    disabled={scannerList.length === 0}
+                  >
+                    <option value="">Select a scanner...</option>
+                    {scannerList.map((scanner) => (
+                      <option key={scanner.name} value={scanner.name}>
+                        {scanner.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.scanner_name && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {errors.scanner_name}
+                    </p>
+                  )}
+                  <p className="text-gray-500 text-sm mt-1">
+                    Scanner station registered in Bloom database
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* GraviScan System Name — GraviScan mode only */}
+        {(APP_MODE === 'graviscan' || APP_MODE === 'full') && (
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-4 text-gray-800">
+              GraviScan Settings
+            </h2>
+
+            <div>
+              <label
+                htmlFor="graviscan-system-name"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                System Name
+              </label>
+              <input
+                id="graviscan-system-name"
+                type="text"
+                value={config.graviscan_system_name}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    graviscan_system_name: e.target.value,
+                  }))
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., GraviScan-Lab1"
+              />
+              <p className="text-gray-500 text-sm mt-1">
+                Identifier for this GraviScan station (used in uploads and Box
+                backup)
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Hardware Section */}
         <div className="bg-white p-6 rounded-lg shadow">
