@@ -420,11 +420,12 @@ export function Layout() {
                 to={link.to}
                 end
                 onClick={(e) => {
-                  if (isUploadActive) e.preventDefault();
+                  if (isUploadActive || scanStatus?.isActive)
+                    e.preventDefault();
                 }}
                 className={({ isActive }) =>
                   `flex items-center px-6 py-3 transition-colors ${
-                    isUploadActive
+                    isUploadActive || scanStatus?.isActive
                       ? 'text-gray-400 cursor-not-allowed pointer-events-auto'
                       : `text-gray-700 hover:bg-blue-50 hover:text-blue-600 ${
                           isActive
