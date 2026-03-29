@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { DetectedScanner } from '../types/graviscan';
 import { GRAVISCAN_RESOLUTIONS } from '../types/graviscan';
 
@@ -69,12 +70,13 @@ export function ConfigureScanner() {
   }, []);
 
   // Check URL params for reset flag
+  const [searchParams] = useSearchParams();
   useEffect(() => {
-    if (window.location.hash.includes('reset=true')) {
+    if (searchParams.get('reset') === 'true') {
       setScanners([]);
       setSaveSuccess(false);
     }
-  }, []);
+  }, [searchParams]);
 
   // Detect scanners → auto-assign labels → save to DB
   const handleDetect = async () => {

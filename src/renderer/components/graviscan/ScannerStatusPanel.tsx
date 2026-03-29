@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { TestResult } from '../../hooks/useTestScan';
 
 interface ScannerStatus {
@@ -27,6 +28,7 @@ export function ScannerStatusPanel({
   handleTestAllScanners,
   isScanning,
 }: ScannerStatusPanelProps) {
+  const navigate = useNavigate();
   const [scanners, setScanners] = useState<ScannerStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -106,12 +108,12 @@ export function ScannerStatusPanel({
           <p className="text-amber-700 font-medium">No scanners configured</p>
           <p className="text-amber-600 text-sm mt-1">
             Configure scanners in{' '}
-            <a
-              href="#/configure-scanner"
+            <button
+              onClick={() => navigate('/configure-scanner')}
               className="underline font-medium hover:text-amber-800"
             >
               Configure Scanner
-            </a>{' '}
+            </button>{' '}
             to start scanning.
           </p>
         </div>
@@ -126,12 +128,12 @@ export function ScannerStatusPanel({
           Scanner Status
         </h3>
         <div className="flex items-center gap-3">
-          <a
-            href="#/configure-scanner?reset=true"
+          <button
+            onClick={() => navigate('/configure-scanner?reset=true')}
             className="text-xs text-blue-600 hover:text-blue-800 underline"
           >
             Reconfigure Scanners
-          </a>
+          </button>
           <button
             onClick={handleTestAllScanners}
             disabled={isTesting || isScanning || readyScanners.length === 0}
