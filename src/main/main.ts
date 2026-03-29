@@ -7,6 +7,11 @@
  * - IPC handlers for Python communication
  */
 
+// Suppress GLib-GObject warnings on Linux (harmless GTK threading noise in Electron)
+if (process.platform === 'linux') {
+  process.env.GDK_BACKEND = process.env.GDK_BACKEND || 'x11';
+}
+
 import log from 'electron-log/main';
 Object.assign(console, log.functions);
 
@@ -31,7 +36,10 @@ import {
 } from './python-paths';
 import { initializeDatabase, closeDatabase, getDatabase } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
-import { registerGraviscanHandlers, autoInitScanners } from './graviscan-handlers';
+import {
+  registerGraviscanHandlers,
+  autoInitScanners,
+} from './graviscan-handlers';
 import { scanLog, cleanupOldLogs, closeScanLog } from './scan-logger';
 import {
   loadEnvConfig,
@@ -1139,8 +1147,8 @@ app.on('ready', async () => {
   // Auto-initialize scanner subprocesses from DB config (non-blocking)
   const database = getDatabase();
   if (database && scanCoordinator) {
-    autoInitScanners(database, scanCoordinator, mainWindow).catch((err: unknown) =>
-      console.error('[Main] Scanner auto-init failed:', err)
+    autoInitScanners(database, scanCoordinator, mainWindow).catch(
+      (err: unknown) => console.error('[Main] Scanner auto-init failed:', err)
     );
   }
 });

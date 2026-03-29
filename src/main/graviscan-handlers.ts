@@ -1100,44 +1100,54 @@ export function registerGraviscanHandlers(
   /**
    * Read a scan image file and return as base64 data URI.
    * Used for displaying test scan previews in the renderer.
+   *
+   * Uses a sequential queue to prevent concurrent sharp/libvips decodes
+   * which cause GLib threading crashes on Linux.
    */
+  let imageLoadQueue: Promise<unknown> = Promise.resolve();
+
   ipcMain.handle(
     'graviscan:read-scan-image',
-    async (_event, filePath: string, options?: { full?: boolean }) => {
-      try {
-        // Resolve file path — handle stale DB paths (missing _et_, wrong extension)
-        const resolvedPath = resolveGraviScanPath(filePath);
-        if (!resolvedPath) {
-          console.log(
-            `[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`
-          );
-          return { success: false, error: 'File not found' };
+    (_event, filePath: string, options?: { full?: boolean }) => {
+      // Queue sequential processing — concurrent sharp decodes crash on Linux
+      const result = (imageLoadQueue = imageLoadQueue.then(async () => {
+        try {
+          // Resolve file path — handle stale DB paths (missing _et_, wrong extension)
+          const resolvedPath = resolveGraviScanPath(filePath);
+          if (!resolvedPath) {
+            console.log(
+              `[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`
+            );
+            return { success: false, error: 'File not found' };
+          }
+          if (resolvedPath !== filePath) {
+            console.log(
+              `[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`
+            );
+            filePath = resolvedPath;
+          }
+          // Convert TIFF to JPEG for preview — resize to 400px thumbnail to avoid ~212MB native alloc per decode
+          const quality = options?.full ? 95 : 85;
+          const pipeline = sharp(filePath);
+          if (!options?.full) {
+            pipeline.resize(400, null, { withoutEnlargement: true });
+          }
+          const jpegBuffer = await pipeline.jpeg({ quality }).toBuffer();
+          const base64 = jpegBuffer.toString('base64');
+          return {
+            success: true,
+            dataUri: `data:image/jpeg;base64,${base64}`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error:
+              error instanceof Error ? error.message : 'Failed to read image',
+          };
         }
-        if (resolvedPath !== filePath) {
-          console.log(
-            `[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`
-          );
-          filePath = resolvedPath;
-        }
-        // Convert TIFF to JPEG for preview — resize to 400px thumbnail to avoid ~212MB native alloc per decode
-        const quality = options?.full ? 95 : 85;
-        const pipeline = sharp(filePath);
-        if (!options?.full) {
-          pipeline.resize(400, null, { withoutEnlargement: true });
-        }
-        const jpegBuffer = await pipeline.jpeg({ quality }).toBuffer();
-        const base64 = jpegBuffer.toString('base64');
-        return {
-          success: true,
-          dataUri: `data:image/jpeg;base64,${base64}`,
-        };
-      } catch (error) {
-        return {
-          success: false,
-          error:
-            error instanceof Error ? error.message : 'Failed to read image',
-        };
-      }
+      }));
+
+      return result;
     }
   );
 
@@ -1485,7 +1495,9 @@ export async function autoInitScanners(
   }
 
   if (scannerConfigs.length === 0) {
-    console.warn('[GraviScan:AUTO-INIT] No matching scanners detected, skipping init');
+    console.warn(
+      '[GraviScan:AUTO-INIT] No matching scanners detected, skipping init'
+    );
     return;
   }
 
@@ -1494,7 +1506,11 @@ export async function autoInitScanners(
   );
 
   // Forward coordinator init-status events to renderer
-  const onInitStatus = (event: { scannerId: string; status: string; error?: string }) => {
+  const onInitStatus = (event: {
+    scannerId: string;
+    status: string;
+    error?: string;
+  }) => {
     mainWindow?.webContents.send('graviscan:scanner-init-status', event);
   };
   coordinator.on('scanner-init-status', onInitStatus);
