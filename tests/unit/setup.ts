@@ -7,6 +7,10 @@ import '@testing-library/jest-dom';
 import { vi, afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
+// Define Webpack globals that are injected via DefinePlugin at build time
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).APP_MODE = 'full';
+
 // Cleanup after each test
 afterEach(() => {
   cleanup();

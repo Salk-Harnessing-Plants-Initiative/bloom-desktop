@@ -5,32 +5,42 @@ import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import { Layout } from './Layout';
 import { Home } from './Home';
 import { CameraSettings } from './CameraSettings';
-import { CaptureScan } from './CaptureScan';
+import { Scanning } from './Scanning';
 import { Scientists } from './Scientists';
 import { Phenotypers } from './Phenotypers';
-import { Accessions } from './Accessions';
+import { Metadata } from './Metadata';
 import { Experiments } from './Experiments';
-import { BrowseScans } from './BrowseScans';
-import { ScanPreview } from './ScanPreview';
 import { MachineConfiguration } from './MachineConfiguration';
+import { BrowseScans } from './BrowseScans';
+import { ExperimentDetail } from './ExperimentDetail';
+import { ScanPreview } from './ScanPreview';
+import { UploadStatusProvider } from './contexts/UploadStatusContext';
 
 export default function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="camera-settings" element={<CameraSettings />} />
-          <Route path="capture-scan" element={<CaptureScan />} />
-          <Route path="scientists" element={<Scientists />} />
-          <Route path="phenotypers" element={<Phenotypers />} />
-          <Route path="accessions" element={<Accessions />} />
-          <Route path="experiments" element={<Experiments />} />
-          <Route path="browse-scans" element={<BrowseScans />} />
-          <Route path="scan/:scanId" element={<ScanPreview />} />
-          <Route path="machine-config" element={<MachineConfiguration />} />
-        </Route>
-      </Routes>
-    </Router>
+    <UploadStatusProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Home />} />
+            {APP_MODE !== 'graviscan' && (
+              <Route path="camera-settings" element={<CameraSettings />} />
+            )}
+            <Route path="scanning" element={<Scanning />} />
+            <Route path="scientists" element={<Scientists />} />
+            <Route path="phenotypers" element={<Phenotypers />} />
+            <Route path="metadata" element={<Metadata />} />
+            <Route path="experiments" element={<Experiments />} />
+            <Route path="browse-scans" element={<BrowseScans />} />
+            <Route
+              path="browse-scans/:experimentId"
+              element={<ExperimentDetail />}
+            />
+            <Route path="scan/:scanId" element={<ScanPreview />} />
+            <Route path="machine-config" element={<MachineConfiguration />} />
+          </Route>
+        </Routes>
+      </Router>
+    </UploadStatusProvider>
   );
 }
