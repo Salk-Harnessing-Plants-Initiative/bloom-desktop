@@ -2,7 +2,7 @@
  * Scan Coordinator
  *
  * Orchestrates multiple ScannerSubprocess instances for parallel scanning.
- * Handles staggered subprocess startup, simultaneous scan triggers,
+ * Handles parallel subprocess initialization, simultaneous scan triggers,
  * interval/continuous mode timing, and cleanup.
  *
  * Usage:
@@ -78,9 +78,10 @@ export class ScanCoordinator extends EventEmitter {
   }
 
   /**
-   * Staggered initialization: spawn subprocesses one at a time,
-   * waiting for each to signal ready before starting the next.
-   * This prevents SANE init contention.
+   * Parallel initialization: spawn all subprocesses concurrently.
+   * Each subprocess is an independent OS process with its own SANE context
+   * targeting a distinct physical USB device, so no sequential ordering is needed.
+   * Reuse/cleanup of existing subprocesses is done first (sequential, fast).
    */
   async initialize(scanners: ScannerConfig[]): Promise<void> {
     this.state = 'initializing';
@@ -99,10 +100,12 @@ export class ScanCoordinator extends EventEmitter {
       `[ScanCoordinator] Initializing ${scanners.length} scanner(s)...`
     );
 
+    // Phase 1: Reuse ready subprocesses, clean up dead ones (sequential, fast)
+    const toSpawn: ScannerConfig[] = [];
+
     for (const scanner of scanners) {
       if (this.cancelled) break;
 
-      // Reuse existing subprocess if it's still alive and ready
       const existing = this.subprocesses.get(scanner.scannerId);
       if (existing && existing.isReady) {
         console.log(
@@ -111,7 +114,6 @@ export class ScanCoordinator extends EventEmitter {
         continue;
       }
 
-      // Shut down dead/stuck subprocess before respawning
       if (existing) {
         console.log(
           `[ScanCoordinator] Scanner ${scanner.scannerId} subprocess not ready, respawning`
@@ -121,44 +123,88 @@ export class ScanCoordinator extends EventEmitter {
         this.subprocesses.delete(scanner.scannerId);
       }
 
-      const sub = new ScannerSubprocess(
-        this.pythonPath,
-        this.isPackaged,
-        scanner.scannerId,
-        scanner.saneName,
-        this.mock
-      );
+      toSpawn.push(scanner);
+    }
 
-      // Forward all events, injecting cycle number and per-grid timestamps
-      sub.on('event', (event: ScanWorkerEvent) => {
-        this.emit('scan-event', {
-          ...event,
-          cycle_number: this.currentCycle,
-          scan_started_at: this.currentGridStartedAt,
-          scan_ended_at: this.currentGridEndedAt,
-        });
-      });
-
-      sub.on('exit', (info: { scannerId: string; code: number | null }) => {
-        console.log(
-          `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
-        );
-        this.subprocesses.delete(info.scannerId);
-      });
-
-      this.subprocesses.set(scanner.scannerId, sub);
-
+    // Phase 2: Spawn all new subprocesses in parallel
+    if (toSpawn.length > 0 && !this.cancelled) {
       console.log(
-        `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
+        `[ScanCoordinator] Spawning ${toSpawn.length} subprocess(es) in parallel...`
       );
-      await sub.spawn();
-      console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} ready`);
+
+      const spawnResults = await Promise.allSettled(
+        toSpawn.map((scanner) => {
+          const sub = new ScannerSubprocess(
+            this.pythonPath,
+            this.isPackaged,
+            scanner.scannerId,
+            scanner.saneName,
+            this.mock
+          );
+
+          // Forward all events, injecting cycle number and per-grid timestamps
+          sub.on('event', (event: ScanWorkerEvent) => {
+            this.emit('scan-event', {
+              ...event,
+              cycle_number: this.currentCycle,
+              scan_started_at: this.currentGridStartedAt,
+              scan_ended_at: this.currentGridEndedAt,
+            });
+          });
+
+          sub.on('exit', (info: { scannerId: string; code: number | null }) => {
+            console.log(
+              `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
+            );
+            this.subprocesses.delete(info.scannerId);
+          });
+
+          this.subprocesses.set(scanner.scannerId, sub);
+
+          console.log(
+            `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
+          );
+
+          return sub
+            .spawn()
+            .then(() => {
+              console.log(
+                `[ScanCoordinator] Scanner ${scanner.scannerId} ready`
+              );
+              this.emit('scanner-init-status', {
+                scannerId: scanner.scannerId,
+                status: 'ready',
+              });
+            })
+            .catch((error: Error) => {
+              console.error(
+                `[ScanCoordinator] Scanner ${scanner.scannerId} init failed: ${error.message}`
+              );
+              this.subprocesses.delete(scanner.scannerId);
+              this.emit('scanner-init-status', {
+                scannerId: scanner.scannerId,
+                status: 'error',
+                error: error.message,
+              });
+              throw error; // Re-throw so Promise.allSettled sees it as rejected
+            });
+        })
+      );
+
+      const succeeded = spawnResults.filter(
+        (r) => r.status === 'fulfilled'
+      ).length;
+      const failed = spawnResults.filter((r) => r.status === 'rejected').length;
+
+      if (failed > 0) {
+        console.warn(
+          `[ScanCoordinator] ${succeeded}/${toSpawn.length} scanners initialized (${failed} failed)`
+        );
+      }
     }
 
     this.state = 'idle';
-    console.log(
-      `[ScanCoordinator] All ${scanners.length} scanner(s) initialized`
-    );
+    console.log(`[ScanCoordinator] ${this.subprocesses.size} scanner(s) ready`);
   }
 
   /**
