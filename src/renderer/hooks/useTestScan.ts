@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { DetectedScanner, ScannerAssignment } from '../../types/graviscan';
 import { PLATE_INDICES } from '../../types/graviscan';
+import { useToast } from '../contexts/ToastContext';
 
 export type TestResult = {
   success: boolean;
@@ -36,6 +37,7 @@ export function useTestScan({
   setScanningPlateIndex,
   setScanImageUris,
 }: UseTestScanParams): UseTestScanReturn {
+  const { showToast } = useToast();
   const [isTesting, setIsTesting] = useState(false);
   const [testPhase, setTestPhase] = useState<
     'idle' | 'connecting' | 'scanning' | 'starting-threads'
@@ -57,7 +59,10 @@ export function useTestScan({
       .filter((s): s is DetectedScanner => s !== undefined);
 
     if (assignedScanners.length === 0) {
-      console.warn('[GraviScan] No scanners assigned to test');
+      showToast({
+        type: 'error',
+        message: 'No scanners assigned to test. Configure scanners first.',
+      });
       return;
     }
 
@@ -236,14 +241,25 @@ export function useTestScan({
 
       const allPassed = Object.values(results).every((r) => r.success);
       if (allPassed) {
-        console.log(
-          `[GraviScan] All scanner tests passed (${Date.now() - testStartTime}ms)`
-        );
+        showToast({
+          type: 'success',
+          message: `All scanner tests passed (${((Date.now() - testStartTime) / 1000).toFixed(1)}s)`,
+        });
       } else {
-        console.warn('[GraviScan] Some scanner tests failed:', results);
+        const failedNames = Object.entries(results)
+          .filter(([, r]) => !r.success)
+          .map(([id]) => id.slice(0, 8))
+          .join(', ');
+        showToast({
+          type: 'error',
+          message: `Some scanner tests failed: ${failedNames}`,
+        });
       }
     } catch (error) {
-      console.error('[GraviScan] Test all scanners failed:', error);
+      showToast({
+        type: 'error',
+        message: `Test scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
     } finally {
       setIsTesting(false);
       setTestPhase('idle');
@@ -253,6 +269,7 @@ export function useTestScan({
     detectedScanners,
     setScanningPlateIndex,
     setScanImageUris,
+    showToast,
   ]);
 
   return {
