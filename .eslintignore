@@ -19,3 +19,6 @@ coverage/
 # Test outputs
 playwright-report/
 test-results/
+
+# Local Box scripts (not tracked in git)
+Boxrelated/

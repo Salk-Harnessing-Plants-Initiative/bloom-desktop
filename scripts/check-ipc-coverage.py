@@ -35,13 +35,18 @@ def main():
     handler_pattern = r"ipcMain\.handle\s*\(\s*['\"]([^'\"]+)['\"]"
     handlers = sorted(set(re.findall(handler_pattern, handlers_normalized)))
 
-    # Read test file
-    test_file = Path('tests/e2e/renderer-database-ipc.e2e.ts')
-    if not test_file.exists():
-        print(f"Error: {test_file} not found", file=sys.stderr)
-        return 1
-
-    test_content = test_file.read_text()
+    # Read test files (original + graviscan)
+    test_files = [
+        Path('tests/e2e/renderer-database-ipc.e2e.ts'),
+        Path('tests/e2e/renderer-graviscan-ipc.e2e.ts'),
+    ]
+    test_content = ''
+    for tf in test_files:
+        if tf.exists():
+            test_content += tf.read_text()
+        elif tf.name == 'renderer-database-ipc.e2e.ts':
+            print(f"Error: {tf} not found", file=sys.stderr)
+            return 1
 
     # Count test calls for each handler
     test_calls = {}
@@ -54,6 +59,15 @@ def main():
             count = test_content.count(f"'{handler}'") + test_content.count(f'"{handler}"')
             # Also count method calls like .experiments.list(
             count += test_content.count(f'.{model}.{action}(')
+            # Also match camelCase method names (e.g., get-max-wave-number → getMaxWaveNumber)
+            camel = re.sub(r'-(\w)', lambda m: m.group(1).upper(), action)
+            if camel != action:
+                count += test_content.count(f'.{model}.{camel}(')
+            # Match camelCase model names too (e.g., graviscan-sessions → graviscanSessions)
+            camel_model = re.sub(r'-(\w)', lambda m: m.group(1).upper(), model)
+            if camel_model != model:
+                count += test_content.count(f'.{camel_model}.{action}(')
+                count += test_content.count(f'.{camel_model}.{camel}(')
             test_calls[handler] = count
 
     print("=== Renderer Database IPC Test Coverage Analysis ===\n")
