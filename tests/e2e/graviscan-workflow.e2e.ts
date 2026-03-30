@@ -133,15 +133,10 @@ test.describe.serial('GraviScan Workflow', () => {
     await window.click('text=Capture Scan');
     await switchToGraviScanTab();
 
-    // Verify mock mode banner
+    // Verify scanner status panel is visible (shows "No scanners configured" or scanner status)
     await expect(
-      window.locator('text=Mock Mode - Simulated scanners')
+      window.locator('text=/Scanner Status|No scanners configured/i')
     ).toBeVisible({ timeout: 10000 });
-
-    // Verify Detect Scanners button
-    await expect(
-      window.locator('button:has-text("Detect Scanners")')
-    ).toBeVisible({ timeout: 5000 });
   });
 
   // =========================================================================
@@ -149,13 +144,15 @@ test.describe.serial('GraviScan Workflow', () => {
   // =========================================================================
 
   test('should detect mock scanners and show scanner assignment', async () => {
-    // Already on GraviScan tab from test 1
+    // Navigate to Configure Scanner page
+    await window.click('text=Configure Scanner');
+
     // Click Detect Scanners
     await window.click('button:has-text("Detect Scanners")');
 
-    // Mock returns 2 scanners — scanner name should appear
+    // Mock returns scanners — scanner name should appear
     await expect(
-      window.locator('text=/Mock Scanner|Scanner 1|epkowa/i').first()
+      window.locator('text=/Scanner 1|Scanner 2/i').first()
     ).toBeVisible({ timeout: 10000 });
 
     // Verify grid mode select exists with 2-grid option
@@ -166,6 +163,10 @@ test.describe.serial('GraviScan Workflow', () => {
     await expect(window.locator('text=/Resolution/i').first()).toBeVisible({
       timeout: 5000,
     });
+
+    // Navigate back to Capture Scan for remaining tests
+    await window.click('text=Capture Scan');
+    await switchToGraviScanTab();
   });
 
   // =========================================================================
