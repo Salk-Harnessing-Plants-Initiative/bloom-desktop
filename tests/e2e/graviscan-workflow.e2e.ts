@@ -133,9 +133,9 @@ test.describe.serial('GraviScan Workflow', () => {
     await window.click('text=Capture Scan');
     await switchToGraviScanTab();
 
-    // Verify scanner status panel is visible (shows "No scanners configured" or scanner status)
+    // Verify scanner status panel is visible
     await expect(
-      window.locator('text=/Scanner Status|No scanners configured/i')
+      window.getByText('No scanners configured', { exact: true })
     ).toBeVisible({ timeout: 10000 });
   });
 
