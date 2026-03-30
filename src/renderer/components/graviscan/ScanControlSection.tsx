@@ -301,6 +301,13 @@ export function ScanControlSection({
         )}
       </div>
 
+      {/* Plate placement reminder */}
+      {canStartScan && !isScanning && (
+        <p className="text-xs text-amber-600 font-medium">
+          Verify plates are placed on the correct scanner grids before starting.
+        </p>
+      )}
+
       {/* Scan Controls */}
       <div className="flex items-center space-x-4">
         <button

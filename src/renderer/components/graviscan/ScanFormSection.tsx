@@ -285,36 +285,35 @@ export function ScanFormSection({
                         </label>
 
                         {isGraviMetadata ? (
-                          /* Plate ID Dropdown for GraviScan metadata */
-                          <select
-                            value={assignment.plantBarcode || ''}
-                            onChange={(e) =>
-                              handlePlateBarcode(
-                                scannerId,
-                                assignment.plateIndex,
-                                e.target.value || null
-                              )
-                            }
-                            disabled={isScanning || !assignment.selected}
-                            className={`flex-1 px-3 py-1.5 text-sm border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                              !assignment.selected
-                                ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                                : 'bg-white border-gray-300'
-                            }`}
-                          >
-                            <option value="">Select plate...</option>
-                            {availablePlates.map((plate) => (
-                              <option
-                                key={plate.plate_id}
-                                value={plate.plate_id}
-                              >
-                                {plate.plate_id} — {plate.accession}
-                                {plate.custom_note
-                                  ? ` — ${plate.custom_note}`
-                                  : ''}
-                              </option>
-                            ))}
-                          </select>
+                          /* Auto-assigned plate display for GraviScan metadata */
+                          assignment.plantBarcode ? (
+                            <div className="flex-1 flex items-center gap-2 min-w-0">
+                              <span className="text-sm font-medium text-gray-900 whitespace-nowrap">
+                                {assignment.plantBarcode}
+                              </span>
+                              {(() => {
+                                const plateInfo = availablePlates.find(
+                                  (p) => p.plate_id === assignment.plantBarcode
+                                );
+                                if (
+                                  !plateInfo ||
+                                  plateInfo.plantQrCodes.length === 0
+                                )
+                                  return null;
+                                return (
+                                  <div className="flex-1 overflow-x-auto whitespace-nowrap">
+                                    <span className="text-xs text-gray-500">
+                                      ({plateInfo.plantQrCodes.join(', ')})
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <span className="flex-1 text-sm text-gray-400 italic">
+                              Empty
+                            </span>
+                          )
                         ) : (
                           /* Plant Barcode Dropdown for CylScan metadata */
                           <select
@@ -343,37 +342,6 @@ export function ScanFormSection({
                         )}
 
                         {/* Plate summary for GraviScan */}
-                        {assignment.selected &&
-                          assignment.plantBarcode &&
-                          isGraviMetadata &&
-                          (() => {
-                            const plateInfo = availablePlates.find(
-                              (p) => p.plate_id === assignment.plantBarcode
-                            );
-                            return plateInfo ? (
-                              <div className="flex items-center gap-3 text-xs min-w-[200px]">
-                                <span className="text-gray-500">
-                                  Sections:{' '}
-                                  <span className="font-medium text-gray-700">
-                                    {plateInfo.sectionCount}
-                                  </span>
-                                </span>
-                                <span className="text-gray-500">
-                                  Plants:{' '}
-                                  <span className="font-medium text-gray-700">
-                                    {plateInfo.plantQrCodes.length}
-                                  </span>
-                                </span>
-                                <span className="text-gray-500">
-                                  Accession:{' '}
-                                  <span className="font-medium text-gray-700">
-                                    {plateInfo.accession}
-                                  </span>
-                                </span>
-                              </div>
-                            ) : null;
-                          })()}
-
                         {/* Genotype display for CylScan */}
                         {assignment.selected &&
                           assignment.plantBarcode &&

@@ -80,7 +80,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         duration,
       };
 
-      setToasts((prev) => [toast, ...prev]); // newest on top
+      // Remove existing toasts of the same type to avoid stacking duplicates
+      setToasts((prev) => {
+        const filtered = prev.filter((t) => t.type !== toast.type);
+        // Clear timers for dismissed toasts
+        prev
+          .filter((t) => t.type === toast.type)
+          .forEach((t) => {
+            const timer = timersRef.current.get(t.id);
+            if (timer) {
+              clearTimeout(timer);
+              timersRef.current.delete(t.id);
+            }
+          });
+        return [toast, ...filtered];
+      });
 
       if (duration !== null && duration > 0) {
         const timer = setTimeout(() => {

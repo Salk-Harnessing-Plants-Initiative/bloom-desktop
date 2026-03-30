@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ScannerAssignment, PlateAssignment } from '../../types/graviscan';
 import { createPlateAssignments, AvailablePlate } from '../../types/graviscan';
 import type { GraviPlateAccessionWithSections } from '../../types/graviscan-store';
+import { useToast } from '../contexts/ToastContext';
 
 interface UsePlateAssignmentsParams {
   selectedExperiment: string;
@@ -33,6 +34,8 @@ export function usePlateAssignments({
   scannerAssignments,
   setScanError,
 }: UsePlateAssignmentsParams): UsePlateAssignmentsReturn {
+  const { showToast } = useToast();
+
   // Plant barcodes from the selected experiment's accession
   const [availableBarcodes, setAvailableBarcodes] = useState<string[]>([]);
   const [loadingBarcodes, setLoadingBarcodes] = useState(false);
@@ -64,7 +67,8 @@ export function usePlateAssignments({
     .filter((a) => a.scannerId !== null)
     .map((a) => a.scannerId as string);
 
-  // Reset plate assignments when scanner assignments change (including per-scanner grid mode)
+  // Reset plate assignments when scanner config changes (grid mode, scanner count)
+  // NOT when experiment changes — experiment change is handled by loadExperimentData + auto-assign
   useEffect(() => {
     const newAssignments: Record<string, PlateAssignment[]> = {};
 
@@ -77,33 +81,7 @@ export function usePlateAssignments({
     });
 
     setScannerPlateAssignments(newAssignments);
-
-    // If experiment is selected, save the new defaults to database for each scanner
-    if (selectedExperiment && assignedScannerIds.length > 0) {
-      scannerAssignments.forEach((assignment) => {
-        if (assignment.scannerId) {
-          const scannerGridMode = assignment.gridMode || '2grid';
-          const defaultAssignments = createPlateAssignments(scannerGridMode);
-          window.electron.database.graviscanPlateAssignments
-            .upsertMany(
-              selectedExperiment,
-              assignment.scannerId,
-              defaultAssignments.map((a) => ({
-                plate_index: a.plateIndex,
-                plate_barcode: a.plantBarcode,
-                selected: a.selected,
-              }))
-            )
-            .catch((err) =>
-              console.error(
-                'Failed to save plate assignments after grid mode change:',
-                err
-              )
-            );
-        }
-      });
-    }
-  }, [scannerAssignments, selectedExperiment]);
+  }, [scannerAssignments]);
 
   // Load plant barcodes and plate assignments when experiment changes
   useEffect(() => {
@@ -119,6 +97,7 @@ export function usePlateAssignments({
 
       setLoadingBarcodes(true);
       setLoadingPlateAssignments(true);
+      let hasGraviMetadata = false;
 
       try {
         // First get the experiment to find its accession
@@ -181,6 +160,7 @@ export function usePlateAssignments({
               platesResult.data.length > 0
             ) {
               setIsGraviMetadata(true);
+              hasGraviMetadata = true;
 
               // Build plate metadata for dropdown
               const plates: AvailablePlate[] = platesResult.data.map(
@@ -278,7 +258,11 @@ export function usePlateAssignments({
           }
         }
 
-        setScannerPlateAssignments(newScannerAssignments);
+        // Only set assignments from DB if NOT using GraviScan metadata
+        // (auto-assign effect handles GraviScan plate assignments)
+        if (!hasGraviMetadata) {
+          setScannerPlateAssignments(newScannerAssignments);
+        }
       } catch (error) {
         console.error('Failed to load experiment data:', error);
         setAvailableBarcodes([]);
@@ -294,6 +278,109 @@ export function usePlateAssignments({
 
     loadExperimentData();
   }, [selectedExperiment, scannerAssignments]);
+
+  // Auto-assign plates from GraviScan metadata to scanner grid positions
+  // First-come-first-served by metadata row order, sorted across scanners
+  useEffect(() => {
+    if (!isGraviMetadata || availablePlates.length === 0) return;
+    if (assignedScannerIds.length === 0) return;
+
+    // Check for duplicate plate_ids
+    const plateIds = availablePlates.map((p) => p.plate_id);
+    const duplicates = plateIds.filter((id, i) => plateIds.indexOf(id) !== i);
+    if (duplicates.length > 0) {
+      showToast({
+        type: 'error',
+        message: `Duplicate plate ID: ${duplicates[0]}. Fix metadata before scanning.`,
+      });
+      return;
+    }
+
+    // Build auto-assignments: iterate scanners in order, fill grid positions
+    const newAssignments: Record<string, PlateAssignment[]> = {};
+    let plateIndex = 0;
+    const totalPositions = assignedScannerIds.reduce((sum, sid) => {
+      const assignment = scannerAssignments.find((a) => a.scannerId === sid);
+      const gridMode = assignment?.gridMode || '4grid';
+      return sum + (gridMode === '4grid' ? 4 : 2);
+    }, 0);
+
+    for (const scannerId of assignedScannerIds) {
+      const assignment = scannerAssignments.find(
+        (a) => a.scannerId === scannerId
+      );
+      const gridMode = assignment?.gridMode || '4grid';
+      const positions = createPlateAssignments(gridMode);
+
+      newAssignments[scannerId] = positions.map((pos) => {
+        if (plateIndex < availablePlates.length) {
+          const plate = availablePlates[plateIndex];
+          plateIndex++;
+          return {
+            ...pos,
+            plantBarcode: plate.plate_id,
+            selected: true,
+          };
+        }
+        return { ...pos, selected: false }; // empty position
+      });
+    }
+
+    setScannerPlateAssignments(newAssignments);
+
+    // Save auto-assignments to database
+    if (selectedExperiment) {
+      for (const scannerId of assignedScannerIds) {
+        const assignments = newAssignments[scannerId];
+        if (assignments) {
+          window.electron.database.graviscanPlateAssignments
+            .upsertMany(
+              selectedExperiment,
+              scannerId,
+              assignments.map((a) => ({
+                plate_index: a.plateIndex,
+                plate_barcode: a.plantBarcode,
+                selected: a.selected,
+              }))
+            )
+            .catch((err) =>
+              console.error('Failed to save auto-assignments:', err)
+            );
+        }
+      }
+    }
+
+    // Show toast notifications
+    const assignedCount = Math.min(availablePlates.length, totalPositions);
+    const scannerCount = assignedScannerIds.length;
+
+    if (availablePlates.length > totalPositions) {
+      // Overflow
+      const unassigned = availablePlates.slice(totalPositions);
+      const unassignedNames = unassigned
+        .map((p) => p.plate_id)
+        .slice(0, 5)
+        .join(', ');
+      const more =
+        unassigned.length > 5 ? ` +${unassigned.length - 5} more` : '';
+      showToast({
+        type: 'warning',
+        message: `${assignedCount} of ${availablePlates.length} plates assigned to ${scannerCount} scanner(s). ${unassigned.length} not assigned: ${unassignedNames}${more}`,
+        duration: 20000,
+      });
+    } else {
+      showToast({
+        type: 'info',
+        message: `${assignedCount} plate(s) assigned to ${scannerCount} scanner(s). Please place plates on the correct grid positions before scanning.`,
+        duration: 15000,
+      });
+    }
+  }, [
+    isGraviMetadata,
+    availablePlates,
+    scannerAssignments,
+    selectedExperiment,
+  ]);
 
   // Toggle plate selection and save to database (per scanner)
   const handleTogglePlate = useCallback(
