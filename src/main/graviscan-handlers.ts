@@ -20,6 +20,7 @@ import { getScanSession, setScanSession, markScanJobRecorded } from './main';
 // Bloom upload temporarily disabled (proxy size limit) — re-enable when fixed
 // import { uploadAllPendingScans } from './graviscan-upload';
 import { runBoxBackup } from './box-backup';
+import { readQrCodes } from './qr-reader';
 import type {
   DetectedScanner,
   GraviConfig,
@@ -817,6 +818,303 @@ export function registerGraviscanHandlers(
       };
     }
   });
+
+  // ==========================================================================
+  // Post-Scan QR Verification
+  // ==========================================================================
+
+  /**
+   * Verify plate positions by reading QR codes from scan images.
+   * Image-first flow: read QR → DB lookup plate_id → compare with assigned.
+   *
+   * Input: plates with image paths + assigned plate_id (no expected QR codes needed)
+   * Process: readQrCodes(image) → lookup plant_qr in GraviPlateSectionMapping → get plate_id → compare
+   * Returns: verification results + detected swaps
+   */
+  ipcMain.handle(
+    'graviscan:verify-plates',
+    async (
+      _event,
+      plates: Array<{
+        scannerId: string;
+        plateIndex: string;
+        imagePath: string;
+        assignedPlateId: string;
+      }>
+    ) => {
+      try {
+        console.log(
+          `[GraviScan:VERIFY] Verifying ${plates.length} plate(s)...`
+        );
+
+        getMainWindow?.()?.webContents.send('graviscan:verify-started');
+
+        const results: Array<{
+          scannerId: string;
+          plateIndex: string;
+          assignedPlateId: string;
+          detectedPlateId: string | null;
+          detectedCodes: string[];
+          status: 'verified' | 'incorrect' | 'unreadable' | 'skipped';
+        }> = [];
+
+        for (const plate of plates) {
+          // Step 1: Read QR codes from image
+          const detectedCodes = await readQrCodes(plate.imagePath);
+
+          if (detectedCodes.length === 0) {
+            results.push({
+              ...plate,
+              detectedPlateId: null,
+              detectedCodes: [],
+              status: 'unreadable',
+            });
+            getMainWindow?.()?.webContents.send('graviscan:verify-result', {
+              ...plate,
+              detectedPlateId: null,
+              detectedCodes: [],
+              status: 'unreadable',
+            });
+            continue;
+          }
+
+          // Step 2: DB lookup — find plate_id from detected QR codes
+          // Query GraviPlateSectionMapping where plant_qr matches any detected code
+          let detectedPlateId: string | null = null;
+          try {
+            const mapping = await db.graviPlateSectionMapping.findFirst({
+              where: {
+                plant_qr: { in: detectedCodes },
+              },
+              include: {
+                plate: true,
+              },
+            });
+
+            if (mapping?.plate) {
+              detectedPlateId = mapping.plate.plate_id;
+            }
+          } catch (lookupErr) {
+            console.error('[GraviScan:VERIFY] DB lookup failed:', lookupErr);
+          }
+
+          // Step 3: Compare detected plate_id with assigned
+          let status: 'verified' | 'incorrect' | 'unreadable' | 'skipped';
+          if (!detectedPlateId) {
+            status = 'unreadable';
+          } else if (detectedPlateId === plate.assignedPlateId) {
+            status = 'verified';
+          } else {
+            status = 'incorrect';
+          }
+
+          results.push({
+            ...plate,
+            detectedPlateId,
+            detectedCodes,
+            status,
+          });
+
+          getMainWindow?.()?.webContents.send('graviscan:verify-result', {
+            scannerId: plate.scannerId,
+            plateIndex: plate.plateIndex,
+            assignedPlateId: plate.assignedPlateId,
+            detectedPlateId,
+            status,
+          });
+        }
+
+        // Detect swaps — two incorrect results where each detected the other's assigned plate_id
+        const swaps: Array<{
+          position1: {
+            scannerId: string;
+            plateIndex: string;
+            assignedPlateId: string;
+          };
+          position2: {
+            scannerId: string;
+            plateIndex: string;
+            assignedPlateId: string;
+          };
+        }> = [];
+
+        const incorrectResults = results.filter(
+          (r) => r.status === 'incorrect' && r.detectedPlateId
+        );
+
+        for (const result of incorrectResults) {
+          const swapMatch = incorrectResults.find(
+            (other) =>
+              other !== result &&
+              other.detectedPlateId === result.assignedPlateId &&
+              result.detectedPlateId === other.assignedPlateId
+          );
+
+          if (swapMatch) {
+            const alreadyRecorded = swaps.some(
+              (s) =>
+                (s.position1.assignedPlateId === result.assignedPlateId &&
+                  s.position2.assignedPlateId === swapMatch.assignedPlateId) ||
+                (s.position1.assignedPlateId === swapMatch.assignedPlateId &&
+                  s.position2.assignedPlateId === result.assignedPlateId)
+            );
+
+            if (!alreadyRecorded) {
+              swaps.push({
+                position1: {
+                  scannerId: result.scannerId,
+                  plateIndex: result.plateIndex,
+                  assignedPlateId: result.assignedPlateId,
+                },
+                position2: {
+                  scannerId: swapMatch.scannerId,
+                  plateIndex: swapMatch.plateIndex,
+                  assignedPlateId: swapMatch.assignedPlateId,
+                },
+              });
+            }
+          }
+        }
+
+        // Perform database corrections for detected swaps
+        for (const swap of swaps) {
+          const { position1, position2 } = swap;
+          console.log(
+            `[GraviScan:VERIFY] Correcting swap: ${position1.assignedPlateId} ↔ ${position2.assignedPlateId}`
+          );
+
+          try {
+            // 1. Swap plate_barcode in GraviScanPlateAssignment
+            // Use a temp value to avoid unique constraint violations
+            await db.graviScanPlateAssignment.updateMany({
+              where: {
+                scanner_id: position1.scannerId,
+                plate_index: position1.plateIndex,
+              },
+              data: {
+                plate_barcode: position2.assignedPlateId,
+              },
+            });
+            await db.graviScanPlateAssignment.updateMany({
+              where: {
+                scanner_id: position2.scannerId,
+                plate_index: position2.plateIndex,
+              },
+              data: {
+                plate_barcode: position1.assignedPlateId,
+              },
+            });
+
+            // 2. Swap plate_barcode in GraviScan records (scan image records)
+            // Find the most recent scan records for each position
+            const scan1 = await db.graviScan.findFirst({
+              where: {
+                scanner_id: position1.scannerId,
+                plate_index: position1.plateIndex,
+                plate_barcode: position1.assignedPlateId,
+                deleted: false,
+              },
+              orderBy: { capture_date: 'desc' },
+            });
+
+            const scan2 = await db.graviScan.findFirst({
+              where: {
+                scanner_id: position2.scannerId,
+                plate_index: position2.plateIndex,
+                plate_barcode: position2.assignedPlateId,
+                deleted: false,
+              },
+              orderBy: { capture_date: 'desc' },
+            });
+
+            if (scan1) {
+              await db.graviScan.update({
+                where: { id: scan1.id },
+                data: { plate_barcode: position2.assignedPlateId },
+              });
+            }
+            if (scan2) {
+              await db.graviScan.update({
+                where: { id: scan2.id },
+                data: { plate_barcode: position1.assignedPlateId },
+              });
+            }
+
+            // 3. Log swap for audit trail
+            console.log(
+              `[GraviScan:VERIFY] Swap corrected: ` +
+                `${position1.assignedPlateId} (${position1.scannerId}:${position1.plateIndex}) ↔ ` +
+                `${position2.assignedPlateId} (${position2.scannerId}:${position2.plateIndex})`
+            );
+          } catch (swapErr) {
+            console.error(
+              '[GraviScan:VERIFY] Failed to correct swap:',
+              swapErr
+            );
+          }
+        }
+
+        // Update verification_status in DB
+        for (const result of results) {
+          let finalStatus: string = result.status;
+
+          if (
+            finalStatus === 'incorrect' &&
+            swaps.some(
+              (s) =>
+                s.position1.assignedPlateId === result.assignedPlateId ||
+                s.position2.assignedPlateId === result.assignedPlateId
+            )
+          ) {
+            finalStatus = 'swapped';
+          } else if (finalStatus === 'incorrect') {
+            finalStatus = 'unreadable';
+          }
+
+          try {
+            await db.graviScanPlateAssignment.updateMany({
+              where: {
+                scanner_id: result.scannerId,
+                plate_index: result.plateIndex,
+              },
+              data: {
+                verification_status: finalStatus,
+              } as Record<string, unknown>,
+            });
+          } catch (dbErr) {
+            console.error(
+              '[GraviScan:VERIFY] Failed to update verification_status:',
+              dbErr
+            );
+          }
+        }
+
+        const verified = results.filter((r) => r.status === 'verified').length;
+        const unreadable = results.filter(
+          (r) => r.status === 'unreadable'
+        ).length;
+
+        console.log(
+          `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${unreadable} unreadable`
+        );
+
+        getMainWindow?.()?.webContents.send('graviscan:verify-complete', {
+          results,
+          swaps,
+        });
+
+        return { success: true, results, swaps };
+      } catch (error) {
+        console.error('[GraviScan:VERIFY] Error:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Verification failed',
+          results: [],
+          swaps: [],
+        };
+      }
+    }
+  );
 
   // ==========================================================================
   // Per-Scanner Subprocess Scanning (via ScanCoordinator)

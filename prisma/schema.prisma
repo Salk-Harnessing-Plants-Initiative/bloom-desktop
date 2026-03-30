@@ -173,6 +173,7 @@ model GraviScanPlateAssignment {
   transplant_date  DateTime?
   custom_note      String?
   selected         Boolean   @default(true)
+  verification_status String @default("pending")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

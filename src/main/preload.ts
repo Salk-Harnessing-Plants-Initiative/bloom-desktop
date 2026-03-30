@@ -509,6 +509,39 @@ const graviscanAPI = {
       ipcRenderer.removeListener('graviscan:scanner-init-status', listener);
   },
 
+  verifyPlates: (
+    plates: Array<{
+      scannerId: string;
+      plateIndex: string;
+      imagePath: string;
+      assignedPlateId: string;
+    }>
+  ) =>
+    ipcRenderer.invoke('graviscan:verify-plates', plates) as Promise<{
+      success: boolean;
+      results: Array<{
+        scannerId: string;
+        plateIndex: string;
+        assignedPlateId: string;
+        detectedPlateId: string | null;
+        detectedCodes: string[];
+        status: 'verified' | 'incorrect' | 'unreadable' | 'skipped';
+      }>;
+      swaps: Array<{
+        position1: {
+          scannerId: string;
+          plateIndex: string;
+          assignedPlateId: string;
+        };
+        position2: {
+          scannerId: string;
+          plateIndex: string;
+          assignedPlateId: string;
+        };
+      }>;
+      error?: string;
+    }>,
+
   // Event listeners for async scan events (push-based from scanner subprocesses)
   onScanStarted: (
     callback: (data: {

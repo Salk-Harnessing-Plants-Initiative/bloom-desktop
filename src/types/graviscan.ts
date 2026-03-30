@@ -207,12 +207,20 @@ export interface ScannerPanelState {
  * Plate assignment - maps a plate position to a plant barcode.
  * Used to track which plant is on which plate position.
  */
+export type VerificationStatus =
+  | 'pending'
+  | 'verified'
+  | 'swapped'
+  | 'unreadable'
+  | 'skipped';
+
 export interface PlateAssignment {
   plateIndex: string; // "00", "01", "10", "11"
   plantBarcode: string | null; // Plant barcode or null if not assigned
   transplantDate: string | null; // ISO date string (YYYY-MM-DD) or null
   customNote: string | null; // Free-form metadata text or null
   selected: boolean; // Whether this plate is selected for scanning
+  verificationStatus: VerificationStatus; // QR verification result
 }
 
 /**
@@ -239,6 +247,7 @@ export function createPlateAssignments(gridMode: GridMode): PlateAssignment[] {
       transplantDate: null,
       customNote: null,
       selected: true,
+      verificationStatus: 'pending',
     })
   );
 }

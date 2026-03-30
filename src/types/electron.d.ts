@@ -789,6 +789,42 @@ export interface GraviScanAPI {
   ) => () => void;
 
   /**
+   * Verify plate positions by reading QR codes from scan images.
+   * Called after scan completes, before upload.
+   */
+  verifyPlates: (
+    plates: Array<{
+      scannerId: string;
+      plateIndex: string;
+      imagePath: string;
+      assignedPlateId: string;
+    }>
+  ) => Promise<{
+    success: boolean;
+    results: Array<{
+      scannerId: string;
+      plateIndex: string;
+      assignedPlateId: string;
+      detectedPlateId: string | null;
+      detectedCodes: string[];
+      status: 'verified' | 'incorrect' | 'unreadable' | 'skipped';
+    }>;
+    swaps: Array<{
+      position1: {
+        scannerId: string;
+        plateIndex: string;
+        assignedPlateId: string;
+      };
+      position2: {
+        scannerId: string;
+        plateIndex: string;
+        assignedPlateId: string;
+      };
+    }>;
+    error?: string;
+  }>;
+
+  /**
    * Register callback for when all scanners complete a cycle
    */
   onCycleComplete: (callback: (data: { cycle: number }) => void) => () => void;

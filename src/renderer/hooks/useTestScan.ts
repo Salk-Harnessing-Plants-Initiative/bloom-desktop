@@ -245,6 +245,50 @@ export function useTestScan({
           type: 'success',
           message: `All scanner tests passed (${((Date.now() - testStartTime) / 1000).toFixed(1)}s)`,
         });
+
+        // Run post-scan QR verification on test scan images
+        try {
+          const status = await window.electron.graviscan.getScanStatus();
+          if (status?.jobs) {
+            const plates: Array<{
+              scannerId: string;
+              plateIndex: string;
+              imagePath: string;
+              assignedPlateId: string;
+            }> = [];
+
+            for (const [, job] of Object.entries(status.jobs)) {
+              if (job.status !== 'complete' || !job.imagePath) continue;
+              const assignment = scannerAssignments.find(
+                (a) => a.scannerId === job.scannerId
+              );
+              if (!assignment) continue;
+
+              // Use the scanner assignment's slot as a simple plate identifier
+              const plateId = job.plantBarcode || assignment.slot || '';
+              if (!plateId) continue;
+
+              plates.push({
+                scannerId: job.scannerId,
+                plateIndex: job.plateIndex,
+                imagePath: job.imagePath,
+                assignedPlateId: plateId,
+              });
+            }
+
+            if (plates.length > 0) {
+              console.log(
+                `[GraviScan] Running QR verification on ${plates.length} test scan plate(s)...`
+              );
+              await window.electron.graviscan.verifyPlates(plates);
+            }
+          }
+        } catch (verifyErr) {
+          console.warn(
+            '[GraviScan] QR verification after test scan failed:',
+            verifyErr
+          );
+        }
       } else {
         const failedNames = Object.entries(results)
           .filter(([, r]) => !r.success)

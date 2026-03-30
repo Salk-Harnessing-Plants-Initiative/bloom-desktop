@@ -221,7 +221,8 @@ export function usePlateAssignments({
           ) {
             // Convert database records to PlateAssignment format
             const dbAssignments: PlateAssignment[] = assignmentsResult.data.map(
-              (a) => ({
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (a: any) => ({
                 plateIndex: a.plate_index,
                 plantBarcode: a.plate_barcode,
                 transplantDate: a.transplant_date
@@ -229,6 +230,7 @@ export function usePlateAssignments({
                   : null,
                 customNote: a.custom_note ?? null,
                 selected: a.selected,
+                verificationStatus: a.verification_status || 'pending',
               })
             );
 

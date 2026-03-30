@@ -126,3 +126,6 @@ Boxrelated/
 
 # Local dev scripts (not tracked)
 scripts/local-pr-checks.sh
+
+# Large test fixture images (not tracked — download separately)
+tests/fixtures/graviscan-qr-images/

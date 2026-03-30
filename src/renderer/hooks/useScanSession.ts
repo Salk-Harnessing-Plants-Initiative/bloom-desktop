@@ -8,6 +8,7 @@ import type {
   GraviScanPlatformInfo,
 } from '../../types/graviscan';
 import { useUploadStatus } from '../contexts/UploadStatusContext';
+import { useToast } from '../contexts/ToastContext';
 
 // ─── Local types ────────────────────────────────────────────
 
@@ -125,6 +126,11 @@ export interface UseScanSessionReturn {
   >;
   autoUploadStatus: 'idle' | 'waiting' | 'uploading' | 'done' | 'error';
   autoUploadMessage: string | null;
+  verificationStatus: 'idle' | 'verifying' | 'complete';
+  verificationResults: Record<
+    string,
+    { status: string; detectedPlateId: string | null }
+  >;
   handleStartScan: () => Promise<void>;
   handleCancelScan: () => Promise<void>;
   handleResetScanners: () => void;
@@ -174,6 +180,8 @@ export function useScanSession({
 }: UseScanSessionParams): UseScanSessionReturn {
   // ── State owned by this hook ──────────────────────────────
 
+  const { showToast } = useToast();
+
   // Auto-upload state (shared via context for global floating banner + nav blocking)
   const {
     autoUploadStatus,
@@ -190,6 +198,15 @@ export function useScanSession({
   // Which plate is currently being scanned per scanner (scanner_id → plate_index)
   const [scanningPlateIndex, setScanningPlateIndex] = useState<
     Record<string, string>
+  >({});
+
+  // QR verification state
+  const [verificationStatus, setVerificationStatus] = useState<
+    'idle' | 'verifying' | 'complete'
+  >('idle');
+  // Per-plate verification results: "scannerId:plateIndex" → { status, detectedPlateId }
+  const [verificationResults, setVerificationResults] = useState<
+    Record<string, { status: string; detectedPlateId: string | null }>
   >({});
 
   // Async scan job tracking — maps job_id → job metadata
@@ -234,6 +251,123 @@ export function useScanSession({
   useEffect(() => {
     scannerStatesRef.current = scannerStates;
   }, [scannerStates]);
+
+  // ── Post-scan QR verification ──────────────────────────────
+
+  /**
+   * Run QR verification on completed scan images.
+   * Called after scan completes (single or continuous), before upload.
+   * Image-first: reads QR from image → DB lookup plate_id → compare with assigned.
+   * No expectedQrCodes needed from renderer.
+   */
+  async function runPostScanVerification() {
+    // Get completed jobs from the scan session
+    const status = await window.electron.graviscan.getScanStatus();
+    if (!status?.jobs) return null;
+
+    const plates: Array<{
+      scannerId: string;
+      plateIndex: string;
+      imagePath: string;
+      assignedPlateId: string;
+    }> = [];
+
+    for (const [, job] of Object.entries(status.jobs)) {
+      if (job.status !== 'complete' || !job.imagePath) continue;
+
+      const assignments =
+        scannerPlateAssignmentsRef.current[job.scannerId] || [];
+      const assignment = assignments.find(
+        (a) => a.plateIndex === job.plateIndex
+      );
+      if (!assignment?.plantBarcode) continue;
+
+      plates.push({
+        scannerId: job.scannerId,
+        plateIndex: job.plateIndex,
+        imagePath: job.imagePath,
+        assignedPlateId: assignment.plantBarcode,
+      });
+    }
+
+    if (plates.length === 0) {
+      console.log('[GraviScan] No plates to verify, skipping');
+      return null;
+    }
+
+    console.log(
+      `[GraviScan] Running QR verification on ${plates.length} plate(s)...`
+    );
+
+    setVerificationStatus('verifying');
+    setVerificationResults({});
+
+    try {
+      const result = await window.electron.graviscan.verifyPlates(plates);
+
+      if (result?.results) {
+        // Update per-plate results
+        const newResults: Record<
+          string,
+          { status: string; detectedPlateId: string | null }
+        > = {};
+        for (const r of result.results) {
+          newResults[`${r.scannerId}:${r.plateIndex}`] = {
+            status: r.status,
+            detectedPlateId: r.detectedPlateId,
+          };
+        }
+        setVerificationResults(newResults);
+
+        // Show toast based on results
+        const verifiedCount = result.results.filter(
+          (r: { status: string }) => r.status === 'verified'
+        ).length;
+        const unreadableCount = result.results.filter(
+          (r: { status: string }) => r.status === 'unreadable'
+        ).length;
+        const swapCount = result.swaps?.length || 0;
+
+        if (swapCount > 0) {
+          const swapDetails = result.swaps
+            .map(
+              (s: {
+                position1: { assignedPlateId: string };
+                position2: { assignedPlateId: string };
+              }) =>
+                `${s.position1.assignedPlateId} ↔ ${s.position2.assignedPlateId}`
+            )
+            .join(', ');
+          showToast({
+            type: 'warning',
+            message: `${swapCount} plate(s) swapped — corrected automatically (${swapDetails})`,
+            duration: 20000,
+          });
+        } else if (unreadableCount > 0) {
+          showToast({
+            type: 'error',
+            message: `${unreadableCount} plate(s) could not be verified — QR code unreadable`,
+          });
+        } else if (verifiedCount === result.results.length) {
+          showToast({
+            type: 'success',
+            message: 'All plates verified — correct positions',
+          });
+        }
+      }
+
+      setVerificationStatus('complete');
+      return result;
+    } catch (err) {
+      console.error('[GraviScan] QR verification failed:', err);
+      showToast({
+        type: 'error',
+        message: 'QR verification failed',
+      });
+      setVerificationStatus('complete');
+      return null;
+    }
+  }
 
   // ── IPC event listeners ───────────────────────────────────
 
@@ -609,6 +743,12 @@ export function useScanSession({
 
               await drainPendingWritesAndSettle(pendingDbWritesRef);
 
+              // Run QR verification before upload
+              console.log(
+                '[GraviScan] Running post-scan QR verification (continuous)...'
+              );
+              await runPostScanVerification();
+
               console.log(
                 '[GraviScan] Session complete (continuous), starting Box backup...'
               );
@@ -719,6 +859,10 @@ export function useScanSession({
             });
 
             await drainPendingWritesAndSettle(pendingDbWritesRef);
+
+            // Run QR verification before upload
+            console.log('[GraviScan] Running post-scan QR verification...');
+            await runPostScanVerification();
 
             console.log('[GraviScan] Session complete, starting Box backup...');
             setAutoUploadStatus('uploading');
@@ -1262,6 +1406,8 @@ export function useScanSession({
     setScanningPlateIndex,
     autoUploadStatus,
     autoUploadMessage,
+    verificationStatus,
+    verificationResults,
     handleStartScan,
     handleCancelScan,
     handleResetScanners,
