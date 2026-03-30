@@ -214,6 +214,9 @@ test.describe('Scan Directory Format — Relative Path Resolution', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await expect(window.locator('text=PLANT-RELATIVE-PATH')).toBeVisible();
     await window.click('text=PLANT-RELATIVE-PATH');
 
@@ -251,6 +254,9 @@ test.describe('Scan Directory Format — Relative Path Resolution', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-ABSOLUTE-PATH');
 
     // Wait for ScanPreview to load
@@ -293,6 +299,9 @@ test.describe('Scan Directory Format — Date Timezone', () => {
 
     // Navigate to Browse Scans and verify scan is visible
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await expect(window.locator('text=PLANT-TIMEZONE-TEST')).toBeVisible();
 
     // Navigate to ScanPreview
@@ -326,6 +335,9 @@ test.describe('Scan Directory Format — Path Format Validation', () => {
 
     // Navigate to Browse Scans and verify scan is visible
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await expect(window.locator('text=PLANT-FORMAT-TEST')).toBeVisible();
 
     // Navigate to ScanPreview
@@ -350,6 +362,9 @@ test.describe('Scan Directory Format — Path Format Validation', () => {
 
     // Navigate and verify the scan displays correctly
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
 
     // The plant_id is stored as-is in the DB, displayed in the table
     // The path component is sanitized separately
@@ -372,6 +387,9 @@ test.describe('Scan Directory Format — Path Format Validation', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-MULTI-FRAME');
 
     // Wait for page to load

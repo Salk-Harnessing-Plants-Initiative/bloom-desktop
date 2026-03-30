@@ -8,9 +8,14 @@ dependencies = [
     "pypylon>=3.0.0",
     "imageio>=2.34.0",
     "nidaqmx>=0.9.0",
+    "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
+# GraviScan dependencies for Linux (SANE backend)
+graviscan-linux = ["python-sane>=2.9.0"]
+# GraviScan dependencies for Windows (TWAIN backend)
+graviscan-windows = ["pytwain>=2.0.0"]
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
@@ -64,5 +69,5 @@ warn_unused_configs = true
 
 # Ignore missing stubs for third-party hardware libraries
 [[tool.mypy.overrides]]
-module = ["pypylon.*", "nidaqmx.*", "camera_types"]
+module = ["pypylon.*", "nidaqmx.*", "camera_types", "sane", "twain", "wmi"]
 ignore_missing_imports = true

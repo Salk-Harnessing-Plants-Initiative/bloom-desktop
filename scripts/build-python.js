@@ -23,9 +23,17 @@ if (!fs.existsSync(pyprojectPath)) {
 }
 
 // Sync dependencies first (including dev dependencies for PyInstaller)
-console.log('[INFO] Installing dependencies...');
+// Only include platform-specific scanner extras on the correct OS
+const platform = process.platform;
+let syncCmd = 'uv sync --extra dev';
+if (platform === 'linux') {
+  syncCmd += ' --extra graviscan-linux';
+} else if (platform === 'win32') {
+  syncCmd += ' --extra graviscan-windows';
+}
+console.log(`[INFO] Installing dependencies (${platform})...`);
 try {
-  execSync('uv sync --extra dev', {
+  execSync(syncCmd, {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),
   });

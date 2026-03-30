@@ -159,9 +159,9 @@ test.describe('UI: Numeric Field Input Behavior', () => {
     await window.waitForLoadState('networkidle');
 
     // Select experiment and phenotyper
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
   });
 
   test('should allow clearing Wave Number field and typing new value', async () => {
@@ -260,9 +260,9 @@ test.describe('UI: Wave Number Zero Validation', () => {
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
 
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
   });
 
   test('should accept Wave Number of 0 without validation error', async () => {
@@ -333,9 +333,9 @@ test.describe('UI: Integer Validation', () => {
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
 
-    await window.waitForSelector('.experiment-chooser');
-    await window.selectOption('.experiment-chooser', { index: 1 });
-    await window.selectOption('.phenotyper-chooser', { index: 1 });
+    await window.waitForSelector('#experiment-chooser');
+    await window.selectOption('#experiment-chooser', { index: 1 });
+    await window.selectOption('#phenotyper-chooser', { index: 1 });
   });
 
   test('should show validation error for decimal Wave Number', async () => {
