@@ -106,7 +106,7 @@ async function setupTestDatabase(): Promise<{
 
   // Initialize global database with test database path
   // This allows scanner-process.ts to use getDatabase()
-  const prisma = initializeDatabase(TEST_DB_PATH);
+  const prisma = await initializeDatabase(TEST_DB_PATH);
 
   // Create test scientist
   const scientist = await prisma.scientist.create({

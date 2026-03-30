@@ -38,6 +38,9 @@ export interface MachineConfig {
 
   /** Supabase anonymous key */
   bloom_anon_key: string;
+
+  /** GraviScan system name for uploads and Box backup */
+  graviscan_system_name: string;
 }
 
 /**
@@ -112,6 +115,7 @@ export function getDefaultConfig(): MachineConfig {
     bloom_scanner_username: '',
     bloom_scanner_password: '',
     bloom_anon_key: '',
+    graviscan_system_name: '',
   };
 }
 
@@ -451,6 +455,9 @@ export function loadEnvConfig(envPath: string): MachineConfig {
           case 'BLOOM_ANON_KEY':
             envConfig.bloom_anon_key = value;
             break;
+          case 'GRAVISCAN_SYSTEM_NAME':
+            envConfig.graviscan_system_name = value;
+            break;
         }
       }
     }
@@ -494,7 +501,6 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
   }
 
   // Auto-create scans directory if it doesn't exist
-  // This eliminates the UX issue where users must manually create the directory
   if (config.scans_dir && !fs.existsSync(config.scans_dir)) {
     try {
       console.log('[Config] Creating scans directory:', config.scans_dir);
@@ -519,6 +525,9 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     `BLOOM_SCANNER_USERNAME=${config.bloom_scanner_username}`,
     `BLOOM_SCANNER_PASSWORD=${config.bloom_scanner_password}`,
     `BLOOM_ANON_KEY=${config.bloom_anon_key}`,
+    '',
+    '# GraviScan System',
+    `GRAVISCAN_SYSTEM_NAME=${config.graviscan_system_name}`,
   ].join('\n');
 
   fs.writeFileSync(envPath, content, 'utf-8');
