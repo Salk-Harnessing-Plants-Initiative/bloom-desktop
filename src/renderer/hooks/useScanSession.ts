@@ -265,6 +265,13 @@ export function useScanSession({
     const status = await window.electron.graviscan.getScanStatus();
     if (!status?.jobs) return null;
 
+    console.log(
+      '[GraviScan:VERIFY] Session jobs:',
+      Object.keys(status.jobs).length,
+      'Plate assignments:',
+      Object.keys(scannerPlateAssignmentsRef.current)
+    );
+
     const plates: Array<{
       scannerId: string;
       plateIndex: string;
@@ -272,15 +279,26 @@ export function useScanSession({
       assignedPlateId: string;
     }> = [];
 
-    for (const [, job] of Object.entries(status.jobs)) {
-      if (job.status !== 'complete' || !job.imagePath) continue;
+    for (const [key, job] of Object.entries(status.jobs)) {
+      if (job.status !== 'complete' || !job.imagePath) {
+        console.log(
+          `[GraviScan:VERIFY] Skipping job ${key}: status=${job.status}, imagePath=${job.imagePath ? 'yes' : 'no'}`
+        );
+        continue;
+      }
 
       const assignments =
         scannerPlateAssignmentsRef.current[job.scannerId] || [];
       const assignment = assignments.find(
         (a) => a.plateIndex === job.plateIndex
       );
-      if (!assignment?.plantBarcode) continue;
+
+      if (!assignment?.plantBarcode) {
+        console.log(
+          `[GraviScan:VERIFY] Skipping job ${key}: no plantBarcode in assignment. Scanner ${job.scannerId}, plate ${job.plateIndex}, assignments count: ${assignments.length}`
+        );
+        continue;
+      }
 
       plates.push({
         scannerId: job.scannerId,
@@ -368,6 +386,40 @@ export function useScanSession({
       return null;
     }
   }
+
+  // ── QR verification event listeners ────────────────────────
+
+  useEffect(() => {
+    const cleanupVerifyStarted = window.electron.graviscan.onVerifyStarted?.(
+      () => {
+        setVerificationStatus('verifying');
+      }
+    );
+
+    const cleanupVerifyResult = window.electron.graviscan.onVerifyResult?.(
+      (data) => {
+        setVerificationResults((prev) => ({
+          ...prev,
+          [`${data.scannerId}:${data.plateIndex}`]: {
+            status: data.status,
+            detectedPlateId: data.detectedPlateId,
+          },
+        }));
+      }
+    );
+
+    const cleanupVerifyComplete = window.electron.graviscan.onVerifyComplete?.(
+      () => {
+        setVerificationStatus('complete');
+      }
+    );
+
+    return () => {
+      cleanupVerifyStarted?.();
+      cleanupVerifyResult?.();
+      cleanupVerifyComplete?.();
+    };
+  }, []);
 
   // ── IPC event listeners ───────────────────────────────────
 

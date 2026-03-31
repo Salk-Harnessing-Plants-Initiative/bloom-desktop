@@ -558,6 +558,66 @@ const graviscanAPI = {
       error?: string;
     }>,
 
+  // Event listeners for QR verification (push-based from main process)
+  onVerifyStarted: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('graviscan:verify-started', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:verify-started', listener);
+  },
+
+  onVerifyResult: (
+    callback: (data: {
+      scannerId: string;
+      plateIndex: string;
+      assignedPlateId: string;
+      detectedPlateId: string | null;
+      status: string;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: {
+        scannerId: string;
+        plateIndex: string;
+        assignedPlateId: string;
+        detectedPlateId: string | null;
+        status: string;
+      }
+    ) => callback(data);
+    ipcRenderer.on('graviscan:verify-result', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:verify-result', listener);
+  },
+
+  onVerifyComplete: (
+    callback: (data: {
+      results: Array<{
+        scannerId: string;
+        plateIndex: string;
+        status: string;
+        detectedPlateId: string | null;
+      }>;
+      swaps: Array<unknown>;
+    }) => void
+  ) => {
+    const listener = (
+      _event: unknown,
+      data: {
+        results: Array<{
+          scannerId: string;
+          plateIndex: string;
+          status: string;
+          detectedPlateId: string | null;
+        }>;
+        swaps: Array<unknown>;
+      }
+    ) => callback(data);
+    ipcRenderer.on('graviscan:verify-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:verify-complete', listener);
+  },
+
   // Event listeners for async scan events (push-based from scanner subprocesses)
   onScanStarted: (
     callback: (data: {

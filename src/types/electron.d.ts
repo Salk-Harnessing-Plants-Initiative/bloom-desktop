@@ -847,6 +847,39 @@ export interface GraviScanAPI {
   }>;
 
   /**
+   * Register callback for when QR verification starts.
+   */
+  onVerifyStarted: (callback: () => void) => () => void;
+
+  /**
+   * Register callback for per-plate QR verification result.
+   */
+  onVerifyResult: (
+    callback: (data: {
+      scannerId: string;
+      plateIndex: string;
+      assignedPlateId: string;
+      detectedPlateId: string | null;
+      status: string;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for when QR verification completes for all plates.
+   */
+  onVerifyComplete: (
+    callback: (data: {
+      results: Array<{
+        scannerId: string;
+        plateIndex: string;
+        status: string;
+        detectedPlateId: string | null;
+      }>;
+      swaps: Array<unknown>;
+    }) => void
+  ) => () => void;
+
+  /**
    * Register callback for when all scanners complete a cycle
    */
   onCycleComplete: (callback: (data: { cycle: number }) => void) => () => void;

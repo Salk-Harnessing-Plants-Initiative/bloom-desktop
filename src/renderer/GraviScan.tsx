@@ -42,7 +42,37 @@ export function GraviScan() {
       return 300;
     }
   });
-  const [writingFiles] = useState<Set<string>>(new Set());
+  const [writingFiles, setWritingFiles] = useState<Set<string>>(new Set());
+
+  // Track which files are currently being written
+  useEffect(() => {
+    const cleanupStarted = window.electron.graviscan.onScanStarted((data) => {
+      // File path comes from the session jobs — get it from scan status
+      window.electron.graviscan.getScanStatus().then((status) => {
+        if (!status?.jobs) return;
+        const jobKey = `${data.scannerId}:${data.plateIndex}`;
+        const job = status.jobs[jobKey];
+        if (job?.outputPath) {
+          setWritingFiles((prev) => new Set([...prev, job.outputPath]));
+        }
+      });
+    });
+
+    const cleanupComplete = window.electron.graviscan.onScanComplete((data) => {
+      if (data.imagePath) {
+        setWritingFiles((prev) => {
+          const next = new Set(prev);
+          next.delete(data.imagePath);
+          return next;
+        });
+      }
+    });
+
+    return () => {
+      cleanupStarted();
+      cleanupComplete();
+    };
+  }, []);
 
   // Scanner configuration (extracted hook)
   const {

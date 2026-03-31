@@ -98,7 +98,12 @@ export function ScanFileBrowser({
     <div className="flex flex-col h-full">
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {files.map((file) => {
-          const isWriting = writingFiles.has(file.path);
+          // Match by full path or filename (paths may differ after rename)
+          const isWriting =
+            writingFiles.has(file.path) ||
+            [...writingFiles].some(
+              (wf) => wf.split('/').pop() === file.name || wf.split('\\').pop() === file.name
+            );
 
           return (
             <button
