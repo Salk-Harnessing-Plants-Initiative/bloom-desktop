@@ -1,4 +1,5 @@
 import type { Configuration } from 'webpack';
+import webpack from 'webpack';
 
 import { rules } from './webpack.rules';
 import { plugins } from './webpack.plugins';
@@ -15,8 +16,9 @@ export const mainConfig: Configuration = {
   },
   plugins: [
     ...plugins,
-    // Prisma is handled via extraResource in forge.config.ts
-    // This ensures Prisma files are copied outside asar for Node.js require
+    new webpack.DefinePlugin({
+      APP_MODE: JSON.stringify(process.env.APP_MODE || 'full'),
+    }),
   ],
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
@@ -25,5 +27,7 @@ export const mainConfig: Configuration = {
     // Prisma Client needs to be external since it loads native binary engines
     '.prisma/client': 'commonjs .prisma/client',
     '@prisma/client': 'commonjs @prisma/client',
+    // Sharp uses platform-specific native binaries that can't load from asar
+    sharp: 'commonjs sharp',
   },
 };

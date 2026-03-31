@@ -91,16 +91,30 @@ type ScanWithRelations = Prisma.ScanGetPayload<{
  * Uses dynamic imports to load Supabase modules only when upload is initiated,
  * preventing startup issues in the packaged app.
  */
+// Types for dynamically imported modules
+type SupabaseClient = Awaited<
+  ReturnType<(typeof import('@supabase/supabase-js'))['createClient']>
+>;
+type SupabaseUploader = InstanceType<
+  (typeof import('@salk-hpi/bloom-js'))['SupabaseUploader']
+>;
+type SupabaseStore = InstanceType<
+  (typeof import('@salk-hpi/bloom-js'))['SupabaseStore']
+>;
+type UploadImagesFn = (
+  imagePaths: string[],
+  metadata: Record<string, unknown>[],
+  uploader: SupabaseUploader,
+  store: SupabaseStore,
+  options?: Record<string, unknown>
+) => Promise<void>;
+
 export class ImageUploader {
   private prisma: PrismaClient;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private supabase: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private uploader: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private store: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private uploadImagesFn: any = null;
+  private supabase: SupabaseClient | null = null;
+  private uploader: SupabaseUploader | null = null;
+  private store: SupabaseStore | null = null;
+  private uploadImagesFn: UploadImagesFn | null = null;
   private authenticated = false;
 
   constructor(prisma: PrismaClient) {

@@ -8,13 +8,10 @@ Provides real hardware control for Basler GigE cameras, including:
 """
 
 import base64
-import pathlib
-import sys
 import time
 from io import BytesIO
-from typing import Dict, List, Any, Optional
+from typing import List, Optional
 
-import imageio.v2 as iio
 import numpy as np
 from PIL import Image
 from pypylon import pylon
@@ -214,61 +211,3 @@ class Camera:
         pil_img.save(buffer, format="PNG", compress_level=0)
         base64_img = base64.b64encode(buffer.getvalue()).decode("utf-8")
         return base64_img
-
-
-def run_camera_capture(output_dir: str, camera_settings: Dict[str, Any]) -> List[str]:
-    """Run camera capture and save images.
-
-    This is the main entry point for the camera capture script.
-
-    Args:
-        output_dir: Directory to save captured images
-        camera_settings: Dictionary of camera settings
-
-    Returns:
-        List of output file paths
-    """
-    import os
-
-    # Convert dict to CameraSettings object
-    settings = CameraSettings(**camera_settings)
-
-    output_path = pathlib.Path(output_dir)
-    os.makedirs(output_path, exist_ok=True)
-
-    # Create camera and capture frames
-    camera = Camera(settings)
-    camera.open()
-
-    try:
-        frames = camera.grab_frames(settings.num_frames)
-    finally:
-        camera.close()
-
-    # Save frames
-    output_files = []
-    for i, frame in enumerate(frames):
-        fname = output_path / f"{i + 1:03d}.png"
-        iio.imwrite(str(fname), frame)
-        output_files.append(str(fname))
-        print(f"IMAGE_PATH {fname.name}", flush=True)
-
-    return output_files
-
-
-if __name__ == "__main__":
-    import json
-
-    if len(sys.argv) != 3:
-        print("ERROR:Usage: camera.py <output_dir> <camera_settings_json>")
-        sys.exit(1)
-
-    output_dir = sys.argv[1]
-    camera_settings = json.loads(sys.argv[2])
-
-    try:
-        output_files = run_camera_capture(output_dir, camera_settings)
-        print(f"STATUS:Captured {len(output_files)} frames", flush=True)
-    except Exception as e:
-        print(f"ERROR:{str(e)}", flush=True)
-        sys.exit(1)

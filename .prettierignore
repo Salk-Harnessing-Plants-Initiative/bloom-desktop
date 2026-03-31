@@ -1,0 +1,19 @@
+# OpenSpec proposals and specs (authored markdown, not code)
+openspec/
+
+# Project docs
+CLAUDE.md
+
+# Build outputs
+out/
+dist/
+.webpack/
+
+# Dependencies
+node_modules/
+
+# Generated
+.prisma/
+coverage/
+playwright-report/
+test-results/

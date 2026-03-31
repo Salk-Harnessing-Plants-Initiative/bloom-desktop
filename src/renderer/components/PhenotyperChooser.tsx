@@ -20,7 +20,7 @@ interface PhenotyperChooserProps {
 /**
  * PhenotyperChooser Component
  *
- * Dropdown for selecting phenotypers in CaptureScan.
+ * Dropdown for selecting phenotypers in CylinderScan.
  * - Polls for phenotypers every 10 seconds
  * - Shows amber border when unselected, gray when selected
  * - Fires callback on selection change
