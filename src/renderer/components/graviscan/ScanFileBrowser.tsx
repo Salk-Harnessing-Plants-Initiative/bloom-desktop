@@ -102,7 +102,9 @@ export function ScanFileBrowser({
           const isWriting =
             writingFiles.has(file.path) ||
             [...writingFiles].some(
-              (wf) => wf.split('/').pop() === file.name || wf.split('\\').pop() === file.name
+              (wf) =>
+                wf.split('/').pop() === file.name ||
+                wf.split('\\').pop() === file.name
             );
 
           return (
