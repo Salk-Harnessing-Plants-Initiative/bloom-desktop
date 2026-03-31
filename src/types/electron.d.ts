@@ -666,6 +666,28 @@ export interface GraviScanAPI {
   }>;
 
   /**
+   * List files in the scan output directory.
+   */
+  listScanFiles: (dirPath?: string) => Promise<{
+    success: boolean;
+    files: Array<{
+      name: string;
+      path: string;
+      size: number;
+      modifiedAt: string;
+    }>;
+    error?: string;
+  }>;
+
+  /**
+   * Open a file's containing folder in the system file manager.
+   */
+  openFolder: (filePath: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+  /**
    * Read a scan image file and return as base64 data URI
    */
   readScanImage: (

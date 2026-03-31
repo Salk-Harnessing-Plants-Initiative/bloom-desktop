@@ -19,6 +19,7 @@ import { useScannerStatus } from './hooks/useScannerStatus';
 import { usePlateAssignments } from './hooks/usePlateAssignments';
 import { useScanSession } from './hooks/useScanSession';
 import { ScannerStatusPanel } from './components/graviscan/ScannerStatusPanel';
+import { ScanFileBrowser } from './components/graviscan/ScanFileBrowser';
 import {
   ScanFormSection,
   type ListItem,
@@ -28,6 +29,20 @@ import { ScanControlSection } from './components/graviscan/ScanControlSection';
 export function GraviScan() {
   // Scanner panel states
   const [scannerStates, setScannerStates] = useState<ScannerPanelState[]>([]);
+
+  // File browser state
+  const [showFileBrowser, setShowFileBrowser] = useState(true);
+  const [fileBrowserWidth, setFileBrowserWidth] = useState(() => {
+    try {
+      return parseInt(
+        localStorage.getItem('graviscan:fileBrowserWidth') || '300',
+        10
+      );
+    } catch {
+      return 300;
+    }
+  });
+  const [writingFiles] = useState<Set<string>>(new Set());
 
   // Scanner configuration (extracted hook)
   const {
@@ -413,46 +428,142 @@ export function GraviScan() {
         isScanning={isScanning}
       />
 
-      {/* Scanner Preview Section - Main visual display */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <ScanPreview
-          scanners={scannerAssignments
-            .filter((a) => a.scannerId !== null)
-            .map((assignment) => {
-              const scannerId = assignment.scannerId!;
-              const result = testResults[scannerId];
-              const scanningInProgress = result?.error === 'Scanning...';
-              const scannerState = scannerStates.find(
-                (s) => s.scannerId === scannerId
+      {/* Scanner Preview + File Browser — Split Layout */}
+      <div className="flex pr-2" style={{ maxHeight: '500px' }}>
+        {/* Scanner Preview Section */}
+        <div
+          className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 overflow-auto"
+          style={{ flex: showFileBrowser ? '1 1 0' : '1 1 100%' }}
+        >
+          <ScanPreview
+            scanners={scannerAssignments
+              .filter((a) => a.scannerId !== null)
+              .map((assignment) => {
+                const scannerId = assignment.scannerId!;
+                const result = testResults[scannerId];
+                const scanningInProgress = result?.error === 'Scanning...';
+                const scannerState = scannerStates.find(
+                  (s) => s.scannerId === scannerId
+                );
+                const isScanningProduction =
+                  scannerState?.state === 'scanning' && scannerState?.isBusy;
+                const isTestingThisScanner = isTesting && !result?.success;
+                return {
+                  assignment,
+                  plateAssignments:
+                    scannerPlateAssignments[scannerId] ||
+                    createPlateAssignments(assignment.gridMode || '2grid'),
+                  testResult: result,
+                  plateImages: scanImageUris[scannerId] || {},
+                  scanningPlateIndex: scanningPlateIndex[scannerId],
+                  isScanning:
+                    scanningInProgress ||
+                    isScanningProduction ||
+                    isTestingThisScanner,
+                  scanProgress: isScanningProduction
+                    ? scannerState?.progress
+                    : undefined,
+                };
+              })}
+            onImageClick={(imageUri, plateIndex) =>
+              setLightboxImage({
+                src: imageUri,
+                caption: `Plate ${formatPlateIndex(plateIndex)}`,
+              })
+            }
+          />
+        </div>
+
+        {/* Draggable Divider + Arrow Toggle */}
+        <div className="flex flex-col items-center flex-shrink-0 select-none">
+          {/* Arrow toggle button */}
+          <button
+            onClick={() => {
+              const next = !showFileBrowser;
+              setShowFileBrowser(next);
+              localStorage.setItem(
+                'graviscan:fileBrowserVisible',
+                String(next)
               );
-              const isScanningProduction =
-                scannerState?.state === 'scanning' && scannerState?.isBusy;
-              // Show scanning state during test if this scanner hasn't completed yet
-              const isTestingThisScanner = isTesting && !result?.success;
-              return {
-                assignment,
-                plateAssignments:
-                  scannerPlateAssignments[scannerId] ||
-                  createPlateAssignments(assignment.gridMode || '2grid'),
-                testResult: result,
-                plateImages: scanImageUris[scannerId] || {},
-                scanningPlateIndex: scanningPlateIndex[scannerId],
-                isScanning:
-                  scanningInProgress ||
-                  isScanningProduction ||
-                  isTestingThisScanner,
-                scanProgress: isScanningProduction
-                  ? scannerState?.progress
-                  : undefined,
-              };
-            })}
-          onImageClick={(imageUri, plateIndex) =>
-            setLightboxImage({
-              src: imageUri,
-              caption: `Plate ${formatPlateIndex(plateIndex)}`,
-            })
-          }
-        />
+            }}
+            className="p-1 text-gray-600 hover:text-gray-900 transition-colors"
+            title={
+              showFileBrowser ? 'Collapse file browser' : 'Expand file browser'
+            }
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d={showFileBrowser ? 'M9 5l7 7-7 7' : 'M15 19l-7-7 7-7'}
+              />
+            </svg>
+          </button>
+
+          {/* Visible draggable divider line */}
+          {showFileBrowser && (
+            <div
+              className="flex-1 w-1 bg-gray-200 hover:bg-blue-400 rounded cursor-col-resize transition-colors"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const startX = e.clientX;
+                const startWidth = fileBrowserWidth;
+                const onMouseMove = (moveE: MouseEvent) => {
+                  const delta = startX - moveE.clientX;
+                  const newWidth = Math.max(
+                    200,
+                    Math.min(500, startWidth + delta)
+                  );
+                  setFileBrowserWidth(newWidth);
+                };
+                const onMouseUp = () => {
+                  document.removeEventListener('mousemove', onMouseMove);
+                  document.removeEventListener('mouseup', onMouseUp);
+                  localStorage.setItem(
+                    'graviscan:fileBrowserWidth',
+                    String(fileBrowserWidth)
+                  );
+                };
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+              }}
+            />
+          )}
+        </div>
+
+        {/* File Browser Panel */}
+        {showFileBrowser && (
+          <div
+            className="bg-white rounded-xl shadow-sm border border-gray-200 flex-shrink-0 flex flex-col overflow-hidden"
+            style={{
+              width: fileBrowserWidth,
+              minWidth: 200,
+              maxWidth: 500,
+              maxHeight: '500px',
+            }}
+          >
+            {/* Header */}
+            <div className="px-3 py-2 border-b border-gray-200 bg-gray-50 rounded-t-xl flex-shrink-0">
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                Scan Files
+              </span>
+            </div>
+
+            {/* File list */}
+            <div className="flex-1 overflow-hidden">
+              <ScanFileBrowser
+                isScanning={isScanning}
+                writingFiles={writingFiles}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Image Lightbox */}

@@ -418,6 +418,22 @@ const graviscanAPI = {
   validateConfig: () => ipcRenderer.invoke('graviscan:validate-config'),
   // Scan output
   getOutputDir: () => ipcRenderer.invoke('graviscan:get-output-dir'),
+  listScanFiles: (dirPath?: string) =>
+    ipcRenderer.invoke('graviscan:list-scan-files', dirPath) as Promise<{
+      success: boolean;
+      files: Array<{
+        name: string;
+        path: string;
+        size: number;
+        modifiedAt: string;
+      }>;
+      error?: string;
+    }>,
+  openFolder: (filePath: string) =>
+    ipcRenderer.invoke('graviscan:open-folder', filePath) as Promise<{
+      success: boolean;
+      error?: string;
+    }>,
   // Read a scan image as base64 data URI for preview
   readScanImage: (filePath: string, options?: { full?: boolean }) =>
     ipcRenderer.invoke('graviscan:read-scan-image', filePath, options),

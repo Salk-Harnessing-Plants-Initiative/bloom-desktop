@@ -7,7 +7,7 @@
  * - Scan operations
  */
 
-import { ipcMain, app, BrowserWindow, dialog } from 'electron';
+import { ipcMain, app, BrowserWindow, dialog, shell } from 'electron';
 import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -1391,6 +1391,77 @@ export function registerGraviscanHandlers(
             ? error.message
             : 'Failed to get output directory',
         path: null,
+      };
+    }
+  });
+
+  /**
+   * List files in the scan output directory.
+   * Returns file info sorted by modification time (newest first).
+   */
+  ipcMain.handle(
+    'graviscan:list-scan-files',
+    async (_event, dirPath?: string) => {
+      try {
+        let outputDir = dirPath;
+        if (!outputDir) {
+          const isDev = process.env.NODE_ENV === 'development';
+          outputDir = isDev
+            ? path.join(app.getAppPath(), '.graviscan')
+            : path.join(app.getPath('home'), '.bloom', 'graviscan');
+        }
+
+        if (!fs.existsSync(outputDir)) {
+          return { success: true, files: [] };
+        }
+
+        const entries = fs.readdirSync(outputDir);
+        const files = entries
+          .filter((name) => {
+            const ext = path.extname(name).toLowerCase();
+            return ['.tif', '.tiff', '.png', '.jpg', '.jpeg'].includes(ext);
+          })
+          .map((name) => {
+            const filePath = path.join(outputDir!, name);
+            const stat = fs.statSync(filePath);
+            return {
+              name,
+              path: filePath,
+              size: stat.size,
+              modifiedAt: stat.mtime.toISOString(),
+            };
+          })
+          .sort(
+            (a, b) =>
+              new Date(b.modifiedAt).getTime() -
+              new Date(a.modifiedAt).getTime()
+          );
+
+        return { success: true, files };
+      } catch (error) {
+        console.error('[GraviScan] Error listing scan files:', error);
+        return {
+          success: false,
+          files: [],
+          error:
+            error instanceof Error ? error.message : 'Failed to list files',
+        };
+      }
+    }
+  );
+
+  /**
+   * Open a file's containing folder in the system file manager.
+   */
+  ipcMain.handle('graviscan:open-folder', async (_event, filePath: string) => {
+    try {
+      shell.showItemInFolder(filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('[GraviScan] Error opening folder:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to open folder',
       };
     }
   });
