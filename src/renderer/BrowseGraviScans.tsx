@@ -501,8 +501,13 @@ export function BrowseGraviScans() {
                 <div className="flex">
                   {/* Left: Metadata */}
                   <div className="flex-1 p-4 border-r border-gray-100">
-                    <h3 className="font-semibold text-gray-900 text-base truncate">
+                    <h3 className="font-semibold text-gray-900 text-base truncate flex items-center gap-2">
                       {exp.name}
+                      {exp.hasNeedsReview && (
+                        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                          Needs Review
+                        </span>
+                      )}
                     </h3>
                     {exp.scientist && (
                       <p className="text-sm text-gray-500 mt-0.5">

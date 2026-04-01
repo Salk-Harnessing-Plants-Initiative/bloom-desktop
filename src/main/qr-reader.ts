@@ -36,9 +36,8 @@ export async function readQrCodes(imagePath: string): Promise<string[]> {
         return [];
       }
 
-      // Load and resize image using sharp
+      // Load image at full resolution for reliable QR detection
       const { data, info } = await sharp(imagePath)
-        .resize(2000, null, { withoutEnlargement: true })
         .ensureAlpha()
         .raw()
         .toBuffer({ resolveWithObject: true });

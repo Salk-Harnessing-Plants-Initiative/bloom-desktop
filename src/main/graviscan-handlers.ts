@@ -855,7 +855,13 @@ export function registerGraviscanHandlers(
           assignedPlateId: string;
           detectedPlateId: string | null;
           detectedCodes: string[];
-          status: 'verified' | 'incorrect' | 'unreadable' | 'skipped';
+          status:
+            | 'verified'
+            | 'incorrect'
+            | 'unreadable'
+            | 'skipped'
+            | 'needs_review';
+          inconsistentMappings?: Record<string, string[]>;
         }> = [];
 
         for (const plate of plates) {
@@ -878,11 +884,13 @@ export function registerGraviscanHandlers(
             continue;
           }
 
-          // Step 2: DB lookup — find plate_id from detected QR codes
-          // Query GraviPlateSectionMapping where plant_qr matches any detected code
+          // Step 2: DB lookup — find plate_id for ALL detected QR codes
+          const plateIdCounts: Record<string, string[]> = {};
           let detectedPlateId: string | null = null;
+          let isInconsistent = false;
+
           try {
-            const mapping = await db.graviPlateSectionMapping.findFirst({
+            const mappings = await db.graviPlateSectionMapping.findMany({
               where: {
                 plant_qr: { in: detectedCodes },
               },
@@ -891,16 +899,49 @@ export function registerGraviscanHandlers(
               },
             });
 
-            if (mapping?.plate) {
-              detectedPlateId = mapping.plate.plate_id;
+            // Group QR codes by their plate_id
+            for (const mapping of mappings) {
+              if (mapping.plate) {
+                const pid = mapping.plate.plate_id;
+                if (!plateIdCounts[pid]) plateIdCounts[pid] = [];
+                plateIdCounts[pid].push(mapping.plant_qr);
+              }
+            }
+
+            const plateIds = Object.keys(plateIdCounts);
+
+            if (plateIds.length === 1) {
+              // All codes agree — use that plate_id
+              detectedPlateId = plateIds[0];
+            } else if (plateIds.length > 1) {
+              // Codes disagree — find majority
+              isInconsistent = true;
+              let maxCount = 0;
+              for (const [pid, codes] of Object.entries(plateIdCounts)) {
+                if (codes.length > maxCount) {
+                  maxCount = codes.length;
+                  detectedPlateId = pid;
+                }
+              }
+              console.warn(
+                `[GraviScan:VERIFY] Inconsistent QR mappings on ${plate.plateIndex}: ${JSON.stringify(plateIdCounts)}`
+              );
             }
           } catch (lookupErr) {
             console.error('[GraviScan:VERIFY] DB lookup failed:', lookupErr);
           }
 
-          // Step 3: Compare detected plate_id with assigned
-          let status: 'verified' | 'incorrect' | 'unreadable' | 'skipped';
-          if (!detectedPlateId) {
+          // Step 3: Determine status
+          let status:
+            | 'verified'
+            | 'incorrect'
+            | 'unreadable'
+            | 'skipped'
+            | 'needs_review';
+          if (isInconsistent) {
+            // QR codes map to different plates — flag for manual review, don't auto-correct
+            status = 'needs_review';
+          } else if (!detectedPlateId) {
             status = 'unreadable';
           } else if (detectedPlateId === plate.assignedPlateId) {
             status = 'verified';
@@ -908,12 +949,15 @@ export function registerGraviscanHandlers(
             status = 'incorrect';
           }
 
-          results.push({
+          const result = {
             ...plate,
             detectedPlateId,
             detectedCodes,
             status,
-          });
+            ...(isInconsistent ? { inconsistentMappings: plateIdCounts } : {}),
+          };
+
+          results.push(result);
 
           getMainWindow?.()?.webContents.send('graviscan:verify-result', {
             scannerId: plate.scannerId,
@@ -921,6 +965,7 @@ export function registerGraviscanHandlers(
             assignedPlateId: plate.assignedPlateId,
             detectedPlateId,
             status,
+            ...(isInconsistent ? { inconsistentMappings: plateIdCounts } : {}),
           });
         }
 
@@ -1093,9 +1138,12 @@ export function registerGraviscanHandlers(
         const unreadable = results.filter(
           (r) => r.status === 'unreadable'
         ).length;
+        const needsReview = results.filter(
+          (r) => r.status === 'needs_review'
+        ).length;
 
         console.log(
-          `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${unreadable} unreadable`
+          `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${unreadable} unreadable, ${needsReview} needs_review`
         );
 
         getMainWindow?.()?.webContents.send('graviscan:verify-complete', {

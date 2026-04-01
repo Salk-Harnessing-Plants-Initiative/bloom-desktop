@@ -1342,6 +1342,7 @@ export function registerDatabaseHandlers() {
               },
               orderBy: { capture_date: 'desc' },
             },
+            graviscanPlateAssignments: true,
           },
           orderBy: { name: 'asc' },
           skip: offset,
@@ -1355,6 +1356,10 @@ export function registerDatabaseHandlers() {
           species: exp.species,
           scientist: exp.scientist,
           accession: exp.accession,
+          hasNeedsReview: exp.graviscanPlateAssignments?.some(
+            (pa: { verification_status: string }) =>
+              pa.verification_status === 'needs_review'
+          ),
           scans: exp.graviscanScans.map((scan: GraviScanWithAllRelations) => ({
             ...scan,
             experiment: {
@@ -1432,11 +1437,19 @@ export function registerDatabaseHandlers() {
                 { plate_index: 'asc' },
               ],
             },
+            graviscanPlateAssignments: true,
           },
         });
 
         if (!experiment) {
           return { success: false, error: 'Experiment not found' };
+        }
+
+        // Build verification status lookup: "scannerId:plateIndex" → status
+        const verificationStatusMap: Record<string, string> = {};
+        for (const pa of experiment.graviscanPlateAssignments) {
+          const key = `${pa.scanner_id}:${pa.plate_index}`;
+          verificationStatusMap[key] = pa.verification_status;
         }
 
         // Transform to expected shape
@@ -1446,6 +1459,7 @@ export function registerDatabaseHandlers() {
           species: experiment.species,
           scientist: experiment.scientist,
           accession: experiment.accession,
+          verificationStatusMap,
           scans: experiment.graviscanScans.map(
             (scan: GraviScanWithAllRelations) => ({
               ...scan,

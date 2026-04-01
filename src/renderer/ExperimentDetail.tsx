@@ -19,6 +19,7 @@ interface FlatImage {
   gridMode: string;
   transplantDate: Date | null;
   customNote: string | null;
+  verificationStatus: string;
 }
 
 interface ScannerInfo {
@@ -133,6 +134,8 @@ export function ExperimentDetail() {
   const allFlatImages: FlatImage[] = experiment
     ? experiment.scans.flatMap((scan) => {
         const scannerId = scan.scanner?.id || 'unknown';
+        const vKey = `${scannerId}:${scan.plate_index}`;
+        const vStatus = experiment.verificationStatusMap?.[vKey] || 'pending';
         return scan.images.map((img) => ({
           path: img.path,
           filename: img.path.split(/[\\/]/).pop() || img.path,
@@ -150,6 +153,7 @@ export function ExperimentDetail() {
           gridMode: scan.grid_mode,
           transplantDate: scan.transplant_date,
           customNote: scan.custom_note,
+          verificationStatus: vStatus,
         }));
       })
     : [];
@@ -565,10 +569,21 @@ export function ExperimentDetail() {
                   {/* Plate ID */}
                   <div
                     style={{ width: colWidths.plate, minWidth: 80 }}
-                    className="flex-shrink-0 px-3 py-2.5 overflow-x-auto whitespace-nowrap text-sm text-gray-600"
+                    className="flex-shrink-0 px-3 py-2.5 overflow-x-auto whitespace-nowrap text-sm text-gray-600 flex items-center gap-1.5"
                     title={formatPlateIndex(img.plateIndex)}
                   >
                     {formatPlateIndex(img.plateIndex)}
+                    {img.verificationStatus === 'needs_review' && (
+                      <span
+                        className="text-xs font-medium text-amber-600"
+                        title="QR plate mapping inconsistent — needs manual review"
+                      >
+                        Needs Review
+                      </span>
+                    )}
+                    {img.verificationStatus === 'verified' && (
+                      <span className="text-xs text-green-600">✓</span>
+                    )}
                   </div>
                   {/* Wave number */}
                   {hasMultipleWaves && (

@@ -861,6 +861,7 @@ export interface GraviScanAPI {
       assignedPlateId: string;
       detectedPlateId: string | null;
       status: string;
+      inconsistentMappings?: Record<string, string[]>;
     }) => void
   ) => () => void;
 

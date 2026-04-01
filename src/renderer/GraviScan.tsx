@@ -43,6 +43,10 @@ export function GraviScan() {
     }
   });
   const [writingFiles, setWritingFiles] = useState<Set<string>>(new Set());
+  // Map plateKey → imagePath for completed scans (used to link verification results to files)
+  const [completedFilePaths, setCompletedFilePaths] = useState<
+    Record<string, string>
+  >({});
 
   // Track which files are currently being written
   useEffect(() => {
@@ -60,6 +64,11 @@ export function GraviScan() {
 
     const cleanupComplete = window.electron.graviscan.onScanComplete((data) => {
       if (data.imagePath) {
+        const plateKey = `${data.scannerId}:${data.plateIndex}`;
+        setCompletedFilePaths((prev) => ({
+          ...prev,
+          [plateKey]: data.imagePath,
+        }));
         setWritingFiles((prev) => {
           const next = new Set(prev);
           next.delete(data.imagePath);
@@ -441,13 +450,51 @@ export function GraviScan() {
         </div>
       )}
 
-      {verificationStatus === 'complete' && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <span className="text-green-700 text-sm font-medium">
-            QR Verification Complete
-          </span>
-        </div>
-      )}
+      {verificationStatus === 'complete' &&
+        (() => {
+          const needsReview = Object.entries(verificationResults).filter(
+            ([, r]) => r.status === 'needs_review'
+          );
+          const hasNeedsReview = needsReview.length > 0;
+
+          return (
+            <div
+              className={`rounded-lg p-4 ${
+                hasNeedsReview
+                  ? 'bg-amber-50 border border-amber-200'
+                  : 'bg-green-50 border border-green-200'
+              }`}
+            >
+              <span
+                className={`text-sm font-medium ${
+                  hasNeedsReview ? 'text-amber-700' : 'text-green-700'
+                }`}
+              >
+                {hasNeedsReview
+                  ? 'QR Verification — Manual Review Needed'
+                  : 'QR Verification Complete'}
+              </span>
+              {hasNeedsReview && (
+                <div className="mt-2 text-xs text-amber-600 space-y-1">
+                  {needsReview.map(([key, r]) => (
+                    <div key={key}>
+                      Grid {key.split(':')[1]}: QR codes map to different plates
+                      {r.inconsistentMappings && (
+                        <span className="ml-1">
+                          (
+                          {Object.entries(r.inconsistentMappings)
+                            .map(([pid, codes]) => `${pid}: ${codes.length} QR`)
+                            .join(', ')}
+                          )
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       <ScannerStatusPanel
         isTesting={isTesting}
@@ -590,6 +637,14 @@ export function GraviScan() {
               <ScanFileBrowser
                 isScanning={isScanning}
                 writingFiles={writingFiles}
+                needsReviewFiles={
+                  new Set(
+                    Object.entries(verificationResults)
+                      .filter(([, r]) => r.status === 'needs_review')
+                      .map(([key]) => completedFilePaths[key])
+                      .filter(Boolean)
+                  )
+                }
               />
             </div>
           </div>
