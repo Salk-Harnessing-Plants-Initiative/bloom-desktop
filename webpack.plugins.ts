@@ -10,11 +10,16 @@ export const plugins = [
     logger: 'webpack-infrastructure',
   }),
   // Copy Prisma client (including query engine) to output directory
+  // Copy zbar.wasm for QR code reading (@undecaf/zbar-wasm)
   new CopyWebpackPlugin({
     patterns: [
       {
         from: './node_modules/.prisma/client',
         to: '.prisma/client',
+      },
+      {
+        from: './node_modules/@undecaf/zbar-wasm/dist/zbar.wasm',
+        to: 'zbar.wasm',
       },
     ],
   }),
