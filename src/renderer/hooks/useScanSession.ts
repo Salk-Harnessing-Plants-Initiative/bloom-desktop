@@ -332,7 +332,10 @@ export function useScanSession({
     setVerificationResults({});
 
     try {
-      const result = await window.electron.graviscan.verifyPlates(plates);
+      const result = await window.electron.graviscan.verifyPlates(
+        plates,
+        status.experimentId
+      );
 
       if (result?.results) {
         // Update per-plate results

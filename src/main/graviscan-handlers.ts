@@ -840,7 +840,8 @@ export function registerGraviscanHandlers(
         plateIndex: string;
         imagePath: string;
         assignedPlateId: string;
-      }>
+      }>,
+      experimentId?: string
     ) => {
       try {
         console.log(
@@ -890,19 +891,31 @@ export function registerGraviscanHandlers(
           let isInconsistent = false;
 
           try {
+            // Scope query to experiment's accession to avoid cross-experiment matches
+            const accessionFilter = experimentId
+              ? {
+                  plate: {
+                    metadata_file: {
+                      experiments: { some: { id: experimentId } },
+                    },
+                  },
+                }
+              : {};
+
             const mappings = await db.graviPlateSectionMapping.findMany({
               where: {
                 plant_qr: { in: detectedCodes },
+                ...accessionFilter,
               },
               include: {
                 plate: true,
               },
             });
 
-            // Group QR codes by their plate_id
+            // Group QR codes by their plate_id (case-insensitive to handle metadata inconsistencies)
             for (const mapping of mappings) {
               if (mapping.plate) {
-                const pid = mapping.plate.plate_id;
+                const pid = mapping.plate.plate_id.toLowerCase();
                 if (!plateIdCounts[pid]) plateIdCounts[pid] = [];
                 plateIdCounts[pid].push(mapping.plant_qr);
               }

@@ -820,7 +820,8 @@ export interface GraviScanAPI {
       plateIndex: string;
       imagePath: string;
       assignedPlateId: string;
-    }>
+    }>,
+    experimentId?: string
   ) => Promise<{
     success: boolean;
     results: Array<{
