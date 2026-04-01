@@ -26,31 +26,35 @@ import {
   Phenotyper,
   Scientist,
   Accessions,
+  GraviScanPlateAssignment,
+  GraviPlateAccession,
+  GraviPlateSectionMapping,
   ExperimentCreateData,
   ExperimentUpdateData,
-  ScanCreateData,
   PhenotyperCreateData,
   ScientistCreateData,
   AccessionCreateData,
-  ImageCreateData,
   ScanFilters,
   PaginatedScanFilters,
   PaginatedScansResponse,
 } from './database';
+import {
+  DetectedScanner,
+  GraviConfig,
+  GraviConfigInput,
+  GraviScanner,
+  GraviScan,
+  GraviScanSession,
+  GraviImage,
+  GraviScanPlatformInfo,
+  ExperimentWithScans,
+} from './graviscan';
 import { UploadResult } from '../main/image-uploader';
 
 /**
  * Python backend API
  */
 export interface PythonAPI {
-  /**
-   * Send a command to the Python backend
-   * @param command - Command object to send
-   * @returns Promise resolving to the response data
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  sendCommand: (command: object) => Promise<any>;
-
   /**
    * Get Python backend version
    * @returns Promise resolving to version info
@@ -276,17 +280,10 @@ export interface DatabaseAPI {
     ) => Promise<DatabaseResponse<ExperimentWithRelations>>;
   };
   scans: {
-    /**
-     * List scans with optional filters
-     * @param filters - Legacy simple filters OR paginated filters
-     * @returns Array of scans (legacy) OR paginated response object
-     */
     list: {
-      // Overload 1: Paginated list (when page/pageSize provided)
       (
         filters: PaginatedScanFilters
       ): Promise<DatabaseResponse<PaginatedScansResponse>>;
-      // Overload 2: Legacy list (simple array)
       (filters?: ScanFilters): Promise<DatabaseResponse<ScanWithRelations[]>>;
     };
     get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
@@ -371,44 +368,141 @@ export interface DatabaseAPI {
       experimentId: string
     ) => Promise<DatabaseResponse<string | null>>;
   };
-  images: {
-    create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
+  graviscanPlateAssignments: {
+    list: (
+      experimentId: string,
+      scannerId: string
+    ) => Promise<DatabaseResponse<GraviScanPlateAssignment[]>>;
+    upsert: (
+      experimentId: string,
+      scannerId: string,
+      plateIndex: string,
+      data: {
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }
+    ) => Promise<DatabaseResponse<GraviScanPlateAssignment>>;
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      assignments: {
+        plate_index: string;
+        plate_barcode?: string | null;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        selected?: boolean;
+      }[]
+    ) => Promise<DatabaseResponse<GraviScanPlateAssignment[]>>;
   };
-}
-
-/**
- * Session State - persists across page navigation within a session
- */
-export interface SessionState {
-  phenotyperId: string | null;
-  experimentId: string | null;
-  waveNumber: number | null;
-  plantAgeDays: number | null;
-  accessionName: string | null;
-}
-
-/**
- * Session API - in-memory session state management
- */
-export interface SessionAPI {
-  /**
-   * Get current session state
-   * @returns Promise resolving to session state
-   */
-  get: () => Promise<SessionState>;
-
-  /**
-   * Update session state (partial update - merges with existing)
-   * @param updates - Partial session state to merge
-   * @returns Promise resolving to updated session state
-   */
-  set: (updates: Partial<SessionState>) => Promise<SessionState>;
-
-  /**
-   * Reset session state to initial values (all null)
-   * @returns Promise resolving when reset is complete
-   */
-  reset: () => Promise<void>;
+  graviscans: {
+    create: (data: {
+      experiment_id: string;
+      phenotyper_id: string;
+      scanner_id: string;
+      plate_barcode?: string | null;
+      transplant_date?: string | null;
+      custom_note?: string | null;
+      path: string;
+      grid_mode: string;
+      plate_index: string;
+      resolution: number;
+      format?: string;
+      session_id?: string | null;
+      cycle_number?: number | null;
+      wave_number?: number;
+      scan_started_at?: string | null;
+      scan_ended_at?: string | null;
+    }) => Promise<DatabaseResponse<GraviScan>>;
+    getMaxWaveNumber: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<number>>;
+    checkBarcodeUniqueInWave: (data: {
+      experiment_id: string;
+      wave_number: number;
+      plate_barcode: string;
+    }) => Promise<
+      DatabaseResponse<{ isDuplicate: boolean; existingScanId?: string }>
+    >;
+    updateGridTimestamps: (data: {
+      ids: string[];
+      scan_started_at: string;
+      scan_ended_at: string;
+      renamed_files?: { oldPath: string; newPath: string }[];
+    }) => Promise<DatabaseResponse<{ count: number }>>;
+    browseByExperiment: (params?: {
+      offset?: number;
+      limit?: number;
+      filters?: {
+        dateFrom?: string;
+        dateTo?: string;
+        experimentName?: string;
+        accession?: string;
+        uploadStatus?: string;
+      };
+    }) => Promise<DatabaseResponse<ExperimentWithScans[]>>;
+    getExperimentDetail: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<ExperimentWithScans>>;
+  };
+  graviimages: {
+    create: (data: {
+      graviscan_id: string;
+      path: string;
+      status?: string;
+    }) => Promise<DatabaseResponse<GraviImage>>;
+  };
+  graviscanSessions: {
+    create: (data: {
+      experiment_id: string;
+      phenotyper_id: string;
+      scan_mode: string;
+      interval_seconds?: number | null;
+      duration_seconds?: number | null;
+      total_cycles?: number | null;
+    }) => Promise<DatabaseResponse<GraviScanSession>>;
+    complete: (data: {
+      session_id: string;
+      cancelled?: boolean;
+    }) => Promise<DatabaseResponse<GraviScanSession>>;
+  };
+  graviPlateAccessions: {
+    createWithSections: (
+      accessionData: { name: string },
+      plates: {
+        plate_id: string;
+        accession: string;
+        transplant_date?: string | null;
+        custom_note?: string | null;
+        sections: {
+          plate_section_id: string;
+          plant_qr: string;
+          medium?: string | null;
+        }[];
+      }[]
+    ) => Promise<
+      DatabaseResponse<
+        Accessions & { totalPlates: number; totalSections: number }
+      >
+    >;
+    list: (
+      metadataFileId: string
+    ) => Promise<
+      DatabaseResponse<
+        (GraviPlateAccession & { sections: GraviPlateSectionMapping[] })[]
+      >
+    >;
+    listFiles: () => Promise<
+      DatabaseResponse<
+        (Accessions & {
+          experiments: { name: string }[];
+          _count: { graviPlateAccessions: number };
+        })[]
+      >
+    >;
+    delete: (metadataFileId: string) => Promise<DatabaseResponse>;
+  };
 }
 
 /**
@@ -475,6 +569,504 @@ export interface ConfigAPI {
 }
 
 /**
+ * GraviScan API
+ */
+export interface GraviScanAPI {
+  /**
+   * Detect connected USB scanners (refreshes detection)
+   */
+  detectScanners: () => Promise<{
+    success: boolean;
+    scanners: DetectedScanner[];
+    count: number;
+    error?: string;
+  }>;
+
+  /**
+   * Get GraviScan configuration
+   */
+  getConfig: () => Promise<{
+    success: boolean;
+    config: GraviConfig | null;
+    error?: string;
+  }>;
+
+  /**
+   * Save GraviScan configuration
+   */
+  saveConfig: (config: GraviConfigInput) => Promise<{
+    success: boolean;
+    config?: GraviConfig;
+    error?: string;
+  }>;
+
+  /**
+   * Save scanners to database with USB port info for re-identification
+   */
+  saveScannersDb: (
+    scanners: Array<{
+      name: string;
+      display_name?: string | null;
+      vendor_id: string;
+      product_id: string;
+      usb_port?: string;
+      usb_bus?: number;
+      usb_device?: number;
+    }>
+  ) => Promise<{
+    success: boolean;
+    scanners: GraviScanner[];
+    count: number;
+    error?: string;
+  }>;
+
+  /**
+   * Get platform support information
+   */
+  getPlatformInfo: () => Promise<
+    {
+      success: boolean;
+    } & GraviScanPlatformInfo
+  >;
+
+  /**
+   * Run scanner validation with cached scanner IDs
+   */
+  validateScanners: (cachedScannerIds: string[]) => Promise<{
+    isValidating: boolean;
+    isValidated: boolean;
+    validationError: string | null;
+    detectedScanners: DetectedScanner[];
+    cachedScannerIds: string[];
+    allScannersAvailable: boolean;
+  }>;
+
+  /**
+   * Validate scanner configuration by matching saved USB ports with detected scanners.
+   * Used on page load to determine if config is still valid or needs reconfiguration.
+   */
+  validateConfig: () => Promise<{
+    success: boolean;
+    status: 'valid' | 'mismatch' | 'no-config' | 'error';
+    error?: string;
+    matched: Array<{ saved: GraviScanner; detected: DetectedScanner }>;
+    missing: GraviScanner[];
+    new: DetectedScanner[];
+    savedScanners: GraviScanner[];
+    detectedScanners: DetectedScanner[];
+  }>;
+
+  /**
+   * Get the scan output directory path
+   */
+  getOutputDir: () => Promise<{
+    success: boolean;
+    path: string | null;
+    error?: string;
+  }>;
+
+  /**
+   * List files in the scan output directory.
+   */
+  listScanFiles: (dirPath?: string) => Promise<{
+    success: boolean;
+    files: Array<{
+      name: string;
+      path: string;
+      size: number;
+      modifiedAt: string;
+    }>;
+    error?: string;
+  }>;
+
+  /**
+   * Open a file's containing folder in the system file manager.
+   */
+  openFolder: (filePath: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+  /**
+   * Read a scan image file and return as base64 data URI
+   */
+  readScanImage: (
+    filePath: string,
+    options?: { full?: boolean }
+  ) => Promise<{
+    success: boolean;
+    dataUri?: string;
+    error?: string;
+  }>;
+
+  // Per-scanner subprocess scanning (via ScanCoordinator)
+
+  /**
+   * Start a parallel scan using per-scanner subprocesses.
+   * Supports both one-shot and continuous (interval) scanning.
+   */
+  startScan: (params: {
+    scanners: Array<{
+      scannerId: string;
+      saneName: string;
+      plates: Array<{
+        plate_index: string;
+        grid_mode: string;
+        resolution: number;
+        output_path: string;
+        plate_barcode?: string | null;
+      }>;
+    }>;
+    interval?: { intervalSeconds: number; durationSeconds: number };
+    metadata?: {
+      experimentId: string;
+      phenotyperId: string;
+      resolution: number;
+      sessionId?: string;
+      waveNumber?: number;
+    };
+  }) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+  /**
+   * Cancel an in-progress scan (one-shot or continuous).
+   */
+  cancelScan: () => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+  /**
+   * Mark a scan job as DB-recorded so it won't be re-created on remount.
+   */
+  markJobRecorded: (jobKey: string) => Promise<void>;
+
+  /**
+   * Get current scan session status. Used to restore UI state after navigating away and back.
+   */
+  getScanStatus: () => Promise<{
+    isActive: boolean;
+    experimentId?: string;
+    phenotyperId?: string;
+    resolution?: number;
+    sessionId?: string | null;
+    jobs?: Record<
+      string,
+      {
+        scannerId: string;
+        plateIndex: string;
+        outputPath: string;
+        plantBarcode: string | null;
+        transplantDate?: string | null;
+        customNote?: string | null;
+        gridMode: string;
+        status: 'pending' | 'scanning' | 'complete' | 'error';
+        imagePath?: string;
+        error?: string;
+        durationMs?: number;
+        cycleNumber?: number;
+        dbRecorded?: boolean;
+      }
+    >;
+    // Continuous scan timing (for restoring UI across tab navigation)
+    isContinuous?: boolean;
+    currentCycle?: number;
+    totalCycles?: number;
+    intervalMs?: number;
+    scanStartedAt?: number | null;
+    scanDurationMs?: number;
+    coordinatorState?: 'idle' | 'scanning' | 'waiting';
+    nextScanAt?: number | null;
+    waveNumber?: number;
+  }>;
+
+  /**
+   * Get current scanner subprocess statuses (ready/error/disconnected per scanner).
+   * Includes saved scanners from DB matched with live subprocess state.
+   */
+  getScannerStatus: () => Promise<{
+    success: boolean;
+    scanners: Array<{
+      scannerId: string;
+      displayName: string;
+      usbPort: string | null;
+      gridMode: string;
+      status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected';
+      error?: string;
+    }>;
+    error?: string;
+  }>;
+
+  /**
+   * Register callback for scanner init status events (fired during auto-init at startup).
+   */
+  onScannerInitStatus: (
+    callback: (data: {
+      scannerId: string;
+      status: string;
+      error?: string;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Verify plate positions by reading QR codes from scan images.
+   * Called after scan completes, before upload.
+   */
+  verifyPlates: (
+    plates: Array<{
+      scannerId: string;
+      plateIndex: string;
+      imagePath: string;
+      assignedPlateId: string;
+    }>
+  ) => Promise<{
+    success: boolean;
+    results: Array<{
+      scannerId: string;
+      plateIndex: string;
+      assignedPlateId: string;
+      detectedPlateId: string | null;
+      detectedCodes: string[];
+      status: 'verified' | 'incorrect' | 'unreadable' | 'skipped';
+    }>;
+    swaps: Array<{
+      position1: {
+        scannerId: string;
+        plateIndex: string;
+        assignedPlateId: string;
+      };
+      position2: {
+        scannerId: string;
+        plateIndex: string;
+        assignedPlateId: string;
+      };
+    }>;
+    error?: string;
+  }>;
+
+  /**
+   * Register callback for when QR verification starts.
+   */
+  onVerifyStarted: (callback: () => void) => () => void;
+
+  /**
+   * Register callback for per-plate QR verification result.
+   */
+  onVerifyResult: (
+    callback: (data: {
+      scannerId: string;
+      plateIndex: string;
+      assignedPlateId: string;
+      detectedPlateId: string | null;
+      status: string;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for when QR verification completes for all plates.
+   */
+  onVerifyComplete: (
+    callback: (data: {
+      results: Array<{
+        scannerId: string;
+        plateIndex: string;
+        status: string;
+        detectedPlateId: string | null;
+      }>;
+      swaps: Array<unknown>;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for when all scanners complete a cycle
+   */
+  onCycleComplete: (callback: (data: { cycle: number }) => void) => () => void;
+
+  /**
+   * Register callback for interval waiting periods (between cycles in continuous mode)
+   */
+  onIntervalWaiting: (
+    callback: (data: {
+      cycle: number;
+      totalCycles: number;
+      nextScanMs: number;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for when scan session exceeds the original duration
+   */
+  onOvertime: (
+    callback: (data: {
+      cycle: number;
+      totalCycles: number;
+      overtimeMs: number;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for when the entire interval scan session completes
+   */
+  onIntervalComplete: (
+    callback: (data: {
+      cyclesCompleted: number;
+      totalCycles: number;
+      cancelled: boolean;
+      overtimeMs: number;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for when a continuous scan session begins
+   */
+  onIntervalStart: (
+    callback: (data: {
+      totalCycles: number;
+      intervalMs: number;
+      durationMs: number;
+      startedAt: number;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for scan started events (a subprocess began scanning a plate)
+   */
+  onScanStarted: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex: string;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for scan complete events
+   */
+  onScanComplete: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex: string;
+      imagePath: string;
+      durationMs?: number;
+      cycleNumber?: number;
+      scanStartedAt?: string | null;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for grid complete events (per-grid timestamps)
+   */
+  onGridComplete: (
+    callback: (data: {
+      cycle: number;
+      gridIndex: string;
+      scanStartedAt: string;
+      scanEndedAt: string;
+      renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for scan error events
+   */
+  onScanError: (
+    callback: (data: {
+      jobId: string;
+      scannerId: string;
+      plateIndex?: string;
+      error: string;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Upload all pending/failed scans across all experiments to Supabase cloud
+   */
+  uploadAllScans: () => Promise<{
+    success: boolean;
+    uploaded: number;
+    skipped: number;
+    failed: number;
+    errors: string[];
+  }>;
+
+  /**
+   * Register callback for upload progress events
+   */
+  onUploadProgress: (
+    callback: (progress: {
+      total: number;
+      completed: number;
+      failed: number;
+      currentFile: string;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Register callback for Box backup progress events
+   */
+  onBoxBackupProgress: (
+    callback: (progress: {
+      totalImages: number;
+      completedImages: number;
+      failedImages: number;
+      currentExperiment: string;
+    }) => void
+  ) => () => void;
+
+  /**
+   * Download experiment images to a local folder
+   */
+  downloadImages: (params: {
+    experimentId: string;
+    experimentName: string;
+    waveNumber?: number;
+  }) => Promise<{
+    success: boolean;
+    total: number;
+    copied: number;
+    errors: string[];
+  }>;
+}
+
+/**
+ * Session State - persists across page navigation within a session
+ */
+export interface SessionState {
+  phenotyperId: string | null;
+  experimentId: string | null;
+  waveNumber: number | null;
+  plantAgeDays: number | null;
+  accessionName: string | null;
+}
+
+/**
+ * Session API - in-memory session state management
+ */
+export interface SessionAPI {
+  /**
+   * Get current session state
+   * @returns Promise resolving to session state
+   */
+  get: () => Promise<SessionState>;
+
+  /**
+   * Update session state (partial update - merges with existing)
+   * @param updates - Partial session state to merge
+   * @returns Promise resolving to updated session state
+   */
+  set: (updates: Partial<SessionState>) => Promise<SessionState>;
+
+  /**
+   * Reset session state to initial values (all null)
+   * @returns Promise resolving when reset is complete
+   */
+  reset: () => Promise<void>;
+}
+
+/**
  * Main Electron API exposed to renderer
  */
 export interface ElectronAPI {
@@ -484,6 +1076,7 @@ export interface ElectronAPI {
   scanner: ScannerAPI;
   database: DatabaseAPI;
   config: ConfigAPI;
+  graviscan: GraviScanAPI;
   session: SessionAPI;
 }
 

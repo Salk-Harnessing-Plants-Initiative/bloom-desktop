@@ -220,6 +220,9 @@ test.describe('ScanPreview Navigation', () => {
 
     // Navigate to Browse Scans
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await expect(
       window.getByRole('heading', { name: 'Browse Scans', exact: true })
     ).toBeVisible();
@@ -240,6 +243,9 @@ test.describe('ScanPreview Navigation', () => {
 
     // Navigate to Browse Scans
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
 
     // Click View button in the row
     const row = window.locator('tr').filter({ hasText: 'PLANT-VIEW-BTN' });
@@ -258,6 +264,9 @@ test.describe('ScanPreview Navigation', () => {
 
     // Navigate to Browse Scans and click on Plant ID
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-HEADER-TEST');
 
     // Wait for ScanPreview page to load
@@ -275,6 +284,9 @@ test.describe('ScanPreview Navigation', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-BACK-TEST');
 
     // Click back link
@@ -292,6 +304,9 @@ test.describe('ScanPreview Navigation', () => {
 
     // Navigate to Browse Scans and view the scan
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-DELETE-TEST');
 
     // Verify we're on the scan preview page
@@ -325,6 +340,9 @@ test.describe('ScanPreview Metadata Display', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-META-001');
 
     // Wait for ScanPreview page to load
@@ -345,6 +363,9 @@ test.describe('ScanPreview Metadata Display', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-SCIENTIST-TEST');
 
     // Verify scientist is displayed (scientist is linked to experiment)
@@ -358,6 +379,9 @@ test.describe('ScanPreview Metadata Display', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-ROTATION-TEST');
 
     // Verify rotation speed (seconds_per_rot) is displayed
@@ -372,6 +396,9 @@ test.describe('ScanPreview Metadata Display', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-CAM-TEST');
 
     // Verify camera settings are displayed
@@ -388,6 +415,9 @@ test.describe('ScanPreview Image Viewer', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-IMG-001');
 
     // Should show frame counter starting at 1
@@ -400,6 +430,9 @@ test.describe('ScanPreview Image Viewer', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-NEXT-001');
 
     // Wait for ScanPreview page to fully load
@@ -422,6 +455,9 @@ test.describe('ScanPreview Image Viewer', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-PREV-001');
 
     // Wait for ScanPreview page to fully load
@@ -448,6 +484,9 @@ test.describe('ScanPreview Image Viewer', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-NO-IMG');
 
     // Wait for ScanPreview page to load
@@ -465,6 +504,9 @@ test.describe('ScanPreview Keyboard Navigation', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-KEY-RIGHT');
     await expect(window.locator('text=1 / 5')).toBeVisible();
 
@@ -481,6 +523,9 @@ test.describe('ScanPreview Keyboard Navigation', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-KEY-LEFT');
     await expect(window.locator('text=1 / 5')).toBeVisible({
       timeout: 15000,
@@ -503,6 +548,9 @@ test.describe('ScanPreview Keyboard Navigation', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-KEY-HOME');
 
     // Wait for page to load
@@ -528,6 +576,9 @@ test.describe('ScanPreview Keyboard Navigation', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-KEY-END');
     await expect(window.locator('text=1 / 5')).toBeVisible();
 
@@ -546,6 +597,9 @@ test.describe('ScanPreview Zoom Controls', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-ZOOM-IN');
 
     // Zoom in button should be visible
@@ -558,6 +612,9 @@ test.describe('ScanPreview Zoom Controls', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-ZOOM-OUT');
 
     // Zoom out button should be visible
@@ -570,6 +627,9 @@ test.describe('ScanPreview Zoom Controls', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-ZOOM-RESET');
 
     // Reset/Fit button should be visible
@@ -587,6 +647,9 @@ test.describe('ScanPreview Upload', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-UPLOAD-BTN');
 
     // Upload button should be visible in the toolbar
@@ -601,6 +664,9 @@ test.describe('ScanPreview Upload', () => {
 
     // Navigate to BrowseScans
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
 
     // Wait for table to load
     await expect(window.locator('text=PLANT-TABLE-UPLOAD')).toBeVisible();
@@ -618,6 +684,9 @@ test.describe('ScanPreview Upload', () => {
 
     // Navigate to BrowseScans
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
 
     // Wait for table to load
     await expect(window.locator('text=PLANT-STATUS-TEST')).toBeVisible();
@@ -641,6 +710,9 @@ test.describe('Batch Upload', () => {
 
     // Navigate to BrowseScans
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
 
     // Wait for table to load
     await expect(window.locator('text=PLANT-BATCH-1')).toBeVisible();
@@ -665,6 +737,9 @@ test.describe('Batch Upload', () => {
 
     // Navigate to BrowseScans
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
 
     // Wait for table to load
     await expect(window.locator('text=PLANT-SELECT-1')).toBeVisible();
@@ -693,6 +768,9 @@ test.describe('Batch Upload', () => {
 
     // Navigate to BrowseScans
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
 
     // Wait for table to load
     await expect(window.locator('text=PLANT-COUNT-1')).toBeVisible();
@@ -794,6 +872,9 @@ test.describe('ScanPreview Image Loading', () => {
 
     // Navigate to ScanPreview
     await window.click('text=Browse Scans');
+    // Switch to CylinderScan tab (default is GraviScan in full mode)
+    const cylTab = window.locator('button:has-text("CylinderScan")');
+    if (await cylTab.isVisible()) await cylTab.click();
     await window.click('text=PLANT-REAL-IMG');
 
     // Wait for ScanPreview to load

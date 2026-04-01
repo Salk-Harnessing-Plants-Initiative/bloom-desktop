@@ -228,7 +228,3 @@ export interface ScannerAPI {
  * });
  * ```
  */
-export const DEFAULT_SCANNER_SETTINGS: Partial<ScannerSettings> = {
-  num_frames: 72,
-  output_path: './scans',
-};
