@@ -103,6 +103,7 @@ export type ExperimentWithGraviScans = Prisma.ExperimentGetPayload<{
         session: true;
       };
     };
+    graviscanPlateAssignments: true;
   };
 }>;
 

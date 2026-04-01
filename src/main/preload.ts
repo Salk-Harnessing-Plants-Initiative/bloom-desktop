@@ -573,6 +573,7 @@ const graviscanAPI = {
       assignedPlateId: string;
       detectedPlateId: string | null;
       status: string;
+      inconsistentMappings?: Record<string, string[]>;
     }) => void
   ) => {
     const listener = (
@@ -583,6 +584,7 @@ const graviscanAPI = {
         assignedPlateId: string;
         detectedPlateId: string | null;
         status: string;
+        inconsistentMappings?: Record<string, string[]>;
       }
     ) => callback(data);
     ipcRenderer.on('graviscan:verify-result', listener);

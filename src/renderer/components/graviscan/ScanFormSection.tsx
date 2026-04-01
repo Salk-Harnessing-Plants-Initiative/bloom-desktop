@@ -51,10 +51,14 @@ interface ScanFormSectionProps {
   // State
   isScanning: boolean;
 
-  // QR verification results: "scannerId:plateIndex" → { status, detectedPlateId }
+  // QR verification results: "scannerId:plateIndex" → { status, detectedPlateId, inconsistentMappings? }
   verificationResults?: Record<
     string,
-    { status: string; detectedPlateId: string | null }
+    {
+      status: string;
+      detectedPlateId: string | null;
+      inconsistentMappings?: Record<string, string[]>;
+    }
   >;
 }
 
@@ -390,6 +394,13 @@ export function ScanFormSection({
                             return (
                               <span className="text-xs font-medium text-amber-600 whitespace-nowrap">
                                 QR Incorrect
+                              </span>
+                            );
+                          }
+                          if (vr.status === 'needs_review') {
+                            return (
+                              <span className="text-xs font-medium text-amber-600 whitespace-nowrap">
+                                Needs Review
                               </span>
                             );
                           }

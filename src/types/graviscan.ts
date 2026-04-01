@@ -133,6 +133,10 @@ export interface ExperimentWithScans {
   scientist?: { id: string; name: string; email: string } | null;
   accession?: { id: string; name: string } | null;
   scans: GraviScanWithRelations[];
+  /** Verification status per plate: "scannerId:plateIndex" → status */
+  verificationStatusMap?: Record<string, string>;
+  /** Whether any plate assignment has needs_review status */
+  hasNeedsReview?: boolean;
 }
 
 /**
@@ -212,7 +216,8 @@ export type VerificationStatus =
   | 'verified'
   | 'swapped'
   | 'unreadable'
-  | 'skipped';
+  | 'skipped'
+  | 'needs_review';
 
 export interface PlateAssignment {
   plateIndex: string; // "00", "01", "10", "11"

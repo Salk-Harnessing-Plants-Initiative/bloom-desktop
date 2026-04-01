@@ -129,7 +129,11 @@ export interface UseScanSessionReturn {
   verificationStatus: 'idle' | 'verifying' | 'complete';
   verificationResults: Record<
     string,
-    { status: string; detectedPlateId: string | null }
+    {
+      status: string;
+      detectedPlateId: string | null;
+      inconsistentMappings?: Record<string, string[]>;
+    }
   >;
   handleStartScan: () => Promise<void>;
   handleCancelScan: () => Promise<void>;
@@ -204,9 +208,16 @@ export function useScanSession({
   const [verificationStatus, setVerificationStatus] = useState<
     'idle' | 'verifying' | 'complete'
   >('idle');
-  // Per-plate verification results: "scannerId:plateIndex" → { status, detectedPlateId }
+  // Per-plate verification results: "scannerId:plateIndex" → { status, detectedPlateId, inconsistentMappings? }
   const [verificationResults, setVerificationResults] = useState<
-    Record<string, { status: string; detectedPlateId: string | null }>
+    Record<
+      string,
+      {
+        status: string;
+        detectedPlateId: string | null;
+        inconsistentMappings?: Record<string, string[]>;
+      }
+    >
   >({});
 
   // Async scan job tracking — maps job_id → job metadata
@@ -403,6 +414,9 @@ export function useScanSession({
           [`${data.scannerId}:${data.plateIndex}`]: {
             status: data.status,
             detectedPlateId: data.detectedPlateId,
+            ...(data.inconsistentMappings
+              ? { inconsistentMappings: data.inconsistentMappings }
+              : {}),
           },
         }));
       }

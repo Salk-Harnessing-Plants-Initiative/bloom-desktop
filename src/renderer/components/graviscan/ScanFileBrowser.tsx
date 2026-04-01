@@ -19,6 +19,8 @@ interface ScanFileBrowserProps {
   isScanning: boolean;
   /** Set of file paths currently being written (scan-started but not scan-complete) */
   writingFiles: Set<string>;
+  /** Set of file paths that need manual QR review */
+  needsReviewFiles?: Set<string>;
 }
 
 function formatFileSize(bytes: number): string {
@@ -39,6 +41,7 @@ function formatTime(isoString: string): string {
 export function ScanFileBrowser({
   isScanning,
   writingFiles,
+  needsReviewFiles = new Set(),
 }: ScanFileBrowserProps) {
   const [files, setFiles] = useState<ScanFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +109,13 @@ export function ScanFileBrowser({
                 wf.split('/').pop() === file.name ||
                 wf.split('\\').pop() === file.name
             );
+          const needsReview =
+            needsReviewFiles.has(file.path) ||
+            [...needsReviewFiles].some(
+              (nf) =>
+                nf.split('/').pop() === file.name ||
+                nf.split('\\').pop() === file.name
+            );
 
           return (
             <button
@@ -157,6 +167,11 @@ export function ScanFileBrowser({
                   {isWriting && (
                     <span className="ml-2 text-amber-600 font-medium">
                       Writing...
+                    </span>
+                  )}
+                  {!isWriting && needsReview && (
+                    <span className="ml-2 text-amber-600 font-medium">
+                      Needs Review
                     </span>
                   )}
                 </p>
