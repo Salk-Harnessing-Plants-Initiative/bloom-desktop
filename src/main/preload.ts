@@ -531,9 +531,14 @@ const graviscanAPI = {
       plateIndex: string;
       imagePath: string;
       assignedPlateId: string;
-    }>
+    }>,
+    experimentId?: string
   ) =>
-    ipcRenderer.invoke('graviscan:verify-plates', plates) as Promise<{
+    ipcRenderer.invoke(
+      'graviscan:verify-plates',
+      plates,
+      experimentId
+    ) as Promise<{
       success: boolean;
       results: Array<{
         scannerId: string;
