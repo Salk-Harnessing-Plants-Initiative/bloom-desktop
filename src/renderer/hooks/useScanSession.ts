@@ -133,6 +133,7 @@ export interface UseScanSessionReturn {
       status: string;
       detectedPlateId: string | null;
       inconsistentMappings?: Record<string, string[]>;
+      duplicateQrCodes?: string[];
     }
   >;
   handleStartScan: () => Promise<void>;
@@ -208,7 +209,7 @@ export function useScanSession({
   const [verificationStatus, setVerificationStatus] = useState<
     'idle' | 'verifying' | 'complete'
   >('idle');
-  // Per-plate verification results: "scannerId:plateIndex" → { status, detectedPlateId, inconsistentMappings? }
+  // Per-plate verification results: "scannerId:plateIndex" → { status, detectedPlateId, ... }
   const [verificationResults, setVerificationResults] = useState<
     Record<
       string,
@@ -216,6 +217,7 @@ export function useScanSession({
         status: string;
         detectedPlateId: string | null;
         inconsistentMappings?: Record<string, string[]>;
+        duplicateQrCodes?: string[];
       }
     >
   >({});
@@ -419,6 +421,9 @@ export function useScanSession({
             detectedPlateId: data.detectedPlateId,
             ...(data.inconsistentMappings
               ? { inconsistentMappings: data.inconsistentMappings }
+              : {}),
+            ...(data.duplicateQrCodes
+              ? { duplicateQrCodes: data.duplicateQrCodes }
               : {}),
           },
         }));

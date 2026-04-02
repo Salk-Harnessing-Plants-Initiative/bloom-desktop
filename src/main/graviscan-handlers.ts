@@ -850,25 +850,66 @@ export function registerGraviscanHandlers(
 
         getMainWindow?.()?.webContents.send('graviscan:verify-started');
 
+        type VerifyStatus =
+          | 'verified'
+          | 'incorrect'
+          | 'unreadable'
+          | 'skipped'
+          | 'needs_review'
+          | 'duplicate_qr';
+
         const results: Array<{
           scannerId: string;
           plateIndex: string;
           assignedPlateId: string;
           detectedPlateId: string | null;
           detectedCodes: string[];
-          status:
-            | 'verified'
-            | 'incorrect'
-            | 'unreadable'
-            | 'skipped'
-            | 'needs_review';
+          status: VerifyStatus;
           inconsistentMappings?: Record<string, string[]>;
+          duplicateQrCodes?: string[];
+        }> = [];
+
+        // Step 1: Read QR codes from ALL plates first
+        const plateReadResults: Array<{
+          plate: (typeof plates)[number];
+          detectedCodes: string[];
         }> = [];
 
         for (const plate of plates) {
-          // Step 1: Read QR codes from image
           const detectedCodes = await readQrCodes(plate.imagePath);
+          plateReadResults.push({ plate, detectedCodes });
+        }
 
+        // Step 2: Detect duplicate QR codes across plates
+        const qrToGrids: Record<string, string[]> = {};
+        for (const { plate, detectedCodes } of plateReadResults) {
+          for (const code of detectedCodes) {
+            if (!qrToGrids[code]) qrToGrids[code] = [];
+            if (!qrToGrids[code].includes(plate.plateIndex)) {
+              qrToGrids[code].push(plate.plateIndex);
+            }
+          }
+        }
+        const duplicateQrs = Object.entries(qrToGrids)
+          .filter(([, grids]) => grids.length > 1)
+          .map(([code]) => code);
+
+        if (duplicateQrs.length > 0) {
+          console.warn(
+            `[GraviScan:VERIFY] Duplicate QR codes across plates: ${duplicateQrs.map((q) => `${q} on grids ${qrToGrids[q].join(',')}`).join('; ')}`
+          );
+        }
+
+        // Grids that have any duplicate QR code
+        const duplicateGrids = new Set<string>();
+        for (const code of duplicateQrs) {
+          for (const grid of qrToGrids[code]) {
+            duplicateGrids.add(grid);
+          }
+        }
+
+        // Step 3: Verify each plate
+        for (const { plate, detectedCodes } of plateReadResults) {
           if (detectedCodes.length === 0) {
             results.push({
               ...plate,
@@ -881,6 +922,27 @@ export function registerGraviscanHandlers(
               detectedPlateId: null,
               detectedCodes: [],
               status: 'unreadable',
+            });
+            continue;
+          }
+
+          // Flag plates with duplicate QR codes — skip normal verification
+          if (duplicateGrids.has(plate.plateIndex)) {
+            const dupsOnThisPlate = duplicateQrs.filter((q) =>
+              detectedCodes.includes(q)
+            );
+            results.push({
+              ...plate,
+              detectedPlateId: null,
+              detectedCodes,
+              status: 'duplicate_qr',
+              duplicateQrCodes: dupsOnThisPlate,
+            });
+            getMainWindow?.()?.webContents.send('graviscan:verify-result', {
+              ...plate,
+              detectedPlateId: null,
+              status: 'duplicate_qr',
+              duplicateQrCodes: dupsOnThisPlate,
             });
             continue;
           }
@@ -944,13 +1006,8 @@ export function registerGraviscanHandlers(
             console.error('[GraviScan:VERIFY] DB lookup failed:', lookupErr);
           }
 
-          // Step 3: Determine status
-          let status:
-            | 'verified'
-            | 'incorrect'
-            | 'unreadable'
-            | 'skipped'
-            | 'needs_review';
+          // Determine status
+          let status: VerifyStatus;
           if (isInconsistent) {
             // QR codes map to different plates — flag for manual review, don't auto-correct
             status = 'needs_review';
@@ -1154,9 +1211,12 @@ export function registerGraviscanHandlers(
         const needsReview = results.filter(
           (r) => r.status === 'needs_review'
         ).length;
+        const duplicates = results.filter(
+          (r) => r.status === 'duplicate_qr'
+        ).length;
 
         console.log(
-          `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${unreadable} unreadable, ${needsReview} needs_review`
+          `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${unreadable} unreadable, ${needsReview} needs_review, ${duplicates} duplicate_qr`
         );
 
         getMainWindow?.()?.webContents.send('graviscan:verify-complete', {

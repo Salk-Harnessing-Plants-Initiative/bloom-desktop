@@ -456,26 +456,51 @@ export function GraviScan() {
           const needsReview = Object.entries(verificationResults).filter(
             ([, r]) => r.status === 'needs_review'
           );
-          const hasNeedsReview = needsReview.length > 0;
+          const duplicates = Object.entries(verificationResults).filter(
+            ([, r]) => r.status === 'duplicate_qr'
+          );
+          const hasIssues = needsReview.length > 0 || duplicates.length > 0;
 
           return (
             <div
               className={`rounded-lg p-4 ${
-                hasNeedsReview
-                  ? 'bg-amber-50 border border-amber-200'
+                hasIssues
+                  ? duplicates.length > 0
+                    ? 'bg-red-50 border border-red-200'
+                    : 'bg-amber-50 border border-amber-200'
                   : 'bg-green-50 border border-green-200'
               }`}
             >
               <span
                 className={`text-sm font-medium ${
-                  hasNeedsReview ? 'text-amber-700' : 'text-green-700'
+                  hasIssues
+                    ? duplicates.length > 0
+                      ? 'text-red-700'
+                      : 'text-amber-700'
+                    : 'text-green-700'
                 }`}
               >
-                {hasNeedsReview
-                  ? 'QR Verification — Manual Review Needed'
-                  : 'QR Verification Complete'}
+                {duplicates.length > 0
+                  ? 'QR Verification — Duplicate QR Codes Detected'
+                  : needsReview.length > 0
+                    ? 'QR Verification — Manual Review Needed'
+                    : 'QR Verification Complete'}
               </span>
-              {hasNeedsReview && (
+              {duplicates.length > 0 && (
+                <div className="mt-2 text-xs text-red-600 space-y-1">
+                  {duplicates.map(([key, r]) => (
+                    <div key={key}>
+                      Grid {key.split(':')[1]}: duplicate QR code
+                      {r.duplicateQrCodes && (
+                        <span className="ml-1">
+                          ({r.duplicateQrCodes.join(', ')})
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {needsReview.length > 0 && (
                 <div className="mt-2 text-xs text-amber-600 space-y-1">
                   {needsReview.map(([key, r]) => (
                     <div key={key}>

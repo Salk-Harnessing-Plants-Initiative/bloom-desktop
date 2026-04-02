@@ -133,10 +133,15 @@ test.describe.serial('GraviScan Workflow', () => {
     await window.click('text=Capture Scan');
     await switchToGraviScanTab();
 
-    // Verify scanner status panel is visible
+    // Verify mock mode banner
     await expect(
-      window.getByText('No scanners configured', { exact: true })
+      window.locator('text=Mock Mode - Simulated scanners')
     ).toBeVisible({ timeout: 10000 });
+
+    // Verify Detect Scanners button
+    await expect(
+      window.locator('button:has-text("Detect Scanners")')
+    ).toBeVisible({ timeout: 5000 });
   });
 
   // =========================================================================
@@ -144,15 +149,13 @@ test.describe.serial('GraviScan Workflow', () => {
   // =========================================================================
 
   test('should detect mock scanners and show scanner assignment', async () => {
-    // Navigate to Configure Scanner page
-    await window.click('text=Configure Scanner');
-
+    // Already on GraviScan tab from test 1
     // Click Detect Scanners
     await window.click('button:has-text("Detect Scanners")');
 
-    // Mock returns scanners — scanner name should appear
+    // Mock returns 2 scanners — scanner name should appear
     await expect(
-      window.locator('text=/Scanner 1|Scanner 2/i').first()
+      window.locator('text=/Mock Scanner|Scanner 1|epkowa/i').first()
     ).toBeVisible({ timeout: 10000 });
 
     // Verify grid mode select exists with 2-grid option
@@ -163,10 +166,6 @@ test.describe.serial('GraviScan Workflow', () => {
     await expect(window.locator('text=/Resolution/i').first()).toBeVisible({
       timeout: 5000,
     });
-
-    // Navigate back to Capture Scan for remaining tests
-    await window.click('text=Capture Scan');
-    await switchToGraviScanTab();
   });
 
   // =========================================================================
@@ -263,8 +262,8 @@ test.describe.serial('GraviScan Workflow', () => {
   test('should display GraviScan metadata upload UI', async () => {
     // Navigate to Metadata
     // Nav label is "Accessions" in full mode, "Metadata" in graviscan mode
-    const metadataLink = window.getByRole('link', { name: 'Metadata' });
-    const accessionsLink = window.getByRole('link', { name: 'Accessions' });
+    const metadataLink = window.locator('text=Metadata');
+    const accessionsLink = window.locator('text=Accessions');
     if (await metadataLink.isVisible({ timeout: 1000 }).catch(() => false)) {
       await metadataLink.click();
     } else {
@@ -300,8 +299,8 @@ test.describe.serial('GraviScan Workflow', () => {
   test('should upload Excel file and show column mapping', async () => {
     // Re-navigate to ensure we're on the right tab
     // Nav label is "Accessions" in full mode, "Metadata" in graviscan mode
-    const metadataLink = window.getByRole('link', { name: 'Metadata' });
-    const accessionsLink = window.getByRole('link', { name: 'Accessions' });
+    const metadataLink = window.locator('text=Metadata');
+    const accessionsLink = window.locator('text=Accessions');
     if (await metadataLink.isVisible({ timeout: 1000 }).catch(() => false)) {
       await metadataLink.click();
     } else {
