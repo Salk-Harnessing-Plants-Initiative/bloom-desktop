@@ -51,13 +51,14 @@ interface ScanFormSectionProps {
   // State
   isScanning: boolean;
 
-  // QR verification results: "scannerId:plateIndex" → { status, detectedPlateId, inconsistentMappings? }
+  // QR verification results: "scannerId:plateIndex" → { status, detectedPlateId, ... }
   verificationResults?: Record<
     string,
     {
       status: string;
       detectedPlateId: string | null;
       inconsistentMappings?: Record<string, string[]>;
+      duplicateQrCodes?: string[];
     }
   >;
 }
@@ -394,6 +395,13 @@ export function ScanFormSection({
                             return (
                               <span className="text-xs font-medium text-amber-600 whitespace-nowrap">
                                 QR Incorrect
+                              </span>
+                            );
+                          }
+                          if (vr.status === 'duplicate_qr') {
+                            return (
+                              <span className="text-xs font-medium text-red-600 whitespace-nowrap">
+                                QR Duplicate
                               </span>
                             );
                           }

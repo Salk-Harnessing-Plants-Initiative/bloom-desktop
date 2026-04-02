@@ -863,6 +863,7 @@ export interface GraviScanAPI {
       detectedPlateId: string | null;
       status: string;
       inconsistentMappings?: Record<string, string[]>;
+      duplicateQrCodes?: string[];
     }) => void
   ) => () => void;
 
