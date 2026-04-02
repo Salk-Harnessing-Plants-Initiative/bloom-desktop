@@ -1202,6 +1202,8 @@ export function useScanSession({
     setScanError(null);
     setScanSuccess(null);
     setIsScanning(true);
+    setVerificationStatus('idle');
+    setVerificationResults({});
 
     // Start elapsed timer
     startElapsedTimer();
