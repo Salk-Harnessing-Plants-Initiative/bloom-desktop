@@ -74,15 +74,34 @@ def ipc_mode():
     run_ipc_loop()
 
 
+def scan_worker_mode(scanner_id: str, device: str, mock: bool = False):
+    """Run as a scan worker subprocess for a single scanner."""
+    try:
+        from python.graviscan.scan_worker import run_worker
+    except ModuleNotFoundError:
+        from graviscan.scan_worker import run_worker  # type: ignore[import-not-found]
+    run_worker(scanner_id, device, mock)
+
+
 def main():
-    """Main entry point - routes to interactive or IPC mode."""
+    """Main entry point - routes to interactive, IPC, or scan-worker mode."""
     parser = argparse.ArgumentParser(description="Bloom Hardware Interface")
     parser.add_argument(
         "--ipc", action="store_true", help="Run in IPC mode for Electron communication"
     )
+    parser.add_argument(
+        "--scan-worker", action="store_true", help="Run as scan worker subprocess"
+    )
+    parser.add_argument("--scanner-id", type=str, help="Scanner UUID (scan-worker mode)")
+    parser.add_argument("--device", type=str, help="SANE device name (scan-worker mode)")
+    parser.add_argument("--mock", action="store_true", help="Use mock scanner (scan-worker mode)")
     args = parser.parse_args()
 
-    if args.ipc:
+    if args.scan_worker:
+        if not args.scanner_id or not args.device:
+            parser.error("--scan-worker requires --scanner-id and --device")
+        scan_worker_mode(args.scanner_id, args.device, args.mock)
+    elif args.ipc:
         ipc_mode()
     else:
         interactive_mode()

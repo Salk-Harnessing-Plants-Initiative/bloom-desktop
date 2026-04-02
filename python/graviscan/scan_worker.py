@@ -796,6 +796,25 @@ class ScanWorker:
         log(self.scanner_id, "Done")
 
 
+def run_worker(scanner_id: str, device: str, mock: bool = False) -> None:
+    """Entry point for scan worker — used by both dev mode and production PyInstaller.
+
+    Creates a ScanWorker, initializes SANE, and enters the command loop.
+    Exits with code 1 if initialization fails, 0 on clean exit.
+    """
+    worker = ScanWorker(
+        scanner_id=scanner_id,
+        device_name=device,
+        mock=mock,
+    )
+
+    if not worker.initialize():
+        sys.exit(1)
+
+    worker.run()
+    sys.exit(0)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="GraviScan worker for a single scanner"
@@ -814,17 +833,7 @@ def main():
     if not args.mock and not args.device:
         parser.error("--device is required unless --mock is specified")
 
-    worker = ScanWorker(
-        scanner_id=args.scanner_id,
-        device_name=args.device or "mock-device",
-        mock=args.mock,
-    )
-
-    if not worker.initialize():
-        sys.exit(1)
-
-    worker.run()
-    sys.exit(0)
+    run_worker(args.scanner_id, args.device or "mock-device", args.mock)
 
 
 if __name__ == "__main__":
