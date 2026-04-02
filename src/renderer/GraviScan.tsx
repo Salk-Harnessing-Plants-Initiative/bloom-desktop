@@ -95,6 +95,7 @@ export function GraviScan() {
     isValidating,
     resolutionRef,
     isLoading: platformLoading,
+    scannerStatuses,
   } = useScannerStatus();
 
   // Scan form state
@@ -382,8 +383,8 @@ export function GraviScan() {
     selectedPhenotyper !== '' &&
     selectedPlates.length > 0 &&
     !hasBarcodeConflicts;
-  const canStartScan =
-    canScan && isFormValid && scannerStates.some((s) => s.enabled);
+  const scannersReady = scannerStatuses.some((s) => s.status === 'ready');
+  const canStartScan = canScan && isFormValid && scannersReady;
 
   // Build validation messages for missing fields
   const validationMessages: string[] = [];
