@@ -163,18 +163,16 @@ export class ScanCoordinator extends EventEmitter {
       toSpawn.push(scanner);
     }
 
-    // Phase 2: Spawn subprocesses with staggered init
-    // SANE's sane_init() enumerates all USB buses. Parallel spawns cause
-    // "Device busy" contention. Stagger by 5s so each init completes before
-    // the next starts. Scanners still scan in parallel once connected.
+    // Phase 2: Spawn all new subprocesses in parallel
+    // Stale processes are killed before init (in autoInitScanners).
+    // With clean USB, parallel spawns work — some may need retries.
     if (toSpawn.length > 0 && !this.cancelled) {
-      const STAGGER_DELAY_MS = 5000;
       console.log(
-        `[ScanCoordinator] Spawning ${toSpawn.length} subprocess(es) with ${STAGGER_DELAY_MS / 1000}s stagger...`
+        `[ScanCoordinator] Spawning ${toSpawn.length} subprocess(es) in parallel...`
       );
 
       const spawnResults = await Promise.allSettled(
-        toSpawn.map((scanner, index) => {
+        toSpawn.map((scanner) => {
           const sub = new ScannerSubprocess(
             this.pythonPath,
             this.isPackaged,
@@ -202,22 +200,19 @@ export class ScanCoordinator extends EventEmitter {
 
           this.subprocesses.set(scanner.scannerId, sub);
 
-          // Stagger spawns to avoid SANE USB enumeration contention
-          const delay = index * STAGGER_DELAY_MS;
-          return new Promise<void>((resolve) => setTimeout(resolve, delay))
+          console.log(
+            `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
+          );
+
+          return sub
+            .spawn()
             .then(() => {
-              if (this.cancelled) return;
               console.log(
-                `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}... (stagger ${index * (STAGGER_DELAY_MS / 1000)}s)`
+                `[ScanCoordinator] Scanner ${scanner.scannerId} ready`
               );
-              return sub.spawn().then(() => {
-                console.log(
-                  `[ScanCoordinator] Scanner ${scanner.scannerId} ready`
-                );
-                this.emit('scanner-init-status', {
-                  scannerId: scanner.scannerId,
-                  status: 'ready',
-                });
+              this.emit('scanner-init-status', {
+                scannerId: scanner.scannerId,
+                status: 'ready',
               });
             })
             .catch((error: Error) => {
@@ -268,6 +263,16 @@ export class ScanCoordinator extends EventEmitter {
       );
       await existing.shutdown(5000);
       this.subprocesses.delete(scanner.scannerId);
+    }
+
+    // Also kill any orphan processes for this scanner from previous sessions
+    try {
+      const { execSync } = require('child_process');
+      execSync(
+        `pkill -f "bloom-hardware --scan-worker --scanner-id ${scanner.scannerId}" 2>/dev/null || true`
+      );
+    } catch {
+      // fine if no orphans
     }
 
     // Wait for USB to release

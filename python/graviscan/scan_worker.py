@@ -125,7 +125,7 @@ class ScanWorker:
 
             log(self.scanner_id, f"Opening device: {self.device_name}")
             open_start = time.time()
-            INIT_RETRIES = 3
+            INIT_RETRIES = 10
             for init_attempt in range(INIT_RETRIES):
                 try:
                     self._device = sane.open(self.device_name)
@@ -135,7 +135,7 @@ class ScanWorker:
                         sane.exit()
                     except Exception:
                         pass
-                    delay = 3 * (init_attempt + 1)
+                    delay = 5 * (init_attempt + 1)
                     log(
                         self.scanner_id,
                         f"sane.open() failed ({init_attempt + 1}/{INIT_RETRIES}): {e} — waiting {delay}s...",

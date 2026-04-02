@@ -1968,6 +1968,18 @@ export async function autoInitScanners(
     return;
   }
 
+  // Kill any stale bloom-hardware processes from previous sessions
+  try {
+    const { execSync } = require('child_process');
+    execSync('pkill -f "bloom-hardware --scan-worker" 2>/dev/null || true');
+    console.log(
+      '[GraviScan:AUTO-INIT] Killed stale scanner processes, waiting 3s for USB release...'
+    );
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  } catch {
+    // pkill not available or no stale processes — fine
+  }
+
   console.log(
     `[GraviScan:AUTO-INIT] Found ${savedScanners.length} saved scanner(s), detecting USB...`
   );
