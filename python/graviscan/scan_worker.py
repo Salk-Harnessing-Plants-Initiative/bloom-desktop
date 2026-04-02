@@ -493,13 +493,13 @@ class ScanWorker:
             log(self.scanner_id, f"USB reset failed (non-fatal): {e}")
 
     def _reopen_device(self) -> None:
-        """Full SANE restart: exit + init + reopen to get a fresh USB connection.
+        """Reopen device without full SANE reinit to avoid disrupting other scanners.
 
-        Used for error recovery when the device enters a bad state after a
-        failed scan. Retries sane.open() up to 3 times internally with
-        increasing delays to handle transient USB busy states on shared buses.
+        Closes the device, resets USB, then reopens using the existing SANE
+        session. Skips sane.exit()/sane.init() which would probe all USB buses
+        and cause "Invalid argument" on other scanners mid-scan.
         """
-        REOPEN_RETRIES = 3
+        REOPEN_RETRIES = 5
 
         if self._device is not None:
             try:
@@ -510,19 +510,12 @@ class ScanWorker:
                 self._device.close()
             except Exception:
                 pass
-        if self._sane is not None:
-            try:
-                self._sane.exit()
-            except Exception:
-                pass
+        self._device_is_open = False
 
-        # Flush stale USB bulk transfers before SANE reinit
         self._reset_usb_device()
-
-        # Let the USB bus settle after releasing the device
         time.sleep(3)
 
-        log(self.scanner_id, f"Full SANE reinit for device: {self.device_name}")
+        log(self.scanner_id, f"Reopening device: {self.device_name}")
         open_start = time.time()
 
         assert self._sane is not None
@@ -530,20 +523,16 @@ class ScanWorker:
         last_err = None
         for reopen_attempt in range(REOPEN_RETRIES):
             try:
-                self._sane.init()
                 self._device = self._sane.open(self.device_name)
+                self._device_is_open = True
                 break
             except Exception as e:
                 last_err = e
-                # Clean up the failed init before retrying
-                try:
-                    self._sane.exit()
-                except Exception:
-                    pass
-                delay = 2 * (reopen_attempt + 1)
+                self._reset_usb_device()
+                delay = 5 * (reopen_attempt + 1)
                 log(
                     self.scanner_id,
-                    f"sane.open() failed ({reopen_attempt + 1}/{REOPEN_RETRIES}): {e} — waiting {delay}s...",
+                    f"Reopen failed ({reopen_attempt + 1}/{REOPEN_RETRIES}): {e} — waiting {delay}s...",
                 )
                 time.sleep(delay)
         else:
