@@ -495,9 +495,9 @@ class ScanWorker:
     def _reopen_device(self) -> None:
         """Reopen device without full SANE reinit to avoid disrupting other scanners.
 
-        Closes the device, resets USB, then reopens using the existing SANE
-        session. Skips sane.exit()/sane.init() which would probe all USB buses
-        and cause "Invalid argument" on other scanners mid-scan.
+        Closes the device then reopens using the existing SANE session.
+        Does NOT reset USB — USB reset causes device re-enumeration which
+        changes the device number, making the SANE device name invalid.
         """
         REOPEN_RETRIES = 5
 
@@ -512,7 +512,6 @@ class ScanWorker:
                 pass
         self._device_is_open = False
 
-        self._reset_usb_device()
         time.sleep(3)
 
         log(self.scanner_id, f"Reopening device: {self.device_name}")
@@ -528,7 +527,6 @@ class ScanWorker:
                 break
             except Exception as e:
                 last_err = e
-                self._reset_usb_device()
                 delay = 5 * (reopen_attempt + 1)
                 log(
                     self.scanner_id,
