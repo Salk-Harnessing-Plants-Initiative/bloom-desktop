@@ -88,8 +88,7 @@ export function useScannerStatus(): UseScannerStatusReturn {
         );
         setScannerAssignments(assignments);
 
-        // Build detectedScanners from DB + validation
-        // Map detected scanners to DB IDs so useTestScan can match them
+        // Validate config — this also auto-removes stale disconnected scanners
         const validateResult = await window.electron.graviscan.validateConfig();
         if (validateResult.success) {
           // Use matched scanners — they have both DB ID and fresh sane_name
@@ -100,6 +99,21 @@ export function useScannerStatus(): UseScannerStatusReturn {
             })
           );
           setDetectedScanners(detected);
+
+          // Reload scanner status after validation since stale scanners may have been removed
+          const refreshedStatus = await window.electron.graviscan.getScannerStatus();
+          if (refreshedStatus.success && refreshedStatus.scanners) {
+            setScannerStatuses(refreshedStatus.scanners);
+            const refreshedAssignments: ScannerAssignment[] = refreshedStatus.scanners.map(
+              (s: ScannerStatusEntry, i: number) => ({
+                slot: `Scanner ${i + 1}`,
+                scannerId: s.scannerId,
+                usbPort: s.usbPort,
+                gridMode: (s.gridMode as '2grid' | '4grid') || '4grid',
+              })
+            );
+            setScannerAssignments(refreshedAssignments);
+          }
         }
       }
 
