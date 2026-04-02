@@ -163,14 +163,18 @@ export class ScanCoordinator extends EventEmitter {
       toSpawn.push(scanner);
     }
 
-    // Phase 2: Spawn all new subprocesses in parallel
+    // Phase 2: Spawn subprocesses with staggered init
+    // SANE's sane_init() enumerates all USB buses. Parallel spawns cause
+    // "Device busy" contention. Stagger by 5s so each init completes before
+    // the next starts. Scanners still scan in parallel once connected.
     if (toSpawn.length > 0 && !this.cancelled) {
+      const STAGGER_DELAY_MS = 5000;
       console.log(
-        `[ScanCoordinator] Spawning ${toSpawn.length} subprocess(es) in parallel...`
+        `[ScanCoordinator] Spawning ${toSpawn.length} subprocess(es) with ${STAGGER_DELAY_MS / 1000}s stagger...`
       );
 
       const spawnResults = await Promise.allSettled(
-        toSpawn.map((scanner) => {
+        toSpawn.map((scanner, index) => {
           const sub = new ScannerSubprocess(
             this.pythonPath,
             this.isPackaged,
@@ -198,19 +202,22 @@ export class ScanCoordinator extends EventEmitter {
 
           this.subprocesses.set(scanner.scannerId, sub);
 
-          console.log(
-            `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
-          );
-
-          return sub
-            .spawn()
+          // Stagger spawns to avoid SANE USB enumeration contention
+          const delay = index * STAGGER_DELAY_MS;
+          return new Promise<void>((resolve) => setTimeout(resolve, delay))
             .then(() => {
+              if (this.cancelled) return;
               console.log(
-                `[ScanCoordinator] Scanner ${scanner.scannerId} ready`
+                `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}... (stagger ${index * (STAGGER_DELAY_MS / 1000)}s)`
               );
-              this.emit('scanner-init-status', {
-                scannerId: scanner.scannerId,
-                status: 'ready',
+              return sub.spawn().then(() => {
+                console.log(
+                  `[ScanCoordinator] Scanner ${scanner.scannerId} ready`
+                );
+                this.emit('scanner-init-status', {
+                  scannerId: scanner.scannerId,
+                  status: 'ready',
+                });
               });
             })
             .catch((error: Error) => {
@@ -243,6 +250,69 @@ export class ScanCoordinator extends EventEmitter {
 
     this.state = 'idle';
     console.log(`[ScanCoordinator] ${this.subprocesses.size} scanner(s) ready`);
+  }
+
+  /**
+   * Reinitialize a single scanner — kills existing subprocess, waits for USB
+   * release, then respawns. Used by the reconnect button for failed scanners.
+   */
+  async reinitScanner(scanner: {
+    scannerId: string;
+    saneName: string;
+  }): Promise<void> {
+    // Kill existing subprocess if any
+    const existing = this.subprocesses.get(scanner.scannerId);
+    if (existing) {
+      console.log(
+        `[ScanCoordinator] Killing existing subprocess for ${scanner.scannerId}`
+      );
+      await existing.shutdown(5000);
+      this.subprocesses.delete(scanner.scannerId);
+    }
+
+    // Wait for USB to release
+    console.log(
+      `[ScanCoordinator] Waiting 3s for USB release on ${scanner.scannerId}`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // Spawn fresh subprocess
+    const sub = new ScannerSubprocess(
+      this.pythonPath,
+      this.isPackaged,
+      scanner.scannerId,
+      scanner.saneName,
+      this.mock
+    );
+
+    sub.on('event', (event: ScanWorkerEvent) => {
+      this.emit('scan-event', {
+        ...event,
+        cycle_number: this.currentCycle,
+        scan_started_at: this.currentGridStartedAt,
+        scan_ended_at: this.currentGridEndedAt,
+      });
+    });
+
+    sub.on('exit', (info: { scannerId: string; code: number | null }) => {
+      console.log(
+        `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
+      );
+      this.subprocesses.delete(info.scannerId);
+    });
+
+    this.subprocesses.set(scanner.scannerId, sub);
+
+    console.log(
+      `[ScanCoordinator] Respawning subprocess for ${scanner.scannerId}...`
+    );
+
+    await sub.spawn();
+    console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} reconnected`);
+    this.emit('scanner-init-status', {
+      scannerId: scanner.scannerId,
+      status: 'ready',
+    });
   }
 
   /**

@@ -214,6 +214,44 @@ export function ScannerStatusPanel({
                   </span>
                 )}
               </div>
+              {/* Reconnect button for failed scanners */}
+              {(scanner.status === 'error' || scanner.status === 'dead') && (
+                <button
+                  onClick={async () => {
+                    setScanners((prev) =>
+                      prev.map((s) =>
+                        s.scannerId === scanner.scannerId
+                          ? {
+                              ...s,
+                              status: 'starting' as const,
+                              error: undefined,
+                            }
+                          : s
+                      )
+                    );
+                    const result =
+                      await window.electron.graviscan.reconnectScanner(
+                        scanner.scannerId
+                      );
+                    if (!result.success) {
+                      setScanners((prev) =>
+                        prev.map((s) =>
+                          s.scannerId === scanner.scannerId
+                            ? {
+                                ...s,
+                                status: 'error' as const,
+                                error: result.error,
+                              }
+                            : s
+                        )
+                      );
+                    }
+                  }}
+                  className="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100"
+                >
+                  Reconnect
+                </button>
+              )}
             </div>
           );
         })}

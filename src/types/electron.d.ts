@@ -621,6 +621,14 @@ export interface GraviScanAPI {
   }>;
 
   /**
+   * Reconnect a single failed scanner.
+   */
+  reconnectScanner: (scannerId: string) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+  /**
    * Get platform support information
    */
   getPlatformInfo: () => Promise<

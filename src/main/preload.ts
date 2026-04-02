@@ -411,6 +411,11 @@ const graviscanAPI = {
       usb_device?: number;
     }>
   ) => ipcRenderer.invoke('graviscan:save-scanners-db', scanners),
+  reconnectScanner: (scannerId: string) =>
+    ipcRenderer.invoke('graviscan:reconnect-scanner', scannerId) as Promise<{
+      success: boolean;
+      error?: string;
+    }>,
   getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
   validateScanners: (cachedScannerIds: string[]) =>
     ipcRenderer.invoke('graviscan:validate-scanners', cachedScannerIds),

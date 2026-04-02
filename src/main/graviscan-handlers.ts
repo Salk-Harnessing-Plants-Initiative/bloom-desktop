@@ -556,6 +556,59 @@ export function registerGraviscanHandlers(
     }
   );
 
+  /**
+   * Reconnect a single failed scanner — kills subprocess, waits for USB
+   * release, respawns with fresh SANE init.
+   */
+  ipcMain.handle(
+    'graviscan:reconnect-scanner',
+    async (_event, scannerId: string) => {
+      try {
+        const coordinator = getCoordinator?.();
+        if (!coordinator) {
+          return { success: false, error: 'ScanCoordinator not initialized' };
+        }
+
+        // Find the scanner's SANE device name from DB
+        const scanner = await db.graviScanner.findUnique({
+          where: { id: scannerId },
+        });
+        if (!scanner) {
+          return { success: false, error: 'Scanner not found in database' };
+        }
+
+        // Detect current USB to get fresh SANE name
+        const lsusbResult = detectEpsonScanners();
+        const detected = lsusbResult.scanners?.find(
+          (s: DetectedScanner) => s.usb_port === scanner.usb_port
+        );
+        if (!detected?.sane_name) {
+          return {
+            success: false,
+            error: `Scanner not detected on port ${scanner.usb_port}`,
+          };
+        }
+
+        console.log(
+          `[GraviScan:RECONNECT] Reconnecting scanner ${scannerId} (${detected.sane_name})`
+        );
+
+        await coordinator.reinitScanner({
+          scannerId,
+          saneName: detected.sane_name,
+        });
+
+        return { success: true };
+      } catch (error) {
+        console.error('[GraviScan:RECONNECT] Error:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Reconnect failed',
+        };
+      }
+    }
+  );
+
   // ==========================================================================
   // Scan Operations
   // ==========================================================================
