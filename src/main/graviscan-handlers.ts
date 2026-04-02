@@ -781,16 +781,19 @@ export function registerGraviscanHandlers(
         }
       }
 
-      // Auto-remove stale scanners that are no longer physically connected
+      // Disable stale scanners that are no longer physically connected
       if (missing.length > 0) {
         for (const stale of missing) {
           console.log(
-            `[GraviScan:VALIDATE] Auto-removing stale scanner ${stale.display_name || stale.name} (port ${stale.usb_port}, id ${stale.id})`
+            `[GraviScan:VALIDATE] Disabling stale scanner ${stale.display_name || stale.name} (port ${stale.usb_port}, id ${stale.id})`
           );
-          await db.graviScanner.delete({ where: { id: stale.id } });
+          await db.graviScanner.update({
+            where: { id: stale.id },
+            data: { enabled: false },
+          });
         }
         console.log(
-          `[GraviScan:VALIDATE] Removed ${missing.length} stale scanner(s)`
+          `[GraviScan:VALIDATE] Disabled ${missing.length} stale scanner(s)`
         );
       }
 
