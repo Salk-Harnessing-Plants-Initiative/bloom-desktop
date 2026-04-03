@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -540,3 +542,248 @@ ensuring idle reset IPC messages are not suppressed during error recovery or aft
 - **THEN** `setShowIdleResetBanner` SHALL NOT be called
 - **AND** no setState-on-unmounted-component side-effect SHALL occur
 
+### Requirement: Streaming Frame Encoding
+
+The camera streaming pipeline SHALL encode preview frames as JPEG (quality 85) with `data:image/jpeg;base64,...` data URIs. This applies to both mock and real camera implementations via `grab_frame_base64()`. The single-frame `capture` action SHALL remain PNG to preserve lossless quality for diagnostic use. Scan capture (disk-saved images via `grab_frames()` + `iio.imwrite()`) SHALL remain unaffected and continue using lossless formats.
+
+JPEG quality 85 is adequate for exposure/gain tuning: it introduces ~0.8% quantization error (+/-2 intensity levels on 8-bit grayscale), well below the threshold where a scientist would choose a materially different exposure setting. Highlight/shadow clipping remains clearly visible.
+
+#### Scenario: Mock camera streams JPEG frames
+
+- **GIVEN** the mock camera is configured and streaming is started
+- **WHEN** `grab_frame_base64()` is called
+- **THEN** the returned data URI SHALL start with `data:image/jpeg;base64,`
+- **AND** the decoded image SHALL be valid JPEG
+- **AND** the base64 payload size SHALL be less than 500 KB
+
+#### Scenario: Real camera encodes streaming frames as JPEG
+
+- **GIVEN** a 2048×1080 grayscale numpy array from a Basler camera
+- **WHEN** `Camera._img_to_base64()` encodes the frame
+- **THEN** the output SHALL be JPEG-encoded at quality 85
+- **AND** the decoded image SHALL be valid JPEG with mode "L" (grayscale)
+
+#### Scenario: Grayscale image preserved through JPEG encoding
+
+- **GIVEN** a grayscale (mode "L") numpy array
+- **WHEN** encoded to JPEG via `_img_to_base64()` and decoded back
+- **THEN** the decoded image SHALL have mode "L" (single channel grayscale)
+- **AND** the decoded image dimensions SHALL match the input
+
+#### Scenario: Single-frame capture remains PNG
+
+- **GIVEN** the camera is configured
+- **WHEN** a single-frame capture is requested via the `capture` IPC command
+- **THEN** the returned data URI SHALL start with `data:image/png;base64,`
+- **AND** the lossless PNG contract SHALL be preserved
+
+#### Scenario: Scan capture is not affected
+
+- **GIVEN** a scan is in progress via `scanner.scan()`
+- **WHEN** frames are captured to disk via `grab_frames()` and saved via `iio.imwrite()`
+- **THEN** images SHALL be saved as lossless PNG files
+- **AND** the streaming JPEG encoding SHALL NOT be used for disk writes
+
+### Requirement: Stdout Buffer Efficiency
+
+The `PythonProcess.handleStdout` method SHALL use an array-based buffer (accumulating `Buffer` chunks in an array) instead of string concatenation to reassemble newline-delimited protocol messages from the Python subprocess stdout. This is a behavior-preserving refactor that prevents O(n²) intermediate string allocations when processing large payloads (e.g., base64-encoded frames).
+
+#### Scenario: Large frame payload does not cause excessive allocations
+
+- **GIVEN** the Python subprocess sends a FRAME: message of ~270 KB (JPEG base64)
+- **AND** Node receives it as multiple ~64 KB stdout chunks
+- **WHEN** `handleStdout` reassembles the chunks into a complete line
+- **THEN** the buffer SHALL accumulate `Buffer` objects in an array
+- **AND** the method SHALL call `Buffer.concat()` and `toString()` only once when a complete line (newline) is found
+
+#### Scenario: Small protocol messages still work correctly
+
+- **GIVEN** the Python subprocess sends a STATUS: message of ~50 bytes
+- **WHEN** `handleStdout` processes the chunk
+- **THEN** the message SHALL be parsed and emitted correctly
+- **AND** behavior SHALL be identical to the previous string-concatenation approach
+
+#### Scenario: Multi-line chunks are handled correctly
+
+- **GIVEN** a single stdout chunk contains multiple complete lines (e.g., STATUS: followed by FRAME:)
+- **WHEN** `handleStdout` processes the chunk
+- **THEN** each complete line SHALL be parsed and emitted separately
+- **AND** any trailing incomplete line SHALL be retained in the buffer for the next chunk
+
+#### Scenario: Empty stdout chunks are handled safely
+
+- **GIVEN** Node emits a zero-length data event from the child process stdout
+- **WHEN** `handleStdout` receives the empty Buffer
+- **THEN** the method SHALL not emit any lines
+- **AND** the buffer state SHALL remain unchanged
+
+#### Scenario: Buffer cleared on process stop
+
+- **GIVEN** the Python process is stopped or exits
+- **WHEN** `stop()` is called on the PythonProcess
+- **THEN** the stdout buffer SHALL be cleared
+- **AND** no partial data from the previous session SHALL persist
+
+### Requirement: Stdout Buffer Memory Safety
+
+The `PythonProcess.handleStdout` method SHALL NOT retain references to parent `Buffer` objects when extracting partial chunks. Chunk extraction MUST use `Buffer.from(data.subarray(...))` to create independent copies. Note: `Buffer.slice()` and `Buffer.subarray()` both return views in Node.js — neither copies. Only `Buffer.from()` creates a true copy.
+
+#### Scenario: Extracted mid-line chunks are independent copies
+
+- **GIVEN** the Python subprocess sends a stdout chunk containing a complete line
+- **WHEN** `handleStdout` extracts the line content via subarray
+- **THEN** the extracted chunk SHALL be wrapped in `Buffer.from()` to create an independent copy
+- **AND** mutating the original data Buffer after extraction SHALL NOT affect the extracted chunk
+
+#### Scenario: Trailing partial line is an independent copy
+
+- **GIVEN** a stdout data event ends mid-line (no trailing newline)
+- **WHEN** `handleStdout` stores the trailing partial in the chunks array
+- **THEN** the stored chunk SHALL be wrapped in `Buffer.from()` to create an independent copy
+- **AND** mutating the original data Buffer after storage SHALL NOT affect the stored partial
+
+### Requirement: Frame Forwarding Backpressure
+
+The main process frame forwarding to the renderer SHALL implement a latest-frame-wins drop gate to prevent unbounded IPC message queue growth. The gate logic SHALL be extracted into a testable `createFrameForwarder()` function that accepts a getter for the send function (not a snapshot) to handle window recreation. The gate SHALL use `try/catch` around the send call to prevent permanent gate jamming if `webContents.send()` throws.
+
+#### Scenario: Frame forwarded when gate is open
+
+- **GIVEN** no frame is currently pending delivery
+- **WHEN** the camera process emits a frame event
+- **THEN** the frame SHALL be forwarded to the renderer via `webContents.send()`
+- **AND** the gate SHALL close until `setImmediate` yields to the event loop
+
+#### Scenario: Latest frame sent when gate reopens
+
+- **GIVEN** a frame was sent and the gate is closed
+- **AND** one or more additional frames arrive while the gate is closed
+- **WHEN** `setImmediate` fires and the gate reopens
+- **THEN** only the most recent (latest) frame SHALL be sent
+- **AND** intermediate frames SHALL be silently dropped
+
+#### Scenario: No frames dropped under normal conditions
+
+- **GIVEN** frames arrive at 5 FPS (200ms interval)
+- **AND** the event loop is not blocked
+- **WHEN** each frame arrives after the previous `setImmediate` has fired
+- **THEN** all frames SHALL be forwarded (no unnecessary drops)
+
+#### Scenario: Frame silently discarded when main window is unavailable
+
+- **GIVEN** the main window is null or has been destroyed
+- **WHEN** the camera process emits a frame event
+- **THEN** the frame SHALL be silently discarded
+- **AND** no error SHALL be thrown
+
+#### Scenario: Gate resets when camera process is recreated
+
+- **GIVEN** the camera process exits and is recreated via `ensureCameraProcess()`
+- **WHEN** the new process emits its first frame
+- **THEN** the frame SHALL be forwarded (gate starts open for each new process instance)
+- **AND** stale gate state from the previous process SHALL NOT affect the new process
+
+#### Scenario: Gate recovers after send failure
+
+- **GIVEN** `webContents.send()` throws an exception (e.g., renderer destroyed mid-send)
+- **WHEN** the next frame arrives after `setImmediate` fires
+- **THEN** the gate SHALL be open and the frame SHALL be forwarded
+- **AND** the gate SHALL NOT be permanently jammed
+
+#### Scenario: Send function re-evaluated on each frame
+
+- **GIVEN** the main window is destroyed and recreated (e.g., macOS dock click)
+- **WHEN** a frame arrives after window recreation
+- **THEN** the forwarder SHALL use the new window's `webContents.send()` (not the old one)
+- **AND** no frames SHALL be sent to the destroyed window
+
+#### Scenario: Empty data URI is silently ignored
+
+- **GIVEN** the camera process emits a frame event with an empty string
+- **WHEN** the forwarder receives the empty data URI
+- **THEN** no `webContents.send()` call SHALL be made
+- **AND** the gate state SHALL remain unchanged
+
+#### Scenario: Gate state is independent per forwarder instance
+
+- **GIVEN** two forwarder instances created by separate `createFrameForwarder()` calls
+- **WHEN** the first forwarder's gate is closed (frame pending)
+- **THEN** the second forwarder's gate SHALL still be open
+- **AND** each forwarder SHALL maintain fully independent state
+
+### Requirement: Deterministic Streaming Bitmap Lifecycle
+
+The Streamer component SHALL render camera preview frames using a `<canvas>` element with `createImageBitmap()` decoding and explicit `bitmap.close()` to deterministically free decoded C++ bitmap memory. The rendering pipeline SHALL NOT use `fetch()`, `URL.createObjectURL()`, `URL.revokeObjectURL()`, or `Image` objects, as these create C++ allocations that Chromium does not reliably free (confirmed by diagnostic: IPC-only test survived 20+ min, rendering test OOMed at 15 min).
+
+#### Scenario: Frame decoded via createImageBitmap and drawn to canvas
+
+- **GIVEN** a JPEG frame arrives as a base64 data URI from IPC
+- **WHEN** the Streamer processes the frame
+- **THEN** the base64 data SHALL be decoded to a `Uint8Array` via `atob()`
+- **AND** a `Blob` SHALL be created from the binary data
+- **AND** `createImageBitmap(blob)` SHALL be called to decode the image
+- **AND** the bitmap SHALL be drawn to the canvas via `ctx.drawImage(bitmap, ...)`
+- **AND** `bitmap.close()` SHALL be called immediately after drawing to free C++ memory
+
+#### Scenario: Canvas preserves aspect ratio with letterboxing
+
+- **GIVEN** the camera frame is 2048×1080 (~1.9:1 aspect ratio)
+- **AND** the canvas display area is 800×600 (~1.33:1)
+- **WHEN** the frame is drawn to the canvas
+- **THEN** the frame SHALL be scaled to fit within the canvas using `bitmap.width` and `bitmap.height` for the source dimensions
+- **AND** the canvas SHALL be cleared before drawing (CSS background provides black letterbox bars)
+- **AND** the frame SHALL NOT be stretched or distorted
+
+#### Scenario: Renderer-side busy gate prevents concurrent decodes
+
+- **GIVEN** a frame is currently being decoded (`createImageBitmap` pending)
+- **WHEN** a new frame arrives from IPC
+- **THEN** the new frame's data URI SHALL be stored as a pending frame (latest-frame-wins, overwriting any previous pending)
+- **AND** when the current decode completes, only the most recent pending frame SHALL be decoded next
+
+#### Scenario: bitmap.close() called after every drawImage
+
+- **GIVEN** a frame was decoded and drawn to canvas
+- **WHEN** the draw operation completes
+- **THEN** `bitmap.close()` SHALL be called in the same execution path
+- **AND** no decoded bitmap SHALL remain in memory after drawing
+
+#### Scenario: bitmap.close() called even after unmount
+
+- **GIVEN** a frame is being decoded (`createImageBitmap` pending)
+- **AND** the component unmounts before the decode resolves
+- **WHEN** `createImageBitmap` resolves with a bitmap
+- **THEN** `bitmap.close()` SHALL still be called to free C++ memory
+- **AND** `drawImage` SHALL NOT be called (canvas may no longer be in DOM)
+
+#### Scenario: Decode failure does not jam the busy gate
+
+- **GIVEN** `createImageBitmap()` rejects (e.g., corrupt JPEG data)
+- **WHEN** the rejection handler runs
+- **THEN** the busy gate SHALL be cleared (`isDecoding = false`)
+- **AND** if a pending frame exists, it SHALL be decoded next
+- **AND** the stream SHALL NOT be permanently stalled
+
+#### Scenario: Invalid base64 does not crash the component
+
+- **GIVEN** a frame arrives with invalid base64 data (not valid base64 encoding)
+- **WHEN** `atob()` throws synchronously
+- **THEN** the error SHALL be caught
+- **AND** the busy gate SHALL be cleared
+- **AND** if a pending frame exists, it SHALL be decoded next
+
+#### Scenario: Clean resource release on unmount
+
+- **GIVEN** the Streamer component is mounted and streaming
+- **WHEN** the component unmounts
+- **THEN** `mountedRef.current` SHALL be set to `false` first
+- **AND** the pending frame buffer SHALL be cleared
+- **AND** the frame listener SHALL be removed
+- **AND** the stream SHALL be stopped
+
+#### Scenario: Pre-first-frame connecting state preserved
+
+- **GIVEN** the Streamer has mounted but no frame has been drawn yet
+- **WHEN** the component renders
+- **THEN** "Connecting..." text SHALL be displayed
+- **AND** the canvas SHALL be hidden (display:none) until the first frame is drawn
+- **AND** once the first frame draws, the placeholder SHALL be hidden and the canvas shown

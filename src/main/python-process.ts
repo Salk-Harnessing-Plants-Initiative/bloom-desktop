@@ -10,7 +10,7 @@
  *     - STATUS:<message> - Status updates
  *     - ERROR:<message> - Error messages
  *     - DATA:<json> - JSON data responses
- *     - IMAGE:data:image/png;base64,<base64> - Base64-encoded images (future use)
+ *     - IMAGE:data:image/jpeg;base64,<base64> - Base64-encoded images (future use)
  */
 
 import { ChildProcess, spawn } from 'child_process';
@@ -27,7 +27,7 @@ const COMMAND_TIMEOUT_MS = 180000; // 3 minutes - scanner scans can take longer 
  *   - 'status': (message: string) => void - Status update from Python
  *   - 'error': (error: string) => void - Error from Python
  *   - 'data': (data: any) => void - JSON data response from Python
- *   - 'image': (dataUri: string) => void - Base64-encoded image (data:image/png;base64,...)
+ *   - 'image': (dataUri: string) => void - Base64-encoded image (data:image/jpeg;base64,...)
  *   - 'exit': (code: number | null) => void - Process exited
  *   - 'raw': (line: string) => void - Unrecognized output line
  */
@@ -35,7 +35,7 @@ export class PythonProcess extends EventEmitter {
   private process: ChildProcess | null = null;
   private pythonPath: string;
   private scriptArgs: string[];
-  private stdinBuffer: string = '';
+  private stdoutChunks: Buffer[] = [];
 
   /**
    * Create a new Python process manager.
@@ -119,6 +119,8 @@ export class PythonProcess extends EventEmitter {
       this.process.kill();
       this.process = null;
     }
+    // Clear stdout buffer
+    this.stdoutChunks = [];
   }
 
   /**
@@ -143,15 +145,22 @@ export class PythonProcess extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
+      // Declare timeout ID before handlers to avoid TDZ reference issues.
+      // Must be `let` (not `const`) because it is declared before handlers but assigned after.
+      // eslint-disable-next-line prefer-const
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
       // Set up one-time listeners for response
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dataHandler = (data: any) => {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);
         resolve(data);
       };
 
       const errorHandler = (error: string) => {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);
         reject(new Error(error));
@@ -165,7 +174,7 @@ export class PythonProcess extends EventEmitter {
       this.process.stdin!.write(`${commandJson}\n`);
 
       // Timeout for command response
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         this.removeListener('data', dataHandler);
         this.removeListener('error', errorHandler);
         reject(new Error('Command timeout'));
@@ -187,19 +196,40 @@ export class PythonProcess extends EventEmitter {
    * @param data - Buffer data from stdout
    */
   private handleStdout(data: Buffer): void {
-    // Accumulate data in buffer
-    this.stdinBuffer += data.toString();
+    // Skip empty chunks
+    if (data.length === 0) return;
 
-    // Process complete lines
-    const lines = this.stdinBuffer.split('\n');
-    // Keep incomplete line in buffer
-    this.stdinBuffer = lines.pop() || '';
+    // Check if this chunk contains a newline
+    let newlineIndex = data.indexOf(0x0a); // '\n'
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) continue;
+    if (newlineIndex === -1) {
+      // No newline — just accumulate (copy to release parent buffer)
+      this.stdoutChunks.push(Buffer.from(data));
+      return;
+    }
 
-      this.parseLine(trimmedLine);
+    // Process all complete lines in this chunk
+    let offset = 0;
+    while (newlineIndex !== -1) {
+      // Extract the portion up to the newline
+      const chunk = Buffer.from(data.subarray(offset, newlineIndex));
+      this.stdoutChunks.push(chunk);
+
+      // Concatenate all accumulated chunks into one string
+      const line = Buffer.concat(this.stdoutChunks).toString().trim();
+      this.stdoutChunks = [];
+
+      if (line) {
+        this.parseLine(line);
+      }
+
+      offset = newlineIndex + 1;
+      newlineIndex = data.indexOf(0x0a, offset);
+    }
+
+    // Keep any remaining data after the last newline as a partial chunk
+    if (offset < data.length) {
+      this.stdoutChunks.push(Buffer.from(data.subarray(offset)));
     }
   }
 

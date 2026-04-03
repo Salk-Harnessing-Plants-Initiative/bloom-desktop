@@ -42,6 +42,7 @@ import {
   type SessionState,
 } from './session-store';
 import { IdleTimer } from './idle-timer';
+import { createFrameForwarder } from './frame-forwarder';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -289,15 +290,14 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
       }
     });
 
-    cameraProcess.on('frame', (dataUri: string) => {
-      // Check if window still exists and hasn't been destroyed
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('camera:frame', {
-          dataUri,
-          timestamp: Date.now(),
-        });
-      }
-    });
+    // Frame forwarding with latest-frame-wins drop gate to prevent IPC queue buildup.
+    // Uses a getter so sendFn is re-evaluated on each frame (handles macOS window recreation).
+    const forwardFrame = createFrameForwarder(() =>
+      mainWindow && !mainWindow.isDestroyed()
+        ? mainWindow.webContents.send.bind(mainWindow.webContents)
+        : null
+    );
+    cameraProcess.on('frame', forwardFrame);
 
     cameraProcess.on('status', (status: string) => {
       console.log('Camera status:', status);

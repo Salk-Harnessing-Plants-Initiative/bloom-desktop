@@ -52,11 +52,14 @@ class TestGrabFrameBase64:
         assert isinstance(result, str)
 
         # Should start with data URI prefix
-        assert result.startswith("data:image/png;base64,")
+        assert result.startswith("data:image/jpeg;base64,")
 
         # Should have base64 data after prefix
         base64_part = result.split(",", 1)[1]
         assert len(base64_part) > 0
+
+        # JPEG frames should be well under 500 KB (vs ~2.9 MB for PNG)
+        assert len(base64_part) < 500_000
 
         # Base64 part should be valid base64
         try:
@@ -65,8 +68,8 @@ class TestGrabFrameBase64:
         except Exception as e:
             pytest.fail(f"Invalid base64 data: {e}")
 
-    def test_mock_camera_base64_is_valid_png(self):
-        """Verify MockCamera base64 can be decoded back to PNG image."""
+    def test_mock_camera_base64_is_valid_jpeg(self):
+        """Verify MockCamera base64 can be decoded back to JPEG image."""
         settings = CameraSettings(
             exposure_time=10000,
             gain=100,
@@ -80,17 +83,17 @@ class TestGrabFrameBase64:
         base64_part = result.split(",", 1)[1]
         decoded = base64.b64decode(base64_part)
 
-        # Should be able to open as PNG
+        # Should be able to open as JPEG
         try:
             img = Image.open(BytesIO(decoded))
-            assert img.format == "PNG"
+            assert img.format == "JPEG"
             assert img.size[0] > 0  # Width
             assert img.size[1] > 0  # Height
         except Exception as e:
-            pytest.fail(f"Cannot decode as PNG: {e}")
+            pytest.fail(f"Cannot decode as JPEG: {e}")
 
     def test_base64_output_format(self):
-        """Verify output format matches: 'data:image/png;base64,{data}'."""
+        """Verify output format matches: 'data:image/jpeg;base64,{data}'."""
         settings = CameraSettings(
             exposure_time=10000,
             gain=100,
@@ -103,10 +106,36 @@ class TestGrabFrameBase64:
         result = camera.grab_frame_base64()
 
         # Exact format check
-        assert result.startswith("data:image/png;base64,")
+        assert result.startswith("data:image/jpeg;base64,")
         parts = result.split(",")
         assert len(parts) == 2
-        assert parts[0] == "data:image/png;base64"
+        assert parts[0] == "data:image/jpeg;base64"
+
+    def test_grab_frame_base64_no_resource_leak(self):
+        """Verify grab_frame_base64 does not leak file handles (context managers)."""
+        import warnings
+
+        settings = CameraSettings(
+            exposure_time=10000,
+            gain=100,
+            camera_ip_address="192.168.1.100",
+            num_frames=1,
+        )
+        camera = MockCamera(settings)
+        camera.open()
+
+        # Call multiple times and check for ResourceWarning
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            for _ in range(50):
+                camera.grab_frame_base64()
+
+            resource_warnings = [
+                x for x in w if issubclass(x.category, ResourceWarning)
+            ]
+            assert (
+                len(resource_warnings) == 0
+            ), f"Got ResourceWarnings: {resource_warnings}"
 
     def test_grab_frame_base64_requires_open_camera(self):
         """Verify grab_frame_base64() raises error if camera not open."""
@@ -121,6 +150,49 @@ class TestGrabFrameBase64:
 
         with pytest.raises(RuntimeError, match="Camera is not open"):
             camera.grab_frame_base64()
+
+    def test_img_to_base64_returns_jpeg(self):
+        """Camera._img_to_base64 static method returns JPEG-encoded base64."""
+        import numpy as np
+
+        from python.hardware.camera import Camera
+
+        img = np.zeros((480, 640), dtype=np.uint8)
+        result = Camera._img_to_base64(img)
+        decoded = base64.b64decode(result)
+        pil_img = Image.open(BytesIO(decoded))
+        assert pil_img.format == "JPEG"
+        assert pil_img.mode == "L"
+
+    def test_jpeg_grayscale_roundtrip(self):
+        """Grayscale image survives JPEG encode/decode with correct mode and dimensions."""
+        import numpy as np
+
+        from python.hardware.camera import Camera
+
+        img = np.random.randint(0, 255, (1080, 2048), dtype=np.uint8)
+        result = Camera._img_to_base64(img)
+        decoded = base64.b64decode(result)
+        pil_img = Image.open(BytesIO(decoded))
+        assert pil_img.mode == "L"
+        assert pil_img.size == (2048, 1080)
+
+    def test_scan_capture_still_saves_png(self):
+        """Scan capture path (iio.imwrite) still produces PNG, not JPEG."""
+        import numpy as np
+        import imageio.v2 as iio
+        import tempfile
+        import os
+
+        img = np.zeros((480, 640), dtype=np.uint8)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            path = f.name
+        try:
+            iio.imwrite(path, img)
+            saved = Image.open(path)
+            assert saved.format == "PNG"
+        finally:
+            os.unlink(path)
 
 
 class TestStreamingIPCActions:
@@ -226,15 +298,28 @@ class TestStreamingIPCActions:
         handle_command(command)
         self.capsys.readouterr()  # Clear startup messages
 
-        # Wait for frames to be sent (should get ~10 frames in 0.5s at 30 FPS)
-        time.sleep(0.5)
+        # Wait for frames to be sent (should get ~7 frames in 1.5s at 5 FPS)
+        time.sleep(1.5)
         captured = self.capsys.readouterr()
 
         # Should see FRAME: protocol messages
         assert "FRAME:" in captured.out
-        # Should have multiple frames
+        # Should have frames at ~5 FPS rate (not 30 FPS)
         frame_count = captured.out.count("FRAME:")
-        assert frame_count >= 5, f"Expected at least 5 frames, got {frame_count}"
+        assert frame_count >= 3, f"Expected at least 3 frames, got {frame_count}"
+        assert (
+            frame_count <= 15
+        ), f"Expected at most 15 frames (5 FPS), got {frame_count}"
+
+        # Verify FRAME data is JPEG, not PNG
+        frame_lines = [
+            line for line in captured.out.split("\n") if line.startswith("FRAME:")
+        ]
+        if frame_lines:
+            frame_data = frame_lines[0][len("FRAME:") :]
+            assert frame_data.startswith(
+                "data:image/jpeg;base64,"
+            ), f"Expected JPEG data URI, got: {frame_data[:40]}"
 
     def test_stop_stream_stops_thread(self):
         """Verify stop_stream signals worker to exit."""
@@ -358,10 +443,13 @@ class TestStreamingWorkflow:
         self.capsys.readouterr()  # Clear startup messages
 
         # Wait for frames
-        time.sleep(1.0)  # Should get ~30 frames
+        time.sleep(1.5)  # Should get ~7 frames at 5 FPS
         captured = self.capsys.readouterr()
         frame_count = captured.out.count("FRAME:")
-        assert frame_count >= 20, f"Expected at least 20 frames, got {frame_count}"
+        assert frame_count >= 3, f"Expected at least 3 frames, got {frame_count}"
+        assert (
+            frame_count <= 15
+        ), f"Expected at most 15 frames (5 FPS), got {frame_count}"
 
         # Stop streaming
         stop_cmd = {"command": "camera", "action": "stop_stream"}

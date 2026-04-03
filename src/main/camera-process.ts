@@ -59,7 +59,7 @@ export class CameraProcess extends PythonProcess {
     if (line.startsWith('TRIGGER_CAMERA')) {
       this.emit('camera-trigger');
     } else if (line.startsWith('FRAME:')) {
-      // Streaming frame: "FRAME:data:image/png;base64,..."
+      // Streaming frame: "FRAME:data:image/jpeg;base64,..."
       const dataUri = line.substring(6); // Remove "FRAME:" prefix
       this.emit('frame', dataUri);
     } else if (line.startsWith('IMAGE ')) {
@@ -162,7 +162,7 @@ export class CameraProcess extends PythonProcess {
 
   /**
    * Start streaming images from the camera.
-   * Frames will be emitted via 'frame' events at ~30 FPS.
+   * Frames will be emitted via 'frame' events at ~5 FPS.
    *
    * @param settings - Camera settings for streaming
    * @returns Promise that resolves when streaming starts
@@ -221,6 +221,15 @@ export class CameraProcess extends PythonProcess {
       return response.cameras;
     }
 
-    throw new Error(`Failed to detect cameras: ${JSON.stringify(response)}`);
+    // Propagate real errors from Python
+    if (response && response.success === false) {
+      throw new Error(
+        `Failed to detect cameras: ${response.error || JSON.stringify(response)}`
+      );
+    }
+
+    // Non-camera success response (e.g. mismatched command routing) — return empty
+    console.warn('detectCameras: unexpected response shape', response);
+    return [];
   }
 }

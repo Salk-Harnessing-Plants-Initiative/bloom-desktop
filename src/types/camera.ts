@@ -50,7 +50,7 @@ export interface CameraStatus {
  * Captured image data
  */
 export interface CapturedImage {
-  /** Base64-encoded image data URI (e.g., "data:image/png;base64,...") */
+  /** Base64-encoded image data URI (e.g., "data:image/jpeg;base64,..." for streaming, "data:image/png;base64,..." for capture) */
   dataUri: string;
 
   /** Timestamp when image was captured */

@@ -2,8 +2,10 @@
  * Camera Streamer Component
  *
  * Displays live camera stream with automatic lifecycle management.
+ * Uses createImageBitmap() for frame decoding, renders to canvas, and
+ * explicitly releases bitmap resources with bitmap.close() to avoid
+ * retaining decoded image data between frames (Chromium issue 41067124).
  * Automatically starts streaming on mount and stops on unmount.
- * Displays FPS counter and connection status.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -17,13 +19,13 @@ export interface StreamerProps {
   settings?: Partial<CameraSettings>;
 
   /**
-   * Width of the display canvas in pixels
+   * Width of the display area in pixels
    * @default 640
    */
   width?: number;
 
   /**
-   * Height of the display canvas in pixels
+   * Height of the display area in pixels
    * @default 480
    */
   height?: number;
@@ -50,9 +52,6 @@ export interface StreamerProps {
   onError?: (error: string) => void;
 }
 
-/**
- * Streamer component for live camera preview
- */
 export const Streamer: React.FC<StreamerProps> = ({
   settings,
   width = 640,
@@ -62,12 +61,16 @@ export const Streamer: React.FC<StreamerProps> = ({
   onStreamStop,
   onError,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hasFirstFrame, setHasFirstFrame] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [fps, setFps] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // FPS calculation
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDecodingRef = useRef(false);
+  const pendingFrameRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+
   const frameCountRef = useRef(0);
   const lastFpsUpdateRef = useRef(Date.now());
 
@@ -76,7 +79,6 @@ export const Streamer: React.FC<StreamerProps> = ({
     const now = Date.now();
     const elapsed = now - lastFpsUpdateRef.current;
 
-    // Update FPS every second
     if (elapsed >= 1000) {
       setFps(Math.round((frameCountRef.current * 1000) / elapsed));
       frameCountRef.current = 0;
@@ -84,39 +86,111 @@ export const Streamer: React.FC<StreamerProps> = ({
     }
   }, []);
 
-  // Handle incoming frames
+  const decodeAndDraw = useCallback(
+    (dataUri: string) => {
+      if (!mountedRef.current) return;
+      isDecodingRef.current = true;
+
+      try {
+        // Decode base64 data URI to binary
+        const base64 = dataUri.split(',')[1];
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'image/jpeg' });
+
+        // createImageBitmap decodes the image; bitmap.close() frees C++ memory
+        createImageBitmap(blob).then(
+          (bitmap) => {
+            // Always close the bitmap to free C++ memory, even if unmounted
+            const canvas = canvasRef.current;
+            if (mountedRef.current && canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                // clearRect clears to transparent — CSS background provides black letterbox bars
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Aspect-ratio-preserving letterbox using bitmap dimensions
+                const scale = Math.min(
+                  canvas.width / bitmap.width,
+                  canvas.height / bitmap.height
+                );
+                const drawWidth = bitmap.width * scale;
+                const drawHeight = bitmap.height * scale;
+                const x = (canvas.width - drawWidth) / 2;
+                const y = (canvas.height - drawHeight) / 2;
+
+                ctx.drawImage(bitmap, x, y, drawWidth, drawHeight);
+              }
+
+              if (!hasFirstFrame) {
+                setHasFirstFrame(true);
+              }
+              updateFps();
+            }
+
+            // Free C++ bitmap memory — the only API that deterministically releases it
+            bitmap.close();
+
+            isDecodingRef.current = false;
+
+            // Drain pending frame (latest-frame-wins)
+            if (pendingFrameRef.current && mountedRef.current) {
+              const next = pendingFrameRef.current;
+              pendingFrameRef.current = null;
+              decodeAndDraw(next);
+            }
+          },
+          () => {
+            // createImageBitmap rejected (corrupt image data)
+            isDecodingRef.current = false;
+            if (pendingFrameRef.current && mountedRef.current) {
+              const next = pendingFrameRef.current;
+              pendingFrameRef.current = null;
+              decodeAndDraw(next);
+            }
+          }
+        );
+      } catch {
+        // atob() or Blob construction failed
+        isDecodingRef.current = false;
+        if (pendingFrameRef.current && mountedRef.current) {
+          const next = pendingFrameRef.current;
+          pendingFrameRef.current = null;
+          decodeAndDraw(next);
+        }
+      }
+    },
+    [hasFirstFrame, updateFps]
+  );
+
+  // Handle incoming frames — busy gate with latest-frame-wins
   const handleFrame = useCallback(
     (image: { dataUri: string; timestamp: number }) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!image.dataUri) return;
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (isDecodingRef.current) {
+        // Gate closed — buffer latest frame (overwrites previous)
+        pendingFrameRef.current = image.dataUri;
+        return;
+      }
 
-      // Create image and draw to canvas
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        updateFps();
-      };
-      img.onerror = () => {
-        // Suppress console errors for invalid data URIs (cosmetic issue)
-        // The browser console shows ERR_INVALID_URL when displaying base64 data
-      };
-      img.src = image.dataUri;
+      decodeAndDraw(image.dataUri);
     },
-    [updateFps]
+    [decodeAndDraw]
   );
 
   // Start streaming on mount
   useEffect(() => {
-    let mounted = true;
+    mountedRef.current = true;
 
     const startStreaming = async () => {
       try {
         const response = await window.electron.camera.startStream(settings);
 
-        if (!mounted) return;
+        if (!mountedRef.current) return;
 
         if (response.success) {
           setIsStreaming(true);
@@ -128,7 +202,7 @@ export const Streamer: React.FC<StreamerProps> = ({
           onError?.(errorMsg);
         }
       } catch (err) {
-        if (!mounted) return;
+        if (!mountedRef.current) return;
 
         const errorMsg = err instanceof Error ? err.message : String(err);
         setError(errorMsg);
@@ -138,34 +212,55 @@ export const Streamer: React.FC<StreamerProps> = ({
 
     startStreaming();
 
-    // Register frame callback and get cleanup function
     const removeFrameListener = window.electron.camera.onFrame(handleFrame);
 
-    // Cleanup: stop streaming and remove listener on unmount
     return () => {
-      mounted = false;
-      removeFrameListener(); // Remove frame listener to prevent memory leak
-      window.electron.camera.stopStream().then(() => {
-        setIsStreaming(false);
-        onStreamStop?.();
+      // Ordered cleanup: mountedRef first, then pending, then listener, then stream
+      // Any in-flight createImageBitmap will see mountedRef=false and skip drawing
+      // but still call bitmap.close() to free memory
+      mountedRef.current = false;
+      pendingFrameRef.current = null;
+
+      removeFrameListener();
+      window.electron.camera.stopStream().catch(() => {
+        // Ignore errors during cleanup — component is unmounting
       });
     };
   }, [settings, handleFrame, onStreamStart, onStreamStop, onError]);
 
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
+      {/* Canvas is always in the DOM so ref is available for first draw.
+          Hidden until first frame via display:none, then shown. */}
       <canvas
         ref={canvasRef}
+        data-testid="stream-canvas"
         width={width}
         height={height}
         style={{
           border: '1px solid #ccc',
-          display: 'block',
+          display: hasFirstFrame ? 'block' : 'none',
           backgroundColor: '#000',
         }}
       />
+      {!hasFirstFrame && (
+        <div
+          style={{
+            width,
+            height,
+            border: '1px solid #ccc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#000',
+          }}
+        >
+          <span style={{ color: '#fff', fontSize: '14px' }}>
+            {error ? 'Error' : 'Connecting...'}
+          </span>
+        </div>
+      )}
 
-      {/* FPS Counter */}
       {showFps && (
         <div
           style={{
@@ -184,7 +279,6 @@ export const Streamer: React.FC<StreamerProps> = ({
         </div>
       )}
 
-      {/* Status Indicator */}
       <div
         style={{
           position: 'absolute',
@@ -217,7 +311,6 @@ export const Streamer: React.FC<StreamerProps> = ({
         </span>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div
           style={{
