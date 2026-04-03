@@ -6,7 +6,7 @@
  */
 
 import { render, screen, act } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { Streamer } from '../../../src/components/Streamer';
 import { mockDrawImage, mockClearRect, mockBitmapClose } from '../setup';
 
@@ -248,6 +248,7 @@ describe('Streamer', () => {
     await flushFrameDecode();
 
     // createImageBitmap called twice (once for failed, once for success)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(globalThis.createImageBitmap as any).toHaveBeenCalledTimes(2);
     // The second frame should have drawn — proves the gate was cleared
     expect(mockDrawImage).toHaveBeenCalled();
