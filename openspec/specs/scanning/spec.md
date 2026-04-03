@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -785,4 +787,3 @@ The Streamer component SHALL render camera preview frames using a `<canvas>` ele
 - **THEN** "Connecting..." text SHALL be displayed
 - **AND** the canvas SHALL be hidden (display:none) until the first frame is drawn
 - **AND** once the first frame draws, the placeholder SHALL be hidden and the canvas shown
-

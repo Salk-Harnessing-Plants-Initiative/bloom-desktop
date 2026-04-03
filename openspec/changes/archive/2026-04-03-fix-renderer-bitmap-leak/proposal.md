@@ -18,11 +18,13 @@ Replace the fetch/Blob URL/Image pipeline with `createImageBitmap()` + `bitmap.c
 ## Evidence and Uncertainty
 
 **What we know for certain** (empirically verified):
+
 - The IPC layer does not leak (20+ min diagnostic test)
 - The previous rendering pipeline (fetch/Blob URL/Image) leaks C++ memory
 - JS heap is not growing — leak is in Chromium's off-heap allocations
 
 **What we believe but have NOT verified**:
+
 - That `bitmap.close()` actually frees the C++ memory in Electron 28 / Chromium 120
 - The web spec says it should, and it is the only API designed for explicit bitmap deallocation
 - However, we have been wrong 3 times before (img tag, canvas + Blob URL, revokeObjectURL)
@@ -32,6 +34,7 @@ Replace the fetch/Blob URL/Image pipeline with `createImageBitmap()` + `bitmap.c
 ## Relationship to Prior Work
 
 This is the fourth fix attempt in the streaming OOM series:
+
 1. PR #134: FPS 30→5, sendCommand timeout, detectCameras
 2. `fix-streaming-oom` (archived): JPEG encoding, array-based stdout buffer
 3. `fix-main-process-frame-leak` (archived): frame-dropping gate, Buffer.from() safety
