@@ -90,6 +90,7 @@ export const Streamer: React.FC<StreamerProps> = ({
   const decodeAndDraw = useCallback(
     (dataUri: string) => {
       if (!mountedRef.current) return;
+
       isDecodingRef.current = true;
 
       // Decode base64 data URI to Blob
