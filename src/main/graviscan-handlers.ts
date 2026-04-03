@@ -556,6 +556,34 @@ export function registerGraviscanHandlers(
     }
   );
 
+  /**
+   * Reset all scanners — kills all subprocesses, waits for USB release.
+   * Used by the "Reset & Re-detect" button on Configure Scanner page.
+   */
+  ipcMain.handle('graviscan:reset-scanners', async () => {
+    try {
+      console.log('[GraviScan:RESET] Killing all scanner processes...');
+      const { execSync } = require('child_process');
+      execSync('pkill -f "bloom-hardware --scan-worker" 2>/dev/null || true');
+
+      const coordinator = getCoordinator?.();
+      if (coordinator) {
+        await coordinator.shutdown();
+      }
+
+      console.log('[GraviScan:RESET] Waiting 5s for USB release...');
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      console.log('[GraviScan:RESET] Reset complete');
+      return { success: true };
+    } catch (error) {
+      console.error('[GraviScan:RESET] Error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Reset failed',
+      };
+    }
+  });
+
   // ==========================================================================
   // Scan Operations
   // ==========================================================================
