@@ -140,8 +140,6 @@ class ScanWorker:
                         self.scanner_id,
                         f"sane.open() failed ({init_attempt + 1}/{INIT_RETRIES}): {e} — waiting {delay}s...",
                     )
-                    # Flush USB state before retry
-                    self._reset_usb_device()
                     time.sleep(delay)
                     sane.init()
             else:
