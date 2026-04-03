@@ -119,6 +119,8 @@ export class ScannerSubprocess extends EventEmitter {
         PYTHONPATH: [path.join(process.cwd(), 'python'), process.env.PYTHONPATH]
           .filter(Boolean)
           .join(':'),
+        // Workaround for USB 2.0 scanners on USB 3.0 xHCI controllers (sane-usb man page)
+        SANE_USB_WORKAROUND: '1',
       },
     });
 

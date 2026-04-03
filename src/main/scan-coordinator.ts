@@ -163,78 +163,77 @@ export class ScanCoordinator extends EventEmitter {
       toSpawn.push(scanner);
     }
 
-    // Phase 2: Spawn all new subprocesses in parallel
-    // Stale processes are killed before init (in autoInitScanners).
-    // With clean USB, parallel spawns work — some may need retries.
+    // Phase 2: Spawn subprocesses sequentially (one at a time)
+    // Parallel sane_init() causes "Device busy" due to USB bus probe contention.
+    // Sequential init avoids this — each scanner connects reliably in ~30s.
+    // Once connected, scanning is still parallel.
     if (toSpawn.length > 0 && !this.cancelled) {
       console.log(
-        `[ScanCoordinator] Spawning ${toSpawn.length} subprocess(es) in parallel...`
+        `[ScanCoordinator] Spawning ${toSpawn.length} subprocess(es) sequentially...`
       );
 
-      const spawnResults = await Promise.allSettled(
-        toSpawn.map((scanner) => {
-          const sub = new ScannerSubprocess(
-            this.pythonPath,
-            this.isPackaged,
-            scanner.scannerId,
-            scanner.saneName,
-            this.mock
-          );
+      let succeeded = 0;
+      let failed = 0;
 
-          // Forward all events, injecting cycle number and per-grid timestamps
-          sub.on('event', (event: ScanWorkerEvent) => {
-            this.emit('scan-event', {
-              ...event,
-              cycle_number: this.currentCycle,
-              scan_started_at: this.currentGridStartedAt,
-              scan_ended_at: this.currentGridEndedAt,
-            });
+      for (const scanner of toSpawn) {
+        if (this.cancelled) break;
+
+        const sub = new ScannerSubprocess(
+          this.pythonPath,
+          this.isPackaged,
+          scanner.scannerId,
+          scanner.saneName,
+          this.mock
+        );
+
+        sub.on('event', (event: ScanWorkerEvent) => {
+          this.emit('scan-event', {
+            ...event,
+            cycle_number: this.currentCycle,
+            scan_started_at: this.currentGridStartedAt,
+            scan_ended_at: this.currentGridEndedAt,
           });
+        });
 
-          sub.on('exit', (info: { scannerId: string; code: number | null }) => {
-            console.log(
-              `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
-            );
-            this.subprocesses.delete(info.scannerId);
-          });
-
-          this.subprocesses.set(scanner.scannerId, sub);
-
+        sub.on('exit', (info: { scannerId: string; code: number | null }) => {
           console.log(
-            `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
+            `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
           );
+          this.subprocesses.delete(info.scannerId);
+        });
 
-          return sub
-            .spawn()
-            .then(() => {
-              console.log(
-                `[ScanCoordinator] Scanner ${scanner.scannerId} ready`
-              );
-              this.emit('scanner-init-status', {
-                scannerId: scanner.scannerId,
-                status: 'ready',
-              });
-            })
-            .catch((error: Error) => {
-              console.error(
-                `[ScanCoordinator] Scanner ${scanner.scannerId} init failed: ${error.message}`
-              );
-              this.subprocesses.delete(scanner.scannerId);
-              this.initErrors.set(scanner.scannerId, error.message);
-              this.emit('scanner-init-status', {
-                scannerId: scanner.scannerId,
-                status: 'error',
-                error: error.message,
-              });
-              throw error; // Re-throw so Promise.allSettled sees it as rejected
-            });
-        })
-      );
+        this.subprocesses.set(scanner.scannerId, sub);
 
-      const succeeded = spawnResults.filter(
-        (r) => r.status === 'fulfilled'
-      ).length;
-      const failed = spawnResults.filter((r) => r.status === 'rejected').length;
+        console.log(
+          `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}... (${succeeded + failed + 1}/${toSpawn.length})`
+        );
+
+        try {
+          await sub.spawn();
+          console.log(
+            `[ScanCoordinator] Scanner ${scanner.scannerId} ready`
+          );
+          this.emit('scanner-init-status', {
+            scannerId: scanner.scannerId,
+            status: 'ready',
+          });
+          succeeded++;
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          console.error(
+            `[ScanCoordinator] Scanner ${scanner.scannerId} init failed: ${message}`
+          );
+          this.subprocesses.delete(scanner.scannerId);
+          this.initErrors.set(scanner.scannerId, message);
+          this.emit('scanner-init-status', {
+            scannerId: scanner.scannerId,
+            status: 'error',
+            error: message,
+          });
+          failed++;
+        }
+      }
 
       if (failed > 0) {
         console.warn(
