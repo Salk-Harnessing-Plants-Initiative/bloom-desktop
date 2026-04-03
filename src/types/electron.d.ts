@@ -629,6 +629,14 @@ export interface GraviScanAPI {
   }>;
 
   /**
+   * Reset all scanners — kills all subprocesses, waits for USB release.
+   */
+  resetScanners: () => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+  /**
    * Get platform support information
    */
   getPlatformInfo: () => Promise<

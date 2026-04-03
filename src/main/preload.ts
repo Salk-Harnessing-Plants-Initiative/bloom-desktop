@@ -416,6 +416,11 @@ const graviscanAPI = {
       success: boolean;
       error?: string;
     }>,
+  resetScanners: () =>
+    ipcRenderer.invoke('graviscan:reset-scanners') as Promise<{
+      success: boolean;
+      error?: string;
+    }>,
   getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
   validateScanners: (cachedScannerIds: string[]) =>
     ipcRenderer.invoke('graviscan:validate-scanners', cachedScannerIds),

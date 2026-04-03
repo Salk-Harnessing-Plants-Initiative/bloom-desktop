@@ -228,13 +228,32 @@ export function ConfigureScanner() {
               automatically assigned labels by USB port order.
             </p>
 
-            <button
-              onClick={handleDetect}
-              disabled={detecting || isScanActive}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {detecting ? 'Detecting...' : 'Detect Scanners'}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDetect}
+                disabled={detecting || isScanActive}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {detecting ? 'Detecting...' : 'Detect Scanners'}
+              </button>
+              <button
+                onClick={async () => {
+                  setDetecting(true);
+                  setDetectionError(null);
+                  try {
+                    // Kill all scanner processes, wait, then re-detect
+                    await window.electron.graviscan.resetScanners?.();
+                  } catch {
+                    // resetScanners may not exist yet
+                  }
+                  await handleDetect();
+                }}
+                disabled={detecting || isScanActive}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {detecting ? 'Resetting...' : 'Reset & Re-detect'}
+              </button>
+            </div>
 
             {detectionError && (
               <p className="text-red-600 text-sm mt-2">{detectionError}</p>
