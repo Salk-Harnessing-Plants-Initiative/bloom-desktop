@@ -66,10 +66,8 @@ export const Streamer: React.FC<StreamerProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
   const isDecodingRef = useRef(false);
   const pendingFrameRef = useRef<string | null>(null);
-  const currentBlobUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
 
   const frameCountRef = useRef(0);
@@ -90,69 +88,50 @@ export const Streamer: React.FC<StreamerProps> = ({
   const decodeAndDraw = useCallback(
     (dataUri: string) => {
       if (!mountedRef.current) return;
-
       isDecodingRef.current = true;
 
-      // Decode base64 data URI to Blob
-      fetch(dataUri)
-        .then((r) => r.blob())
-        .then((blob) => {
-          if (!mountedRef.current) {
-            isDecodingRef.current = false;
-            return;
-          }
+      try {
+        // Decode base64 data URI to binary
+        const base64 = dataUri.split(',')[1];
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'image/jpeg' });
 
-          // Revoke previous Blob URL
-          if (currentBlobUrlRef.current) {
-            URL.revokeObjectURL(currentBlobUrlRef.current);
-          }
-
-          const blobUrl = URL.createObjectURL(blob);
-          currentBlobUrlRef.current = blobUrl;
-
-          const img = imgRef.current;
-          if (!img) {
-            isDecodingRef.current = false;
-            return;
-          }
-
-          img.onload = () => {
-            if (!mountedRef.current) {
-              isDecodingRef.current = false;
-              return;
-            }
-
+        // createImageBitmap decodes the image; bitmap.close() frees C++ memory
+        createImageBitmap(blob).then(
+          (bitmap) => {
+            // Always close the bitmap to free C++ memory, even if unmounted
             const canvas = canvasRef.current;
-            if (canvas) {
+            if (mountedRef.current && canvas) {
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 // clearRect clears to transparent — CSS background provides black letterbox bars
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // Calculate aspect-ratio-preserving draw rect (objectFit: contain equivalent)
+                // Aspect-ratio-preserving letterbox using bitmap dimensions
                 const scale = Math.min(
-                  canvas.width / img.naturalWidth,
-                  canvas.height / img.naturalHeight
+                  canvas.width / bitmap.width,
+                  canvas.height / bitmap.height
                 );
-                const drawWidth = img.naturalWidth * scale;
-                const drawHeight = img.naturalHeight * scale;
+                const drawWidth = bitmap.width * scale;
+                const drawHeight = bitmap.height * scale;
                 const x = (canvas.width - drawWidth) / 2;
                 const y = (canvas.height - drawHeight) / 2;
 
-                ctx.drawImage(img, x, y, drawWidth, drawHeight);
+                ctx.drawImage(bitmap, x, y, drawWidth, drawHeight);
               }
+
+              if (!hasFirstFrame) {
+                setHasFirstFrame(true);
+              }
+              updateFps();
             }
 
-            // Revoke Blob URL immediately after drawing — frees decoded bitmap
-            if (currentBlobUrlRef.current) {
-              URL.revokeObjectURL(currentBlobUrlRef.current);
-              currentBlobUrlRef.current = null;
-            }
-
-            if (!hasFirstFrame) {
-              setHasFirstFrame(true);
-            }
-            updateFps();
+            // Free C++ bitmap memory — the only API that deterministically releases it
+            bitmap.close();
 
             isDecodingRef.current = false;
 
@@ -162,41 +141,26 @@ export const Streamer: React.FC<StreamerProps> = ({
               pendingFrameRef.current = null;
               decodeAndDraw(next);
             }
-          };
-
-          img.onerror = () => {
-            if (!mountedRef.current) {
-              isDecodingRef.current = false;
-              return;
-            }
-
-            // Revoke failed Blob URL
-            if (currentBlobUrlRef.current) {
-              URL.revokeObjectURL(currentBlobUrlRef.current);
-              currentBlobUrlRef.current = null;
-            }
-
+          },
+          () => {
+            // createImageBitmap rejected (corrupt image data)
             isDecodingRef.current = false;
-
-            // Drain pending frame
             if (pendingFrameRef.current && mountedRef.current) {
               const next = pendingFrameRef.current;
               pendingFrameRef.current = null;
               decodeAndDraw(next);
             }
-          };
-
-          img.src = blobUrl;
-        })
-        .catch(() => {
-          // fetch/blob conversion failed — clear gate
-          isDecodingRef.current = false;
-          if (pendingFrameRef.current && mountedRef.current) {
-            const next = pendingFrameRef.current;
-            pendingFrameRef.current = null;
-            decodeAndDraw(next);
           }
-        });
+        );
+      } catch {
+        // atob() or Blob construction failed
+        isDecodingRef.current = false;
+        if (pendingFrameRef.current && mountedRef.current) {
+          const next = pendingFrameRef.current;
+          pendingFrameRef.current = null;
+          decodeAndDraw(next);
+        }
+      }
     },
     [hasFirstFrame, updateFps]
   );
@@ -217,10 +181,9 @@ export const Streamer: React.FC<StreamerProps> = ({
     [decodeAndDraw]
   );
 
-  // Create Image object and start streaming on mount
+  // Start streaming on mount
   useEffect(() => {
     mountedRef.current = true;
-    imgRef.current = new Image();
 
     const startStreaming = async () => {
       try {
@@ -251,21 +214,11 @@ export const Streamer: React.FC<StreamerProps> = ({
     const removeFrameListener = window.electron.camera.onFrame(handleFrame);
 
     return () => {
-      // Ordered cleanup: mountedRef first, then pending, then abort decode, then revoke, then listener, then stream
+      // Ordered cleanup: mountedRef first, then pending, then listener, then stream
+      // Any in-flight createImageBitmap will see mountedRef=false and skip drawing
+      // but still call bitmap.close() to free memory
       mountedRef.current = false;
       pendingFrameRef.current = null;
-
-      if (imgRef.current) {
-        imgRef.current.onload = null;
-        imgRef.current.onerror = null;
-        imgRef.current.src = '';
-        imgRef.current = null;
-      }
-
-      if (currentBlobUrlRef.current) {
-        URL.revokeObjectURL(currentBlobUrlRef.current);
-        currentBlobUrlRef.current = null;
-      }
 
       removeFrameListener();
       window.electron.camera.stopStream().catch(() => {

@@ -215,8 +215,8 @@ describe('Streamer', () => {
     expect(mockDrawImage).toHaveBeenCalled();
   });
 
-  it('1.13 decode failure clears busy gate and drains pending', async () => {
-    // Mock createImageBitmap to reject once, then succeed
+  it('1.13 decode failure clears busy gate — next frame succeeds', async () => {
+    // Mock createImageBitmap to reject once
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cib = globalThis.createImageBitmap as any;
     cib.mockRejectedValueOnce(new Error('Decode failed'));
@@ -232,25 +232,35 @@ describe('Streamer', () => {
     });
     await flushFrameDecode();
 
-    // Send another frame — should succeed (gate was cleared by the failure)
+    // Verify createImageBitmap was called (first frame attempted decode)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(globalThis.createImageBitmap as any).toHaveBeenCalledTimes(1);
+
+    // Gate should be cleared — verify by sending another frame that succeeds
     await act(async () => {
       capturedFrameCallback?.({
-        dataUri: 'data:image/jpeg;base64,valid',
+        dataUri: 'data:image/jpeg;base64,dGVzdA==',
         timestamp: Date.now(),
       });
     });
     await flushFrameDecode();
+    await flushFrameDecode();
+    await flushFrameDecode();
 
-    // The second frame should have drawn successfully
+    // createImageBitmap called twice (once for failed, once for success)
+    expect(globalThis.createImageBitmap as any).toHaveBeenCalledTimes(2);
+    // The second frame should have drawn — proves the gate was cleared
     expect(mockDrawImage).toHaveBeenCalled();
     expect(mockBitmapClose).toHaveBeenCalled();
   });
 
   it('1.14 unmount during decode — bitmap.close() still called, drawImage not called', async () => {
     // Use deferred promise to control when createImageBitmap resolves
-    let resolveDeferred!: (
-      value: { close: () => void; width: number; height: number }
-    ) => void;
+    let resolveDeferred!: (value: {
+      close: () => void;
+      width: number;
+      height: number;
+    }) => void;
     const deferredPromise = new Promise<{
       close: () => void;
       width: number;
