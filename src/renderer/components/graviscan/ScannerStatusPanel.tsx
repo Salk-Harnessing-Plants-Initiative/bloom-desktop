@@ -214,8 +214,8 @@ export function ScannerStatusPanel({
                   </span>
                 )}
               </div>
-              {/* Reconnect button for failed scanners */}
-              {(scanner.status === 'error' || scanner.status === 'dead') && (
+              {/* Reconnect button — always visible for force reset */}
+              {scanner.status !== 'starting' && (
                 <button
                   onClick={async () => {
                     setScanners((prev) =>
