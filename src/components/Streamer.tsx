@@ -2,8 +2,9 @@
  * Camera Streamer Component
  *
  * Displays live camera stream with automatic lifecycle management.
- * Uses canvas + Blob URL rendering with explicit revocation to prevent
- * Chromium's data-URI bitmap cache leak (Chromium issue 41067124).
+ * Uses createImageBitmap() for frame decoding, renders to canvas, and
+ * explicitly releases bitmap resources with bitmap.close() to avoid
+ * retaining decoded image data between frames (Chromium issue 41067124).
  * Automatically starts streaming on mount and stops on unmount.
  */
 
