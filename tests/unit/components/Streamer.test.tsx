@@ -1,14 +1,14 @@
 /**
  * Streamer component tests
  *
- * Validates the canvas + Blob URL streaming pattern that prevents
- * Chromium's data-URI bitmap cache from leaking decoded images.
+ * Validates the createImageBitmap + close() streaming pattern that prevents
+ * Chromium's C++ bitmap memory from accumulating.
  */
 
 import { render, screen, act } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Streamer } from '../../../src/components/Streamer';
-import { mockDrawImage, mockClearRect } from '../setup';
+import { mockDrawImage, mockClearRect, mockBitmapClose } from '../setup';
 
 // Type for the frame callback registered via onFrame
 type FrameCallback = (image: { dataUri: string; timestamp: number }) => void;
@@ -23,63 +23,9 @@ const mockOnFrame = vi.fn().mockImplementation((cb: FrameCallback) => {
   return mockRemoveListener;
 });
 
-// Controllable MockImage — onload/onerror fire only when manually triggered
-let mockImageInstance: {
-  onload: (() => void) | null;
-  onerror: (() => void) | null;
-  src: string;
-  naturalWidth: number;
-  naturalHeight: number;
-} | null = null;
-
-const OriginalImage = globalThis.Image;
-
-// Spy on URL.createObjectURL / revokeObjectURL
-const createObjectURLSpy = vi
-  .fn()
-  .mockImplementation(() => `blob:mock-${Math.random().toString(36).slice(2)}`);
-const revokeObjectURLSpy = vi.fn();
-
 beforeEach(() => {
   vi.clearAllMocks();
   capturedFrameCallback = null;
-  mockImageInstance = null;
-
-  // Mock Image constructor — controllable trigger pattern
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).Image = class MockImage {
-    onload: (() => void) | null = null;
-    onerror: (() => void) | null = null;
-    naturalWidth = 2048;
-    naturalHeight = 1080;
-    _src = '';
-
-    constructor() {
-      // eslint-disable-next-line @typescript-eslint/no-this-alias
-      mockImageInstance = this;
-    }
-
-    get src() {
-      return this._src;
-    }
-
-    set src(val: string) {
-      this._src = val;
-      if (val && val !== '') {
-        // Auto-trigger onload after microtasks settle (simulates async decode)
-        // Tests that need to control timing should override this before setting src
-        queueMicrotask(() => {
-          queueMicrotask(() => {
-            this.onload?.();
-          });
-        });
-      }
-    }
-  };
-
-  // Spy on URL methods
-  globalThis.URL.createObjectURL = createObjectURLSpy;
-  globalThis.URL.revokeObjectURL = revokeObjectURLSpy;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
@@ -102,15 +48,10 @@ beforeEach(() => {
   };
 });
 
-afterEach(() => {
-  globalThis.Image = OriginalImage;
-});
-
-// Helper: flush all pending microtasks (fetch + blob + Image onload)
+// Helper: flush the createImageBitmap async pipeline
+// atob (sync) + Blob (sync) + createImageBitmap (one Promise)
 async function flushFrameDecode(): Promise<void> {
   await act(async () => {
-    // Multiple flushes for: fetch().then(blob).then(createObjectURL) + Image.onload microtasks
-    await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
     await new Promise((r) => setTimeout(r, 0));
   });
@@ -157,11 +98,9 @@ describe('Streamer', () => {
       });
     }
 
-    // Flush all decodes
     await flushFrameDecode();
     await flushFrameDecode();
 
-    // drawImage should have been called (at least first frame + latest pending)
     expect(mockDrawImage).toHaveBeenCalled();
   });
 
@@ -213,7 +152,7 @@ describe('Streamer', () => {
     expect(screen.getByText('Camera not connected')).toBeInTheDocument();
   });
 
-  it('1.9 revokes Blob URL after drawImage', async () => {
+  it('1.9 bitmap.close() called after drawImage', async () => {
     render(<Streamer />);
 
     await act(async () => {
@@ -224,13 +163,11 @@ describe('Streamer', () => {
     });
     await flushFrameDecode();
 
-    // createObjectURL should have been called
-    expect(createObjectURLSpy).toHaveBeenCalled();
-    // revokeObjectURL should have been called (after drawImage)
-    expect(revokeObjectURLSpy).toHaveBeenCalled();
+    expect(mockDrawImage).toHaveBeenCalled();
+    expect(mockBitmapClose).toHaveBeenCalled();
   });
 
-  it('1.10 create/revoke counts match after multiple frames', async () => {
+  it('1.10 bitmap.close() count matches frames drawn', async () => {
     render(<Streamer />);
 
     for (let i = 0; i < 5; i++) {
@@ -243,13 +180,13 @@ describe('Streamer', () => {
       await flushFrameDecode();
     }
 
-    // All created URLs should be revoked (within ±1 for in-flight)
-    const created = createObjectURLSpy.mock.calls.length;
-    const revoked = revokeObjectURLSpy.mock.calls.length;
-    expect(Math.abs(created - revoked)).toBeLessThanOrEqual(1);
+    // Every drawn frame should have bitmap.close() called
+    expect(mockBitmapClose.mock.calls.length).toBe(
+      mockDrawImage.mock.calls.length
+    );
   });
 
-  it('1.11 drawImage is called with canvas context', async () => {
+  it('1.11 drawImage called with canvas context', async () => {
     render(<Streamer />);
 
     await act(async () => {
@@ -274,9 +211,88 @@ describe('Streamer', () => {
     });
     await flushFrameDecode();
 
-    // clearRect should be called (to clear canvas before letterbox draw)
     expect(mockClearRect).toHaveBeenCalled();
-    // And drawImage should follow
     expect(mockDrawImage).toHaveBeenCalled();
+  });
+
+  it('1.13 decode failure clears busy gate and drains pending', async () => {
+    // Mock createImageBitmap to reject once, then succeed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cib = globalThis.createImageBitmap as any;
+    cib.mockRejectedValueOnce(new Error('Decode failed'));
+
+    render(<Streamer />);
+
+    // Send frame that will fail to decode
+    await act(async () => {
+      capturedFrameCallback?.({
+        dataUri: 'data:image/jpeg;base64,corrupt',
+        timestamp: Date.now(),
+      });
+    });
+    await flushFrameDecode();
+
+    // Send another frame — should succeed (gate was cleared by the failure)
+    await act(async () => {
+      capturedFrameCallback?.({
+        dataUri: 'data:image/jpeg;base64,valid',
+        timestamp: Date.now(),
+      });
+    });
+    await flushFrameDecode();
+
+    // The second frame should have drawn successfully
+    expect(mockDrawImage).toHaveBeenCalled();
+    expect(mockBitmapClose).toHaveBeenCalled();
+  });
+
+  it('1.14 unmount during decode — bitmap.close() still called, drawImage not called', async () => {
+    // Use deferred promise to control when createImageBitmap resolves
+    let resolveDeferred!: (
+      value: { close: () => void; width: number; height: number }
+    ) => void;
+    const deferredPromise = new Promise<{
+      close: () => void;
+      width: number;
+      height: number;
+    }>((resolve) => {
+      resolveDeferred = resolve;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cib = globalThis.createImageBitmap as any;
+    cib.mockReturnValueOnce(deferredPromise);
+
+    const { unmount } = render(<Streamer />);
+
+    // Send frame — createImageBitmap is now pending
+    await act(async () => {
+      capturedFrameCallback?.({
+        dataUri: 'data:image/jpeg;base64,test',
+        timestamp: Date.now(),
+      });
+    });
+
+    // Unmount BEFORE decode completes
+    unmount();
+
+    // Clear mocks to track only post-unmount calls
+    mockDrawImage.mockClear();
+    const postUnmountClose = vi.fn();
+
+    // Now resolve the deferred createImageBitmap
+    await act(async () => {
+      resolveDeferred({
+        close: postUnmountClose,
+        width: 2048,
+        height: 1080,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // bitmap.close() SHOULD be called (free memory even after unmount)
+    expect(postUnmountClose).toHaveBeenCalled();
+    // drawImage should NOT be called (component is unmounted)
+    expect(mockDrawImage).not.toHaveBeenCalled();
   });
 });

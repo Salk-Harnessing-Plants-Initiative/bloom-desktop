@@ -23,8 +23,18 @@ if (typeof HTMLCanvasElement !== 'undefined') {
   }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }
 
-// Export for tests that need to assert on canvas operations
-export { mockDrawImage, mockClearRect };
+// Mock createImageBitmap — happy-dom does not support it
+// Guard: only apply in happy-dom environment
+const mockBitmapClose = vi.fn();
+if (typeof globalThis.window !== 'undefined') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).createImageBitmap = vi
+    .fn()
+    .mockResolvedValue({ close: mockBitmapClose, width: 2048, height: 1080 });
+}
+
+// Export for tests that need to assert on canvas/bitmap operations
+export { mockDrawImage, mockClearRect, mockBitmapClose };
 
 // Mock window.electron API for all tests
 const mockPythonAPI = {
