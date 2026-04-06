@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-03
 **Branch**: TBD (will be created per increment)
-**Status**: Draft (v2 — addresses review findings)
+**Status**: Draft (v3 — all review findings addressed)
 
 ## Problem
 
@@ -32,7 +32,8 @@ bloom-desktop is a single-mode CylinderScan application. It needs to support a s
 - Changeable by admin via Machine Config page
 - Machine Config wizard text makes clear this is "What scanner hardware is attached to this machine?" — it's a **hardware identity**, not a user preference
 - Mode determines: visible capture/config routes, nav items, available IPC handlers
-- **Browse/view routes are ALWAYS visible** regardless of mode — scientists must be able to view historical scans from either mode even after switching
+- **Browse/view routes are ALWAYS visible** regardless of mode — scientists must be able to view historical scans from either mode even after switching. Nav links for browse show conditionally based on whether data exists for that mode (e.g., "Browse GraviScans" only appears after GraviScan data is created).
+- **`useAppMode()` must gate rendering** — mode is fetched async via IPC. The app shows a loading state until mode resolves. `<Routes>` are NOT rendered until mode is known. This prevents flash-of-wrong-routes on startup.
 
 ### Data Integrity on Mode Switch
 
@@ -71,7 +72,22 @@ python/
 └── main.py               # Entry point
 ```
 
-**Critical rule**: Shared code NEVER imports from `cylinderscan/` or `graviscan/` directories. The dependency arrow is strictly one-way: mode-specific → shared. **Enforced by ESLint `no-restricted-imports` rule** added in Increment 0a.
+**Critical rule**: Shared code NEVER imports from `cylinderscan/` or `graviscan/` directories. The dependency arrow is strictly one-way: mode-specific → shared. **Enforced by ESLint `no-restricted-imports` rule** added in Increment 0a:
+
+```json
+{
+  "no-restricted-imports": ["error", {
+    "patterns": [
+      { "group": ["**/cylinderscan/**"], "message": "Shared code must not import from cylinderscan/" },
+      { "group": ["**/graviscan/**"], "message": "Shared code must not import from graviscan/" }
+    ]
+  }]
+}
+```
+
+Note: This rule applies to files OUTSIDE `cylinderscan/` and `graviscan/` directories. Files within those directories may import from shared code freely. The ESLint override structure handles this.
+
+**Handler registration**: `registerGraviScanHandlers()` and `registerCylinderScanHandlers()` are defined in their respective mode directories (`src/main/graviscan/handlers.ts`, `src/main/cylinderscan/handlers.ts`). They are NOT added inside `database-handlers.ts`. The shared `main.ts` imports and calls them conditionally.
 
 ### Mode-Conditional Registration
 
@@ -142,7 +158,13 @@ Phase 2 changes (NOT implemented now, but the architecture supports them):
 - Conditional imports become dead code that webpack eliminates
 - `preload.ts`: Separate entry points per mode, or build-flag-gated namespace registration
 - `python/`: Two `.spec` files (`bloom-hardware.spec`, `bloom-graviscan.spec`) producing separate executables
-- `forge.config.ts`: Mode-specific icons, app names, DEB dependencies
+- `forge.config.ts`: Mode-specific icons, app names, DEB dependencies, conditional `extraResource` entries per binary
+
+### Phase 1 Packaging Notes
+
+- **Single Python binary** (`bloom-hardware`) ships with all dependencies (pypylon, nidaqmx, python-sane). Expected size increase: ~5-15 MB for SANE bindings. Acceptable for Phase 1.
+- **Linux DEB**: Phase 1 does NOT declare `libsane-dev` as a dependency. GraviScan on Linux requires manual `sudo apt install libsane-dev`. This is documented in the GraviScan setup guide. Phase 2 adds conditional DEB dependencies per mode.
+- **macOS/Windows**: SANE is unavailable. The import guard (`except (ImportError, OSError)`) ensures the binary starts successfully. GraviScan runs in mock mode only on these platforms.
 
 ### Python Backend
 
@@ -176,9 +198,13 @@ except (ImportError, OSError):
 
 - Existing CylinderScan models (`Scan`, `Image`) remain unchanged
 - New GraviScan models (`GraviScan`, `GraviScanner`, `GraviConfig`, `GraviImage`, etc.) are additive
-- `Experiment` gets `experiment_type` field — **NOT optional**: existing experiments backfilled with `'cylinderscan'` via migration
+- `Experiment` gets `experiment_type` field — **NOT optional**: existing experiments backfilled with `'cylinderscan'` via migration. The backfill migration includes a comment: "All existing experiments are CylinderScan — bloom-desktop has only supported CylinderScan prior to this migration."
 - Machine config gets `SCANNER_MODE` field in `.env`
-- Migrations written from scratch (NOT cherry-picked from Ben's branch) by diffing his final schema against current main
+- Migrations written from scratch (NOT cherry-picked from Ben's branch) by diffing his final schema against current main. Devs who ran Ben's branch migrations must run `prisma migrate reset`.
+
+### On-Disk Metadata
+
+Both modes write a `metadata.json` per scan. The file includes a `scan_type` field (`'cylinderscan'` or `'graviscan'`) and `metadata_version` so analysis code can distinguish scan types from the filesystem alone without database access. Mode-specific metadata fields differ (CylinderScan: `num_frames`, `seconds_per_rot`, exposure/gain; GraviScan: `grid_mode`, `resolution_dpi`, `interval_seconds`) but common fields are shared (`experiment_id`, `scanner_name`, `plant_id`, `accession_name`, `wave_number`, `capture_date`).
 
 ### Shared Infrastructure
 
@@ -225,11 +251,12 @@ New PRs that cherry-pick, restructure, and properly test Ben's work.
 - Make `App.tsx` capture routes conditional on mode (browse routes always visible)
 - Make `Layout.tsx` nav conditional on mode
 - Add `<Navigate to="/" />` catch-all for removed routes
-- Update E2E test helper (`tests/e2e/helpers/bloom-config.ts`) to pre-seed `SCANNER_MODE=cylinderscan`
+- Update E2E test helper (`tests/e2e/helpers/bloom-config.ts`): update `createTestBloomConfig()` signature to accept optional `SCANNER_MODE` parameter (default: `'cylinderscan'`). Pre-seed in `.env` template.
+- Add unit test for `useAppMode()` loading state: verify app shows loading indicator (not redirect to `/`) while mode is being fetched
 - All existing tests must pass
 - OpenSpec proposal required
 
-### Increment 1: Schema + Migrations
+### Increment 1: Schema + Migrations (can run in parallel with Increment 2)
 
 **Write from scratch** using Ben's final schema as reference (NOT cherry-picked — avoids migration conflicts).
 
@@ -241,7 +268,7 @@ New PRs that cherry-pick, restructure, and properly test Ben's work.
 - Document: devs who ran Ben's branch migrations must `prisma migrate reset`
 - OpenSpec proposal required
 
-### Increment 2: Types + Python SANE Backend
+### Increment 2: Types + Python SANE Backend (can run in parallel with Increment 1)
 
 **Cherry-pick from PR #137**, modified.
 
@@ -287,9 +314,9 @@ New PRs that cherry-pick, restructure, and properly test Ben's work.
 - Integration tests for GraviScan IPC handlers
 - OpenSpec proposal required
 
-### Increment 4: Renderer Hooks + State
+### Increment 4: Renderer Hooks + State (can start after Increment 2, does not require 3c)
 
-**Restructure from PR #140.**
+**Restructure from PR #140.** Hook unit tests mock IPC calls, so this can proceed before main process handlers are wired.
 
 - Move hooks to `src/renderer/graviscan/hooks/`
 - **Split `useScanSession.ts`** (1,270 lines) into composable hooks:
