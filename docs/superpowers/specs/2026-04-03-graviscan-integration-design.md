@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-03
 **Branch**: TBD (will be created per increment)
-**Status**: Draft
+**Status**: Draft (v2 — addresses review findings)
 
 ## Problem
 
@@ -27,11 +27,22 @@ bloom-desktop is a single-mode CylinderScan application. It needs to support a s
 
 ### Scanner Mode
 
-- Mode is a **database-backed machine config field** (`scanner_mode: 'cylinderscan' | 'graviscan'`)
-- Set during Machine Config wizard (required on first run)
+- Mode is a **file-based machine config field** in `~/.bloom/.env` (`SCANNER_MODE=cylinderscan|graviscan`)
+- Set during Machine Config wizard on first run (required — no default)
 - Changeable by admin via Machine Config page
-- Default: none — forces explicit choice
-- Mode determines: visible routes, nav items, available IPC handlers, capture workflow
+- Machine Config wizard text makes clear this is "What scanner hardware is attached to this machine?" — it's a **hardware identity**, not a user preference
+- Mode determines: visible capture/config routes, nav items, available IPC handlers
+- **Browse/view routes are ALWAYS visible** regardless of mode — scientists must be able to view historical scans from either mode even after switching
+
+### Data Integrity on Mode Switch
+
+When an admin switches scanner mode:
+- All existing scans (CylinderScan and GraviScan) remain in the database
+- Browse routes for BOTH modes are always accessible (read-only)
+- Only capture/config routes are mode-gated
+- `experiment_type` field on Experiment prevents cross-mode scan creation:
+  - Creating a scan validates that `experiment.experiment_type` matches the active mode
+  - Existing experiments (pre-integration) are backfilled with `experiment_type = 'cylinderscan'` via migration
 
 ### Directory Structure — One-Way Dependencies
 
@@ -40,7 +51,7 @@ src/
 ├── main/
 │   ├── [shared files stay at root: database.ts, python-process.ts, etc.]
 │   ├── cylinderscan/     # camera-process, daq-process, scanner-process
-│   └── graviscan/        # graviscan-handlers, scan-coordinator, scanner-subprocess
+│   └── graviscan/        # handlers (split into 4 modules), scan-coordinator, scanner-subprocess
 ├── renderer/
 │   ├── [shared pages stay at root: Home, Scientists, Experiments, etc.]
 │   ├── cylinderscan/     # CaptureScan, CameraSettings, BrowseCylinderScans
@@ -60,7 +71,7 @@ python/
 └── main.py               # Entry point
 ```
 
-**Critical rule**: Shared code NEVER imports from `cylinderscan/` or `graviscan/` directories. The dependency arrow is strictly one-way: mode-specific → shared.
+**Critical rule**: Shared code NEVER imports from `cylinderscan/` or `graviscan/` directories. The dependency arrow is strictly one-way: mode-specific → shared. **Enforced by ESLint `no-restricted-imports` rule** added in Increment 0a.
 
 ### Mode-Conditional Registration
 
@@ -70,7 +81,7 @@ import { registerSharedHandlers } from './database-handlers';
 import { registerCylinderScanHandlers } from './cylinderscan/handlers';
 import { registerGraviScanHandlers } from './graviscan/handlers';
 
-const mode = await getConfiguredMode(); // reads from DB
+const mode = await getConfiguredMode(); // reads from .env config
 registerSharedHandlers(ipcMain);
 
 if (mode === 'cylinderscan' || mode === 'full') {
@@ -92,31 +103,50 @@ const { mode } = useAppMode(); // reads from main via IPC
   <Route path="/experiments" element={<Experiments />} />
   ...
 
-  {/* CylinderScan routes — conditional */}
+  {/* Browse routes — ALWAYS visible (read-only, mode-independent) */}
+  <Route path="/browse-scans" element={<BrowseCylinderScans />} />
+  <Route path="/scan/:scanId" element={<ScanPreview />} />
+  <Route path="/browse-graviscan" element={<BrowseGraviScans />} />
+
+  {/* CylinderScan capture routes — conditional */}
   {(mode === 'cylinderscan' || mode === 'full') && (
     <>
       <Route path="/capture-scan" element={<CaptureScan />} />
       <Route path="/camera-settings" element={<CameraSettings />} />
-      <Route path="/browse-scans" element={<BrowseCylinderScans />} />
     </>
   )}
 
-  {/* GraviScan routes — conditional */}
+  {/* GraviScan capture routes — conditional */}
   {(mode === 'graviscan' || mode === 'full') && (
     <>
       <Route path="/graviscan" element={<GraviScan />} />
       <Route path="/scanner-config" element={<ScannerConfig />} />
-      <Route path="/browse-graviscan" element={<BrowseGraviScans />} />
     </>
   )}
+
+  {/* Catch-all redirect for removed routes after mode switch */}
+  <Route path="*" element={<Navigate to="/" />} />
 </Routes>
 ```
 
-Phase 2 optimization: Replace conditionals with `React.lazy()` + dynamic `import()` so webpack can tree-shake unused mode code.
+### Phase 2 Strategy (Design for Now, Implement Later)
+
+Phase 2 will use **`APP_MODE` via webpack `DefinePlugin`** as a build-time constant, NOT runtime tree-shaking. This is required because:
+
+- Webpack cannot tree-shake runtime conditionals (`if (mode === 'graviscan')`)
+- Main process code (handlers, preload) needs build-time exclusion, not just code splitting
+- `React.lazy()` achieves renderer code splitting (separate chunks) but not elimination from the package
+
+Phase 2 changes (NOT implemented now, but the architecture supports them):
+- `webpack.main.config.ts`: Add `DefinePlugin({ 'process.env.APP_MODE': JSON.stringify(appMode) })`
+- Conditional imports become dead code that webpack eliminates
+- `preload.ts`: Separate entry points per mode, or build-flag-gated namespace registration
+- `python/`: Two `.spec` files (`bloom-hardware.spec`, `bloom-graviscan.spec`) producing separate executables
+- `forge.config.ts`: Mode-specific icons, app names, DEB dependencies
 
 ### Python Backend
 
-**One executable (`bloom-hardware`)** with conditional imports:
+**One executable (`bloom-hardware`)** with guarded imports:
 
 ```python
 # python/ipc_handler.py
@@ -132,15 +162,23 @@ def handle_command(cmd):
         handle_graviscan_command(cmd)   # graviscan (new)
 ```
 
-Phase 2 optimization: Split into two PyInstaller `.spec` files — `bloom-hardware.spec` (camera + DAQ + scanner) and `bloom-graviscan.spec` (SANE worker). Each includes only its dependencies.
+**SANE import guard** must catch both `ImportError` and `OSError` (the C extension throws `OSError` on macOS/Windows where `libsane` is missing):
+
+```python
+try:
+    import sane
+    SANE_AVAILABLE = True
+except (ImportError, OSError):
+    SANE_AVAILABLE = False
+```
 
 ### Database Schema
 
 - Existing CylinderScan models (`Scan`, `Image`) remain unchanged
 - New GraviScan models (`GraviScan`, `GraviScanner`, `GraviConfig`, `GraviImage`, etc.) are additive
-- `Experiment` gets a new optional field `experiment_type` (`'cylinderscan' | 'graviscan'`)
-- Machine config table gets `scanner_mode` field
-- 14 migrations from PR #135 will be squashed to 2-3 logical units
+- `Experiment` gets `experiment_type` field — **NOT optional**: existing experiments backfilled with `'cylinderscan'` via migration
+- Machine config gets `SCANNER_MODE` field in `.env`
+- Migrations written from scratch (NOT cherry-picked from Ben's branch) by diffing his final schema against current main
 
 ### Shared Infrastructure
 
@@ -151,10 +189,10 @@ These files are extended but not restructured:
 | `preload.ts` | Adds `gravi` namespace to context bridge |
 | `electron.d.ts` | Adds GraviScan API types |
 | `database-handlers.ts` | Adds GraviScan CRUD handlers |
-| `Layout.tsx` | Nav items conditional on mode |
+| `Layout.tsx` | Nav items conditional on mode (capture only; browse always visible) |
 | `Home.tsx` | Mode-aware landing page |
-| `MachineConfiguration.tsx` | Scanner mode selector + mode-specific config sections |
-| `config-store.ts` | `scanner_mode` field + GraviScan-specific config fields |
+| `MachineConfiguration.tsx` | Scanner mode selector (hardware identity question) + mode-specific config sections |
+| `config-store.ts` | `SCANNER_MODE` field in `.env` + GraviScan-specific config fields |
 
 ### Upload / Cloud Backup
 
@@ -165,30 +203,42 @@ These files are extended but not restructured:
 
 ## Integration Order
 
-Cherry-pick from Ben's PRs, restructure into properly bounded increments:
+New PRs that cherry-pick, restructure, and properly test Ben's work.
 
-### Increment 0: Prep — Directory Structure + Mode Config
+### Increment 0a: Directory Restructure (Pure Refactor)
 
-**New PR.** No GraviScan code yet.
+**New PR.** No functional changes.
 
-- Add `scanner_mode` to machine config schema + DB migration
-- Add `scanner_mode` to Machine Config wizard (required choice: CylinderScan or GraviScan)
-- Add `useAppMode()` hook that reads mode from main process
-- Make `App.tsx` routes conditional on mode
+- Move `camera-process.ts`, `daq-process.ts`, `scanner-process.ts` into `src/main/cylinderscan/`
+- Update all 12 import statements across 7 files (including `main.ts` and 6 test files)
+- Add ESLint `no-restricted-imports` rule to enforce one-way dependency boundaries
+- All existing tests must pass — this is a pure rename/move
+- OpenSpec proposal required
+
+### Increment 0b: Mode Config + Conditional Routing
+
+**New PR.** Depends on 0a.
+
+- Add `SCANNER_MODE` to config store (`.env` based)
+- Add `SCANNER_MODE` to Machine Config wizard (required choice: "What scanner hardware is attached?")
+- Add `useAppMode()` hook
+- Make `App.tsx` capture routes conditional on mode (browse routes always visible)
 - Make `Layout.tsx` nav conditional on mode
-- Move existing CylinderScan-specific main process files into `src/main/cylinderscan/` (camera-process, daq-process, scanner-process)
-- Update imports — no functional changes, just directory restructure
+- Add `<Navigate to="/" />` catch-all for removed routes
+- Update E2E test helper (`tests/e2e/helpers/bloom-config.ts`) to pre-seed `SCANNER_MODE=cylinderscan`
 - All existing tests must pass
 - OpenSpec proposal required
 
 ### Increment 1: Schema + Migrations
 
-**Cherry-pick from PR #135**, modified.
+**Write from scratch** using Ben's final schema as reference (NOT cherry-picked — avoids migration conflicts).
 
-- Squash 14 migrations into 2-3 logical units
+- Write 2-3 clean migrations from current main schema to target schema
 - Add GraviScan Prisma models
-- Add `experiment_type` field to Experiment
+- Add `experiment_type` field to Experiment — **backfill existing rows with `'cylinderscan'`**
+- Add handler-level validation: scan creation asserts `experiment.experiment_type` matches active mode
 - Migration verification tests
+- Document: devs who ran Ben's branch migrations must `prisma migrate reset`
 - OpenSpec proposal required
 
 ### Increment 2: Types + Python SANE Backend
@@ -197,26 +247,44 @@ Cherry-pick from Ben's PRs, restructure into properly bounded increments:
 
 - `src/types/graviscan.ts` — GraviScan TypeScript types
 - `python/graviscan/` — SANE worker, scan regions (already well-isolated)
+- SANE import guard catches `(ImportError, OSError)` — safe on macOS/Windows
 - Python tests (already good: 938 lines)
 - PyInstaller spec updates for SANE hidden imports
 - `pyproject.toml` updates for SANE dependencies
 - OpenSpec proposal required
 
-### Increment 3: Main Process Handlers
+### Increment 3a: GraviScan Handler Modules (Isolated)
 
-**Restructure from PR #138.** This is the riskiest increment.
+**Restructure from PR #138.** No integration with main.ts yet.
 
 - Split `graviscan-handlers.ts` (1,338 lines) into focused modules in `src/main/graviscan/`:
   - `scan-handlers.ts` — scan CRUD operations
   - `scanner-handlers.ts` — scanner detection, config
   - `session-handlers.ts` — session management
   - `image-handlers.ts` — image operations
+- **Add unit tests for all 4 modules**
+- Tests run in isolation — no wiring to main.ts
+- OpenSpec proposal required
+
+### Increment 3b: Coordinator + Subprocess
+
+**Restructure from PR #138.**
+
 - `scan-coordinator.ts` → `src/main/graviscan/scan-coordinator.ts`
 - `scanner-subprocess.ts` → `src/main/graviscan/scanner-subprocess.ts`
+- **Add unit tests for coordinator and subprocess**
+- Still no wiring to main.ts
+- OpenSpec proposal required
+
+### Increment 3c: Wire GraviScan Handlers into Main Process
+
+**Integration PR.** This is where CylinderScan regressions are most likely.
+
 - Register handlers conditionally in `main.ts`
-- Add context bridge extensions to `preload.ts`
-- **Add unit tests** for all handler modules (currently zero)
-- **Add unit tests** for scan-coordinator
+- Extend `preload.ts` context bridge with `gravi` namespace
+- Extend `database-handlers.ts` with GraviScan CRUD
+- **Full CylinderScan regression test suite must pass**
+- Integration tests for GraviScan IPC handlers
 - OpenSpec proposal required
 
 ### Increment 4: Renderer Hooks + State
@@ -229,7 +297,7 @@ Cherry-pick from Ben's PRs, restructure into properly bounded increments:
   - `useScannerState.ts` — scanner detection, status
   - `useScanConfig.ts` — scan configuration state
   - `useScanResults.ts` — scan results, image management
-- **Add unit tests for ALL hooks** (currently 1 of 6 has tests)
+- **Add unit tests for ALL hooks** (currently 1 of 6 has tests → 9 hooks after decomposition)
 - Upload status context → `src/renderer/graviscan/contexts/`
 - OpenSpec proposal required
 
@@ -239,10 +307,11 @@ Cherry-pick from Ben's PRs, restructure into properly bounded increments:
 
 - GraviScan pages in `src/renderer/graviscan/`
 - GraviScan components in `src/components/graviscan/`
-- Conditional routing wired up in `App.tsx`
-- Mode-aware `Layout.tsx` and `Home.tsx`
+- Conditional routing already wired from Increment 0b — just add the lazy-loaded page components
+- Mode-aware `Home.tsx` updates
 - **Add component unit tests** (currently zero)
-- Update E2E tests for mode-aware navigation
+- E2E tests for GraviScan workflow (mock mode)
+- E2E tests verify mode switching doesn't break CylinderScan
 - OpenSpec proposal required
 
 ### Increment 6: Upload + Cloud Backup
@@ -278,13 +347,21 @@ Each increment must:
 5. Follow TDD — tests written before implementation
 6. Pass full CI on all 3 platforms
 
+### Mode-Aware Testing
+
+- E2E helper (`bloom-config.ts`) pre-seeds `SCANNER_MODE=cylinderscan` for existing tests
+- GraviScan E2E tests pre-seed `SCANNER_MODE=graviscan`
+- Integration tests mock config store to set mode
+- IPC coverage script (`check-ipc-coverage.py`) updated for GraviScan handlers
+- Python SANE tests: Linux-only CI job (requires `libsane-dev`); all platforms run mock-mode tests
+
 ### Coverage Requirements
 
 | Layer | Requirement |
 |-------|------------|
 | Python SANE backend | 80%+ (already met in PR #137) |
 | Main process handlers | Unit tests per handler module |
-| Renderer hooks | Unit tests per hook |
+| Renderer hooks | Unit tests per hook (9 hooks after decomposition) |
 | Renderer components | Unit tests for interactive components |
 | E2E | Mode-switching workflow, GraviScan capture workflow |
 | IPC coverage | 90%+ including new GraviScan handlers |
@@ -293,18 +370,24 @@ Each increment must:
 
 | Risk | Mitigation |
 |------|-----------|
-| Increment 3 (main process) breaks CylinderScan | Conditional handler registration; full CylinderScan test suite runs on every PR |
-| `useScanSession` decomposition changes behavior | Extract into smaller hooks with same external API; existing E2E tests validate |
-| Schema migration conflicts | Squash 14 migrations; run migration verification script |
-| Phase 2 tree-shaking breaks at boundary | One-way dependency rule enforced by lint rule or import restrictions |
+| Increment 0a (file moves) breaks imports | Pure refactor with TypeScript compiler catching errors; 7 files, 12 imports to update |
+| Increment 3c (main process integration) breaks CylinderScan | Isolated into smallest possible PR; full regression suite |
+| `useScanSession` decomposition changes behavior | Extract into smaller hooks preserving same external API; E2E validates |
+| Schema migration conflicts with Ben's branch | Write migrations from scratch, don't cherry-pick; document `prisma migrate reset` requirement |
+| Phase 2 tree-shaking doesn't work | Phase 2 uses `DefinePlugin` build constant, not runtime tree-shaking |
+| SANE binary crashes on macOS/Windows | Import guard catches `(ImportError, OSError)`; mock mode on non-Linux |
 | Ben's existing code has untested edge cases | Add unit tests during restructure; don't merge untested code |
+| Existing experiments vanish after integration | Backfill `experiment_type = 'cylinderscan'` in migration |
+| Mode switch hides historical scans | Browse/view routes always visible regardless of mode |
 
 ## Success Criteria
 
 1. Both CylinderScan and GraviScan modes work end-to-end
-2. Mode selection via Machine Config, persisted to DB
+2. Mode selection via Machine Config, persisted to `.env`
 3. Zero CylinderScan regressions (all existing tests pass)
 4. All new code has unit tests
-5. Clear directory boundaries — `grep -r "from.*graviscan" src/main/shared/` returns nothing
+5. Clear directory boundaries — ESLint rule enforces no cross-mode imports
 6. One build, one installer, runtime mode switching
-7. Code structured so Phase 2 (build-time stripping) is a config change, not a refactor
+7. Browse/view routes work for both modes regardless of active mode
+8. Existing experiments preserved and visible after integration
+9. Code structured so Phase 2 (`DefinePlugin` + split binaries) is achievable without refactor
