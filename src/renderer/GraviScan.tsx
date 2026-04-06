@@ -174,6 +174,7 @@ export function GraviScan() {
     setScanImageUris,
     scanningPlateIndex,
     setScanningPlateIndex,
+    currentSessionDir,
     handleStartScan,
     handleCancelScan,
     handleResetScanners,
@@ -590,6 +591,7 @@ export function GraviScan() {
               <ScanFileBrowser
                 isScanning={isScanning}
                 writingFiles={writingFiles}
+                sessionDir={currentSessionDir}
               />
             </div>
           </div>

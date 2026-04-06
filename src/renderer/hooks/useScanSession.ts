@@ -131,6 +131,7 @@ export interface UseScanSessionReturn {
     string,
     { status: string; detectedPlateId: string | null }
   >;
+  currentSessionDir: string | null;
   handleStartScan: () => Promise<void>;
   handleCancelScan: () => Promise<void>;
   handleResetScanners: () => void;
@@ -199,6 +200,8 @@ export function useScanSession({
   const [scanningPlateIndex, setScanningPlateIndex] = useState<
     Record<string, string>
   >({});
+  // Current scan session directory (per-experiment folder)
+  const [currentSessionDir, setCurrentSessionDir] = useState<string | null>(null);
 
   // QR verification state
   const [verificationStatus, setVerificationStatus] = useState<
@@ -1234,6 +1237,10 @@ export function useScanSession({
         .replace(/[^a-zA-Z0-9]/g, '_')
         .slice(0, 20);
 
+      // Per-experiment session folder: {baseDir}/{expName}_{timestamp}/
+      const sessionDir = `${outputDir}/${sanitizedExpName}_${timestamp}`;
+      setCurrentSessionDir(sessionDir);
+
       // Track pending plates for DB record creation on scan-complete events
       const newPendingPlates = new Map<string, ScanJobInfo>();
 
@@ -1257,7 +1264,7 @@ export function useScanSession({
         const plates = selectedPlatesForScanner.map((plate) => {
           const systemTag = platformInfo?.system_name || `S${scannerIdx + 1}`;
           const filename = `${sanitizedExpName}_st_${timestamp}_cy1_${systemTag}_${plate.plateIndex}.tif`;
-          const outputPath = `${outputDir}/${filename}`;
+          const outputPath = `${sessionDir}/${filename}`;
 
           const jobKey = `${scanner.scannerId}:${plate.plateIndex}`;
           newPendingPlates.set(jobKey, {
@@ -1460,6 +1467,7 @@ export function useScanSession({
     autoUploadMessage,
     verificationStatus,
     verificationResults,
+    currentSessionDir,
     handleStartScan,
     handleCancelScan,
     handleResetScanners,

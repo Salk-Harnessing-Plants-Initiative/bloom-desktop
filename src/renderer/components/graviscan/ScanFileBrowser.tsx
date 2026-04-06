@@ -13,12 +13,15 @@ interface ScanFile {
   path: string;
   size: number;
   modifiedAt: string;
+  folder: string;
 }
 
 interface ScanFileBrowserProps {
   isScanning: boolean;
   /** Set of file paths currently being written (scan-started but not scan-complete) */
   writingFiles: Set<string>;
+  /** Session directory to list files from (per-experiment folder) */
+  sessionDir: string | null;
 }
 
 function formatFileSize(bytes: number): string {
@@ -39,6 +42,7 @@ function formatTime(isoString: string): string {
 export function ScanFileBrowser({
   isScanning,
   writingFiles,
+  sessionDir,
 }: ScanFileBrowserProps) {
   const [files, setFiles] = useState<ScanFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +53,7 @@ export function ScanFileBrowser({
   useEffect(() => {
     const loadFiles = async () => {
       try {
-        const result = await window.electron.graviscan.listScanFiles();
+        const result = await window.electron.graviscan.listScanFiles(sessionDir ?? undefined);
         if (result.success) {
           setFiles(result.files);
 
@@ -72,7 +76,7 @@ export function ScanFileBrowser({
     loadFiles();
     const interval = setInterval(loadFiles, isScanning ? 2000 : 5000);
     return () => clearInterval(interval);
-  }, [isScanning]);
+  }, [isScanning, sessionDir]);
 
   const handleOpenFolder = async (filePath: string) => {
     await window.electron.graviscan.openFolder(filePath);
@@ -149,6 +153,7 @@ export function ScanFileBrowser({
 
               {/* File info */}
               <div className="flex-1 min-w-0">
+                <p className="text-xs text-blue-500 truncate">{file.folder}/</p>
                 <p className="text-xs font-medium text-gray-800 truncate">
                   {file.name}
                 </p>

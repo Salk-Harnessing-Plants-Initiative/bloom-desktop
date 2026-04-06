@@ -426,6 +426,7 @@ const graviscanAPI = {
         path: string;
         size: number;
         modifiedAt: string;
+        folder: string;
       }>;
       error?: string;
     }>,

@@ -1415,27 +1415,55 @@ export function registerGraviscanHandlers(
           return { success: true, files: [] };
         }
 
-        const entries = fs.readdirSync(outputDir);
-        const files = entries
-          .filter((name) => {
-            const ext = path.extname(name).toLowerCase();
-            return ['.tif', '.tiff', '.png', '.jpg', '.jpeg'].includes(ext);
-          })
-          .map((name) => {
-            const filePath = path.join(outputDir!, name);
+        const imageExts = ['.tif', '.tiff', '.png', '.jpg', '.jpeg'];
+        const files: { name: string; path: string; size: number; modifiedAt: string; folder: string }[] = [];
+
+        const entries = fs.readdirSync(outputDir, { withFileTypes: true });
+        const folderName = path.basename(outputDir);
+
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            // Scan subfolders (base dir mode — no dirPath specified)
+            const folderPath = path.join(outputDir!, entry.name);
+            try {
+              const subEntries = fs.readdirSync(folderPath);
+              for (const subName of subEntries) {
+                const ext = path.extname(subName).toLowerCase();
+                if (!imageExts.includes(ext)) continue;
+                const subPath = path.join(folderPath, subName);
+                const stat = fs.statSync(subPath);
+                files.push({
+                  name: subName,
+                  path: subPath,
+                  size: stat.size,
+                  modifiedAt: stat.mtime.toISOString(),
+                  folder: entry.name,
+                });
+              }
+            } catch {
+              // ignore unreadable subdirectories
+            }
+          } else {
+            // Direct files in session folder (dirPath specified)
+            const ext = path.extname(entry.name).toLowerCase();
+            if (!imageExts.includes(ext)) continue;
+            const filePath = path.join(outputDir!, entry.name);
             const stat = fs.statSync(filePath);
-            return {
-              name,
+            files.push({
+              name: entry.name,
               path: filePath,
               size: stat.size,
               modifiedAt: stat.mtime.toISOString(),
-            };
-          })
-          .sort(
-            (a, b) =>
-              new Date(b.modifiedAt).getTime() -
-              new Date(a.modifiedAt).getTime()
-          );
+              folder: folderName,
+            });
+          }
+        }
+
+        files.sort(
+          (a, b) =>
+            new Date(b.modifiedAt).getTime() -
+            new Date(a.modifiedAt).getTime()
+        );
 
         return { success: true, files };
       } catch (error) {
