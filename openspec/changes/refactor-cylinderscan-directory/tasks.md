@@ -1,7 +1,7 @@
 ## 1. Verify Current State (Pre-Flight)
 
 - [x] 1.1 Run full test suite to establish baseline: `npx vitest run` + `npx tsc --noEmit`
-- [x] 1.2 Confirm all 4 files exist at current paths and all 8 import statements match the audit
+- [x] 1.2 Confirm all 4 files exist at current paths and all relevant import statements match the audit
 - [x] 1.3 Commit: none (verification only)
 
 ## 2. Move Files + Update Imports
@@ -20,8 +20,9 @@
   - `'./scanner-process'` → `'./cylinderscan/scanner-process'`
 - [x] 2.5 Update 1 import in `tests/unit/camera-process.test.ts`:
   - `'../../src/main/camera-process'` → `'../../src/main/cylinderscan/camera-process'`
-- [x] 2.6 Update 1 import in `tests/unit/scanner-metadata-integration.test.ts`:
+- [x] 2.6 Update 2 imports in `tests/unit/scanner-metadata-integration.test.ts`:
   - `'../../src/main/scanner-process'` → `'../../src/main/cylinderscan/scanner-process'`
+  - `import('../../src/main/scan-metadata-json')` → `import('../../src/main/cylinderscan/scan-metadata-json')` (dynamic import)
 - [x] 2.6b Update 1 import in `tests/unit/scan-metadata-json.test.ts`:
   - `'../../src/main/scan-metadata-json'` → `'../../src/main/cylinderscan/scan-metadata-json'`
 - [x] 2.7 Update 1 import in `tests/integration/test-daq.ts`:

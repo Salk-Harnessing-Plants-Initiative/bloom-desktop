@@ -5,7 +5,7 @@ bloom-desktop needs clear code boundaries between shared infrastructure and mode
 ## What Changes
 
 - **Move 4 CylinderScan-specific files** from `src/main/` to `src/main/cylinderscan/`
-- **Update 12 import statements** across 8 files (`main.ts` + 7 test files)
+- **Update 13 import statements** across 8 files (`main.ts` + 7 test files, including 1 dynamic `import()`)
 - **Add ESLint `no-restricted-imports` rule** to prevent shared code from importing mode-specific modules
 - **Pure refactor** — zero functional changes, zero new features
 

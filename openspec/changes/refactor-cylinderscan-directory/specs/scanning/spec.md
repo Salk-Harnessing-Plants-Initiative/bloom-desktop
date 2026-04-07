@@ -26,7 +26,7 @@ CylinderScan-specific main process modules SHALL reside in `src/main/cylindersca
 #### Scenario: All existing tests pass after directory restructure
 
 - **GIVEN** the 4 CylinderScan files have been moved to `src/main/cylinderscan/`
-- **AND** all 12 import statements across 8 files have been updated
+- **AND** all import statements across the impacted files have been updated (including dynamic `import()` calls)
 - **WHEN** the full test suite runs (`npx vitest run` and `uv run pytest`)
 - **THEN** all tests SHALL pass with zero failures
 - **AND** `npx tsc --noEmit` SHALL report zero type errors
