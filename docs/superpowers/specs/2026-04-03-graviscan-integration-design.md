@@ -38,6 +38,7 @@ bloom-desktop is a single-mode CylinderScan application. It needs to support a s
 ### Data Integrity on Mode Switch
 
 When an admin switches scanner mode:
+
 - All existing scans (CylinderScan and GraviScan) remain in the database
 - Browse routes for BOTH modes are always accessible (read-only)
 - Only capture/config routes are mode-gated
@@ -76,12 +77,21 @@ python/
 
 ```json
 {
-  "no-restricted-imports": ["error", {
-    "patterns": [
-      { "group": ["**/cylinderscan/**"], "message": "Shared code must not import from cylinderscan/" },
-      { "group": ["**/graviscan/**"], "message": "Shared code must not import from graviscan/" }
-    ]
-  }]
+  "no-restricted-imports": [
+    "error",
+    {
+      "patterns": [
+        {
+          "group": ["**/cylinderscan/**"],
+          "message": "Shared code must not import from cylinderscan/"
+        },
+        {
+          "group": ["**/graviscan/**"],
+          "message": "Shared code must not import from graviscan/"
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -92,6 +102,7 @@ Note: This rule applies to files OUTSIDE `cylinderscan/` and `graviscan/` direct
 ### Mode-Conditional Registration
 
 **Main process (`main.ts`):**
+
 ```typescript
 import { registerSharedHandlers } from './database-handlers';
 import { registerCylinderScanHandlers } from './cylinderscan/handlers';
@@ -109,6 +120,7 @@ if (mode === 'graviscan' || mode === 'full') {
 ```
 
 **Renderer (`App.tsx`):**
+
 ```tsx
 const { mode } = useAppMode(); // reads from main via IPC
 
@@ -118,12 +130,10 @@ const { mode } = useAppMode(); // reads from main via IPC
   <Route path="/scientists" element={<Scientists />} />
   <Route path="/experiments" element={<Experiments />} />
   ...
-
   {/* Browse routes — ALWAYS visible (read-only, mode-independent) */}
   <Route path="/browse-scans" element={<BrowseCylinderScans />} />
   <Route path="/scan/:scanId" element={<ScanPreview />} />
   <Route path="/browse-graviscan" element={<BrowseGraviScans />} />
-
   {/* CylinderScan capture routes — conditional */}
   {(mode === 'cylinderscan' || mode === 'full') && (
     <>
@@ -131,7 +141,6 @@ const { mode } = useAppMode(); // reads from main via IPC
       <Route path="/camera-settings" element={<CameraSettings />} />
     </>
   )}
-
   {/* GraviScan capture routes — conditional */}
   {(mode === 'graviscan' || mode === 'full') && (
     <>
@@ -139,10 +148,9 @@ const { mode } = useAppMode(); // reads from main via IPC
       <Route path="/scanner-config" element={<ScannerConfig />} />
     </>
   )}
-
   {/* Catch-all redirect for removed routes after mode switch */}
   <Route path="*" element={<Navigate to="/" />} />
-</Routes>
+</Routes>;
 ```
 
 ### Phase 2 Strategy (Design for Now, Implement Later)
@@ -154,6 +162,7 @@ Phase 2 will use **`APP_MODE` via webpack `DefinePlugin`** as a build-time const
 - `React.lazy()` achieves renderer code splitting (separate chunks) but not elimination from the package
 
 Phase 2 changes (NOT implemented now, but the architecture supports them):
+
 - `webpack.main.config.ts`: Add `DefinePlugin({ 'process.env.APP_MODE': JSON.stringify(appMode) })`
 - Conditional imports become dead code that webpack eliminates
 - `preload.ts`: Separate entry points per mode, or build-flag-gated namespace registration
@@ -210,15 +219,15 @@ Both modes write a `metadata.json` per scan. The file includes a `scan_type` fie
 
 These files are extended but not restructured:
 
-| File | Extension |
-|------|-----------|
-| `preload.ts` | Adds `gravi` namespace to context bridge |
-| `electron.d.ts` | Adds GraviScan API types |
-| `database-handlers.ts` | Adds GraviScan CRUD handlers |
-| `Layout.tsx` | Nav items conditional on mode (capture only; browse always visible) |
-| `Home.tsx` | Mode-aware landing page |
+| File                       | Extension                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------- |
+| `preload.ts`               | Adds `gravi` namespace to context bridge                                           |
+| `electron.d.ts`            | Adds GraviScan API types                                                           |
+| `database-handlers.ts`     | Adds GraviScan CRUD handlers                                                       |
+| `Layout.tsx`               | Nav items conditional on mode (capture only; browse always visible)                |
+| `Home.tsx`                 | Mode-aware landing page                                                            |
 | `MachineConfiguration.tsx` | Scanner mode selector (hardware identity question) + mode-specific config sections |
-| `config-store.ts` | `SCANNER_MODE` field in `.env` + GraviScan-specific config fields |
+| `config-store.ts`          | `SCANNER_MODE` field in `.env` + GraviScan-specific config fields                  |
 
 ### Upload / Cloud Backup
 
@@ -384,28 +393,28 @@ Each increment must:
 
 ### Coverage Requirements
 
-| Layer | Requirement |
-|-------|------------|
-| Python SANE backend | 80%+ (already met in PR #137) |
-| Main process handlers | Unit tests per handler module |
-| Renderer hooks | Unit tests per hook (9 hooks after decomposition) |
-| Renderer components | Unit tests for interactive components |
-| E2E | Mode-switching workflow, GraviScan capture workflow |
-| IPC coverage | 90%+ including new GraviScan handlers |
+| Layer                 | Requirement                                         |
+| --------------------- | --------------------------------------------------- |
+| Python SANE backend   | 80%+ (already met in PR #137)                       |
+| Main process handlers | Unit tests per handler module                       |
+| Renderer hooks        | Unit tests per hook (9 hooks after decomposition)   |
+| Renderer components   | Unit tests for interactive components               |
+| E2E                   | Mode-switching workflow, GraviScan capture workflow |
+| IPC coverage          | 90%+ including new GraviScan handlers               |
 
 ## Risks
 
-| Risk | Mitigation |
-|------|-----------|
-| Increment 0a (file moves) breaks imports | Pure refactor with TypeScript compiler catching errors; 7 files, 12 imports to update |
-| Increment 3c (main process integration) breaks CylinderScan | Isolated into smallest possible PR; full regression suite |
-| `useScanSession` decomposition changes behavior | Extract into smaller hooks preserving same external API; E2E validates |
-| Schema migration conflicts with Ben's branch | Write migrations from scratch, don't cherry-pick; document `prisma migrate reset` requirement |
-| Phase 2 tree-shaking doesn't work | Phase 2 uses `DefinePlugin` build constant, not runtime tree-shaking |
-| SANE binary crashes on macOS/Windows | Import guard catches `(ImportError, OSError)`; mock mode on non-Linux |
-| Ben's existing code has untested edge cases | Add unit tests during restructure; don't merge untested code |
-| Existing experiments vanish after integration | Backfill `experiment_type = 'cylinderscan'` in migration |
-| Mode switch hides historical scans | Browse/view routes always visible regardless of mode |
+| Risk                                                        | Mitigation                                                                                    |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Increment 0a (file moves) breaks imports                    | Pure refactor with TypeScript compiler catching errors; 7 files, 12 imports to update         |
+| Increment 3c (main process integration) breaks CylinderScan | Isolated into smallest possible PR; full regression suite                                     |
+| `useScanSession` decomposition changes behavior             | Extract into smaller hooks preserving same external API; E2E validates                        |
+| Schema migration conflicts with Ben's branch                | Write migrations from scratch, don't cherry-pick; document `prisma migrate reset` requirement |
+| Phase 2 tree-shaking doesn't work                           | Phase 2 uses `DefinePlugin` build constant, not runtime tree-shaking                          |
+| SANE binary crashes on macOS/Windows                        | Import guard catches `(ImportError, OSError)`; mock mode on non-Linux                         |
+| Ben's existing code has untested edge cases                 | Add unit tests during restructure; don't merge untested code                                  |
+| Existing experiments vanish after integration               | Backfill `experiment_type = 'cylinderscan'` in migration                                      |
+| Mode switch hides historical scans                          | Browse/view routes always visible regardless of mode                                          |
 
 ## Success Criteria
 

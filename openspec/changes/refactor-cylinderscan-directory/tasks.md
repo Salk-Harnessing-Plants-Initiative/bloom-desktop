@@ -61,7 +61,7 @@
     }
   }]
   ```
-  Note: Tests are exempt because they directly test mode-specific modules and must import them. The rule prevents shared *production* code from importing mode-specific modules.
+  Note: Tests are exempt because they directly test mode-specific modules and must import them. The rule prevents shared _production_ code from importing mode-specific modules.
 - [x] 3.3 Run `npx eslint --ext .ts,.tsx src/` — verify no new errors (existing code should pass since only main.ts imports from cylinderscan/, and it's exempted)
 - [x] 3.4 Verify the rule catches violations: temporarily add `import {} from './cylinderscan/camera-process'` to `src/main/database.ts`, run eslint, confirm error, remove the test import
 - [x] 3.5 Commit: `chore: add ESLint rule enforcing mode-specific directory boundaries`
