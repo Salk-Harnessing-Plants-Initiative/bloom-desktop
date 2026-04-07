@@ -12,6 +12,7 @@ type FormState = 'loading' | 'config'; // Removed 'login' state
 type CameraTestStatus = 'idle' | 'testing' | 'success' | 'error';
 
 interface FormErrors {
+  scanner_mode?: string;
   scanner_name?: string;
   camera_ip_address?: string;
   scans_dir?: string;
@@ -266,6 +267,9 @@ export function MachineConfiguration() {
               <span className="text-gray-700">GraviScan</span>
             </label>
           </div>
+          {errors.scanner_mode && (
+            <p className="text-red-600 text-sm mt-2">{errors.scanner_mode}</p>
+          )}
         </div>
 
         {/* API Credentials Section */}

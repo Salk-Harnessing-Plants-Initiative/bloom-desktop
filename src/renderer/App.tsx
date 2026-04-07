@@ -31,17 +31,26 @@ export default function App() {
     );
   }
 
-  // First run (empty mode) — redirect to machine config
-  const initialRoute = mode === '' ? '/machine-config' : '/';
+  // First run (empty mode) — show only Machine Config, no sidebar/layout
+  if (mode === '') {
+    return (
+      <Router initialEntries={['/machine-config']}>
+        <Routes>
+          <Route path="/machine-config" element={<MachineConfiguration />} />
+          <Route path="*" element={<Navigate to="/machine-config" />} />
+        </Routes>
+      </Router>
+    );
+  }
 
   return (
-    <Router initialEntries={[initialRoute]}>
+    <Router initialEntries={['/']}>
       <Routes>
         <Route path="/" element={<Layout mode={mode} />}>
-          <Route index element={<Home />} />
+          <Route index element={<Home mode={mode} />} />
 
           {/* Capture routes — conditional on scanner mode */}
-          {(mode === 'cylinderscan' || mode === 'full') && (
+          {mode === 'cylinderscan' && (
             <>
               <Route path="camera-settings" element={<CameraSettings />} />
               <Route path="capture-scan" element={<CaptureScan />} />

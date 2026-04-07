@@ -7,12 +7,6 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Home } from '../../../src/renderer/Home';
 
-// Mock useAppMode
-const mockUseAppMode = vi.fn();
-vi.mock('../../../src/renderer/hooks/useAppMode', () => ({
-  useAppMode: () => mockUseAppMode(),
-}));
-
 // Track navigations
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -38,7 +32,6 @@ const mockPythonAPI = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
   mockConfigAPI.exists.mockResolvedValue(true);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,11 +47,9 @@ beforeEach(() => {
 
 describe('Home page', () => {
   it('renders CylinderScan workflow steps when mode is cylinderscan', async () => {
-    mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
-
     render(
       <MemoryRouter>
-        <Home />
+        <Home mode="cylinderscan" />
       </MemoryRouter>
     );
 
@@ -73,11 +64,9 @@ describe('Home page', () => {
   });
 
   it('renders GraviScan workflow steps when mode is graviscan', async () => {
-    mockUseAppMode.mockReturnValue({ mode: 'graviscan', isLoading: false });
-
     render(
       <MemoryRouter>
-        <Home />
+        <Home mode="graviscan" />
       </MemoryRouter>
     );
 
@@ -91,11 +80,9 @@ describe('Home page', () => {
   });
 
   it('each step navigates to correct route on click', async () => {
-    mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
-
     render(
       <MemoryRouter>
-        <Home />
+        <Home mode="cylinderscan" />
       </MemoryRouter>
     );
 
@@ -113,7 +100,7 @@ describe('Home page', () => {
 
     render(
       <MemoryRouter>
-        <Home />
+        <Home mode="cylinderscan" />
       </MemoryRouter>
     );
 

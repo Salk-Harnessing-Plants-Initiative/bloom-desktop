@@ -263,7 +263,7 @@ describe('MachineConfiguration Page', () => {
       mockConfigAPI.set.mockResolvedValue({
         success: false,
         errors: {
-          scanner_mode: 'cylinderscan',
+          scanner_mode: 'Scanner mode is required',
           scanner_name: 'Scanner name is required',
         },
       });

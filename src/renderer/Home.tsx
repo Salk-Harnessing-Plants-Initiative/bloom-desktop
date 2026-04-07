@@ -6,12 +6,14 @@ import {
   cylinderScanSteps,
   graviScanSteps,
 } from './components/WorkflowSteps';
-import { useAppMode } from './hooks/useAppMode';
 
-export function Home() {
+interface HomeProps {
+  mode?: string | null;
+}
+
+export function Home({ mode = null }: HomeProps) {
   const navigate = useNavigate();
   const [isCheckingConfig, setIsCheckingConfig] = useState(true);
-  const { mode } = useAppMode();
 
   // Check if this is first run (no config exists)
   useEffect(() => {

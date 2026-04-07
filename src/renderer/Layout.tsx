@@ -117,7 +117,7 @@ const alwaysLinks = [
   },
 ];
 
-/** Capture-specific links (cylinderscan / full mode only) */
+/** Capture-specific links (cylinderscan mode only) */
 const captureLinks = [
   {
     to: '/capture-scan',
@@ -194,7 +194,7 @@ export function Layout({ mode = null }: LayoutProps) {
   const navigate = useNavigate();
   const [scannerName, setScannerName] = useState<string>('');
 
-  const showCaptureLinks = mode === 'cylinderscan' || mode === 'full';
+  const showCaptureLinks = mode === 'cylinderscan';
   const links = showCaptureLinks
     ? [...alwaysLinks, ...captureLinks]
     : alwaysLinks;

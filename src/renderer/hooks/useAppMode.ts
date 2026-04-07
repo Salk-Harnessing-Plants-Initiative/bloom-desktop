@@ -10,12 +10,20 @@ export function useAppMode(): { mode: string | null; isLoading: boolean } {
 
   useEffect(() => {
     let cancelled = false;
-    window.electron.config.getMode().then((result) => {
-      if (!cancelled) {
-        setMode(result.mode);
-        setIsLoading(false);
-      }
-    });
+    window.electron.config
+      .getMode()
+      .then((result) => {
+        if (!cancelled) {
+          setMode(result.mode);
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMode('');
+          setIsLoading(false);
+        }
+      });
     return () => {
       cancelled = true;
     };
