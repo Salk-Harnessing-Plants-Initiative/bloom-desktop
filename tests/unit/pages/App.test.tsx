@@ -66,11 +66,11 @@ describe('App routing', () => {
 
     render(<App />);
 
-    // Sidebar should show capture-related nav items
+    // Sidebar should show capture-related nav items (may appear multiple times due to Home workflow)
     await waitFor(() => {
-      expect(screen.getByText('Capture Scan')).toBeInTheDocument();
+      expect(screen.getAllByText('Capture Scan').length).toBeGreaterThan(0);
     });
-    expect(screen.getByText('Camera Settings')).toBeInTheDocument();
+    expect(screen.getAllByText('Camera Settings').length).toBeGreaterThan(0);
   });
 
   it('renders browse routes regardless of mode', async () => {
