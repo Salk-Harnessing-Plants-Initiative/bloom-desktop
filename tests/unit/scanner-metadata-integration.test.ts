@@ -144,7 +144,9 @@ describe('ScannerProcess metadata.json integration', () => {
 
     // Mock writeMetadataJson to throw after scanner is initialized
     // (cross-platform way to simulate write failure)
-    const writeMetadata = await import('../../src/main/cylinderscan/scan-metadata-json');
+    const writeMetadata = await import(
+      '../../src/main/cylinderscan/scan-metadata-json'
+    );
     vi.spyOn(writeMetadata, 'writeMetadataJson').mockImplementation(() => {
       throw new Error('Simulated write failure');
     });
