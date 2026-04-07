@@ -5,7 +5,10 @@
  * Run with: npm run test:streaming
  */
 
-import { CameraProcess, CameraSettings } from '../../src/main/camera-process';
+import {
+  CameraProcess,
+  CameraSettings,
+} from '../../src/main/cylinderscan/camera-process';
 import path from 'path';
 
 // Pattern to identify warning messages vs actual errors

@@ -6,17 +6,17 @@
  */
 
 import { EventEmitter } from 'events';
-import { PythonProcess } from './python-process';
-import { getDatabase } from './database';
+import { PythonProcess } from '../python-process';
+import { getDatabase } from '../database';
 import * as fs from 'fs';
 import type {
   ScannerSettings,
   ScanResult,
   ScannerStatus,
   ScanProgress,
-} from '../types/scanner';
+} from '../../types/scanner';
 import { writeMetadataJson } from './scan-metadata-json';
-import type { ImageStatus } from '../types/database';
+import type { ImageStatus } from '../../types/database';
 
 /**
  * Scanner process manager for coordinated scanning operations.

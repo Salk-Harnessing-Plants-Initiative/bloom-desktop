@@ -12,12 +12,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { PythonProcess } from './python-process';
-import { CameraProcess } from './camera-process';
-import type { CameraSettings } from './camera-process';
+import { CameraProcess } from './cylinderscan/camera-process';
+import type { CameraSettings } from './cylinderscan/camera-process';
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
-import { DAQProcess } from './daq-process';
+import { DAQProcess } from './cylinderscan/daq-process';
 import type { DAQSettings } from '../types/daq';
-import { ScannerProcess } from './scanner-process';
+import { ScannerProcess } from './cylinderscan/scanner-process';
 import type { ScannerSettings } from '../types/scanner';
 import {
   getPythonExecutablePath,

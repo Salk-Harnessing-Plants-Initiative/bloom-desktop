@@ -5,8 +5,8 @@
  * Run with: npm run test:camera
  */
 
-import { CameraProcess } from '../../src/main/camera-process';
-import type { CameraSettings } from '../../src/main/camera-process';
+import { CameraProcess } from '../../src/main/cylinderscan/camera-process';
+import type { CameraSettings } from '../../src/main/cylinderscan/camera-process';
 import path from 'path';
 import fs from 'fs';
 

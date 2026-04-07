@@ -13,7 +13,7 @@ import * as os from 'os';
 import {
   writeMetadataJson,
   buildMetadataObject,
-} from '../../src/main/scan-metadata-json';
+} from '../../src/main/cylinderscan/scan-metadata-json';
 import type { ScannerSettings } from '../../src/types/scanner';
 import type { CameraSettings } from '../../src/types/camera';
 import type { DAQSettings } from '../../src/types/daq';

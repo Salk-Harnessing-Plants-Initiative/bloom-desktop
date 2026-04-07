@@ -19,7 +19,7 @@ vi.mock('child_process', () => ({
   }),
 }));
 
-import { CameraProcess } from '../../src/main/camera-process';
+import { CameraProcess } from '../../src/main/cylinderscan/camera-process';
 
 describe('CameraProcess.detectCameras', () => {
   let camera: CameraProcess;
