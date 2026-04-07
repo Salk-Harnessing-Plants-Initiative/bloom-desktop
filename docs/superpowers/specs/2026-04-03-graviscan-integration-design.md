@@ -250,18 +250,26 @@ New PRs that cherry-pick, restructure, and properly test Ben's work.
 - All existing tests must pass — this is a pure rename/move
 - OpenSpec proposal required
 
-### Increment 0b: Mode Config + Conditional Routing
+### Increment 0b: Mode Config + Conditional Routing + Home Page
 
 **New PR.** Depends on 0a.
 
 - Add `SCANNER_MODE` to config store (`.env` based)
 - Add `SCANNER_MODE` to Machine Config wizard (required choice: "What scanner hardware is attached?")
-- Add `useAppMode()` hook
+- Add `useAppMode()` hook that gates rendering (loading state until mode resolves)
 - Make `App.tsx` capture routes conditional on mode (browse routes always visible)
 - Make `Layout.tsx` nav conditional on mode
 - Add `<Navigate to="/" />` catch-all for removed routes
+- **Rewrite `Home.tsx` with mode-aware workflow steps** (adapted from Ben's PR #141):
+  - Create `WorkflowStep` type and reusable step-card component
+  - Define `cylinderScanSteps`: Scientists → Phenotypers → Accessions → Experiments → Camera Settings → Capture Scan → Browse Scans
+  - Define `graviScanSteps`: Scientists → Phenotypers → Metadata → Experiments → Capture Scan → Browse Scans (adapted from Ben's `graviscanSteps`)
+  - Home page shows the workflow for the configured mode (no tabs — mode is set in Machine Config)
+  - Each step is a clickable card that navigates to the relevant page
+  - Replace Ben's `APP_MODE` global references with `useAppMode()` hook
 - Update E2E test helper (`tests/e2e/helpers/bloom-config.ts`): update `createTestBloomConfig()` signature to accept optional `SCANNER_MODE` parameter (default: `'cylinderscan'`). Pre-seed in `.env` template.
 - Add unit test for `useAppMode()` loading state: verify app shows loading indicator (not redirect to `/`) while mode is being fetched
+- Add unit test for Home page: renders CylinderScan workflow steps when mode is `cylinderscan`
 - All existing tests must pass
 - OpenSpec proposal required
 
