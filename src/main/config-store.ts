@@ -322,8 +322,7 @@ export function validateConfig(config: MachineConfig): ValidationResult {
     config.scanner_mode !== 'cylinderscan' &&
     config.scanner_mode !== 'graviscan'
   ) {
-    errors.scanner_mode =
-      'Scanner mode must be "cylinderscan" or "graviscan"';
+    errors.scanner_mode = 'Scanner mode must be "cylinderscan" or "graviscan"';
   }
 
   // Validate scanner_name
