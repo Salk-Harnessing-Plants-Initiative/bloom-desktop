@@ -13,5 +13,35 @@
     "plugin:import/typescript",
     "prettier"
   ],
-  "parser": "@typescript-eslint/parser"
+  "parser": "@typescript-eslint/parser",
+  "rules": {
+    "@typescript-eslint/no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/cylinderscan/**"],
+            "message": "Shared code must not import from cylinderscan/. Only main.ts (the orchestrator) may import mode-specific modules."
+          },
+          {
+            "group": ["**/graviscan/**"],
+            "message": "Shared code must not import from graviscan/. Only main.ts (the orchestrator) may import mode-specific modules."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/main/cylinderscan/**",
+        "src/main/graviscan/**",
+        "src/main/main.ts",
+        "tests/**"
+      ],
+      "rules": {
+        "@typescript-eslint/no-restricted-imports": "off"
+      }
+    }
+  ]
 }
