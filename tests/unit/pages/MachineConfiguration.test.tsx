@@ -32,7 +32,7 @@ beforeEach(() => {
   // Default mock implementations
   mockConfigAPI.get.mockResolvedValue({
     config: {
-      scanner_name: '',
+      scanner_mode: 'cylinderscan', scanner_name: '',
       camera_ip_address: 'mock',
       scans_dir: '~/.bloom/scans',
       bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -54,7 +54,7 @@ describe('MachineConfiguration Page', () => {
     it('should display configuration form directly when no credentials exist', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -80,7 +80,7 @@ describe('MachineConfiguration Page', () => {
     beforeEach(() => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: 'TestScanner',
+          scanner_mode: 'cylinderscan', scanner_name: 'TestScanner',
           camera_ip_address: '10.0.0.50',
           scans_dir: '/data/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -138,7 +138,7 @@ describe('MachineConfiguration Page', () => {
       // First-run state - no credentials yet
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -175,7 +175,7 @@ describe('MachineConfiguration Page', () => {
       // User has credentials configured
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: 'PBIOBScanner',
+          scanner_mode: 'cylinderscan', scanner_name: 'PBIOBScanner',
           camera_ip_address: '192.168.1.10',
           scans_dir: '/custom/path',
           bloom_api_url: 'https://custom.api.url',
@@ -238,7 +238,7 @@ describe('MachineConfiguration Page', () => {
       // Scenario: User fills form, fetches scanners, tries to save with empty scanner
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -257,7 +257,7 @@ describe('MachineConfiguration Page', () => {
       mockConfigAPI.set.mockResolvedValue({
         success: false,
         errors: {
-          scanner_name: 'Scanner name is required',
+          scanner_mode: 'cylinderscan', scanner_name: 'Scanner name is required',
         },
       });
 
@@ -313,7 +313,7 @@ describe('MachineConfiguration Page', () => {
       // Scenario: User fills form, fetches scanners, makes changes, then cancels
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: 'PBIOBScanner', // Start with a saved scanner
+          scanner_mode: 'cylinderscan', scanner_name: 'PBIOBScanner', // Start with a saved scanner
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -376,7 +376,7 @@ describe('MachineConfiguration Page', () => {
     beforeEach(() => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -445,7 +445,7 @@ describe('MachineConfiguration Page', () => {
     beforeEach(() => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -522,7 +522,7 @@ describe('MachineConfiguration Page', () => {
     it('should NOT fetch scanners on mount (requires user to click button)', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -558,7 +558,7 @@ describe('MachineConfiguration Page', () => {
       // First-run scenario: no credentials, so shows config form immediately
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -580,7 +580,7 @@ describe('MachineConfiguration Page', () => {
     it('should not fetch scanners when no credentials configured', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -603,7 +603,7 @@ describe('MachineConfiguration Page', () => {
     it('should show message when no credentials configured', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -638,7 +638,7 @@ describe('MachineConfiguration Page', () => {
     it('should have button disabled when credentials are incomplete', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -662,7 +662,7 @@ describe('MachineConfiguration Page', () => {
     it('should enable button when all credentials are present', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -703,7 +703,7 @@ describe('MachineConfiguration Page', () => {
     it('should call fetchScanners when button is clicked', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -754,7 +754,7 @@ describe('MachineConfiguration Page', () => {
     it('should show loading state while fetching', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
@@ -813,7 +813,7 @@ describe('MachineConfiguration Page', () => {
     it('should show success message after successful fetch', async () => {
       mockConfigAPI.get.mockResolvedValue({
         config: {
-          scanner_name: '',
+          scanner_mode: 'cylinderscan', scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: '~/.bloom/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',

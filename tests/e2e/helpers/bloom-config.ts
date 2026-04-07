@@ -58,6 +58,7 @@ export function createTestBloomConfig(testScansDir?: string): void {
   // These values are sufficient to bypass the Machine Config redirect
   // and satisfy config validation without requiring real API credentials
   const envContent = `# E2E Test Configuration (auto-generated)
+SCANNER_MODE=cylinderscan
 SCANNER_NAME=TestScanner
 CAMERA_IP_ADDRESS=mock
 SCANS_DIR=${scansDir}

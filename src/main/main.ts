@@ -961,6 +961,20 @@ ipcMain.handle('config:exists', async () => {
 });
 
 /**
+ * Handle config:get-mode - Return the configured scanner mode
+ * Used by useAppMode() hook to determine which UI to show
+ */
+ipcMain.handle('config:get-mode', async () => {
+  try {
+    const config = loadEnvConfig(ENV_PATH);
+    return { mode: config.scanner_mode || '' };
+  } catch (error) {
+    console.error('config:get-mode error:', error);
+    return { mode: '' };
+  }
+});
+
+/**
  * Handle config:fetch-scanners - Fetch valid scanners from Bloom API
  * Updated to accept parameters (apiUrl and credentials) from form
  */

@@ -27,6 +27,7 @@ export function MachineConfiguration() {
 
   // Unified config state (includes credentials)
   const [config, setConfig] = useState<MachineConfig>({
+    scanner_mode: '',
     scanner_name: '',
     camera_ip_address: 'mock',
     scans_dir: '~/.bloom/scans',
