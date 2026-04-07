@@ -5,7 +5,7 @@
  * Run with: npm run test:daq
  */
 
-import { DAQProcess } from '../../src/main/daq-process';
+import { DAQProcess } from '../../src/main/cylinderscan/daq-process';
 import type { DAQSettings } from '../../src/types/daq';
 import path from 'path';
 

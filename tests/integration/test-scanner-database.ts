@@ -13,7 +13,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { ScannerProcess } from '../../src/main/scanner-process';
+import { ScannerProcess } from '../../src/main/cylinderscan/scanner-process';
 import { PythonProcess } from '../../src/main/python-process';
 import { initializeDatabase } from '../../src/main/database';
 import * as path from 'path';

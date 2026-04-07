@@ -5,7 +5,7 @@
  * Extends PythonProcess to handle camera-specific commands and events.
  */
 
-import { PythonProcess } from './python-process';
+import { PythonProcess } from '../python-process';
 
 /**
  * Camera settings interface

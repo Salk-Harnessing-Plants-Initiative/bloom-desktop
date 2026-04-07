@@ -10,7 +10,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { ScannerSettings } from '../types/scanner';
+import type { ScannerSettings } from '../../types/scanner';
 
 /**
  * Metadata object written to metadata.json.

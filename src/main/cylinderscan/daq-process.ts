@@ -5,7 +5,7 @@
  * Extends PythonProcess to handle DAQ-specific commands and events.
  */
 
-import { PythonProcess } from './python-process';
+import { PythonProcess } from '../python-process';
 import type {
   DAQSettings,
   DAQInitializeResponse,
@@ -14,7 +14,7 @@ import type {
   DAQStepResponse,
   DAQHomeResponse,
   DAQStatusResponse,
-} from '../types/daq';
+} from '../../types/daq';
 
 /**
  * DAQ process events:
