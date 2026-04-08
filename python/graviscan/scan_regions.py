@@ -65,7 +65,9 @@ GRID_2_REGIONS: Dict[str, ScanRegion] = {
 # Four plates in a 2x2 grid on the scanner bed
 GRID_4_REGIONS: Dict[str, ScanRegion] = {
     "00": ScanRegion(top=10.0, left=5.0, width=105.0, height=145.0),  # Top-left
-    "01": ScanRegion(top=5.0, left=110.0, width=105.9, height=150.0),  # Top-right (clamped to bed width 215.9mm)
+    "01": ScanRegion(
+        top=5.0, left=110.0, width=105.9, height=150.0
+    ),  # Top-right (clamped to bed width 215.9mm)
     "10": ScanRegion(top=151.0, left=5.0, width=105.0, height=145.0),  # Bottom-left
     "11": ScanRegion(top=151.0, left=115.0, width=105.0, height=145.0),  # Bottom-right
 }
