@@ -239,7 +239,7 @@ If you want a completely fresh database instead:
 BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:reset
 ```
 
-**Note**: The app does NOT auto-apply migrations on startup. This is a known gap — migrations must be applied manually after pulling new code. A future enhancement may add auto-migration on startup.
+**Note**: The app does NOT auto-apply Prisma migrations on startup. This is by design — Prisma's migration engine is a separate binary from the query engine, and bundling it inside the Electron ASAR package adds significant size and complexity (see [PACKAGING.md](PACKAGING.md) for the ASAR/Prisma constraints). Instead, the app uses a custom upgrade script (`scripts/upgrade-database.ts`) that handles schema version detection and applies raw SQL upgrades for production databases. For development, migrations must be applied manually after pulling new code.
 
 ### Advanced Commands
 
