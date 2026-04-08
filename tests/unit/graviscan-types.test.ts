@@ -3,9 +3,12 @@ import {
   MIN_SCAN_INTERVAL_MINUTES,
   PLATE_INDICES,
   GRAVISCAN_RESOLUTIONS,
+  DEFAULT_SCANNER_SLOTS,
+  MAX_SCANNER_SLOTS,
   createPlateAssignments,
   getPlateLabel,
   formatPlateIndex,
+  generateScannerSlotName,
   generateScannerSlots,
   createEmptyScannerAssignment,
 } from '../../src/types/graviscan';
@@ -31,6 +34,14 @@ describe('GraviScan TypeScript Types', () => {
       expect(GRAVISCAN_RESOLUTIONS).toEqual([
         200, 400, 600, 800, 1200, 1600, 3200, 6400,
       ]);
+    });
+
+    it('DEFAULT_SCANNER_SLOTS is 1', () => {
+      expect(DEFAULT_SCANNER_SLOTS).toBe(1);
+    });
+
+    it('MAX_SCANNER_SLOTS is 10', () => {
+      expect(MAX_SCANNER_SLOTS).toBe(10);
     });
   });
 
@@ -80,11 +91,23 @@ describe('GraviScan TypeScript Types', () => {
   });
 
   describe('formatPlateIndex', () => {
-    it('returns same labels as getPlateLabel', () => {
-      expect(formatPlateIndex('00')).toBe(getPlateLabel('00'));
-      expect(formatPlateIndex('01')).toBe(getPlateLabel('01'));
-      expect(formatPlateIndex('10')).toBe(getPlateLabel('10'));
-      expect(formatPlateIndex('11')).toBe(getPlateLabel('11'));
+    it('returns correct labels for all plate indices', () => {
+      expect(formatPlateIndex('00')).toBe('A(00)');
+      expect(formatPlateIndex('01')).toBe('B(01)');
+      expect(formatPlateIndex('10')).toBe('C(10)');
+      expect(formatPlateIndex('11')).toBe('D(11)');
+    });
+
+    it('returns the index itself for unknown indices', () => {
+      expect(formatPlateIndex('99')).toBe('99');
+    });
+  });
+
+  describe('generateScannerSlotName', () => {
+    it('returns 1-indexed slot name', () => {
+      expect(generateScannerSlotName(0)).toBe('Scanner 1');
+      expect(generateScannerSlotName(1)).toBe('Scanner 2');
+      expect(generateScannerSlotName(9)).toBe('Scanner 10');
     });
   });
 
@@ -97,9 +120,9 @@ describe('GraviScan TypeScript Types', () => {
       ]);
     });
 
-    it('returns default count when called without argument', () => {
+    it('returns DEFAULT_SCANNER_SLOTS count when called without argument', () => {
       const slots = generateScannerSlots();
-      expect(slots.length).toBeGreaterThan(0);
+      expect(slots).toHaveLength(DEFAULT_SCANNER_SLOTS);
       expect(slots[0]).toBe('Scanner 1');
     });
   });

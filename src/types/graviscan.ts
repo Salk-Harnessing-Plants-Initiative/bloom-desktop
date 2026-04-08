@@ -259,11 +259,9 @@ export function getPlateLabel(plateIndex: string): string {
 }
 
 /**
- * Format a plate index for display — standalone version without gridMode.
+ * Format a plate index for display — alias for getPlateLabel.
  */
-export function formatPlateIndex(plateIndex: string): string {
-  return PLATE_INDEX_LABELS[plateIndex] ?? plateIndex;
-}
+export const formatPlateIndex = getPlateLabel;
 
 /**
  * Scanner assignment - maps a slot name to a detected scanner.

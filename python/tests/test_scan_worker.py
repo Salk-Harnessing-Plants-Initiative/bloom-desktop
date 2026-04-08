@@ -169,6 +169,20 @@ class TestMockScanRow:
         assert img.size[0] == max(px["width"], 100)
         assert img.size[1] == max(px["height"], 100)
 
+    @patch("time.sleep")
+    def test_mock_scan_row_completes_quickly(self, mock_sleep):
+        """Vectorized checkerboard must complete in <2s even at high resolution."""
+        import time as time_mod
+        from python.graviscan.scan_regions import get_row_bounding_box
+
+        w = _make_worker()
+        bbox = get_row_bounding_box("4grid", ["00", "01"])
+        start = time_mod.monotonic()
+        img = w._mock_scan_row(bbox, 600)
+        elapsed = time_mod.monotonic() - start
+        assert elapsed < 2.0, f"_mock_scan_row took {elapsed:.1f}s — needs vectorization"
+        assert isinstance(img, Image.Image)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Section 3 — Mocked SANE
