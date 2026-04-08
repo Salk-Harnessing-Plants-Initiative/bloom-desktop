@@ -415,6 +415,8 @@ function createV4Schema(db: Database.Database): void {
   createV3Schema(db);
 
   // Add experiment_type column (via table rebuild, matching Prisma migration)
+  // Disable FKs during rebuild since Scan has an FK to Experiment
+  db.exec(`PRAGMA foreign_keys=OFF;`);
   db.exec(`
     CREATE TABLE "new_Experiment" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -431,6 +433,7 @@ function createV4Schema(db: Database.Database): void {
     DROP TABLE "Experiment";
     ALTER TABLE "new_Experiment" RENAME TO "Experiment";
   `);
+  db.exec(`PRAGMA foreign_keys=ON;`);
 
   // Create all 8 GraviScan tables
   db.exec(`

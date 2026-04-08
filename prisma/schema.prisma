@@ -37,9 +37,9 @@ model Experiment {
   accession                 Accessions?                @relation("AccessionToExperiment", fields: [accession_id], references: [id])
   scientist                 Scientist?                 @relation(fields: [scientist_id], references: [id])
   scans                     Scan[]
-  graviscanScans            GraviScan[]
-  graviscanSessions         GraviScanSession[]
-  graviscanPlateAssignments GraviScanPlateAssignment[]
+  graviScans            GraviScan[]
+  graviSessions         GraviScanSession[]
+  graviPlateAssignments GraviScanPlateAssignment[]
 }
 
 model Accessions {

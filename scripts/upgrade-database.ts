@@ -33,7 +33,7 @@ export interface UpgradeResult {
  * Checksums are SHA-256 hashes of migration.sql files (computed by Prisma)
  * These must match exactly for `prisma migrate status` to pass
  */
-const MIGRATIONS: Record<string, { checksum: string; name: string }> = {
+export const MIGRATIONS: Record<string, { checksum: string; name: string }> = {
   '20251028040530_init': {
     checksum:
       '30988f39ce45f569219c734eae8c18587c0f79326b3f7dbd6f4c9b84f72f1240',

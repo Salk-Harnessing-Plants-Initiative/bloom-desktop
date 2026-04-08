@@ -12,7 +12,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Database from 'better-sqlite3';
 import { detectSchemaVersion } from '../../scripts/detect-schema-version';
-import { upgradeDatabase, UpgradeResult } from '../../scripts/upgrade-database';
+import {
+  upgradeDatabase,
+  UpgradeResult,
+  MIGRATIONS,
+} from '../../scripts/upgrade-database';
 
 const FIXTURES_DIR = path.join(__dirname, '../fixtures/databases');
 const TEMP_DIR = path.join(__dirname, '../fixtures/temp');
@@ -710,43 +714,44 @@ describe('upgradeDatabase', () => {
     }
 
     it('should have checksums that match actual migration files for init', () => {
-      const expectedChecksum = computeMigrationChecksum('20251028040530_init');
-      // This test will fail initially (TDD) until we update upgrade-database.ts
-      // with the real checksum
-      expect(expectedChecksum).toBeTruthy();
-      expect(expectedChecksum.length).toBe(64); // SHA-256 hex is 64 chars
+      const computedChecksum = computeMigrationChecksum('20251028040530_init');
+      expect(computedChecksum).toBe(MIGRATIONS['20251028040530_init'].checksum);
     });
 
     it('should have checksums that match actual migration files for add_genotype', () => {
-      const expectedChecksum = computeMigrationChecksum(
+      const computedChecksum = computeMigrationChecksum(
         '20251125180403_add_genotype_id_to_plant_mappings'
       );
-      expect(expectedChecksum).toBeTruthy();
-      expect(expectedChecksum.length).toBe(64);
+      expect(computedChecksum).toBe(
+        MIGRATIONS['20251125180403_add_genotype_id_to_plant_mappings'].checksum
+      );
     });
 
     it('should have checksums that match actual migration files for cleanup_accession', () => {
-      const expectedChecksum = computeMigrationChecksum(
+      const computedChecksum = computeMigrationChecksum(
         '20260211195433_cleanup_accession_fields'
       );
-      expect(expectedChecksum).toBeTruthy();
-      expect(expectedChecksum.length).toBe(64);
+      expect(computedChecksum).toBe(
+        MIGRATIONS['20260211195433_cleanup_accession_fields'].checksum
+      );
     });
 
     it('should have checksums that match actual migration files for add_experiment_type', () => {
-      const expectedChecksum = computeMigrationChecksum(
+      const computedChecksum = computeMigrationChecksum(
         '20260408170411_add_experiment_type'
       );
-      expect(expectedChecksum).toBeTruthy();
-      expect(expectedChecksum.length).toBe(64);
+      expect(computedChecksum).toBe(
+        MIGRATIONS['20260408170411_add_experiment_type'].checksum
+      );
     });
 
     it('should have checksums that match actual migration files for add_graviscan_models', () => {
-      const expectedChecksum = computeMigrationChecksum(
+      const computedChecksum = computeMigrationChecksum(
         '20260408170532_add_graviscan_models'
       );
-      expect(expectedChecksum).toBeTruthy();
-      expect(expectedChecksum.length).toBe(64);
+      expect(computedChecksum).toBe(
+        MIGRATIONS['20260408170532_add_graviscan_models'].checksum
+      );
     });
 
     it('upgraded database should have valid checksums matching migration files', async () => {
