@@ -43,7 +43,10 @@ from .scan_regions import (
 )
 
 # Application version embedded in TIFF metadata
-_BLOOM_VERSION = "0.1.0"
+try:
+    from python import __version__ as _BLOOM_VERSION
+except Exception:
+    _BLOOM_VERSION = "0.1.0"
 
 
 def _build_tiff_metadata(
@@ -578,15 +581,16 @@ class ScanWorker:
         # Simulate scan delay
         time.sleep(0.5)
 
-        # Generate RGB checkerboard
+        # Generate RGB checkerboard using vectorized NumPy operations
         square_size = max(width // 20, 10)
-        img_array = np.zeros((height, width, 3), dtype=np.uint8)
-        for y in range(height):
-            for x in range(width):
-                if ((x // square_size) + (y // square_size)) % 2 == 0:
-                    img_array[y, x] = [255, 255, 255]
-                else:
-                    img_array[y, x] = [128, 128, 128]
+        x_tiles = np.arange(width) // square_size
+        y_tiles = (np.arange(height) // square_size)[:, None]
+        checker_mask = ((x_tiles + y_tiles) % 2) == 0
+        img_array = np.where(
+            checker_mask[:, :, None],
+            np.array([255, 255, 255], dtype=np.uint8),
+            np.array([128, 128, 128], dtype=np.uint8),
+        )
 
         image = Image.fromarray(img_array, mode="RGB")
 

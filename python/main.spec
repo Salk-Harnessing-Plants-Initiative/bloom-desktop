@@ -49,7 +49,7 @@ a = Analysis(
         'python.hardware.scanner',
         'python.hardware.scanner_types',
         # GraviScan modules — SANE scanner backend
-        'sane',
+        'sane',  # Optional: warns if missing on macOS/Windows, does not fail build
         'graviscan',
         'graviscan.scan_regions',
         'graviscan.scan_worker',

@@ -103,7 +103,8 @@ The system SHALL provide a per-scanner subprocess worker in `python/graviscan/sc
 - **GIVEN** the system is running on macOS or Windows where `libsane` is absent
 - **WHEN** the scan worker module is loaded
 - **THEN** the SANE import failure SHALL be caught (by targeted `except (ImportError, OSError)` or by the worker's general initialization error handler)
-- **AND** the worker SHALL fall back to mock scanning mode
+- **AND** when started without `--mock`, the worker SHALL emit an error event and return false from `initialize()`
+- **AND** when started with `--mock`, the worker SHALL operate in mock scanning mode without SANE
 - **AND** no import error SHALL propagate to the caller
 
 #### Scenario: Scan worker ready event
@@ -122,8 +123,8 @@ The system SHALL provide a per-scanner subprocess worker in `python/graviscan/sc
 
 - **GIVEN** a scan worker subprocess is performing a scan
 - **WHEN** a `{"action":"cancel"}` message is sent on stdin
-- **THEN** the worker SHALL abort the current scan
-- **AND** emit a `scan-cancelled` event on stdout
+- **THEN** the worker SHALL set a cancel flag and stop after the current plate finishes
+- **AND** emit `scan-cancelled` events on stdout for remaining unscanned plates
 - **AND** return to a state ready to accept new commands
 
 #### Scenario: Scan worker handles quit command
@@ -136,7 +137,7 @@ The system SHALL provide a per-scanner subprocess worker in `python/graviscan/sc
 
 - **GIVEN** a scan worker subprocess is running
 - **WHEN** invalid JSON is received on stdin
-- **THEN** the worker SHALL emit an error event on stdout
+- **THEN** the worker SHALL log the error to stderr and continue accepting commands
 - **AND** SHALL NOT crash or exit
 
 ### Requirement: GraviScan TIFF Metadata Embedding
