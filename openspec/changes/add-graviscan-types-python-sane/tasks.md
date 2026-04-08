@@ -18,7 +18,7 @@
 
 - [x] 2.1 Cherry-pick `src/types/graviscan.ts` from `origin/graviscan/3-types-python` AND write `tests/unit/graviscan-types.test.ts` in the same commit. Cherry-pick fixes:
   - Add `scan_started_at: Date | null` and `scan_ended_at: Date | null` to `GraviScan` interface
-  - Fix scanner model name: use "Epson Perfection V39" consistently
+  - Fix scanner model name: use "Epson Perfection V600" consistently
   - Vitest tests to write:
     - `createPlateAssignments('2grid')` returns 2 assignments with correct defaults
     - `createPlateAssignments('4grid')` returns 4 assignments with correct defaults
@@ -34,7 +34,7 @@
 ## 3. Python SANE Backend (atomic cherry-picks; 3.2 depends on 3.1)
 
 - [x] 3.1 Cherry-pick `python/graviscan/__init__.py`, `python/graviscan/scan_regions.py`, AND `python/tests/test_scan_regions.py` together. Cherry-pick fixes:
-  - Fix scanner model comment: "Epson V600" → "Epson Perfection V39"
+  - Fix scanner model comment: "Epson V600" → "Epson Perfection V600"
   - Investigate 4-grid region "01": right edge at 220.0mm exceeds `SCANNER_MAX_X=215.9mm` by 4.1mm. Verify against physical hardware or clamp width to 105.9mm.
   - Verify test assertions include non-overlap check for 4-grid regions
 - [x] 3.2 Cherry-pick `python/graviscan/scan_worker.py`, `python/tests/test_scan_worker.py`, AND `python/tests/test_tiff_metadata.py` together. **Depends on 3.1** (scan_worker.py imports from scan_regions.py; both test files import from scan_regions). Cherry-pick fixes:

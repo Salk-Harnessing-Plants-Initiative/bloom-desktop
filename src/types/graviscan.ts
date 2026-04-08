@@ -4,7 +4,7 @@
 
 // =============================================================================
 // Scan Timing Constants
-// Empirical values from Epson Perfection V39 at 1200dpi with 2 scanners.
+// Empirical values from Epson Perfection V600 at 1200dpi with 2 scanners.
 // Measured: ~1m15s for 2 grids, ~2m36s for 4 grids.
 // Minimum interval must exceed the total cycle scan time.
 // =============================================================================

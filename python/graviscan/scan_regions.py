@@ -113,7 +113,7 @@ def get_scan_region(grid_mode: str, plate_index: str) -> ScanRegion:
         )
 
 
-# Epson Perfection V39 scanner bed limits (mm) — A4 scan area
+# Epson Perfection V600 scanner bed limits (mm) — A4 scan area
 SCANNER_MAX_X = 215.9
 SCANNER_MAX_Y = 297.0
 
