@@ -24,6 +24,7 @@ interface ScannerIdentity {
  * Mock MachineConfig interface for testing
  */
 interface MachineConfig {
+  scanner_mode: 'cylinderscan';
   scanner_name: string;
   camera_ip_address: string;
   scans_dir: string;
@@ -45,6 +46,7 @@ describe('Scanner Identity Service Logic', () => {
     it('should initialize scanner identity from config on startup', () => {
       // Mock config with scanner name
       const mockConfig: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'TestScanner',
         camera_ip_address: 'mock',
         scans_dir: '~/.bloom/scans',
@@ -64,6 +66,7 @@ describe('Scanner Identity Service Logic', () => {
     it('should default to empty string if scanner not configured', () => {
       // Mock config with empty scanner name
       const mockConfig: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: '',
         camera_ip_address: 'mock',
         scans_dir: '~/.bloom/scans',
@@ -116,6 +119,7 @@ describe('Scanner Identity Service Logic', () => {
 
       // New config to save
       const newConfig: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'NewScanner',
         camera_ip_address: 'mock',
         scans_dir: '~/.bloom/scans',
@@ -151,6 +155,7 @@ describe('Scanner Identity Service Logic', () => {
 
       // New config attempting to save
       const newConfig: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'NewScanner',
         camera_ip_address: 'mock',
         scans_dir: '~/.bloom/scans',
@@ -203,6 +208,7 @@ describe('Scanner Identity Service Logic', () => {
       // Mock config with null scanner_name
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mockConfig: any = {
+        scanner_mode: 'cylinderscan',
         scanner_name: null,
         camera_ip_address: 'mock',
         scans_dir: '~/.bloom/scans',

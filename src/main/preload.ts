@@ -254,6 +254,7 @@ const configAPI: ConfigAPI = {
     ipcRenderer.invoke('config:test-camera', ipAddress),
   browseDirectory: () => ipcRenderer.invoke('config:browse-directory'),
   exists: () => ipcRenderer.invoke('config:exists'),
+  getMode: () => ipcRenderer.invoke('config:get-mode'),
   fetchScanners: (
     apiUrl: string,
     credentials: {

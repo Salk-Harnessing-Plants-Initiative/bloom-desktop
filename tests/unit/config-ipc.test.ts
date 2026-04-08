@@ -48,6 +48,7 @@ describe('Config IPC Handler Logic', () => {
       // Use temp directory path so saveConfig can auto-create it
       const testScansDir = path.join(TEST_DIR, 'test-scans');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'TestScanner',
         camera_ip_address: '10.0.0.50',
         scans_dir: testScansDir,
@@ -124,6 +125,7 @@ describe('Config IPC Handler Logic', () => {
       // Use temp directory path so saveConfig can auto-create it
       const testScansDir = path.join(TEST_DIR, 'new-scans');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'NewScanner',
         camera_ip_address: '192.168.1.100',
         scans_dir: testScansDir,
@@ -159,6 +161,7 @@ describe('Config IPC Handler Logic', () => {
       // Use temp directory path so saveConfig can auto-create it
       const testScansDir = path.join(TEST_DIR, 'scans-with-creds');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'Scanner1',
         camera_ip_address: 'mock',
         scans_dir: testScansDir,
@@ -201,6 +204,7 @@ describe('Config IPC Handler Logic', () => {
       // Use temp directory path (though validation will fail before saveConfig)
       const testScansDir = path.join(TEST_DIR, 'invalid-scans');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: '', // Invalid: empty
         camera_ip_address: 'invalid-ip', // Invalid: bad format
         scans_dir: testScansDir,
@@ -325,6 +329,7 @@ describe('Config IPC Handler Logic', () => {
       // Use temp directory path so saveConfig can auto-create it
       const testScansDir = path.join(TEST_DIR, 'existing-scans');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'ExistingScanner',
         camera_ip_address: 'mock',
         scans_dir: testScansDir,
@@ -449,6 +454,7 @@ describe('Config IPC Handler Logic', () => {
       // The handler should return ALL config fields including scan params
       const result = {
         config: {
+          scanner_mode: 'cylinderscan',
           scanner_name: config.scanner_name,
           camera_ip_address: config.camera_ip_address,
           scans_dir: config.scans_dir,

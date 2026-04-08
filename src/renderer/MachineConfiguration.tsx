@@ -12,6 +12,7 @@ type FormState = 'loading' | 'config'; // Removed 'login' state
 type CameraTestStatus = 'idle' | 'testing' | 'success' | 'error';
 
 interface FormErrors {
+  scanner_mode?: string;
   scanner_name?: string;
   camera_ip_address?: string;
   scans_dir?: string;
@@ -27,6 +28,7 @@ export function MachineConfiguration() {
 
   // Unified config state (includes credentials)
   const [config, setConfig] = useState<MachineConfig>({
+    scanner_mode: '',
     scanner_name: '',
     camera_ip_address: 'mock',
     scans_dir: '~/.bloom/scans',
@@ -223,6 +225,53 @@ export function MachineConfiguration() {
       )}
 
       <div className="space-y-6">
+        {/* Scanner Mode Section */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-lg font-semibold mb-4 text-gray-800">
+            Scanner Mode
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Select the type of scanner this station operates.
+          </p>
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="scanner_mode"
+                value="cylinderscan"
+                checked={config.scanner_mode === 'cylinderscan'}
+                onChange={() =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    scanner_mode: 'cylinderscan',
+                  }))
+                }
+                className="w-4 h-4 text-blue-600"
+              />
+              <span className="text-gray-700">CylinderScan</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="scanner_mode"
+                value="graviscan"
+                checked={config.scanner_mode === 'graviscan'}
+                onChange={() =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    scanner_mode: 'graviscan',
+                  }))
+                }
+                className="w-4 h-4 text-blue-600"
+              />
+              <span className="text-gray-700">GraviScan</span>
+            </label>
+          </div>
+          {errors.scanner_mode && (
+            <p className="text-red-600 text-sm mt-2">{errors.scanner_mode}</p>
+          )}
+        </div>
+
         {/* API Credentials Section */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-4 text-gray-800">
@@ -460,180 +509,196 @@ export function MachineConfiguration() {
           </div>
         </div>
 
-        {/* Hardware Section */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-4 text-gray-800">Hardware</h2>
-
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="camera-ip"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Camera IP Address
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="camera-ip"
-                  type="text"
-                  value={config.camera_ip_address}
-                  onChange={(e) => {
-                    setConfig((prev) => ({
-                      ...prev,
-                      camera_ip_address: e.target.value,
-                    }));
-                    setCameraTestStatus('idle');
-                  }}
-                  className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.camera_ip_address
-                      ? 'border-red-500'
-                      : 'border-gray-300'
-                  }`}
-                  placeholder="10.0.0.23 or mock"
-                />
-                <button
-                  onClick={handleTestCamera}
-                  disabled={cameraTestStatus === 'testing'}
-                  className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50"
-                >
-                  {cameraTestStatus === 'testing'
-                    ? 'Testing...'
-                    : 'Test Connection'}
-                </button>
-              </div>
-              {errors.camera_ip_address && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.camera_ip_address}
-                </p>
-              )}
-              {cameraTestStatus === 'success' && (
-                <p className="text-green-600 text-sm mt-1">Connected</p>
-              )}
-              {cameraTestStatus === 'error' && (
-                <p className="text-red-600 text-sm mt-1">{cameraTestError}</p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="scans-dir"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Scans Directory
-              </label>
-              <p className="text-xs text-gray-500 mb-2">
-                Default location keeps scan data together with database.
-                <br />
-                For large datasets, configure external storage (e.g.,
-                /mnt/scanner-data)
-              </p>
-              <div className="flex gap-2">
-                <input
-                  id="scans-dir"
-                  type="text"
-                  value={config.scans_dir}
-                  onChange={(e) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      scans_dir: e.target.value,
-                    }))
-                  }
-                  className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.scans_dir ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Default scans directory"
-                />
-                <button
-                  onClick={handleBrowseDirectory}
-                  className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
-                >
-                  Browse...
-                </button>
-              </div>
-              {errors.scans_dir && (
-                <p className="text-red-600 text-sm mt-1">{errors.scans_dir}</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Scan Parameters Section */}
+        {/* Scans Directory Section — always visible */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-4 text-gray-800">
-            Scan Parameters
+            Scans Directory
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Controls how many images are captured per rotation and how fast the
-            turntable spins. More frames increase angular resolution but take
-            longer; faster rotation reduces scan time but may cause motion blur.
-          </p>
 
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="num-frames"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Frames per rotation
-              </label>
+          <div>
+            <label
+              htmlFor="scans-dir"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Scans Directory
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Default location keeps scan data together with database.
+              <br />
+              For large datasets, configure external storage (e.g.,
+              /mnt/scanner-data)
+            </p>
+            <div className="flex gap-2">
               <input
-                id="num-frames"
-                type="number"
-                min={1}
-                max={720}
-                step={1}
-                value={config.num_frames}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val)) {
-                    setConfig((prev) => ({ ...prev, num_frames: val }));
-                  }
-                }}
-                className={`w-full px-3 py-2 border ${errors.num_frames ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                id="scans-dir"
+                type="text"
+                value={config.scans_dir}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    scans_dir: e.target.value,
+                  }))
+                }
+                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  errors.scans_dir ? 'border-red-500' : 'border-gray-300'
+                }`}
+                placeholder="Default scans directory"
               />
-              {errors.num_frames && (
-                <p className="text-red-600 text-sm mt-1">{errors.num_frames}</p>
-              )}
-              <p className="text-xs text-gray-500 mt-1">
-                Integer 1–720. Default 72 (5° per frame). Higher values give
-                finer angular resolution but longer scans.
-              </p>
-            </div>
-
-            <div>
-              <label
-                htmlFor="seconds-per-rot"
-                className="block text-sm font-medium text-gray-700 mb-1"
+              <button
+                onClick={handleBrowseDirectory}
+                className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
               >
-                Seconds per rotation
-              </label>
-              <input
-                id="seconds-per-rot"
-                type="number"
-                min={2.0}
-                max={120.0}
-                step={0.5}
-                value={config.seconds_per_rot}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val)) {
-                    setConfig((prev) => ({ ...prev, seconds_per_rot: val }));
-                  }
-                }}
-                className={`w-full px-3 py-2 border ${errors.seconds_per_rot ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
-              />
-              {errors.seconds_per_rot && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.seconds_per_rot}
-                </p>
-              )}
-              <p className="text-xs text-gray-500 mt-1">
-                Range 2.0–120.0 seconds. Default 7.0. Slower rotation reduces
-                motion blur; faster rotation shortens scan time.
-              </p>
+                Browse...
+              </button>
             </div>
+            {errors.scans_dir && (
+              <p className="text-red-600 text-sm mt-1">{errors.scans_dir}</p>
+            )}
           </div>
         </div>
+
+        {/* Hardware Section — CylinderScan only */}
+        {config.scanner_mode === 'cylinderscan' && (
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-4 text-gray-800">
+              Hardware
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="camera-ip"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Camera IP Address
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="camera-ip"
+                    type="text"
+                    value={config.camera_ip_address}
+                    onChange={(e) => {
+                      setConfig((prev) => ({
+                        ...prev,
+                        camera_ip_address: e.target.value,
+                      }));
+                      setCameraTestStatus('idle');
+                    }}
+                    className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      errors.camera_ip_address
+                        ? 'border-red-500'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="10.0.0.23 or mock"
+                  />
+                  <button
+                    onClick={handleTestCamera}
+                    disabled={cameraTestStatus === 'testing'}
+                    className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    {cameraTestStatus === 'testing'
+                      ? 'Testing...'
+                      : 'Test Connection'}
+                  </button>
+                </div>
+                {errors.camera_ip_address && (
+                  <p className="text-red-600 text-sm mt-1">
+                    {errors.camera_ip_address}
+                  </p>
+                )}
+                {cameraTestStatus === 'success' && (
+                  <p className="text-green-600 text-sm mt-1">Connected</p>
+                )}
+                {cameraTestStatus === 'error' && (
+                  <p className="text-red-600 text-sm mt-1">{cameraTestError}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Scan Parameters Section — CylinderScan only */}
+        {config.scanner_mode === 'cylinderscan' && (
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-lg font-semibold mb-4 text-gray-800">
+              Scan Parameters
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Controls how many images are captured per rotation and how fast
+              the turntable spins. More frames increase angular resolution but
+              take longer; faster rotation reduces scan time but may cause
+              motion blur.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor="num-frames"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Frames per rotation
+                </label>
+                <input
+                  id="num-frames"
+                  type="number"
+                  min={1}
+                  max={720}
+                  step={1}
+                  value={config.num_frames}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val)) {
+                      setConfig((prev) => ({ ...prev, num_frames: val }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border ${errors.num_frames ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                />
+                {errors.num_frames && (
+                  <p className="text-red-600 text-sm mt-1">
+                    {errors.num_frames}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Integer 1–720. Default 72 (5° per frame). Higher values give
+                  finer angular resolution but longer scans.
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="seconds-per-rot"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Seconds per rotation
+                </label>
+                <input
+                  id="seconds-per-rot"
+                  type="number"
+                  min={2.0}
+                  max={120.0}
+                  step={0.5}
+                  value={config.seconds_per_rot}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) {
+                      setConfig((prev) => ({ ...prev, seconds_per_rot: val }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border ${errors.seconds_per_rot ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                />
+                {errors.seconds_per_rot && (
+                  <p className="text-red-600 text-sm mt-1">
+                    {errors.seconds_per_rot}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1">
+                  Range 2.0–120.0 seconds. Default 7.0. Slower rotation reduces
+                  motion blur; faster rotation shortens scan time.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex justify-end gap-4">

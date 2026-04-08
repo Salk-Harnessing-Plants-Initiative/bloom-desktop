@@ -470,6 +470,12 @@ export interface ConfigAPI {
   exists: () => Promise<boolean>;
 
   /**
+   * Get the configured scanner mode
+   * @returns Promise resolving to the scanner mode ('cylinderscan', 'graviscan', or '' for unconfigured)
+   */
+  getMode: () => Promise<{ mode: string }>;
+
+  /**
    * Fetch list of valid scanners from Bloom API
    * @param apiUrl - Bloom API URL
    * @param credentials - Bloom API credentials from form

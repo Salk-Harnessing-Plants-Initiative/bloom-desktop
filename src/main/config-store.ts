@@ -17,7 +17,12 @@ import * as os from 'os';
  * Machine configuration settings (unified - includes credentials)
  * Stored in ~/.bloom/.env
  */
+export type ScannerMode = 'cylinderscan' | 'graviscan';
+
 export interface MachineConfig {
+  /** Scanner mode — determines which hardware and UI features are available */
+  scanner_mode: ScannerMode | '';
+
   /** Unique identifier for this scanning station */
   scanner_name: string;
 
@@ -70,6 +75,7 @@ export interface ValidationResult {
 
   /** Field-specific error messages */
   errors: {
+    scanner_mode?: string;
     scanner_name?: string;
     camera_ip_address?: string;
     scans_dir?: string;
@@ -113,6 +119,7 @@ export function getDefaultConfig(): MachineConfig {
     : path.join(homeDir, '.bloom', 'scans');
 
   return {
+    scanner_mode: '', // Empty forces first-run mode selection
     scanner_name: '',
     camera_ip_address: 'mock',
     scans_dir: scansDir,
@@ -308,6 +315,16 @@ function isValidURL(urlString: string): boolean {
 export function validateConfig(config: MachineConfig): ValidationResult {
   const errors: ValidationResult['errors'] = {};
 
+  // Validate scanner_mode
+  if (!config.scanner_mode) {
+    errors.scanner_mode = 'Scanner mode is required';
+  } else if (
+    config.scanner_mode !== 'cylinderscan' &&
+    config.scanner_mode !== 'graviscan'
+  ) {
+    errors.scanner_mode = 'Scanner mode must be "cylinderscan" or "graviscan"';
+  }
+
   // Validate scanner_name
   // Note: Dropdown in UI enforces valid scanner names from API
   // Here we only check that it's not empty
@@ -315,14 +332,19 @@ export function validateConfig(config: MachineConfig): ValidationResult {
     errors.scanner_name = 'Scanner name is required';
   }
 
-  // Validate camera_ip_address
-  if (config.camera_ip_address === 'mock') {
-    // "mock" is valid for development
-  } else if (
-    !config.camera_ip_address ||
-    !isValidIPv4(config.camera_ip_address)
-  ) {
-    errors.camera_ip_address = 'Invalid IP address format';
+  // CylinderScan-specific field validation (skip for GraviScan)
+  const isCylinderScan = config.scanner_mode !== 'graviscan';
+
+  // Validate camera_ip_address (CylinderScan only)
+  if (isCylinderScan) {
+    if (config.camera_ip_address === 'mock') {
+      // "mock" is valid for development
+    } else if (
+      !config.camera_ip_address ||
+      !isValidIPv4(config.camera_ip_address)
+    ) {
+      errors.camera_ip_address = 'Invalid IP address format';
+    }
   }
 
   // Validate scans_dir
@@ -379,26 +401,31 @@ export function validateConfig(config: MachineConfig): ValidationResult {
     errors.bloom_api_url = 'Invalid URL format';
   }
 
-  // Validate num_frames: integer in 1-720
-  if (
-    config.num_frames == null ||
-    !Number.isInteger(config.num_frames) ||
-    config.num_frames < 1 ||
-    config.num_frames > 720
-  ) {
-    errors.num_frames = 'Number of frames must be an integer between 1 and 720';
+  // Validate num_frames: integer in 1-720 (CylinderScan only)
+  if (isCylinderScan) {
+    if (
+      config.num_frames == null ||
+      !Number.isInteger(config.num_frames) ||
+      config.num_frames < 1 ||
+      config.num_frames > 720
+    ) {
+      errors.num_frames =
+        'Number of frames must be an integer between 1 and 720';
+    }
   }
 
-  // Validate seconds_per_rot: number in 2.0-120.0
-  if (
-    config.seconds_per_rot == null ||
-    typeof config.seconds_per_rot !== 'number' ||
-    isNaN(config.seconds_per_rot) ||
-    config.seconds_per_rot < 2.0 ||
-    config.seconds_per_rot > 120.0
-  ) {
-    errors.seconds_per_rot =
-      'Seconds per rotation must be between 2.0 and 120.0';
+  // Validate seconds_per_rot: number in 2.0-120.0 (CylinderScan only)
+  if (isCylinderScan) {
+    if (
+      config.seconds_per_rot == null ||
+      typeof config.seconds_per_rot !== 'number' ||
+      isNaN(config.seconds_per_rot) ||
+      config.seconds_per_rot < 2.0 ||
+      config.seconds_per_rot > 120.0
+    ) {
+      errors.seconds_per_rot =
+        'Seconds per rotation must be between 2.0 and 120.0';
+    }
   }
 
   return {
@@ -462,6 +489,11 @@ export function loadEnvConfig(envPath: string): MachineConfig {
         const value = trimmed.substring(equalIndex + 1).trim();
 
         switch (key) {
+          case 'SCANNER_MODE':
+            if (value === 'cylinderscan' || value === 'graviscan') {
+              envConfig.scanner_mode = value;
+            }
+            break;
           case 'SCANNER_NAME':
             envConfig.scanner_name = value;
             break;
@@ -512,6 +544,12 @@ export function loadEnvConfig(envPath: string): MachineConfig {
     ...envConfig,
   };
 
+  // Backward compatibility: existing .env files without SCANNER_MODE are CylinderScan
+  // (bloom-desktop only supported CylinderScan before this field was added)
+  if (!merged.scanner_mode && fs.existsSync(envPath)) {
+    merged.scanner_mode = 'cylinderscan';
+  }
+
   // If we migrated from legacy config.json, save to new format and delete old file
   if (legacyConfig && Object.keys(legacyConfig).length > 0) {
     saveEnvConfig(merged, envPath);
@@ -556,6 +594,7 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
   // Write KEY=value format with sections
   const content = [
     '# Machine Configuration',
+    `SCANNER_MODE=${config.scanner_mode}`,
     `SCANNER_NAME=${config.scanner_name}`,
     `CAMERA_IP_ADDRESS=${config.camera_ip_address}`,
     `SCANS_DIR=${config.scans_dir}`,

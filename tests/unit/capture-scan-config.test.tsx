@@ -45,6 +45,7 @@ beforeEach(() => {
   // Default: config returns scan params
   mockConfigGet.mockResolvedValue({
     config: {
+      scanner_mode: 'cylinderscan',
       scanner_name: 'TestScanner',
       scans_dir: '~/.bloom/scans',
       camera_ip_address: 'mock',
@@ -718,6 +719,7 @@ describe('CaptureScan Config Integration', () => {
   it('1.8.4 falls back to defaults when config returns no num_frames', async () => {
     mockConfigGet.mockResolvedValue({
       config: {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'TestScanner',
         scans_dir: '~/.bloom/scans',
         camera_ip_address: 'mock',

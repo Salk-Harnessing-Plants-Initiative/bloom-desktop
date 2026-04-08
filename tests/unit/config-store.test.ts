@@ -107,6 +107,7 @@ SCANS_DIR=/test/dir`;
     it('should migrate from legacy config.json + .env', () => {
       // Create old-style config.json
       const legacyConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'LegacyScanner',
         camera_ip_address: '10.0.0.100',
         scans_dir: '/legacy/scans',
@@ -143,6 +144,7 @@ BLOOM_ANON_KEY=legacykey`;
 
     it('should handle migration when only config.json exists', () => {
       const legacyConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'ConfigOnlyScanner',
         camera_ip_address: 'mock',
         scans_dir: '/config/only',
@@ -161,6 +163,7 @@ BLOOM_ANON_KEY=legacykey`;
   describe('saveEnvConfig (unified config)', () => {
     it('should save all fields to .env file', () => {
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'SavedScanner',
         camera_ip_address: '192.168.1.100',
         scans_dir: '/custom/path',
@@ -186,6 +189,7 @@ BLOOM_ANON_KEY=legacykey`;
     it('should create parent directories if needed', () => {
       const nestedPath = path.join(testDir, 'deep', 'nested', '.env');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'NestedScanner',
         camera_ip_address: 'mock',
         scans_dir: path.join(testDir, 'test-scans-data'),
@@ -204,6 +208,7 @@ BLOOM_ANON_KEY=legacykey`;
       fs.writeFileSync(envPath, 'SCANNER_NAME=OldScanner');
 
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'NewScanner',
         camera_ip_address: '10.0.0.1',
         scans_dir: '/new',
@@ -223,6 +228,7 @@ BLOOM_ANON_KEY=legacykey`;
       it('should auto-create non-existent scans directory on save', () => {
         const scansDir = path.join(testDir, 'auto-created-scans');
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'AutoCreateScanner',
           camera_ip_address: 'mock',
           scans_dir: scansDir,
@@ -245,6 +251,7 @@ BLOOM_ANON_KEY=legacykey`;
       it('should auto-create nested scans directories recursively', () => {
         const nestedScansDir = path.join(testDir, 'level1', 'level2', 'scans');
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'NestedScanner',
           camera_ip_address: 'mock',
           scans_dir: nestedScansDir,
@@ -269,6 +276,7 @@ BLOOM_ANON_KEY=legacykey`;
         fs.mkdirSync(existingScansDir);
 
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'ExistingScanner',
           camera_ip_address: 'mock',
           scans_dir: existingScansDir,
@@ -305,6 +313,7 @@ BLOOM_ANON_KEY=legacykey`;
   describe('loadConfig', () => {
     it('should load config from a valid JSON file', () => {
       const testConfig: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'TestScanner',
         camera_ip_address: '10.0.0.23',
         scans_dir: '/data/scans',
@@ -344,6 +353,7 @@ BLOOM_ANON_KEY=legacykey`;
     it('should merge partial config with defaults', () => {
       // Config file with only some fields
       const partialConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'PartialScanner',
         // Missing: camera_ip_address, scans_dir, bloom_api_url
       };
@@ -362,6 +372,7 @@ BLOOM_ANON_KEY=legacykey`;
     it('should save config to a JSON file', () => {
       const scansDir = path.join(testDir, 'test-scans');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'SavedScanner',
         camera_ip_address: '192.168.1.100',
         scans_dir: scansDir,
@@ -379,6 +390,7 @@ BLOOM_ANON_KEY=legacykey`;
     it('should create parent directories if they do not exist', () => {
       const nestedPath = path.join(testDir, 'deep', 'nested', 'config.json');
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'NestedScanner',
         camera_ip_address: 'mock',
         scans_dir: path.join(testDir, 'test-scans-data'),
@@ -394,6 +406,7 @@ BLOOM_ANON_KEY=legacykey`;
 
     it('should overwrite existing config file', () => {
       const initialConfig: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'Initial',
         camera_ip_address: 'mock',
         scans_dir: path.join(testDir, 'initial-scans'),
@@ -402,6 +415,7 @@ BLOOM_ANON_KEY=legacykey`;
       fs.writeFileSync(configPath, JSON.stringify(initialConfig));
 
       const updatedConfig: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'Updated',
         camera_ip_address: '10.0.0.1',
         scans_dir: path.join(testDir, 'updated-scans'),
@@ -416,6 +430,7 @@ BLOOM_ANON_KEY=legacykey`;
 
     it('should write valid JSON with proper formatting', () => {
       const config: MachineConfig = {
+        scanner_mode: 'cylinderscan',
         scanner_name: 'FormattedScanner',
         camera_ip_address: 'mock',
         scans_dir: path.join(testDir, 'test-scans-data'),
@@ -451,6 +466,7 @@ BLOOM_ANON_KEY=legacykey`;
       it('should auto-create non-existent scans directory on save', () => {
         const scansDir = path.join(scansTestDir, 'new-scans');
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'AutoCreateScanner',
           camera_ip_address: 'mock',
           scans_dir: scansDir,
@@ -475,6 +491,7 @@ BLOOM_ANON_KEY=legacykey`;
           'scans'
         );
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'NestedScanner',
           camera_ip_address: 'mock',
           scans_dir: nestedScansDir,
@@ -497,6 +514,7 @@ BLOOM_ANON_KEY=legacykey`;
         fs.mkdirSync(existingScansDir);
 
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'ExistingScanner',
           camera_ip_address: 'mock',
           scans_dir: existingScansDir,
@@ -719,6 +737,7 @@ OTHER_VAR=ignored`;
 
       it('should pass validation for existing writable directory', () => {
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'test-scanner',
           camera_ip_address: 'mock',
           scans_dir: writableDir,
@@ -740,6 +759,7 @@ OTHER_VAR=ignored`;
         const nonExistentPath = path.join(testDir, 'does-not-exist');
 
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'test-scanner',
           camera_ip_address: 'mock',
           scans_dir: nonExistentPath,
@@ -773,6 +793,7 @@ OTHER_VAR=ignored`;
         }
 
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'test-scanner',
           camera_ip_address: 'mock',
           scans_dir: nonWritableDir,
@@ -813,6 +834,7 @@ OTHER_VAR=ignored`;
           const nonExistentPath = path.join(testDir, 'new-scans');
 
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'test-scanner',
             camera_ip_address: 'mock',
             scans_dir: nonExistentPath,
@@ -836,6 +858,7 @@ OTHER_VAR=ignored`;
           const nestedPath = path.join(testDir, 'level1', 'level2', 'scans');
 
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'test-scanner',
             camera_ip_address: 'mock',
             scans_dir: nestedPath,
@@ -876,6 +899,7 @@ OTHER_VAR=ignored`;
           const pathUnderNonWritable = path.join(nonWritableDir, 'scans');
 
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'test-scanner',
             camera_ip_address: 'mock',
             scans_dir: pathUnderNonWritable,
@@ -902,6 +926,7 @@ OTHER_VAR=ignored`;
     describe('scanner_name validation', () => {
       it('should reject empty scanner name', () => {
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: '',
           camera_ip_address: 'mock',
           scans_dir: path.join(testDir, 'test-scans-data'),
@@ -927,6 +952,7 @@ OTHER_VAR=ignored`;
 
         try {
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'PBIOBScanner',
             camera_ip_address: 'mock',
             scans_dir: testDir, // Use actual writable directory
@@ -964,6 +990,7 @@ OTHER_VAR=ignored`;
 
           for (const name of validNames) {
             const config: MachineConfig = {
+              scanner_mode: 'cylinderscan',
               scanner_name: name,
               camera_ip_address: 'mock',
               scans_dir: testDir, // Use actual writable directory
@@ -985,6 +1012,7 @@ OTHER_VAR=ignored`;
     describe('camera_ip_address validation', () => {
       it('should accept "mock" as valid', () => {
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'Scanner',
           camera_ip_address: 'mock',
           scans_dir: path.join(testDir, 'test-scans-data'),
@@ -1011,6 +1039,7 @@ OTHER_VAR=ignored`;
 
         for (const ip of validIPs) {
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'Scanner',
             camera_ip_address: ip,
             scans_dir: path.join(testDir, 'test-scans-data'),
@@ -1038,6 +1067,7 @@ OTHER_VAR=ignored`;
 
         for (const ip of invalidIPs) {
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'Scanner',
             camera_ip_address: ip,
             scans_dir: path.join(testDir, 'test-scans-data'),
@@ -1060,6 +1090,7 @@ OTHER_VAR=ignored`;
     describe('scans_dir validation', () => {
       it('should reject empty scans directory', () => {
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'Scanner',
           camera_ip_address: 'mock',
           scans_dir: '',
@@ -1085,6 +1116,7 @@ OTHER_VAR=ignored`;
 
         try {
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'Scanner',
             camera_ip_address: 'mock',
             scans_dir: testDir, // Use actual writable directory
@@ -1117,6 +1149,7 @@ OTHER_VAR=ignored`;
 
         for (const url of validURLs) {
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'Scanner',
             camera_ip_address: 'mock',
             scans_dir: '/data',
@@ -1133,6 +1166,7 @@ OTHER_VAR=ignored`;
 
         for (const url of invalidURLs) {
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'Scanner',
             camera_ip_address: 'mock',
             scans_dir: '/data',
@@ -1146,6 +1180,7 @@ OTHER_VAR=ignored`;
 
       it('should accept HTTP URLs for local development', () => {
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: 'Scanner',
           camera_ip_address: 'mock',
           scans_dir: '/data',
@@ -1165,6 +1200,7 @@ OTHER_VAR=ignored`;
 
         try {
           const config: MachineConfig = {
+            scanner_mode: 'cylinderscan',
             scanner_name: 'ValidScanner',
             camera_ip_address: '10.0.0.23',
             scans_dir: testDir, // Use actual writable directory
@@ -1190,6 +1226,7 @@ OTHER_VAR=ignored`;
 
       it('should return valid=false with multiple errors', () => {
         const config: MachineConfig = {
+          scanner_mode: 'cylinderscan',
           scanner_name: '',
           camera_ip_address: 'invalid',
           scans_dir: '',
@@ -1474,6 +1511,7 @@ OTHER_VAR=ignored`;
     it('1.1.5 validation rejects num_frames edge cases', () => {
       const baseConfig: MachineConfig = {
         ...getDefaultConfig(),
+        scanner_mode: 'cylinderscan',
         scanner_name: 'TestScanner',
         camera_ip_address: 'mock',
       };
@@ -1506,6 +1544,7 @@ OTHER_VAR=ignored`;
     it('1.1.6 validation rejects seconds_per_rot edge cases', () => {
       const baseConfig: MachineConfig = {
         ...getDefaultConfig(),
+        scanner_mode: 'cylinderscan',
         scanner_name: 'TestScanner',
         camera_ip_address: 'mock',
       };

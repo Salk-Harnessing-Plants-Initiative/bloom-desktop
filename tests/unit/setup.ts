@@ -75,5 +75,8 @@ if ((global as any).window) {
   (global as any).window.electron = {
     python: mockPythonAPI,
     database: mockDatabaseAPI,
+    config: {
+      getMode: vi.fn().mockResolvedValue({ mode: 'cylinderscan' }),
+    },
   };
 }
