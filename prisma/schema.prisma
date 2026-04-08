@@ -12,10 +12,12 @@ datasource db {
 }
 
 model Phenotyper {
-  id    String @id @default(uuid())
-  name  String
-  email String @unique
-  scans Scan[]
+  id            String             @id @default(uuid())
+  name          String
+  email         String             @unique
+  scans         Scan[]
+  graviScans    GraviScan[]
+  graviSessions GraviScanSession[]
 }
 
 model Scientist {
@@ -26,22 +28,27 @@ model Scientist {
 }
 
 model Experiment {
-  id           String      @id @default(uuid())
-  name         String
-  species      String
-  scientist_id String?
-  accession_id String?
-  accession    Accessions? @relation("AccessionToExperiment", fields: [accession_id], references: [id])
-  scientist    Scientist?  @relation(fields: [scientist_id], references: [id])
-  scans        Scan[]
+  id                        String                     @id @default(uuid())
+  name                      String
+  species                   String
+  scientist_id              String?
+  accession_id              String?
+  experiment_type           String                     @default("cylinderscan")
+  accession                 Accessions?                @relation("AccessionToExperiment", fields: [accession_id], references: [id])
+  scientist                 Scientist?                 @relation(fields: [scientist_id], references: [id])
+  scans                     Scan[]
+  graviscanScans            GraviScan[]
+  graviscanSessions         GraviScanSession[]
+  graviscanPlateAssignments GraviScanPlateAssignment[]
 }
 
 model Accessions {
-  id          String                   @id @default(uuid())
-  name        String
-  createdAt   DateTime                 @default(now())
-  experiments Experiment[]             @relation("AccessionToExperiment")
-  mappings    PlantAccessionMappings[]
+  id                   String                   @id @default(uuid())
+  name                 String
+  createdAt            DateTime                 @default(now())
+  experiments          Experiment[]             @relation("AccessionToExperiment")
+  mappings             PlantAccessionMappings[]
+  graviPlateAccessions GraviPlateAccession[]
 }
 
 model PlantAccessionMappings {
@@ -91,4 +98,156 @@ model Image {
   scan         Scan   @relation(fields: [scan_id], references: [id])
 
   @@index([scan_id])
+}
+
+// =============================================================================
+// GraviScan Models
+// =============================================================================
+
+model GraviScan {
+  id            String   @id @default(uuid())
+  experiment_id String
+  phenotyper_id String
+  scanner_id    String
+  session_id    String?
+  cycle_number  Int?
+  wave_number   Int      @default(0)
+
+  plate_barcode   String?
+  transplant_date DateTime?
+  custom_note     String?
+
+  path         String
+  capture_date DateTime @default(now())
+
+  scan_started_at DateTime?
+  scan_ended_at   DateTime?
+
+  grid_mode   String
+  plate_index String
+  resolution  Int
+  format      String  @default("tiff")
+
+  deleted Boolean @default(false)
+
+  experiment Experiment        @relation(fields: [experiment_id], references: [id])
+  phenotyper Phenotyper        @relation(fields: [phenotyper_id], references: [id])
+  scanner    GraviScanner      @relation(fields: [scanner_id], references: [id])
+  session    GraviScanSession? @relation(fields: [session_id], references: [id])
+  images     GraviImage[]
+
+  @@index([experiment_id])
+  @@index([phenotyper_id])
+  @@index([scanner_id])
+  @@index([session_id])
+  @@index([capture_date])
+  @@index([experiment_id, wave_number, plate_barcode])
+}
+
+model GraviScanSession {
+  id               String    @id @default(uuid())
+  experiment_id    String
+  phenotyper_id    String
+  scan_mode        String    @default("single")
+  interval_seconds Int?
+  duration_seconds Int?
+  total_cycles     Int?
+  started_at       DateTime  @default(now())
+  completed_at     DateTime?
+  cancelled        Boolean   @default(false)
+
+  experiment Experiment  @relation(fields: [experiment_id], references: [id])
+  phenotyper Phenotyper  @relation(fields: [phenotyper_id], references: [id])
+  scans      GraviScan[]
+
+  @@index([experiment_id])
+  @@index([phenotyper_id])
+}
+
+model GraviScanPlateAssignment {
+  id              String   @id @default(uuid())
+  experiment_id   String
+  scanner_id      String
+  plate_index     String
+  plate_barcode   String?
+  transplant_date DateTime?
+  custom_note     String?
+  selected        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  experiment Experiment   @relation(fields: [experiment_id], references: [id])
+  scanner    GraviScanner @relation(fields: [scanner_id], references: [id])
+
+  @@unique([experiment_id, scanner_id, plate_index])
+  @@index([experiment_id])
+  @@index([scanner_id])
+}
+
+model GraviImage {
+  id           String    @id @default(uuid())
+  graviscan_id String
+  path         String
+  status       String    @default("pending")
+  box_status   String    @default("pending")
+  graviScan    GraviScan @relation(fields: [graviscan_id], references: [id])
+
+  @@index([graviscan_id])
+}
+
+model GraviScanner {
+  id               String                     @id @default(uuid())
+  name             String
+  display_name     String?
+  vendor_id        String                     @default("04b8")
+  product_id       String                     @default("013a")
+  usb_port         String?
+  usb_bus          Int?
+  usb_device       Int?
+  enabled          Boolean                    @default(true)
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  graviScans       GraviScan[]
+  plateAssignments GraviScanPlateAssignment[]
+}
+
+model GraviConfig {
+  id            String   @id @default(uuid())
+  grid_mode     String   @default("2grid")
+  resolution    Int      @default(1200)
+  format        String   @default("tiff")
+  usb_signature String?
+  updatedAt     DateTime @updatedAt
+}
+
+model GraviPlateAccession {
+  id               String    @id @default(uuid())
+  metadata_file_id String
+  plate_id         String
+  accession        String
+  transplant_date  DateTime?
+  custom_note      String?
+  createdAt        DateTime  @default(now())
+
+  metadata_file Accessions                @relation(fields: [metadata_file_id], references: [id], onDelete: Cascade)
+  sections      GraviPlateSectionMapping[]
+
+  @@unique([metadata_file_id, plate_id])
+  @@index([metadata_file_id])
+  @@index([plate_id])
+}
+
+model GraviPlateSectionMapping {
+  id               String   @id @default(uuid())
+  gravi_plate_id   String
+  plate_section_id String
+  plant_qr         String
+  medium           String?
+  createdAt        DateTime @default(now())
+
+  plate GraviPlateAccession @relation(fields: [gravi_plate_id], references: [id], onDelete: Cascade)
+
+  @@unique([gravi_plate_id, plant_qr])
+  @@index([gravi_plate_id])
+  @@index([plant_qr])
 }
