@@ -454,9 +454,7 @@ test.describe('Phenotypers Management', () => {
     await window.click('text=Home');
 
     // Wait for home page to load (unique heading on home page)
-    await expect(
-      window.getByRole('heading', { name: 'Under Construction', exact: true })
-    ).toBeVisible();
+    await expect(window.getByText('Workflow Steps')).toBeVisible();
 
     // Navigate back to Phenotypers page
     await window.click('text=Phenotypers');
