@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -967,4 +969,3 @@ The database SHALL include 8 GraviScan models for multi-scanner flatbed phenotyp
 - **WHEN** `npx prisma generate` runs
 - **THEN** the Prisma client SHALL be generated successfully
 - **AND** all new model types SHALL be available in TypeScript
-
