@@ -117,6 +117,14 @@ verify_schema() {
     "Experiment"
     "Scan"
     "Image"
+    "GraviScan"
+    "GraviScanSession"
+    "GraviScanPlateAssignment"
+    "GraviImage"
+    "GraviScanner"
+    "GraviConfig"
+    "GraviPlateAccession"
+    "GraviPlateSectionMapping"
     "_prisma_migrations"
   )
 

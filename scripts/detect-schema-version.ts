@@ -7,7 +7,8 @@
  * - v1 (init): PlantAccessionMappings has accession_id, no genotype_id (matches pilot)
  * - v2 (add_genotype_id): PlantAccessionMappings has genotype_id
  * - v3 (cleanup): PlantAccessionMappings has accession_name, no accession_id
- * - migrated: Database has _prisma_migrations table
+ * - v4 (graviscan): Has GraviScan table (8 new models)
+ * - migrated: Database has _prisma_migrations table but no GraviScan table (v3-migrated)
  * - unknown: Schema doesn't match any known version
  */
 
@@ -16,7 +17,7 @@ import Database from 'better-sqlite3';
 /**
  * Schema version identifiers
  */
-export type SchemaVersion = 'v1' | 'v2' | 'v3' | 'migrated' | 'unknown';
+export type SchemaVersion = 'v1' | 'v2' | 'v3' | 'v4' | 'migrated' | 'unknown';
 
 /**
  * Column info from SQLite PRAGMA table_info
@@ -34,11 +35,12 @@ interface ColumnInfo {
  * Detect the schema version of a SQLite database.
  *
  * Detection logic:
- * 1. If _prisma_migrations table exists → 'migrated'
- * 2. If PlantAccessionMappings has accession_name (no accession_id) → 'v3'
- * 3. If PlantAccessionMappings has genotype_id → 'v2'
- * 4. If PlantAccessionMappings has accession_id (no genotype_id) → 'v1'
- * 5. Otherwise → 'unknown'
+ * 1. If GraviScan table exists → 'v4'
+ * 2. If _prisma_migrations table exists (but no GraviScan) → 'migrated' (v3-migrated)
+ * 3. If PlantAccessionMappings has accession_name (no accession_id) → 'v3'
+ * 4. If PlantAccessionMappings has genotype_id → 'v2'
+ * 5. If PlantAccessionMappings has accession_id (no genotype_id) → 'v1'
+ * 6. Otherwise → 'unknown'
  *
  * @param dbPath Path to the SQLite database file
  * @returns The detected schema version
@@ -50,7 +52,18 @@ export async function detectSchemaVersion(
   const db = new Database(dbPath, { readonly: true });
 
   try {
-    // Check if _prisma_migrations table exists
+    // Check if GraviScan table exists → v4
+    const graviScanTable = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='GraviScan'"
+      )
+      .get();
+
+    if (graviScanTable) {
+      return 'v4';
+    }
+
+    // Check if _prisma_migrations table exists (but no GraviScan) → migrated (v3)
     const migrationTable = db
       .prepare(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='_prisma_migrations'"

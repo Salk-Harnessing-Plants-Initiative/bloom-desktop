@@ -49,6 +49,16 @@ const MIGRATIONS: Record<string, { checksum: string; name: string }> = {
       'ed0532a62d4c4c49ad2d06101e11e4ada508e235121a82e73a20d6fb09f89036',
     name: '20260211195433_cleanup_accession_fields',
   },
+  '20260408170411_add_experiment_type': {
+    checksum:
+      '9daece665db8c75c261a36ff23ea2d451bf6d278c402cba8c562541b76775740',
+    name: '20260408170411_add_experiment_type',
+  },
+  '20260408170532_add_graviscan_models': {
+    checksum:
+      '3029fd8912d761d5aa8b0b61e616ff71ee5d01a9c2a0991cfab820890b29a30f',
+    name: '20260408170532_add_graviscan_models',
+  },
 };
 
 /**
@@ -238,6 +248,195 @@ function applyV2ToV3(db: Database.Database): void {
 }
 
 /**
+ * Apply V3 to V4 migration (add experiment_type + 8 GraviScan models)
+ * This applies the two new migrations within a single transaction.
+ */
+function applyV3ToV4(db: Database.Database): void {
+  // Begin transaction for safety
+  db.exec('BEGIN TRANSACTION;');
+
+  try {
+    // Migration 1: Add experiment_type column to Experiment
+    // Prisma uses table-rebuild pattern for SQLite ALTER TABLE
+    db.exec(`
+      PRAGMA defer_foreign_keys=ON;
+      PRAGMA foreign_keys=OFF;
+
+      CREATE TABLE "new_Experiment" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "species" TEXT NOT NULL,
+        "scientist_id" TEXT,
+        "accession_id" TEXT,
+        "experiment_type" TEXT NOT NULL DEFAULT 'cylinderscan',
+        CONSTRAINT "Experiment_accession_id_fkey"
+          FOREIGN KEY ("accession_id") REFERENCES "Accessions" ("id")
+          ON DELETE SET NULL ON UPDATE CASCADE,
+        CONSTRAINT "Experiment_scientist_id_fkey"
+          FOREIGN KEY ("scientist_id") REFERENCES "Scientist" ("id")
+          ON DELETE SET NULL ON UPDATE CASCADE
+      );
+
+      INSERT INTO "new_Experiment" ("accession_id", "id", "name", "scientist_id", "species")
+        SELECT "accession_id", "id", "name", "scientist_id", "species" FROM "Experiment";
+
+      DROP TABLE "Experiment";
+      ALTER TABLE "new_Experiment" RENAME TO "Experiment";
+
+      PRAGMA foreign_keys=ON;
+      PRAGMA defer_foreign_keys=OFF;
+    `);
+
+    // Migration 2: Create all 8 GraviScan tables
+    db.exec(`
+      CREATE TABLE "GraviScan" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "experiment_id" TEXT NOT NULL,
+        "phenotyper_id" TEXT NOT NULL,
+        "scanner_id" TEXT NOT NULL,
+        "session_id" TEXT,
+        "cycle_number" INTEGER,
+        "wave_number" INTEGER NOT NULL DEFAULT 0,
+        "plate_barcode" TEXT,
+        "transplant_date" DATETIME,
+        "custom_note" TEXT,
+        "path" TEXT NOT NULL,
+        "capture_date" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "scan_started_at" DATETIME,
+        "scan_ended_at" DATETIME,
+        "grid_mode" TEXT NOT NULL,
+        "plate_index" TEXT NOT NULL,
+        "resolution" INTEGER NOT NULL,
+        "format" TEXT NOT NULL DEFAULT 'tiff',
+        "deleted" BOOLEAN NOT NULL DEFAULT false,
+        CONSTRAINT "GraviScan_experiment_id_fkey" FOREIGN KEY ("experiment_id") REFERENCES "Experiment" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "GraviScan_phenotyper_id_fkey" FOREIGN KEY ("phenotyper_id") REFERENCES "Phenotyper" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "GraviScan_scanner_id_fkey" FOREIGN KEY ("scanner_id") REFERENCES "GraviScanner" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "GraviScan_session_id_fkey" FOREIGN KEY ("session_id") REFERENCES "GraviScanSession" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+      );
+
+      CREATE TABLE "GraviScanSession" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "experiment_id" TEXT NOT NULL,
+        "phenotyper_id" TEXT NOT NULL,
+        "scan_mode" TEXT NOT NULL DEFAULT 'single',
+        "interval_seconds" INTEGER,
+        "duration_seconds" INTEGER,
+        "total_cycles" INTEGER,
+        "started_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "completed_at" DATETIME,
+        "cancelled" BOOLEAN NOT NULL DEFAULT false,
+        CONSTRAINT "GraviScanSession_experiment_id_fkey" FOREIGN KEY ("experiment_id") REFERENCES "Experiment" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "GraviScanSession_phenotyper_id_fkey" FOREIGN KEY ("phenotyper_id") REFERENCES "Phenotyper" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+
+      CREATE TABLE "GraviScanPlateAssignment" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "experiment_id" TEXT NOT NULL,
+        "scanner_id" TEXT NOT NULL,
+        "plate_index" TEXT NOT NULL,
+        "plate_barcode" TEXT,
+        "transplant_date" DATETIME,
+        "custom_note" TEXT,
+        "selected" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "GraviScanPlateAssignment_experiment_id_fkey" FOREIGN KEY ("experiment_id") REFERENCES "Experiment" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT "GraviScanPlateAssignment_scanner_id_fkey" FOREIGN KEY ("scanner_id") REFERENCES "GraviScanner" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+
+      CREATE TABLE "GraviImage" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "graviscan_id" TEXT NOT NULL,
+        "path" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'pending',
+        "box_status" TEXT NOT NULL DEFAULT 'pending',
+        CONSTRAINT "GraviImage_graviscan_id_fkey" FOREIGN KEY ("graviscan_id") REFERENCES "GraviScan" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+
+      CREATE TABLE "GraviScanner" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "display_name" TEXT,
+        "vendor_id" TEXT NOT NULL DEFAULT '04b8',
+        "product_id" TEXT NOT NULL DEFAULT '013a',
+        "usb_port" TEXT,
+        "usb_bus" INTEGER,
+        "usb_device" INTEGER,
+        "enabled" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL
+      );
+
+      CREATE TABLE "GraviConfig" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "grid_mode" TEXT NOT NULL DEFAULT '2grid',
+        "resolution" INTEGER NOT NULL DEFAULT 1200,
+        "format" TEXT NOT NULL DEFAULT 'tiff',
+        "usb_signature" TEXT,
+        "updatedAt" DATETIME NOT NULL
+      );
+
+      CREATE TABLE "GraviPlateAccession" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "metadata_file_id" TEXT NOT NULL,
+        "plate_id" TEXT NOT NULL,
+        "accession" TEXT NOT NULL,
+        "transplant_date" DATETIME,
+        "custom_note" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "GraviPlateAccession_metadata_file_id_fkey" FOREIGN KEY ("metadata_file_id") REFERENCES "Accessions" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+
+      CREATE TABLE "GraviPlateSectionMapping" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "gravi_plate_id" TEXT NOT NULL,
+        "plate_section_id" TEXT NOT NULL,
+        "plant_qr" TEXT NOT NULL,
+        "medium" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "GraviPlateSectionMapping_gravi_plate_id_fkey" FOREIGN KEY ("gravi_plate_id") REFERENCES "GraviPlateAccession" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+
+      -- Indexes for GraviScan
+      CREATE INDEX "GraviScan_experiment_id_idx" ON "GraviScan"("experiment_id");
+      CREATE INDEX "GraviScan_phenotyper_id_idx" ON "GraviScan"("phenotyper_id");
+      CREATE INDEX "GraviScan_scanner_id_idx" ON "GraviScan"("scanner_id");
+      CREATE INDEX "GraviScan_session_id_idx" ON "GraviScan"("session_id");
+      CREATE INDEX "GraviScan_capture_date_idx" ON "GraviScan"("capture_date");
+      CREATE INDEX "GraviScan_experiment_id_wave_number_plate_barcode_idx" ON "GraviScan"("experiment_id", "wave_number", "plate_barcode");
+
+      -- Indexes for GraviScanSession
+      CREATE INDEX "GraviScanSession_experiment_id_idx" ON "GraviScanSession"("experiment_id");
+      CREATE INDEX "GraviScanSession_phenotyper_id_idx" ON "GraviScanSession"("phenotyper_id");
+
+      -- Indexes for GraviScanPlateAssignment
+      CREATE INDEX "GraviScanPlateAssignment_experiment_id_idx" ON "GraviScanPlateAssignment"("experiment_id");
+      CREATE INDEX "GraviScanPlateAssignment_scanner_id_idx" ON "GraviScanPlateAssignment"("scanner_id");
+      CREATE UNIQUE INDEX "GraviScanPlateAssignment_experiment_id_scanner_id_plate_index_key" ON "GraviScanPlateAssignment"("experiment_id", "scanner_id", "plate_index");
+
+      -- Indexes for GraviImage
+      CREATE INDEX "GraviImage_graviscan_id_idx" ON "GraviImage"("graviscan_id");
+
+      -- Indexes for GraviPlateAccession
+      CREATE INDEX "GraviPlateAccession_metadata_file_id_idx" ON "GraviPlateAccession"("metadata_file_id");
+      CREATE INDEX "GraviPlateAccession_plate_id_idx" ON "GraviPlateAccession"("plate_id");
+      CREATE UNIQUE INDEX "GraviPlateAccession_metadata_file_id_plate_id_key" ON "GraviPlateAccession"("metadata_file_id", "plate_id");
+
+      -- Indexes for GraviPlateSectionMapping
+      CREATE INDEX "GraviPlateSectionMapping_gravi_plate_id_idx" ON "GraviPlateSectionMapping"("gravi_plate_id");
+      CREATE INDEX "GraviPlateSectionMapping_plant_qr_idx" ON "GraviPlateSectionMapping"("plant_qr");
+      CREATE UNIQUE INDEX "GraviPlateSectionMapping_gravi_plate_id_plant_qr_key" ON "GraviPlateSectionMapping"("gravi_plate_id", "plant_qr");
+    `);
+
+    db.exec('COMMIT;');
+  } catch (error) {
+    db.exec('ROLLBACK;');
+    throw error;
+  }
+}
+
+/**
  * Upgrade a database to the current schema version
  *
  * @param dbPath Path to the SQLite database file
@@ -253,7 +452,7 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
   const currentVersion = await detectSchemaVersion(dbPath);
 
   // Handle already-current databases
-  if (currentVersion === 'v3' || currentVersion === 'migrated') {
+  if (currentVersion === 'v4') {
     console.log(`Database is already at current version (${currentVersion})`);
     return {
       status: 'already-current',
@@ -272,7 +471,7 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
   console.log(`Creating backup at: ${backupPath}`);
   fs.copyFileSync(dbPath, backupPath);
 
-  console.log(`Upgrading database from ${currentVersion} to v3...`);
+  console.log(`Upgrading database from ${currentVersion} to v4...`);
 
   const db = new Database(dbPath);
 
@@ -285,7 +484,7 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
 
     // Apply migrations based on current version
     if (currentVersion === 'v1') {
-      // V1 → V2 → V3
+      // V1 → V2 → V3 → V4
       console.log('  Applying V1 → V2 migration (add genotype_id)...');
       applyV1ToV2(db);
       insertMigrationRecord(db, '20251028040530_init');
@@ -297,8 +496,15 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
       console.log('  Applying V2 → V3 migration (cleanup accession fields)...');
       applyV2ToV3(db);
       insertMigrationRecord(db, '20260211195433_cleanup_accession_fields');
+
+      console.log(
+        '  Applying V3 → V4 migration (add experiment_type + GraviScan models)...'
+      );
+      applyV3ToV4(db);
+      insertMigrationRecord(db, '20260408170411_add_experiment_type');
+      insertMigrationRecord(db, '20260408170532_add_graviscan_models');
     } else if (currentVersion === 'v2') {
-      // V2 → V3
+      // V2 → V3 → V4
       insertMigrationRecord(db, '20251028040530_init');
       insertMigrationRecord(
         db,
@@ -308,6 +514,31 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
       console.log('  Applying V2 → V3 migration (cleanup accession fields)...');
       applyV2ToV3(db);
       insertMigrationRecord(db, '20260211195433_cleanup_accession_fields');
+
+      console.log(
+        '  Applying V3 → V4 migration (add experiment_type + GraviScan models)...'
+      );
+      applyV3ToV4(db);
+      insertMigrationRecord(db, '20260408170411_add_experiment_type');
+      insertMigrationRecord(db, '20260408170532_add_graviscan_models');
+    } else if (currentVersion === 'v3' || currentVersion === 'migrated') {
+      // V3 → V4 (or migrated-v3 → V4)
+      if (currentVersion === 'v3') {
+        // Non-migrated v3: insert all prior migration records
+        insertMigrationRecord(db, '20251028040530_init');
+        insertMigrationRecord(
+          db,
+          '20251125180403_add_genotype_id_to_plant_mappings'
+        );
+        insertMigrationRecord(db, '20260211195433_cleanup_accession_fields');
+      }
+
+      console.log(
+        '  Applying V3 → V4 migration (add experiment_type + GraviScan models)...'
+      );
+      applyV3ToV4(db);
+      insertMigrationRecord(db, '20260408170411_add_experiment_type');
+      insertMigrationRecord(db, '20260408170532_add_graviscan_models');
     }
 
     // Re-enable foreign keys
@@ -324,7 +555,7 @@ export async function upgradeDatabase(dbPath: string): Promise<UpgradeResult> {
     return {
       status: 'upgraded',
       fromVersion: currentVersion,
-      toVersion: 'v3',
+      toVersion: 'v4',
       backupPath,
     };
   } catch (error) {

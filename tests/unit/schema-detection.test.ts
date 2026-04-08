@@ -56,6 +56,57 @@ describe('detectSchemaVersion', () => {
     });
   });
 
+  describe('detects v4 databases', () => {
+    let tempDbPath: string;
+
+    afterAll(() => {
+      if (tempDbPath && fs.existsSync(tempDbPath)) {
+        fs.unlinkSync(tempDbPath);
+      }
+    });
+
+    it('detects v4 schema (has GraviScan table)', async () => {
+      tempDbPath = path.join(FIXTURES_DIR, 'temp-v4.db');
+      const db = new Database(tempDbPath);
+
+      try {
+        // Create minimal v4 schema with GraviScan table
+        db.exec(`
+          CREATE TABLE "PlantAccessionMappings" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "plant_barcode" TEXT NOT NULL,
+            "accession_name" TEXT,
+            "accession_file_id" TEXT NOT NULL
+          );
+          CREATE TABLE "GraviScan" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "experiment_id" TEXT NOT NULL,
+            "path" TEXT NOT NULL
+          );
+          CREATE TABLE "_prisma_migrations" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "checksum" TEXT NOT NULL,
+            "finished_at" DATETIME,
+            "migration_name" TEXT NOT NULL,
+            "logs" TEXT,
+            "rolled_back_at" DATETIME,
+            "started_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "applied_steps_count" INTEGER NOT NULL DEFAULT 0
+          );
+        `);
+      } finally {
+        db.close();
+      }
+
+      const version = await detectSchemaVersion(tempDbPath);
+      expect(version).toBe('v4');
+
+      // Clean up
+      fs.unlinkSync(tempDbPath);
+      tempDbPath = '';
+    });
+  });
+
   describe('detects migrated databases', () => {
     let tempDbPath: string;
 
@@ -66,7 +117,7 @@ describe('detectSchemaVersion', () => {
       }
     });
 
-    it('returns "migrated" for databases with _prisma_migrations table', async () => {
+    it('returns "migrated" for databases with _prisma_migrations table but no GraviScan', async () => {
       // Create a temp database with V3 schema AND _prisma_migrations table
       tempDbPath = path.join(FIXTURES_DIR, 'temp-migrated.db');
       const db = new Database(tempDbPath);
@@ -264,10 +315,11 @@ describe('SchemaVersion type', () => {
       'v1',
       'v2',
       'v3',
+      'v4',
       'migrated',
       'unknown',
     ];
     // TypeScript will error if any of these are not valid SchemaVersion values
-    expect(validVersions).toHaveLength(5);
+    expect(validVersions).toHaveLength(6);
   });
 });
