@@ -11,6 +11,7 @@ from python.graviscan.scan_regions import (
     GRID_2_REGIONS,
     GRID_4_REGIONS,
     SCANNER_MAX_X,
+    SCANNER_MAX_Y,
     ScanRegion,
     get_all_plate_indices,
     get_crop_box,
@@ -45,6 +46,21 @@ class TestGetScanRegion:
     def test_invalid_plate_index_4grid(self):
         with pytest.raises(ValueError, match="Invalid plate_index"):
             get_scan_region("4grid", "99")
+
+    def test_all_regions_within_scanner_bed(self):
+        """Every region must fit within scanner bed bounds (215.9mm x 297.0mm)."""
+        for regions in (GRID_2_REGIONS, GRID_4_REGIONS):
+            for idx, region in regions.items():
+                right = region.left + region.width
+                bottom = region.top + region.height
+                assert right <= SCANNER_MAX_X + 0.01, (
+                    f"Region {idx} right edge {right:.1f}mm exceeds "
+                    f"SCANNER_MAX_X {SCANNER_MAX_X}mm"
+                )
+                assert bottom <= SCANNER_MAX_Y + 0.01, (
+                    f"Region {idx} bottom edge {bottom:.1f}mm exceeds "
+                    f"SCANNER_MAX_Y {SCANNER_MAX_Y}mm"
+                )
 
 
 # ---------------------------------------------------------------------------

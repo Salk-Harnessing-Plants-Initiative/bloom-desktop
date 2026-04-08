@@ -69,7 +69,9 @@ GRID_4_REGIONS: Dict[str, ScanRegion] = {
         top=5.0, left=110.0, width=105.9, height=150.0
     ),  # Top-right (clamped to bed width 215.9mm)
     "10": ScanRegion(top=151.0, left=5.0, width=105.0, height=145.0),  # Bottom-left
-    "11": ScanRegion(top=151.0, left=115.0, width=105.0, height=145.0),  # Bottom-right
+    "11": ScanRegion(
+        top=151.0, left=115.0, width=100.9, height=145.0
+    ),  # Bottom-right (clamped to bed width 215.9mm)
 }
 
 
