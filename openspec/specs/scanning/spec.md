@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -912,4 +914,3 @@ The Layout sidebar navigation SHALL conditionally show capture-related links bas
 - **WHEN** the Layout renders
 - **THEN** the subtitle under "Bloom Desktop" SHALL display the mode name
 - **AND** the footer SHALL continue to show the scanner name from config
-

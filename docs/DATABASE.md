@@ -214,6 +214,33 @@ BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:seed
 BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:studio
 ```
 
+### After Git Pull: Applying New Migrations
+
+When you pull code that includes new Prisma migrations (new files in `prisma/migrations/`), your local development database will be out of date. The app will crash with errors like:
+
+```
+The column `main.Experiment.experiment_type` does not exist in the current database.
+```
+
+**To fix**, apply pending migrations to your dev database:
+
+```bash
+# Apply pending migrations (preserves existing data)
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npx prisma migrate deploy
+
+# Then restart the app
+npm run dev
+```
+
+If you want a completely fresh database instead:
+
+```bash
+# Delete and recreate from scratch (loses all dev data)
+BLOOM_DATABASE_URL="file:$HOME/.bloom/dev.db" npm run prisma:reset
+```
+
+**Note**: The app does NOT auto-apply Prisma migrations on startup. This is by design — Prisma's migration engine is a separate binary from the query engine, and bundling it inside the Electron ASAR package adds significant size and complexity (see [PACKAGING.md](PACKAGING.md) for the ASAR/Prisma constraints). Instead, the app uses a custom upgrade script (`scripts/upgrade-database.ts`) that handles schema version detection and applies raw SQL upgrades for production databases. For development, migrations must be applied manually after pulling new code.
+
 ### Advanced Commands
 
 ```bash

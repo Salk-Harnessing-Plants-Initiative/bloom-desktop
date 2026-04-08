@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-machine-configuration. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Config Store Module
 
 The application SHALL provide a config store module that persists all machine-level settings and credentials to `~/.bloom/.env`.
@@ -524,4 +526,3 @@ The existing fields remain: scanner_name, camera_ip_address, scans_dir, bloom_ap
 - **WHEN** config is saved with camera_ip_address empty
 - **THEN** validation SHALL pass (camera IP is not required in GraviScan mode)
 - **AND** `num_frames` and `seconds_per_rot` SHALL use defaults without validation errors
-
