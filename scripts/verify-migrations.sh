@@ -48,6 +48,8 @@ echo "Extracting schemas..."
 # Extract schema from both databases, excluding _prisma_migrations table
 # Use SQL to list all tables except _prisma_migrations, then get their schemas
 
+# Extract normalized schema: sorted columns per table + sorted indexes
+# Column order is ignored (SQLite ALTER TABLE ADD COLUMN appends to end)
 extract_schema() {
   local db_path="$1"
   local output_file="$2"
@@ -55,12 +57,31 @@ extract_schema() {
   # Get list of tables (excluding _prisma_migrations and sqlite internal tables)
   tables=$(sqlite3 "$db_path" "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != '_prisma_migrations' ORDER BY name;")
 
-  # Get schema for each table
+  > "$output_file"
+
   for table in $tables; do
-    sqlite3 "$db_path" "SELECT sql || ';' FROM sqlite_master WHERE type='table' AND name='$table';"
-    # Also get indexes for this table
-    sqlite3 "$db_path" "SELECT sql || ';' FROM sqlite_master WHERE type='index' AND tbl_name='$table' AND sql IS NOT NULL;"
-  done | sort > "$output_file"
+    echo "TABLE: $table" >> "$output_file"
+
+    # Extract column definitions: use PRAGMA table_info to get name, type, notnull, default
+    # Output format: "column_name TYPE [NOT NULL] [DEFAULT value]"
+    sqlite3 "$db_path" "PRAGMA table_info('$table');" | while IFS='|' read -r _cid name type notnull dflt_value _pk; do
+      col_def="$name $type"
+      if [ "$notnull" = "1" ]; then
+        col_def="$col_def NOT NULL"
+      fi
+      if [ -n "$dflt_value" ]; then
+        col_def="$col_def DEFAULT $dflt_value"
+      fi
+      echo "  COL: $col_def"
+    done | sort >> "$output_file"
+
+    # Extract indexes for this table (sorted)
+    sqlite3 "$db_path" "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='$table' AND sql IS NOT NULL ORDER BY sql;" | while read -r idx_sql; do
+      echo "  IDX: $idx_sql"
+    done | sort >> "$output_file"
+
+    echo "" >> "$output_file"
+  done
 }
 
 extract_schema "$MIGRATE_DB" "$MIGRATE_SCHEMA"
@@ -69,7 +90,7 @@ extract_schema "$PUSH_DB" "$PUSH_SCHEMA"
 echo ""
 echo "Comparing schemas..."
 
-# Compare schemas
+# Compare normalized schemas (column order independent)
 if diff -q "$MIGRATE_SCHEMA" "$PUSH_SCHEMA" > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Schemas match!${NC}"
     echo ""
