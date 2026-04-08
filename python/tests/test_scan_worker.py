@@ -180,7 +180,9 @@ class TestMockScanRow:
         start = time_mod.monotonic()
         img = w._mock_scan_row(bbox, 600)
         elapsed = time_mod.monotonic() - start
-        assert elapsed < 2.0, f"_mock_scan_row took {elapsed:.1f}s — needs vectorization"
+        assert (
+            elapsed < 2.0
+        ), f"_mock_scan_row took {elapsed:.1f}s — needs vectorization"
         assert isinstance(img, Image.Image)
 
 
