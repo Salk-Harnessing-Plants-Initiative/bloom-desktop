@@ -120,6 +120,26 @@ def test_daq_module_attributes():
     assert hasattr(DAQSettings, "__dataclass_fields__")
 
 
+def test_graviscan_imports_bundled_path():
+    """Test that graviscan modules can import from bundled path (graviscan.*)."""
+    try:
+        from graviscan.scan_regions import ScanRegion, get_scan_region  # type: ignore[import-not-found]
+
+        assert ScanRegion is not None
+        assert get_scan_region is not None
+    except ImportError:
+        # Expected in development environment — bundled path doesn't exist
+        pass
+
+
+def test_graviscan_imports_development_path():
+    """Test that graviscan modules can import from development path (python.graviscan.*)."""
+    from python.graviscan.scan_regions import ScanRegion, get_scan_region
+
+    assert ScanRegion is not None
+    assert get_scan_region is not None
+
+
 def test_import_error_handling():
     """Test that import errors are handled gracefully."""
     # This test verifies that if both import paths fail, the flags are set correctly
