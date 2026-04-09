@@ -93,7 +93,7 @@ The system SHALL provide scan session start, status, cancel, and job-recording a
 
 - **GIVEN** a `ScanCoordinator` instance is provided and no scan is in progress
 - **WHEN** `startScan(coordinator, params, sessionFns)` is called without interval parameters
-- **THEN** the system SHALL initialize scanner subprocesses via the coordinator
+- **THEN** the system SHALL initialize scanner subprocesses via `coordinator.initialize(scannerConfigs)`
 - **AND** trigger a one-shot scan via `coordinator.scanOnce()` (fire-and-forget)
 - **AND** build and persist scan session state via the injected `setScanSession`
 
@@ -101,7 +101,8 @@ The system SHALL provide scan session start, status, cancel, and job-recording a
 
 - **GIVEN** a `ScanCoordinator` instance is provided and no scan is in progress
 - **WHEN** `startScan(coordinator, params, sessionFns)` is called with interval parameters
-- **THEN** the system SHALL trigger continuous scanning via `coordinator.scanInterval()` (fire-and-forget)
+- **THEN** the system SHALL initialize subprocesses via `coordinator.initialize(scannerConfigs)`
+- **AND** trigger continuous scanning via `coordinator.scanInterval()` (fire-and-forget)
 - **AND** calculate total cycles from interval and duration
 
 #### Scenario: Reject scan when already in progress
@@ -128,6 +129,7 @@ The system SHALL provide scan session start, status, cancel, and job-recording a
 - **GIVEN** a scan session is active
 - **WHEN** `cancelScan(coordinator, sessionFns)` is called
 - **THEN** the system SHALL cancel the scan via `coordinator.cancelAll()`
+- **AND** shut down coordinator subprocesses via `coordinator.shutdown()`
 - **AND** clear session state via the injected `setScanSession(null)`
 
 #### Scenario: Cancel when no scan is active

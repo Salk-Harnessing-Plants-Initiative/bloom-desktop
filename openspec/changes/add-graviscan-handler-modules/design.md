@@ -85,6 +85,7 @@ interface ScannerConfig {
 interface PlateConfig {
   plate_index: string;
   grid_mode: string;
+  resolution: number;
   output_path: string;
 }
 ```
