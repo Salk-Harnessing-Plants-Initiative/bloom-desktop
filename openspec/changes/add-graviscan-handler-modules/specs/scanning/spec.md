@@ -67,14 +67,15 @@ The system SHALL provide scanner detection, configuration persistence, and start
 #### Scenario: Run startup scanner validation
 
 - **GIVEN** cached scanner IDs from the renderer
-- **WHEN** `runStartupScannerValidation(cachedScannerIds)` is called
-- **THEN** the system SHALL compare cached IDs with detected USB devices
+- **WHEN** `runStartupScannerValidation(db, cachedScannerIds)` is called
+- **THEN** the system SHALL query `GraviScanner` records from the database
+- **AND** compare cached IDs with detected USB devices
 - **AND** update module-level `sessionValidation` state with results
 
 #### Scenario: Skip startup validation when no cached scanners
 
 - **GIVEN** an empty array of cached scanner IDs
-- **WHEN** `runStartupScannerValidation([])` is called
+- **WHEN** `runStartupScannerValidation(db, [])` is called
 - **THEN** the system SHALL set `isValidated: false` and `allScannersAvailable: false` without running detection
 
 #### Scenario: Read and reset validation state
@@ -126,7 +127,7 @@ The system SHALL provide scan session start, status, cancel, and job-recording a
 
 - **GIVEN** a scan session is active
 - **WHEN** `cancelScan(coordinator, sessionFns)` is called
-- **THEN** the system SHALL cancel the scan via the coordinator
+- **THEN** the system SHALL cancel the scan via `coordinator.cancelAll()`
 - **AND** clear session state via the injected `setScanSession(null)`
 
 #### Scenario: Cancel when no scan is active
@@ -181,15 +182,17 @@ The system SHALL provide image reading, export, and cloud backup as testable fun
 
 #### Scenario: Get scan output directory
 
-- **GIVEN** a scan output path is configured
+- **GIVEN** the application is running
 - **WHEN** `getOutputDir()` is called
-- **THEN** the system SHALL return the resolved output directory path
+- **THEN** the system SHALL compute the output path from `app.getAppPath()` (development) or `app.getPath('home')` (production) based on `NODE_ENV`
+- **AND** create the directory if it does not exist
+- **AND** return the resolved output directory path
 
-#### Scenario: Get output directory when not configured
+#### Scenario: Get output directory when directory creation fails
 
-- **GIVEN** no scan output path is configured
+- **GIVEN** the computed output path cannot be created (e.g., permissions error)
 - **WHEN** `getOutputDir()` is called
-- **THEN** the system SHALL return a sensible default or `{ success: false }` error
+- **THEN** the system SHALL return `{ success: false, error: '...' }` with the filesystem error
 
 #### Scenario: Download experiment images with metadata CSV
 
