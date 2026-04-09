@@ -64,7 +64,7 @@ git show origin/graviscan/4-main-process:src/main/box-backup.ts > src/main/box-b
 - [ ] **Step 4: Create the graviscan module directory**
 
 ```bash
-mkdir -p src/main/graviscan
+mkdir -p src/main/graviscan tests/unit/graviscan
 ```
 
 - [ ] **Step 5: Verify all three files compile**
