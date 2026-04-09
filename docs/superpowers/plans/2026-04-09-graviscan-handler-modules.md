@@ -61,12 +61,18 @@ git show origin/graviscan/4-main-process:src/main/graviscan-path-utils.ts > src/
 git show origin/graviscan/4-main-process:src/main/box-backup.ts > src/main/box-backup.ts
 ```
 
-- [ ] **Step 4: Verify all three files compile**
+- [ ] **Step 4: Create the graviscan module directory**
 
-Run: `npx tsc --noEmit`
-Expected: No errors (these files only depend on Node builtins, `@prisma/client`, and `../types/graviscan` which already exist on `main`)
+```bash
+mkdir -p src/main/graviscan
+```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Verify all three files compile**
+
+Run: `npx prisma generate && npx tsc --noEmit`
+Expected: No errors. Cherry-picked files depend on Prisma models (GraviScan, GraviImage, GraviScanner) that exist in the schema. `prisma generate` ensures the client types are up to date.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/main/lsusb-detection.ts src/main/graviscan-path-utils.ts src/main/box-backup.ts
@@ -87,7 +93,7 @@ origin/graviscan/4-main-process. Required as imports for handler modules."
 
 ```typescript
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Module-mock detectEpsonScanners before importing the module under test
 vi.mock('../../../src/main/lsusb-detection', () => ({
@@ -95,9 +101,18 @@ vi.mock('../../../src/main/lsusb-detection', () => ({
 }));
 
 import { detectEpsonScanners } from '../../../src/main/lsusb-detection';
+import {
+  detectScanners,
+  saveScannersToDB,
+  getConfig,
+  saveConfig,
+  getPlatformInfo,
+  validateConfig,
+  runStartupScannerValidation,
+  getSessionValidationState,
+  resetSessionValidation,
+} from '../../../src/main/graviscan/scanner-handlers';
 import type { DetectedScanner } from '../../../src/types/graviscan';
-
-// Import will be added after implementation exists — for now these are the test specs
 
 const mockDetect = vi.mocked(detectEpsonScanners);
 
@@ -147,9 +162,6 @@ describe('scanner-handlers', () => {
         count: 1,
       });
 
-      const { detectScanners } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await detectScanners(db);
 
       expect(result.success).toBe(true);
@@ -163,9 +175,6 @@ describe('scanner-handlers', () => {
         { id: 'db-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a', usb_bus: 1, usb_device: 1, usb_port: '1-1', enabled: true },
       ]);
 
-      const { detectScanners } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await detectScanners(db);
 
       expect(result.success).toBe(true);
@@ -181,9 +190,6 @@ describe('scanner-handlers', () => {
         count: 0,
       });
 
-      const { detectScanners } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await detectScanners(db);
 
       expect(result.success).toBe(false);
@@ -199,9 +205,6 @@ describe('scanner-handlers', () => {
         usb_bus: 1, usb_device: 2, usb_port: '1-2', enabled: true,
       });
 
-      const { saveScannersToDB } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await saveScannersToDB(db, [{
         name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
         usb_bus: 1, usb_device: 2, usb_port: '1-2',
@@ -213,24 +216,26 @@ describe('scanner-handlers', () => {
     });
 
     it('should update existing scanner matched by USB port', async () => {
-      db.graviScanner.findFirst
-        .mockResolvedValueOnce(null) // bus+device match
-        .mockResolvedValueOnce({ id: 'existing-1', name: 'Old Name', usb_port: '1-2' }); // port match
+      // findFirst returns null for bus+device, then returns existing for port match
+      db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
+        if (where?.usb_port === '1-2') {
+          return { id: 'existing-1', name: 'Old Name', usb_port: '1-2', display_name: null };
+        }
+        return null;
+      });
       db.graviScanner.update.mockResolvedValue({
         id: 'existing-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
         usb_bus: 1, usb_device: 2, usb_port: '1-2', enabled: true,
       });
 
-      const { saveScannersToDB } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await saveScannersToDB(db, [{
         name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
         usb_bus: 1, usb_device: 2, usb_port: '1-2',
       }]);
 
       expect(result.success).toBe(true);
-      expect(db.graviScanner.update).toHaveBeenCalled();
+      expect(result.scanners[0].id).toBe('existing-1');
+      expect(result.scanners[0].name).toBe('Scanner 1');
     });
   });
 
@@ -240,9 +245,6 @@ describe('scanner-handlers', () => {
         id: '1', grid_mode: '2grid', resolution: 600, format: 'tiff',
       });
 
-      const { getConfig } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await getConfig(db);
 
       expect(result.success).toBe(true);
@@ -252,9 +254,6 @@ describe('scanner-handlers', () => {
     it('should return null when no config exists', async () => {
       db.graviConfig.findFirst.mockResolvedValue(null);
 
-      const { getConfig } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await getConfig(db);
 
       expect(result.success).toBe(true);
@@ -269,9 +268,6 @@ describe('scanner-handlers', () => {
         id: '1', grid_mode: '4grid', resolution: 1200, format: 'tiff',
       });
 
-      const { saveConfig } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await saveConfig(db, { grid_mode: '4grid', resolution: 1200 });
 
       expect(result.success).toBe(true);
@@ -284,9 +280,6 @@ describe('scanner-handlers', () => {
         id: '1', grid_mode: '2grid', resolution: 600, format: 'tiff',
       });
 
-      const { saveConfig } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await saveConfig(db, { grid_mode: '2grid', resolution: 600 });
 
       expect(result.success).toBe(true);
@@ -295,40 +288,30 @@ describe('scanner-handlers', () => {
   });
 
   describe('getPlatformInfo', () => {
-    it('should return sane backend on linux', async () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    const originalPlatform = process.platform;
 
-      const { getPlatformInfo } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
+    afterEach(() => {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
+
+    it('should return sane backend on linux', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
       const result = await getPlatformInfo();
 
       expect(result.success).toBe(true);
       expect(result.backend).toBe('sane');
-      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     });
 
     it('should return unsupported on darwin', async () => {
-      const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
-
-      const { getPlatformInfo } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await getPlatformInfo();
 
       expect(result.supported).toBe(false);
       expect(result.backend).toBe('unsupported');
-      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     });
 
     it('should return mock platform info when GRAVISCAN_MOCK is true', async () => {
       vi.stubEnv('GRAVISCAN_MOCK', 'true');
-
-      const { getPlatformInfo } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await getPlatformInfo();
 
       expect(result.success).toBe(true);
@@ -341,9 +324,6 @@ describe('scanner-handlers', () => {
     it('should return no-config when no saved scanners', async () => {
       db.graviScanner.findMany.mockResolvedValue([]);
 
-      const { validateConfig } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await validateConfig(db);
 
       expect(result.success).toBe(true);
@@ -360,9 +340,6 @@ describe('scanner-handlers', () => {
         count: 1,
       });
 
-      const { validateConfig } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await validateConfig(db);
 
       expect(result.success).toBe(true);
@@ -377,9 +354,6 @@ describe('scanner-handlers', () => {
       ]);
       mockDetect.mockReturnValue({ success: true, scanners: [], count: 0 });
 
-      const { validateConfig } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       const result = await validateConfig(db);
 
       expect(result.status).toBe('mismatch');
@@ -389,11 +363,7 @@ describe('scanner-handlers', () => {
 
   describe('runStartupScannerValidation', () => {
     it('should skip validation when no cached scanners', async () => {
-      const { runStartupScannerValidation, resetSessionValidation } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       resetSessionValidation();
-
       const result = await runStartupScannerValidation(db, []);
 
       expect(result.isValidated).toBe(false);
@@ -410,11 +380,7 @@ describe('scanner-handlers', () => {
         count: 1,
       });
 
-      const { runStartupScannerValidation, resetSessionValidation } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
       resetSessionValidation();
-
       const result = await runStartupScannerValidation(db, ['s1']);
 
       expect(result.isValidated).toBe(true);
@@ -423,10 +389,7 @@ describe('scanner-handlers', () => {
   });
 
   describe('getSessionValidationState / resetSessionValidation', () => {
-    it('should return current state and reset', async () => {
-      const { getSessionValidationState, resetSessionValidation } = await import(
-        '../../../src/main/graviscan/scanner-handlers'
-      );
+    it('should return current state and reset', () => {
       resetSessionValidation();
       const state = getSessionValidationState();
       expect(state.isValidating).toBe(false);
@@ -560,6 +523,14 @@ function createMockSessionFns() {
   };
 }
 
+// Static imports — added after implementation exists
+import {
+  startScan,
+  getScanStatus,
+  markJobRecorded,
+  cancelScan,
+} from '../../../src/main/graviscan/session-handlers';
+
 describe('session-handlers', () => {
   let coordinator: ReturnType<typeof createMockCoordinator>;
   let sessionFns: ReturnType<typeof createMockSessionFns>;
@@ -586,9 +557,6 @@ describe('session-handlers', () => {
     };
 
     it('should reject when coordinator is null', async () => {
-      const { startScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = await startScan(null as any, baseParams, sessionFns, onError);
 
       expect(result.success).toBe(false);
@@ -598,9 +566,6 @@ describe('session-handlers', () => {
     it('should reject when scan already in progress', async () => {
       coordinator = createMockCoordinator({ isScanning: true } as any);
 
-      const { startScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = await startScan(coordinator, baseParams, sessionFns, onError);
 
       expect(result.success).toBe(false);
@@ -608,9 +573,6 @@ describe('session-handlers', () => {
     });
 
     it('should initialize coordinator and call scanOnce for one-shot', async () => {
-      const { startScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = await startScan(coordinator, baseParams, sessionFns, onError);
 
       expect(result.success).toBe(true);
@@ -625,9 +587,6 @@ describe('session-handlers', () => {
         interval: { intervalSeconds: 300, durationSeconds: 3600 },
       };
 
-      const { startScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = await startScan(coordinator, continuousParams, sessionFns, onError);
 
       expect(result.success).toBe(true);
@@ -639,9 +598,6 @@ describe('session-handlers', () => {
     });
 
     it('should build correct session state with jobs map', async () => {
-      const { startScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       await startScan(coordinator, baseParams, sessionFns, onError);
 
       const sessionArg = sessionFns.setScanSession.mock.calls[0][0];
@@ -657,9 +613,6 @@ describe('session-handlers', () => {
         interval: { intervalSeconds: 60, durationSeconds: 300 },
       };
 
-      const { startScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       await startScan(coordinator, continuousParams, sessionFns, onError);
 
       const sessionArg = sessionFns.setScanSession.mock.calls[0][0];
@@ -675,27 +628,21 @@ describe('session-handlers', () => {
         scanOnce: vi.fn().mockReturnValue(scanPromise),
       } as any);
 
-      const { startScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = await startScan(coordinator, baseParams, sessionFns, onError);
       expect(result.success).toBe(true);
 
       // Now reject the detached promise
       deferred.reject(new Error('Subprocess crashed'));
-      // Let microtasks flush
-      await new Promise((r) => setTimeout(r, 10));
-
+      // Wait for the .catch() handler to execute
+      await vi.waitFor(() => {
+        expect(onError).toHaveBeenCalled();
+      });
       expect(sessionFns.setScanSession).toHaveBeenCalledWith(null);
-      expect(onError).toHaveBeenCalled();
     });
   });
 
   describe('getScanStatus', () => {
-    it('should return isActive false when no session', async () => {
-      const { getScanStatus } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
+    it('should return isActive false when no session', () => {
       const result = getScanStatus(sessionFns);
 
       expect(result.isActive).toBe(false);
@@ -720,9 +667,6 @@ describe('session-handlers', () => {
         waveNumber: 0,
       });
 
-      const { getScanStatus } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = getScanStatus(sessionFns);
 
       expect(result.isActive).toBe(true);
@@ -732,10 +676,7 @@ describe('session-handlers', () => {
   });
 
   describe('markJobRecorded', () => {
-    it('should delegate to injected markScanJobRecorded', async () => {
-      const { markJobRecorded } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
+    it('should delegate to injected markScanJobRecorded', () => {
       markJobRecorded(sessionFns, 's1:00');
 
       expect(sessionFns.markScanJobRecorded).toHaveBeenCalledWith('s1:00');
@@ -744,9 +685,6 @@ describe('session-handlers', () => {
 
   describe('cancelScan', () => {
     it('should call cancelAll and shutdown then clear session', async () => {
-      const { cancelScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = await cancelScan(coordinator, sessionFns);
 
       expect(result.success).toBe(true);
@@ -756,13 +694,18 @@ describe('session-handlers', () => {
     });
 
     it('should return error when coordinator is null', async () => {
-      const { cancelScan } = await import(
-        '../../../src/main/graviscan/session-handlers'
-      );
       const result = await cancelScan(null as any, sessionFns);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not initialized');
+    });
+
+    it('should return success when no scan session is active', async () => {
+      // Coordinator exists but no scan in progress
+      coordinator = createMockCoordinator({ isScanning: false } as any);
+      const result = await cancelScan(coordinator, sessionFns);
+
+      expect(result.success).toBe(true);
     });
   });
 });
@@ -900,19 +843,23 @@ function createMockDb() {
   } as any;
 }
 
+import {
+  getOutputDir,
+  readScanImage,
+  uploadAllScans,
+  downloadImages,
+  resetUploadState,
+} from '../../../src/main/graviscan/image-handlers';
+
 describe('image-handlers', () => {
   let db: ReturnType<typeof createMockDb>;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     db = createMockDb();
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
     mockResolvePath.mockReset();
     mockRunBoxBackup.mockReset();
-    // Reset upload state
-    const { resetUploadState } = await import(
-      '../../../src/main/graviscan/image-handlers'
-    );
     resetUploadState();
   });
 
@@ -921,10 +868,7 @@ describe('image-handlers', () => {
       vi.stubEnv('NODE_ENV', 'development');
       vi.mocked(app.getAppPath).mockReturnValue('/project/root');
 
-      const { getOutputDir } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const result = getOutputDir();
+            const result = getOutputDir();
 
       expect(result.success).toBe(true);
       expect(result.path).toContain('.graviscan');
@@ -934,10 +878,7 @@ describe('image-handlers', () => {
       vi.stubEnv('NODE_ENV', 'production');
       vi.mocked(app.getPath).mockReturnValue('/home/user');
 
-      const { getOutputDir } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const result = getOutputDir();
+            const result = getOutputDir();
 
       expect(result.success).toBe(true);
       expect(result.path).toContain('.bloom');
@@ -946,10 +887,7 @@ describe('image-handlers', () => {
     it('should create directory if missing', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      const { getOutputDir } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      getOutputDir();
+            getOutputDir();
 
       expect(fs.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
     });
@@ -958,10 +896,7 @@ describe('image-handlers', () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
       vi.mocked(fs.mkdirSync).mockImplementation(() => { throw new Error('EACCES'); });
 
-      const { getOutputDir } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const result = getOutputDir();
+            const result = getOutputDir();
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('EACCES');
@@ -972,10 +907,15 @@ describe('image-handlers', () => {
     it('should return base64 data URI for thumbnail', async () => {
       mockResolvePath.mockReturnValue('/scan/image.tiff');
 
-      const { readScanImage } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const result = await readScanImage('/scan/image.tiff');
+            const result = await readScanImage('/scan/image.tiff');
+
+      expect(result.success).toBe(true);
+      expect(result.dataUri).toMatch(/^data:image\/jpeg;base64,/);
+    });
+
+    it('should return full-resolution data URI when full option is true', async () => {
+      mockResolvePath.mockReturnValue('/scan/image.tiff');
+      const result = await readScanImage('/scan/image.tiff', { full: true });
 
       expect(result.success).toBe(true);
       expect(result.dataUri).toMatch(/^data:image\/jpeg;base64,/);
@@ -984,10 +924,7 @@ describe('image-handlers', () => {
     it('should return error when file not found', async () => {
       mockResolvePath.mockReturnValue(null);
 
-      const { readScanImage } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const result = await readScanImage('/missing/image.tiff');
+            const result = await readScanImage('/missing/image.tiff');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
@@ -1000,10 +937,7 @@ describe('image-handlers', () => {
         success: true, experiments: 1, filesCopied: 5, errors: [],
       } as any);
 
-      const { uploadAllScans } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const onProgress = vi.fn();
+            const onProgress = vi.fn();
       const result = await uploadAllScans(db, onProgress);
 
       expect(result.success).toBe(true);
@@ -1015,10 +949,7 @@ describe('image-handlers', () => {
       // Make first upload hang
       mockRunBoxBackup.mockReturnValue(new Promise(() => {}));
 
-      const { uploadAllScans } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      // Start first upload (will hang)
+            // Start first upload (will hang)
       const first = uploadAllScans(db);
       // Try second immediately
       const second = await uploadAllScans(db);
@@ -1032,10 +963,7 @@ describe('image-handlers', () => {
     it('should return zero counts when no images found', async () => {
       db.graviScan.findMany.mockResolvedValue([]);
 
-      const { downloadImages } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const result = await downloadImages(db, {
+            const result = await downloadImages(db, {
         experimentId: 'exp-1',
         experimentName: 'Test Exp',
         targetDir: '/tmp/download',
@@ -1058,10 +986,7 @@ describe('image-handlers', () => {
       }]);
       mockResolvePath.mockReturnValue('/scan/image.tiff');
 
-      const { downloadImages } = await import(
-        '../../../src/main/graviscan/image-handlers'
-      );
-      const onProgress = vi.fn();
+            const onProgress = vi.fn();
       const result = await downloadImages(db, {
         experimentId: 'exp-1',
         experimentName: 'Test Exp',
