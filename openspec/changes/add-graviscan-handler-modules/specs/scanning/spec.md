@@ -106,7 +106,7 @@ The system SHALL provide image reading, export, and cloud backup as pure service
 #### Scenario: Download experiment images with metadata CSV
 
 - **GIVEN** an experiment has GraviScan images across multiple waves
-- **WHEN** `downloadImages(db, { experimentId, experimentName, targetDir })` is called
+- **WHEN** `downloadImages(db, { experimentId, experimentName, targetDir })` is called with an already-resolved target directory (dialog handling deferred to IPC wiring in Increment 3c)
 - **THEN** the system SHALL group images by wave number into subdirectories
 - **AND** write a `metadata.csv` per wave with experiment, plate, accession, and image columns
 - **AND** copy image files with 4-concurrent file copy operations
