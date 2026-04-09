@@ -13,6 +13,9 @@ import type {
   Accessions,
   Image,
   PlantAccessionMappings,
+  GraviScanPlateAssignment,
+  GraviPlateAccession,
+  GraviPlateSectionMapping,
   Prisma,
 } from '@prisma/client';
 
@@ -40,6 +43,9 @@ export type {
   Accessions,
   Image,
   PlantAccessionMappings,
+  GraviScanPlateAssignment,
+  GraviPlateAccession,
+  GraviPlateSectionMapping,
   Prisma,
 };
 

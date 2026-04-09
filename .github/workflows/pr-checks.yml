@@ -76,10 +76,16 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsane-dev
+
       - name: Install Python dependencies
         run: uv sync --all-extras --frozen
         # Installs both regular and dev dependencies (black, ruff, mypy)
         # Uses --frozen to respect uv.lock for reproducible CI builds
+        # --all-extras includes graviscan-linux (python-sane), requires libsane-dev
 
       - name: Check black formatting
         run: uv run black --check python/
@@ -214,10 +220,16 @@ jobs:
           cache-dependency-glob: 'pyproject.toml'
           python-version: '3.12'
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsane-dev
+
       - name: Install Python dependencies
         run: uv sync --all-extras --frozen
         # Required for pytest, pytest-cov, and other test dependencies
         # Uses --frozen to respect uv.lock for reproducible CI builds
+        # --all-extras includes graviscan-linux (python-sane), requires libsane-dev
 
       - name: Run Python tests with coverage
         run: npm run test:python

@@ -8,9 +8,13 @@ dependencies = [
     "pypylon>=3.0.0",
     "imageio>=2.34.0",
     "nidaqmx>=0.9.0",
+    "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
+# GraviScan dependencies — platform-gated to prevent cross-platform install failures with --all-extras
+graviscan-linux = ["python-sane>=2.9.0; sys_platform == 'linux'"]
+graviscan-windows = ["pytwain>=2.0.0; sys_platform == 'win32'"]
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
@@ -42,6 +46,7 @@ omit = [
     "python/hardware/camera_mock.py",
     "python/hardware/camera_types.py",
     "python/hardware/__init__.py",
+    "python/graviscan/scan_worker.py",
 ]
 
 [tool.black]
@@ -64,5 +69,5 @@ warn_unused_configs = true
 
 # Ignore missing stubs for third-party hardware libraries
 [[tool.mypy.overrides]]
-module = ["pypylon.*", "nidaqmx.*", "camera_types"]
+module = ["pypylon.*", "nidaqmx.*", "camera_types", "sane", "twain", "wmi"]
 ignore_missing_imports = true

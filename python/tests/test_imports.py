@@ -59,6 +59,22 @@ def test_import_camera_modules():
         pytest.fail(f"Camera modules should be importable: {e}")
 
 
+def test_import_graviscan_modules():
+    """Test that graviscan modules can be imported."""
+    from python.graviscan.scan_regions import ScanRegion, get_scan_region
+
+    assert ScanRegion is not None
+    assert get_scan_region is not None
+
+
+def test_import_graviscan_scan_worker():
+    """Test that graviscan scan_worker can be imported even without libsane."""
+    # scan_worker guards SANE import — should never raise ImportError
+    import python.graviscan.scan_worker
+
+    assert python.graviscan.scan_worker is not None
+
+
 def test_package_version():
     """Test that package __init__ defines version."""
     import python
