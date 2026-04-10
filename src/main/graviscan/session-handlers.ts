@@ -239,6 +239,8 @@ export async function cancelScan(
 
     return { success: true };
   } catch (error) {
+    // Always clear session — even if shutdown fails, the scan is cancelled
+    sessionFns.setScanSession(null);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Cancel failed',

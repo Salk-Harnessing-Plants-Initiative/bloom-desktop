@@ -252,6 +252,19 @@ describe('session-handlers', () => {
       expect(result.error).toContain('not initialized');
     });
 
+    it('should clear session state even when shutdown throws', async () => {
+      coordinator = createMockCoordinator({
+        shutdown: vi.fn().mockRejectedValue(new Error('SANE device busy')),
+      } as any);
+
+      const result = await cancelScan(coordinator, sessionFns);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('SANE device busy');
+      // Session MUST be cleared even on shutdown failure — otherwise it gets stuck
+      expect(sessionFns.setScanSession).toHaveBeenCalledWith(null);
+    });
+
     it('should return success when no scan session is active', async () => {
       // Coordinator exists but no scan in progress
       coordinator = createMockCoordinator({ isScanning: false } as any);
