@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -1167,4 +1169,3 @@ The system SHALL declare GraviScan-specific Python dependencies as optional depe
 - **WHEN** the lockfile includes `python-sane` and `pytwain`
 - **THEN** `python-sane` SHALL install successfully on Linux CI runners (requires `libsane-dev` system package)
 - **AND** `pytwain` (Windows-only) SHALL be excluded from Linux CI via environment markers or CI configuration to prevent cross-platform install failures
-
