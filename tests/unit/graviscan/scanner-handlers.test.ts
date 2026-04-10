@@ -57,6 +57,7 @@ describe('scanner-handlers', () => {
     db = createMockDb();
     vi.stubEnv('GRAVISCAN_MOCK', '');
     mockDetect.mockReset();
+    resetSessionValidation();
   });
 
   describe('detectScanners', () => {
@@ -94,6 +95,17 @@ describe('scanner-handlers', () => {
       expect(result.success).toBe(true);
       expect(result.mock).toBe(true);
       expect(mockDetect).not.toHaveBeenCalled();
+    });
+
+    it('should return error when database throws', async () => {
+      db.graviScanner.findMany.mockRejectedValue(
+        new Error('DB connection lost')
+      );
+
+      const result = await detectScanners(db);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('DB connection lost');
     });
 
     it('should propagate detection failure', async () => {
@@ -139,6 +151,45 @@ describe('scanner-handlers', () => {
       expect(result.success).toBe(true);
       expect(result.scanners).toHaveLength(1);
       expect(db.graviScanner.create).toHaveBeenCalled();
+    });
+
+    it('should update existing scanner matched by USB bus+device', async () => {
+      db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
+        if (where?.usb_bus === 1 && where?.usb_device === 2) {
+          return {
+            id: 'existing-1',
+            name: 'Old Name',
+            usb_bus: 1,
+            usb_device: 2,
+            display_name: null,
+          };
+        }
+        return null;
+      });
+      db.graviScanner.update.mockResolvedValue({
+        id: 'existing-1',
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013a',
+        usb_bus: 1,
+        usb_device: 2,
+        usb_port: '1-2',
+        enabled: true,
+      });
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners[0].id).toBe('existing-1');
     });
 
     it('should update existing scanner matched by USB port', async () => {
@@ -381,6 +432,35 @@ describe('scanner-handlers', () => {
       expect(state.isValidating).toBe(false);
       expect(state.isValidated).toBe(false);
       expect(state.detectedScanners).toEqual([]);
+    });
+
+    it('should return a copy that does not affect internal state', async () => {
+      // Run validation to populate state
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+      ]);
+      mockDetect.mockReturnValue({
+        success: true,
+        scanners: [{ ...MOCK_SCANNER, scanner_id: 's1' }],
+        count: 1,
+      });
+      await runStartupScannerValidation(db, ['s1']);
+
+      const state = getSessionValidationState();
+      // Mutate the returned copy
+      state.detectedScanners.push({ ...MOCK_SCANNER, scanner_id: 'injected' });
+      state.cachedScannerIds.push('injected-id');
+
+      // Internal state should be unaffected
+      const freshState = getSessionValidationState();
+      expect(freshState.detectedScanners).toHaveLength(1);
+      expect(freshState.cachedScannerIds).toHaveLength(1);
     });
   });
 });

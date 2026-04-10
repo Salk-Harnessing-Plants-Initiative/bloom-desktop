@@ -165,12 +165,29 @@ describe('session-handlers', () => {
       expect(sessionArg.totalCycles).toBe(5); // 300 / 60
     });
 
+    it('should ceil totalCycles for non-even division', async () => {
+      const continuousParams = {
+        ...baseParams,
+        interval: { intervalSeconds: 60, durationSeconds: 350 },
+      };
+
+      await startScan(coordinator, continuousParams, sessionFns, onError);
+
+      const sessionArg = sessionFns.setScanSession.mock.calls[0][0];
+      expect(sessionArg.totalCycles).toBe(6); // Math.ceil(350/60) = 6
+    });
+
     it('should not set session state if coordinator.initialize throws', async () => {
       coordinator = createMockCoordinator({
         initialize: vi.fn().mockRejectedValue(new Error('USB init failed')),
       } as any);
 
-      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('USB init failed');

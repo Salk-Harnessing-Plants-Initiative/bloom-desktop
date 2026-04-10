@@ -10,13 +10,15 @@ vi.mock('electron', () => ({
   },
 }));
 
+const sharpMockInstance = {
+  resize: vi.fn().mockReturnThis(),
+  jpeg: vi.fn().mockReturnValue({
+    toBuffer: vi.fn().mockResolvedValue(Buffer.from('fake-jpeg-data')),
+  }),
+};
+
 vi.mock('sharp', () => ({
-  default: vi.fn(() => ({
-    resize: vi.fn().mockReturnThis(),
-    jpeg: vi.fn().mockReturnValue({
-      toBuffer: vi.fn().mockResolvedValue(Buffer.from('fake-jpeg-data')),
-    }),
-  })),
+  default: vi.fn(() => sharpMockInstance),
 }));
 
 vi.mock('../../../src/main/graviscan-path-utils', () => ({
@@ -74,6 +76,11 @@ describe('image-handlers', () => {
     mockResolvePath.mockReset();
     mockRunBoxBackup.mockReset();
     resetUploadState();
+    sharpMockInstance.resize.mockClear();
+    sharpMockInstance.jpeg.mockClear();
+    sharpMockInstance.jpeg.mockReturnValue({
+      toBuffer: vi.fn().mockResolvedValue(Buffer.from('fake-jpeg-data')),
+    });
   });
 
   describe('getOutputDir', () => {
@@ -123,11 +130,14 @@ describe('image-handlers', () => {
   describe('readScanImage', () => {
     it('should return base64 data URI for thumbnail', async () => {
       mockResolvePath.mockReturnValue('/scan/image.tiff');
-
       const result = await readScanImage('/scan/image.tiff');
 
       expect(result.success).toBe(true);
       expect(result.dataUri).toMatch(/^data:image\/jpeg;base64,/);
+      expect(sharpMockInstance.resize).toHaveBeenCalledWith(400, null, {
+        withoutEnlargement: true,
+      });
+      expect(sharpMockInstance.jpeg).toHaveBeenCalledWith({ quality: 85 });
     });
 
     it('should return full-resolution data URI when full option is true', async () => {
@@ -136,6 +146,8 @@ describe('image-handlers', () => {
 
       expect(result.success).toBe(true);
       expect(result.dataUri).toMatch(/^data:image\/jpeg;base64,/);
+      expect(sharpMockInstance.resize).not.toHaveBeenCalled();
+      expect(sharpMockInstance.jpeg).toHaveBeenCalledWith({ quality: 95 });
     });
 
     it('should return error when file not found', async () => {
@@ -145,6 +157,18 @@ describe('image-handlers', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
+    });
+
+    it('should return error when sharp processing fails', async () => {
+      mockResolvePath.mockReturnValue('/scan/corrupt.tiff');
+      sharpMockInstance.jpeg.mockReturnValueOnce({
+        toBuffer: vi.fn().mockRejectedValue(new Error('Invalid TIFF')),
+      });
+
+      const result = await readScanImage('/scan/corrupt.tiff');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Invalid TIFF');
     });
   });
 
@@ -192,6 +216,39 @@ describe('image-handlers', () => {
       expect(result.success).toBe(true);
       expect(result.total).toBe(0);
       expect(result.copied).toBe(0);
+    });
+
+    it('should continue copying remaining files when one fails', async () => {
+      db.graviScan.findMany.mockResolvedValue([
+        {
+          wave_number: 0,
+          plate_barcode: 'PLATE-001',
+          plate_index: '00',
+          grid_mode: '2grid',
+          capture_date: new Date('2026-04-01'),
+          experiment: { accession: { graviPlateAccessions: [] } },
+          images: [
+            { path: '/scan/good.tiff' },
+            { path: '/scan/bad.tiff' },
+            { path: '/scan/also-good.tiff' },
+          ],
+        },
+      ]);
+      mockResolvePath.mockImplementation((p: string) => p);
+      vi.mocked(fs.promises.copyFile).mockImplementation(async (src: any) => {
+        if (String(src).includes('bad')) throw new Error('Disk full');
+      });
+
+      const result = await downloadImages(db, {
+        experimentId: 'exp-1',
+        experimentName: 'Test Exp',
+        targetDir: '/tmp/download',
+      });
+
+      expect(result.total).toBe(3);
+      expect(result.copied).toBe(2);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toContain('Disk full');
     });
 
     it('should copy images and write metadata CSV', async () => {
