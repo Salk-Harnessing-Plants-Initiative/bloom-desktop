@@ -74,6 +74,7 @@ export async function startScan(
   sessionFns: SessionFns,
   onError?: (error: string) => void
 ): Promise<{ success: boolean; error?: string }> {
+  let sessionSet = false;
   try {
     if (!coordinator) {
       return { success: false, error: 'ScanCoordinator not initialized' };
@@ -124,6 +125,17 @@ export async function startScan(
       ? params.interval.durationSeconds * 1000
       : 0;
 
+    // Build scanner configs for coordinator initialization
+    const scannerConfigs: ScannerConfig[] = params.scanners.map((s) => ({
+      scannerId: s.scannerId,
+      saneName: s.saneName,
+      plates: s.plates,
+    }));
+
+    await coordinator.initialize(scannerConfigs);
+
+    // Only set session state AFTER initialize succeeds — avoids briefly
+    // reporting an active scan while the coordinator is still starting up.
     sessionFns.setScanSession({
       isActive: true,
       isContinuous: !!params.interval,
@@ -142,15 +154,7 @@ export async function startScan(
       nextScanAt: null,
       waveNumber: params.metadata?.waveNumber || 0,
     });
-
-    // Build scanner configs for coordinator initialization
-    const scannerConfigs: ScannerConfig[] = params.scanners.map((s) => ({
-      scannerId: s.scannerId,
-      saneName: s.saneName,
-      plates: s.plates,
-    }));
-
-    await coordinator.initialize(scannerConfigs);
+    sessionSet = true;
 
     // Build plates map for scanning
     const platesPerScanner = new Map<string, PlateConfig[]>();
@@ -176,7 +180,9 @@ export async function startScan(
 
     return { success: true };
   } catch (error) {
-    sessionFns.setScanSession(null);
+    if (sessionSet) {
+      sessionFns.setScanSession(null);
+    }
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Start scan failed',

@@ -165,6 +165,19 @@ describe('session-handlers', () => {
       expect(sessionArg.totalCycles).toBe(5); // 300 / 60
     });
 
+    it('should not set session state if coordinator.initialize throws', async () => {
+      coordinator = createMockCoordinator({
+        initialize: vi.fn().mockRejectedValue(new Error('USB init failed')),
+      } as any);
+
+      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('USB init failed');
+      // Session should NOT have been set since initialize failed
+      expect(sessionFns.setScanSession).not.toHaveBeenCalled();
+    });
+
     it('should call onError and clear session when fire-and-forget rejects', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const deferred = { reject: (_e: Error) => {} };
