@@ -7,8 +7,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import type { PlateConfig, ScannerConfig } from '../../types/graviscan';
+
 // ---------------------------------------------------------------------------
-// Local interface types (will move to shared types in a later increment)
+// Interface types
 // ---------------------------------------------------------------------------
 
 export interface ScanCoordinatorLike {
@@ -23,19 +25,6 @@ export interface ScanCoordinatorLike {
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
-}
-
-export interface ScannerConfig {
-  scannerId: string;
-  saneName: string;
-  plates: PlateConfig[];
-}
-
-export interface PlateConfig {
-  plate_index: string;
-  grid_mode: string;
-  resolution: number;
-  output_path: string;
 }
 
 export interface SessionFns {
