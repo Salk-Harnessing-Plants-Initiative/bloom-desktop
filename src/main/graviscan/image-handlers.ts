@@ -96,19 +96,19 @@ export function getOutputDir(): {
  */
 export async function readScanImage(
   filePath: string,
-  options?: { full?: boolean },
+  options?: { full?: boolean }
 ): Promise<{ success: boolean; dataUri?: string; error?: string }> {
   try {
     const resolvedPath = resolveGraviScanPath(filePath);
     if (!resolvedPath) {
       console.log(
-        `[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`,
+        `[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`
       );
       return { success: false, error: 'File not found' };
     }
     if (resolvedPath !== filePath) {
       console.log(
-        `[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`,
+        `[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`
       );
       filePath = resolvedPath;
     }
@@ -144,7 +144,7 @@ export async function readScanImage(
  */
 export async function uploadAllScans(
   db: PrismaClient,
-  onProgress?: (progress: unknown) => void,
+  onProgress?: (progress: unknown) => void
 ): Promise<{
   success: boolean;
   uploaded: number;
@@ -165,7 +165,7 @@ export async function uploadAllScans(
   uploadInProgress = true;
   try {
     console.log(
-      '[GraviScan:UPLOAD] Bloom upload disabled (proxy size limit) — Box backup only',
+      '[GraviScan:UPLOAD] Bloom upload disabled (proxy size limit) — Box backup only'
     );
 
     const boxResult = await runBoxBackup(db, (progress) => {
@@ -217,7 +217,7 @@ export async function downloadImages(
     total: number;
     completed: number;
     currentFile: string;
-  }) => void,
+  }) => void
 ): Promise<{
   success: boolean;
   total: number;
@@ -251,7 +251,9 @@ export async function downloadImages(
     });
 
     // Sanitize experiment name for safe use as directory name
-    const safeName = params.experimentName.replace(/[/\\:*?"<>|.]/g, '_').replace(/\.\./g, '_');
+    const safeName = params.experimentName
+      .replace(/[/\\:*?"<>|.]/g, '_')
+      .replace(/\.\./g, '_');
     const expDir = path.join(params.targetDir, safeName);
 
     // Group scans by wave number for subfolder organization
@@ -276,7 +278,7 @@ export async function downloadImages(
         const plateAccessions =
           scan.experiment.accession?.graviPlateAccessions ?? [];
         const matchedPlate = plateAccessions.find(
-          (p: any) => p.plate_id === scan.plate_barcode,
+          (p: any) => p.plate_id === scan.plate_barcode
         );
         const accession = matchedPlate?.accession ?? '';
 
@@ -302,11 +304,11 @@ export async function downloadImages(
               csvEscape(
                 (scan as any).transplant_date
                   ? (scan as any).transplant_date.toISOString().split('T')[0]
-                  : '',
+                  : ''
               ),
               csvEscape((scan as any).custom_note ?? ''),
               csvEscape(originalFilename),
-            ].join(','),
+            ].join(',')
           );
         }
       }
@@ -315,7 +317,7 @@ export async function downloadImages(
       fs.writeFileSync(
         path.join(waveDir, 'metadata.csv'),
         csvRows.join('\n') + '\n',
-        'utf-8',
+        'utf-8'
       );
     }
 
@@ -339,7 +341,7 @@ export async function downloadImages(
         });
       } catch (err) {
         errors.push(
-          `${path.basename(file.src)}: ${err instanceof Error ? err.message : 'Copy failed'}`,
+          `${path.basename(file.src)}: ${err instanceof Error ? err.message : 'Copy failed'}`
         );
       }
       return copyNext();
@@ -348,14 +350,14 @@ export async function downloadImages(
     await Promise.all(
       Array.from(
         { length: Math.min(COPY_CONCURRENCY, filesToCopy.length) },
-        () => copyNext(),
-      ),
+        () => copyNext()
+      )
     );
 
     const waveLabel =
       params.waveNumber !== undefined ? ` (wave ${params.waveNumber})` : '';
     console.log(
-      `[GraviScan:DOWNLOAD] Copied ${copied}/${filesToCopy.length} images${waveLabel} to ${expDir}`,
+      `[GraviScan:DOWNLOAD] Copied ${copied}/${filesToCopy.length} images${waveLabel} to ${expDir}`
     );
     return {
       success: errors.length === 0,

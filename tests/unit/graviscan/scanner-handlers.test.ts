@@ -77,7 +77,16 @@ describe('scanner-handlers', () => {
     it('should return mock scanners when GRAVISCAN_MOCK is true', async () => {
       vi.stubEnv('GRAVISCAN_MOCK', 'true');
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 'db-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a', usb_bus: 1, usb_device: 1, usb_port: '1-1', enabled: true },
+        {
+          id: 'db-1',
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 1,
+          usb_port: '1-1',
+          enabled: true,
+        },
       ]);
 
       const result = await detectScanners(db);
@@ -106,14 +115,26 @@ describe('scanner-handlers', () => {
     it('should create new scanner records', async () => {
       db.graviScanner.findFirst.mockResolvedValue(null);
       db.graviScanner.create.mockResolvedValue({
-        id: 'new-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2', enabled: true,
+        id: 'new-1',
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013a',
+        usb_bus: 1,
+        usb_device: 2,
+        usb_port: '1-2',
+        enabled: true,
       });
 
-      const result = await saveScannersToDB(db, [{
-        name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2',
-      }]);
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
 
       expect(result.success).toBe(true);
       expect(result.scanners).toHaveLength(1);
@@ -123,19 +144,36 @@ describe('scanner-handlers', () => {
     it('should update existing scanner matched by USB port', async () => {
       db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
         if (where?.usb_port === '1-2') {
-          return { id: 'existing-1', name: 'Old Name', usb_port: '1-2', display_name: null };
+          return {
+            id: 'existing-1',
+            name: 'Old Name',
+            usb_port: '1-2',
+            display_name: null,
+          };
         }
         return null;
       });
       db.graviScanner.update.mockResolvedValue({
-        id: 'existing-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2', enabled: true,
+        id: 'existing-1',
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013a',
+        usb_bus: 1,
+        usb_device: 2,
+        usb_port: '1-2',
+        enabled: true,
       });
 
-      const result = await saveScannersToDB(db, [{
-        name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2',
-      }]);
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
 
       expect(result.success).toBe(true);
       expect(result.scanners[0].id).toBe('existing-1');
@@ -146,7 +184,10 @@ describe('scanner-handlers', () => {
   describe('getConfig', () => {
     it('should return config from database', async () => {
       db.graviConfig.findFirst.mockResolvedValue({
-        id: '1', grid_mode: '2grid', resolution: 600, format: 'tiff',
+        id: '1',
+        grid_mode: '2grid',
+        resolution: 600,
+        format: 'tiff',
       });
 
       const result = await getConfig(db);
@@ -169,10 +210,16 @@ describe('scanner-handlers', () => {
     it('should create config when none exists', async () => {
       db.graviConfig.findFirst.mockResolvedValue(null);
       db.graviConfig.create.mockResolvedValue({
-        id: '1', grid_mode: '4grid', resolution: 1200, format: 'tiff',
+        id: '1',
+        grid_mode: '4grid',
+        resolution: 1200,
+        format: 'tiff',
       });
 
-      const result = await saveConfig(db, { grid_mode: '4grid', resolution: 1200 });
+      const result = await saveConfig(db, {
+        grid_mode: '4grid',
+        resolution: 1200,
+      });
 
       expect(result.success).toBe(true);
       expect(db.graviConfig.create).toHaveBeenCalled();
@@ -181,10 +228,16 @@ describe('scanner-handlers', () => {
     it('should update existing config', async () => {
       db.graviConfig.findFirst.mockResolvedValue({ id: '1' });
       db.graviConfig.update.mockResolvedValue({
-        id: '1', grid_mode: '2grid', resolution: 600, format: 'tiff',
+        id: '1',
+        grid_mode: '2grid',
+        resolution: 600,
+        format: 'tiff',
       });
 
-      const result = await saveConfig(db, { grid_mode: '2grid', resolution: 600 });
+      const result = await saveConfig(db, {
+        grid_mode: '2grid',
+        resolution: 600,
+      });
 
       expect(result.success).toBe(true);
       expect(db.graviConfig.update).toHaveBeenCalled();
@@ -195,11 +248,17 @@ describe('scanner-handlers', () => {
     const originalPlatform = process.platform;
 
     afterEach(() => {
-      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      });
     });
 
     it('should return sane backend on linux', async () => {
-      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+      Object.defineProperty(process, 'platform', {
+        value: 'linux',
+        configurable: true,
+      });
       const result = await getPlatformInfo();
 
       expect(result.success).toBe(true);
@@ -207,7 +266,10 @@ describe('scanner-handlers', () => {
     });
 
     it('should return unsupported on darwin', async () => {
-      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+      Object.defineProperty(process, 'platform', {
+        value: 'darwin',
+        configurable: true,
+      });
       const result = await getPlatformInfo();
 
       expect(result.supported).toBe(false);
@@ -236,7 +298,14 @@ describe('scanner-handlers', () => {
 
     it('should match saved scanners by USB port', async () => {
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 's1', name: 'Scanner 1', usb_port: '1-2', vendor_id: '04b8', product_id: '013a', enabled: true },
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          usb_port: '1-2',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
       ]);
       mockDetect.mockReturnValue({
         success: true,
@@ -254,7 +323,14 @@ describe('scanner-handlers', () => {
 
     it('should report missing scanners', async () => {
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 's1', name: 'Scanner 1', usb_port: '1-2', vendor_id: '04b8', product_id: '013a', enabled: true },
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          usb_port: '1-2',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
       ]);
       mockDetect.mockReturnValue({ success: true, scanners: [], count: 0 });
 
@@ -276,7 +352,13 @@ describe('scanner-handlers', () => {
 
     it('should validate cached scanners against detected hardware', async () => {
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 's1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a', enabled: true },
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
       ]);
       mockDetect.mockReturnValue({
         success: true,

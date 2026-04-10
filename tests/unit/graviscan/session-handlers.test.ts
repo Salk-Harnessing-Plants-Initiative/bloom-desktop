@@ -7,13 +7,19 @@ interface ScanCoordinatorLike {
   readonly isScanning: boolean;
   initialize(scanners: any[]): Promise<void>;
   scanOnce(platesPerScanner: Map<string, any[]>): Promise<void>;
-  scanInterval(platesPerScanner: Map<string, any[]>, intervalMs: number, durationMs: number): Promise<void>;
+  scanInterval(
+    platesPerScanner: Map<string, any[]>,
+    intervalMs: number,
+    durationMs: number
+  ): Promise<void>;
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
 }
 
-function createMockCoordinator(overrides: Partial<ScanCoordinatorLike> = {}): ScanCoordinatorLike {
+function createMockCoordinator(
+  overrides: Partial<ScanCoordinatorLike> = {}
+): ScanCoordinatorLike {
   return {
     isScanning: false,
     initialize: vi.fn().mockResolvedValue(undefined),
@@ -55,11 +61,20 @@ describe('session-handlers', () => {
 
   describe('startScan', () => {
     const baseParams = {
-      scanners: [{
-        scannerId: 's1',
-        saneName: 'epkowa:interpreter:001:002',
-        plates: [{ plate_index: '00', grid_mode: '2grid', resolution: 600, output_path: '/tmp/scan' }],
-      }],
+      scanners: [
+        {
+          scannerId: 's1',
+          saneName: 'epkowa:interpreter:001:002',
+          plates: [
+            {
+              plate_index: '00',
+              grid_mode: '2grid',
+              resolution: 600,
+              output_path: '/tmp/scan',
+            },
+          ],
+        },
+      ],
       metadata: {
         experimentId: 'exp-1',
         phenotyperId: 'pheno-1',
@@ -68,7 +83,12 @@ describe('session-handlers', () => {
     };
 
     it('should reject when coordinator is null', async () => {
-      const result = await startScan(null as any, baseParams, sessionFns, onError);
+      const result = await startScan(
+        null as any,
+        baseParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not initialized');
@@ -77,14 +97,24 @@ describe('session-handlers', () => {
     it('should reject when scan already in progress', async () => {
       coordinator = createMockCoordinator({ isScanning: true } as any);
 
-      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('already in progress');
     });
 
     it('should initialize coordinator and call scanOnce for one-shot', async () => {
-      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(true);
       expect(coordinator.initialize).toHaveBeenCalled();
@@ -98,13 +128,18 @@ describe('session-handlers', () => {
         interval: { intervalSeconds: 300, durationSeconds: 3600 },
       };
 
-      const result = await startScan(coordinator, continuousParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        continuousParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(true);
       expect(coordinator.scanInterval).toHaveBeenCalledWith(
         expect.any(Map),
         300000,
-        3600000,
+        3600000
       );
     });
 
@@ -140,7 +175,12 @@ describe('session-handlers', () => {
         scanOnce: vi.fn().mockReturnValue(scanPromise),
       } as any);
 
-      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
       expect(result.success).toBe(true);
 
       // Now reject the detached promise

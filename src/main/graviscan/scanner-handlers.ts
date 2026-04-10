@@ -45,7 +45,7 @@ const sessionValidation: SessionValidationState = {
  */
 export async function runStartupScannerValidation(
   db: PrismaClient,
-  cachedScannerIds: string[],
+  cachedScannerIds: string[]
 ): Promise<SessionValidationState> {
   sessionValidation.isValidating = true;
   sessionValidation.validationError = null;
@@ -116,14 +116,14 @@ export async function runStartupScannerValidation(
         const match = dbScanners.find(
           (s: any) =>
             s.usb_bus === detected.usb_bus &&
-            s.usb_device === detected.usb_device,
+            s.usb_device === detected.usb_device
         );
         if (match) {
           detected.scanner_id = match.id;
           detected.name = match.name;
         } else {
           const portMatch = dbScanners.find(
-            (s: any) => s.usb_port && s.usb_port === detected.usb_port,
+            (s: any) => s.usb_port && s.usb_port === detected.usb_port
           );
           if (portMatch) {
             detected.scanner_id = portMatch.id;
@@ -137,12 +137,12 @@ export async function runStartupScannerValidation(
 
     // Build set of currently available scanner IDs
     const currentIds = new Set(
-      detectedScanners.filter((s) => s.is_available).map((s) => s.scanner_id),
+      detectedScanners.filter((s) => s.is_available).map((s) => s.scanner_id)
     );
 
     // Check if all cached scanners are still available
     const allScannersAvailable = cachedScannerIds.every((id) =>
-      currentIds.has(id),
+      currentIds.has(id)
     );
 
     sessionValidation.allScannersAvailable = allScannersAvailable;
@@ -261,15 +261,14 @@ export async function detectScanners(db: PrismaClient) {
     for (const detected of detectedScanners) {
       const match = dbScanners.find(
         (s: any) =>
-          s.usb_bus === detected.usb_bus &&
-          s.usb_device === detected.usb_device,
+          s.usb_bus === detected.usb_bus && s.usb_device === detected.usb_device
       );
       if (match) {
         detected.scanner_id = match.id;
         detected.name = match.name;
       } else {
         const portMatch = dbScanners.find(
-          (s: any) => s.usb_port && s.usb_port === detected.usb_port,
+          (s: any) => s.usb_port && s.usb_port === detected.usb_port
         );
         if (portMatch) {
           detected.scanner_id = portMatch.id;
@@ -319,7 +318,10 @@ export async function getConfig(db: PrismaClient) {
 // saveConfig
 // ---------------------------------------------------------------------------
 
-export async function saveConfig(db: PrismaClient, configInput: GraviConfigInput) {
+export async function saveConfig(
+  db: PrismaClient,
+  configInput: GraviConfigInput
+) {
   try {
     const existing = await (db as any).graviConfig.findFirst();
 
@@ -368,7 +370,7 @@ export async function saveScannersToDB(
     usb_port?: string;
     usb_bus?: number;
     usb_device?: number;
-  }>,
+  }>
 ) {
   try {
     const savedScanners: GraviScanner[] = [];
@@ -529,7 +531,10 @@ export async function validateConfig(db: PrismaClient) {
           success: false,
           status: 'error' as const,
           error: lsusbResult.error || 'Scanner detection failed',
-          matched: [] as Array<{ saved: GraviScanner; detected: DetectedScanner }>,
+          matched: [] as Array<{
+            saved: GraviScanner;
+            detected: DetectedScanner;
+          }>,
           missing: [] as GraviScanner[],
           new: [] as DetectedScanner[],
           savedScanners: savedScanners as GraviScanner[],

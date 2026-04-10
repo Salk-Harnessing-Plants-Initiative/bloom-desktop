@@ -18,7 +18,7 @@ export interface ScanCoordinatorLike {
   scanInterval(
     platesPerScanner: Map<string, PlateConfig[]>,
     intervalMs: number,
-    durationMs: number,
+    durationMs: number
   ): Promise<void>;
   cancelAll(): void;
   shutdown(): Promise<void>;
@@ -72,7 +72,7 @@ export async function startScan(
   coordinator: ScanCoordinatorLike | null,
   params: StartScanParams,
   sessionFns: SessionFns,
-  onError?: (error: string) => void,
+  onError?: (error: string) => void
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!coordinator) {
@@ -188,9 +188,7 @@ export async function startScan(
 // getScanStatus
 // ---------------------------------------------------------------------------
 
-export function getScanStatus(
-  sessionFns: SessionFns,
-): Record<string, any> {
+export function getScanStatus(sessionFns: SessionFns): Record<string, any> {
   const session = sessionFns.getScanSession();
   if (!session) {
     return { isActive: false };
@@ -218,10 +216,7 @@ export function getScanStatus(
 // markJobRecorded
 // ---------------------------------------------------------------------------
 
-export function markJobRecorded(
-  sessionFns: SessionFns,
-  jobKey: string,
-): void {
+export function markJobRecorded(sessionFns: SessionFns, jobKey: string): void {
   sessionFns.markScanJobRecorded(jobKey);
 }
 
@@ -231,7 +226,7 @@ export function markJobRecorded(
 
 export async function cancelScan(
   coordinator: ScanCoordinatorLike | null,
-  sessionFns: SessionFns,
+  sessionFns: SessionFns
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!coordinator) {

@@ -102,12 +102,16 @@ describe('image-handlers', () => {
 
       getOutputDir();
 
-      expect(fs.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+      expect(fs.mkdirSync).toHaveBeenCalledWith(expect.any(String), {
+        recursive: true,
+      });
     });
 
     it('should return error when mkdirSync fails', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
-      vi.mocked(fs.mkdirSync).mockImplementation(() => { throw new Error('EACCES'); });
+      vi.mocked(fs.mkdirSync).mockImplementation(() => {
+        throw new Error('EACCES');
+      });
 
       const result = getOutputDir();
 
@@ -147,7 +151,10 @@ describe('image-handlers', () => {
   describe('uploadAllScans', () => {
     it('should trigger box backup and report results', async () => {
       mockRunBoxBackup.mockResolvedValue({
-        success: true, experiments: 1, filesCopied: 5, errors: [],
+        success: true,
+        experiments: 1,
+        filesCopied: 5,
+        errors: [],
       } as any);
 
       const onProgress = vi.fn();
@@ -188,23 +195,29 @@ describe('image-handlers', () => {
     });
 
     it('should copy images and write metadata CSV', async () => {
-      db.graviScan.findMany.mockResolvedValue([{
-        wave_number: 0,
-        plate_barcode: 'PLATE-001',
-        plate_index: '00',
-        grid_mode: '2grid',
-        capture_date: new Date('2026-04-01'),
-        experiment: { accession: { graviPlateAccessions: [] } },
-        images: [{ path: '/scan/image.tiff' }],
-      }]);
+      db.graviScan.findMany.mockResolvedValue([
+        {
+          wave_number: 0,
+          plate_barcode: 'PLATE-001',
+          plate_index: '00',
+          grid_mode: '2grid',
+          capture_date: new Date('2026-04-01'),
+          experiment: { accession: { graviPlateAccessions: [] } },
+          images: [{ path: '/scan/image.tiff' }],
+        },
+      ]);
       mockResolvePath.mockReturnValue('/scan/image.tiff');
 
       const onProgress = vi.fn();
-      const result = await downloadImages(db, {
-        experimentId: 'exp-1',
-        experimentName: 'Test Exp',
-        targetDir: '/tmp/download',
-      }, onProgress);
+      const result = await downloadImages(
+        db,
+        {
+          experimentId: 'exp-1',
+          experimentName: 'Test Exp',
+          targetDir: '/tmp/download',
+        },
+        onProgress
+      );
 
       expect(result.total).toBe(1);
       expect(result.copied).toBe(1);
