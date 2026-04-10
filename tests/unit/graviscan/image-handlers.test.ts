@@ -1,4 +1,5 @@
 // @vitest-environment node
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Module mocks — must be before imports
@@ -162,7 +163,7 @@ describe('image-handlers', () => {
       mockRunBoxBackup.mockReturnValue(new Promise(() => {}));
 
       // Start first upload (will hang)
-      const first = uploadAllScans(db);
+      void uploadAllScans(db);
       // Try second immediately
       const second = await uploadAllScans(db);
 

@@ -1,4 +1,5 @@
 // @vitest-environment node
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Types matching Ben's ScanCoordinator + PlateConfig
@@ -130,6 +131,7 @@ describe('session-handlers', () => {
     });
 
     it('should call onError and clear session when fire-and-forget rejects', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const deferred = { reject: (_e: Error) => {} };
       const scanPromise = new Promise<void>((_resolve, reject) => {
         deferred.reject = reject;
