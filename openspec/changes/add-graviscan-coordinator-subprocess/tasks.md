@@ -53,6 +53,7 @@ Cherry-pick `scanner-subprocess.ts` from `origin/graviscan/4-main-process` into 
 ## Task 4: Add scan-coordinator.ts to src/main/graviscan/
 
 Cherry-pick `scan-coordinator.ts` from `origin/graviscan/4-main-process` into `src/main/graviscan/scan-coordinator.ts`. Adaptations:
+
 - Import `PlateConfig`, `ScannerConfig` from `../../types/graviscan` (remove local definitions)
 - Import `ScannerSubprocess`, `ScanWorkerEvent` from `./scanner-subprocess`
 - Import `ScanCoordinatorLike` from `./session-handlers`, add `implements ScanCoordinatorLike`
