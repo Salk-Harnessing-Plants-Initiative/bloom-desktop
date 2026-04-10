@@ -123,7 +123,7 @@ export async function runStartupScannerValidation(
 ): Promise<SessionValidationState> {
   sessionValidation.isValidating = true;
   sessionValidation.validationError = null;
-  sessionValidation.cachedScannerIds = cachedScannerIds;
+  sessionValidation.cachedScannerIds = [...cachedScannerIds];
 
   // If no cached scanners, skip validation (first-time user)
   if (cachedScannerIds.length === 0) {
@@ -432,16 +432,6 @@ export async function getPlatformInfo() {
   try {
     const mockEnabled = process.env.GRAVISCAN_MOCK?.toLowerCase() === 'true';
 
-    if (mockEnabled) {
-      return {
-        success: true,
-        supported: true,
-        backend: 'sane' as const,
-        mock_enabled: true,
-        system_name: process.env.GRAVISCAN_SYSTEM_NAME || null,
-      };
-    }
-
     const platform = process.platform;
     const isSupported = platform === 'linux' || platform === 'win32';
     const backend =
@@ -450,6 +440,16 @@ export async function getPlatformInfo() {
         : platform === 'win32'
           ? 'twain'
           : 'unsupported';
+
+    if (mockEnabled) {
+      return {
+        success: true,
+        supported: true,
+        backend: backend,
+        mock_enabled: true,
+        system_name: process.env.GRAVISCAN_SYSTEM_NAME || null,
+      } as { success: boolean } & GraviScanPlatformInfo;
+    }
 
     return {
       success: true,
@@ -507,7 +507,7 @@ export async function validateConfig(db: PrismaClient) {
         is_available: true,
         vendor_id: s.vendor_id,
         product_id: s.product_id,
-        sane_name: `epkowa:interpreter:001:${String(s.usb_device || i + 1).padStart(3, '0')}`,
+        sane_name: `epkowa:interpreter:${String(s.usb_bus || 1).padStart(3, '0')}:${String(s.usb_device || i + 1).padStart(3, '0')}`,
       }));
     } else {
       const lsusbResult = detectEpsonScanners();

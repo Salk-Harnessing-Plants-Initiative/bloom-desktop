@@ -84,6 +84,18 @@ export async function startScan(
       return { success: false, error: 'Scan already in progress' };
     }
 
+    if (params.interval) {
+      if (
+        params.interval.intervalSeconds <= 0 ||
+        params.interval.durationSeconds <= 0
+      ) {
+        return {
+          success: false,
+          error: 'Interval and duration must be positive',
+        };
+      }
+    }
+
     // Build jobs map
     const jobs: Record<
       string,

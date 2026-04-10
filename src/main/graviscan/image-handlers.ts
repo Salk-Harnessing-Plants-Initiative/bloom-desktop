@@ -260,9 +260,7 @@ export async function downloadImages(
     });
 
     // Sanitize experiment name for safe use as directory name
-    const safeName = params.experimentName
-      .replace(/[/\\:*?"<>|.]/g, '_')
-      .replace(/\.\./g, '_');
+    const safeName = params.experimentName.replace(/[/\\:*?"<>|.]/g, '_');
     const expDir = path.join(params.targetDir, safeName);
 
     // Group scans by wave number for subfolder organization

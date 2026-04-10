@@ -457,9 +457,7 @@ export async function runBoxBackup(
 
   // Process each experiment → wave
   for (const [expName, waveMap] of experimentWaveMap) {
-    const safeName = expName
-      .replace(/[/\\:*?"<>|.]/g, '_')
-      .replace(/\.\./g, '_');
+    const safeName = expName.replace(/[/\\:*?"<>|.]/g, '_');
     const sortedWaves = [...waveMap.keys()].sort((a, b) => a - b);
 
     for (const waveNum of sortedWaves) {

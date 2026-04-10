@@ -177,6 +177,23 @@ describe('session-handlers', () => {
       expect(sessionArg.totalCycles).toBe(6); // Math.ceil(350/60) = 6
     });
 
+    it('should reject when interval parameters are invalid', async () => {
+      const invalidParams = {
+        ...baseParams,
+        interval: { intervalSeconds: 0, durationSeconds: 300 },
+      };
+
+      const result = await startScan(
+        coordinator,
+        invalidParams,
+        sessionFns,
+        onError
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('positive');
+    });
+
     it('should not set session state if coordinator.initialize throws', async () => {
       coordinator = createMockCoordinator({
         initialize: vi.fn().mockRejectedValue(new Error('USB init failed')),
