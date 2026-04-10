@@ -463,7 +463,7 @@ export async function getPlatformInfo() {
       mock_enabled: mockEnabled,
       system_name: process.env.GRAVISCAN_SYSTEM_NAME || null,
     } as { success: boolean } & GraviScanPlatformInfo;
-  } catch (error) {
+  } catch (_error) {
     return {
       success: false,
       supported: false,
