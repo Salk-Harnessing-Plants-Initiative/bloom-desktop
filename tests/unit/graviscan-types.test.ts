@@ -184,6 +184,7 @@ describe('GraviScan TypeScript Types', () => {
     it('interface accepts ScannerConfig in initialize()', () => {
       // Verify ScanCoordinatorLike.initialize accepts ScannerConfig[]
       // by creating a conforming mock — this is a compile-time check
+      /* eslint-disable @typescript-eslint/no-unused-vars */
       const mockCoordinator: ScanCoordinatorLike = {
         isScanning: false,
         initialize: async (_scanners: ScannerConfig[]) => {},
@@ -199,6 +200,7 @@ describe('GraviScan TypeScript Types', () => {
           return this;
         } as ScanCoordinatorLike['on'],
       };
+      /* eslint-enable @typescript-eslint/no-unused-vars */
       expect(mockCoordinator.isScanning).toBe(false);
     });
   });
