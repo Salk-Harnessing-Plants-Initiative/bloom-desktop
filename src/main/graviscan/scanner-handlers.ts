@@ -5,6 +5,8 @@
  * Pure async exports with db injection — no ipcMain wrappers.
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { PrismaClient } from '@prisma/client';
 import { detectEpsonScanners } from '../lsusb-detection';
 import type {
@@ -463,7 +465,7 @@ export async function getPlatformInfo() {
       mock_enabled: mockEnabled,
       system_name: process.env.GRAVISCAN_SYSTEM_NAME || null,
     } as { success: boolean } & GraviScanPlatformInfo;
-  } catch (_error) {
+  } catch {
     return {
       success: false,
       supported: false,

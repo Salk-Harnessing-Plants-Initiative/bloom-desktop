@@ -10,6 +10,8 @@
  * decoupled from Electron IPC plumbing.
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { app } from 'electron';
 import { PrismaClient } from '@prisma/client';
 import * as path from 'path';

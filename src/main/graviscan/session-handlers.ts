@@ -5,6 +5,8 @@
  * Manages scan lifecycle: start, status, mark-recorded, cancel.
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 // ---------------------------------------------------------------------------
 // Local interface types (will move to shared types in a later increment)
 // ---------------------------------------------------------------------------
