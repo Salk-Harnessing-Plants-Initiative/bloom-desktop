@@ -18,6 +18,80 @@ import type {
 } from '../../types/graviscan';
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const MOCK_SCANNER_COUNT = 2;
+
+// ---------------------------------------------------------------------------
+// Helpers — mock-scanner construction & DB matching
+// ---------------------------------------------------------------------------
+
+/**
+ * Build mock DetectedScanner objects from DB records (or generate fakes when
+ * there are fewer DB records than MOCK_SCANNER_COUNT).
+ */
+function buildMockScanners(dbScanners: any[]): DetectedScanner[] {
+  const scanners: DetectedScanner[] = [];
+  for (let i = 0; i < MOCK_SCANNER_COUNT; i++) {
+    if (i < dbScanners.length) {
+      scanners.push({
+        name: dbScanners[i].name,
+        scanner_id: dbScanners[i].id,
+        usb_bus: 1,
+        usb_device: i + 1,
+        usb_port: `1-${i + 1}`,
+        is_available: true,
+        vendor_id: dbScanners[i].vendor_id,
+        product_id: dbScanners[i].product_id,
+        sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
+      });
+    } else {
+      scanners.push({
+        name: `Mock Scanner ${i + 1}`,
+        scanner_id: `mock-scanner-${i + 1}`,
+        usb_bus: 1,
+        usb_device: i + 1,
+        usb_port: `1-${i + 1}`,
+        is_available: true,
+        vendor_id: '04b8',
+        product_id: '013a',
+        sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
+      });
+    }
+  }
+  return scanners;
+}
+
+/**
+ * Match detected scanners to DB records by USB bus+device, falling back to
+ * usb_port. Mutates `detectedScanners` in-place (sets scanner_id and name).
+ */
+function matchDetectedToDb(
+  detectedScanners: DetectedScanner[],
+  dbScanners: any[]
+): void {
+  for (const detected of detectedScanners) {
+    const match = dbScanners.find(
+      (s: any) =>
+        s.usb_bus === detected.usb_bus && s.usb_device === detected.usb_device
+    );
+    if (match) {
+      detected.scanner_id = match.id;
+      detected.name = match.name;
+    } else {
+      const portMatch = dbScanners.find(
+        (s: any) => s.usb_port && s.usb_port === detected.usb_port
+      );
+      if (portMatch) {
+        detected.scanner_id = portMatch.id;
+        detected.name = portMatch.name;
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Session validation state — module-level singleton
 // ---------------------------------------------------------------------------
 
@@ -70,34 +144,7 @@ export async function runStartupScannerValidation(
     let detectedScanners: DetectedScanner[] = [];
 
     if (mockEnabled) {
-      const mockCount = 2;
-      for (let i = 0; i < mockCount; i++) {
-        if (i < dbScanners.length) {
-          detectedScanners.push({
-            name: dbScanners[i].name,
-            scanner_id: dbScanners[i].id,
-            usb_bus: 1,
-            usb_device: i + 1,
-            usb_port: `1-${i + 1}`,
-            is_available: true,
-            vendor_id: dbScanners[i].vendor_id,
-            product_id: dbScanners[i].product_id,
-            sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-          });
-        } else {
-          detectedScanners.push({
-            name: `Mock Scanner ${i + 1}`,
-            scanner_id: `mock-scanner-${i + 1}`,
-            usb_bus: 1,
-            usb_device: i + 1,
-            usb_port: `1-${i + 1}`,
-            is_available: true,
-            vendor_id: '04b8',
-            product_id: '013a',
-            sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-          });
-        }
-      }
+      detectedScanners = buildMockScanners(dbScanners);
     } else {
       const lsusbResult = detectEpsonScanners();
 
@@ -110,27 +157,7 @@ export async function runStartupScannerValidation(
       }
 
       detectedScanners = lsusbResult.scanners;
-
-      // Match detected scanners against DB records
-      for (const detected of detectedScanners) {
-        const match = dbScanners.find(
-          (s: any) =>
-            s.usb_bus === detected.usb_bus &&
-            s.usb_device === detected.usb_device
-        );
-        if (match) {
-          detected.scanner_id = match.id;
-          detected.name = match.name;
-        } else {
-          const portMatch = dbScanners.find(
-            (s: any) => s.usb_port && s.usb_port === detected.usb_port
-          );
-          if (portMatch) {
-            detected.scanner_id = portMatch.id;
-            detected.name = portMatch.name;
-          }
-        }
-      }
+      matchDetectedToDb(detectedScanners, dbScanners);
     }
 
     sessionValidation.detectedScanners = detectedScanners;
@@ -204,36 +231,7 @@ export async function detectScanners(db: PrismaClient) {
     let detectedScanners: DetectedScanner[];
 
     if (mockEnabled) {
-      const mockCount = 2;
-      detectedScanners = [];
-
-      for (let i = 0; i < mockCount; i++) {
-        if (i < dbScanners.length) {
-          detectedScanners.push({
-            name: dbScanners[i].name,
-            scanner_id: dbScanners[i].id,
-            usb_bus: 1,
-            usb_device: i + 1,
-            usb_port: `1-${i + 1}`,
-            is_available: true,
-            vendor_id: dbScanners[i].vendor_id,
-            product_id: dbScanners[i].product_id,
-            sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-          });
-        } else {
-          detectedScanners.push({
-            name: `Mock Scanner ${i + 1}`,
-            scanner_id: `mock-scanner-${i + 1}`,
-            usb_bus: 1,
-            usb_device: i + 1,
-            usb_port: `1-${i + 1}`,
-            is_available: true,
-            vendor_id: '04b8',
-            product_id: '013a',
-            sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-          });
-        }
-      }
+      detectedScanners = buildMockScanners(dbScanners);
 
       return {
         success: true,
@@ -258,24 +256,12 @@ export async function detectScanners(db: PrismaClient) {
     detectedScanners = lsusbResult.scanners;
 
     // Match detected scanners against DB records by usb_bus + usb_device
+    matchDetectedToDb(detectedScanners, dbScanners);
+
+    // Tag any still-unmatched scanners as new
     for (const detected of detectedScanners) {
-      const match = dbScanners.find(
-        (s: any) =>
-          s.usb_bus === detected.usb_bus && s.usb_device === detected.usb_device
-      );
-      if (match) {
-        detected.scanner_id = match.id;
-        detected.name = match.name;
-      } else {
-        const portMatch = dbScanners.find(
-          (s: any) => s.usb_port && s.usb_port === detected.usb_port
-        );
-        if (portMatch) {
-          detected.scanner_id = portMatch.id;
-          detected.name = portMatch.name;
-        } else {
-          detected.scanner_id = `new:${detected.usb_bus}:${detected.usb_device}`;
-        }
+      if (!detected.scanner_id) {
+        detected.scanner_id = `new:${detected.usb_bus}:${detected.usb_device}`;
       }
     }
 

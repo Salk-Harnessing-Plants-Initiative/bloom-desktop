@@ -21,6 +21,15 @@ import { resolveGraviScanPath } from '../graviscan-path-utils';
 import { runBoxBackup } from '../box-backup';
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const THUMBNAIL_QUALITY = 85;
+const FULL_QUALITY = 95;
+const THUMBNAIL_WIDTH = 400;
+const COPY_CONCURRENCY = 4;
+
+// ---------------------------------------------------------------------------
 // CSV escaping helper
 // ---------------------------------------------------------------------------
 
@@ -113,10 +122,10 @@ export async function readScanImage(
       filePath = resolvedPath;
     }
 
-    const quality = options?.full ? 95 : 85;
+    const quality = options?.full ? FULL_QUALITY : THUMBNAIL_QUALITY;
     const pipeline = sharp(filePath);
     if (!options?.full) {
-      pipeline.resize(400, null, { withoutEnlargement: true });
+      pipeline.resize(THUMBNAIL_WIDTH, null, { withoutEnlargement: true });
     }
     const jpegBuffer = await pipeline.jpeg({ quality }).toBuffer();
     const base64 = jpegBuffer.toString('base64');
@@ -324,7 +333,6 @@ export async function downloadImages(
     // Copy files with progress (async, 4 concurrent copies)
     let copied = 0;
     const errors: string[] = [];
-    const COPY_CONCURRENCY = 4;
     let nextIdx = 0;
 
     const copyNext = async (): Promise<void> => {
