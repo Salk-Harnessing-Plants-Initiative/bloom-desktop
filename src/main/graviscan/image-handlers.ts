@@ -325,7 +325,7 @@ export async function downloadImages(
       // Write metadata.csv per wave subfolder
       fs.writeFileSync(
         path.join(waveDir, 'metadata.csv'),
-        csvRows.join('\n') + '\n',
+        '\uFEFF' + csvRows.join('\n') + '\n',
         'utf-8'
       );
     }

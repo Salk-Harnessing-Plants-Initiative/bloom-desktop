@@ -334,7 +334,8 @@ function exportMetadataCSV(
     );
   }
 
-  return rows.join('\n') + '\n';
+  // BOM prefix for Excel UTF-8 auto-detection on Windows
+  return '\uFEFF' + rows.join('\n') + '\n';
 }
 
 /**
