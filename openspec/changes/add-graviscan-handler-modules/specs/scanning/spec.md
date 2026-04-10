@@ -153,8 +153,8 @@ The system SHALL provide scan session start, status, cancel, and job-recording a
 #### Scenario: Mark scan job as recorded
 
 - **GIVEN** an active scan session with completed jobs
-- **WHEN** `markJobRecorded(sessionFns, scannerId, plateIndex)` is called
-- **THEN** the system SHALL mark the specified job as DB-recorded in session state
+- **WHEN** `markJobRecorded(sessionFns, jobKey)` is called with `jobKey` in the format `${scannerId}:${plate_index}`
+- **THEN** the system SHALL mark the specified job as DB-recorded in session state using that job key
 
 ### Requirement: GraviScan Image Operations
 
@@ -222,4 +222,4 @@ The system SHALL provide image reading, export, and cloud backup as testable fun
 
 - **GIVEN** an upload is already in progress (module-level `uploadInProgress` guard)
 - **WHEN** `uploadAllScans(db, onProgress)` is called
-- **THEN** the system SHALL return `{ success: false, error: 'Upload already in progress' }`
+- **THEN** the system SHALL return `{ success: false, errors: ['Upload already in progress'], uploaded: 0, skipped: 0, failed: 0 }`

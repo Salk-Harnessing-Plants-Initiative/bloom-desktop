@@ -21,6 +21,17 @@ import { resolveGraviScanPath } from '../graviscan-path-utils';
 import { runBoxBackup } from '../box-backup';
 
 // ---------------------------------------------------------------------------
+// CSV escaping helper
+// ---------------------------------------------------------------------------
+
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return '"' + value.replace(/"/g, '""') + '"';
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
 // Upload concurrency guard
 // ---------------------------------------------------------------------------
 
@@ -239,7 +250,9 @@ export async function downloadImages(
       ],
     });
 
-    const expDir = path.join(params.targetDir, params.experimentName);
+    // Sanitize experiment name for safe use as directory name
+    const safeName = params.experimentName.replace(/[/\\:*?"<>|.]/g, '_').replace(/\.\./g, '_');
+    const expDir = path.join(params.targetDir, safeName);
 
     // Group scans by wave number for subfolder organization
     const waveGroups = new Map<number, typeof scans>();
@@ -279,18 +292,20 @@ export async function downloadImages(
 
           csvRows.push(
             [
-              params.experimentName,
-              scan.wave_number,
-              scan.plate_barcode ?? '',
-              scan.plate_index,
-              scan.grid_mode,
-              scan.capture_date.toISOString(),
-              accession,
-              (scan as any).transplant_date
-                ? (scan as any).transplant_date.toISOString().split('T')[0]
-                : '',
-              (scan as any).custom_note ?? '',
-              originalFilename,
+              csvEscape(params.experimentName),
+              csvEscape(String(scan.wave_number)),
+              csvEscape(scan.plate_barcode ?? ''),
+              csvEscape(String(scan.plate_index)),
+              csvEscape(scan.grid_mode),
+              csvEscape(scan.capture_date.toISOString()),
+              csvEscape(accession),
+              csvEscape(
+                (scan as any).transplant_date
+                  ? (scan as any).transplant_date.toISOString().split('T')[0]
+                  : '',
+              ),
+              csvEscape((scan as any).custom_note ?? ''),
+              csvEscape(originalFilename),
             ].join(','),
           );
         }

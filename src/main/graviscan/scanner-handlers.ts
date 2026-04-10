@@ -169,7 +169,11 @@ export async function runStartupScannerValidation(
  * Get current session validation state.
  */
 export function getSessionValidationState(): SessionValidationState {
-  return { ...sessionValidation };
+  return {
+    ...sessionValidation,
+    detectedScanners: [...sessionValidation.detectedScanners],
+    cachedScannerIds: [...sessionValidation.cachedScannerIds],
+  };
 }
 
 /**
@@ -286,6 +290,7 @@ export async function detectScanners(db: PrismaClient) {
       success: false,
       error: error instanceof Error ? error.message : 'Detection failed',
       scanners: [] as DetectedScanner[],
+      count: 0,
     };
   }
 }
