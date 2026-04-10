@@ -30,6 +30,7 @@ tests/unit/graviscan/
 ```
 
 Cherry-picked dependencies (already exist in Ben's branch, need to land on our branch):
+
 - `src/main/lsusb-detection.ts`
 - `src/main/graviscan-path-utils.ts`
 - `src/main/box-backup.ts`
@@ -39,6 +40,7 @@ Cherry-picked dependencies (already exist in Ben's branch, need to land on our b
 ### Task 0: Cherry-Pick Dependencies
 
 **Files:**
+
 - Create: `src/main/lsusb-detection.ts` (from Ben's branch)
 - Create: `src/main/graviscan-path-utils.ts` (from Ben's branch)
 - Create: `src/main/box-backup.ts` (from Ben's branch)
@@ -87,6 +89,7 @@ origin/graviscan/4-main-process. Required as imports for handler modules."
 ### Task 1: Scanner Handlers — Tests
 
 **Files:**
+
 - Create: `tests/unit/graviscan/scanner-handlers.test.ts`
 
 - [ ] **Step 1: Write scanner-handlers test file with mocks and detectScanners tests**
@@ -172,7 +175,16 @@ describe('scanner-handlers', () => {
     it('should return mock scanners when GRAVISCAN_MOCK is true', async () => {
       vi.stubEnv('GRAVISCAN_MOCK', 'true');
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 'db-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a', usb_bus: 1, usb_device: 1, usb_port: '1-1', enabled: true },
+        {
+          id: 'db-1',
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 1,
+          usb_port: '1-1',
+          enabled: true,
+        },
       ]);
 
       const result = await detectScanners(db);
@@ -201,14 +213,26 @@ describe('scanner-handlers', () => {
     it('should create new scanner records', async () => {
       db.graviScanner.findFirst.mockResolvedValue(null);
       db.graviScanner.create.mockResolvedValue({
-        id: 'new-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2', enabled: true,
+        id: 'new-1',
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013a',
+        usb_bus: 1,
+        usb_device: 2,
+        usb_port: '1-2',
+        enabled: true,
       });
 
-      const result = await saveScannersToDB(db, [{
-        name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2',
-      }]);
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
 
       expect(result.success).toBe(true);
       expect(result.scanners).toHaveLength(1);
@@ -219,19 +243,36 @@ describe('scanner-handlers', () => {
       // findFirst returns null for bus+device, then returns existing for port match
       db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
         if (where?.usb_port === '1-2') {
-          return { id: 'existing-1', name: 'Old Name', usb_port: '1-2', display_name: null };
+          return {
+            id: 'existing-1',
+            name: 'Old Name',
+            usb_port: '1-2',
+            display_name: null,
+          };
         }
         return null;
       });
       db.graviScanner.update.mockResolvedValue({
-        id: 'existing-1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2', enabled: true,
+        id: 'existing-1',
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013a',
+        usb_bus: 1,
+        usb_device: 2,
+        usb_port: '1-2',
+        enabled: true,
       });
 
-      const result = await saveScannersToDB(db, [{
-        name: 'Scanner 1', vendor_id: '04b8', product_id: '013a',
-        usb_bus: 1, usb_device: 2, usb_port: '1-2',
-      }]);
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
 
       expect(result.success).toBe(true);
       expect(result.scanners[0].id).toBe('existing-1');
@@ -242,7 +283,10 @@ describe('scanner-handlers', () => {
   describe('getConfig', () => {
     it('should return config from database', async () => {
       db.graviConfig.findFirst.mockResolvedValue({
-        id: '1', grid_mode: '2grid', resolution: 600, format: 'tiff',
+        id: '1',
+        grid_mode: '2grid',
+        resolution: 600,
+        format: 'tiff',
       });
 
       const result = await getConfig(db);
@@ -265,10 +309,16 @@ describe('scanner-handlers', () => {
     it('should create config when none exists', async () => {
       db.graviConfig.findFirst.mockResolvedValue(null);
       db.graviConfig.create.mockResolvedValue({
-        id: '1', grid_mode: '4grid', resolution: 1200, format: 'tiff',
+        id: '1',
+        grid_mode: '4grid',
+        resolution: 1200,
+        format: 'tiff',
       });
 
-      const result = await saveConfig(db, { grid_mode: '4grid', resolution: 1200 });
+      const result = await saveConfig(db, {
+        grid_mode: '4grid',
+        resolution: 1200,
+      });
 
       expect(result.success).toBe(true);
       expect(db.graviConfig.create).toHaveBeenCalled();
@@ -277,10 +327,16 @@ describe('scanner-handlers', () => {
     it('should update existing config', async () => {
       db.graviConfig.findFirst.mockResolvedValue({ id: '1' });
       db.graviConfig.update.mockResolvedValue({
-        id: '1', grid_mode: '2grid', resolution: 600, format: 'tiff',
+        id: '1',
+        grid_mode: '2grid',
+        resolution: 600,
+        format: 'tiff',
       });
 
-      const result = await saveConfig(db, { grid_mode: '2grid', resolution: 600 });
+      const result = await saveConfig(db, {
+        grid_mode: '2grid',
+        resolution: 600,
+      });
 
       expect(result.success).toBe(true);
       expect(db.graviConfig.update).toHaveBeenCalled();
@@ -291,11 +347,17 @@ describe('scanner-handlers', () => {
     const originalPlatform = process.platform;
 
     afterEach(() => {
-      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      });
     });
 
     it('should return sane backend on linux', async () => {
-      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+      Object.defineProperty(process, 'platform', {
+        value: 'linux',
+        configurable: true,
+      });
       const result = await getPlatformInfo();
 
       expect(result.success).toBe(true);
@@ -303,7 +365,10 @@ describe('scanner-handlers', () => {
     });
 
     it('should return unsupported on darwin', async () => {
-      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+      Object.defineProperty(process, 'platform', {
+        value: 'darwin',
+        configurable: true,
+      });
       const result = await getPlatformInfo();
 
       expect(result.supported).toBe(false);
@@ -332,7 +397,14 @@ describe('scanner-handlers', () => {
 
     it('should match saved scanners by USB port', async () => {
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 's1', name: 'Scanner 1', usb_port: '1-2', vendor_id: '04b8', product_id: '013a', enabled: true },
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          usb_port: '1-2',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
       ]);
       mockDetect.mockReturnValue({
         success: true,
@@ -350,7 +422,14 @@ describe('scanner-handlers', () => {
 
     it('should report missing scanners', async () => {
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 's1', name: 'Scanner 1', usb_port: '1-2', vendor_id: '04b8', product_id: '013a', enabled: true },
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          usb_port: '1-2',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
       ]);
       mockDetect.mockReturnValue({ success: true, scanners: [], count: 0 });
 
@@ -372,7 +451,13 @@ describe('scanner-handlers', () => {
 
     it('should validate cached scanners against detected hardware', async () => {
       db.graviScanner.findMany.mockResolvedValue([
-        { id: 's1', name: 'Scanner 1', vendor_id: '04b8', product_id: '013a', enabled: true },
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
       ]);
       mockDetect.mockReturnValue({
         success: true,
@@ -421,11 +506,13 @@ validation state accessors. All tests fail — implementation next."
 ### Task 2: Scanner Handlers — Implementation
 
 **Files:**
+
 - Create: `src/main/graviscan/scanner-handlers.ts`
 
 - [ ] **Step 1: Implement scanner-handlers.ts**
 
 Extract and adapt the following handlers from `origin/graviscan/4-main-process:src/main/graviscan-handlers.ts`:
+
 - `graviscan:detect-scanners` (lines 236-352)
 - `graviscan:get-config` (lines 362-380)
 - `graviscan:save-config` (lines 383-424)
@@ -436,6 +523,7 @@ Extract and adapt the following handlers from `origin/graviscan/4-main-process:s
 - Plus: `runStartupScannerValidation` (lines 56-190), `getSessionValidationState` (lines 191-196), `resetSessionValidation` (lines 198-206)
 
 Key adaptations from Ben's code:
+
 - Remove `ipcMain.handle()` wrappers — export naked async functions
 - Replace module-level `db` with `db: PrismaClient` parameter on every function
 - Keep module-level `sessionValidation` state + exported `resetSessionValidation()`
@@ -483,6 +571,7 @@ graviscan-handlers.ts. Pure exports with db injection, no ipcMain."
 ### Task 3: Session Handlers — Tests
 
 **Files:**
+
 - Create: `tests/unit/graviscan/session-handlers.test.ts`
 
 - [ ] **Step 1: Write session-handlers test file**
@@ -496,13 +585,19 @@ interface ScanCoordinatorLike {
   readonly isScanning: boolean;
   initialize(scanners: any[]): Promise<void>;
   scanOnce(platesPerScanner: Map<string, any[]>): Promise<void>;
-  scanInterval(platesPerScanner: Map<string, any[]>, intervalMs: number, durationMs: number): Promise<void>;
+  scanInterval(
+    platesPerScanner: Map<string, any[]>,
+    intervalMs: number,
+    durationMs: number
+  ): Promise<void>;
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
 }
 
-function createMockCoordinator(overrides: Partial<ScanCoordinatorLike> = {}): ScanCoordinatorLike {
+function createMockCoordinator(
+  overrides: Partial<ScanCoordinatorLike> = {}
+): ScanCoordinatorLike {
   return {
     isScanning: false,
     initialize: vi.fn().mockResolvedValue(undefined),
@@ -544,11 +639,20 @@ describe('session-handlers', () => {
 
   describe('startScan', () => {
     const baseParams = {
-      scanners: [{
-        scannerId: 's1',
-        saneName: 'epkowa:interpreter:001:002',
-        plates: [{ plate_index: '00', grid_mode: '2grid', resolution: 600, output_path: '/tmp/scan' }],
-      }],
+      scanners: [
+        {
+          scannerId: 's1',
+          saneName: 'epkowa:interpreter:001:002',
+          plates: [
+            {
+              plate_index: '00',
+              grid_mode: '2grid',
+              resolution: 600,
+              output_path: '/tmp/scan',
+            },
+          ],
+        },
+      ],
       metadata: {
         experimentId: 'exp-1',
         phenotyperId: 'pheno-1',
@@ -557,7 +661,12 @@ describe('session-handlers', () => {
     };
 
     it('should reject when coordinator is null', async () => {
-      const result = await startScan(null as any, baseParams, sessionFns, onError);
+      const result = await startScan(
+        null as any,
+        baseParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not initialized');
@@ -566,14 +675,24 @@ describe('session-handlers', () => {
     it('should reject when scan already in progress', async () => {
       coordinator = createMockCoordinator({ isScanning: true } as any);
 
-      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('already in progress');
     });
 
     it('should initialize coordinator and call scanOnce for one-shot', async () => {
-      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(true);
       expect(coordinator.initialize).toHaveBeenCalled();
@@ -587,13 +706,18 @@ describe('session-handlers', () => {
         interval: { intervalSeconds: 300, durationSeconds: 3600 },
       };
 
-      const result = await startScan(coordinator, continuousParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        continuousParams,
+        sessionFns,
+        onError
+      );
 
       expect(result.success).toBe(true);
       expect(coordinator.scanInterval).toHaveBeenCalledWith(
         expect.any(Map),
         300000,
-        3600000,
+        3600000
       );
     });
 
@@ -628,7 +752,12 @@ describe('session-handlers', () => {
         scanOnce: vi.fn().mockReturnValue(scanPromise),
       } as any);
 
-      const result = await startScan(coordinator, baseParams, sessionFns, onError);
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
       expect(result.success).toBe(true);
 
       // Now reject the detached promise
@@ -731,17 +860,20 @@ error), getScanStatus, markJobRecorded, cancelScan. All fail."
 ### Task 4: Session Handlers — Implementation
 
 **Files:**
+
 - Create: `src/main/graviscan/session-handlers.ts`
 
 - [ ] **Step 1: Implement session-handlers.ts**
 
 Extract and adapt from Ben's `graviscan-handlers.ts`:
+
 - `graviscan:start-scan` (lines 784-938)
 - `graviscan:get-scan-status` (lines 940-968)
 - `graviscan:mark-job-recorded` (lines 968-978)
 - `graviscan:cancel-scan` (lines 979-1010)
 
 Key adaptations:
+
 - Define locally: `ScanCoordinatorLike` interface (`cancelAll()` not `cancelScan()`), `ScannerConfig`, `PlateConfig` (with `resolution: number`)
 - Remove `ipcMain.handle()` wrappers
 - Replace `getCoordinator?.()` with injected `coordinator` parameter
@@ -750,6 +882,7 @@ Key adaptations:
 - Fire-and-forget `.catch()` calls `onError` and `sessionFns.setScanSession(null)`
 
 The module exports:
+
 - `startScan(coordinator, params, sessionFns, onError)`
 - `getScanStatus(sessionFns)`
 - `markJobRecorded(sessionFns, jobKey)`
@@ -781,6 +914,7 @@ ScanCoordinatorLike interface based on Ben's ScanCoordinator."
 ### Task 5: Image Handlers — Tests
 
 **Files:**
+
 - Create: `tests/unit/graviscan/image-handlers.test.ts`
 
 - [ ] **Step 1: Write image-handlers test file**
@@ -868,7 +1002,7 @@ describe('image-handlers', () => {
       vi.stubEnv('NODE_ENV', 'development');
       vi.mocked(app.getAppPath).mockReturnValue('/project/root');
 
-            const result = getOutputDir();
+      const result = getOutputDir();
 
       expect(result.success).toBe(true);
       expect(result.path).toContain('.graviscan');
@@ -878,7 +1012,7 @@ describe('image-handlers', () => {
       vi.stubEnv('NODE_ENV', 'production');
       vi.mocked(app.getPath).mockReturnValue('/home/user');
 
-            const result = getOutputDir();
+      const result = getOutputDir();
 
       expect(result.success).toBe(true);
       expect(result.path).toContain('.bloom');
@@ -887,16 +1021,20 @@ describe('image-handlers', () => {
     it('should create directory if missing', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-            getOutputDir();
+      getOutputDir();
 
-      expect(fs.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+      expect(fs.mkdirSync).toHaveBeenCalledWith(expect.any(String), {
+        recursive: true,
+      });
     });
 
     it('should return error when mkdirSync fails', async () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
-      vi.mocked(fs.mkdirSync).mockImplementation(() => { throw new Error('EACCES'); });
+      vi.mocked(fs.mkdirSync).mockImplementation(() => {
+        throw new Error('EACCES');
+      });
 
-            const result = getOutputDir();
+      const result = getOutputDir();
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('EACCES');
@@ -907,7 +1045,7 @@ describe('image-handlers', () => {
     it('should return base64 data URI for thumbnail', async () => {
       mockResolvePath.mockReturnValue('/scan/image.tiff');
 
-            const result = await readScanImage('/scan/image.tiff');
+      const result = await readScanImage('/scan/image.tiff');
 
       expect(result.success).toBe(true);
       expect(result.dataUri).toMatch(/^data:image\/jpeg;base64,/);
@@ -924,7 +1062,7 @@ describe('image-handlers', () => {
     it('should return error when file not found', async () => {
       mockResolvePath.mockReturnValue(null);
 
-            const result = await readScanImage('/missing/image.tiff');
+      const result = await readScanImage('/missing/image.tiff');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
@@ -934,10 +1072,13 @@ describe('image-handlers', () => {
   describe('uploadAllScans', () => {
     it('should trigger box backup and report results', async () => {
       mockRunBoxBackup.mockResolvedValue({
-        success: true, experiments: 1, filesCopied: 5, errors: [],
+        success: true,
+        experiments: 1,
+        filesCopied: 5,
+        errors: [],
       } as any);
 
-            const onProgress = vi.fn();
+      const onProgress = vi.fn();
       const result = await uploadAllScans(db, onProgress);
 
       expect(result.success).toBe(true);
@@ -949,7 +1090,7 @@ describe('image-handlers', () => {
       // Make first upload hang
       mockRunBoxBackup.mockReturnValue(new Promise(() => {}));
 
-            // Start first upload (will hang)
+      // Start first upload (will hang)
       const first = uploadAllScans(db);
       // Try second immediately
       const second = await uploadAllScans(db);
@@ -963,7 +1104,7 @@ describe('image-handlers', () => {
     it('should return zero counts when no images found', async () => {
       db.graviScan.findMany.mockResolvedValue([]);
 
-            const result = await downloadImages(db, {
+      const result = await downloadImages(db, {
         experimentId: 'exp-1',
         experimentName: 'Test Exp',
         targetDir: '/tmp/download',
@@ -975,23 +1116,29 @@ describe('image-handlers', () => {
     });
 
     it('should copy images and write metadata CSV', async () => {
-      db.graviScan.findMany.mockResolvedValue([{
-        wave_number: 0,
-        plate_barcode: 'PLATE-001',
-        plate_index: '00',
-        grid_mode: '2grid',
-        capture_date: new Date('2026-04-01'),
-        experiment: { accession: { graviPlateAccessions: [] } },
-        images: [{ path: '/scan/image.tiff' }],
-      }]);
+      db.graviScan.findMany.mockResolvedValue([
+        {
+          wave_number: 0,
+          plate_barcode: 'PLATE-001',
+          plate_index: '00',
+          grid_mode: '2grid',
+          capture_date: new Date('2026-04-01'),
+          experiment: { accession: { graviPlateAccessions: [] } },
+          images: [{ path: '/scan/image.tiff' }],
+        },
+      ]);
       mockResolvePath.mockReturnValue('/scan/image.tiff');
 
-            const onProgress = vi.fn();
-      const result = await downloadImages(db, {
-        experimentId: 'exp-1',
-        experimentName: 'Test Exp',
-        targetDir: '/tmp/download',
-      }, onProgress);
+      const onProgress = vi.fn();
+      const result = await downloadImages(
+        db,
+        {
+          experimentId: 'exp-1',
+          experimentName: 'Test Exp',
+          targetDir: '/tmp/download',
+        },
+        onProgress
+      );
 
       expect(result.total).toBe(1);
       expect(result.copied).toBe(1);
@@ -1023,17 +1170,20 @@ upload guard), downloadImages (incl metadata CSV). All fail."
 ### Task 6: Image Handlers — Implementation
 
 **Files:**
+
 - Create: `src/main/graviscan/image-handlers.ts`
 
 - [ ] **Step 1: Implement image-handlers.ts**
 
 Extract and adapt from Ben's `graviscan-handlers.ts`:
+
 - `graviscan:get-output-dir` (lines 1014-1050)
 - `graviscan:read-scan-image` (lines 1055-1093)
 - `graviscan:upload-all-scans` (lines 1095-1155)
 - `graviscan:download-images` (lines 1159-1338)
 
 Key adaptations:
+
 - Remove `ipcMain.handle()` wrappers
 - `getOutputDir()` — keep Electron `app` import (module-mocked in tests)
 - `readScanImage(filePath, options?)` — same as Ben's but no `_event` param
@@ -1066,6 +1216,7 @@ resetUploadState() for testing. Dialog handling deferred to 3c."
 ### Task 7: Barrel Export + Full Verification
 
 **Files:**
+
 - Create: `src/main/graviscan/index.ts`
 
 - [ ] **Step 1: Create index.ts barrel export**
@@ -1142,13 +1293,13 @@ Expected: All existing tests still pass + new graviscan tests pass
 
 ## Summary
 
-| Task | Module | What | Commit message prefix |
-|------|--------|------|-----------------------|
-| 0 | deps | Cherry-pick lsusb-detection, path-utils, box-backup | `chore:` |
-| 1 | scanner-handlers | Tests (red) | `test:` |
-| 2 | scanner-handlers | Implementation (green) | `feat:` |
-| 3 | session-handlers | Tests (red) | `test:` |
-| 4 | session-handlers | Implementation (green) | `feat:` |
-| 5 | image-handlers | Tests (red) | `test:` |
-| 6 | image-handlers | Implementation (green) | `feat:` |
-| 7 | index.ts | Barrel export + full verification | `feat:` |
+| Task | Module           | What                                                | Commit message prefix |
+| ---- | ---------------- | --------------------------------------------------- | --------------------- |
+| 0    | deps             | Cherry-pick lsusb-detection, path-utils, box-backup | `chore:`              |
+| 1    | scanner-handlers | Tests (red)                                         | `test:`               |
+| 2    | scanner-handlers | Implementation (green)                              | `feat:`               |
+| 3    | session-handlers | Tests (red)                                         | `test:`               |
+| 4    | session-handlers | Implementation (green)                              | `feat:`               |
+| 5    | image-handlers   | Tests (red)                                         | `test:`               |
+| 6    | image-handlers   | Implementation (green)                              | `feat:`               |
+| 7    | index.ts         | Barrel export + full verification                   | `feat:`               |

@@ -18,12 +18,14 @@ The key insight from the CylinderScan codebase: `camera-process.ts` and `scanner
 We follow the same principle: **business logic in separate modules, testable via direct import, with module-mocked external dependencies.** We are NOT claiming pure-function purity. These modules have module-level state (`sessionValidation`, `uploadInProgress`) and use module-level imports (`detectEpsonScanners`, `sharp`, `fs`) that are mocked in tests via `vi.mock()`.
 
 What IS dependency-injected (passed as parameters):
+
 - `db: PrismaClient` — enables mocking without singleton coupling
 - `coordinator: ScanCoordinator` — does not exist yet (Increment 3b), injected to avoid import coupling
 - Session state functions (`getScanSession`, `setScanSession`, `markScanJobRecorded`) — currently live in `main.ts`, injected to break circular dependency
 - Progress/error callbacks — replace `mainWindow.webContents.send()` for testability
 
 What is NOT dependency-injected (module-mocked in tests via `vi.mock()`):
+
 - `detectEpsonScanners` from `../lsusb-detection`
 - `resolveGraviScanPath` from `../graviscan-path-utils`
 - `sharp` (native image processing)
@@ -32,6 +34,7 @@ What is NOT dependency-injected (module-mocked in tests via `vi.mock()`):
 - `app` from `electron` (used by `getOutputDir` for path resolution — `app.getAppPath()`, `app.getPath('home')`)
 
 Alternatives considered:
+
 - **Handler files own `ipcMain.handle()`**: Rejected. This is the `database-handlers.ts` pattern that led to 942 untested lines. Requires mocking Electron's IPC runtime.
 - **Pure stateless functions with full DI**: Rejected. Overstates purity — we have real module-level state and it's simpler to let external deps be module imports rather than threading 6+ parameters through every call.
 
@@ -39,11 +42,11 @@ Alternatives considered:
 
 Grouped by workflow phase rather than strict domain object:
 
-| Module | Handlers | Rationale |
-|---|---|---|
+| Module                | Handlers                                                                                                                                           | Rationale                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | `scanner-handlers.ts` | `detect-scanners`, `save-scanners-db`, `get-config`, `save-config`, `platform-info`, `validate-scanners`, `validate-config` + validation state fns | Everything about scanner hardware setup and readiness |
-| `session-handlers.ts` | `start-scan`, `get-scan-status`, `mark-job-recorded`, `cancel-scan` | Scan execution lifecycle via ScanCoordinator |
-| `image-handlers.ts` | `get-output-dir`, `read-scan-image`, `upload-all-scans`, `download-images` | Image output, export, and backup |
+| `session-handlers.ts` | `start-scan`, `get-scan-status`, `mark-job-recorded`, `cancel-scan`                                                                                | Scan execution lifecycle via ScanCoordinator          |
+| `image-handlers.ts`   | `get-output-dir`, `read-scan-image`, `upload-all-scans`, `download-images`                                                                         | Image output, export, and backup                      |
 
 ### Cherry-pick dependencies from Ben's branch
 
@@ -64,7 +67,11 @@ interface ScanCoordinatorLike {
   readonly isScanning: boolean;
   initialize(scanners: ScannerConfig[]): Promise<void>;
   scanOnce(platesPerScanner: Map<string, PlateConfig[]>): Promise<void>;
-  scanInterval(platesPerScanner: Map<string, PlateConfig[]>, intervalMs: number, durationMs: number): Promise<void>;
+  scanInterval(
+    platesPerScanner: Map<string, PlateConfig[]>,
+    intervalMs: number,
+    durationMs: number
+  ): Promise<void>;
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
@@ -111,7 +118,7 @@ export async function downloadImages(
   db: PrismaClient,
   params: DownloadParams,
   onProgress?: (progress: DownloadProgress) => void
-): Promise<DownloadResult>
+): Promise<DownloadResult>;
 ```
 
 The IPC wiring layer (3c) converts callbacks to `webContents.send()`.
@@ -123,6 +130,7 @@ Ben's `download-images` handler opens a native folder picker via `dialog.showOpe
 ### Module-level mutable state
 
 Two pieces of module-level state exist:
+
 - **`sessionValidation`** in `scanner-handlers.ts` — startup validation state. Exposed via `getSessionValidationState()` / `resetSessionValidation()`. Tests call `resetSessionValidation()` in `beforeEach`.
 - **`uploadInProgress`** in `image-handlers.ts` — upload guard boolean. Prevents concurrent Box uploads. Managed as module-level closure state with `resetUploadState()` exported for testing.
 

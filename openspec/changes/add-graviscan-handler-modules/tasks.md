@@ -24,7 +24,7 @@
 
 - [x] 2.1 Write `session-handlers.test.ts` tests first (use `// @vitest-environment node` directive):
   - `startScan`: calls `coordinator.initialize(scannerConfigs)` before scanning, one-shot mode calls `coordinator.scanOnce()`, continuous mode calls `coordinator.scanInterval()` with correct interval/duration, rejects when coordinator is null, rejects when `coordinator.isScanning` is true, builds session state correctly (verify `jobs` shape, `totalCycles` calculation)
-  - Fire-and-forget error path: mock `coordinator.scanOnce()` to return a promise that rejects *after* the function returns; verify `setScanSession(null)` and `onError` callback are called
+  - Fire-and-forget error path: mock `coordinator.scanOnce()` to return a promise that rejects _after_ the function returns; verify `setScanSession(null)` and `onError` callback are called
   - `getScanStatus`: returns session state when active, returns `{ isActive: false }` when no session
   - `markJobRecorded`: marks specified job key as DB-recorded in session state
   - `cancelScan`: calls `coordinator.cancelAll()` then `coordinator.shutdown()` (note: method is `cancelAll`, not `cancelScan`), clears session state, handles no active scan gracefully
