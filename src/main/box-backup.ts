@@ -17,14 +17,26 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { execFile, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { resolveGraviScanPath } from './graviscan-path-utils';
 
 const RCLONE_REMOTE = 'Box';
-const BOX_BASE_PATH = 'Graviscan-Backups';
+const BOX_BASE_PATH = 'GraviScan-Backups';
+
+/**
+ * Escape a value for inclusion in a CSV field.
+ * Wraps in double-quotes and escapes inner quotes when the value
+ * contains commas, double-quotes, or newlines.
+ */
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return '"' + value.replace(/"/g, '""') + '"';
+  }
+  return value;
+}
 
 export interface BoxBackupProgress {
   totalImages: number;
@@ -45,9 +57,9 @@ export interface BoxBackupResult {
  */
 function isRcloneInstalled(): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile('which', ['rclone'], (error) => {
-      resolve(!error);
-    });
+    const child = spawn('rclone', ['version'], { stdio: 'ignore' });
+    child.once('error', () => resolve(false));
+    child.once('exit', (code) => resolve(code === 0));
   });
 }
 
@@ -306,16 +318,18 @@ function exportMetadataCSV(
   for (const r of scanRows) {
     rows.push(
       [
-        experimentName,
-        r.wave_number,
-        r.plate_barcode ?? '',
-        r.plate_index,
-        r.grid_mode,
-        r.capture_date.toISOString(),
-        r.accession,
-        r.transplant_date ? r.transplant_date.toISOString().split('T')[0] : '',
-        r.custom_note ?? '',
-        r.image_filename,
+        csvEscape(experimentName),
+        csvEscape(String(r.wave_number)),
+        csvEscape(r.plate_barcode ?? ''),
+        csvEscape(r.plate_index),
+        csvEscape(r.grid_mode),
+        csvEscape(r.capture_date.toISOString()),
+        csvEscape(r.accession),
+        csvEscape(
+          r.transplant_date ? r.transplant_date.toISOString().split('T')[0] : ''
+        ),
+        csvEscape(r.custom_note ?? ''),
+        csvEscape(r.image_filename),
       ].join(',')
     );
   }
@@ -442,13 +456,14 @@ export async function runBoxBackup(
 
   // Process each experiment → wave
   for (const [expName, waveMap] of experimentWaveMap) {
+    const safeName = expName.replace(/[/\\:*?"<>|.]/g, '_').replace(/\.\./g, '_');
     const sortedWaves = [...waveMap.keys()].sort((a, b) => a - b);
 
     for (const waveNum of sortedWaves) {
       const data = waveMap.get(waveNum)!;
       const boxDest = systemName
-        ? `${BOX_BASE_PATH}/${systemName}/${expName}/wave_${waveNum}`
-        : `${BOX_BASE_PATH}/${expName}/wave_${waveNum}`;
+        ? `${BOX_BASE_PATH}/${systemName}/${safeName}/wave_${waveNum}`
+        : `${BOX_BASE_PATH}/${safeName}/wave_${waveNum}`;
       console.log(
         `[BoxBackup] Backing up ${data.imagePaths.length} images for ${expName}/wave_${waveNum}`
       );
@@ -521,7 +536,7 @@ export async function runBoxBackup(
         const csvContent = exportMetadataCSV(expName, data.scanRows);
         const tmpCsvPath = path.join(
           os.tmpdir(),
-          `graviscan-metadata-${expName}-wave${waveNum}.csv`
+          `graviscan-metadata-${safeName}-wave${waveNum}.csv`
         );
 
         try {
