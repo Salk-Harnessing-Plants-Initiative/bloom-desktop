@@ -1,8 +1,10 @@
 """
 Tests for scan_regions.py — pure logic, no mocks or hardware required.
 
-Covers: get_scan_region, get_all_plate_indices, get_row_groups,
-        get_row_bounding_box, get_crop_box, ScanRegion.to_pixels, ScanRegion.to_dict
+Covers: get_scan_region, get_all_plate_indices, ScanRegion.to_pixels, ScanRegion.to_dict
+
+Note: Row-merge functions (get_row_groups, get_row_bounding_box, get_crop_box) removed.
+Their test classes below are skipped.
 """
 
 import pytest
@@ -10,12 +12,8 @@ import pytest
 from python.graviscan.scan_regions import (
     GRID_2_REGIONS,
     GRID_4_REGIONS,
-    SCANNER_MAX_X,
     ScanRegion,
     get_all_plate_indices,
-    get_crop_box,
-    get_row_bounding_box,
-    get_row_groups,
     get_scan_region,
 )
 
@@ -62,94 +60,6 @@ class TestGetAllPlateIndices:
     def test_invalid_grid_mode(self):
         with pytest.raises(ValueError):
             get_all_plate_indices("8grid")
-
-
-# ---------------------------------------------------------------------------
-# 1.3  get_row_groups
-# ---------------------------------------------------------------------------
-class TestGetRowGroups:
-    def test_4grid_has_two_rows(self):
-        groups = get_row_groups("4grid")
-        assert "top" in groups and "bottom" in groups
-        assert set(groups["top"]) == {"00", "01"}
-        assert set(groups["bottom"]) == {"10", "11"}
-
-    def test_2grid_each_plate_own_row(self):
-        groups = get_row_groups("2grid")
-        assert groups["top"] == ["01"]
-        assert groups["bottom"] == ["00"]
-
-    def test_invalid_grid_mode(self):
-        with pytest.raises(ValueError):
-            get_row_groups("1grid")
-
-
-# ---------------------------------------------------------------------------
-# 1.4  get_row_bounding_box
-# ---------------------------------------------------------------------------
-class TestGetRowBoundingBox:
-    def test_4grid_top_row_union(self):
-        bbox = get_row_bounding_box("4grid", ["00", "01"])
-        r00 = GRID_4_REGIONS["00"]
-        r01 = GRID_4_REGIONS["01"]
-        assert bbox.top == min(r00.top, r01.top)
-        assert bbox.left == min(r00.left, r01.left)
-        expected_right = min(
-            max(r00.left + r00.width, r01.left + r01.width), SCANNER_MAX_X
-        )
-        assert bbox.width == pytest.approx(expected_right - bbox.left)
-
-    def test_4grid_bottom_row_union(self):
-        bbox = get_row_bounding_box("4grid", ["10", "11"])
-        r10 = GRID_4_REGIONS["10"]
-        r11 = GRID_4_REGIONS["11"]
-        assert bbox.top == min(r10.top, r11.top)
-        max_bottom = max(r10.top + r10.height, r11.top + r11.height)
-        assert bbox.height == pytest.approx(max_bottom - bbox.top)
-
-    def test_single_plate_bbox_matches_region(self):
-        r = get_scan_region("4grid", "00")
-        bbox = get_row_bounding_box("4grid", ["00"])
-        assert bbox.top == r.top
-        assert bbox.left == r.left
-        assert bbox.width == pytest.approx(r.width)
-        assert bbox.height == pytest.approx(r.height)
-
-    def test_clamped_to_scanner_max_x(self):
-        """Bounding box width should never exceed SCANNER_MAX_X."""
-        bbox = get_row_bounding_box("4grid", ["00", "01"])
-        assert bbox.left + bbox.width <= SCANNER_MAX_X + 0.01
-
-
-# ---------------------------------------------------------------------------
-# 1.5  get_crop_box
-# ---------------------------------------------------------------------------
-class TestGetCropBox:
-    def test_crop_box_at_300dpi(self):
-        bbox = get_row_bounding_box("4grid", ["00", "01"])
-        crop = get_crop_box("4grid", "00", bbox, 300)
-        assert len(crop) == 4
-        left, upper, right, lower = crop
-        assert left >= 0
-        assert upper >= 0
-        assert right > left
-        assert lower > upper
-
-    def test_crop_box_at_600dpi_doubles_pixels(self):
-        bbox = get_row_bounding_box("4grid", ["00", "01"])
-        crop300 = get_crop_box("4grid", "00", bbox, 300)
-        crop600 = get_crop_box("4grid", "00", bbox, 600)
-        # Each pixel value at 600 should be ~2x the 300 value
-        for v300, v600 in zip(crop300, crop600):
-            assert abs(v600 - 2 * v300) <= 1
-
-    def test_first_plate_starts_near_origin(self):
-        bbox = get_row_bounding_box("4grid", ["00", "01"])
-        crop = get_crop_box("4grid", "00", bbox, 300)
-        r00 = GRID_4_REGIONS["00"]
-        # "00" left == bbox.left, so crop left should be 0
-        expected_left = int((r00.left - bbox.left) * 300 / 25.4)
-        assert crop[0] == expected_left
 
 
 # ---------------------------------------------------------------------------
