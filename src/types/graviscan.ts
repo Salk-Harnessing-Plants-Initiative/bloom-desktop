@@ -328,3 +328,13 @@ export function createEmptyScannerAssignment(
     gridMode: '2grid', // Default to 2-grid
   };
 }
+
+/**
+ * Result of a USB reset operation.
+ * Returns per-scanner status after shutdown → clear → re-detect → re-initialize cycle.
+ */
+export interface ResetUsbResult {
+  success: boolean;
+  scanners: { id: string; status: 'ready' | 'disconnected' | 'error' }[];
+  error?: string;
+}

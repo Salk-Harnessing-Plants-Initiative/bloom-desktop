@@ -585,6 +585,164 @@ export function registerGraviscanHandlers(
   });
 
   // ==========================================================================
+  // USB Reset
+  // ==========================================================================
+
+  /** Time to wait for USB bus to release after subprocess shutdown. */
+  const USB_RELEASE_WAIT_MS = 5000;
+
+  /**
+   * Full USB reset: shutdown SANE → clear stale addresses → re-detect → re-initialize.
+   *
+   * Replaces the partial pkill-based reset with a clean lifecycle:
+   * 1. Graceful coordinator shutdown (sends quit to each subprocess, SANE closes)
+   * 2. Clear usb_bus/usb_device in DB (keeps usb_port for stable matching)
+   * 3. Wait for USB bus release
+   * 4. Fresh lsusb detection
+   * 5. Match to DB by usb_port, update usb_bus/usb_device
+   * 6. Re-initialize coordinator with fresh ScannerConfigs
+   */
+  ipcMain.handle('graviscan:reset-usb', async () => {
+    try {
+      console.log('[GraviScan:RESET-USB] Starting full USB reset...');
+
+      // 1. Shutdown coordinator (graceful quit → SANE close → process exit)
+      const coordinator = getCoordinator?.();
+      if (coordinator) {
+        console.log('[GraviScan:RESET-USB] Shutting down coordinator...');
+        await coordinator.shutdown();
+      }
+
+      // 2. Clear stale USB addresses from DB (keep usb_port for matching)
+      await db.graviScanner.updateMany({
+        where: { enabled: true },
+        data: { usb_bus: null, usb_device: null },
+      });
+      console.log('[GraviScan:RESET-USB] Cleared USB addresses from DB');
+
+      // 3. Wait for USB bus release
+      console.log(
+        `[GraviScan:RESET-USB] Waiting ${USB_RELEASE_WAIT_MS}ms for USB release...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, USB_RELEASE_WAIT_MS));
+
+      // 4. Fresh lsusb detection
+      const mockEnabled = process.env.GRAVISCAN_MOCK?.toLowerCase() === 'true';
+      let detectedScanners: DetectedScanner[] = [];
+
+      if (mockEnabled) {
+        const saved = await db.graviScanner.findMany({
+          where: { enabled: true },
+        });
+        detectedScanners = saved.map((s, i) => ({
+          name: s.name,
+          scanner_id: s.id,
+          usb_bus: 1,
+          usb_device: i + 1,
+          usb_port: s.usb_port || `1-${i + 1}`,
+          is_available: true,
+          vendor_id: s.vendor_id,
+          product_id: s.product_id,
+          sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
+        }));
+      } else {
+        const lsusbResult = detectEpsonScanners();
+        if (!lsusbResult.success) {
+          console.error(
+            '[GraviScan:RESET-USB] lsusb detection failed:',
+            lsusbResult.error
+          );
+          return {
+            success: false,
+            scanners: [],
+            error: lsusbResult.error || 'lsusb detection failed',
+          };
+        }
+        detectedScanners = lsusbResult.scanners;
+      }
+
+      console.log(
+        `[GraviScan:RESET-USB] Detected ${detectedScanners.length} scanner(s)`
+      );
+
+      // 5. Match detected → DB by usb_port, update usb_bus/usb_device
+      const savedScanners = await db.graviScanner.findMany({
+        where: { enabled: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const detectedByPort = new Map<string, DetectedScanner>();
+      for (const detected of detectedScanners) {
+        if (detected.usb_port) {
+          detectedByPort.set(detected.usb_port, detected);
+        }
+      }
+
+      const scannerConfigs: ScannerConfig[] = [];
+      const scannerStatuses: {
+        id: string;
+        status: 'ready' | 'disconnected' | 'error';
+      }[] = [];
+
+      for (const saved of savedScanners) {
+        if (!saved.usb_port) {
+          scannerStatuses.push({ id: saved.id, status: 'disconnected' });
+          continue;
+        }
+
+        const detected = detectedByPort.get(saved.usb_port);
+        if (!detected) {
+          console.warn(
+            `[GraviScan:RESET-USB] Scanner ${saved.display_name || saved.name} (port ${saved.usb_port}) not detected`
+          );
+          scannerStatuses.push({ id: saved.id, status: 'disconnected' });
+          continue;
+        }
+
+        // Update DB with fresh USB address
+        await db.graviScanner.update({
+          where: { id: saved.id },
+          data: {
+            usb_bus: detected.usb_bus,
+            usb_device: detected.usb_device,
+          },
+        });
+
+        scannerConfigs.push({
+          scannerId: saved.id,
+          saneName: detected.sane_name || `epkowa:interpreter:${String(detected.usb_bus).padStart(3, '0')}:${String(detected.usb_device).padStart(3, '0')}`,
+          plates: [],
+        });
+        scannerStatuses.push({ id: saved.id, status: 'ready' });
+      }
+
+      // 6. Re-initialize coordinator
+      if (coordinator && scannerConfigs.length > 0) {
+        console.log(
+          `[GraviScan:RESET-USB] Re-initializing ${scannerConfigs.length} scanner(s)...`
+        );
+        await coordinator.initialize(scannerConfigs);
+      }
+
+      const readyCount = scannerStatuses.filter(
+        (s) => s.status === 'ready'
+      ).length;
+      console.log(
+        `[GraviScan:RESET-USB] Complete: ${readyCount}/${savedScanners.length} ready`
+      );
+
+      return { success: true, scanners: scannerStatuses };
+    } catch (error) {
+      console.error('[GraviScan:RESET-USB] Error:', error);
+      return {
+        success: false,
+        scanners: [],
+        error: error instanceof Error ? error.message : 'USB reset failed',
+      };
+    }
+  });
+
+  // ==========================================================================
   // Scan Operations
   // ==========================================================================
 

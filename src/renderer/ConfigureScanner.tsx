@@ -241,16 +241,23 @@ export function ConfigureScanner() {
                   setDetecting(true);
                   setDetectionError(null);
                   try {
-                    await window.electron.graviscan.resetScanners();
-                  } catch {
-                    // resetScanners may not be available
+                    const result =
+                      await window.electron.graviscan.resetUsb();
+                    if (!result.success) {
+                      setDetectionError(result.error || 'USB reset failed');
+                    }
+                  } catch (err) {
+                    setDetectionError(
+                      err instanceof Error ? err.message : 'USB reset failed'
+                    );
                   }
                   await handleDetect();
+                  setDetecting(false);
                 }}
                 disabled={detecting || isScanActive}
                 className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {detecting ? 'Resetting...' : 'Reset & Re-detect'}
+                {detecting ? 'Resetting...' : 'Reset USB'}
               </button>
             </div>
 

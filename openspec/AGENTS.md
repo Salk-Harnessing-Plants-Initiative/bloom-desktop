@@ -59,10 +59,74 @@ Track these steps as TODOs and complete them one by one.
 1. **Read proposal.md** - Understand what's being built
 2. **Read design.md** (if exists) - Review technical decisions
 3. **Read tasks.md** - Get implementation checklist
-4. **Implement tasks sequentially** - Complete in order
+4. **Implement tasks sequentially** - Complete in order, following the coding standards below
 5. **Confirm completion** - Ensure every item in `tasks.md` is finished before updating statuses
 6. **Update checklist** - After all work is done, set every task to `- [x]` so the list reflects reality
 7. **Approval gate** - Do not start implementation until the proposal is reviewed and approved
+
+### Coding Standards (MUST follow during implementation)
+
+These rules are defined in `.claude/commands/` and MUST be followed when implementing any proposal. Violations will block PR approval.
+
+#### No Overengineering (`.claude/commands/no-overengineering.md`)
+
+- **No unnecessary fallbacks.** Don't write `process.env.X || 'default'` unless the default is documented and intentional. If a value is required, throw on missing.
+- **No speculative abstractions.** No generics without 2+ callers. No abstract classes with one subclass. Three similar lines is better than a premature abstraction.
+- **No defensive code for impossible states.** Trust types. Validate at system boundaries only (user input, IPC, external APIs).
+- **No env vars for constants.** If a value never changes (e.g., USB release wait time), hardcode it as a named constant.
+- **No backwards compat shims.** No `||` chains for old formats. Fix the source.
+- **No extra error handling layers.** Catch at the IPC boundary, not at every layer. Don't re-wrap errors.
+
+#### Type Definitions (`.claude/commands/typescript-types.md`)
+
+- **Types in `src/types/`** organized by domain. No type definitions in handler files.
+- **`interface` for data shapes, `type` for unions, `as const` for tuples.** No `enum`.
+- **`import type { ... }`** for type-only imports, separate from value imports.
+- **No `any`.** Use `unknown` or proper constraints. Generic defaults to `unknown`.
+- **No duplicate types.** `DatabaseResponse` is defined once in `src/types/database.ts`.
+- **DI interfaces before implementations.** Define `*Like` interfaces for testability.
+- **snake_case fields only when matching Python backend** (with comment). camelCase otherwise.
+
+#### Code Quality (`.claude/commands/code-standards.md`)
+
+- **File headers required.** Every file gets a module-level doc comment.
+- **JSDoc on all exported functions (TS).** Google-style docstrings on public functions (Python).
+- **Comments explain WHY, not WHAT.** No commented-out code. No redundant comments.
+- **Imports: stdlib → third-party → local**, separated by blank lines.
+- **Error handling:** `error instanceof Error ? error.message : 'Unknown error'`. Log prefix pattern: `[Domain]`. Events for recoverable failures, not `console.error`.
+- **React hooks order:** state → context → custom → memo → callback → effect.
+- **Named constants for all magic numbers.** Units in name when ambiguous (`DELAY_MS`, `MAX_X_MM`).
+
+#### Module Structure (`.claude/commands/code-organization.md`)
+
+- **File limits:** TS modules < 400 lines. React components < 300 lines.
+- **Single responsibility per file.** If the description needs "AND", split it.
+- **Directory boundaries:** GraviScan in `graviscan/`, CylinderScan in `cylinderscan/`.
+- **No circular imports.** Types import nothing from `src/main/` or `src/renderer/`.
+- **Named exports** for all modules. Default exports only for React page components.
+- **One `register*Handlers` function per domain.** Dependencies injected, not imported as singletons.
+
+#### Testing (`.claude/commands/test-standards.md`)
+
+- **40+ tests for increment PRs.** Fewer for small features/bug fixes.
+- **Error paths tested.** At least one test per `catch` block.
+- **Arrange-Act-Assert structure.** One logical assertion per test.
+- **Factory helpers at module level** — `_make_worker()`, `makeConfigs()`.
+- **No tautological tests.** If two functions do the same thing, testing both is redundant.
+- **Coverage: Python 80%+, TypeScript 50%+.**
+
+#### Proposals Must Include
+
+Every `proposal.md` MUST have an **Implementation constraints** section listing which rules apply and how. Example:
+
+```markdown
+### Implementation constraints
+
+- **No env var for the 5s wait.** Hardcode as `USB_RELEASE_WAIT_MS = 5000`.
+- **Single try/catch at IPC boundary.** No nested error handling.
+- **Return type as interface** in `src/types/graviscan.ts`.
+- **Log prefix:** `[GraviScan:RESET-USB]`.
+```
 
 ### Stage 3: Archiving Changes
 

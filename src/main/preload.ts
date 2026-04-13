@@ -416,6 +416,7 @@ const graviscanAPI = {
       success: boolean;
       error?: string;
     }>,
+  resetUsb: () => ipcRenderer.invoke('graviscan:reset-usb'),
   getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
   validateScanners: (cachedScannerIds: string[]) =>
     ipcRenderer.invoke('graviscan:validate-scanners', cachedScannerIds),

@@ -48,6 +48,7 @@ import {
   GraviImage,
   GraviScanPlatformInfo,
   ExperimentWithScans,
+  ResetUsbResult,
 } from './graviscan';
 import { UploadResult } from '../main/image-uploader';
 
@@ -627,6 +628,11 @@ export interface GraviScanAPI {
     success: boolean;
     error?: string;
   }>;
+
+  /**
+   * Full USB reset: shutdown SANE → clear USB addresses → re-detect → re-initialize.
+   */
+  resetUsb: () => Promise<ResetUsbResult>;
 
   /**
    * Get platform support information
