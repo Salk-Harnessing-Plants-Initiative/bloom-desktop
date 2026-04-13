@@ -114,7 +114,7 @@ export class ScannerSubprocess extends EventEmitter {
         // In dev: ensure `python/` is on PYTHONPATH so `-m graviscan.scan_worker` resolves
         PYTHONPATH: [path.join(process.cwd(), 'python'), process.env.PYTHONPATH]
           .filter(Boolean)
-          .join(':'),
+          .join(path.delimiter),
       },
     });
 
@@ -138,37 +138,43 @@ export class ScannerSubprocess extends EventEmitter {
       this.emit('exit', { scannerId: this.scannerId, code, signal });
     });
 
+    // Use 'process-error' instead of 'error' to avoid Node's special
+    // EventEmitter behavior that throws if no 'error' listener is attached.
     this.proc.on('error', (err) => {
       console.error(
         `[ScannerSubprocess:${this.scannerId}] Process error:`,
         err
       );
       this.state = 'dead';
-      this.emit('error', { scannerId: this.scannerId, error: err.message });
+      this.emit('process-error', {
+        scannerId: this.scannerId,
+        error: err.message,
+      });
     });
 
     // Wait for ready signal (no timeout — SANE open can be slow with some backends)
     return new Promise<void>((resolve, reject) => {
-      const onReady = () => {
+      const cleanup = () => {
         this.removeListener('ready', onReady);
-        this.removeListener('init-error', onError);
+        this.removeListener('init-error', onInitError);
         this.removeListener('exit', onExit);
+        this.removeListener('process-error', onProcessError);
+      };
+
+      const onReady = () => {
+        cleanup();
         resolve();
       };
 
-      const onError = (event: ScanWorkerEvent) => {
-        this.removeListener('ready', onReady);
-        this.removeListener('init-error', onError);
-        this.removeListener('exit', onExit);
+      const onInitError = (event: ScanWorkerEvent) => {
+        cleanup();
         reject(
           new Error(`Scanner ${this.scannerId} init failed: ${event.error}`)
         );
       };
 
       const onExit = (info: { scannerId: string; code: number | null }) => {
-        this.removeListener('ready', onReady);
-        this.removeListener('init-error', onError);
-        this.removeListener('exit', onExit);
+        cleanup();
         reject(
           new Error(
             `Scanner ${this.scannerId} process exited (code ${info.code}) before becoming ready`
@@ -176,9 +182,17 @@ export class ScannerSubprocess extends EventEmitter {
         );
       };
 
+      const onProcessError = (info: { scannerId: string; error: string }) => {
+        cleanup();
+        reject(
+          new Error(`Scanner ${this.scannerId} spawn failed: ${info.error}`)
+        );
+      };
+
       this.on('ready', onReady);
-      this.on('init-error', onError);
+      this.on('init-error', onInitError);
       this.on('exit', onExit);
+      this.on('process-error', onProcessError);
     });
   }
 

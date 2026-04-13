@@ -331,8 +331,20 @@ export class ScanCoordinator
             continue;
           }
 
-          const stat = fs.statSync(outputPath);
-          if (stat.size === 0) {
+          let fileSize: number;
+          try {
+            fileSize = fs.statSync(outputPath).size;
+          } catch (statErr) {
+            const msg = `Cannot stat output file: ${outputPath}: ${statErr instanceof Error ? statErr.message : String(statErr)}`;
+            scanLog(`[${result.scannerId}] ${msg}`);
+            this.emit('scan-error', {
+              scannerId: result.scannerId,
+              plateIndex,
+              error: msg,
+            });
+            continue;
+          }
+          if (fileSize === 0) {
             const msg = `Output file is zero-size: ${outputPath}`;
             scanLog(`[${result.scannerId}] ${msg}`);
             this.emit('scan-error', {

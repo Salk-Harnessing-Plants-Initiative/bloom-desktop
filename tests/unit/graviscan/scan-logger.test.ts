@@ -241,4 +241,13 @@ describe('scan-logger', () => {
       expect(() => closeScanLog()).not.toThrow();
     });
   });
+
+  describe('LOG_RETENTION_DAYS', () => {
+    it('defaults to 180 when env var is not set', async () => {
+      const { LOG_RETENTION_DAYS } = await import(
+        '../../../src/main/graviscan/scan-logger'
+      );
+      expect(LOG_RETENTION_DAYS).toBe(180);
+    });
+  });
 });

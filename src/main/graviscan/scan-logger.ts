@@ -13,13 +13,21 @@ import * as path from 'path';
 
 const LOGS_DIR = path.join(os.homedir(), '.bloom', 'logs');
 
+const DEFAULT_LOG_RETENTION_DAYS = 180;
+
+function parseLogRetentionDays(value: string | undefined): number {
+  const parsed = parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_LOG_RETENTION_DAYS;
+}
+
 /**
  * Log retention in days. Default 180 for scientific workflows.
  * Configurable via GRAVISCAN_LOG_RETENTION_DAYS environment variable.
  */
-export const LOG_RETENTION_DAYS = parseInt(
-  process.env.GRAVISCAN_LOG_RETENTION_DAYS || '180',
-  10
+export const LOG_RETENTION_DAYS = parseLogRetentionDays(
+  process.env.GRAVISCAN_LOG_RETENTION_DAYS
 );
 
 let logStream: fs.WriteStream | null = null;

@@ -185,7 +185,7 @@ export const PLATE_INDICES: Record<GridMode, string[]> = {
  */
 export interface PlateConfig {
   plate_index: string;
-  grid_mode: string;
+  grid_mode: GridMode;
   resolution: number;
   output_path: string;
 }

@@ -126,19 +126,14 @@ describe('ScannerSubprocess', () => {
     });
 
     it('rejects on spawn error (ENOENT)', async () => {
-      // Add error listener to prevent unhandled EventEmitter error
-      subprocess.on('error', () => {});
-
       const spawnPromise = subprocess.spawn();
 
-      // Simulate spawn error — triggers 'error' on proc which sets state=dead
+      // Simulate spawn error — triggers 'process-error' (renamed from 'error'
+      // to avoid Node EventEmitter special behavior)
       const handler = mockProcessHandlers['error'];
       if (handler) handler(new Error('spawn ENOENT'));
-      // Also trigger exit since that's what happens with ENOENT
-      const exitHandler = mockProcessHandlers['exit'];
-      if (exitHandler) exitHandler(null, null);
 
-      await expect(spawnPromise).rejects.toThrow();
+      await expect(spawnPromise).rejects.toThrow('spawn failed');
     });
 
     it('rejects if process exits before ready', async () => {
