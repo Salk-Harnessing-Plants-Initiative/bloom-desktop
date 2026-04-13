@@ -278,6 +278,34 @@ describe('ScanCoordinator', () => {
       expect(fs.existsSync).toHaveBeenCalled();
     });
 
+    it('emits scan-error when statSync throws (filesystem race)', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      // File exists but statSync throws (e.g., permissions, race condition)
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.statSync).mockImplementation(() => {
+        throw new Error('EACCES: permission denied');
+      });
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Cannot stat'),
+        })
+      );
+    });
+
     it('emits rename-error when rename fails', async () => {
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));

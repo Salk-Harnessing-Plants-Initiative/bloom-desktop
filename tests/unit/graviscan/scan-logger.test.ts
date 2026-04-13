@@ -249,5 +249,35 @@ describe('scan-logger', () => {
       );
       expect(LOG_RETENTION_DAYS).toBe(180);
     });
+
+    it('falls back to 180 for non-numeric env var value', async () => {
+      vi.resetModules();
+      process.env.GRAVISCAN_LOG_RETENTION_DAYS = 'abc';
+      const { LOG_RETENTION_DAYS } = await import(
+        '../../../src/main/graviscan/scan-logger'
+      );
+      expect(LOG_RETENTION_DAYS).toBe(180);
+      delete process.env.GRAVISCAN_LOG_RETENTION_DAYS;
+    });
+
+    it('falls back to 180 for negative env var value', async () => {
+      vi.resetModules();
+      process.env.GRAVISCAN_LOG_RETENTION_DAYS = '-5';
+      const { LOG_RETENTION_DAYS } = await import(
+        '../../../src/main/graviscan/scan-logger'
+      );
+      expect(LOG_RETENTION_DAYS).toBe(180);
+      delete process.env.GRAVISCAN_LOG_RETENTION_DAYS;
+    });
+
+    it('uses custom value when env var is valid', async () => {
+      vi.resetModules();
+      process.env.GRAVISCAN_LOG_RETENTION_DAYS = '90';
+      const { LOG_RETENTION_DAYS } = await import(
+        '../../../src/main/graviscan/scan-logger'
+      );
+      expect(LOG_RETENTION_DAYS).toBe(90);
+      delete process.env.GRAVISCAN_LOG_RETENTION_DAYS;
+    });
   });
 });
