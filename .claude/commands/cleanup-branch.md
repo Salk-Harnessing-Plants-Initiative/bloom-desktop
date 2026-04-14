@@ -38,6 +38,10 @@ gh pr view <pr-number> --json headRefName --jq '.headRefName' | xargs -I {} git 
 
 **CRITICAL**: You must be on the `main` branch (after pulling the merged PR) before archiving. Archiving on a feature branch will not update the base specs on main.
 
+**CRITICAL**: Before archiving, verify ALL tasks in `tasks.md` are marked `- [x]` (complete). If any are `- [ ]` (incomplete), you MUST either complete them or mark them as done before archiving. **Never archive with incomplete tasks** — the `--yes` flag bypasses the warning but does not fix the problem. Incomplete tasks in an archive are a record of work that was claimed done but wasn't verified.
+
+**How to check**: Read the `tasks.md` file and grep for `- [ ]`. If any exist, update them to `- [x]` (if the work was actually done) or finish the work first.
+
 **Never use `--skip-specs`** unless the change is purely tooling-only (no spec deltas). All changes with spec deltas must have their specs applied during archiving.
 
 **Dependency order**: When archiving multiple changes that modify the same capability specs, archive them in dependency order — parent/base changes first, then changes that build on them. For example, if `add-feature` introduces a requirement and `fix-feature` modifies it, archive `add-feature` first so the base spec exists before `fix-feature` tries to modify it.
@@ -45,6 +49,10 @@ gh pr view <pr-number> --json headRefName --jq '.headRefName' | xargs -I {} git 
 ```bash
 # List active proposals
 npx openspec list
+
+# BEFORE archiving: verify all tasks complete
+grep -c '\- \[ \]' openspec/changes/<change-id>/tasks.md
+# If count > 0, read tasks.md and mark completed tasks as [x]
 
 # Archive each completed proposal (in dependency order)
 npx openspec archive <change-id> --yes
@@ -257,12 +265,13 @@ gh pr view --web
 ## Best Practices
 
 1. **Always archive on main** — switch to main and pull before archiving (never archive on feature branches)
-2. **Never skip specs** — only use `--skip-specs` for tooling-only changes with zero spec deltas
-3. **Archive in dependency order** — parent changes before children that modify the same specs
-4. **Archive OpenSpec proposals promptly** (within a day of merge)
-5. **Verify archives** with `openspec validate --specs`
-6. **Commit archive changes** to main branch and push
-7. **Keep main clean** - delete stale branches regularly
+2. **All tasks must be complete before archiving** — read `tasks.md` and verify every checkbox is `[x]`. Mark done tasks that were missed, finish incomplete work, or explicitly note why a task was deferred (with a GitHub issue link)
+3. **Never skip specs** — only use `--skip-specs` for tooling-only changes with zero spec deltas
+4. **Archive in dependency order** — parent changes before children that modify the same specs
+5. **Archive OpenSpec proposals promptly** (within a day of merge)
+6. **Verify archives** with `openspec validate --specs`
+7. **Commit archive changes** to main branch and push
+8. **Keep main clean** - delete stale branches regularly
 
 ## Post-Cleanup Verification
 
