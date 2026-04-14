@@ -89,6 +89,47 @@ Run full unit test suite and TypeScript compilation to confirm no regressions fr
 - [x] `npm run test:unit` passes (all unit tests including new files)
 - [x] New test files discovered and run by Vitest
 
+## Task 7: Fix blocking review issues (TDD red-green)
+
+**B1: scanInterval leaves state as 'waiting' after cancelAll during sleep**
+
+- [ ] Write test: after cancelAll during interval wait, isScanning returns false (RED)
+- [ ] Fix: scanInterval sets state='idle' before emitting interval-complete (GREEN)
+
+**B2: No timeout on Promise.all in scanOnce — hang risk**
+
+- [ ] Write test: per-row scan timeout triggers scan-error for non-responding subprocess (RED)
+- [ ] Fix: add SCAN_ROW_TIMEOUT_MS with per-row timeout that rejects hanging promises (GREEN)
+
+**B3: scan_ended_at: null injected into forwarded events**
+
+- [ ] Write test: forwarded scan-complete events do not include scan_ended_at (RED)
+- [ ] Fix: remove scan_ended_at from forwarded events (only include in grid-complete) (GREEN)
+
+**B4: Multi-scanner tests use real 5s stagger delay**
+
+- [ ] Refactor stagger/partial-failure/cancel tests to use vi.useFakeTimers (no behavioral change)
+
+**B5: Flaky cancel-during-interval test**
+
+- [ ] Rewrite to use fake timers with deterministic advancement (no behavioral change)
+
+**I1: Regex path rewriting applied to full path, not just basename**
+
+- [ ] Write test: output_path with date-like directory name doesn't get mangled (RED)
+- [ ] Fix: apply regex to path.basename only, rejoin with dirname (GREEN)
+
+**I2: scanOnce doesn't check cancelled after Promise.all**
+
+- [ ] Write test: after cancel during active scan, no grid-complete emitted for remaining rows (RED)
+- [ ] Fix: check this.cancelled after Promise.all returns, skip file verification (GREEN)
+
+## Task 8: Verify all fixes pass and no regressions
+
+- [ ] `npx tsc --noEmit` passes
+- [ ] `npm run test:unit` passes (all tests including new ones)
+- [ ] Multi-scanner tests complete in <2s (no real stagger delays)
+
 ## Task 6: Deferred work
 
 - [x] File issue #185: Parallel subprocess initialization (references #144) — design error semantics for partial init failure

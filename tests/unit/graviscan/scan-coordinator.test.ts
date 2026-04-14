@@ -262,7 +262,80 @@ describe('ScanCoordinator', () => {
       );
     });
 
+    it('regex path rewriting only affects filename, not directory', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      let capturedPlates: PlateConfig[] = [];
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        capturedPlates = plates;
+        setImmediate(() => sub.emit('cycle-done', {}));
+      });
+
+      // Create plates with a date-like directory path
+      const platesMap = new Map<string, PlateConfig[]>();
+      platesMap.set('scanner-1', [
+        {
+          plate_index: '00',
+          grid_mode: '2grid' as const,
+          resolution: 600,
+          // Directory contains 20260410T000000 which matches \d{8}T\d{6}
+          output_path:
+            '/scans/20260410T000000/exp1_st_20260410T120000_cy1_S1_00.tif',
+        },
+      ]);
+
+      const scanPromise = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      // The directory portion should NOT have been modified
+      expect(capturedPlates[0].output_path).toContain(
+        '/scans/20260410T000000/'
+      );
+      // The filename portion SHOULD have the new timestamp
+      expect(capturedPlates[0].output_path).not.toContain('st_20260410T120000');
+
+      vi.useRealTimers();
+    });
+
+    it('forwarded scan-event does not include scan_ended_at before row completes', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // Emit a scan-complete event BEFORE cycle-done
+      sub.scan.mockImplementation(() => {
+        // Emit scan-complete first (individual plate done)
+        sub.emit('event', {
+          type: 'scan-complete',
+          scanner_id: 'scanner-1',
+          plate_index: '00',
+          path: '/tmp/out.tif',
+        });
+        // Then cycle-done (all plates for this scanner done)
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const scanEvent = vi.fn();
+      coordinator.on('scan-event', scanEvent);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      // The forwarded scan-event should NOT have scan_ended_at
+      // (it's unknown until the row completes)
+      expect(scanEvent).toHaveBeenCalled();
+      const firstCall = scanEvent.mock.calls[0][0];
+      expect(firstCall).not.toHaveProperty('scan_ended_at');
+    });
+
     it('logs USB stagger delay between scanners', async () => {
+      vi.useFakeTimers();
+
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(2));
 
@@ -278,11 +351,18 @@ describe('ScanCoordinator', () => {
       });
 
       const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
-      await coordinator.scanOnce(platesMap);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // Advance through stagger delays + row timeouts
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
 
       // scanLog should have been called for stagger delay
       expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('stagger'));
-    }, 15000);
+
+      vi.useRealTimers();
+    });
 
     it('verifies file existence after scan-complete', async () => {
       const coordinator = await createCoordinator();
@@ -356,6 +436,8 @@ describe('ScanCoordinator', () => {
     });
 
     it('handles partial scanner failure mid-grid', async () => {
+      vi.useFakeTimers();
+
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(2));
 
@@ -375,10 +457,84 @@ describe('ScanCoordinator', () => {
       coordinator.on('cycle-complete', cycleComplete);
 
       const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
-      await coordinator.scanOnce(platesMap);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // Advance through stagger delays + row timeouts
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
 
       // Should still complete the cycle
       expect(cycleComplete).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('skips file verification after cancel during active row', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        // Cancel while the scan is "in progress" — then emit cycle-done
+        coordinator.cancelAll();
+        setImmediate(() => sub.emit('cycle-done', {}));
+      });
+
+      // Reset fs mocks to track calls during this specific test
+      vi.mocked(fs.existsSync).mockClear();
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      // After cancel, file verification (existsSync) should NOT run
+      // for the cancelled row
+      expect(fs.existsSync).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('emits scan-error and proceeds when subprocess does not respond within row timeout', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // Subprocess never emits cycle-done or exit — simulates a hang
+      sub.scan.mockImplementation(() => {
+        // intentionally do nothing
+      });
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+      const cycleComplete = vi.fn();
+      coordinator.on('cycle-complete', cycleComplete);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // Advance past row timeouts for all row groups (2 rows for 2grid)
+      // Each row has a 90s timeout
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      // Should have emitted scan-error for the timed-out subprocess
+      expect(scanError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('timeout'),
+        })
+      );
+      // Should still complete the cycle (not hang forever)
+      expect(cycleComplete).toHaveBeenCalled();
+
+      vi.useRealTimers();
     }, 15000);
   });
 
@@ -430,6 +586,8 @@ describe('ScanCoordinator', () => {
     });
 
     it('cancels during interval wait', async () => {
+      vi.useFakeTimers();
+
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
 
@@ -442,18 +600,58 @@ describe('ScanCoordinator', () => {
       coordinator.on('interval-complete', intervalComplete);
 
       const platesMap = makePlatesMap(['scanner-1']);
-      // Use very short intervals for test speed
-      const intervalPromise = coordinator.scanInterval(platesMap, 100, 500);
+      const intervalPromise = coordinator.scanInterval(
+        platesMap,
+        60000, // 60s interval
+        300000 // 5 min duration = 5 cycles
+      );
 
-      // Wait a bit for first cycle, then cancel
-      await new Promise((r) => setTimeout(r, 200));
+      // Advance 1ms to let first scanOnce start, then advance through
+      // row timeouts for first cycle (2 rows × 90s each)
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(91_000); // first row done
+      await vi.advanceTimersByTimeAsync(91_000); // second row done
+      // Now scanOnce is complete, scanInterval enters sleep(remainingMs)
+      // Cancel during the sleep
       coordinator.cancelAll();
+      // Advance to let scanInterval exit
+      await vi.advanceTimersByTimeAsync(1000);
       await intervalPromise;
 
       expect(intervalComplete).toHaveBeenCalledWith(
         expect.objectContaining({ cancelled: true })
       );
-    }, 15000);
+
+      vi.useRealTimers();
+    });
+
+    it('isScanning returns false after cancelAll during interval wait', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => sub.emit('cycle-done', {}));
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const intervalPromise = coordinator.scanInterval(platesMap, 10000, 30000);
+
+      // Let first cycle complete, enter waiting phase
+      await vi.advanceTimersByTimeAsync(1000);
+      // Cancel during the wait
+      coordinator.cancelAll();
+      // Advance past the sleep
+      await vi.advanceTimersByTimeAsync(15000);
+      await intervalPromise;
+
+      // B1: isScanning MUST be false after interval completes
+      expect(coordinator.isScanning).toBe(false);
+
+      vi.useRealTimers();
+    });
   });
 
   describe('shutdown()', () => {

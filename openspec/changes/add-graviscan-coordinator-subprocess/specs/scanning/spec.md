@@ -29,7 +29,7 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 - **AND** within each grid, scanners SHALL be triggered with a `USB_STAGGER_DELAY_MS` (5-second) stagger delay
 - **AND** each stagger delay SHALL be logged via `scanLog()` with the scanner ID and delay duration
 - **AND** the coordinator SHALL wait for all scanners to complete a grid before proceeding to the next
-- **AND** output files SHALL be renamed to append `_et_YYYYMMDDTHHMMSS` end-timestamp after grid completion
+- **AND** output files SHALL be renamed to append `_et_YYYYMMDDTHHMMSS` end-timestamp after grid completion (regex applied to `path.basename` only, not the full path)
 - **AND** the coordinator SHALL emit `grid-start`, `grid-complete`, and `cycle-complete` events
 
 #### Scenario: File verification after scan-complete
@@ -72,13 +72,38 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 - **AND** any interval timer SHALL be cleared
 - **AND** a `cancelled` event SHALL be emitted
 
-#### Scenario: Cancel during interval wait
+#### Scenario: Cancel during interval wait resets state to idle
 
-- **GIVEN** the coordinator is waiting between interval cycles (not actively scanning)
+- **GIVEN** the coordinator is waiting between interval cycles (state is `waiting`)
 - **WHEN** `cancelAll()` is called
 - **THEN** the interval timer SHALL be cleared
 - **AND** a `cancelled` event SHALL be emitted
 - **AND** no further scan cycles SHALL be started
+- **AND** after `scanInterval()` returns, `isScanning` SHALL be `false`
+
+#### Scenario: Per-row scan timeout prevents infinite hang
+
+- **GIVEN** the coordinator is scanning a grid row
+- **AND** one or more subprocesses have not emitted `cycle-done` or `exit`
+- **WHEN** a configurable per-row timeout (`SCAN_ROW_TIMEOUT_MS`) is exceeded
+- **THEN** the timed-out subprocesses SHALL be treated as failed
+- **AND** the coordinator SHALL proceed to the next row group
+- **AND** a `scan-error` event SHALL be emitted for each timed-out subprocess
+
+#### Scenario: Forwarded scan events do not include stale timestamps
+
+- **GIVEN** the coordinator forwards subprocess events via `scan-event`
+- **WHEN** a `scan-complete` event is emitted before the row has finished
+- **THEN** the forwarded event SHALL include `scan_started_at` (the row start time)
+- **AND** the forwarded event SHALL NOT include `scan_ended_at` (which is unknown until the row completes)
+
+#### Scenario: Cancel during active scanOnce aborts cleanly
+
+- **GIVEN** the coordinator is actively awaiting `scanOnce()` completion
+- **WHEN** `cancelAll()` is called
+- **THEN** the coordinator SHALL check `this.cancelled` after each row completes
+- **AND** the coordinator SHALL skip file verification and renaming for unfinished rows
+- **AND** `isScanning` SHALL return `false` after `scanOnce()` returns
 
 #### Scenario: Graceful shutdown
 

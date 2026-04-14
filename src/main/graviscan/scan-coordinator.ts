@@ -33,6 +33,13 @@ import type { ScanCoordinatorLike } from './session-handlers';
  */
 export const USB_STAGGER_DELAY_MS = 5000;
 
+/**
+ * Per-row scan timeout in milliseconds. If any subprocess does not emit
+ * cycle-done or exit within this window, it is treated as failed and
+ * the coordinator proceeds to the next row group.
+ */
+export const SCAN_ROW_TIMEOUT_MS = 90_000;
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -135,14 +142,16 @@ export class ScanCoordinator
           this.mock
         );
 
-        // Forward all events, injecting cycle number and per-grid timestamps
+        // Forward all events, injecting cycle number and grid start time.
+        // scan_ended_at is NOT included here — it is unknown until the row
+        // completes. It is available in the grid-complete event instead.
         sub.on('event', (event: ScanWorkerEvent) => {
-          this.emit('scan-event', {
+          const forwarded: Record<string, unknown> = {
             ...event,
             cycle_number: this.currentCycle,
             scan_started_at: this.currentGridStartedAt,
-            scan_ended_at: this.currentGridEndedAt,
-          });
+          };
+          this.emit('scan-event', forwarded);
         });
 
         sub.on('exit', (info: { scannerId: string; code: number | null }) => {
@@ -257,21 +266,31 @@ export class ScanCoordinator
         }
         isFirst = false;
 
-        // Update timestamps and cycle numbers in output paths
-        const platesToScan: PlateConfig[] = rowPlates.map((plate) => ({
-          ...plate,
-          output_path: plate.output_path
+        // Update timestamps and cycle numbers in output filenames only
+        // (apply regex to basename to avoid mangling date-like directory names)
+        const platesToScan: PlateConfig[] = rowPlates.map((plate) => {
+          const dir = path.dirname(plate.output_path);
+          const basename = path
+            .basename(plate.output_path)
             .replace(/(\d{8}T\d{6})/, stTimestamp)
-            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`),
-        }));
+            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
+          return {
+            ...plate,
+            output_path: path.join(dir, basename),
+          };
+        });
 
         const promise = new Promise<{
           scannerId: string;
           outputPaths: { plateIndex: string; path: string }[];
         } | null>((resolve) => {
-          const onCycleDone = () => {
+          const cleanup = () => {
+            clearTimeout(rowTimeout);
             sub.removeListener('cycle-done', onCycleDone);
             sub.removeListener('exit', onExit);
+          };
+          const onCycleDone = () => {
+            cleanup();
             resolve({
               scannerId,
               outputPaths: platesToScan.map((p) => ({
@@ -281,10 +300,20 @@ export class ScanCoordinator
             });
           };
           const onExit = () => {
-            sub.removeListener('cycle-done', onCycleDone);
-            sub.removeListener('exit', onExit);
+            cleanup();
             resolve(null);
           };
+          const rowTimeout = setTimeout(() => {
+            cleanup();
+            scanLog(
+              `[${scannerId}] Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`
+            );
+            this.emit('scan-error', {
+              scannerId,
+              error: `Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`,
+            });
+            resolve(null);
+          }, SCAN_ROW_TIMEOUT_MS);
           sub.on('cycle-done', onCycleDone);
           sub.on('exit', onExit);
         });
@@ -295,6 +324,10 @@ export class ScanCoordinator
 
       // Wait for ALL scanners to complete this row
       const results = await Promise.all(rowDonePromises);
+
+      // Check cancelled after await — if cancel fired during the scan,
+      // skip file verification and renaming for this row
+      if (this.cancelled) break;
 
       const gridEndedAt = new Date();
       const etTimestamp = gridEndedAt
@@ -469,6 +502,7 @@ export class ScanCoordinator
       }
     }
 
+    this.state = 'idle';
     const elapsed = Date.now() - this.startedAt;
     this.emit('interval-complete', {
       cyclesCompleted: this.currentCycle,
