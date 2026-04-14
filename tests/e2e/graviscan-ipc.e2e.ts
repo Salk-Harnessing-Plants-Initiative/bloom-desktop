@@ -207,7 +207,7 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(typeof result.data.path).toBe('string');
   });
 
-  test('getScanStatus returns null when no scan active', async () => {
+  test('getScanStatus returns inactive when no scan active', async () => {
     const result = await window.evaluate(() => {
       return (
         window as unknown as WindowWithElectron
@@ -215,7 +215,8 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeNull();
+    expect(result.data).toBeDefined();
+    expect(result.data.isActive).toBe(false);
   });
 
   test('event listener returns cleanup function', async () => {

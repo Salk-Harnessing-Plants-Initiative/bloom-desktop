@@ -20,7 +20,8 @@ export function registerGraviScanHandlers(
   db: PrismaClient,
   getMainWindow: () => BrowserWindow | null,
   sessionFns: SessionFns,
-  getCoordinator: () => ScanCoordinatorLike | null
+  getCoordinator: () => ScanCoordinatorLike | null,
+  createCoordinator?: () => Promise<ScanCoordinatorLike>
 ): void {
   if (registered) {
     throw new Error('GraviScan IPC handlers are already registered');
@@ -77,13 +78,26 @@ export function registerGraviScanHandlers(
   );
 
   // --- Session handlers ---
-  ipcMain.handle('graviscan:start-scan', (_event, params) => {
+  ipcMain.handle('graviscan:start-scan', async (_event, params) => {
     // Reject if scan already in progress
     const current = sessionFns.getScanSession();
     if (current?.isActive) {
       return { success: false, error: 'Scan already in progress' };
     }
-    const coordinator = getCoordinator();
+    // Lazy coordinator creation — first start-scan creates + wires the coordinator
+    let coordinator = getCoordinator();
+    if (!coordinator && createCoordinator) {
+      try {
+        coordinator = await createCoordinator();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[GraviScan IPC] Failed to create coordinator:', msg);
+        return {
+          success: false,
+          error: `Failed to initialize scanner coordinator: ${msg}`,
+        };
+      }
+    }
     return wrapHandler(() =>
       sessionHandlers.startScan(coordinator, params, sessionFns, (error) => {
         const win = getMainWindow();

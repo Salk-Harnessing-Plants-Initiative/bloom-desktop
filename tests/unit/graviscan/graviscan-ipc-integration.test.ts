@@ -30,7 +30,7 @@ vi.mock('../../../src/main/graviscan/scanner-handlers', () => ({
 
 vi.mock('../../../src/main/graviscan/session-handlers', () => ({
   startScan: vi.fn().mockResolvedValue({ success: true }),
-  getScanStatus: vi.fn().mockReturnValue(null),
+  getScanStatus: vi.fn().mockReturnValue({ isActive: false }),
   markJobRecorded: vi.fn(),
   cancelScan: vi.fn().mockResolvedValue({ success: true }),
 }));
@@ -162,10 +162,13 @@ describe('GraviScan IPC integration (invocation round-trip)', () => {
       expect(result.data.path).toBe('/home/user/.bloom/graviscan');
     });
 
-    it('getScanStatus returns null when no session', async () => {
+    it('getScanStatus returns inactive when no session', async () => {
       const result = await mockIpcMain.invoke('graviscan:get-scan-status');
 
-      expect(result).toEqual({ success: true, data: null });
+      expect(result).toEqual({
+        success: true,
+        data: { isActive: false },
+      });
     });
 
     it('saveConfig passes args through and returns saved config', async () => {
@@ -211,7 +214,10 @@ describe('GraviScan IPC integration (invocation round-trip)', () => {
       const statusBefore = await mockIpcMain.invoke(
         'graviscan:get-scan-status'
       );
-      expect(statusBefore).toEqual({ success: true, data: null });
+      expect(statusBefore).toEqual({
+        success: true,
+        data: { isActive: false },
+      });
 
       // Step 2: Mock startScan to actually call setScanSession
       vi.mocked(sessionHandlers.startScan).mockImplementationOnce(

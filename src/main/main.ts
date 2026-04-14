@@ -106,6 +106,9 @@ let idleTimer: IdleTimer | null = null;
 let scanSession: ScanSessionState | null = null;
 let scanCoordinator: ScanCoordinator | null = null;
 
+// Cached getMainWindow reference for coordinator event forwarding
+let _getMainWindow: (() => BrowserWindow | null) | null = null;
+
 const graviSessionFns: SessionFns = {
   getScanSession: () => scanSession,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -121,7 +124,7 @@ const graviSessionFns: SessionFns = {
 
 /**
  * Set up coordinator event forwarding to renderer.
- * Called when a new ScanCoordinator is created in the start-scan handler.
+ * Called when a new ScanCoordinator is created.
  */
 export function setupCoordinatorEventForwarding(
   coordinator: ScanCoordinator,
@@ -151,6 +154,34 @@ export function setupCoordinatorEventForwarding(
 }
 
 /**
+ * Get or create the ScanCoordinator (lazy instantiation).
+ * Creates the coordinator on first call and wires event forwarding.
+ * Matches the CylinderScan pattern where ScannerProcess is created on demand.
+ */
+export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
+  if (scanCoordinator) return scanCoordinator;
+
+  // Lazy import to avoid loading subprocess modules in cylinderscan mode
+  const { ScanCoordinator: ScanCoordinatorClass } = await import(
+    './graviscan/scan-coordinator'
+  );
+  const { getPythonExecutablePath } = await import('./python-paths');
+
+  const pythonPath = getPythonExecutablePath();
+  const isPackaged = app.isPackaged;
+
+  scanCoordinator = new ScanCoordinatorClass(pythonPath, isPackaged, false);
+  console.log('[Main] ScanCoordinator created (lazy)');
+
+  // Wire event forwarding to renderer
+  if (_getMainWindow) {
+    setupCoordinatorEventForwarding(scanCoordinator, _getMainWindow);
+  }
+
+  return scanCoordinator;
+}
+
+/**
  * Initialize GraviScan IPC handlers conditionally based on scanner mode.
  * Extracted for testability.
  */
@@ -164,6 +195,9 @@ export async function initGraviScan(
   if (scannerMode !== 'graviscan') return;
 
   console.log('[Main] GraviScan mode detected, registering handlers...');
+
+  // Cache for coordinator event forwarding
+  _getMainWindow = getMainWindow;
 
   // Lazy import to avoid loading sharp/native modules in cylinderscan mode
   const { registerGraviScanHandlers } = await import(
@@ -179,7 +213,8 @@ export async function initGraviScan(
     db,
     getMainWindow,
     graviSessionFns,
-    () => scanCoordinator
+    () => scanCoordinator,
+    getOrCreateCoordinator
   );
 
   console.log('[Main] GraviScan handlers registered');
@@ -1198,7 +1233,7 @@ app.on('ready', async () => {
     // Initialize GraviScan handlers if mode is graviscan
     try {
       const modeConfig = loadEnvConfig(ENV_PATH);
-      initGraviScan(
+      await initGraviScan(
         modeConfig.scanner_mode || '',
         ipcMain,
         getDatabase(),
