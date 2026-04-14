@@ -31,6 +31,12 @@ vi.mock('../../../src/main/graviscan/image-handlers', () => ({
   downloadImages: vi.fn().mockResolvedValue({ exported: 0 }),
 }));
 
+// Mock fs for realpath validation
+vi.mock('fs', () => ({
+  realpathSync: vi.fn((p: string) => p), // identity by default
+}));
+
+import * as fs from 'fs';
 import * as scannerHandlers from '../../../src/main/graviscan/scanner-handlers';
 import * as sessionHandlers from '../../../src/main/graviscan/session-handlers';
 import * as imageHandlers from '../../../src/main/graviscan/image-handlers';
@@ -101,6 +107,9 @@ describe('registerGraviScanHandlers', () => {
     mockSessionFns = createMockSessionFns();
     mockGetMainWindow = vi.fn().mockReturnValue(null);
     mockGetCoordinator = vi.fn().mockReturnValue(null);
+
+    // Default fs.realpathSync to identity (mock paths don't exist on disk)
+    vi.mocked(fs.realpathSync).mockImplementation((p) => p as string);
 
     // Suppress console
     vi.spyOn(console, 'error').mockImplementation(() => {});

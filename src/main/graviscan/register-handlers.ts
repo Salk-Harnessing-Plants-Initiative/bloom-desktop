@@ -5,6 +5,7 @@
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
  */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import type { IpcMain, BrowserWindow } from 'electron';
 import type { PrismaClient } from '@prisma/client';
@@ -143,15 +144,23 @@ export function registerGraviScanHandlers(
           error: 'Cannot determine scan directory for path validation',
         };
       }
-      const resolvedOutput = path.resolve(outputDirResult.path);
-      const resolvedFile = path.resolve(filePath);
+      // Use realpath to resolve symlinks before comparing (prevents symlink escapes)
+      let realOutput: string;
+      let realFile: string;
+      try {
+        realOutput = fs.realpathSync(outputDirResult.path);
+        realFile = fs.realpathSync(path.resolve(filePath));
+      } catch {
+        // File or directory doesn't exist — reject
+        return { success: false, error: 'Path outside scan directory' };
+      }
       if (
-        !resolvedFile.startsWith(resolvedOutput + path.sep) &&
-        resolvedFile !== resolvedOutput
+        !realFile.startsWith(realOutput + path.sep) &&
+        realFile !== realOutput
       ) {
         return { success: false, error: 'Path outside scan directory' };
       }
-      return wrapHandler(() => imageHandlers.readScanImage(filePath, opts))();
+      return wrapHandler(() => imageHandlers.readScanImage(realFile, opts))();
     }
   );
 

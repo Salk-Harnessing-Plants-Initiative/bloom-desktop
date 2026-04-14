@@ -32,10 +32,7 @@
 export * from './scanner-handlers';
 export * from './session-handlers';
 export * from './image-handlers';
-export {
-  registerGraviScanHandlers,
-  _resetRegistration,
-} from './register-handlers';
+export { registerGraviScanHandlers } from './register-handlers';
 export { ScanCoordinator } from './scan-coordinator';
 export { ScannerSubprocess } from './scanner-subprocess';
 export { scanLog, cleanupOldLogs, closeScanLog } from './scan-logger';

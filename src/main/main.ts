@@ -111,8 +111,7 @@ let _getMainWindow: (() => BrowserWindow | null) | null = null;
 
 const graviSessionFns: SessionFns = {
   getScanSession: () => scanSession,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setScanSession: (s: any) => {
+  setScanSession: (s: ScanSessionState | null) => {
     scanSession = s;
   },
   markScanJobRecorded: (key: string) => {
@@ -177,8 +176,14 @@ export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
     const pythonPath = getPythonExecutablePath();
     const isPackaged = app.isPackaged;
 
-    scanCoordinator = new ScanCoordinatorClass(pythonPath, isPackaged, false);
-    console.log('[Main] ScanCoordinator created (lazy)');
+    const mockMode =
+      process.env.GRAVISCAN_MOCK?.trim().toLowerCase() === 'true';
+    scanCoordinator = new ScanCoordinatorClass(
+      pythonPath,
+      isPackaged,
+      mockMode
+    );
+    console.log(`[Main] ScanCoordinator created (lazy, mock=${mockMode})`);
 
     // Wire event forwarding to renderer
     if (_getMainWindow) {
