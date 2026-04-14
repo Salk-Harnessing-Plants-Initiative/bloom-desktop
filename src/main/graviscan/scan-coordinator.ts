@@ -356,7 +356,9 @@ export class ScanCoordinator
         if (!result) continue;
         for (const { plateIndex, path: outputPath } of result.outputPaths) {
           // Verify file existence and non-zero size
-          if (!fs.existsSync(outputPath)) {
+          try {
+            await fs.promises.access(outputPath);
+          } catch {
             const msg = `Output file missing after scan-complete: ${outputPath}`;
             scanLog(`[${result.scannerId}] ${msg}`);
             this.emit('scan-error', {
@@ -369,7 +371,7 @@ export class ScanCoordinator
 
           let fileSize: number;
           try {
-            fileSize = fs.statSync(outputPath).size;
+            fileSize = (await fs.promises.stat(outputPath)).size;
           } catch (statErr) {
             const msg = `Cannot stat output file: ${outputPath}: ${statErr instanceof Error ? statErr.message : String(statErr)}`;
             scanLog(`[${result.scannerId}] ${msg}`);
@@ -403,9 +405,9 @@ export class ScanCoordinator
             );
             const newPath = path.join(dir, newBase + ext);
 
-            fs.renameSync(outputPath, newPath);
-            console.log(
-              `[ScanCoordinator] Renamed: ${path.basename(outputPath)} → ${path.basename(newPath)}`
+            await fs.promises.rename(outputPath, newPath);
+            scanLog(
+              `[${result.scannerId}] Renamed: ${path.basename(outputPath)} → ${path.basename(newPath)}`
             );
             renamedByGrid.get(plateIndex)?.push({
               oldPath: outputPath,
@@ -441,6 +443,9 @@ export class ScanCoordinator
           scanStartedAt: gridStartedAt.toISOString(),
           scanEndedAt: gridEndedAt.toISOString(),
         });
+        scanLog(
+          `Cycle ${this.currentCycle}: grid ${gridIndex} complete — ${(renamedByGrid.get(gridIndex) || []).length} files renamed`
+        );
       }
     }
 

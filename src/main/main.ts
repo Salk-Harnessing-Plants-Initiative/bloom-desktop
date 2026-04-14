@@ -23,7 +23,11 @@ import {
   getPythonExecutablePath,
   validatePythonExecutable,
 } from './python-paths';
-import { initializeDatabaseAsync, closeDatabase } from './database';
+import {
+  initializeDatabaseAsync,
+  closeDatabase,
+  getDatabase,
+} from './database';
 import { registerDatabaseHandlers } from './database-handlers';
 import {
   loadEnvConfig,
@@ -43,6 +47,14 @@ import {
 } from './session-store';
 import { IdleTimer } from './idle-timer';
 import { createFrameForwarder } from './frame-forwarder';
+import {
+  registerGraviScanHandlers,
+  ScanCoordinator,
+  cleanupOldLogs,
+  closeScanLog,
+} from './graviscan';
+import type { SessionFns } from './graviscan/session-handlers';
+import type { ScanSessionState } from '../types/graviscan';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -89,6 +101,86 @@ let currentCameraSettings: CameraSettings | null = null;
 
 // Idle timer — resets session after inactivity to prevent scan misattribution
 let idleTimer: IdleTimer | null = null;
+
+// =============================================================================
+// GraviScan State
+// =============================================================================
+
+let scanSession: ScanSessionState | null = null;
+let scanCoordinator: ScanCoordinator | null = null;
+
+const graviSessionFns: SessionFns = {
+  getScanSession: () => scanSession,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setScanSession: (s: any) => {
+    scanSession = s;
+  },
+  markScanJobRecorded: (key: string) => {
+    if (scanSession?.jobs[key]) {
+      scanSession.jobs[key].status = 'recorded';
+    }
+  },
+};
+
+/**
+ * Set up coordinator event forwarding to renderer.
+ * Called when a new ScanCoordinator is created in the start-scan handler.
+ */
+export function setupCoordinatorEventForwarding(
+  coordinator: ScanCoordinator,
+  getMainWindow: () => BrowserWindow | null
+): void {
+  const events = [
+    'scan-event',
+    'grid-start',
+    'grid-complete',
+    'cycle-complete',
+    'interval-start',
+    'interval-waiting',
+    'interval-complete',
+    'overtime',
+    'cancelled',
+    'scan-error',
+  ];
+
+  for (const eventName of events) {
+    coordinator.on(eventName, (payload: unknown) => {
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(`graviscan:${eventName}`, payload);
+      }
+    });
+  }
+}
+
+/**
+ * Initialize GraviScan IPC handlers conditionally based on scanner mode.
+ * Extracted for testability.
+ */
+export function initGraviScan(
+  scannerMode: string,
+  ipcMainRef: Electron.IpcMain,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  getMainWindow: () => BrowserWindow | null
+): void {
+  if (scannerMode !== 'graviscan') return;
+
+  console.log('[Main] GraviScan mode detected, registering handlers...');
+
+  // Clean up old scan logs on startup
+  cleanupOldLogs();
+
+  registerGraviScanHandlers(
+    ipcMainRef,
+    db,
+    getMainWindow,
+    graviSessionFns,
+    () => scanCoordinator
+  );
+
+  console.log('[Main] GraviScan handlers registered');
+}
 
 /**
  * Scanner identity (runtime state)
@@ -1100,6 +1192,19 @@ app.on('ready', async () => {
     registerDatabaseHandlers();
     console.log('[Main] Database initialized and handlers registered');
 
+    // Initialize GraviScan handlers if mode is graviscan
+    try {
+      const modeConfig = loadEnvConfig(ENV_PATH);
+      initGraviScan(
+        modeConfig.scanner_mode || '',
+        ipcMain,
+        getDatabase(),
+        () => mainWindow
+      );
+    } catch (graviErr) {
+      console.error('[Main] Failed to initialize GraviScan:', graviErr);
+    }
+
     // Send success message to renderer
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('database:ready', { success: true });
@@ -1218,10 +1323,25 @@ app.on('before-quit', async (event) => {
       console.log('DAQ process stopped');
     }
 
+    // Shut down GraviScan coordinator if active
+    if (scanCoordinator) {
+      console.log('Shutting down GraviScan coordinator...');
+      try {
+        await scanCoordinator.shutdown();
+      } catch (coordErr) {
+        console.error('Error shutting down coordinator:', coordErr);
+      }
+      scanCoordinator = null;
+      console.log('GraviScan coordinator shut down');
+    }
+
     // Close database connection
     console.log('Closing database connection...');
     await closeDatabase();
     console.log('Database connection closed');
+
+    // Close scan log stream
+    closeScanLog();
 
     // Give processes a moment to clean up
     console.log('Waiting 500ms for processes to clean up...');

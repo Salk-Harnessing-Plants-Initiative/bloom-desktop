@@ -496,6 +496,48 @@ export interface ConfigAPI {
 }
 
 /**
+ * GraviScan API exposed to renderer
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export interface GraviAPI {
+  // Scanner operations
+  detectScanners: () => Promise<any>;
+  getConfig: () => Promise<any>;
+  saveConfig: (config: any) => Promise<any>;
+  saveScannersToDB: (scanners: any) => Promise<any>;
+  getPlatformInfo: () => Promise<any>;
+  validateScanners: (ids: string[]) => Promise<any>;
+  validateConfig: () => Promise<any>;
+
+  // Session operations
+  startScan: (params: any) => Promise<any>;
+  getScanStatus: () => Promise<any>;
+  markJobRecorded: (jobKey: string) => Promise<any>;
+  cancelScan: () => Promise<any>;
+
+  // Image operations
+  getOutputDir: () => Promise<any>;
+  readScanImage: (filePath: string, opts?: any) => Promise<any>;
+  uploadAllScans: () => Promise<any>;
+  downloadImages: (params: any) => Promise<any>;
+
+  // Event listeners (return cleanup functions)
+  onScanEvent: (callback: (event: any) => void) => () => void;
+  onGridStart: (callback: (data: any) => void) => () => void;
+  onGridComplete: (callback: (data: any) => void) => () => void;
+  onCycleComplete: (callback: (data: any) => void) => () => void;
+  onIntervalStart: (callback: (data: any) => void) => () => void;
+  onIntervalWaiting: (callback: (data: any) => void) => () => void;
+  onIntervalComplete: (callback: (data: any) => void) => () => void;
+  onOvertime: (callback: (data: any) => void) => () => void;
+  onCancelled: (callback: () => void) => () => void;
+  onScanError: (callback: (data: any) => void) => () => void;
+  onUploadProgress: (callback: (data: any) => void) => () => void;
+  onDownloadProgress: (callback: (data: any) => void) => () => void;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
  * Main Electron API exposed to renderer
  */
 export interface ElectronAPI {
@@ -506,6 +548,7 @@ export interface ElectronAPI {
   database: DatabaseAPI;
   config: ConfigAPI;
   session: SessionAPI;
+  gravi: GraviAPI;
 }
 
 /**

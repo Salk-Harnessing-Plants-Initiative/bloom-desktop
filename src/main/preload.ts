@@ -288,6 +288,110 @@ const sessionAPI = {
 };
 
 /**
+ * GraviScan API exposed to renderer
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const graviAPI = {
+  // Scanner operations
+  detectScanners: () => ipcRenderer.invoke('graviscan:detect-scanners'),
+  getConfig: () => ipcRenderer.invoke('graviscan:get-config'),
+  saveConfig: (config: any) =>
+    ipcRenderer.invoke('graviscan:save-config', config),
+  saveScannersToDB: (scanners: any) =>
+    ipcRenderer.invoke('graviscan:save-scanners-db', scanners),
+  getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
+  validateScanners: (ids: string[]) =>
+    ipcRenderer.invoke('graviscan:validate-scanners', ids),
+  validateConfig: () => ipcRenderer.invoke('graviscan:validate-config'),
+
+  // Session operations
+  startScan: (params: any) =>
+    ipcRenderer.invoke('graviscan:start-scan', params),
+  getScanStatus: () => ipcRenderer.invoke('graviscan:get-scan-status'),
+  markJobRecorded: (jobKey: string) =>
+    ipcRenderer.invoke('graviscan:mark-job-recorded', jobKey),
+  cancelScan: () => ipcRenderer.invoke('graviscan:cancel-scan'),
+
+  // Image operations
+  getOutputDir: () => ipcRenderer.invoke('graviscan:get-output-dir'),
+  readScanImage: (filePath: string, opts?: any) =>
+    ipcRenderer.invoke('graviscan:read-scan-image', filePath, opts),
+  uploadAllScans: () => ipcRenderer.invoke('graviscan:upload-all-scans'),
+  downloadImages: (params: any) =>
+    ipcRenderer.invoke('graviscan:download-images', params),
+
+  // Event listeners with cleanup functions
+  onScanEvent: (callback: (event: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:scan-event', listener);
+    return () => ipcRenderer.removeListener('graviscan:scan-event', listener);
+  },
+  onGridStart: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:grid-start', listener);
+    return () => ipcRenderer.removeListener('graviscan:grid-start', listener);
+  },
+  onGridComplete: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:grid-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:grid-complete', listener);
+  },
+  onCycleComplete: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:cycle-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:cycle-complete', listener);
+  },
+  onIntervalStart: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:interval-start', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:interval-start', listener);
+  },
+  onIntervalWaiting: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:interval-waiting', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:interval-waiting', listener);
+  },
+  onIntervalComplete: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:interval-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:interval-complete', listener);
+  },
+  onOvertime: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:overtime', listener);
+    return () => ipcRenderer.removeListener('graviscan:overtime', listener);
+  },
+  onCancelled: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('graviscan:cancelled', listener);
+    return () => ipcRenderer.removeListener('graviscan:cancelled', listener);
+  },
+  onScanError: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:scan-error', listener);
+    return () => ipcRenderer.removeListener('graviscan:scan-error', listener);
+  },
+  onUploadProgress: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:upload-progress', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:upload-progress', listener);
+  },
+  onDownloadProgress: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:download-progress', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:download-progress', listener);
+  },
+};
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
@@ -298,4 +402,5 @@ contextBridge.exposeInMainWorld('electron', {
   database: databaseAPI,
   config: configAPI,
   session: sessionAPI,
+  gravi: graviAPI,
 });
