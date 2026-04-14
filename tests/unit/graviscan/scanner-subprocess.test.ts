@@ -23,6 +23,9 @@ function createMockProcess() {
       // Store handlers so we can trigger them in tests
       mockProcessHandlers[event] = cb;
     }),
+    once: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+      mockProcessHandlers[event] = cb;
+    }),
     kill: vi.fn(),
     killed: false,
     pid: 12345,

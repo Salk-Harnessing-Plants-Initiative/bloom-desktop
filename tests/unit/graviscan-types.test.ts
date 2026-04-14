@@ -181,9 +181,10 @@ describe('GraviScan TypeScript Types', () => {
   });
 
   describe('ScanCoordinatorLike references shared types', () => {
-    it('interface accepts ScannerConfig in initialize()', () => {
-      // Verify ScanCoordinatorLike.initialize accepts ScannerConfig[]
-      // by creating a conforming mock — this is a compile-time check
+    it('can construct a conforming mock with shared types', () => {
+      // Verifies that ScanCoordinatorLike, ScannerConfig, and PlateConfig
+      // are importable and compatible. The `implements` clause on
+      // ScanCoordinator enforces this at tsc compile time for src/.
       /* eslint-disable @typescript-eslint/no-unused-vars */
       const mockCoordinator: ScanCoordinatorLike = {
         isScanning: false,

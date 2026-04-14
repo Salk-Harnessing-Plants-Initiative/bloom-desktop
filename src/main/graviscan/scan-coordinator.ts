@@ -104,63 +104,66 @@ export class ScanCoordinator
       `[ScanCoordinator] Initializing ${scanners.length} scanner(s)...`
     );
 
-    for (const scanner of scanners) {
-      if (this.cancelled) break;
+    try {
+      for (const scanner of scanners) {
+        if (this.cancelled) break;
 
-      // Reuse existing subprocess if it's still alive and ready
-      const existing = this.subprocesses.get(scanner.scannerId);
-      if (existing && existing.isReady) {
-        console.log(
-          `[ScanCoordinator] Scanner ${scanner.scannerId} already ready, reusing`
+        // Reuse existing subprocess if it's still alive and ready
+        const existing = this.subprocesses.get(scanner.scannerId);
+        if (existing && existing.isReady) {
+          console.log(
+            `[ScanCoordinator] Scanner ${scanner.scannerId} already ready, reusing`
+          );
+          continue;
+        }
+
+        // Shut down dead/stuck subprocess before respawning
+        if (existing) {
+          console.log(
+            `[ScanCoordinator] Scanner ${scanner.scannerId} subprocess not ready, respawning`
+          );
+          existing.removeAllListeners();
+          await existing.shutdown(5000);
+          this.subprocesses.delete(scanner.scannerId);
+        }
+
+        const sub = new ScannerSubprocess(
+          this.pythonPath,
+          this.isPackaged,
+          scanner.scannerId,
+          scanner.saneName,
+          this.mock
         );
-        continue;
-      }
 
-      // Shut down dead/stuck subprocess before respawning
-      if (existing) {
-        console.log(
-          `[ScanCoordinator] Scanner ${scanner.scannerId} subprocess not ready, respawning`
-        );
-        existing.removeAllListeners();
-        await existing.shutdown(5000);
-        this.subprocesses.delete(scanner.scannerId);
-      }
-
-      const sub = new ScannerSubprocess(
-        this.pythonPath,
-        this.isPackaged,
-        scanner.scannerId,
-        scanner.saneName,
-        this.mock
-      );
-
-      // Forward all events, injecting cycle number and per-grid timestamps
-      sub.on('event', (event: ScanWorkerEvent) => {
-        this.emit('scan-event', {
-          ...event,
-          cycle_number: this.currentCycle,
-          scan_started_at: this.currentGridStartedAt,
-          scan_ended_at: this.currentGridEndedAt,
+        // Forward all events, injecting cycle number and per-grid timestamps
+        sub.on('event', (event: ScanWorkerEvent) => {
+          this.emit('scan-event', {
+            ...event,
+            cycle_number: this.currentCycle,
+            scan_started_at: this.currentGridStartedAt,
+            scan_ended_at: this.currentGridEndedAt,
+          });
         });
-      });
 
-      sub.on('exit', (info: { scannerId: string; code: number | null }) => {
+        sub.on('exit', (info: { scannerId: string; code: number | null }) => {
+          console.log(
+            `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
+          );
+          this.subprocesses.delete(info.scannerId);
+        });
+
+        this.subprocesses.set(scanner.scannerId, sub);
+
         console.log(
-          `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
+          `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
         );
-        this.subprocesses.delete(info.scannerId);
-      });
-
-      this.subprocesses.set(scanner.scannerId, sub);
-
-      console.log(
-        `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
-      );
-      await sub.spawn();
-      console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} ready`);
+        await sub.spawn();
+        console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} ready`);
+      }
+    } finally {
+      this.state = 'idle';
     }
 
-    this.state = 'idle';
     console.log(
       `[ScanCoordinator] All ${scanners.length} scanner(s) initialized`
     );
@@ -495,7 +498,9 @@ export class ScanCoordinator
       sub.cancel();
     }
 
-    this.state = 'idle';
+    // Don't set state to idle here — scanOnce() or scanInterval() will
+    // set it when they exit after checking this.cancelled. Setting it
+    // prematurely would make isScanning return false while work is in-flight.
     this.emit('cancelled');
   }
 

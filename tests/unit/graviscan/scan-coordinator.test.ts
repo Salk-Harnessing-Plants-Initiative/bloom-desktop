@@ -210,6 +210,28 @@ describe('ScanCoordinator', () => {
       expect(sub1.shutdown).toHaveBeenCalled();
       expect(sub2.shutdown).toHaveBeenCalled();
     });
+
+    it('resets state to idle when spawn fails', async () => {
+      const coordinator = await createCoordinator();
+
+      // Make the first subprocess spawn fail
+      const failScanner = makeScanners(1);
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(
+        (_pythonPath, _isPackaged, scannerId) => {
+          const mock = createMockSubprocess(scannerId as string);
+          mock.spawn.mockRejectedValue(new Error('SANE device not found'));
+          createdSubprocesses.push(mock);
+          return mock as unknown as ScannerSubprocess;
+        }
+      );
+
+      await expect(coordinator.initialize(failScanner)).rejects.toThrow(
+        'SANE device not found'
+      );
+
+      // State should be reset to idle, not stuck in 'initializing'
+      expect(coordinator.isScanning).toBe(false);
+    });
   });
 
   describe('scanOnce()', () => {
@@ -483,9 +505,10 @@ describe('ScanCoordinator', () => {
   });
 
   describe('implements ScanCoordinatorLike', () => {
-    it('satisfies the interface contract at compile time', async () => {
-      // This is primarily a compile-time check — if ScanCoordinator
-      // doesn't implement ScanCoordinatorLike, tsc --noEmit will fail
+    it('exposes all interface methods at runtime', async () => {
+      // The `implements ScanCoordinatorLike` on the class is enforced by
+      // tsc when compiling src/. This test verifies the methods exist at
+      // runtime as a safety net.
       const { ScanCoordinator } = await import(
         '../../../src/main/graviscan/scan-coordinator'
       );

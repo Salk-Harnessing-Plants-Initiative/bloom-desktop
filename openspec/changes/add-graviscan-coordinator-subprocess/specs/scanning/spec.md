@@ -29,7 +29,7 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 - **AND** within each grid, scanners SHALL be triggered with a `USB_STAGGER_DELAY_MS` (5-second) stagger delay
 - **AND** each stagger delay SHALL be logged via `scanLog()` with the scanner ID and delay duration
 - **AND** the coordinator SHALL wait for all scanners to complete a grid before proceeding to the next
-- **AND** output files SHALL be renamed to append `_et_YYYYMMDD_HHmmss` end-timestamp after grid completion
+- **AND** output files SHALL be renamed to append `_et_YYYYMMDDTHHMMSS` end-timestamp after grid completion
 - **AND** the coordinator SHALL emit `grid-start`, `grid-complete`, and `cycle-complete` events
 
 #### Scenario: File verification after scan-complete

@@ -246,7 +246,7 @@ export class ScannerSubprocess extends EventEmitter {
         resolve();
       }, timeoutMs);
 
-      this.proc!.on('exit', () => {
+      this.proc!.once('exit', () => {
         clearTimeout(timeout);
         resolve();
       });
