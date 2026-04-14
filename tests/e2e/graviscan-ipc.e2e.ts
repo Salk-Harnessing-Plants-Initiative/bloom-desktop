@@ -166,8 +166,9 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(result.success).toBe(true);
     expect(result.data).toBeDefined();
     // GRAVISCAN_MOCK=true should return mock scanners
-    expect(result.data.detectedScanners).toBeInstanceOf(Array);
-    expect(result.data.detectedScanners.length).toBeGreaterThan(0);
+    // Field is `scanners` (not `detectedScanners`) per scanner-handlers.ts
+    expect(Array.isArray(result.data.scanners)).toBe(true);
+    expect(result.data.scanners.length).toBeGreaterThan(0);
   });
 
   test('getPlatformInfo returns platform data', async () => {
@@ -179,8 +180,9 @@ test.describe('GraviScan IPC Round-Trip', () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toBeDefined();
-    expect(result.data.platform).toBeDefined();
+    // Fields per scanner-handlers.ts: supported, backend, mock_enabled
     expect(result.data.backend).toBeDefined();
+    expect(typeof result.data.supported).toBe('boolean');
   });
 
   test('getConfig returns null or config object', async () => {
