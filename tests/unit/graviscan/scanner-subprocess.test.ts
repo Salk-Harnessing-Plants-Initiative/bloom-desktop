@@ -392,7 +392,9 @@ describe('ScannerSubprocess', () => {
 
     it('closes both readline interfaces on shutdown', async () => {
       // Access the private rl and stderrRl fields
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rl = (subprocess as any).rl;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stderrRl = (subprocess as any).stderrRl;
       expect(rl).toBeTruthy();
       expect(stderrRl).toBeTruthy();
@@ -412,7 +414,9 @@ describe('ScannerSubprocess', () => {
     });
 
     it('closes both readline interfaces on kill', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rl = (subprocess as any).rl;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const stderrRl = (subprocess as any).stderrRl;
 
       const rlCloseSpy = vi.spyOn(rl, 'close');
