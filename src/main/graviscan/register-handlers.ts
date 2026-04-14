@@ -137,15 +137,19 @@ export function registerGraviScanHandlers(
     async (_event, filePath, opts) => {
       // Path validation: ensure file is within scan output directory
       const outputDirResult = imageHandlers.getOutputDir();
-      if (outputDirResult.success && outputDirResult.path) {
-        const resolvedOutput = path.resolve(outputDirResult.path);
-        const resolvedFile = path.resolve(filePath);
-        if (
-          !resolvedFile.startsWith(resolvedOutput + path.sep) &&
-          resolvedFile !== resolvedOutput
-        ) {
-          return { success: false, error: 'Path outside scan directory' };
-        }
+      if (!outputDirResult.success || !outputDirResult.path) {
+        return {
+          success: false,
+          error: 'Cannot determine scan directory for path validation',
+        };
+      }
+      const resolvedOutput = path.resolve(outputDirResult.path);
+      const resolvedFile = path.resolve(filePath);
+      if (
+        !resolvedFile.startsWith(resolvedOutput + path.sep) &&
+        resolvedFile !== resolvedOutput
+      ) {
+        return { success: false, error: 'Path outside scan directory' };
       }
       return wrapHandler(() => imageHandlers.readScanImage(filePath, opts))();
     }
@@ -160,22 +164,24 @@ export function registerGraviScanHandlers(
         error: 'Cannot upload while scanning is in progress',
       };
     }
-    const win = getMainWindow();
-    const onProgress =
-      win && !win.isDestroyed()
-        ? (progress: unknown) =>
-            win.webContents.send('graviscan:upload-progress', progress)
-        : undefined;
+    // Check window at send-time, not registration-time (window may close mid-upload)
+    const onProgress = (progress: unknown) => {
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('graviscan:upload-progress', progress);
+      }
+    };
     return wrapHandler(() => imageHandlers.uploadAllScans(db, onProgress))();
   });
 
   ipcMain.handle('graviscan:download-images', (_event, params) => {
-    const win = getMainWindow();
-    const onProgress =
-      win && !win.isDestroyed()
-        ? (progress: unknown) =>
-            win.webContents.send('graviscan:download-progress', progress)
-        : undefined;
+    // Check window at send-time, not registration-time
+    const onProgress = (progress: unknown) => {
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('graviscan:download-progress', progress);
+      }
+    };
     return wrapHandler(() =>
       imageHandlers.downloadImages(db, params, onProgress)
     )();

@@ -325,6 +325,72 @@ describe('registerGraviScanHandlers', () => {
     });
   });
 
+  describe('path validation — getOutputDir failure', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('rejects readScanImage when getOutputDir returns failure', async () => {
+      vi.mocked(imageHandlers.getOutputDir).mockReturnValueOnce({
+        success: false,
+        error: 'Permission denied',
+      } as any);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:read-scan-image',
+        '/etc/passwd',
+        {}
+      );
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining('scan directory'),
+      });
+      expect(imageHandlers.readScanImage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onProgress window safety', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('upload progress checks window at send-time, not registration-time', async () => {
+      // Window exists at invoke-time
+      const send = vi.fn();
+      const mockWin = { isDestroyed: () => false, webContents: { send } };
+      mockGetMainWindow.mockReturnValue(mockWin);
+      mockGetCoordinator.mockReturnValue(null);
+
+      // Make uploadAllScans call onProgress
+      vi.mocked(imageHandlers.uploadAllScans).mockImplementationOnce(
+        async (_db: any, onProgress?: any) => {
+          // Simulate window closing mid-upload
+          mockGetMainWindow.mockReturnValue(null);
+          // This should NOT crash
+          if (onProgress) onProgress({ percent: 50 });
+          return { uploaded: 1, skipped: 0, failed: 0, errors: [] };
+        }
+      );
+
+      const result = await mockIpcMain._invoke('graviscan:upload-all-scans');
+      expect(result.success).toBe(true);
+      // Progress should NOT have been sent (window was null at send-time)
+      expect(send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('concurrent start-scan', () => {
     beforeEach(() => {
       registerGraviScanHandlers(

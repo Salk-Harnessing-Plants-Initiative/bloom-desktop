@@ -238,6 +238,37 @@ describe('session-handlers', () => {
       });
       expect(sessionFns.setScanSession).toHaveBeenCalledWith(null);
     });
+
+    it('should clear session when fire-and-forget resolves (scan completes)', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const deferred = { resolve: () => {} };
+      const scanPromise = new Promise<void>((resolve) => {
+        deferred.resolve = resolve;
+      });
+      coordinator = createMockCoordinator({
+        scanOnce: vi.fn().mockReturnValue(scanPromise),
+      } as any);
+
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
+      expect(result.success).toBe(true);
+
+      // Session should be set (from startScan)
+      expect(sessionFns.setScanSession).toHaveBeenCalledTimes(1);
+
+      // Now resolve the detached promise (scan completes successfully)
+      deferred.resolve();
+      // Wait for the .then() handler to execute
+      await vi.waitFor(() => {
+        expect(sessionFns.setScanSession).toHaveBeenCalledTimes(2);
+      });
+      // Second call should clear the session
+      expect(sessionFns.setScanSession).toHaveBeenLastCalledWith(null);
+    });
   });
 
   describe('getScanStatus', () => {

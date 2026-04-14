@@ -141,6 +141,7 @@ export function setupCoordinatorEventForwarding(
     'overtime',
     'cancelled',
     'scan-error',
+    'rename-error',
   ];
 
   for (const eventName of events) {
@@ -153,32 +154,45 @@ export function setupCoordinatorEventForwarding(
   }
 }
 
+// Guard against concurrent coordinator creation (promise memoization)
+let _coordinatorCreating: Promise<ScanCoordinator> | null = null;
+
 /**
  * Get or create the ScanCoordinator (lazy instantiation).
  * Creates the coordinator on first call and wires event forwarding.
+ * Uses promise memoization to prevent duplicate creation from concurrent calls.
  * Matches the CylinderScan pattern where ScannerProcess is created on demand.
  */
 export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
   if (scanCoordinator) return scanCoordinator;
+  if (_coordinatorCreating) return _coordinatorCreating;
 
-  // Lazy import to avoid loading subprocess modules in cylinderscan mode
-  const { ScanCoordinator: ScanCoordinatorClass } = await import(
-    './graviscan/scan-coordinator'
-  );
-  const { getPythonExecutablePath } = await import('./python-paths');
+  _coordinatorCreating = (async () => {
+    // Lazy import to avoid loading subprocess modules in cylinderscan mode
+    const { ScanCoordinator: ScanCoordinatorClass } = await import(
+      './graviscan/scan-coordinator'
+    );
+    const { getPythonExecutablePath } = await import('./python-paths');
 
-  const pythonPath = getPythonExecutablePath();
-  const isPackaged = app.isPackaged;
+    const pythonPath = getPythonExecutablePath();
+    const isPackaged = app.isPackaged;
 
-  scanCoordinator = new ScanCoordinatorClass(pythonPath, isPackaged, false);
-  console.log('[Main] ScanCoordinator created (lazy)');
+    scanCoordinator = new ScanCoordinatorClass(pythonPath, isPackaged, false);
+    console.log('[Main] ScanCoordinator created (lazy)');
 
-  // Wire event forwarding to renderer
-  if (_getMainWindow) {
-    setupCoordinatorEventForwarding(scanCoordinator, _getMainWindow);
+    // Wire event forwarding to renderer
+    if (_getMainWindow) {
+      setupCoordinatorEventForwarding(scanCoordinator, _getMainWindow);
+    }
+
+    return scanCoordinator;
+  })();
+
+  try {
+    return await _coordinatorCreating;
+  } finally {
+    _coordinatorCreating = null;
   }
-
-  return scanCoordinator;
 }
 
 /**

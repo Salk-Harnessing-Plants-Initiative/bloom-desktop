@@ -169,14 +169,22 @@ export async function startScan(
       onError?.(message);
     };
 
+    const handleComplete = () => {
+      sessionFns.setScanSession(null);
+    };
+
     if (params.interval) {
       const intervalMs = params.interval.intervalSeconds * 1000;
       const durationMs = params.interval.durationSeconds * 1000;
       coordinator
         .scanInterval(platesPerScanner, intervalMs, durationMs)
+        .then(handleComplete)
         .catch(handleError);
     } else {
-      coordinator.scanOnce(platesPerScanner).catch(handleError);
+      coordinator
+        .scanOnce(platesPerScanner)
+        .then(handleComplete)
+        .catch(handleError);
     }
 
     return { success: true };
