@@ -103,7 +103,11 @@ export function registerGraviScanHandlers(
       sessionHandlers.startScan(coordinator, params, sessionFns, (error) => {
         const win = getMainWindow();
         if (win && !win.isDestroyed()) {
-          win.webContents.send('graviscan:scan-error', { error });
+          win.webContents.send('graviscan:scan-error', {
+            scannerId: null,
+            plateIndex: null,
+            error,
+          });
         }
       })
     )();

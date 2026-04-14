@@ -150,6 +150,7 @@ export async function startScan(
         sessIntervalMs > 0 ? Math.ceil(sessDurationMs / sessIntervalMs) : 1,
       intervalMs: sessIntervalMs,
       scanStartedAt: Date.now(),
+      scanEndedAt: null,
       scanDurationMs: sessDurationMs,
       coordinatorState: 'scanning',
       nextScanAt: null,
