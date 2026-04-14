@@ -382,6 +382,63 @@ describe('ScannerSubprocess', () => {
     });
   });
 
+  describe('readline cleanup', () => {
+    beforeEach(async () => {
+      // Spawn subprocess to create readline interfaces
+      const spawnPromise = subprocess.spawn();
+      emitLine('EVENT:{"type":"ready","scanner_id":"scanner-1"}');
+      await spawnPromise;
+    });
+
+    it('closes both readline interfaces on shutdown', async () => {
+      // Access the private rl and stderrRl fields
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rl = (subprocess as any).rl;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stderrRl = (subprocess as any).stderrRl;
+      expect(rl).toBeTruthy();
+      expect(stderrRl).toBeTruthy();
+
+      const rlCloseSpy = vi.spyOn(rl, 'close');
+      const stderrRlCloseSpy = vi.spyOn(stderrRl, 'close');
+
+      // Trigger shutdown — need to handle the exit event
+      const shutdownPromise = subprocess.shutdown(100);
+      // Simulate process exit
+      const exitHandler = mockProcessHandlers['exit'];
+      if (exitHandler) exitHandler(0, null);
+      await shutdownPromise;
+
+      expect(rlCloseSpy).toHaveBeenCalled();
+      expect(stderrRlCloseSpy).toHaveBeenCalled();
+    });
+
+    it('closes both readline interfaces on kill', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rl = (subprocess as any).rl;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stderrRl = (subprocess as any).stderrRl;
+
+      const rlCloseSpy = vi.spyOn(rl, 'close');
+      const stderrRlCloseSpy = vi.spyOn(stderrRl, 'close');
+
+      subprocess.kill();
+
+      expect(rlCloseSpy).toHaveBeenCalled();
+      expect(stderrRlCloseSpy).toHaveBeenCalled();
+    });
+
+    it('double cleanup is safe (shutdown then kill)', async () => {
+      const shutdownPromise = subprocess.shutdown(100);
+      const exitHandler = mockProcessHandlers['exit'];
+      if (exitHandler) exitHandler(0, null);
+      await shutdownPromise;
+
+      // Kill after shutdown should not throw
+      expect(() => subprocess.kill()).not.toThrow();
+    });
+  });
+
   describe('sendCommand safety', () => {
     it('warns if process is not running', () => {
       // Not spawned yet — proc is null

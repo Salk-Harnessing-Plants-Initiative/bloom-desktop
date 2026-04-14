@@ -13,7 +13,17 @@ vi.mock('../../../src/main/graviscan/scan-logger', () => ({
   scanLog: vi.fn(),
 }));
 
-vi.mock('fs');
+vi.mock('fs', () => ({
+  promises: {
+    access: vi.fn().mockResolvedValue(undefined),
+    stat: vi.fn().mockResolvedValue({ size: 1024 }),
+    rename: vi.fn().mockResolvedValue(undefined),
+  },
+  // Keep existsSync for any other code that might use it
+  existsSync: vi.fn().mockReturnValue(true),
+  statSync: vi.fn().mockReturnValue({ size: 1024 }),
+  renameSync: vi.fn(),
+}));
 
 import * as fs from 'fs';
 import { ScannerSubprocess } from '../../../src/main/graviscan/scanner-subprocess';
@@ -65,10 +75,10 @@ describe('ScanCoordinator', () => {
       }
     );
 
-    // Mock fs
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.renameSync).mockReturnValue(undefined);
-    vi.mocked(fs.statSync).mockReturnValue({ size: 1024 } as fs.Stats);
+    // Mock fs.promises
+    vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.stat).mockResolvedValue({ size: 1024 } as fs.Stats);
+    vi.mocked(fs.promises.rename).mockResolvedValue(undefined);
 
     // Suppress console
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -376,11 +386,11 @@ describe('ScanCoordinator', () => {
       const platesMap = makePlatesMap(['scanner-1']);
       await coordinator.scanOnce(platesMap);
 
-      // fs.existsSync should have been called to verify output files
-      expect(fs.existsSync).toHaveBeenCalled();
+      // fs.promises.access should have been called to verify output files
+      expect(fs.promises.access).toHaveBeenCalled();
     });
 
-    it('emits scan-error when statSync throws (filesystem race)', async () => {
+    it('emits scan-error when stat rejects (filesystem race)', async () => {
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
 
@@ -389,11 +399,10 @@ describe('ScanCoordinator', () => {
         process.nextTick(() => sub.emit('cycle-done', {}));
       });
 
-      // File exists but statSync throws (e.g., permissions, race condition)
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.statSync).mockImplementation(() => {
-        throw new Error('EACCES: permission denied');
-      });
+      // File exists but stat rejects (e.g., permissions, race condition)
+      vi.mocked(fs.promises.stat).mockRejectedValue(
+        new Error('EACCES: permission denied')
+      );
 
       const scanError = vi.fn();
       coordinator.on('scan-error', scanError);
@@ -418,9 +427,9 @@ describe('ScanCoordinator', () => {
       });
 
       // Make rename fail
-      vi.mocked(fs.renameSync).mockImplementation(() => {
-        throw new Error('ENOSPC: no space left on device');
-      });
+      vi.mocked(fs.promises.rename).mockRejectedValue(
+        new Error('ENOSPC: no space left on device')
+      );
 
       const renameError = vi.fn();
       coordinator.on('rename-error', renameError);
@@ -484,7 +493,7 @@ describe('ScanCoordinator', () => {
       });
 
       // Reset fs mocks to track calls during this specific test
-      vi.mocked(fs.existsSync).mockClear();
+      vi.mocked(fs.promises.access).mockClear();
 
       const platesMap = makePlatesMap(['scanner-1']);
       const scanPromise = coordinator.scanOnce(platesMap);
@@ -492,9 +501,9 @@ describe('ScanCoordinator', () => {
       await vi.advanceTimersByTimeAsync(100_000);
       await scanPromise;
 
-      // After cancel, file verification (existsSync) should NOT run
+      // After cancel, file verification (access) should NOT run
       // for the cancelled row
-      expect(fs.existsSync).not.toHaveBeenCalled();
+      expect(fs.promises.access).not.toHaveBeenCalled();
 
       vi.useRealTimers();
     });
@@ -536,6 +545,91 @@ describe('ScanCoordinator', () => {
 
       vi.useRealTimers();
     }, 15000);
+  });
+
+  describe('async FS operations', () => {
+    it('emits scan-error when file is missing (access rejects)', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      // File does not exist
+      vi.mocked(fs.promises.access).mockRejectedValue(
+        new Error('ENOENT: no such file or directory')
+      );
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Output file missing'),
+        })
+      );
+    });
+
+    it('emits scan-error for zero-size file', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      vi.mocked(fs.promises.stat).mockResolvedValue({ size: 0 } as fs.Stats);
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('zero-size'),
+        })
+      );
+    });
+
+    it('logs successful renames via scanLog', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('Renamed:'));
+    });
+
+    it('logs grid-complete events via scanLog', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringMatching(/grid.*complete/i)
+      );
+    });
   });
 
   describe('scanInterval()', () => {

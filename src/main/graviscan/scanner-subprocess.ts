@@ -54,6 +54,7 @@ export class ScannerSubprocess extends EventEmitter {
   private proc: ChildProcess | null = null;
   private state: SubprocessState = 'idle';
   private rl: readline.Interface | null = null;
+  private stderrRl: readline.Interface | null = null;
 
   constructor(
     pythonPath: string,
@@ -123,8 +124,8 @@ export class ScannerSubprocess extends EventEmitter {
     this.rl.on('line', (line) => this.handleLine(line));
 
     // Log stderr to console + persistent log file
-    const stderrRl = readline.createInterface({ input: this.proc.stderr! });
-    stderrRl.on('line', (line) => {
+    this.stderrRl = readline.createInterface({ input: this.proc.stderr! });
+    this.stderrRl.on('line', (line) => {
       console.log(`[ScanWorker:${this.scannerId}] ${line}`);
       scanLog(`[${this.scannerId}] ${line}`);
     });
@@ -223,6 +224,8 @@ export class ScannerSubprocess extends EventEmitter {
    * Force-kill the subprocess.
    */
   kill(): void {
+    this.rl?.close();
+    this.stderrRl?.close();
     if (this.proc && !this.proc.killed) {
       this.proc.kill('SIGKILL');
     }
@@ -236,6 +239,8 @@ export class ScannerSubprocess extends EventEmitter {
     if (!this.proc || this.state === 'dead' || this.state === 'idle') return;
 
     this.quit();
+    this.rl?.close();
+    this.stderrRl?.close();
 
     return new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {

@@ -334,3 +334,40 @@ export function createEmptyScannerAssignment(
     gridMode: '2grid', // Default to 2-grid
   };
 }
+
+// =============================================================================
+// Scan Session State (used by main.ts for IPC session tracking)
+// =============================================================================
+
+export interface ScanSessionJob {
+  scannerId: string;
+  plateIndex: string;
+  outputPath: string;
+  plantBarcode: string | null;
+  transplantDate: string | null;
+  customNote: string | null;
+  gridMode: string;
+  status: 'pending' | 'scanning' | 'complete' | 'error' | 'recorded';
+  imagePath?: string;
+  error?: string;
+  durationMs?: number;
+}
+
+export interface ScanSessionState {
+  isActive: boolean;
+  isContinuous: boolean;
+  experimentId: string;
+  phenotyperId: string;
+  resolution: number;
+  sessionId: string | null;
+  jobs: Record<string, ScanSessionJob>;
+  currentCycle: number;
+  totalCycles: number;
+  intervalMs: number;
+  scanStartedAt: number;
+  scanEndedAt: number | null;
+  scanDurationMs: number;
+  coordinatorState: 'idle' | 'scanning' | 'waiting';
+  nextScanAt: number | null;
+  waveNumber: number;
+}
