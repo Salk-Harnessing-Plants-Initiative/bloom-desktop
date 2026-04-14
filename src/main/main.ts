@@ -47,14 +47,11 @@ import {
 } from './session-store';
 import { IdleTimer } from './idle-timer';
 import { createFrameForwarder } from './frame-forwarder';
-import {
-  registerGraviScanHandlers,
-  ScanCoordinator,
-  cleanupOldLogs,
-  closeScanLog,
-} from './graviscan';
+// GraviScan imports are lazy (dynamic import) to avoid loading sharp/native
+// modules in cylinderscan mode. Only type imports are static.
 import type { SessionFns } from './graviscan/session-handlers';
 import type { ScanSessionState } from '../types/graviscan';
+import type { ScanCoordinator } from './graviscan/scan-coordinator';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -157,16 +154,22 @@ export function setupCoordinatorEventForwarding(
  * Initialize GraviScan IPC handlers conditionally based on scanner mode.
  * Extracted for testability.
  */
-export function initGraviScan(
+export async function initGraviScan(
   scannerMode: string,
   ipcMainRef: Electron.IpcMain,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   getMainWindow: () => BrowserWindow | null
-): void {
+): Promise<void> {
   if (scannerMode !== 'graviscan') return;
 
   console.log('[Main] GraviScan mode detected, registering handlers...');
+
+  // Lazy import to avoid loading sharp/native modules in cylinderscan mode
+  const { registerGraviScanHandlers } = await import(
+    './graviscan/register-handlers'
+  );
+  const { cleanupOldLogs } = await import('./graviscan/scan-logger');
 
   // Clean up old scan logs on startup
   cleanupOldLogs();
@@ -1340,8 +1343,13 @@ app.on('before-quit', async (event) => {
     await closeDatabase();
     console.log('Database connection closed');
 
-    // Close scan log stream
-    closeScanLog();
+    // Close scan log stream (lazy import — module may not be loaded in cylinderscan mode)
+    try {
+      const { closeScanLog } = await import('./graviscan/scan-logger');
+      closeScanLog();
+    } catch {
+      // scan-logger not loaded (cylinderscan mode) — nothing to close
+    }
 
     // Give processes a moment to clean up
     console.log('Waiting 500ms for processes to clean up...');
