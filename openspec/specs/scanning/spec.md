@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -1634,4 +1636,3 @@ The `PlateConfig` and `ScannerConfig` interfaces SHALL be defined in `src/types/
 - **THEN** it SHALL import both types from `../../types/graviscan`
 - **AND** the local type definitions SHALL be removed
 - **AND** the `ScanCoordinatorLike` interface SHALL remain in session-handlers.ts
-

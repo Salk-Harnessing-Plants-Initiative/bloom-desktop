@@ -3,6 +3,7 @@
 ## Task 1: Async FS fixes in scan-coordinator.ts (#187)
 
 **TDD approach:**
+
 - Write tests first: verify `handleScanComplete()` uses async FS (mock `fs.promises.access`, `fs.promises.stat`, `fs.promises.rename`)
 - Write tests for error handling: file not found after scan, rename failure, zero-size file
 - Implement: replace `fs.existsSync/statSync/renameSync` with `fs.promises` equivalents
@@ -21,6 +22,7 @@
 ## Task 2: Readline cleanup in scanner-subprocess.ts (#187)
 
 **TDD approach:**
+
 - Write tests first: verify `stderrRl` is stored as field, verify both readline interfaces closed in `shutdown()` and `kill()`
 - Write test for double-close safety (calling shutdown then kill should not error)
 - Implement: add `stderrRl` field, close in cleanup methods
@@ -45,6 +47,7 @@
 ## Task 4: Create register-handlers.ts with IPC wiring
 
 **TDD approach:**
+
 - Write parametric/table-driven tests: iterate all 15 channels, verify each registered and delegates to correct handler with correct args
 - Write tests for error handling: handler throws → IPC returns `{ success: false, error }` and logs via console.error
 - Write tests for path validation: readScanImage rejects paths outside output directory (uses `path.resolve()` before `startsWith`)
@@ -78,6 +81,7 @@
 ## Task 6: Wire into main.ts — session state + conditional registration
 
 **TDD approach:**
+
 - Extract GraviScan wiring logic into a testable function (e.g., `initGraviScan(config, ipcMain, db, getMainWindow)`) to avoid testing main.ts side effects directly
 - Write Vitest unit tests with mocked ipcMain: verify GraviScan handlers registered when mode is `graviscan`, NOT registered when mode is `cylinderscan` or empty/unset
 - Write tests for session state lifecycle (getScanSession, setScanSession, markScanJobRecorded — including unknown job key)
@@ -106,6 +110,7 @@
 ## Task 7: Wire coordinator event forwarding in main.ts
 
 **TDD approach:**
+
 - Write tests first: mock coordinator EventEmitter, verify all 10 events forwarded to `mainWindow.webContents.send` with correct channel names and payloads
 - Write tests for guards: no crash when mainWindow is null, when mainWindow.isDestroyed() is true
 - Implement: `setupCoordinatorEventForwarding(coordinator, getMainWindow)` called from within startScan handler
@@ -123,6 +128,7 @@
 ## Task 8: Extend preload.ts with gravi namespace
 
 **TDD approach:**
+
 - Write tests first: verify `window.electron.gravi` has all expected methods (15 invoke + 12 listeners)
 - Write tests for listener registration: `on*` methods call `ipcRenderer.on`
 - Write tests for listener cleanup: returned cleanup function calls `ipcRenderer.removeListener`
@@ -145,7 +151,7 @@
 
 **Depends on:** Task 8 (to know exact API shape)
 
-- [x] Define GraviAPI interface with all invoke methods and on* listener types
+- [x] Define GraviAPI interface with all invoke methods and on\* listener types
 - [x] Add `gravi: GraviAPI` to ElectronAPI interface
 
 **Verify:** `npx tsc --noEmit`
@@ -153,10 +159,11 @@
 ## Task 10: Vitest integration tests for IPC handler invocation
 
 **TDD approach:**
+
 - Write tests that verify the full handler invocation flow: call the registered handler function → module function called → wrapped response returned
 - Test session state round-trip: start-scan sets state → get-scan-status reads it → cancel clears it
 - Test coordinator lazy instantiation via the handler flow
-- These go beyond register-handlers.test.ts which only verified *registration*, not *invocation* behavior
+- These go beyond register-handlers.test.ts which only verified _registration_, not _invocation_ behavior
 
 **Files:** `tests/unit/graviscan/graviscan-ipc-integration.test.ts` (new)
 
@@ -172,6 +179,7 @@
 ## Task 11: Playwright E2E tests for GraviScan IPC round-trip
 
 **TDD approach:**
+
 - Write E2E tests that launch the Electron app in graviscan+mock mode
 - Call `window.electron.gravi.*` from renderer via `page.evaluate()`
 - Verify real IPC round-trip: renderer → preload → ipcMain → handler → response

@@ -18,16 +18,17 @@ The renderer cannot invoke any GraviScan functionality because Increments 3a/3b 
 10. **Async FS fixes (from #187)** — replace `fs.existsSync/statSync/renameSync` with `fs.promises` in `scan-coordinator.ts`; store `stderrRl` as class field and close both readline interfaces in `scanner-subprocess.ts` shutdown/kill
 11. **Vitest integration tests** — IPC handler invocation round-trip tests verifying handler → module function → wrapped response flow
 12. **Playwright E2E tests** — full Electron IPC round-trip from renderer (`window.electron.gravi.*`) with graviscan mode + mock scanners
-12. **Scan log lifecycle** — call `cleanupOldLogs()` on app startup, `closeScanLog()` on app quit
-13. **Persistent logging for critical events** — add `scanLog()` calls for `grid-complete` events and successful file renames (not just errors) for scientific traceability
-14. **Upload guard** — reject `graviscan:upload-all-scans` when coordinator is actively scanning
-15. **Path validation** — `readScanImage` IPC handler validates file path is within the scan output directory before allowing reads
+13. **Scan log lifecycle** — call `cleanupOldLogs()` on app startup, `closeScanLog()` on app quit
+14. **Persistent logging for critical events** — add `scanLog()` calls for `grid-complete` events and successful file renames (not just errors) for scientific traceability
+15. **Upload guard** — reject `graviscan:upload-all-scans` when coordinator is actively scanning
+16. **Path validation** — `readScanImage` IPC handler validates file path is within the scan output directory before allowing reads
 
 ## Impact
 
 **Affected specs:** `scanning`
 
 **Affected code files:**
+
 - `src/main/graviscan/register-handlers.ts` (new)
 - `src/main/graviscan/index.ts` (barrel exports)
 - `src/main/graviscan/scan-coordinator.ts` (async FS fixes, persistent logging)
@@ -38,6 +39,7 @@ The renderer cannot invoke any GraviScan functionality because Increments 3a/3b 
 - `src/types/electron.d.ts` (GraviAPI type, ElectronAPI extension)
 
 **Affected test files:**
+
 - `tests/unit/graviscan/register-handlers.test.ts` (new)
 - `tests/unit/graviscan/scan-coordinator.test.ts` (update mocks for async FS)
 - `tests/unit/graviscan/scanner-subprocess.test.ts` (readline cleanup tests)
@@ -56,6 +58,7 @@ The renderer cannot invoke any GraviScan functionality because Increments 3a/3b 
 ### Decision: No database-handlers.ts extension
 
 The GraviScan handler modules (`scanner-handlers.ts`, `session-handlers.ts`, `image-handlers.ts`) are self-sufficient for database operations — they accept a `db` (Prisma client) parameter and perform queries directly. Adding parallel CRUD handlers in `database-handlers.ts` would:
+
 - Duplicate query logic across two locations
 - Create maintenance burden when schemas change
 - Violate the handler module's established pattern of encapsulating domain logic with DB access
@@ -65,6 +68,7 @@ The existing `database-handlers.ts` pattern (generic CRUD) suits CylinderScan's 
 ## Cherry-pick strategy
 
 Reference Ben's `origin/graviscan/4-main-process` branch for:
+
 - Session state shape (`ScanSessionState` interface)
 - Coordinator event forwarding logic
 - IPC channel naming conventions

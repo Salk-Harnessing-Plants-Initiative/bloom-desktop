@@ -28,10 +28,11 @@ export function registerGraviScanHandlers(
   getMainWindow: () => BrowserWindow | null,
   sessionFns: SessionFns,
   getCoordinator: () => ScanCoordinator | null
-): void
+): void;
 ```
 
 **Parameters:**
+
 - `ipcMain` — Electron IPC main
 - `db` — Prisma client instance
 - `getMainWindow` — getter for event forwarding (avoids stale reference)
@@ -42,23 +43,23 @@ export function registerGraviScanHandlers(
 
 ### IPC Channel → Handler Mapping
 
-| IPC Channel | Handler Function | Module |
-|---|---|---|
-| `graviscan:detect-scanners` | `detectScanners(db)` | scanner-handlers |
-| `graviscan:get-config` | `getConfig(db)` | scanner-handlers |
-| `graviscan:save-config` | `saveConfig(db, config)` | scanner-handlers |
-| `graviscan:save-scanners-db` | `saveScannersToDB(db, scanners)` | scanner-handlers |
-| `graviscan:platform-info` | `getPlatformInfo()` | scanner-handlers |
-| `graviscan:validate-scanners` | `runStartupScannerValidation(db, cachedIds)` | scanner-handlers |
-| `graviscan:validate-config` | `validateConfig(db)` | scanner-handlers |
-| `graviscan:start-scan` | `startScan(coordinator, params, sessionFns, onError)` | session-handlers |
-| `graviscan:get-scan-status` | `getScanStatus(sessionFns)` | session-handlers |
-| `graviscan:mark-job-recorded` | `markJobRecorded(sessionFns, jobKey)` | session-handlers |
-| `graviscan:cancel-scan` | `cancelScan(coordinator, sessionFns)` | session-handlers |
-| `graviscan:get-output-dir` | `getOutputDir()` | image-handlers |
-| `graviscan:read-scan-image` | `readScanImage(filePath, opts)` | image-handlers |
-| `graviscan:upload-all-scans` | `uploadAllScans(db, onProgress)` | image-handlers |
-| `graviscan:download-images` | `downloadImages(db, params, onProgress)` | image-handlers |
+| IPC Channel                   | Handler Function                                      | Module           |
+| ----------------------------- | ----------------------------------------------------- | ---------------- |
+| `graviscan:detect-scanners`   | `detectScanners(db)`                                  | scanner-handlers |
+| `graviscan:get-config`        | `getConfig(db)`                                       | scanner-handlers |
+| `graviscan:save-config`       | `saveConfig(db, config)`                              | scanner-handlers |
+| `graviscan:save-scanners-db`  | `saveScannersToDB(db, scanners)`                      | scanner-handlers |
+| `graviscan:platform-info`     | `getPlatformInfo()`                                   | scanner-handlers |
+| `graviscan:validate-scanners` | `runStartupScannerValidation(db, cachedIds)`          | scanner-handlers |
+| `graviscan:validate-config`   | `validateConfig(db)`                                  | scanner-handlers |
+| `graviscan:start-scan`        | `startScan(coordinator, params, sessionFns, onError)` | session-handlers |
+| `graviscan:get-scan-status`   | `getScanStatus(sessionFns)`                           | session-handlers |
+| `graviscan:mark-job-recorded` | `markJobRecorded(sessionFns, jobKey)`                 | session-handlers |
+| `graviscan:cancel-scan`       | `cancelScan(coordinator, sessionFns)`                 | session-handlers |
+| `graviscan:get-output-dir`    | `getOutputDir()`                                      | image-handlers   |
+| `graviscan:read-scan-image`   | `readScanImage(filePath, opts)`                       | image-handlers   |
+| `graviscan:upload-all-scans`  | `uploadAllScans(db, onProgress)`                      | image-handlers   |
+| `graviscan:download-images`   | `downloadImages(db, params, onProgress)`              | image-handlers   |
 
 ### Session State
 
@@ -70,12 +71,14 @@ let scanCoordinator: ScanCoordinator | null = null;
 
 const sessionFns: SessionFns = {
   getScanSession: () => scanSession,
-  setScanSession: (s) => { scanSession = s; },
+  setScanSession: (s) => {
+    scanSession = s;
+  },
   markScanJobRecorded: (key) => {
     if (scanSession?.jobs[key]) {
       scanSession.jobs[key].status = 'recorded';
     }
-  }
+  },
 };
 ```
 
@@ -121,6 +124,7 @@ export interface ScanSessionState {
 ### Coordinator Lifecycle
 
 **Lazy instantiation** — matches CylinderScan's `ScannerProcess` pattern:
+
 - `ScannerProcess` created in `scanner:initialize` handler, not at startup
 - `ScanCoordinator` created in `graviscan:start-scan` handler, not at startup
 - Coordinator reference stored at module level in main.ts
@@ -131,18 +135,18 @@ export interface ScanSessionState {
 
 Coordinator events forwarded to renderer for UI updates:
 
-| Coordinator Event | IPC Channel | Payload |
-|---|---|---|
-| `scan-event` | `graviscan:scan-event` | `ScanWorkerEvent` (note: includes `scan_started_at` but NOT `scan_ended_at` — end timestamp only available in grid-complete) |
-| `grid-start` | `graviscan:grid-start` | `{ scannerId, plateIndex, timestamp }` |
-| `grid-complete` | `graviscan:grid-complete` | `{ scannerId, plateIndex, timestamp }` |
-| `cycle-complete` | `graviscan:cycle-complete` | `{ cycleNumber }` |
-| `interval-start` | `graviscan:interval-start` | `{ cycleNumber }` |
-| `interval-waiting` | `graviscan:interval-waiting` | `{ nextScanAt }` |
-| `interval-complete` | `graviscan:interval-complete` | `{}` |
-| `overtime` | `graviscan:overtime` | `{ elapsed, expected }` |
-| `cancelled` | `graviscan:cancelled` | `{}` |
-| `scan-error` | `graviscan:scan-error` | `{ error }` |
+| Coordinator Event   | IPC Channel                   | Payload                                                                                                                      |
+| ------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `scan-event`        | `graviscan:scan-event`        | `ScanWorkerEvent` (note: includes `scan_started_at` but NOT `scan_ended_at` — end timestamp only available in grid-complete) |
+| `grid-start`        | `graviscan:grid-start`        | `{ scannerId, plateIndex, timestamp }`                                                                                       |
+| `grid-complete`     | `graviscan:grid-complete`     | `{ scannerId, plateIndex, timestamp }`                                                                                       |
+| `cycle-complete`    | `graviscan:cycle-complete`    | `{ cycleNumber }`                                                                                                            |
+| `interval-start`    | `graviscan:interval-start`    | `{ cycleNumber }`                                                                                                            |
+| `interval-waiting`  | `graviscan:interval-waiting`  | `{ nextScanAt }`                                                                                                             |
+| `interval-complete` | `graviscan:interval-complete` | `{}`                                                                                                                         |
+| `overtime`          | `graviscan:overtime`          | `{ elapsed, expected }`                                                                                                      |
+| `cancelled`         | `graviscan:cancelled`         | `{}`                                                                                                                         |
+| `scan-error`        | `graviscan:scan-error`        | `{ error }`                                                                                                                  |
 
 All use the `if (mainWindow && !mainWindow.isDestroyed())` guard.
 
@@ -151,6 +155,7 @@ All use the `if (mainWindow && !mainWindow.isDestroyed())` guard.
 ### Persistent Logging for Critical Events
 
 In addition to forwarding events to the renderer, the following events SHALL be logged via `scanLog()` for scientific traceability:
+
 - `grid-complete` events (with renamed file paths and timestamps)
 - Successful file renames (`old_path -> new_path`)
 - `scan-error` events from the coordinator
@@ -214,6 +219,7 @@ contextBridge.exposeInMainWorld('electron', {
 ### Async FS Fixes (#187)
 
 **scan-coordinator.ts** — Replace synchronous FS calls in `handleScanComplete()`:
+
 - `fs.existsSync()` → `fs.promises.access()` with try/catch
 - `fs.statSync()` → `fs.promises.stat()`
 - `fs.renameSync()` → `fs.promises.rename()`
@@ -221,17 +227,20 @@ contextBridge.exposeInMainWorld('electron', {
 **Important:** Renames must remain sequential within each result set (not parallelized via `Promise.all`). The sequential `for` loop with `await` preserves the guarantee that row group N+1 does not begin until all renames for row group N complete.
 
 **scanner-subprocess.ts** — Fix readline resource leak:
+
 - Store `stderrRl` as class field (alongside existing `this.rl`)
 - Close both `this.rl` and `this.stderrRl` in `shutdown()` and `kill()`
 
 ### Testing Strategy
 
 **Unit tests (TDD):**
+
 - `register-handlers.test.ts` — parametric/table-driven test over all 15 channels, verify delegation, error handling, path validation, upload guard
 - Async FS fix tests in existing `scan-coordinator.test.ts` (must update existing mocks from sync to async)
 - Readline cleanup tests in existing `scanner-subprocess.test.ts`
 
 **Integration tests (Vitest with mocked ipcMain):**
+
 - Conditional registration based on scanner_mode
 - Session state lifecycle: start → status → mark → cancel
 - Coordinator lazy instantiation: not created until startScan
@@ -239,16 +248,17 @@ contextBridge.exposeInMainWorld('electron', {
 - Gravi IPC invoked in cylinderscan mode → graceful error
 
 **Regression:**
+
 - All existing CylinderScan tests must pass
 - Pre-merge checks (lint, type check, unit, integration, E2E)
 
 ## Trade-offs
 
-| Decision | Alternative | Rationale |
-|---|---|---|
-| Separate `register-handlers.ts` | Inline in main.ts | Keeps main.ts manageable; testable in isolation |
-| Lazy coordinator | Eager at startup | Matches CylinderScan pattern; no wasted subprocess resources |
-| `getMainWindow` getter | Direct reference | Handles window recreation across reloads |
-| No database-handlers CRUD | Extend database-handlers.ts | Handler modules are self-sufficient; avoids duplication |
-| Skip registration when wrong mode | Register as no-op | Cleaner; no dead handlers in IPC namespace |
-| Sequential renames (not Promise.all) | Parallel renames | Preserves scan ordering guarantee; error attribution clearer |
+| Decision                             | Alternative                 | Rationale                                                    |
+| ------------------------------------ | --------------------------- | ------------------------------------------------------------ |
+| Separate `register-handlers.ts`      | Inline in main.ts           | Keeps main.ts manageable; testable in isolation              |
+| Lazy coordinator                     | Eager at startup            | Matches CylinderScan pattern; no wasted subprocess resources |
+| `getMainWindow` getter               | Direct reference            | Handles window recreation across reloads                     |
+| No database-handlers CRUD            | Extend database-handlers.ts | Handler modules are self-sufficient; avoids duplication      |
+| Skip registration when wrong mode    | Register as no-op           | Cleaner; no dead handlers in IPC namespace                   |
+| Sequential renames (not Promise.all) | Parallel renames            | Preserves scan ordering guarantee; error attribution clearer |
