@@ -8,7 +8,9 @@ vi.mock('../../../src/main/graviscan/scanner-handlers', () => ({
   getConfig: vi.fn().mockResolvedValue(null),
   saveConfig: vi.fn().mockResolvedValue(undefined),
   saveScannersToDB: vi.fn().mockResolvedValue(undefined),
-  getPlatformInfo: vi.fn().mockResolvedValue({ platform: 'linux', backend: 'sane' }),
+  getPlatformInfo: vi
+    .fn()
+    .mockResolvedValue({ platform: 'linux', backend: 'sane' }),
   runStartupScannerValidation: vi.fn().mockResolvedValue({ valid: true }),
   validateConfig: vi.fn().mockResolvedValue({ status: 'valid' }),
 }));
@@ -21,7 +23,9 @@ vi.mock('../../../src/main/graviscan/session-handlers', () => ({
 }));
 
 vi.mock('../../../src/main/graviscan/image-handlers', () => ({
-  getOutputDir: vi.fn().mockReturnValue({ success: true, path: '/home/user/.bloom/graviscan' }),
+  getOutputDir: vi
+    .fn()
+    .mockReturnValue({ success: true, path: '/home/user/.bloom/graviscan' }),
   readScanImage: vi.fn().mockResolvedValue({ data: 'base64...' }),
   uploadAllScans: vi.fn().mockResolvedValue({ uploaded: 0 }),
   downloadImages: vi.fn().mockResolvedValue({ exported: 0 }),
@@ -64,7 +68,12 @@ function createMockIpcMain() {
     _invoke: async (channel: string, ...args: unknown[]) => {
       const handler = handlers.get(channel);
       if (!handler) throw new Error(`No handler for ${channel}`);
-      return handler({ /* mock event */ }, ...args);
+      return handler(
+        {
+          /* mock event */
+        },
+        ...args
+      );
     },
   };
 }
@@ -136,13 +145,22 @@ describe('registerGraviScanHandlers', () => {
     });
 
     it('graviscan:save-config passes config arg', async () => {
-      await mockIpcMain._invoke('graviscan:save-config', { grid_mode: '2grid', resolution: 600 });
-      expect(scannerHandlers.saveConfig).toHaveBeenCalledWith(mockDb, { grid_mode: '2grid', resolution: 600 });
+      await mockIpcMain._invoke('graviscan:save-config', {
+        grid_mode: '2grid',
+        resolution: 600,
+      });
+      expect(scannerHandlers.saveConfig).toHaveBeenCalledWith(mockDb, {
+        grid_mode: '2grid',
+        resolution: 600,
+      });
     });
 
     it('graviscan:validate-scanners passes cachedIds', async () => {
       await mockIpcMain._invoke('graviscan:validate-scanners', ['id1', 'id2']);
-      expect(scannerHandlers.runStartupScannerValidation).toHaveBeenCalledWith(mockDb, ['id1', 'id2']);
+      expect(scannerHandlers.runStartupScannerValidation).toHaveBeenCalledWith(
+        mockDb,
+        ['id1', 'id2']
+      );
     });
 
     it('graviscan:start-scan delegates to startScan', async () => {
@@ -153,12 +171,17 @@ describe('registerGraviScanHandlers', () => {
 
     it('graviscan:get-scan-status delegates to getScanStatus', async () => {
       await mockIpcMain._invoke('graviscan:get-scan-status');
-      expect(sessionHandlers.getScanStatus).toHaveBeenCalledWith(mockSessionFns);
+      expect(sessionHandlers.getScanStatus).toHaveBeenCalledWith(
+        mockSessionFns
+      );
     });
 
     it('graviscan:mark-job-recorded passes jobKey', async () => {
       await mockIpcMain._invoke('graviscan:mark-job-recorded', 'scanner1:00');
-      expect(sessionHandlers.markJobRecorded).toHaveBeenCalledWith(mockSessionFns, 'scanner1:00');
+      expect(sessionHandlers.markJobRecorded).toHaveBeenCalledWith(
+        mockSessionFns,
+        'scanner1:00'
+      );
     });
 
     it('graviscan:cancel-scan delegates to cancelScan', async () => {

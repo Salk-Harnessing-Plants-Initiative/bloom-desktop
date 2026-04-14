@@ -150,18 +150,60 @@
 
 **Verify:** `npx tsc --noEmit`
 
-## Task 10: Pre-merge verification
+## Task 10: Vitest integration tests for IPC handler invocation
+
+**TDD approach:**
+- Write tests that verify the full handler invocation flow: call the registered handler function → module function called → wrapped response returned
+- Test session state round-trip: start-scan sets state → get-scan-status reads it → cancel clears it
+- Test coordinator lazy instantiation via the handler flow
+- These go beyond register-handlers.test.ts which only verified *registration*, not *invocation* behavior
+
+**Files:** `tests/unit/graviscan/graviscan-ipc-integration.test.ts` (new)
+
+**Depends on:** Tasks 4, 6
+
+- [ ] Write handler invocation round-trip tests (call handler → verify module function called with db → verify {success,data} response)
+- [ ] Write session state round-trip test (start → status → cancel → status null)
+- [ ] Write mode conditional test (cylinderscan mode → no handlers → invoke fails)
+- [ ] Verify tests pass
+
+**Verify:** `npx vitest run tests/unit/graviscan/graviscan-ipc-integration.test.ts`
+
+## Task 11: Playwright E2E tests for GraviScan IPC round-trip
+
+**TDD approach:**
+- Write E2E tests that launch the Electron app in graviscan+mock mode
+- Call `window.electron.gravi.*` from renderer via `page.evaluate()`
+- Verify real IPC round-trip: renderer → preload → ipcMain → handler → response
+- Follow `renderer-database-ipc.e2e.ts` pattern for app setup/teardown
+
+**Files:** `tests/e2e/graviscan-ipc.e2e.ts` (new)
+
+**Depends on:** All implementation tasks complete
+
+- [ ] Write test: gravi namespace exists on window.electron
+- [ ] Write test: detectScanners returns mock scanners (GRAVISCAN_MOCK=true)
+- [ ] Write test: getPlatformInfo returns platform data
+- [ ] Write test: getConfig returns null or config
+- [ ] Write test: getOutputDir returns path
+- [ ] Write test: getScanStatus returns null (no active scan)
+- [ ] Write test: event listener cleanup works (onScanEvent returns function)
+- [ ] Verify E2E tests pass locally
+
+**Verify:** `npx playwright test tests/e2e/graviscan-ipc.e2e.ts`
+
+## Task 12: Pre-merge verification
 
 **Depends on:** All above tasks
 
-- [x] All unit tests pass: `npx vitest run`
-- [x] TypeScript compiles: `npx tsc --noEmit`
-- [x] Lint passes: `npx eslint src/`
-- [x] Format passes: `npx prettier --check src/`
-- [x] Integration tests pass
-- [x] E2E tests pass: `npm run test:e2e`
-- [x] CylinderScan regression: existing E2E and scanner tests unaffected
-- [x] Run full pre-merge checks per project claude commands
+- [ ] All unit tests pass: `npx vitest run`
+- [ ] TypeScript compiles: `npx tsc --noEmit`
+- [ ] Lint passes: `npx eslint src/ tests/`
+- [ ] Format passes: `npx prettier --check src/`
+- [ ] Vitest integration tests pass
+- [ ] E2E tests pass: `npm run test:e2e`
+- [ ] CylinderScan regression: existing E2E and scanner tests unaffected
+- [ ] Run full pre-merge checks per project claude commands
 
 ## Parallelizable work
 
@@ -170,7 +212,8 @@
 - Tasks 6 and 8 depend on Task 4+5 but are partially parallelizable (touch different files)
 - Task 7 depends on Task 6
 - Task 9 depends on Task 8
-- Task 10 is sequential, after all others
+- Tasks 10 and 11 can run in parallel (different test frameworks, different files)
+- Task 12 is sequential, after all others
 
 ## Check gates
 
@@ -178,4 +221,5 @@
 - After Tasks 3-5: `npx tsc --noEmit && npx vitest run tests/unit/graviscan/`
 - After Tasks 6-7: `npx vitest run tests/unit/graviscan/ && npx tsc --noEmit`
 - After Tasks 8-9: `npx tsc --noEmit && npx vitest run`
-- Task 10: full pre-merge suite
+- After Tasks 10-11: `npx vitest run && npx playwright test tests/e2e/graviscan-ipc.e2e.ts`
+- Task 12: full pre-merge suite

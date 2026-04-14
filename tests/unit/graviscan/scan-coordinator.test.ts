@@ -400,7 +400,9 @@ describe('ScanCoordinator', () => {
       });
 
       // File exists but stat rejects (e.g., permissions, race condition)
-      vi.mocked(fs.promises.stat).mockRejectedValue(new Error('EACCES: permission denied'));
+      vi.mocked(fs.promises.stat).mockRejectedValue(
+        new Error('EACCES: permission denied')
+      );
 
       const scanError = vi.fn();
       coordinator.on('scan-error', scanError);
@@ -425,7 +427,9 @@ describe('ScanCoordinator', () => {
       });
 
       // Make rename fail
-      vi.mocked(fs.promises.rename).mockRejectedValue(new Error('ENOSPC: no space left on device'));
+      vi.mocked(fs.promises.rename).mockRejectedValue(
+        new Error('ENOSPC: no space left on device')
+      );
 
       const renameError = vi.fn();
       coordinator.on('rename-error', renameError);
@@ -607,9 +611,7 @@ describe('ScanCoordinator', () => {
       const platesMap = makePlatesMap(['scanner-1']);
       await coordinator.scanOnce(platesMap);
 
-      expect(scanLog).toHaveBeenCalledWith(
-        expect.stringContaining('Renamed:')
-      );
+      expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('Renamed:'));
     });
 
     it('logs grid-complete events via scanLog', async () => {

@@ -274,6 +274,31 @@ The system SHALL define a `GraviAPI` interface in `src/types/electron.d.ts` and 
 - **WHEN** the file is compiled with `npx tsc --noEmit`
 - **THEN** the compiler SHALL recognize all 15 invoke methods and 12 event listener methods with correct parameter and return types
 
+### Requirement: GraviScan IPC Integration Testing
+
+The system SHALL include integration tests verifying the full IPC round-trip for GraviScan handlers, both via Vitest (mocked ipcMain) and Playwright E2E (real Electron app).
+
+#### Scenario: Handler invocation returns wrapped response
+
+- **GIVEN** `registerGraviScanHandlers` has been called with a mock database
+- **WHEN** a registered handler is invoked (e.g., `graviscan:detect-scanners`)
+- **THEN** the response SHALL be `{ success: true, data: <result> }` where `<result>` is the return value of the corresponding handler module function
+
+#### Scenario: E2E round-trip from renderer via gravi namespace
+
+- **GIVEN** the Electron app is running in `graviscan` mode with `GRAVISCAN_MOCK=true`
+- **WHEN** renderer code calls `window.electron.gravi.detectScanners()`
+- **THEN** the response SHALL contain mock scanner data
+- **AND** `window.electron.gravi.getPlatformInfo()` SHALL return platform information
+- **AND** `window.electron.gravi.getScanStatus()` SHALL return `null` (no active scan)
+
+#### Scenario: E2E event listener cleanup
+
+- **GIVEN** the Electron app is running in `graviscan` mode
+- **WHEN** renderer code calls `window.electron.gravi.onScanEvent(callback)`
+- **THEN** it SHALL return a function (cleanup)
+- **AND** the cleanup function SHALL be callable without error
+
 ## MODIFIED Requirements
 
 ### Requirement: ScanCoordinator Multi-Scanner Orchestration

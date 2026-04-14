@@ -16,7 +16,8 @@ The renderer cannot invoke any GraviScan functionality because Increments 3a/3b 
 8. **`GraviAPI` type + `ElectronAPI` extension** — add `gravi: GraviAPI` to `src/types/electron.d.ts`
 9. **Barrel export updates** — `graviscan/index.ts` exports `registerGraviScanHandlers`, `ScanCoordinator`, `ScannerSubprocess`, `scanLog`, `cleanupOldLogs`, `closeScanLog`
 10. **Async FS fixes (from #187)** — replace `fs.existsSync/statSync/renameSync` with `fs.promises` in `scan-coordinator.ts`; store `stderrRl` as class field and close both readline interfaces in `scanner-subprocess.ts` shutdown/kill
-11. **Integration tests** — IPC handler wiring tests, coordinator lifecycle tests
+11. **Vitest integration tests** — IPC handler invocation round-trip tests verifying handler → module function → wrapped response flow
+12. **Playwright E2E tests** — full Electron IPC round-trip from renderer (`window.electron.gravi.*`) with graviscan mode + mock scanners
 12. **Scan log lifecycle** — call `cleanupOldLogs()` on app startup, `closeScanLog()` on app quit
 13. **Persistent logging for critical events** — add `scanLog()` calls for `grid-complete` events and successful file renames (not just errors) for scientific traceability
 14. **Upload guard** — reject `graviscan:upload-all-scans` when coordinator is actively scanning
@@ -41,6 +42,8 @@ The renderer cannot invoke any GraviScan functionality because Increments 3a/3b 
 - `tests/unit/graviscan/scan-coordinator.test.ts` (update mocks for async FS)
 - `tests/unit/graviscan/scanner-subprocess.test.ts` (readline cleanup tests)
 - `tests/unit/preload-gravi.test.ts` (new)
+- `tests/unit/graviscan/main-wiring.test.ts` (new)
+- `tests/e2e/graviscan-ipc.e2e.ts` (new — Playwright E2E for IPC round-trip)
 
 ### Out of scope
 

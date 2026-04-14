@@ -68,12 +68,20 @@ describe('preload gravi namespace', () => {
 
     it('saveConfig passes args', async () => {
       await exposedAPI.gravi.saveConfig({ grid_mode: '2grid' });
-      expect(mockInvoke).toHaveBeenCalledWith('graviscan:save-config', { grid_mode: '2grid' });
+      expect(mockInvoke).toHaveBeenCalledWith('graviscan:save-config', {
+        grid_mode: '2grid',
+      });
     });
 
     it('readScanImage passes path and opts', async () => {
-      await exposedAPI.gravi.readScanImage('/path/scan.tiff', { thumbnail: true });
-      expect(mockInvoke).toHaveBeenCalledWith('graviscan:read-scan-image', '/path/scan.tiff', { thumbnail: true });
+      await exposedAPI.gravi.readScanImage('/path/scan.tiff', {
+        thumbnail: true,
+      });
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'graviscan:read-scan-image',
+        '/path/scan.tiff',
+        { thumbnail: true }
+      );
     });
   });
 
@@ -102,7 +110,10 @@ describe('preload gravi namespace', () => {
     it('onScanEvent registers listener on correct channel', () => {
       const callback = vi.fn();
       exposedAPI.gravi.onScanEvent(callback);
-      expect(mockOn).toHaveBeenCalledWith('graviscan:scan-event', expect.any(Function));
+      expect(mockOn).toHaveBeenCalledWith(
+        'graviscan:scan-event',
+        expect.any(Function)
+      );
     });
 
     it('onScanEvent returns cleanup function', () => {
@@ -115,7 +126,10 @@ describe('preload gravi namespace', () => {
       const callback = vi.fn();
       const cleanup = exposedAPI.gravi.onScanEvent(callback);
       cleanup();
-      expect(mockRemoveListener).toHaveBeenCalledWith('graviscan:scan-event', expect.any(Function));
+      expect(mockRemoveListener).toHaveBeenCalledWith(
+        'graviscan:scan-event',
+        expect.any(Function)
+      );
     });
 
     it('listener invokes callback with event data', () => {
@@ -129,8 +143,14 @@ describe('preload gravi namespace', () => {
       expect(registeredListener).toBeTruthy();
 
       // Simulate event
-      registeredListener({}, { type: 'scan-complete', scanner_id: 'scanner-1' });
-      expect(callback).toHaveBeenCalledWith({ type: 'scan-complete', scanner_id: 'scanner-1' });
+      registeredListener(
+        {},
+        { type: 'scan-complete', scanner_id: 'scanner-1' }
+      );
+      expect(callback).toHaveBeenCalledWith({
+        type: 'scan-complete',
+        scanner_id: 'scanner-1',
+      });
     });
   });
 });
