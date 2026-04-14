@@ -56,6 +56,33 @@ This document describes all configurable constants and default values in the Blo
 - **Gain**: Use only when lighting is insufficient (adds noise)
 - **Gamma**: Adjust for non-linear brightness correction (typically 1.0-2.2)
 
+## GraviScan Settings
+
+### Scan Coordination
+
+| Constant               | Type     | Default | Description                                                                                             | Location                                                                            | Admin Configurable          |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------- |
+| `USB_STAGGER_DELAY_MS` | `number` | `5000`  | Delay (ms) between starting scanners within a grid row. Prevents epkowa SANE backend USB contention.    | [src/main/graviscan/scan-coordinator.ts](../src/main/graviscan/scan-coordinator.ts) | ❌ No - Hardware constraint |
+| `SCAN_ROW_TIMEOUT_MS`  | `number` | `90000` | Per-row scan timeout (ms). If a subprocess doesn't respond within this window, it is treated as failed. | [src/main/graviscan/scan-coordinator.ts](../src/main/graviscan/scan-coordinator.ts) | ❌ No - Safety timeout      |
+
+### Logging
+
+| Constant             | Type     | Default | Description                                                                                                                      | Location                                                                  | Admin Configurable   |
+| -------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------- |
+| `LOG_RETENTION_DAYS` | `number` | `180`   | Days to retain scan log files before cleanup. Default 180 days for scientific workflows where analysis/publication takes months. | [src/main/graviscan/scan-logger.ts](../src/main/graviscan/scan-logger.ts) | ✅ Yes - via env var |
+
+### Environment Variables
+
+| Variable                       | Default | Description                                                                                                               |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GRAVISCAN_LOG_RETENTION_DAYS` | `180`   | Override log retention period (days). Set before app launch. Must be a positive integer; invalid values fall back to 180. |
+
+**Example:**
+
+```bash
+GRAVISCAN_LOG_RETENTION_DAYS=365 npm start
+```
+
 ## File Locations
 
 All default settings are defined in TypeScript type definition files:

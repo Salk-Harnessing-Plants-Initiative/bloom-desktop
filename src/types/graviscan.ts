@@ -180,6 +180,27 @@ export const PLATE_INDICES: Record<GridMode, string[]> = {
 };
 
 /**
+ * Plate configuration for a single scan operation.
+ * Used by scan-coordinator, scanner-subprocess, and session-handlers.
+ */
+export interface PlateConfig {
+  plate_index: string;
+  grid_mode: GridMode;
+  resolution: number;
+  output_path: string;
+}
+
+/**
+ * Scanner configuration for coordinator initialization.
+ * Maps a physical scanner to its SANE name and plate assignments.
+ */
+export interface ScannerConfig {
+  scannerId: string;
+  saneName: string;
+  plates: PlateConfig[];
+}
+
+/**
  * Scanner state during scan operations.
  */
 export type ScannerState =

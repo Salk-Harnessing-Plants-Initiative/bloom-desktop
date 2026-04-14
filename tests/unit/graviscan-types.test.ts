@@ -12,6 +12,8 @@ import {
   generateScannerSlots,
   createEmptyScannerAssignment,
 } from '../../src/types/graviscan';
+import type { PlateConfig, ScannerConfig } from '../../src/types/graviscan';
+import type { ScanCoordinatorLike } from '../../src/main/graviscan/session-handlers';
 
 describe('GraviScan TypeScript Types', () => {
   describe('constants', () => {
@@ -139,6 +141,68 @@ describe('GraviScan TypeScript Types', () => {
     it('returns correct slot name for index 2', () => {
       const assignment = createEmptyScannerAssignment(2);
       expect(assignment.slot).toBe('Scanner 3');
+    });
+  });
+
+  describe('PlateConfig shared type', () => {
+    it('has expected fields', () => {
+      const plate: PlateConfig = {
+        plate_index: '00',
+        grid_mode: '2grid',
+        resolution: 600,
+        output_path: '/tmp/scan/plate00.tif',
+      };
+      expect(plate.plate_index).toBe('00');
+      expect(plate.grid_mode).toBe('2grid');
+      expect(plate.resolution).toBe(600);
+      expect(plate.output_path).toBe('/tmp/scan/plate00.tif');
+    });
+  });
+
+  describe('ScannerConfig shared type', () => {
+    it('has expected fields with PlateConfig array', () => {
+      const config: ScannerConfig = {
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [
+          {
+            plate_index: '00',
+            grid_mode: '2grid',
+            resolution: 600,
+            output_path: '/tmp/scan/plate00.tif',
+          },
+        ],
+      };
+      expect(config.scannerId).toBe('scanner-1');
+      expect(config.saneName).toBe('epkowa:interpreter:001:002');
+      expect(config.plates).toHaveLength(1);
+      expect(config.plates[0].plate_index).toBe('00');
+    });
+  });
+
+  describe('ScanCoordinatorLike references shared types', () => {
+    it('can construct a conforming mock with shared types', () => {
+      // Verifies that ScanCoordinatorLike, ScannerConfig, and PlateConfig
+      // are importable and compatible. The `implements` clause on
+      // ScanCoordinator enforces this at tsc compile time for src/.
+      /* eslint-disable @typescript-eslint/no-unused-vars */
+      const mockCoordinator: ScanCoordinatorLike = {
+        isScanning: false,
+        initialize: async (_scanners: ScannerConfig[]) => {},
+        scanOnce: async (_plates: Map<string, PlateConfig[]>) => {},
+        scanInterval: async (
+          _plates: Map<string, PlateConfig[]>,
+          _interval: number,
+          _duration: number
+        ) => {},
+        cancelAll: () => {},
+        shutdown: async () => {},
+        on: function () {
+          return this;
+        } as ScanCoordinatorLike['on'],
+      };
+      /* eslint-enable @typescript-eslint/no-unused-vars */
+      expect(mockCoordinator.isScanning).toBe(false);
     });
   });
 });

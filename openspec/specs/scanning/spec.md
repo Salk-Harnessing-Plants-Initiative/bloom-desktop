@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -1391,4 +1393,3 @@ The system SHALL provide image reading, export, and cloud backup as testable fun
 - **GIVEN** an upload is already in progress (module-level `uploadInProgress` guard)
 - **WHEN** `uploadAllScans(db, onProgress)` is called
 - **THEN** the system SHALL return `{ success: false, errors: ['Upload already in progress'], uploaded: 0, skipped: 0, failed: 0 }`
-
