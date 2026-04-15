@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -1721,12 +1723,12 @@ The system SHALL provide a `registerGraviScanHandlers` function in `src/main/gra
 
 ### Requirement: GraviScan Conditional Mode Registration
 
-The system SHALL register GraviScan IPC handlers only when the configured scanner mode is `graviscan`. When mode is `cylinderscan` or empty, no GraviScan handlers SHALL be registered.
+The system SHALL register GraviScan IPC handlers only when the configured scanner mode is `graviscan`. When mode is `cylinderscan` or empty, no GraviScan handlers SHALL be registered. The `initGraviScan()` function SHALL be exported from `src/main/graviscan/wiring.ts`.
 
 #### Scenario: GraviScan handlers registered in graviscan mode
 
 - **GIVEN** `SCANNER_MODE=graviscan` in the `.env` config
-- **WHEN** the app starts and `main.ts` initializes IPC handlers
+- **WHEN** the app starts and `initGraviScan()` is called
 - **THEN** `registerGraviScanHandlers` SHALL be called
 - **AND** all 15 `graviscan:*` IPC channels SHALL be available
 
@@ -1745,11 +1747,11 @@ The system SHALL register GraviScan IPC handlers only when the configured scanne
 
 ### Requirement: GraviScan Session State Management
 
-The system SHALL maintain scan session state at module level in `main.ts` and expose it via getter/setter functions passed to handler modules through dependency injection. The session state type `ScanSessionState` SHALL be defined in `src/types/graviscan.ts`.
+The system SHALL maintain scan session state at module level in `src/main/graviscan/wiring.ts` and expose it via getter/setter functions passed to handler modules through dependency injection. The session state type `ScanSessionState` SHALL be defined in `src/types/graviscan.ts`.
 
 #### Scenario: Session state accessible via getters
 
-- **GIVEN** the GraviScan session state is initialized in `main.ts`
+- **GIVEN** the GraviScan session state is initialized in `src/main/graviscan/wiring.ts`
 - **WHEN** `sessionFns.getScanSession()` is called
 - **THEN** it SHALL return the current `ScanSessionState` or `null` if no scan is active
 
@@ -1787,9 +1789,16 @@ The system SHALL maintain scan session state at module level in `main.ts` and ex
 - **THEN** the session state SHALL NOT be modified
 - **AND** no error SHALL be thrown
 
+#### Scenario: markScanJobRecorded no-ops when session is null
+
+- **GIVEN** no scan session is active (`getScanSession()` returns `null`)
+- **WHEN** `sessionFns.markScanJobRecorded('scanner1:00')` is called
+- **THEN** no error SHALL be thrown
+- **AND** `getScanSession()` SHALL still return `null`
+
 ### Requirement: GraviScan Coordinator Lazy Instantiation
 
-The `ScanCoordinator` SHALL be instantiated lazily — created only when `graviscan:start-scan` is invoked, not at app startup. This matches the CylinderScan pattern where `ScannerProcess` is created in the `scanner:initialize` handler.
+The `ScanCoordinator` SHALL be instantiated lazily — created only when `graviscan:start-scan` is invoked, not at app startup. The `getOrCreateCoordinator()` function SHALL be exported from `src/main/graviscan/wiring.ts`. This matches the CylinderScan pattern where `ScannerProcess` is created in the `scanner:initialize` handler.
 
 #### Scenario: No coordinator at startup
 
@@ -1798,28 +1807,44 @@ The `ScanCoordinator` SHALL be instantiated lazily — created only when `gravis
 - **THEN** no `ScanCoordinator` instance SHALL exist
 - **AND** no Python subprocesses SHALL be spawned
 
-#### Scenario: Coordinator created on start-scan
+#### Scenario: Coordinator created on first call
 
 - **GIVEN** the app is in `graviscan` mode
-- **WHEN** the renderer invokes `graviscan:start-scan` with valid parameters
+- **AND** no `ScanCoordinator` instance exists
+- **WHEN** `getOrCreateCoordinator()` is called
 - **THEN** a new `ScanCoordinator` SHALL be instantiated
-- **AND** its events SHALL be wired to the renderer via `mainWindow.webContents.send()`
+- **AND** its events SHALL be wired to the renderer via `setupCoordinatorEventForwarding()`
+
+#### Scenario: Coordinator returned from cache on subsequent calls
+
+- **GIVEN** a `ScanCoordinator` instance already exists
+- **WHEN** `getOrCreateCoordinator()` is called
+- **THEN** the existing instance SHALL be returned
+- **AND** no new `ScanCoordinator` SHALL be created
+
+#### Scenario: Concurrent calls return same instance
+
+- **GIVEN** `getOrCreateCoordinator()` is called concurrently from multiple callers
+- **WHEN** both calls resolve
+- **THEN** both SHALL return the same `ScanCoordinator` instance
+- **AND** only one `ScanCoordinator` SHALL have been created (promise memoization)
 
 #### Scenario: Coordinator shutdown on app quit
 
 - **GIVEN** a `ScanCoordinator` instance exists (scan was started)
 - **WHEN** the app is quitting
-- **THEN** the coordinator SHALL be shut down gracefully via `coordinator.shutdown()`
+- **THEN** `shutdownGraviScan()` SHALL be called
+- **AND** the coordinator SHALL be shut down gracefully via `coordinator.shutdown()`
 - **AND** `closeScanLog()` SHALL be called
 
 ### Requirement: GraviScan Coordinator Event Forwarding
 
-The system SHALL forward `ScanCoordinator` events to the renderer process via IPC. All forwarding SHALL use the `if (mainWindow && !mainWindow.isDestroyed())` guard pattern.
+The system SHALL forward `ScanCoordinator` events to the renderer process via IPC. The `setupCoordinatorEventForwarding()` function SHALL be exported from `src/main/graviscan/wiring.ts`. All forwarding SHALL use the `if (mainWindow && !mainWindow.isDestroyed())` guard pattern.
 
 #### Scenario: Scan events forwarded to renderer
 
 - **GIVEN** a `ScanCoordinator` is active and `mainWindow` exists
-- **WHEN** the coordinator emits `scan-event`, `grid-start`, `grid-complete`, `cycle-complete`, `interval-start`, `interval-waiting`, `interval-complete`, `overtime`, `cancelled`, or `scan-error`
+- **WHEN** the coordinator emits `scan-event`, `grid-start`, `grid-complete`, `cycle-complete`, `interval-start`, `interval-waiting`, `interval-complete`, `overtime`, `cancelled`, `scan-error`, or `rename-error`
 - **THEN** the event SHALL be forwarded to the renderer via `mainWindow.webContents.send('graviscan:<event-name>', payload)`
 
 #### Scenario: No crash when mainWindow is null
@@ -1864,13 +1889,70 @@ The preload script SHALL expose a `gravi` namespace on `window.electron` with me
 
 ### Requirement: GraviScan Barrel Exports
 
-The `src/main/graviscan/index.ts` barrel SHALL export `registerGraviScanHandlers` from `register-handlers`, `ScanCoordinator` from `scan-coordinator`, `ScannerSubprocess` from `scanner-subprocess`, and `scanLog`, `cleanupOldLogs`, `closeScanLog` from `scan-logger`, in addition to existing handler exports.
+The `src/main/graviscan/index.ts` barrel SHALL export all existing handler exports unchanged, plus `initGraviScan` and `shutdownGraviScan` from `wiring`. The full barrel export list SHALL include: `registerGraviScanHandlers` from `register-handlers`, `ScanCoordinator` from `scan-coordinator`, `ScannerSubprocess` from `scanner-subprocess`, `scanLog`, `cleanupOldLogs`, `closeScanLog` from `scan-logger`, `initGraviScan` and `shutdownGraviScan` from `wiring`, in addition to all existing handler module re-exports.
 
 #### Scenario: All public symbols exported
 
 - **GIVEN** a TypeScript file imports from `./graviscan`
-- **WHEN** it references `registerGraviScanHandlers`, `ScanCoordinator`, `ScannerSubprocess`, `scanLog`, `cleanupOldLogs`, or `closeScanLog`
+- **WHEN** it references `registerGraviScanHandlers`, `ScanCoordinator`, `ScannerSubprocess`, `scanLog`, `cleanupOldLogs`, `closeScanLog`, `initGraviScan`, or `shutdownGraviScan`
 - **THEN** the imports SHALL resolve without TypeScript compilation errors
+
+### Requirement: GraviScan Graceful Shutdown
+
+The system SHALL provide a `shutdownGraviScan()` function in `src/main/graviscan/wiring.ts` that encapsulates all GraviScan cleanup: coordinator shutdown and scan log closing. This function SHALL be called from `main.ts` during the `before-quit` handler.
+
+#### Scenario: Coordinator shutdown when active
+
+- **GIVEN** a `ScanCoordinator` instance exists
+- **WHEN** `shutdownGraviScan()` is called
+- **THEN** `coordinator.shutdown()` SHALL be called
+- **AND** the internal coordinator reference SHALL be set to `null`
+- **AND** `closeScanLog()` SHALL be called
+
+#### Scenario: No-op when no coordinator exists
+
+- **GIVEN** no `ScanCoordinator` instance exists (no scan was started)
+- **WHEN** `shutdownGraviScan()` is called
+- **THEN** no error SHALL be thrown
+- **AND** `closeScanLog()` SHALL still be called (safe to call even if not opened)
+
+#### Scenario: Coordinator shutdown error handled gracefully
+
+- **GIVEN** a `ScanCoordinator` instance exists
+- **AND** `coordinator.shutdown()` throws an error
+- **WHEN** `shutdownGraviScan()` is called
+- **THEN** the error SHALL be caught and logged via `console.error`
+- **AND** the coordinator reference SHALL still be set to `null`
+- **AND** `closeScanLog()` SHALL still be called
+
+#### Scenario: Shutdown awaits in-flight coordinator creation
+
+- **GIVEN** `getOrCreateCoordinator()` has been called and its creation promise is pending
+- **WHEN** `shutdownGraviScan()` is called before creation completes
+- **THEN** the function SHALL await the pending creation
+- **AND** shut down the resulting coordinator
+- **AND** no orphaned coordinator instance SHALL remain
+
+#### Scenario: Shutdown handles rejected coordinator creation
+
+- **GIVEN** `getOrCreateCoordinator()` has been called and its creation promise is pending
+- **AND** the creation promise will reject (e.g., Python executable not found)
+- **WHEN** `shutdownGraviScan()` is called
+- **THEN** the rejection SHALL be caught and logged via `console.error`
+- **AND** the coordinator reference SHALL remain `null`
+- **AND** `closeScanLog()` SHALL still be called
+
+### Requirement: GraviScan Wiring Module Side-Effect-Free
+
+The `src/main/graviscan/wiring.ts` module SHALL be side-effect-free at load time. Importing the module SHALL NOT execute any code beyond variable declarations and function definitions. The module SHALL use only `import type` at the top level — no runtime Electron imports.
+
+#### Scenario: Module importable in Node test environment
+
+- **GIVEN** a Node.js test environment without Electron
+- **AND** the `electron` module is mocked (intercepting dynamic imports inside functions)
+- **WHEN** `wiring.ts` is imported
+- **THEN** no side effects SHALL occur (no IPC registration, no subprocess spawning, no file I/O)
+- **AND** all exported functions (`initGraviScan`, `shutdownGraviScan`, `getOrCreateCoordinator`, `setupCoordinatorEventForwarding`, `graviSessionFns`, `_resetWiringState`) SHALL be defined and callable
 
 ### Requirement: GraviScan Scan Log Lifecycle
 
@@ -1968,4 +2050,3 @@ The system SHALL include integration tests verifying the full IPC round-trip for
 - **WHEN** renderer code calls `window.electron.gravi.onScanEvent(callback)`
 - **THEN** it SHALL return a function (cleanup)
 - **AND** the cleanup function SHALL be callable without error
-
