@@ -264,11 +264,6 @@ describe('GraviScan wiring module', () => {
 
   describe('coordinator lazy instantiation', () => {
     it('first call creates coordinator', async () => {
-      // Set up _getMainWindow by calling initGraviScan
-      await initGraviScan('graviscan', {} as any, {} as any, () => null);
-      await _resetWiringState();
-      vi.mocked(registerGraviScanHandlers).mockClear();
-
       const coordinator = await getOrCreateCoordinator();
       expect(coordinator).toBeDefined();
       expect(ScanCoordinator).toHaveBeenCalledTimes(1);

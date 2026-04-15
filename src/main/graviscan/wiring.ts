@@ -176,7 +176,8 @@ export async function shutdownGraviScan(): Promise<void> {
   if (_coordinatorCreating) {
     try {
       scanCoordinator = await _coordinatorCreating;
-    } catch {
+    } catch (err) {
+      console.error('Error during in-flight coordinator creation:', err);
       // Creation failed — nothing to shut down
     }
     _coordinatorCreating = null;
