@@ -12,7 +12,6 @@ import type { SessionFns } from './session-handlers';
 import type { ScanSessionState } from '../../types/graviscan';
 import type { ScanCoordinator } from './scan-coordinator';
 import type { BrowserWindow } from 'electron';
-import { _resetRegistration } from './register-handlers';
 
 // =============================================================================
 // Module-level state (not exported — accessed via functions)
@@ -212,10 +211,13 @@ export async function shutdownGraviScan(): Promise<void> {
  * Reset all module state for test isolation.
  * @internal Test-only — prefixed with underscore by convention.
  */
-export function _resetWiringState(): void {
+export async function _resetWiringState(): Promise<void> {
   scanSession = null;
   scanCoordinator = null;
   _getMainWindow = null;
   _coordinatorCreating = null;
+  // Dynamic import to avoid pulling in register-handlers (and its transitive
+  // sharp/native dependencies) at module load time.
+  const { _resetRegistration } = await import('./register-handlers');
   _resetRegistration();
 }

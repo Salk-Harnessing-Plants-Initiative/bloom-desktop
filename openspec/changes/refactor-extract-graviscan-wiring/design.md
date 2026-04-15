@@ -113,14 +113,15 @@ if (_coordinatorCreating) {
 
 Resets all 4 pieces of module-level state to initial values AND calls `_resetRegistration()` from `register-handlers.ts` to clear the `registered` boolean guard. Without this, tests calling `initGraviScan()` after reset would throw `"GraviScan IPC handlers are already registered"`.
 
-```typescript
-import { _resetRegistration } from './register-handlers';
+The `_resetRegistration` import is **dynamic** (not static) to avoid pulling in `register-handlers.ts` and its transitive dependencies (`scanner-handlers` → `image-handlers` → `sharp`) at module load time. A static import would defeat the lazy-loading strategy and cause the packaged app to load `sharp` even in cylinderscan mode.
 
-export function _resetWiringState(): void {
+```typescript
+export async function _resetWiringState(): Promise<void> {
   scanSession = null;
   scanCoordinator = null;
   _getMainWindow = null;
   _coordinatorCreating = null;
+  const { _resetRegistration } = await import('./register-handlers');
   _resetRegistration();
 }
 ```

@@ -50,9 +50,9 @@ import {
 import { ScanCoordinator } from '../../../src/main/graviscan/scan-coordinator';
 
 describe('GraviScan wiring module', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    _resetWiringState();
+    await _resetWiringState();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -266,7 +266,7 @@ describe('GraviScan wiring module', () => {
     it('first call creates coordinator', async () => {
       // Set up _getMainWindow by calling initGraviScan
       await initGraviScan('graviscan', {} as any, {} as any, () => null);
-      _resetWiringState();
+      await _resetWiringState();
       vi.mocked(registerGraviScanHandlers).mockClear();
 
       const coordinator = await getOrCreateCoordinator();
