@@ -36,3 +36,4 @@ export { registerGraviScanHandlers } from './register-handlers';
 export { ScanCoordinator } from './scan-coordinator';
 export { ScannerSubprocess } from './scanner-subprocess';
 export { scanLog, cleanupOldLogs, closeScanLog } from './scan-logger';
+export { initGraviScan, shutdownGraviScan } from './wiring';
