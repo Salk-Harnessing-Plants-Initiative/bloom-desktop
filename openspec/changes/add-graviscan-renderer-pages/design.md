@@ -3,6 +3,7 @@
 The GraviScan backend (Increments 1-3c) provides 15 IPC channels and 12 event streams via `window.electron.gravi`. Ben's pilot branch (`origin/graviscan/6-renderer-hooks`) contains 7 renderer hooks (~3,300 lines) that implement business logic for scanner configuration, scan sessions, plate assignments, continuous mode timing, test scans, wave tracking, and metadata validation.
 
 These hooks call two categories of API that don't exist on `main`:
+
 1. **GraviScan DB CRUD** — `database.graviscans.create`, `database.graviscanSessions.create`, `database.graviscanPlateAssignments.upsertMany`, etc. (the pilot has a monolithic `graviscan-handlers.ts`; we need focused handlers in `database-handlers.ts`)
 2. **Pilot event names** — `onScanStarted`, `onScanComplete` vs our `onScanEvent`, `onGridComplete` (naming differences to reconcile)
 
@@ -32,6 +33,7 @@ Stakeholders: Elizabeth (developer), Ben (hardware integration, hook author), sc
 ### 1. Cherry-pick-and-adapt pattern (same as Increments 3a-3c)
 
 Extract the 7 hook files + 2 test files from `origin/graviscan/6-renderer-hooks` as raw files (not as a git cherry-pick, since the pilot branch has incompatible architecture changes). Adapt each file to our current API:
+
 - Rename `window.electron.graviscan.*` → `window.electron.gravi.*`
 - Map pilot event names to our preload event names:
   - Pilot `onScanStarted` → our `onScanEvent` (filter for scan-start events)
@@ -47,6 +49,7 @@ Extract the 7 hook files + 2 test files from `origin/graviscan/6-renderer-hooks`
 The pilot has a monolithic `graviscan-handlers.ts` (1,338 lines) that mixes scanner hardware handlers with DB CRUD. Our architecture separates these: hardware handlers are in `src/main/graviscan/`, DB handlers belong in `src/main/database-handlers.ts` alongside experiments/scientists/scans.
 
 New IPC channels (registered in `database-handlers.ts`) — **read operations and plate assignment CRUD only**, since scan/image/session record creation is handled directly by `scan-persistence.ts` in the main process (Decision 6):
+
 - `database:graviscans:list`, `database:graviscans:getMaxWaveNumber`, `database:graviscans:checkBarcodeUniqueInWave`
 - `database:graviscanPlateAssignments:list`, `database:graviscanPlateAssignments:upsert`, `database:graviscanPlateAssignments:upsertMany`
 - `database:graviPlateAccessions:list`
@@ -60,6 +63,7 @@ Our fix: ensure `updateGridTimestamps` receives the renamed file paths from the 
 ### 4. Bug #159 fix: readiness gate built into GraviScan.tsx
 
 The `canStartScan` computed value in GraviScan.tsx requires:
+
 - `useScannerConfig`: `sessionValidated === true` and `configStatus === 'valid'`
 - `usePlateAssignments`: at least one plate selected per enabled scanner
 - `useScanSession`: no scan currently in progress
@@ -108,6 +112,7 @@ GraviScan metadata.json includes: `metadata_version`, `scan_type` ("graviscan"),
 ### 8. ESLint override for renderer graviscan imports
 
 The `no-restricted-imports` rule blocks `**/graviscan/**` imports. Add overrides for:
+
 - `src/renderer/graviscan/**` (pages can import from graviscan/)
 - `src/components/graviscan/**` (components can import from graviscan/)
 - `src/renderer/App.tsx` (router imports page components)

@@ -7,6 +7,7 @@ Ben's pilot branch (`origin/graviscan/6-renderer-hooks`) contains 7 hook files (
 ## What Changes
 
 ### Layer 0: Data Persistence (missing infrastructure)
+
 - **GraviScan DB persistence module** `src/main/graviscan/scan-persistence.ts` — creates GraviScan, GraviImage, and GraviScanSession records in the **main process** on coordinator events (following CylinderScan's `scanner-process.ts:saveScanToDatabase()` pattern, NOT the pilot's renderer-side writes). Fixes #195.
 - **GraviScan DB CRUD handlers** in `src/main/database-handlers.ts` — IPC handlers for read operations and plate assignments: `graviscans.list`, `graviscans.getMaxWaveNumber`, `graviscans.checkBarcodeUniqueInWave`, `graviscanPlateAssignments.list/upsert/upsertMany`, `graviPlateAccessions.list`
 - **Preload bridge** additions in `src/main/preload.ts` — expose DB read operations + plate assignment CRUD under `database.graviscans.*`, `database.graviscanPlateAssignments.*`, `database.graviPlateAccessions.*`
@@ -14,6 +15,7 @@ Ben's pilot branch (`origin/graviscan/6-renderer-hooks`) contains 7 hook files (
 - **ESLint override** in `.eslintrc.json` — add `src/renderer/graviscan/**` and `src/components/graviscan/**` to allow imports from graviscan directories
 
 ### Layer 1: Hooks (cherry-pick from pilot, adapt + test)
+
 - **useScannerConfig** (610 lines) — scanner detection, SANE name mapping, config persistence
 - **useScanSession** (1,048 lines) — scan lifecycle, IPC event subscriptions, status display, auto-upload trigger
 - **usePlateAssignments** (318 lines) — per-scanner plate barcode management, experiment accession lookup
@@ -23,17 +25,20 @@ Ben's pilot branch (`origin/graviscan/6-renderer-hooks`) contains 7 hook files (
 - **graviMetadataValidation** (70 lines) — metadata CSV schema validation utility
 
 ### Layer 2: UI Pages + Components
+
 - **ScannerConfig page** (`src/renderer/graviscan/ScannerConfig.tsx`)
 - **Metadata page** (`src/renderer/graviscan/Metadata.tsx`) — plate-grid editor
 - **GraviScan scanning page** (`src/renderer/graviscan/GraviScan.tsx`) — **fixes #159** with readiness gate
 - **BrowseGraviScans page** (`src/renderer/graviscan/BrowseGraviScans.tsx`)
 
 ### Layer 3: Integration
+
 - **Routes and navigation** — GraviScan-conditional routes in App.tsx, nav links in Layout.tsx, workflow step routes in WorkflowSteps.tsx
 - **Bug fix #154** — resolved by main-process persistence: records are created with post-rename (`_et_`) paths from `grid-complete` event data (no separate fix needed)
 - **Bug fix #159** — Start Scan button gated on scanner validation + config validation + metadata filled + no scan in progress
 
 ### Testing
+
 - **Test fixtures** — `tests/fixtures/graviscan.ts` factory functions, IPC mock helpers, sample TIFF images
 - **Unit tests** — each hook tested with mocked `window.electron.gravi` and `window.electron.database` namespaces
 - **E2E tests** — Playwright tests for each page using `GRAVISCAN_MOCK=true` + `SCANNER_MODE=graviscan`
