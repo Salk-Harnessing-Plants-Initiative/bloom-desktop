@@ -426,8 +426,7 @@ const graviAPI = {
   onRenameError: (callback: (data: any) => void) => {
     const listener = (_event: unknown, data: any) => callback(data);
     ipcRenderer.on('graviscan:rename-error', listener);
-    return () =>
-      ipcRenderer.removeListener('graviscan:rename-error', listener);
+    return () => ipcRenderer.removeListener('graviscan:rename-error', listener);
   },
   onUploadProgress: (callback: (data: any) => void) => {
     const listener = (_event: unknown, data: any) => callback(data);

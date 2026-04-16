@@ -376,9 +376,7 @@ export interface DatabaseAPI {
   };
   // GraviScan DB read operations + plate assignment CRUD
   graviscans: {
-    list: (
-      filters?: { experiment_id?: string }
-    ) => Promise<DatabaseResponse>;
+    list: (filters?: { experiment_id?: string }) => Promise<DatabaseResponse>;
     getMaxWaveNumber: (
       experimentId: string
     ) => Promise<DatabaseResponse<number>>;

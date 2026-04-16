@@ -2717,4 +2717,93 @@ test.describe('Renderer Session IPC - Zero Value Persistence', () => {
     expect(finalSession.waveNumber).toBeNull();
     expect(finalSession.plantAgeDays).toBeNull();
   });
+
+  // ==========================================================================
+  // GraviScan Database Operations
+  // ==========================================================================
+
+  test('database.graviscans.list returns scans array', async () => {
+    const result = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.database.graviscans.list();
+    });
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
+  });
+
+  test('database.graviscans.getMaxWaveNumber returns number', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscans.getMaxWaveNumber('nonexistent-exp');
+    });
+    expect(result.success).toBe(true);
+    expect(typeof result.data).toBe('number');
+  });
+
+  test('database.graviscans.checkBarcodeUniqueInWave returns boolean', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscans.checkBarcodeUniqueInWave({
+        experiment_id: 'nonexistent-exp',
+        wave_number: 1,
+        plate_barcode: 'PLATE-001',
+      });
+    });
+    expect(result.success).toBe(true);
+    expect(typeof result.data).toBe('boolean');
+  });
+
+  test('database.graviscanPlateAssignments.list returns array', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscanPlateAssignments.list(
+        'nonexistent-exp',
+        'nonexistent-scanner'
+      );
+    });
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
+  });
+
+  test('database.graviscanPlateAssignments.upsert handles FK violation gracefully', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscanPlateAssignments.upsert(
+        'nonexistent-exp',
+        'nonexistent-scanner',
+        '00',
+        { plate_barcode: 'TEST-001', selected: true }
+      );
+    });
+    // FK constraint error expected — but handler should catch it gracefully
+    expect(result).toBeDefined();
+    expect(typeof result.success).toBe('boolean');
+  });
+
+  test('database.graviscanPlateAssignments.upsertMany handles batch', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscanPlateAssignments.upsertMany(
+        'nonexistent-exp',
+        'nonexistent-scanner',
+        [{ plate_index: '00', plate_barcode: 'TEST-001', selected: true }]
+      );
+    });
+    expect(result).toBeDefined();
+    expect(typeof result.success).toBe('boolean');
+  });
+
+  test('database.graviPlateAccessions.list returns array', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviPlateAccessions.list('nonexistent-accession');
+    });
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
+  });
 });

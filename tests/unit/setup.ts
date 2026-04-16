@@ -75,18 +75,14 @@ const mockGraviAPI = {
   getConfig: vi.fn().mockResolvedValue({ success: true, data: null }),
   saveConfig: vi.fn().mockResolvedValue({ success: true }),
   saveScannersToDB: vi.fn().mockResolvedValue({ success: true }),
-  getPlatformInfo: vi
-    .fn()
-    .mockResolvedValue({
-      success: true,
-      data: { supported: true, backend: 'sane', mock_enabled: true },
-    }),
-  validateScanners: vi
-    .fn()
-    .mockResolvedValue({
-      success: true,
-      data: { isValidated: true, allScannersAvailable: true },
-    }),
+  getPlatformInfo: vi.fn().mockResolvedValue({
+    success: true,
+    data: { supported: true, backend: 'sane', mock_enabled: true },
+  }),
+  validateScanners: vi.fn().mockResolvedValue({
+    success: true,
+    data: { isValidated: true, allScannersAvailable: true },
+  }),
   validateConfig: vi
     .fn()
     .mockResolvedValue({ success: true, data: { status: 'valid' } }),
@@ -125,9 +121,7 @@ const mockGraviAPI = {
 // Mock GraviScan DB read operations + plate assignment CRUD
 const mockGraviScansDB = {
   list: vi.fn().mockResolvedValue({ success: true, data: [] }),
-  getMaxWaveNumber: vi
-    .fn()
-    .mockResolvedValue({ success: true, data: 0 }),
+  getMaxWaveNumber: vi.fn().mockResolvedValue({ success: true, data: 0 }),
   checkBarcodeUniqueInWave: vi
     .fn()
     .mockResolvedValue({ success: true, data: true }),

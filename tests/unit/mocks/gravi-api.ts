@@ -65,72 +65,52 @@ export function createMockGraviAPI(overrides: MockGraviAPIOverrides = {}) {
       overrides.getConfig ??
       vi.fn().mockResolvedValue({ success: true, data: null }),
     saveConfig:
-      overrides.saveConfig ??
-      vi.fn().mockResolvedValue({ success: true }),
+      overrides.saveConfig ?? vi.fn().mockResolvedValue({ success: true }),
     saveScannersToDB:
       overrides.saveScannersToDB ??
       vi.fn().mockResolvedValue({ success: true }),
     getPlatformInfo:
       overrides.getPlatformInfo ??
-      vi
-        .fn()
-        .mockResolvedValue({
-          success: true,
-          data: { supported: true, backend: 'sane', mock_enabled: true },
-        }),
+      vi.fn().mockResolvedValue({
+        success: true,
+        data: { supported: true, backend: 'sane', mock_enabled: true },
+      }),
     validateScanners:
       overrides.validateScanners ??
-      vi
-        .fn()
-        .mockResolvedValue({
-          success: true,
-          data: { isValidated: true, allScannersAvailable: true },
-        }),
+      vi.fn().mockResolvedValue({
+        success: true,
+        data: { isValidated: true, allScannersAvailable: true },
+      }),
     validateConfig:
       overrides.validateConfig ??
-      vi
-        .fn()
-        .mockResolvedValue({ success: true, data: { status: 'valid' } }),
+      vi.fn().mockResolvedValue({ success: true, data: { status: 'valid' } }),
     // Session operations
     startScan:
-      overrides.startScan ??
-      vi.fn().mockResolvedValue({ success: true }),
+      overrides.startScan ?? vi.fn().mockResolvedValue({ success: true }),
     getScanStatus:
       overrides.getScanStatus ??
-      vi
-        .fn()
-        .mockResolvedValue({ success: true, data: { isActive: false } }),
+      vi.fn().mockResolvedValue({ success: true, data: { isActive: false } }),
     markJobRecorded:
-      overrides.markJobRecorded ??
-      vi.fn().mockResolvedValue({ success: true }),
+      overrides.markJobRecorded ?? vi.fn().mockResolvedValue({ success: true }),
     cancelScan:
-      overrides.cancelScan ??
-      vi.fn().mockResolvedValue({ success: true }),
+      overrides.cancelScan ?? vi.fn().mockResolvedValue({ success: true }),
     // Image operations
     getOutputDir:
       overrides.getOutputDir ??
-      vi
-        .fn()
-        .mockResolvedValue({ success: true, data: '/tmp/graviscan' }),
+      vi.fn().mockResolvedValue({ success: true, data: '/tmp/graviscan' }),
     readScanImage:
       overrides.readScanImage ??
-      vi
-        .fn()
-        .mockResolvedValue({
-          success: true,
-          data: 'data:image/jpeg;base64,',
-        }),
+      vi.fn().mockResolvedValue({
+        success: true,
+        data: 'data:image/jpeg;base64,',
+      }),
     uploadAllScans:
-      overrides.uploadAllScans ??
-      vi.fn().mockResolvedValue({ success: true }),
+      overrides.uploadAllScans ?? vi.fn().mockResolvedValue({ success: true }),
     downloadImages:
-      overrides.downloadImages ??
-      vi.fn().mockResolvedValue({ success: true }),
+      overrides.downloadImages ?? vi.fn().mockResolvedValue({ success: true }),
     // Event listeners (return cleanup functions)
-    onScanEvent:
-      overrides.onScanEvent ?? vi.fn().mockReturnValue(vi.fn()),
-    onGridStart:
-      overrides.onGridStart ?? vi.fn().mockReturnValue(vi.fn()),
+    onScanEvent: overrides.onScanEvent ?? vi.fn().mockReturnValue(vi.fn()),
+    onGridStart: overrides.onGridStart ?? vi.fn().mockReturnValue(vi.fn()),
     onGridComplete:
       overrides.onGridComplete ?? vi.fn().mockReturnValue(vi.fn()),
     onCycleComplete:
@@ -141,14 +121,10 @@ export function createMockGraviAPI(overrides: MockGraviAPIOverrides = {}) {
       overrides.onIntervalWaiting ?? vi.fn().mockReturnValue(vi.fn()),
     onIntervalComplete:
       overrides.onIntervalComplete ?? vi.fn().mockReturnValue(vi.fn()),
-    onOvertime:
-      overrides.onOvertime ?? vi.fn().mockReturnValue(vi.fn()),
-    onCancelled:
-      overrides.onCancelled ?? vi.fn().mockReturnValue(vi.fn()),
-    onScanError:
-      overrides.onScanError ?? vi.fn().mockReturnValue(vi.fn()),
-    onRenameError:
-      overrides.onRenameError ?? vi.fn().mockReturnValue(vi.fn()),
+    onOvertime: overrides.onOvertime ?? vi.fn().mockReturnValue(vi.fn()),
+    onCancelled: overrides.onCancelled ?? vi.fn().mockReturnValue(vi.fn()),
+    onScanError: overrides.onScanError ?? vi.fn().mockReturnValue(vi.fn()),
+    onRenameError: overrides.onRenameError ?? vi.fn().mockReturnValue(vi.fn()),
     onUploadProgress:
       overrides.onUploadProgress ?? vi.fn().mockReturnValue(vi.fn()),
     onDownloadProgress:

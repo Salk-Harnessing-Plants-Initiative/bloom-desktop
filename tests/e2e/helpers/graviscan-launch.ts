@@ -41,8 +41,7 @@ export function createGraviScanTestConfig(testScansDir?: string): void {
     originalEnvContent = fs.readFileSync(ENV_PATH, 'utf-8');
   }
 
-  const scansDir =
-    testScansDir || path.join(BLOOM_DIR, 'e2e-test-graviscan');
+  const scansDir = testScansDir || path.join(BLOOM_DIR, 'e2e-test-graviscan');
 
   if (!fs.existsSync(scansDir)) {
     fs.mkdirSync(scansDir, { recursive: true });

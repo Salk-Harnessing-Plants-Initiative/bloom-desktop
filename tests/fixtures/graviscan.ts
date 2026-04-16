@@ -90,9 +90,7 @@ export function createGraviScanner(
 
 let graviScanCounter = 0;
 
-export function createGraviScan(
-  overrides: Partial<GraviScan> = {}
-): GraviScan {
+export function createGraviScan(overrides: Partial<GraviScan> = {}): GraviScan {
   graviScanCounter++;
   const dateStr = '2026-04-16';
   return {

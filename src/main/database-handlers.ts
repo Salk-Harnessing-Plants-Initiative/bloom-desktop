@@ -1011,10 +1011,7 @@ export function registerDatabaseHandlers() {
 
   ipcMain.handle(
     'db:graviscans:getMaxWaveNumber',
-    async (
-      _event,
-      experiment_id: string
-    ): Promise<DatabaseResponse> => {
+    async (_event, experiment_id: string): Promise<DatabaseResponse> => {
       try {
         const result = await db.graviScan.aggregate({
           where: { experiment_id },
@@ -1198,10 +1195,7 @@ export function registerDatabaseHandlers() {
 
   ipcMain.handle(
     'db:graviPlateAccessions:list',
-    async (
-      _event,
-      accession_id: string
-    ): Promise<DatabaseResponse> => {
+    async (_event, accession_id: string): Promise<DatabaseResponse> => {
       try {
         const accessions = await db.graviPlateAccession.findMany({
           where: { metadata_file_id: accession_id },

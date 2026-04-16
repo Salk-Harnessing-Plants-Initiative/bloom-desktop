@@ -39,7 +39,9 @@ function createMockCoordinator() {
 }
 
 // Helper: create mock sessionFns
-function createMockSessionFns(sessionState: Record<string, unknown> | null = null) {
+function createMockSessionFns(
+  sessionState: Record<string, unknown> | null = null
+) {
   return {
     getScanSession: vi.fn().mockReturnValue(sessionState),
     setScanSession: vi.fn(),
@@ -54,7 +56,8 @@ function createGridCompletePayload(overrides: Record<string, unknown> = {}) {
     renamedFiles: [
       {
         oldPath: '/scans/plate_00_st_20260416T143000_cy1.tiff',
-        newPath: '/scans/plate_00_st_20260416T143000_et_20260416T143115_cy1.tiff',
+        newPath:
+          '/scans/plate_00_st_20260416T143000_et_20260416T143115_cy1.tiff',
         scannerId: 'scanner-1',
       },
     ],
@@ -207,7 +210,9 @@ describe('scan-persistence', () => {
 
   describe('DB write failure handling', () => {
     it('should log warning and continue scan on Prisma error', async () => {
-      mockGraviScanCreate.mockRejectedValue(new Error('Unique constraint violation'));
+      mockGraviScanCreate.mockRejectedValue(
+        new Error('Unique constraint violation')
+      );
 
       // scan-persistence should catch this error, log it, and NOT
       // rethrow — the scan must continue for subsequent grids.

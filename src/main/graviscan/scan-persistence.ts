@@ -42,7 +42,9 @@ export function setupCoordinatorPersistence(
   coordinator.on('grid-complete', async (payload: GridCompletePayload) => {
     const session: ScanSessionState | null = sessionFns.getScanSession();
     if (!session) {
-      console.warn('[scan-persistence] grid-complete fired but no active session');
+      console.warn(
+        '[scan-persistence] grid-complete fired but no active session'
+      );
       return;
     }
 
@@ -82,7 +84,11 @@ export function setupCoordinatorPersistence(
             format: 'tiff',
             images: {
               create: [
-                { path: renamedFile.newPath, status: 'pending', box_status: 'pending' },
+                {
+                  path: renamedFile.newPath,
+                  status: 'pending',
+                  box_status: 'pending',
+                },
               ],
             },
           },
