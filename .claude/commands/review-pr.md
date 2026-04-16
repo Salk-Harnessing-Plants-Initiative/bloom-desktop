@@ -324,9 +324,13 @@ After ALL subagents return:
 4. **Post the review to GitHub**:
 
 > **Note:** GitHub does not allow requesting changes or approving your own PRs.
-> Always attempt the desired action first; if it fails with "Can not request changes on your own pull request"
-> or "Can not approve your own pull request", automatically fall back to `--comment` with the same body
-> and a note at the top indicating the intended verdict.
+> **Do NOT use the try-then-fallback pattern** (`gh pr review --approve || gh pr review --comment`),
+> because `--approve` posts the comment body before the approval step fails, causing a duplicate.
+> Instead, check authorship first:
+> `PR_AUTHOR=$(gh pr view $PR_NUMBER --json author --jq '.author.login')`
+> `GH_USER=$(gh api user --jq '.login')`
+> If they match, go directly to `--comment` with a verdict note. Only attempt `--approve` or
+> `--request-changes` on someone else's PR.
 
 For REQUEST_CHANGES (attempt first, fall back to --comment on own-PR error):
 
@@ -353,8 +357,11 @@ BODY="$(cat <<'EOF'
 EOF
 )"
 
-gh pr review $PR_NUMBER --request-changes -b "$BODY" 2>&1 || \
-gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: REQUEST\_CHANGES** (posted as comment — GitHub does not allow requesting changes on your own PR)\n\n%s' "$BODY")"
+if [ "$IS_OWN_PR" = "true" ]; then
+  gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: REQUEST_CHANGES** (posted as comment — cannot request changes on own PR)\n\n%s' "$BODY")"
+else
+  gh pr review $PR_NUMBER --request-changes -b "$BODY"
+fi
 ```
 
 For APPROVE (attempt first, fall back to --comment on own-PR error):
@@ -374,8 +381,11 @@ BODY="$(cat <<'EOF'
 EOF
 )"
 
-gh pr review $PR_NUMBER --approve -b "$BODY" 2>&1 || \
-gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: APPROVE** (posted as comment — GitHub does not allow approving your own PR)\n\n%s' "$BODY")"
+if [ "$IS_OWN_PR" = "true" ]; then
+  gh pr review $PR_NUMBER --comment -b "$(printf '> **Verdict: APPROVE** (posted as comment — cannot approve own PR)\n\n%s' "$BODY")"
+else
+  gh pr review $PR_NUMBER --approve -b "$BODY"
+fi
 ```
 
 For COMMENT (no fallback needed):

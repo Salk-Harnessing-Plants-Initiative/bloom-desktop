@@ -4,7 +4,7 @@
  * Owns all GraviScan wiring state and orchestration. Side-effect-free at
  * load time — no code runs on import, only declarations and type-only imports.
  *
- * Extracted from main.ts (PR #190) so that tests can import and exercise the
+ * Extracted from main.ts (#190, PR #191) so that tests can import and exercise the
  * real production code without triggering Electron side effects.
  */
 
