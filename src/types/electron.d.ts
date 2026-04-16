@@ -374,6 +374,42 @@ export interface DatabaseAPI {
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
   };
+  // GraviScan DB read operations + plate assignment CRUD
+  graviscans: {
+    list: (
+      filters?: { experiment_id?: string }
+    ) => Promise<DatabaseResponse>;
+    getMaxWaveNumber: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<number>>;
+    checkBarcodeUniqueInWave: (params: {
+      experiment_id: string;
+      wave_number: number;
+      plate_barcode: string;
+    }) => Promise<DatabaseResponse<boolean>>;
+  };
+  graviscanPlateAssignments: {
+    list: (
+      experimentId: string,
+      scannerId: string
+    ) => Promise<DatabaseResponse>;
+    upsert: (
+      experimentId: string,
+      scannerId: string,
+      plateIndex: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: any
+    ) => Promise<DatabaseResponse>;
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      assignments: any[]
+    ) => Promise<DatabaseResponse>;
+  };
+  graviPlateAccessions: {
+    list: (accessionId: string) => Promise<DatabaseResponse>;
+  };
 }
 
 /**
@@ -532,6 +568,7 @@ export interface GraviAPI {
   onOvertime: (callback: (data: any) => void) => () => void;
   onCancelled: (callback: () => void) => () => void;
   onScanError: (callback: (data: any) => void) => () => void;
+  onRenameError: (callback: (data: any) => void) => () => void;
   onUploadProgress: (callback: (data: any) => void) => () => void;
   onDownloadProgress: (callback: (data: any) => void) => () => void;
 }

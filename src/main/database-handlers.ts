@@ -971,5 +971,253 @@ export function registerDatabaseHandlers() {
     }
   );
 
+  // ============================================
+  // GraviScans
+  // ============================================
+
+  ipcMain.handle(
+    'db:graviscans:list',
+    async (
+      _event,
+      filters?: { experiment_id?: string }
+    ): Promise<DatabaseResponse> => {
+      try {
+        const graviscans = await db.graviScan.findMany({
+          where: {
+            deleted: false,
+            ...(filters?.experiment_id
+              ? { experiment_id: filters.experiment_id }
+              : {}),
+          },
+          include: {
+            experiment: true,
+            phenotyper: true,
+            scanner: true,
+            images: true,
+            session: true,
+          },
+          orderBy: { capture_date: 'desc' },
+        });
+        return { success: true, data: graviscans };
+      } catch (error) {
+        console.error('[DB] Failed to list graviscans:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:graviscans:getMaxWaveNumber',
+    async (
+      _event,
+      experiment_id: string
+    ): Promise<DatabaseResponse> => {
+      try {
+        const result = await db.graviScan.aggregate({
+          where: { experiment_id },
+          _max: { wave_number: true },
+        });
+        return { success: true, data: result._max.wave_number ?? 0 };
+      } catch (error) {
+        console.error('[DB] Failed to get max wave number:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:graviscans:checkBarcodeUniqueInWave',
+    async (
+      _event,
+      {
+        experiment_id,
+        wave_number,
+        plate_barcode,
+      }: {
+        experiment_id: string;
+        wave_number: number;
+        plate_barcode: string;
+      }
+    ): Promise<DatabaseResponse> => {
+      try {
+        const existing = await db.graviScan.findFirst({
+          where: { experiment_id, wave_number, plate_barcode },
+        });
+        return { success: true, data: !existing };
+      } catch (error) {
+        console.error('[DB] Failed to check barcode uniqueness:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  // ============================================
+  // GraviScan Plate Assignments
+  // ============================================
+
+  ipcMain.handle(
+    'db:graviscanPlateAssignments:list',
+    async (
+      _event,
+      {
+        experiment_id,
+        scanner_id,
+      }: {
+        experiment_id: string;
+        scanner_id: string;
+      }
+    ): Promise<DatabaseResponse> => {
+      try {
+        const assignments = await db.graviScanPlateAssignment.findMany({
+          where: { experiment_id, scanner_id },
+          orderBy: { plate_index: 'asc' },
+        });
+        return { success: true, data: assignments };
+      } catch (error) {
+        console.error('[DB] Failed to list plate assignments:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:graviscanPlateAssignments:upsert',
+    async (
+      _event,
+      {
+        experiment_id,
+        scanner_id,
+        plate_index,
+        data,
+      }: {
+        experiment_id: string;
+        scanner_id: string;
+        plate_index: string;
+        data: Record<string, unknown>;
+      }
+    ): Promise<DatabaseResponse> => {
+      try {
+        const assignment = await db.graviScanPlateAssignment.upsert({
+          where: {
+            experiment_id_scanner_id_plate_index: {
+              experiment_id,
+              scanner_id,
+              plate_index,
+            },
+          },
+          create: {
+            plate_index,
+            experiment: { connect: { id: experiment_id } },
+            scanner: { connect: { id: scanner_id } },
+            ...data,
+          },
+          update: data,
+        });
+        logDatabaseOperation(
+          'UPDATE',
+          'GraviScanPlateAssignment',
+          `experiment=${experiment_id} scanner=${scanner_id} plate_index=${plate_index}`
+        );
+        return { success: true, data: assignment };
+      } catch (error) {
+        console.error('[DB] Failed to upsert plate assignment:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:graviscanPlateAssignments:upsertMany',
+    async (
+      _event,
+      {
+        experiment_id,
+        scanner_id,
+        assignments,
+      }: {
+        experiment_id: string;
+        scanner_id: string;
+        assignments: Array<Record<string, unknown> & { plate_index: string }>;
+      }
+    ): Promise<DatabaseResponse> => {
+      try {
+        const results = await db.$transaction(
+          assignments.map((a) =>
+            db.graviScanPlateAssignment.upsert({
+              where: {
+                experiment_id_scanner_id_plate_index: {
+                  experiment_id,
+                  scanner_id,
+                  plate_index: a.plate_index,
+                },
+              },
+              create: {
+                plate_index: a.plate_index,
+                experiment: { connect: { id: experiment_id } },
+                scanner: { connect: { id: scanner_id } },
+                ...a,
+              },
+              update: a,
+            })
+          )
+        );
+        logDatabaseOperation(
+          'UPDATE',
+          'GraviScanPlateAssignment',
+          `experiment=${experiment_id} scanner=${scanner_id} count=${assignments.length}`
+        );
+        return { success: true, data: results };
+      } catch (error) {
+        console.error('[DB] Failed to upsert many plate assignments:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  // ============================================
+  // Gravi Plate Accessions
+  // ============================================
+
+  ipcMain.handle(
+    'db:graviPlateAccessions:list',
+    async (
+      _event,
+      accession_id: string
+    ): Promise<DatabaseResponse> => {
+      try {
+        const accessions = await db.graviPlateAccession.findMany({
+          where: { metadata_file_id: accession_id },
+          include: { sections: true },
+          orderBy: { plate_id: 'asc' },
+        });
+        return { success: true, data: accessions };
+      } catch (error) {
+        console.error('[DB] Failed to list gravi plate accessions:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
   console.log('[DB] Registered all database IPC handlers');
 }

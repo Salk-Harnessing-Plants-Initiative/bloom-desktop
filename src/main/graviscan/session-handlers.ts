@@ -41,7 +41,11 @@ interface StartScanParams {
   scanners: Array<{
     scannerId: string;
     saneName: string;
-    plates: (PlateConfig & { plate_barcode?: string | null })[];
+    plates: (PlateConfig & {
+      plate_barcode?: string | null;
+      transplant_date?: string | null;
+      custom_note?: string | null;
+    })[];
   }>;
   interval?: { intervalSeconds: number; durationSeconds: number };
   metadata?: {
@@ -111,8 +115,8 @@ export async function startScan(
           plateIndex: plate.plate_index,
           outputPath: plate.output_path,
           plantBarcode: plate.plate_barcode ?? null,
-          transplantDate: null,
-          customNote: null,
+          transplantDate: plate.transplant_date ?? null,
+          customNote: plate.custom_note ?? null,
           gridMode: plate.grid_mode,
           status: 'pending',
         };

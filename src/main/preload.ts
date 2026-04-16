@@ -242,6 +242,53 @@ const databaseAPI: DatabaseAPI = {
     create: (data: ImageCreateData[]) =>
       ipcRenderer.invoke('db:images:create', data),
   },
+  // GraviScan DB read operations + plate assignment CRUD
+  graviscans: {
+    list: (filters?: { experiment_id?: string }) =>
+      ipcRenderer.invoke('db:graviscans:list', filters),
+    getMaxWaveNumber: (experimentId: string) =>
+      ipcRenderer.invoke('db:graviscans:getMaxWaveNumber', experimentId),
+    checkBarcodeUniqueInWave: (params: {
+      experiment_id: string;
+      wave_number: number;
+      plate_barcode: string;
+    }) => ipcRenderer.invoke('db:graviscans:checkBarcodeUniqueInWave', params),
+  },
+  graviscanPlateAssignments: {
+    list: (experimentId: string, scannerId: string) =>
+      ipcRenderer.invoke('db:graviscanPlateAssignments:list', {
+        experiment_id: experimentId,
+        scanner_id: scannerId,
+      }),
+    upsert: (
+      experimentId: string,
+      scannerId: string,
+      plateIndex: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: any
+    ) =>
+      ipcRenderer.invoke('db:graviscanPlateAssignments:upsert', {
+        experiment_id: experimentId,
+        scanner_id: scannerId,
+        plate_index: plateIndex,
+        data,
+      }),
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      assignments: any[]
+    ) =>
+      ipcRenderer.invoke('db:graviscanPlateAssignments:upsertMany', {
+        experiment_id: experimentId,
+        scanner_id: scannerId,
+        assignments,
+      }),
+  },
+  graviPlateAccessions: {
+    list: (accessionId: string) =>
+      ipcRenderer.invoke('db:graviPlateAccessions:list', accessionId),
+  },
 };
 
 /**
@@ -375,6 +422,12 @@ const graviAPI = {
     const listener = (_event: unknown, data: any) => callback(data);
     ipcRenderer.on('graviscan:scan-error', listener);
     return () => ipcRenderer.removeListener('graviscan:scan-error', listener);
+  },
+  onRenameError: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:rename-error', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:rename-error', listener);
   },
   onUploadProgress: (callback: (data: any) => void) => {
     const listener = (_event: unknown, data: any) => callback(data);
