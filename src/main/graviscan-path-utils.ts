@@ -46,7 +46,15 @@ export function resolveGraviScanPath(filePath: string): string | null {
           (f.endsWith(suffix) || f.includes(suffixNoExt))
       );
     if (candidates.length === 1) {
+      console.warn(
+        `[graviscan-path-utils] Fallback: resolved stale path via _et_ search: ${filePath} → ${candidates[0]}`
+      );
       return path.join(dir, candidates[0]);
+    }
+    if (candidates.length > 1) {
+      console.warn(
+        `[graviscan-path-utils] Ambiguous match: ${filePath} matched ${candidates.length} _et_ variants: ${candidates.join(', ')}. Returning null.`
+      );
     }
   }
 
