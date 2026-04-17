@@ -3,6 +3,38 @@
  */
 
 // =============================================================================
+// Metadata JSON
+// Written alongside scan images for portability without the SQLite database.
+// =============================================================================
+
+/**
+ * Metadata object written to metadata.json for GraviScan scans.
+ * Contains all fields needed to reproduce or trace a scan.
+ */
+export interface GraviScanMetadataJson {
+  metadata_version: number;
+  scan_type: 'graviscan';
+  experiment_id: string;
+  phenotyper_id: string;
+  scanner_id: string;
+  scanner_name: string;
+  grid_mode: string;
+  resolution_dpi: number;
+  format: string;
+  plate_index: string;
+  plate_barcode?: string;
+  transplant_date?: string;
+  custom_note?: string;
+  wave_number: number;
+  cycle_number: number;
+  session_id: string | null;
+  scan_started_at: string;
+  capture_date: string;
+  interval_seconds?: number;
+  duration_seconds?: number;
+}
+
+// =============================================================================
 // Scan Timing Constants
 // Empirical values from Epson Perfection V600 at 1200dpi with 2 scanners.
 // Measured: ~1m15s for 2 grids, ~2m36s for 4 grids.

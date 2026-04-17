@@ -66,6 +66,14 @@ const mockDatabaseAPI = {
     update: vi.fn().mockResolvedValue({ success: true, data: {} }),
     delete: vi.fn().mockResolvedValue({ success: true, data: {} }),
   },
+  experiments: {
+    list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    get: vi.fn().mockResolvedValue({ success: true, data: null }),
+    create: vi.fn().mockResolvedValue({ success: true, data: {} }),
+    update: vi.fn().mockResolvedValue({ success: true, data: {} }),
+    delete: vi.fn().mockResolvedValue({ success: true }),
+    attachAccession: vi.fn().mockResolvedValue({ success: true }),
+  },
 };
 
 // Mock GraviScan IPC API — 15 invoke methods + 13 event listeners
