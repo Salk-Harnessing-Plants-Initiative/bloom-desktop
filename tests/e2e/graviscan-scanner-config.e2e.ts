@@ -145,7 +145,9 @@ test.describe('GraviScan Scanner Config Page', () => {
     // useScannerConfig auto-calls detectScanners on mount — mocks should appear.
     // GRAVISCAN_MOCK=true returns 2 mock Epson scanners per scanner-handlers.ts.
     // Wait for the "Detected Scanners" list to populate.
-    await expect(window.locator('text=/Epson|EPSON/i').first()).toBeVisible({
+    await expect(
+      window.locator('text=/Mock Scanner|Epson/i').first()
+    ).toBeVisible({
       timeout: 10000,
     });
   });
@@ -157,7 +159,9 @@ test.describe('GraviScan Scanner Config Page', () => {
     ).toBeVisible();
 
     // Wait for initial detection
-    await expect(window.locator('text=/Epson|EPSON/i').first()).toBeVisible({
+    await expect(
+      window.locator('text=/Mock Scanner|Epson/i').first()
+    ).toBeVisible({
       timeout: 10000,
     });
 
@@ -167,7 +171,9 @@ test.describe('GraviScan Scanner Config Page', () => {
     await detectBtn.click();
 
     // Verify scanners still render after re-detect
-    await expect(window.locator('text=/Epson|EPSON/i').first()).toBeVisible({
+    await expect(
+      window.locator('text=/Mock Scanner|Epson/i').first()
+    ).toBeVisible({
       timeout: 10000,
     });
   });
@@ -179,7 +185,9 @@ test.describe('GraviScan Scanner Config Page', () => {
     ).toBeVisible();
 
     // Wait for scanner detection (so assignments are populated)
-    await expect(window.locator('text=/Epson|EPSON/i').first()).toBeVisible({
+    await expect(
+      window.locator('text=/Mock Scanner|Epson/i').first()
+    ).toBeVisible({
       timeout: 10000,
     });
 
@@ -209,7 +217,9 @@ test.describe('GraviScan Scanner Config Page', () => {
       window.getByRole('heading', { name: 'Scanner Configuration' })
     ).toBeVisible();
 
-    await expect(window.locator('text=/Epson|EPSON/i').first()).toBeVisible({
+    await expect(
+      window.locator('text=/Mock Scanner|Epson/i').first()
+    ).toBeVisible({
       timeout: 10000,
     });
 

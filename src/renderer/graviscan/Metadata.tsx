@@ -132,7 +132,7 @@ export function Metadata() {
           </p>
           <button
             type="button"
-            onClick={() => navigate('/graviscan/config')}
+            onClick={() => navigate('/scanner-config')}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
           >
             Go to Scanner Config
