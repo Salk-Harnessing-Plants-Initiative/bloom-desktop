@@ -156,7 +156,7 @@ test.describe('GraviScan Metadata Page', () => {
         window as unknown as WindowWithElectron
       ).electron.gravi.saveConfig({
         grid_mode: '2grid',
-        resolution: 300,
+        resolution: 600,
       });
     });
     expect(saveResult.success).toBe(true);
@@ -183,7 +183,7 @@ test.describe('GraviScan Metadata Page', () => {
         window as unknown as WindowWithElectron
       ).electron.gravi.saveConfig({
         grid_mode: '2grid',
-        resolution: 300,
+        resolution: 600,
       });
     });
 

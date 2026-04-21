@@ -196,10 +196,10 @@ test.describe('GraviScan Scanner Config Page', () => {
     await gridRadio.check();
     await expect(gridRadio).toBeChecked();
 
-    // Set resolution
+    // Set resolution (GRAVISCAN_RESOLUTIONS = [200, 400, 600, 800, 1200, ...])
     const resolutionSelect = window.locator('select#resolution');
-    await resolutionSelect.selectOption('300');
-    await expect(resolutionSelect).toHaveValue('300');
+    await resolutionSelect.selectOption('600');
+    await expect(resolutionSelect).toHaveValue('600');
 
     // Click Save — should not throw an error banner
     await window.getByRole('button', { name: /Save Configuration/i }).click();

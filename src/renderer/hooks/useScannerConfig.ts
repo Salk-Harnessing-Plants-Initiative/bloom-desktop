@@ -292,6 +292,17 @@ export function useScannerConfig({
             'No scanner configuration found. Please configure scanners.'
           );
           setIsConfigCollapsed(false);
+          // Kick off an initial detection so users see available scanners
+          // on first visit without having to click "Detect Scanners".
+          // The ScannerConfig page displays result.scanners when present.
+          try {
+            const detectResult = await window.electron.gravi.detectScanners();
+            if (detectResult.success && detectResult.scanners) {
+              setDetectedScanners(detectResult.scanners);
+            }
+          } catch (err) {
+            console.error('Auto-detection after no-config failed:', err);
+          }
           break;
 
         default:

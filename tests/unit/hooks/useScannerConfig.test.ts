@@ -400,7 +400,15 @@ describe('useScannerConfig', () => {
 
   describe('re-detect flow', () => {
     it('clears previous errors and re-runs detection', async () => {
-      // First detection fails
+      // validateScannerConfig returns 'no-config' on first render, which
+      // triggers an auto-detect. Set that call to succeed with no scanners
+      // so handleDetectScanners() below can drive the error path.
+      gravi().detectScanners.mockResolvedValueOnce({
+        success: true,
+        scanners: [],
+      });
+
+      // Manual detection fails
       gravi().detectScanners.mockResolvedValueOnce({
         success: false,
         error: 'USB failure',

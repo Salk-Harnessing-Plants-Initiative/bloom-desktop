@@ -156,6 +156,11 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(hasGravi).toBe(true);
   });
 
+  // Note: preload's unwrapGravi flattens the main-process wrapHandler
+  // { success, data } envelope when data is an object, so these tests
+  // assert against the inner shape (scanners, supported, config, etc.)
+  // rather than a nested .data field.
+
   test('detectScanners returns mock scanner data', async () => {
     const result = await window.evaluate(() => {
       return (
@@ -164,11 +169,9 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
     // GRAVISCAN_MOCK=true should return mock scanners
-    // Field is `scanners` (not `detectedScanners`) per scanner-handlers.ts
-    expect(Array.isArray(result.data.scanners)).toBe(true);
-    expect(result.data.scanners.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.scanners)).toBe(true);
+    expect(result.scanners.length).toBeGreaterThan(0);
   });
 
   test('getPlatformInfo returns platform data', async () => {
@@ -179,10 +182,8 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
-    // Fields per scanner-handlers.ts: supported, backend, mock_enabled
-    expect(result.data.backend).toBeDefined();
-    expect(typeof result.data.supported).toBe('boolean');
+    expect(result.backend).toBeDefined();
+    expect(typeof result.supported).toBe('boolean');
   });
 
   test('getConfig returns null or config object', async () => {
@@ -204,9 +205,10 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
-    expect(result.data.path).toBeDefined();
-    expect(typeof result.data.path).toBe('string');
+    // output_dir is the field name per image-handlers.ts
+    const pathStr = result.output_dir ?? result.path;
+    expect(typeof pathStr).toBe('string');
+    expect(pathStr.length).toBeGreaterThan(0);
   });
 
   test('getScanStatus returns inactive when no scan active', async () => {
@@ -216,9 +218,8 @@ test.describe('GraviScan IPC Round-Trip', () => {
       ).electron.gravi.getScanStatus();
     });
 
-    expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
-    expect(result.data.isActive).toBe(false);
+    // getScanStatus returns a plain status object (no {success} wrapper)
+    expect(result.isActive).toBe(false);
   });
 
   test('event listener returns cleanup function', async () => {
@@ -242,7 +243,7 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
+    expect(result.status).toBeDefined();
   });
 
   // GraviScan DB read operations (database namespace)
