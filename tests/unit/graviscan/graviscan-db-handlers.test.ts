@@ -15,7 +15,7 @@ const mockGraviScanPlateAssignmentUpsert = vi.fn();
 const mockGraviPlateAccessionFindMany = vi.fn();
 const mockPrismaTransaction = vi.fn();
 
-vi.mock('../../src/main/database', () => ({
+vi.mock('../../../src/main/database', () => ({
   getDatabase: () => ({
     graviScan: {
       findMany: mockGraviScanFindMany,

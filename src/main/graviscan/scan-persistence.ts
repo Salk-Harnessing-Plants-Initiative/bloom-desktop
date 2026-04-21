@@ -20,7 +20,7 @@ import type { ScanCoordinatorLike, SessionFns } from './session-handlers';
 interface GridCompletePayload {
   cycle: number;
   renamedFiles: Array<{ oldPath: string; newPath: string; scannerId: string }>;
-  renameErrors: Record<string, { error: string }>;
+  renameErrors: Array<{ scannerId: string; filePath: string; error: string }>;
   gridIndex: string;
   scanStartedAt: string;
   scanEndedAt: string;
@@ -48,12 +48,10 @@ export function setupCoordinatorPersistence(
       return;
     }
 
+    // renamedFiles already excludes files whose rename failed — see
+    // scan-coordinator.ts: renameErrors.push() is only called for files
+    // that were NOT added to renamedByGrid. No additional filtering needed.
     for (const renamedFile of payload.renamedFiles) {
-      // Skip scanners that had rename errors
-      if (payload.renameErrors[renamedFile.scannerId]) {
-        continue;
-      }
-
       const jobKey = `${renamedFile.scannerId}:${payload.gridIndex}`;
       const job: ScanSessionJob | undefined = session.jobs[jobKey];
       if (!job) {
@@ -119,7 +117,9 @@ export async function createGraviScanSession(
       data: {
         experiment_id: session.experimentId,
         phenotyper_id: session.phenotyperId,
-        scan_mode: session.isContinuous ? 'interval' : 'once',
+        // Match Prisma schema default ('single') and UI conventions used in
+        // BrowseGraviScans. The pilot used 'continuous' for interval mode.
+        scan_mode: session.isContinuous ? 'continuous' : 'single',
         interval_seconds: session.isContinuous
           ? Math.round(session.intervalMs / 1000)
           : null,

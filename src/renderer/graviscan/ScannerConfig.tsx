@@ -56,6 +56,12 @@ export function ScannerConfig() {
       });
 
     await window.electron.gravi.saveScannersToDB(scannersToSave);
+
+    // Re-detect so that detectedScanners[].scanner_id reflects the new
+    // DB UUIDs (matchDetectedToDb mutates the list on detection). Without
+    // this, downstream FK-sensitive writes (plate assignments, scan
+    // persistence) can use pre-DB placeholder IDs like `mock-scanner-1`.
+    await handleDetectScanners();
   };
 
   return (

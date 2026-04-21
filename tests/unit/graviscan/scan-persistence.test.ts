@@ -15,7 +15,7 @@ const mockGraviScanSessionCreate = vi.fn();
 const mockGraviScanSessionUpdate = vi.fn();
 const mockPrismaTransaction = vi.fn();
 
-vi.mock('../../src/main/database', () => ({
+vi.mock('../../../src/main/database', () => ({
   getDatabase: () => ({
     graviScan: {
       create: mockGraviScanCreate,

@@ -53,15 +53,38 @@ export function Metadata() {
         const result = await window.electron.gravi.getConfig();
         if (result.success && result.config) {
           setConfig(result.config);
-          // Build scanner assignments from config defaults
-          setScannerAssignments([
-            {
-              slot: 'Scanner 1',
-              scannerId: 'scanner-1',
-              usbPort: null,
-              gridMode: result.config.grid_mode,
-            },
-          ]);
+          // Build scanner assignments from detected/saved scanners.
+          // detectScanners() hydrates scanner_id with DB GraviScanner.id
+          // when a DB record matches (matchDetectedToDb), so we get real
+          // FK-safe IDs instead of placeholders like 'mock-scanner-1'.
+          try {
+            const detectResult = await window.electron.gravi.detectScanners();
+            const scanners = detectResult.success
+              ? detectResult.scanners || []
+              : [];
+            if (scanners.length > 0) {
+              setScannerAssignments(
+                scanners.map(
+                  (
+                    s: {
+                      scanner_id: string;
+                      usb_port: string | null;
+                    },
+                    i: number
+                  ) => ({
+                    slot: `Scanner ${i + 1}`,
+                    scannerId: s.scanner_id,
+                    usbPort: s.usb_port,
+                    gridMode: result.config.grid_mode,
+                  })
+                )
+              );
+            }
+          } catch {
+            // Detection errors don't block the page; the user can still
+            // pick experiment/phenotyper. Plate assignment save may fail
+            // but that surfaces to them via scanError.
+          }
         } else {
           setConfig(null);
         }

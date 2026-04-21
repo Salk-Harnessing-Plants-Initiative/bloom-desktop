@@ -76,38 +76,50 @@ const mockDatabaseAPI = {
   },
 };
 
-// Mock GraviScan IPC API — 15 invoke methods + 13 event listeners
+// Mock GraviScan IPC API — 15 invoke methods + 13 event listeners.
+// These mocks return the INNER shape (what preload unwrapGravi exposes),
+// since the renderer hooks read .scanners, .config, .isActive, etc.
+// directly (no { data } nesting).
 const mockGraviAPI = {
   // Scanner operations
-  detectScanners: vi.fn().mockResolvedValue({ success: true, data: [] }),
-  getConfig: vi.fn().mockResolvedValue({ success: true, data: null }),
-  saveConfig: vi.fn().mockResolvedValue({ success: true }),
+  detectScanners: vi
+    .fn()
+    .mockResolvedValue({ success: true, scanners: [], count: 0 }),
+  getConfig: vi.fn().mockResolvedValue({ success: true, config: null }),
+  saveConfig: vi.fn().mockResolvedValue({ success: true, config: null }),
   saveScannersToDB: vi.fn().mockResolvedValue({ success: true }),
   getPlatformInfo: vi.fn().mockResolvedValue({
     success: true,
-    data: { supported: true, backend: 'sane', mock_enabled: true },
+    supported: true,
+    backend: 'sane',
+    mock_enabled: true,
   }),
   validateScanners: vi.fn().mockResolvedValue({
     success: true,
-    data: { isValidated: true, allScannersAvailable: true },
+    isValidated: true,
+    allScannersAvailable: true,
   }),
-  validateConfig: vi
-    .fn()
-    .mockResolvedValue({ success: true, data: { status: 'valid' } }),
+  validateConfig: vi.fn().mockResolvedValue({
+    success: true,
+    status: 'valid',
+    matched: [],
+    missing: [],
+    new: [],
+    savedScanners: [],
+    detectedScanners: [],
+  }),
   // Session operations
   startScan: vi.fn().mockResolvedValue({ success: true }),
-  getScanStatus: vi
-    .fn()
-    .mockResolvedValue({ success: true, data: { isActive: false } }),
+  getScanStatus: vi.fn().mockResolvedValue({ isActive: false, jobs: {} }),
   markJobRecorded: vi.fn().mockResolvedValue({ success: true }),
   cancelScan: vi.fn().mockResolvedValue({ success: true }),
   // Image operations
   getOutputDir: vi
     .fn()
-    .mockResolvedValue({ success: true, data: '/tmp/graviscan' }),
+    .mockResolvedValue({ success: true, output_dir: '/tmp/graviscan' }),
   readScanImage: vi
     .fn()
-    .mockResolvedValue({ success: true, data: 'data:image/jpeg;base64,' }),
+    .mockResolvedValue({ success: true, dataUri: 'data:image/jpeg;base64,' }),
   uploadAllScans: vi.fn().mockResolvedValue({ success: true }),
   downloadImages: vi.fn().mockResolvedValue({ success: true }),
   // Event listeners (return cleanup functions)
