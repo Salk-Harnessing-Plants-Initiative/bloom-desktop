@@ -74,6 +74,25 @@ export class ScanCoordinator
   private currentGridStartedAt: string | null = null;
   private currentGridEndedAt: string | null = null;
 
+  // Session context for metadata.json writer (set by session handler at scan start)
+  private sessionContext: {
+    experiment_id: string;
+    phenotyper_id: string;
+    wave_number: number;
+    session_id: string | null;
+    resolution: number;
+    scannerNames: Map<string, string>;
+    plateBarcodes: Map<string, string | null>; // key: `${scannerId}:${plateIndex}`
+    transplantDates: Map<string, string | null>;
+    customNotes: Map<string, string | null>;
+    intervalSeconds: number | null;
+    durationSeconds: number | null;
+  } | null = null;
+
+  setSessionContext(context: typeof this.sessionContext): void {
+    this.sessionContext = context;
+  }
+
   constructor(pythonPath: string, isPackaged: boolean, mock = false) {
     super();
     this.pythonPath = pythonPath;
@@ -279,6 +298,45 @@ export class ScanCoordinator
             output_path: path.join(dir, basename),
           };
         });
+
+        // Write metadata.json before each scan (task 8b.5 / #194).
+        // Failures logged but do not abort the scan.
+        if (this.sessionContext) {
+          try {
+            const { writeGraviMetadataJson } = await import(
+              './scan-metadata-json'
+            );
+            const ctx = this.sessionContext;
+            for (const plate of platesToScan) {
+              const jobKey = `${scannerId}:${plate.plate_index}`;
+              const metadataDir = path.dirname(plate.output_path);
+              await writeGraviMetadataJson(metadataDir, {
+                experiment_id: ctx.experiment_id,
+                phenotyper_id: ctx.phenotyper_id,
+                scanner_id: scannerId,
+                scanner_name: ctx.scannerNames.get(scannerId) || scannerId,
+                grid_mode: plate.grid_mode,
+                resolution_dpi: plate.resolution,
+                format: 'tiff',
+                plate_index: plate.plate_index,
+                plate_barcode: ctx.plateBarcodes.get(jobKey) ?? null,
+                transplant_date: ctx.transplantDates.get(jobKey) ?? null,
+                custom_note: ctx.customNotes.get(jobKey) ?? null,
+                wave_number: ctx.wave_number,
+                cycle_number: this.currentCycle,
+                session_id: ctx.session_id,
+                scan_started_at:
+                  this.currentGridStartedAt || gridStartedAt.toISOString(),
+                interval_seconds: ctx.intervalSeconds,
+                duration_seconds: ctx.durationSeconds,
+              });
+            }
+          } catch (err) {
+            console.warn(
+              `[ScanCoordinator] metadata.json write failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`
+            );
+          }
+        }
 
         const promise = new Promise<{
           scannerId: string;

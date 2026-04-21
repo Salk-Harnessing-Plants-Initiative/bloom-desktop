@@ -132,7 +132,7 @@
 
 - [x] 8b.3 Create `GraviScanMetadataJson` interface in `src/types/graviscan.ts`
 - [x] 8b.4 Implement `buildGraviMetadataObject()` and `writeGraviMetadataJson()` in `src/main/graviscan/scan-metadata-json.ts` (parallel to CylinderScan's `src/main/cylinderscan/scan-metadata-json.ts`)
-- [ ] 8b.5 Wire metadata.json write into scan coordinator flow: call before Python scan command in `scanOnce()` per grid
+- [x] 8b.5 Wire metadata.json write into scan coordinator flow: call before Python scan command in `scanOnce()` per grid
 
 **Check gate:** `npm run test:unit -- --grep "graviMetadata" && npx tsc --noEmit`
 
@@ -147,7 +147,7 @@
 - [x] 9.2 Implement ScannerConfig page (`src/renderer/graviscan/ScannerConfig.tsx`) using `useScannerConfig` hook
 - [x] 9.3 Add `/scanner-config` route to App.tsx (conditional on `mode === 'graviscan'`)
 - [x] 9.4 Add Scanner Config nav link to Layout.tsx for GraviScan mode
-- [ ] 9.5 Write E2E test: `tests/e2e/graviscan-scanner-config.e2e.ts` — detect mock scanners, save config, verify persistence, re-detect
+- [x] 9.5 Write E2E test: `tests/e2e/graviscan-scanner-config.e2e.ts` — detect mock scanners, save config, verify persistence, re-detect
 
 **Check gate:** `npm run test:unit && npm run test:e2e -- graviscan-scanner-config && npx tsc --noEmit`
 
@@ -164,7 +164,7 @@
 - [x] 10.4 Implement Metadata page (`src/renderer/graviscan/Metadata.tsx`) using `usePlateAssignments`, `useWaveNumber` hooks + shared experiment/phenotyper dropdowns
 - [x] 10.5 Add `/metadata` route to App.tsx (conditional on `mode === 'graviscan'`)
 - [x] 10.6 Update WorkflowSteps.tsx: change GraviScan step 3 "Metadata" route from `/experiments` to `/metadata`
-- [ ] 10.7 Write E2E test: `tests/e2e/graviscan-metadata.e2e.ts` — fill plate assignments, verify save, navigate to scan page
+- [x] 10.7 Write E2E test: `tests/e2e/graviscan-metadata.e2e.ts` — fill plate assignments, verify save, navigate to scan page
 
 **Check gate:** `npm run test:unit && npm run test:e2e -- graviscan-metadata && npx tsc --noEmit`
 
@@ -182,7 +182,7 @@
 - [x] 11.5 Add `/graviscan` route to App.tsx (conditional on `mode === 'graviscan'`)
 - [x] 11.6 Add GraviScan Capture nav link to Layout.tsx for GraviScan mode
 - [x] 11.7 Update WorkflowSteps.tsx: update GraviScan "Capture Scan" step route to `/graviscan`
-- [ ] 11.8 Write E2E test: `tests/e2e/graviscan-scanning.e2e.ts` — verify Start button readiness gate (disabled before config), start mock scan, observe events, cancel scan
+- [x] 11.8 Write E2E test: `tests/e2e/graviscan-scanning.e2e.ts` — verify Start button readiness gate (disabled before config), start mock scan, observe events, cancel scan
 
 **Check gate:** `npm run test:unit && npm run test:e2e -- graviscan-scanning && npx tsc --noEmit`
 
@@ -199,7 +199,7 @@
 - [x] 12.4 Add `/browse-graviscan` route to App.tsx (**accessible in all modes** for data integrity)
 - [x] 12.5 Add Browse GraviScans nav link to Layout.tsx for GraviScan mode
 - [x] 12.6 Update WorkflowSteps.tsx: update GraviScan "Browse Scans" step route to `/browse-graviscan`
-- [ ] 12.7 Write E2E test: `tests/e2e/graviscan-browse.e2e.ts` — seed scan data, verify list rendering, test filters, open preview
+- [x] 12.7 Write E2E test: `tests/e2e/graviscan-browse.e2e.ts` — seed scan data, verify list rendering, test filters, open preview
 
 **Check gate:** `npm run test:unit && npm run test:e2e -- graviscan-browse && npx tsc --noEmit`
 
@@ -208,13 +208,13 @@
 **Tests first:**
 
 - [x] 13.1 Write test for #154 fallback: verify `resolveGraviScanPath()` fallback works for pre-fix records (scans created before main-process persistence) and logs warning; verify ambiguous match (multiple `_et_` candidates) logs distinct diagnostic warning. Note: #154 is primarily resolved by task 1.5 (scan-persistence.ts creates records with post-rename paths from the start).
-- [ ] 13.2 Write test for #159: verify Start Scan button is disabled when scanners not validated, config incomplete, or metadata missing; verify button enabled only when all conditions met (covered in task 7.2 + 11.1, verified here end-to-end)
+- [x] 13.2 Write test for #159: verify Start Scan button is disabled when scanners not validated, config incomplete, or metadata missing; verify button enabled only when all conditions met (covered in task 7.2 + 11.1, verified here end-to-end)
 
 **Implementation:**
 
 - [x] 13.3 Add warning log to `resolveGraviScanPath()` when filesystem fallback is used; add distinct warning for ambiguous match (multiple candidates)
 - [x] 13.4 Fix `session-handlers.ts:114-115`: pass `transplant_date` and `custom_note` from plate assignment params into session jobs instead of hardcoding null (also covered by task 1.10 type extension)
-- [ ] 13.5 Verify #159 readiness gate in GraviScan.tsx E2E test (task 11.8)
+- [x] 13.5 Verify #159 readiness gate in GraviScan.tsx E2E test (task 11.8)
 
 **Check gate:** `npm run test:unit && npx tsc --noEmit`
 

@@ -25,6 +25,7 @@ export interface ScanCoordinatorLike {
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
+  setSessionContext?(context: unknown): void;
 }
 
 export interface SessionFns {
@@ -161,6 +162,36 @@ export async function startScan(
       waveNumber: params.metadata?.waveNumber || 0,
     });
     sessionSet = true;
+
+    // Populate coordinator session context for metadata.json writer (task 8b.5)
+    if (coordinator.setSessionContext) {
+      const scannerNames = new Map<string, string>();
+      const plateBarcodes = new Map<string, string | null>();
+      const transplantDates = new Map<string, string | null>();
+      const customNotes = new Map<string, string | null>();
+      for (const s of params.scanners) {
+        scannerNames.set(s.scannerId, s.scannerId); // fallback to ID; display_name requires DB lookup
+        for (const plate of s.plates) {
+          const key = `${s.scannerId}:${plate.plate_index}`;
+          plateBarcodes.set(key, plate.plate_barcode ?? null);
+          transplantDates.set(key, plate.transplant_date ?? null);
+          customNotes.set(key, plate.custom_note ?? null);
+        }
+      }
+      coordinator.setSessionContext({
+        experiment_id: params.metadata?.experimentId || '',
+        phenotyper_id: params.metadata?.phenotyperId || '',
+        wave_number: params.metadata?.waveNumber || 0,
+        session_id: params.metadata?.sessionId || null,
+        resolution: params.metadata?.resolution || 300,
+        scannerNames,
+        plateBarcodes,
+        transplantDates,
+        customNotes,
+        intervalSeconds: params.interval?.intervalSeconds ?? null,
+        durationSeconds: params.interval?.durationSeconds ?? null,
+      });
+    }
 
     // Build plates map for scanning
     const platesPerScanner = new Map<string, PlateConfig[]>();
