@@ -2,43 +2,32 @@
 /**
  * Unit tests for scan-persistence.ts — main-process DB record creation.
  *
- * Tests that GraviScan, GraviImage, and GraviScanSession records are
- * created correctly on coordinator events, following the CylinderScan
- * scanner-process.ts:saveScanToDatabase() pattern.
+ * Exercises the real module. These tests catch wiring regressions
+ * (see PR #196 review: placeholder-only tests missed missing session
+ * lifecycle wiring).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock getDatabase before importing the module under test
-const mockGraviScanCreate = vi.fn();
-const mockGraviScanSessionCreate = vi.fn();
-const mockGraviScanSessionUpdate = vi.fn();
-const mockPrismaTransaction = vi.fn();
-
-vi.mock('../../../src/main/database', () => ({
-  getDatabase: () => ({
-    graviScan: {
-      create: mockGraviScanCreate,
-    },
-    graviScanSession: {
-      create: mockGraviScanSessionCreate,
-      update: mockGraviScanSessionUpdate,
-    },
-    $transaction: mockPrismaTransaction,
-  }),
-}));
-
-// We'll import the module after it exists — for now, define the expected interface
-// import { setupCoordinatorPersistence } from '../../src/main/graviscan/scan-persistence';
-
 import { EventEmitter } from 'events';
 
-// Helper: create a mock coordinator (EventEmitter)
-function createMockCoordinator() {
-  return new EventEmitter();
+import {
+  setupCoordinatorPersistence,
+  createGraviScanSession,
+  completeGraviScanSession,
+} from '../../../src/main/graviscan/scan-persistence';
+
+// Helper: mock Prisma client
+function createMockDb() {
+  return {
+    graviScan: { create: vi.fn().mockResolvedValue({ id: 'gs-1' }) },
+    graviScanSession: {
+      create: vi.fn().mockResolvedValue({ id: 'session-1' }),
+      update: vi.fn().mockResolvedValue({ id: 'session-1' }),
+    },
+  };
 }
 
-// Helper: create mock sessionFns
+// Helper: mock sessionFns
 function createMockSessionFns(
   sessionState: Record<string, unknown> | null = null
 ) {
@@ -49,27 +38,6 @@ function createMockSessionFns(
   };
 }
 
-// Helper: create a standard grid-complete event payload
-function createGridCompletePayload(overrides: Record<string, unknown> = {}) {
-  return {
-    cycle: 1,
-    renamedFiles: [
-      {
-        oldPath: '/scans/plate_00_st_20260416T143000_cy1.tiff',
-        newPath:
-          '/scans/plate_00_st_20260416T143000_et_20260416T143115_cy1.tiff',
-        scannerId: 'scanner-1',
-      },
-    ],
-    renameErrors: {},
-    gridIndex: '00',
-    scanStartedAt: '2026-04-16T14:30:00.000Z',
-    scanEndedAt: '2026-04-16T14:31:15.000Z',
-    ...overrides,
-  };
-}
-
-// Standard session state for tests
 const activeSession = {
   isActive: true,
   isContinuous: false,
@@ -100,123 +68,260 @@ const activeSession = {
   waveNumber: 1,
 };
 
+function createGridCompletePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    cycle: 1,
+    renamedFiles: [
+      {
+        oldPath: '/scans/plate_00_st_20260416T143000_cy1.tiff',
+        newPath:
+          '/scans/plate_00_st_20260416T143000_et_20260416T143115_cy1.tiff',
+        scannerId: 'scanner-1',
+      },
+    ],
+    renameErrors: [],
+    gridIndex: '00',
+    scanStartedAt: '2026-04-16T14:30:00.000Z',
+    scanEndedAt: '2026-04-16T14:31:15.000Z',
+    ...overrides,
+  };
+}
+
+// Wait for all pending microtasks so async event listeners complete.
+const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
 describe('scan-persistence', () => {
+  let db: ReturnType<typeof createMockDb>;
+  let coordinator: EventEmitter;
+  let sessionFns: ReturnType<typeof createMockSessionFns>;
+
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockGraviScanCreate.mockResolvedValue({
-      id: 'graviscan-1',
-      images: [{ id: 'image-1' }],
-    });
-    mockGraviScanSessionCreate.mockResolvedValue({
-      id: 'session-1',
-    });
-    mockGraviScanSessionUpdate.mockResolvedValue({
-      id: 'session-1',
-      completed_at: new Date(),
-    });
-    mockPrismaTransaction.mockImplementation(async (fn: unknown) => {
-      if (typeof fn === 'function') return fn();
-    });
+    db = createMockDb();
+    coordinator = new EventEmitter();
+    sessionFns = createMockSessionFns(activeSession);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   describe('GraviScan + GraviImage record creation on grid-complete', () => {
-    it('should create GraviScan record with post-rename path from renamedFiles', async () => {
-      // This test verifies that scan-persistence creates records using
-      // the post-rename path (with _et_ suffix), not the original path.
-      // This is the core of bug fix #154.
-      const coordinator = createMockCoordinator();
-      const sessionFns = createMockSessionFns(activeSession);
-      const payload = createGridCompletePayload();
+    it('creates GraviScan record with post-rename path from renamedFiles', async () => {
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      coordinator.emit('grid-complete', createGridCompletePayload());
+      await flushAsync();
 
-      // When scan-persistence is implemented, it will:
-      // 1. Listen for 'grid-complete' on coordinator
-      // 2. Read session metadata from sessionFns.getScanSession()
-      // 3. Create GraviScan + GraviImage records with post-rename paths
-      expect(coordinator).toBeDefined();
-      expect(sessionFns.getScanSession()).toEqual(activeSession);
-      expect(payload.renamedFiles[0].newPath).toContain('_et_');
+      expect(db.graviScan.create).toHaveBeenCalledTimes(1);
+      const data = db.graviScan.create.mock.calls[0][0].data;
+      expect(data.path).toBe(
+        '/scans/plate_00_st_20260416T143000_et_20260416T143115_cy1.tiff'
+      );
+      expect(data.path).toContain('_et_');
     });
 
-    it('should use Prisma nested create for atomicity', async () => {
-      // GraviScan and GraviImage records must be created together
-      // using Prisma's nested create pattern (both or neither).
-      expect(mockGraviScanCreate).toBeDefined();
-    });
+    it('uses Prisma nested create for atomicity (images created together with GraviScan)', async () => {
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      coordinator.emit('grid-complete', createGridCompletePayload());
+      await flushAsync();
 
-    it('should snapshot plate metadata from session jobs, not from mutable PlateAssignment table', async () => {
-      // plate_barcode, transplant_date, custom_note should come from
-      // the session job (populated at scan start time), NOT from the
-      // GraviScanPlateAssignment table (which can be modified later).
-      const job = activeSession.jobs['scanner-1:00'];
-      expect(job.plantBarcode).toBe('PLATE-001');
-      expect(job.transplantDate).toBe('2026-04-10');
-      expect(job.customNote).toBe('Test note');
-    });
-
-    it('should filter renameErrors by scannerId', async () => {
-      // If scanner A rename fails but scanner B succeeds,
-      // records for scanner B should still be created.
-      const payload = createGridCompletePayload({
-        renameErrors: {
-          'scanner-2': { error: 'Permission denied' },
-        },
+      const data = db.graviScan.create.mock.calls[0][0].data;
+      expect(data.images).toBeDefined();
+      expect(data.images.create).toHaveLength(1);
+      expect(data.images.create[0]).toMatchObject({
+        path: expect.stringContaining('_et_'),
+        status: 'pending',
+        box_status: 'pending',
       });
+    });
 
-      // scanner-1 has no errors, so its records should be created
-      expect(payload.renameErrors).not.toHaveProperty('scanner-1');
+    it('snapshots plate metadata from session jobs, not from mutable PlateAssignment table', async () => {
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      coordinator.emit('grid-complete', createGridCompletePayload());
+      await flushAsync();
+
+      const data = db.graviScan.create.mock.calls[0][0].data;
+      expect(data.plate_barcode).toBe('PLATE-001');
+      expect(data.custom_note).toBe('Test note');
+      // transplant_date is coerced to Date
+      expect(data.transplant_date).toBeInstanceOf(Date);
+      expect((data.transplant_date as Date).toISOString()).toContain(
+        '2026-04-10'
+      );
+    });
+
+    it('copies scan session fields (experiment, phenotyper, session_id, wave, cycle)', async () => {
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      coordinator.emit('grid-complete', createGridCompletePayload());
+      await flushAsync();
+
+      const data = db.graviScan.create.mock.calls[0][0].data;
+      expect(data.experiment_id).toBe('exp-1');
+      expect(data.phenotyper_id).toBe('pheno-1');
+      expect(data.scanner_id).toBe('scanner-1');
+      expect(data.session_id).toBe('session-1');
+      expect(data.wave_number).toBe(1);
+      expect(data.cycle_number).toBe(1);
+    });
+
+    it('writes scan_started_at and scan_ended_at as Date objects from payload ISO strings', async () => {
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      coordinator.emit('grid-complete', createGridCompletePayload());
+      await flushAsync();
+
+      const data = db.graviScan.create.mock.calls[0][0].data;
+      expect(data.scan_started_at).toBeInstanceOf(Date);
+      expect(data.scan_ended_at).toBeInstanceOf(Date);
+      expect((data.scan_started_at as Date).toISOString()).toBe(
+        '2026-04-16T14:30:00.000Z'
+      );
+      expect((data.scan_ended_at as Date).toISOString()).toBe(
+        '2026-04-16T14:31:15.000Z'
+      );
+    });
+
+    it('skips record creation when session is null (cancel race safety)', async () => {
+      sessionFns = createMockSessionFns(null);
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      coordinator.emit('grid-complete', createGridCompletePayload());
+      await flushAsync();
+
+      expect(db.graviScan.create).not.toHaveBeenCalled();
+    });
+
+    it('skips record creation when no matching job exists for the scanner:grid key', async () => {
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      // Payload from scanner-99 (no job for that scanner)
+      coordinator.emit(
+        'grid-complete',
+        createGridCompletePayload({
+          renamedFiles: [
+            {
+              oldPath: '/scans/foo.tiff',
+              newPath: '/scans/foo_et_.tiff',
+              scannerId: 'scanner-99',
+            },
+          ],
+        })
+      );
+      await flushAsync();
+
+      expect(db.graviScan.create).not.toHaveBeenCalled();
     });
   });
 
-  describe('GraviScanSession creation on scan start', () => {
-    it('should create session record with experiment and phenotyper metadata', async () => {
-      expect(activeSession.experimentId).toBe('exp-1');
-      expect(activeSession.phenotyperId).toBe('pheno-1');
-    });
+  describe('crash safety (main-process only, no renderer needed)', () => {
+    it('creates records from coordinator events alone — no window.electron access', async () => {
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
+      coordinator.emit('grid-complete', createGridCompletePayload());
+      await flushAsync();
 
-    it('should set started_at to current timestamp', async () => {
-      expect(activeSession.scanStartedAt).toBeGreaterThan(0);
-    });
-
-    it('should make session_id available for subsequent GraviScan records', async () => {
-      expect(activeSession.sessionId).toBe('session-1');
-    });
-  });
-
-  describe('GraviScanSession completion', () => {
-    it('should set completed_at on session end', async () => {
-      expect(mockGraviScanSessionUpdate).toBeDefined();
-    });
-
-    it('should set cancelled flag when session is cancelled', async () => {
-      // The completion handler should pass cancelled: true
-      // when the scan was user-cancelled vs naturally completed.
-      expect(true).toBe(true); // Placeholder for implementation
-    });
-  });
-
-  describe('crash safety', () => {
-    it('should create records even without renderer (main-process only)', async () => {
-      // The persistence module runs in the main process.
-      // It should not depend on any renderer state.
-      const coordinator = createMockCoordinator();
-      const sessionFns = createMockSessionFns(activeSession);
-
-      // Coordinator and sessionFns are main-process objects.
-      // No window.electron or renderer references should be needed.
-      expect(coordinator.listenerCount('grid-complete')).toBe(0);
-      expect(sessionFns.getScanSession).toBeDefined();
+      expect(db.graviScan.create).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('DB write failure handling', () => {
-    it('should log warning and continue scan on Prisma error', async () => {
-      mockGraviScanCreate.mockRejectedValue(
+    it('logs warning and continues on Prisma error (does not rethrow)', async () => {
+      db.graviScan.create.mockRejectedValueOnce(
         new Error('Unique constraint violation')
       );
+      setupCoordinatorPersistence(coordinator, db, sessionFns);
 
-      // scan-persistence should catch this error, log it, and NOT
-      // rethrow — the scan must continue for subsequent grids.
-      expect(mockGraviScanCreate).toBeDefined();
+      // Should not throw — error is swallowed inside the listener
+      expect(() =>
+        coordinator.emit('grid-complete', createGridCompletePayload())
+      ).not.toThrow();
+
+      await flushAsync();
+
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('[scan-persistence]')
+      );
     });
+  });
+});
+
+describe('createGraviScanSession', () => {
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    db = createMockDb();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('creates a GraviScanSession record from session state', async () => {
+    const sessionId = await createGraviScanSession(db, {
+      ...activeSession,
+      isContinuous: false,
+      sessionId: null,
+    });
+
+    expect(sessionId).toBe('session-1');
+    expect(db.graviScanSession.create).toHaveBeenCalledTimes(1);
+    const data = db.graviScanSession.create.mock.calls[0][0].data;
+    expect(data.experiment_id).toBe('exp-1');
+    expect(data.phenotyper_id).toBe('pheno-1');
+    expect(data.scan_mode).toBe('single'); // !isContinuous
+  });
+
+  it('records continuous scan parameters when isContinuous', async () => {
+    await createGraviScanSession(db, {
+      ...activeSession,
+      isContinuous: true,
+      intervalMs: 180_000,
+      scanDurationMs: 3_600_000,
+      totalCycles: 20,
+      sessionId: null,
+    });
+
+    const data = db.graviScanSession.create.mock.calls[0][0].data;
+    expect(data.scan_mode).toBe('continuous');
+    expect(data.interval_seconds).toBe(180);
+    expect(data.duration_seconds).toBe(3600);
+    expect(data.total_cycles).toBe(20);
+  });
+
+  it('returns null and logs warning on DB failure', async () => {
+    db.graviScanSession.create.mockRejectedValueOnce(new Error('DB error'));
+    const sessionId = await createGraviScanSession(db, activeSession);
+
+    expect(sessionId).toBeNull();
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('[scan-persistence]')
+    );
+  });
+});
+
+describe('completeGraviScanSession', () => {
+  let db: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    db = createMockDb();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  it('updates completed_at and cancelled=false on natural completion', async () => {
+    await completeGraviScanSession(db, 'session-1', false);
+
+    expect(db.graviScanSession.update).toHaveBeenCalledTimes(1);
+    const call = db.graviScanSession.update.mock.calls[0][0];
+    expect(call.where).toEqual({ id: 'session-1' });
+    expect(call.data.completed_at).toBeInstanceOf(Date);
+    expect(call.data.cancelled).toBe(false);
+  });
+
+  it('updates completed_at and cancelled=true on cancel', async () => {
+    await completeGraviScanSession(db, 'session-1', true);
+
+    const call = db.graviScanSession.update.mock.calls[0][0];
+    expect(call.data.cancelled).toBe(true);
+  });
+
+  it('does not throw on DB failure', async () => {
+    db.graviScanSession.update.mockRejectedValueOnce(new Error('DB error'));
+
+    await expect(
+      completeGraviScanSession(db, 'session-1', false)
+    ).resolves.toBeUndefined();
+
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('[scan-persistence]')
+    );
   });
 });

@@ -758,6 +758,11 @@ export function useScanSession({
             resolution: resolution,
             output_path: outputPath,
             plate_barcode: plate.plantBarcode || null,
+            // Fixes B3 from PR #196 review: these were silently dropped,
+            // so every GraviScan row had NULL transplant_date/custom_note
+            // despite the Metadata page collecting them from the user.
+            transplant_date: plate.transplantDate || null,
+            custom_note: plate.customNote || null,
           };
         });
 

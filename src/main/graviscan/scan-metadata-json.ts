@@ -34,6 +34,8 @@ export interface GraviScanMetadataContext {
   scan_started_at: string; // ISO 8601
   interval_seconds?: number | null;
   duration_seconds?: number | null;
+  /** Image filename this metadata describes (e.g. "plate_00_st_...cy1.tiff"). */
+  image_filename?: string;
 }
 
 /**
@@ -84,24 +86,37 @@ export function buildGraviMetadataObject(
     result.duration_seconds = context.duration_seconds;
   }
 
+  // Include image_filename when present so each per-image metadata file
+  // is self-identifying (B4 fix — one JSON per scan, not per directory).
+  if (context.image_filename) {
+    result.image_filename = context.image_filename;
+  }
+
   return result as unknown as GraviScanMetadataJson;
 }
 
 /**
- * Write metadata.json to a scan output directory using atomic write pattern.
+ * Write a metadata JSON file for a single scan image using atomic write pattern.
+ *
+ * Writes one `<image_basename>.metadata.json` per image rather than a single
+ * shared `metadata.json` per directory. Fixes B4 from PR #196 review —
+ * multiple plates/cycles would otherwise overwrite each other's metadata.
  *
  * Creates the directory if it doesn't exist. Writes to a .tmp file first,
- * then renames to metadata.json to prevent partial files.
+ * then renames atomically to prevent partial files.
  *
  * On failure, logs a warning and returns without throwing — scan images
  * are more important than metadata and should not be blocked by a write error.
  *
- * @param outputDir - Directory where metadata.json will be written
+ * @param outputDir - Directory where the metadata file will be written
+ * @param imageBasename - Scan image filename (e.g. "plate_00_st_20260416T143000_cy1.tiff"),
+ *                       or "metadata" for the legacy shared file
  * @param context - Scan context to extract metadata from
  * @param captureDate - Timestamp for the scan (defaults to now)
  */
 export function writeGraviMetadataJson(
   outputDir: string,
+  imageBasename: string,
   context: GraviScanMetadataContext,
   captureDate: Date = new Date()
 ): void {
@@ -111,11 +126,23 @@ export function writeGraviMetadataJson(
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    const metadata = buildGraviMetadataObject(context, captureDate);
+    // Strip extension from image basename to derive JSON filename
+    // e.g. "plate_00_st_...cy1.tiff" -> "plate_00_st_...cy1.metadata.json"
+    const stem = imageBasename.replace(/\.[^.]+$/, '');
+    const jsonFilename =
+      stem === imageBasename && stem === 'metadata'
+        ? 'metadata.json'
+        : `${stem}.metadata.json`;
+
+    // Include image_filename in the metadata so each file is self-identifying
+    const metadata = buildGraviMetadataObject(
+      { ...context, image_filename: imageBasename },
+      captureDate
+    );
     const json = JSON.stringify(metadata, null, 2) + '\n';
 
-    const finalPath = path.join(outputDir, 'metadata.json');
-    const tmpPath = path.join(outputDir, 'metadata.json.tmp');
+    const finalPath = path.join(outputDir, jsonFilename);
+    const tmpPath = path.join(outputDir, `${jsonFilename}.tmp`);
 
     // Clean up stale .tmp from a previous failed write
     if (fs.existsSync(tmpPath)) {

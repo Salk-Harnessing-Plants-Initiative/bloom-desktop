@@ -151,10 +151,10 @@ describe('writeGraviMetadataJson', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
     const ctx = makeContext();
-    writeGraviMetadataJson(outputDir, ctx);
+    writeGraviMetadataJson(outputDir, 'test.tiff', ctx);
 
-    const tmpPath = path.join(outputDir, 'metadata.json.tmp');
-    const finalPath = path.join(outputDir, 'metadata.json');
+    const tmpPath = path.join(outputDir, 'test.metadata.json.tmp');
+    const finalPath = path.join(outputDir, 'test.metadata.json');
 
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       tmpPath,
@@ -173,7 +173,7 @@ describe('writeGraviMetadataJson', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
     const ctx = makeContext();
-    writeGraviMetadataJson(outputDir, ctx);
+    writeGraviMetadataJson(outputDir, 'test.tiff', ctx);
 
     const writtenContent = vi.mocked(fs.writeFileSync).mock
       .calls[0][1] as string;
@@ -197,9 +197,9 @@ describe('writeGraviMetadataJson', () => {
       .mockReturnValueOnce(true); // stale .tmp exists
 
     const ctx = makeContext();
-    writeGraviMetadataJson(outputDir, ctx);
+    writeGraviMetadataJson(outputDir, 'test.tiff', ctx);
 
-    const tmpPath = path.join(outputDir, 'metadata.json.tmp');
+    const tmpPath = path.join(outputDir, 'test.metadata.json.tmp');
     expect(fs.unlinkSync).toHaveBeenCalledWith(tmpPath);
   });
 
@@ -209,7 +209,7 @@ describe('writeGraviMetadataJson', () => {
       .mockReturnValueOnce(false); // no stale .tmp
 
     const ctx = makeContext();
-    writeGraviMetadataJson(outputDir, ctx);
+    writeGraviMetadataJson(outputDir, 'test.tiff', ctx);
 
     expect(fs.unlinkSync).not.toHaveBeenCalled();
   });
@@ -218,7 +218,7 @@ describe('writeGraviMetadataJson', () => {
     vi.mocked(fs.existsSync).mockReturnValueOnce(false); // dir does not exist
 
     const ctx = makeContext();
-    writeGraviMetadataJson(outputDir, ctx);
+    writeGraviMetadataJson(outputDir, 'test.tiff', ctx);
 
     expect(fs.mkdirSync).toHaveBeenCalledWith(outputDir, { recursive: true });
   });
@@ -229,7 +229,7 @@ describe('writeGraviMetadataJson', () => {
       .mockReturnValueOnce(false); // no stale .tmp
 
     const ctx = makeContext();
-    writeGraviMetadataJson(outputDir, ctx);
+    writeGraviMetadataJson(outputDir, 'test.tiff', ctx);
 
     expect(fs.mkdirSync).not.toHaveBeenCalled();
   });
@@ -244,7 +244,9 @@ describe('writeGraviMetadataJson', () => {
 
     const ctx = makeContext();
     // Should not throw
-    expect(() => writeGraviMetadataJson(outputDir, ctx)).not.toThrow();
+    expect(() =>
+      writeGraviMetadataJson(outputDir, 'test.tiff', ctx)
+    ).not.toThrow();
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('metadata.json'),

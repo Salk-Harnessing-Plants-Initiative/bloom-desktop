@@ -310,7 +310,10 @@ export class ScanCoordinator
             for (const plate of platesToScan) {
               const jobKey = `${scannerId}:${plate.plate_index}`;
               const metadataDir = path.dirname(plate.output_path);
-              await writeGraviMetadataJson(metadataDir, {
+              const imageBasename = path.basename(plate.output_path);
+              // Per-image metadata filename prevents overwrite when multiple
+              // plates/cycles share a directory (B4 fix).
+              writeGraviMetadataJson(metadataDir, imageBasename, {
                 experiment_id: ctx.experiment_id,
                 phenotyper_id: ctx.phenotyper_id,
                 scanner_id: scannerId,

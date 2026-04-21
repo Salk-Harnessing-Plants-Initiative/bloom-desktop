@@ -12,7 +12,15 @@ import type { PrismaClient } from '@prisma/client';
 import * as scannerHandlers from './scanner-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as imageHandlers from './image-handlers';
-import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
+import type {
+  SessionFns,
+  SessionPersistence,
+  ScanCoordinatorLike,
+} from './session-handlers';
+import {
+  createGraviScanSession,
+  completeGraviScanSession,
+} from './scan-persistence';
 
 let registered = false;
 
@@ -28,6 +36,15 @@ export function registerGraviScanHandlers(
     throw new Error('GraviScan IPC handlers are already registered');
   }
   registered = true;
+
+  // Session persistence helpers for DB-backed session lifecycle.
+  // Injected into startScan/cancelScan so the session record is created at
+  // scan start and completed (cancelled=false on natural finish, true on cancel).
+  const sessionPersistence: SessionPersistence = {
+    createSession: (session) => createGraviScanSession(db, session),
+    completeSession: (sessionId, cancelled) =>
+      completeGraviScanSession(db, sessionId, cancelled),
+  };
 
   // Helper to wrap handlers with error handling
   function wrapHandler<T>(
@@ -100,16 +117,22 @@ export function registerGraviScanHandlers(
       }
     }
     return wrapHandler(() =>
-      sessionHandlers.startScan(coordinator, params, sessionFns, (error) => {
-        const win = getMainWindow();
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('graviscan:scan-error', {
-            scannerId: null,
-            plateIndex: null,
-            error,
-          });
-        }
-      })
+      sessionHandlers.startScan(
+        coordinator,
+        params,
+        sessionFns,
+        (error) => {
+          const win = getMainWindow();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('graviscan:scan-error', {
+              scannerId: null,
+              plateIndex: null,
+              error,
+            });
+          }
+        },
+        sessionPersistence
+      )
     )();
   });
 
@@ -128,7 +151,11 @@ export function registerGraviScanHandlers(
 
   ipcMain.handle('graviscan:cancel-scan', () =>
     wrapHandler(() =>
-      sessionHandlers.cancelScan(getCoordinator(), sessionFns)
+      sessionHandlers.cancelScan(
+        getCoordinator(),
+        sessionFns,
+        sessionPersistence
+      )
     )()
   );
 
