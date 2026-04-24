@@ -230,6 +230,333 @@ describe('scanner-handlers', () => {
       expect(result.scanners[0].id).toBe('existing-1');
       expect(result.scanners[0].name).toBe('Scanner 1');
     });
+
+    // ─── Section 1.3: fix-scanner-config-save-flow tests ───
+
+    it('(p) rejects empty array without touching DB', async () => {
+      const result = await saveScannersToDB(db, []);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/no scanners to save/i);
+      expect(db.graviScanner.findFirst).not.toHaveBeenCalled();
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+      expect(db.graviScanner.create).not.toHaveBeenCalled();
+    });
+
+    it('(p2) matches existing row by usb_port FIRST (even when bus+device differ)', async () => {
+      db.graviScanner.findFirst.mockImplementation(({ where }: any) => {
+        if (where?.usb_port === '1-2') {
+          return Promise.resolve({
+            id: 'existing-1',
+            name: 'Old Name',
+            display_name: null,
+            vendor_id: '04b8',
+            product_id: '013a',
+            usb_port: '1-2',
+            usb_bus: 999, // old bus
+            usb_device: 999, // old device
+            enabled: true,
+          });
+        }
+        return Promise.resolve(null);
+      });
+      db.graviScanner.update.mockResolvedValue({
+        id: 'existing-1',
+        name: 'Scanner New',
+        display_name: null,
+        vendor_id: '04b8',
+        product_id: '013a',
+        usb_port: '1-2',
+        usb_bus: 1,
+        usb_device: 5,
+        enabled: true,
+      });
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Scanner New',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 5, // different from existing (999)
+          usb_port: '1-2', // same usb_port
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(db.graviScanner.update).toHaveBeenCalled();
+      expect(db.graviScanner.create).not.toHaveBeenCalled();
+      // Verify the first findFirst call was keyed on usb_port
+      const firstCallArg = db.graviScanner.findFirst.mock.calls[0][0];
+      expect(firstCallArg).toEqual(
+        expect.objectContaining({ where: { usb_port: '1-2' } })
+      );
+    });
+
+    it('(p3) fallback match by composite (vendor_id, product_id, name, usb_bus, usb_device) when usb_port empty', async () => {
+      db.graviScanner.findFirst.mockImplementation(({ where }: any) => {
+        if (
+          where?.vendor_id === '04b8' &&
+          where?.product_id === '013a' &&
+          where?.name === 'Epson V850' &&
+          where?.usb_bus === 1 &&
+          where?.usb_device === 3
+        ) {
+          return Promise.resolve({
+            id: 'existing-composite',
+            name: 'Epson V850',
+            display_name: null,
+            vendor_id: '04b8',
+            product_id: '013a',
+            usb_port: null,
+            usb_bus: 1,
+            usb_device: 3,
+            enabled: true,
+          });
+        }
+        return Promise.resolve(null);
+      });
+      db.graviScanner.update.mockResolvedValue({
+        id: 'existing-composite',
+        name: 'Epson V850',
+      });
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Epson V850',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 3,
+          usb_port: '', // empty — should trigger composite fallback
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(db.graviScanner.update).toHaveBeenCalled();
+      expect(db.graviScanner.create).not.toHaveBeenCalled();
+    });
+
+    it('(p4) does NOT match by (usb_bus, usb_device) alone when usb_port differs', async () => {
+      // Stale row with bus/device that coincidentally matches but has different port
+      db.graviScanner.findFirst.mockImplementation(({ where }: any) => {
+        if (where?.usb_port === '1-2') {
+          return Promise.resolve(null); // not found by new port
+        }
+        // This match by composite should NOT be triggered because we pass non-empty usb_port
+        if (where?.vendor_id) {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve(null);
+      });
+      db.graviScanner.create.mockResolvedValue({
+        id: 'new-row',
+        name: 'Scanner',
+      });
+
+      await saveScannersToDB(db, [
+        {
+          name: 'Scanner',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
+
+      // With bus/device matching discarded, it should create a new row
+      expect(db.graviScanner.create).toHaveBeenCalled();
+      // Verify NO findFirst call used bus+device as sole `where` keys
+      for (const call of db.graviScanner.findFirst.mock.calls) {
+        const where = call[0]?.where;
+        if (where && 'usb_bus' in where && 'usb_device' in where) {
+          // If bus/device were in `where`, they must be accompanied by other keys (composite)
+          expect(Object.keys(where).length).toBeGreaterThan(2);
+        }
+      }
+    });
+  });
+
+  // ─── Section 1.3: disableMissingScanners tests ───
+  describe('disableMissingScanners', () => {
+    it('(q) sets enabled=false on rows not in the identity list', async () => {
+      const { disableMissingScanners } = await import(
+        '../../../src/main/graviscan/scanner-handlers'
+      );
+
+      db.graviScanner.findMany = vi.fn().mockResolvedValue([
+        {
+          id: 'row-a',
+          name: 'A',
+          usb_port: '1-1',
+          usb_bus: 1,
+          usb_device: 1,
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+        {
+          id: 'row-b',
+          name: 'B',
+          usb_port: '1-2',
+          usb_bus: 1,
+          usb_device: 2,
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+      ]);
+      db.graviScanner.update.mockResolvedValue({});
+
+      // Only 'A' is in the enabled list; 'B' should be disabled
+      const result = await disableMissingScanners(db, [
+        {
+          usb_port: '1-1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          name: 'A',
+          usb_bus: 1,
+          usb_device: 1,
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.disabled).toBe(1);
+      expect(db.graviScanner.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'row-b' },
+          data: { enabled: false },
+        })
+      );
+      // A should NOT have been updated to disabled
+      const updateCalls = db.graviScanner.update.mock.calls.map(
+        (c: any) => c[0]
+      );
+      const aUpdate = updateCalls.find((u: any) => u.where.id === 'row-a');
+      expect(aUpdate).toBeUndefined();
+    });
+
+    it('(q2) does NOT touch rows matching the identity list', async () => {
+      const { disableMissingScanners } = await import(
+        '../../../src/main/graviscan/scanner-handlers'
+      );
+
+      db.graviScanner.findMany = vi.fn().mockResolvedValue([
+        {
+          id: 'row-a',
+          name: 'A',
+          usb_port: '1-1',
+          usb_bus: 1,
+          usb_device: 1,
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+      ]);
+      db.graviScanner.update.mockResolvedValue({});
+
+      const result = await disableMissingScanners(db, [
+        {
+          usb_port: '1-1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          name: 'A',
+          usb_bus: 1,
+          usb_device: 1,
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.disabled).toBe(0);
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+    });
+
+    it('(q3) never deletes rows — only flips enabled', async () => {
+      const { disableMissingScanners } = await import(
+        '../../../src/main/graviscan/scanner-handlers'
+      );
+
+      db.graviScanner.findMany = vi.fn().mockResolvedValue([
+        {
+          id: 'row-b',
+          name: 'B',
+          usb_port: '1-2',
+          usb_bus: 1,
+          usb_device: 2,
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+      ]);
+      db.graviScanner.update.mockResolvedValue({});
+      db.graviScanner.delete = vi.fn();
+      db.graviScanner.deleteMany = vi.fn();
+
+      await disableMissingScanners(db, []);
+
+      expect(db.graviScanner.delete).not.toHaveBeenCalled();
+      expect(db.graviScanner.deleteMany).not.toHaveBeenCalled();
+      expect(db.graviScanner.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { enabled: false },
+        })
+      );
+    });
+
+    it('(q4) matches by usb_port primary with composite fallback', async () => {
+      const { disableMissingScanners } = await import(
+        '../../../src/main/graviscan/scanner-handlers'
+      );
+
+      db.graviScanner.findMany = vi.fn().mockResolvedValue([
+        {
+          id: 'row-port',
+          name: 'X',
+          usb_port: '1-5',
+          usb_bus: 99,
+          usb_device: 99,
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+        {
+          id: 'row-composite',
+          name: 'Y',
+          usb_port: null,
+          usb_bus: 2,
+          usb_device: 3,
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+      ]);
+      db.graviScanner.update.mockResolvedValue({});
+
+      // Match row-port by usb_port primary AND row-composite by composite fallback.
+      // Both should remain enabled (not appear in disabled list).
+      const result = await disableMissingScanners(db, [
+        {
+          usb_port: '1-5',
+          vendor_id: '04b8',
+          product_id: '013a',
+          name: 'X',
+          usb_bus: 1, // bus differs — usb_port primary match wins
+          usb_device: 10,
+        },
+        {
+          usb_port: '', // empty — composite fallback kicks in
+          vendor_id: '04b8',
+          product_id: '013a',
+          name: 'Y',
+          usb_bus: 2,
+          usb_device: 3,
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.disabled).toBe(0);
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('getConfig', () => {

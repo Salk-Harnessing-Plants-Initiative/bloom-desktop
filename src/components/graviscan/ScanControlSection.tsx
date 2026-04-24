@@ -5,6 +5,7 @@
  */
 
 import type { ScanJobInfo } from '../../renderer/hooks/useScanSession';
+import type { ScannerAssignment } from '../../types/graviscan';
 
 interface ScanControlSectionProps {
   // Scan state
@@ -25,14 +26,16 @@ interface ScanControlSectionProps {
   setScanDurationMinutes: (val: number) => void;
 
   // Scanner progress
+  // Task 2.7: removed `enabled: boolean` from ScannerPanelState; use
+  // scannerAssignments to derive enabled.
   scannerStates: Array<{
     scannerId: string;
     name: string;
-    enabled: boolean;
     state: string;
     progress: number;
     lastError?: string;
   }>;
+  scannerAssignments: ScannerAssignment[];
 
   // Event log
   eventLog: string[];
@@ -67,6 +70,7 @@ export function ScanControlSection({
   setScanIntervalMinutes,
   setScanDurationMinutes,
   scannerStates,
+  scannerAssignments,
   eventLog,
   onStartScan,
   onCancelScan,
@@ -74,6 +78,8 @@ export function ScanControlSection({
   scanSuccess,
 }: ScanControlSectionProps) {
   const hasPendingJobs = pendingJobs.size > 0;
+  const isEnabled = (scannerId: string): boolean =>
+    scannerAssignments.some((a) => a.scannerId === scannerId);
 
   return (
     <div className="space-y-4">
@@ -180,13 +186,15 @@ export function ScanControlSection({
       )}
 
       {/* Progress per scanner */}
-      {scannerStates.some((s) => s.enabled && s.state !== 'idle') && (
+      {scannerStates.some(
+        (s) => isEnabled(s.scannerId) && s.state !== 'idle'
+      ) && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-700">
             Scanner Progress
           </h3>
           {scannerStates
-            .filter((s) => s.enabled)
+            .filter((s) => isEnabled(s.scannerId))
             .map((scanner) => (
               <div key={scanner.scannerId} className="flex items-center gap-3">
                 <span className="text-sm w-24 truncate">{scanner.name}</span>

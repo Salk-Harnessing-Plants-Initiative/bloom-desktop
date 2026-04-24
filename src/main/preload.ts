@@ -372,6 +372,8 @@ const graviAPI = {
   saveConfig: (config: any) => unwrapGravi('graviscan:save-config', config),
   saveScannersToDB: (scanners: any) =>
     unwrapGravi('graviscan:save-scanners-db', scanners),
+  disableMissingScanners: (enabledIdentities: any) =>
+    unwrapGravi('graviscan:disable-missing-scanners', enabledIdentities),
   getPlatformInfo: () => unwrapGravi('graviscan:platform-info'),
   validateScanners: (ids: string[]) =>
     unwrapGravi('graviscan:validate-scanners', ids),

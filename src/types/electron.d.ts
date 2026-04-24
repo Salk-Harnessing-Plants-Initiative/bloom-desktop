@@ -539,6 +539,7 @@ export interface GraviAPI {
   getConfig: () => Promise<any>;
   saveConfig: (config: any) => Promise<any>;
   saveScannersToDB: (scanners: any) => Promise<any>;
+  disableMissingScanners: (enabledIdentities: any) => Promise<any>;
   getPlatformInfo: () => Promise<any>;
   validateScanners: (ids: string[]) => Promise<any>;
   validateConfig: () => Promise<any>;

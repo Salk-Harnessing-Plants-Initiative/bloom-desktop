@@ -244,11 +244,14 @@ export type ScannerState =
 
 /**
  * Per-scanner state for tracking scan progress.
+ *
+ * Note: there is no `enabled` field — "user wants this scanner included" is
+ * derived from `scannerAssignments[i].scannerId !== null`. The DB column
+ * `GraviScanner.enabled` is a separate persistence concept and remains.
  */
 export interface ScannerPanelState {
   scannerId: string;
   name: string;
-  enabled: boolean;
   isOnline: boolean;
   isBusy: boolean;
   state: ScannerState;

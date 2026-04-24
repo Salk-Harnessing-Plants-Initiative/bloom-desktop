@@ -81,6 +81,14 @@ export function registerGraviScanHandlers(
     wrapHandler(() => scannerHandlers.saveScannersToDB(db, scanners))()
   );
 
+  ipcMain.handle(
+    'graviscan:disable-missing-scanners',
+    (_event, enabledIdentities) =>
+      wrapHandler(() =>
+        scannerHandlers.disableMissingScanners(db, enabledIdentities)
+      )()
+  );
+
   ipcMain.handle('graviscan:platform-info', () =>
     wrapHandler(() => scannerHandlers.getPlatformInfo())()
   );
@@ -131,7 +139,8 @@ export function registerGraviScanHandlers(
             });
           }
         },
-        sessionPersistence
+        sessionPersistence,
+        db // Task 2.10: enables human-readable scanner_name in metadata.json
       )
     )();
   });

@@ -67,7 +67,7 @@ const defaultScannerConfig = {
   handleAddScannerSlot: vi.fn(),
   handleRemoveScannerSlot: vi.fn(),
   handleToggleConfigCollapse: vi.fn(),
-  handleToggleScannerEnabled: vi.fn(),
+  // Task 1.4 BREAKING: handleToggleScannerEnabled removed from hook API
   clearValidationWarning: vi.fn(),
 };
 

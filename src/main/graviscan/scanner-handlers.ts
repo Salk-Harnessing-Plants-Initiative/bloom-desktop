@@ -358,24 +358,39 @@ export async function saveScannersToDB(
     usb_device?: number;
   }>
 ) {
+  // Reject empty payload (Task 2.8: defense-in-depth with renderer's zero-enabled guard)
+  if (scanners.length === 0) {
+    return {
+      success: false,
+      error: 'no scanners to save',
+      scanners: [] as GraviScanner[],
+    };
+  }
+
   try {
     const savedScanners: GraviScanner[] = [];
 
     for (const scanner of scanners) {
-      // Look up existing scanner by USB bus + device (unique physical identifier)
       let existing: GraviScanner | null = null;
-      if (scanner.usb_bus != null && scanner.usb_device != null) {
+
+      // Match by usb_port primary (stable across replug — see #182).
+      if (scanner.usb_port) {
+        existing = (await (db as any).graviScanner.findFirst({
+          where: { usb_port: scanner.usb_port },
+        })) as GraviScanner | null;
+      }
+      // Fallback: composite (vendor_id, product_id, name, usb_bus, usb_device).
+      // Intentionally does NOT match by (usb_bus, usb_device) alone — the OS
+      // reassigns usb_device, so bus+device alone could match an unrelated row.
+      if (!existing && scanner.usb_bus != null && scanner.usb_device != null) {
         existing = (await (db as any).graviScanner.findFirst({
           where: {
+            vendor_id: scanner.vendor_id,
+            product_id: scanner.product_id,
+            name: scanner.name,
             usb_bus: scanner.usb_bus,
             usb_device: scanner.usb_device,
           },
-        })) as GraviScanner | null;
-      }
-      // Fallback: match by usb_port (stable across replug, unlike usb_device)
-      if (!existing && scanner.usb_port) {
-        existing = (await (db as any).graviScanner.findFirst({
-          where: { usb_port: scanner.usb_port },
         })) as GraviScanner | null;
       }
 
@@ -384,12 +399,14 @@ export async function saveScannersToDB(
           where: { id: existing.id },
           data: {
             name: scanner.name,
+            // `display_name: undefined` from renderer means "preserve admin-chosen value"
             display_name: scanner.display_name ?? existing.display_name ?? null,
             vendor_id: scanner.vendor_id,
             product_id: scanner.product_id,
             usb_port: scanner.usb_port || null,
             usb_bus: scanner.usb_bus || null,
             usb_device: scanner.usb_device || null,
+            enabled: true,
           },
         });
         savedScanners.push(updated as GraviScanner);
@@ -420,6 +437,71 @@ export async function saveScannersToDB(
       success: false,
       error: error instanceof Error ? error.message : 'Failed to save scanners',
       scanners: [] as GraviScanner[],
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// disableMissingScanners (Task 2.9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sets `GraviScanner.enabled = false` on every enabled row that is NOT in
+ * the provided `enabledIdentities` list. Matches by usb_port primary with
+ * composite fallback — consistent with saveScannersToDB.
+ *
+ * Does NOT delete rows — preserves FK references from historical GraviScan.
+ */
+export async function disableMissingScanners(
+  db: PrismaClient,
+  enabledIdentities: Array<{
+    usb_port: string;
+    vendor_id: string;
+    product_id: string;
+    name: string;
+    usb_bus: number | null;
+    usb_device: number | null;
+  }>
+): Promise<{ success: boolean; error?: string; disabled?: number }> {
+  try {
+    const rows = (await (db as any).graviScanner.findMany({
+      where: { enabled: true },
+    })) as GraviScanner[];
+
+    const toDisable: string[] = [];
+    for (const row of rows) {
+      const isMatched = enabledIdentities.some((id) => {
+        // Primary: usb_port match (both sides non-empty)
+        if (id.usb_port && row.usb_port && id.usb_port === row.usb_port) {
+          return true;
+        }
+        // Fallback: composite match
+        return (
+          row.vendor_id === id.vendor_id &&
+          row.product_id === id.product_id &&
+          row.name === id.name &&
+          row.usb_bus === id.usb_bus &&
+          row.usb_device === id.usb_device
+        );
+      });
+      if (!isMatched) {
+        toDisable.push(row.id);
+      }
+    }
+
+    for (const id of toDisable) {
+      await (db as any).graviScanner.update({
+        where: { id },
+        data: { enabled: false },
+      });
+    }
+
+    return { success: true, disabled: toDisable.length };
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : 'Failed to disable scanners',
     };
   }
 }

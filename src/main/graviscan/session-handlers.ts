@@ -76,7 +76,8 @@ export async function startScan(
   params: StartScanParams,
   sessionFns: SessionFns,
   onError?: (error: string) => void,
-  persistence?: SessionPersistence
+  persistence?: SessionPersistence,
+  db?: any
 ): Promise<{ success: boolean; error?: string }> {
   let sessionSet = false;
   try {
@@ -192,8 +193,27 @@ export async function startScan(
       const plateBarcodes = new Map<string, string | null>();
       const transplantDates = new Map<string, string | null>();
       const customNotes = new Map<string, string | null>();
+
+      // Task 2.10: resolve scanner names from DB (display_name ?? name ?? scanner_id).
+      // Traceability requires metadata.json carry a human-readable name, not a UUID.
+      let scannerNameMap: Map<string, string> | null = null;
+      if (db) {
+        const scannerIds = params.scanners.map((s) => s.scannerId);
+        const rows = (await db.graviScanner.findMany({
+          where: { id: { in: scannerIds } },
+        })) as Array<{
+          id: string;
+          display_name: string | null;
+          name: string;
+        }>;
+        scannerNameMap = new Map(
+          rows.map((r) => [r.id, r.display_name ?? r.name])
+        );
+      }
+
       for (const s of params.scanners) {
-        scannerNames.set(s.scannerId, s.scannerId); // fallback to ID; display_name requires DB lookup
+        const resolved = scannerNameMap?.get(s.scannerId) ?? s.scannerId;
+        scannerNames.set(s.scannerId, resolved);
         for (const plate of s.plates) {
           const key = `${s.scannerId}:${plate.plate_index}`;
           plateBarcodes.set(key, plate.plate_barcode ?? null);

@@ -40,6 +40,9 @@ export interface UseScanSessionParams {
 
   // From useScannerConfig
   scannerAssignments: ScannerAssignment[];
+  // Task 2.7.1: ref mirror of scannerAssignments for use in callbacks/intervals
+  // where the value-prop closure would be stale.
+  scannerAssignmentsRef: React.MutableRefObject<ScannerAssignment[]>;
   detectedScanners: DetectedScanner[];
   platformInfo: GraviScanPlatformInfo | null;
   resolution: number;
@@ -115,6 +118,7 @@ export function useScanSession({
   setScanSuccess,
   setScanCompletionCounter,
   scannerAssignments,
+  scannerAssignmentsRef,
   detectedScanners,
   platformInfo,
   resolution,
@@ -197,12 +201,17 @@ export function useScanSession({
 
   // ── Readiness gate ────────────────────────────────────────
 
+  // Task 2.7: enablement derives from scannerAssignments[i].scannerId !== null,
+  // NOT from the removed ScannerPanelState.enabled field.
+  const isScannerEnabled = (scannerId: string): boolean =>
+    scannerAssignmentsRef.current.some((a) => a.scannerId === scannerId);
+
   const canStartScan =
     !isScanning &&
     !!selectedExperiment &&
     !!selectedPhenotyper &&
     selectedPlates.length > 0 &&
-    scannerStates.some((s) => s.enabled);
+    scannerAssignments.some((a) => a.scannerId !== null);
 
   // ── IPC event listeners ───────────────────────────────────
 
@@ -294,7 +303,7 @@ export function useScanSession({
           cycleCompletedCountRef.current = {};
           setScannerStates((prev) =>
             prev.map((s) =>
-              s.enabled
+              isScannerEnabled(s.scannerId)
                 ? { ...s, state: 'waiting' as ScannerState, progress: 0 }
                 : s
             )
@@ -336,7 +345,8 @@ export function useScanSession({
         setScanCompletionCounter((c) => c + 1);
         setScannerStates((prev) =>
           prev.map((s) =>
-            s.enabled && (s.state === 'scanning' || s.state === 'waiting')
+            isScannerEnabled(s.scannerId) &&
+            (s.state === 'scanning' || s.state === 'waiting')
               ? {
                   ...s,
                   state: 'complete' as ScannerState,
@@ -461,7 +471,7 @@ export function useScanSession({
       setScanCompletionCounter((c) => c + 1);
       setScannerStates((prev) =>
         prev.map((s) =>
-          s.enabled && (s.state as string) === 'scanning'
+          isScannerEnabled(s.scannerId) && (s.state as string) === 'scanning'
             ? {
                 ...s,
                 state: 'complete' as ScannerState,
@@ -559,7 +569,7 @@ export function useScanSession({
               ).length;
               return {
                 ...s,
-                enabled: true,
+                // Task 2.7: `enabled: true` removed — isBusy/state already encode "marked as scanning"
                 state: 'scanning' as ScannerState,
                 isBusy: true,
                 progress: Math.round((donePlates / totalPlates) * 100),
@@ -671,7 +681,9 @@ export function useScanSession({
       return;
     }
 
-    const enabledScanners = scannerStates.filter((s) => s.enabled);
+    const enabledScanners = scannerStates.filter((s) =>
+      isScannerEnabled(s.scannerId)
+    );
     if (enabledScanners.length === 0) {
       setScanError('Please enable at least one scanner');
       return;
@@ -691,7 +703,7 @@ export function useScanSession({
     // Update scanner states to scanning
     setScannerStates((prev) =>
       prev.map((s) =>
-        s.enabled
+        isScannerEnabled(s.scannerId)
           ? { ...s, state: 'scanning' as const, isBusy: true, progress: 0 }
           : s
       )
@@ -830,7 +842,7 @@ export function useScanSession({
         setScanError(result.error || 'Failed to start scan');
         setScannerStates((prev) =>
           prev.map((s) =>
-            s.enabled
+            isScannerEnabled(s.scannerId)
               ? {
                   ...s,
                   state: 'error' as const,
@@ -851,7 +863,7 @@ export function useScanSession({
       setScanError(error instanceof Error ? error.message : 'Scan failed');
       setScannerStates((prev) =>
         prev.map((s) =>
-          s.enabled
+          isScannerEnabled(s.scannerId)
             ? {
                 ...s,
                 state: 'error' as const,
@@ -876,7 +888,7 @@ export function useScanSession({
     setScanningPlateIndex({});
     setScannerStates((prev) =>
       prev.map((s) =>
-        s.enabled
+        isScannerEnabled(s.scannerId)
           ? { ...s, state: 'idle' as const, isBusy: false, progress: 0 }
           : s
       )
@@ -895,7 +907,7 @@ export function useScanSession({
         (s): ScannerPanelState => ({
           scannerId: s.scannerId,
           name: s.name,
-          enabled: s.enabled,
+          // Task 2.7: `enabled` field removed
           isOnline: s.isOnline,
           isBusy: false,
           state: 'idle',

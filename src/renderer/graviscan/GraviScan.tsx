@@ -6,7 +6,7 @@
  * scan form with mode toggle, scan controls, and session summary.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useScannerConfig } from '../hooks/useScannerConfig';
 import { usePlateAssignments } from '../hooks/usePlateAssignments';
 import { useContinuousMode } from '../hooks/useContinuousMode';
@@ -44,7 +44,7 @@ export function GraviScan() {
 
   // ── Hooks ─────────────────────────────────────────────────
 
-  const scannerConfig = useScannerConfig({ setScannerStates });
+  const scannerConfig = useScannerConfig();
 
   const continuousMode = useContinuousMode(isScanning);
 
@@ -83,6 +83,12 @@ export function GraviScan() {
     return plates;
   }, [plateAssignments.scannerPlateAssignments]);
 
+  // Task 2.7.1: ref mirror of scannerAssignments for useScanSession callbacks
+  const scannerAssignmentsRef = useRef(scannerConfig.scannerAssignments);
+  useEffect(() => {
+    scannerAssignmentsRef.current = scannerConfig.scannerAssignments;
+  }, [scannerConfig.scannerAssignments]);
+
   const scanSession = useScanSession({
     scannerStates,
     setScannerStates,
@@ -92,6 +98,7 @@ export function GraviScan() {
     setScanSuccess,
     setScanCompletionCounter,
     scannerAssignments: scannerConfig.scannerAssignments,
+    scannerAssignmentsRef,
     detectedScanners: scannerConfig.detectedScanners,
     platformInfo: scannerConfig.platformInfo,
     resolution: scannerConfig.resolution,
@@ -200,7 +207,7 @@ export function GraviScan() {
         return {
           scannerId: a.scannerId!,
           name: detected?.name || a.slot,
-          enabled: true,
+          // Task 2.7: `enabled` field removed — derived from scannerAssignments
           isOnline: detected?.is_available ?? false,
           isBusy: false,
           state: 'idle' as const,
@@ -279,54 +286,67 @@ export function GraviScan() {
                   get started.
                 </p>
               ) : (
-                scannerStates.map((scanner, idx) => (
-                  <div
-                    key={scanner.scannerId}
-                    className="flex items-center gap-3 p-2 border rounded-md"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={scanner.enabled}
-                      onChange={(e) =>
-                        scannerConfig.handleToggleScannerEnabled(
-                          scanner.scannerId,
-                          e.target.checked
-                        )
-                      }
-                      disabled={isScanning}
-                      className="w-4 h-4"
-                    />
-                    <span className="text-sm font-medium flex-1">
-                      Scanner {idx + 1}: {scanner.name}
-                    </span>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        scanner.state === 'scanning'
-                          ? 'bg-blue-100 text-blue-700'
-                          : scanner.state === 'complete'
-                            ? 'bg-green-100 text-green-700'
-                            : scanner.state === 'error'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-gray-100 text-gray-600'
-                      }`}
+                scannerStates.map((scanner, idx) => {
+                  // Task 2.7: enabled derives from scannerAssignments, not scanner.enabled
+                  const isEnabled = scannerConfig.scannerAssignments.some(
+                    (a) => a.scannerId === scanner.scannerId
+                  );
+                  return (
+                    <div
+                      key={scanner.scannerId}
+                      className="flex items-center gap-3 p-2 border rounded-md"
                     >
-                      {scanner.state}
-                    </span>
-                    {testScan.testResults[scanner.scannerId] && (
+                      <input
+                        type="checkbox"
+                        checked={isEnabled}
+                        onChange={(e) => {
+                          // Find the detected-scanner index to map to scannerAssignments slot
+                          const detectedIdx =
+                            scannerConfig.detectedScanners.findIndex(
+                              (d) => d.scanner_id === scanner.scannerId
+                            );
+                          if (detectedIdx !== -1) {
+                            scannerConfig.handleScannerAssignment(
+                              detectedIdx,
+                              e.target.checked ? scanner.scannerId : null
+                            );
+                          }
+                        }}
+                        disabled={isScanning}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm font-medium flex-1">
+                        Scanner {idx + 1}: {scanner.name}
+                      </span>
                       <span
-                        className={`text-xs ${
-                          testScan.testResults[scanner.scannerId].success
-                            ? 'text-green-600'
-                            : 'text-red-600'
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          scanner.state === 'scanning'
+                            ? 'bg-blue-100 text-blue-700'
+                            : scanner.state === 'complete'
+                              ? 'bg-green-100 text-green-700'
+                              : scanner.state === 'error'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-gray-100 text-gray-600'
                         }`}
                       >
-                        {testScan.testResults[scanner.scannerId].success
-                          ? 'Test OK'
-                          : testScan.testResults[scanner.scannerId].error}
+                        {scanner.state}
                       </span>
-                    )}
-                  </div>
-                ))
+                      {testScan.testResults[scanner.scannerId] && (
+                        <span
+                          className={`text-xs ${
+                            testScan.testResults[scanner.scannerId].success
+                              ? 'text-green-600'
+                              : 'text-red-600'
+                          }`}
+                        >
+                          {testScan.testResults[scanner.scannerId].success
+                            ? 'Test OK'
+                            : testScan.testResults[scanner.scannerId].error}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
@@ -469,6 +489,7 @@ export function GraviScan() {
               setScanIntervalMinutes={continuousMode.setScanIntervalMinutes}
               setScanDurationMinutes={continuousMode.setScanDurationMinutes}
               scannerStates={scannerStates}
+              scannerAssignments={scannerConfig.scannerAssignments}
               eventLog={eventLog}
               onStartScan={scanSession.handleStartScan}
               onCancelScan={scanSession.handleCancelScan}

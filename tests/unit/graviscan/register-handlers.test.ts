@@ -51,6 +51,7 @@ const CHANNELS = [
   'graviscan:get-config',
   'graviscan:save-config',
   'graviscan:save-scanners-db',
+  'graviscan:disable-missing-scanners',
   'graviscan:platform-info',
   'graviscan:validate-scanners',
   'graviscan:validate-config',
@@ -116,7 +117,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 15 IPC channels', () => {
+  it('registers all 16 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -125,7 +126,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(15);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(16);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }

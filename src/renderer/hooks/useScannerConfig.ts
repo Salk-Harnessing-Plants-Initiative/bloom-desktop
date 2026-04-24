@@ -4,7 +4,6 @@ import type {
   GraviConfig,
   GraviScanner,
   GraviScanPlatformInfo,
-  ScannerPanelState,
   ScannerAssignment,
 } from '../../types/graviscan';
 import {
@@ -22,7 +21,28 @@ const STORAGE_KEYS = {
   configCollapsed: 'graviscan:configCollapsed',
   isConfigured: 'graviscan:isConfigured',
   sessionValidated: 'graviscan:sessionValidated',
+  // Task 2.2: unchecked-state memory keyed by stable physical identity
+  uncheckedScannerKeys: 'graviscan:uncheckedScannerKeys',
 };
+
+/**
+ * Compute the stable-identity key for a scanner.
+ * Primary: usb_port (stable across USB reconnects).
+ * Fallback: composite — distinguishes identical-model scanners on the same hub
+ * when usb_port is empty. Uses `!usb_port` predicate since DetectedScanner.usb_port
+ * is typed string and can be '' (empty) when platform info is missing.
+ */
+export function computeStableKey(s: {
+  usb_port?: string;
+  vendor_id: string;
+  product_id: string;
+  name: string;
+  usb_bus?: number;
+  usb_device?: number;
+}): string {
+  if (s.usb_port) return s.usb_port;
+  return `${s.vendor_id}:${s.product_id}:${s.name}:${s.usb_bus ?? ''}:${s.usb_device ?? ''}`;
+}
 
 function loadFromStorage<T>(key: string, defaultValue: T): T {
   try {
@@ -48,10 +68,6 @@ export type ConfigStatus =
   | 'mismatch'
   | 'no-config'
   | 'error';
-
-interface UseScannerConfigParams {
-  setScannerStates: React.Dispatch<React.SetStateAction<ScannerPanelState[]>>;
-}
 
 export interface UseScannerConfigReturn {
   // Platform
@@ -100,13 +116,10 @@ export interface UseScannerConfigReturn {
   handleAddScannerSlot: () => void;
   handleRemoveScannerSlot: (slotIndex: number) => void;
   handleToggleConfigCollapse: () => void;
-  handleToggleScannerEnabled: (scannerId: string, enabled: boolean) => void;
   clearValidationWarning: () => void;
 }
 
-export function useScannerConfig({
-  setScannerStates,
-}: UseScannerConfigParams): UseScannerConfigReturn {
+export function useScannerConfig(): UseScannerConfigReturn {
   // Platform support
   const [platformInfo, setPlatformInfo] =
     useState<GraviScanPlatformInfo | null>(null);
@@ -172,6 +185,17 @@ export function useScannerConfig({
   const [matchedScanners, setMatchedScanners] = useState<
     Array<{ saved: GraviScanner; detected: DetectedScanner }>
   >([]);
+
+  // Task 2.2: persisted unchecked-state memory (set of stable-identity keys).
+  // Survives page reload, HMR, and navigation-away-and-back via localStorage.
+  const uncheckedKeysRef = useRef<Set<string>>(
+    new Set(loadFromStorage<string[]>(STORAGE_KEYS.uncheckedScannerKeys, []))
+  );
+
+  function writeUncheckedKeys(next: Set<string>) {
+    uncheckedKeysRef.current = next;
+    saveToStorage(STORAGE_KEYS.uncheckedScannerKeys, Array.from(next));
+  }
 
   // Refs
   const resolutionRef = useRef(resolution);
@@ -294,11 +318,18 @@ export function useScannerConfig({
           setIsConfigCollapsed(false);
           // Kick off an initial detection so users see available scanners
           // on first visit without having to click "Detect Scanners".
-          // The ScannerConfig page displays result.scanners when present.
           try {
             const detectResult = await window.electron.gravi.detectScanners();
-            if (detectResult.success && detectResult.scanners) {
+            if (
+              detectResult.success &&
+              detectResult.scanners &&
+              detectResult.scanners.length > 0
+            ) {
               setDetectedScanners(detectResult.scanners);
+              // Task 2.1: populate scannerAssignments on detection
+              setScannerAssignments((prev) =>
+                buildAssignmentsFromDetection(detectResult.scanners, prev)
+              );
             }
           } catch (err) {
             console.error('Auto-detection after no-config failed:', err);
@@ -318,6 +349,28 @@ export function useScannerConfig({
     }
   }
 
+  /**
+   * Task 2.1: Build scannerAssignments from a detection result, applying the
+   * persisted unchecked-state memory so unchecked scanners stay unchecked
+   * across re-detection (and across USB reconnects that change usb_device).
+   */
+  function buildAssignmentsFromDetection(
+    detected: DetectedScanner[],
+    existingAssignments: ScannerAssignment[]
+  ): ScannerAssignment[] {
+    return detected.map((s, index) => {
+      const key = computeStableKey(s);
+      const isUnchecked = uncheckedKeysRef.current.has(key);
+      const existing = existingAssignments[index];
+      return {
+        slot: existing?.slot || `Scanner ${index + 1}`,
+        scannerId: isUnchecked ? null : s.scanner_id,
+        usbPort: s.usb_port,
+        gridMode: existing?.gridMode || '2grid',
+      };
+    });
+  }
+
   async function handleDetectScanners() {
     setDetectingScanner(true);
     setDetectionError(null);
@@ -333,6 +386,10 @@ export function useScannerConfig({
           setDetectionError('No scanners detected. Check USB connections.');
           setSessionValidated(false);
         } else {
+          // Task 2.1: populate scannerAssignments on detection
+          setScannerAssignments((prev) =>
+            buildAssignmentsFromDetection(result.scanners, prev)
+          );
           setSessionValidated(true);
         }
       } else {
@@ -362,15 +419,13 @@ export function useScannerConfig({
     localStorage.removeItem(STORAGE_KEYS.sessionValidated);
     localStorage.removeItem(STORAGE_KEYS.isConfigured);
     localStorage.removeItem(STORAGE_KEYS.configCollapsed);
+    localStorage.removeItem(STORAGE_KEYS.uncheckedScannerKeys);
 
     // Reset state
     setDetectedScanners([]);
-    setScannerAssignments(
-      Array.from({ length: DEFAULT_SCANNER_SLOTS }, (_, index) =>
-        createEmptyScannerAssignment(index)
-      )
-    );
-    setScannerStates([]);
+    setScannerAssignments([]);
+    // Task 2.2: also clear persisted unchecked-state memory on full reset
+    writeUncheckedKeys(new Set());
     setSessionValidated(false);
     setConfigSaved(false);
     setIsConfigCollapsed(false);
@@ -386,15 +441,6 @@ export function useScannerConfig({
 
     console.log('[GraviScan] Scanner configuration reset');
   }
-
-  const handleToggleScannerEnabled = useCallback(
-    (scannerId: string, enabled: boolean) => {
-      setScannerStates((prev) =>
-        prev.map((s) => (s.scannerId === scannerId ? { ...s, enabled } : s))
-      );
-    },
-    [setScannerStates]
-  );
 
   const handleScannerAssignment = useCallback(
     (slotIndex: number, scannerId: string | null) => {
@@ -412,6 +458,20 @@ export function useScannerConfig({
       });
       if (scannerId) {
         setConfigSaved(true);
+      }
+
+      // Task 2.2: update persisted unchecked-state memory SYNCHRONOUSLY.
+      // Scanner at slotIndex is the detected scanner at the same index (1:1 mapping).
+      const detected = detectedScanners[slotIndex];
+      if (detected) {
+        const key = computeStableKey(detected);
+        const next = new Set(uncheckedKeysRef.current);
+        if (scannerId === null) {
+          next.add(key);
+        } else {
+          next.delete(key);
+        }
+        writeUncheckedKeys(next);
       }
     },
     [detectedScanners]
@@ -473,7 +533,8 @@ export function useScannerConfig({
     saveToStorage(STORAGE_KEYS.scannerAssignments, scannerAssignments);
   }, [scannerAssignments]);
 
-  // Auto-save scanner assignments to database when they change
+  // Auto-save scanner assignments to database when they change.
+  // Task 2.3: build payload from scannerAssignments (now correctly populated on detection).
   useEffect(() => {
     const assignedScanners = scannerAssignments
       .filter((a) => a.scannerId !== null)
@@ -492,26 +553,42 @@ export function useScannerConfig({
           resolution: resolution,
         });
 
-        const scannersToSave = assignedScanners.map((s) => {
-          const assignment = scannerAssignments.find(
-            (a) => a.scannerId === s.scanner_id
-          );
-          return {
-            name: s.name,
-            display_name: assignment?.slot || null,
-            vendor_id: s.vendor_id,
-            product_id: s.product_id,
-            usb_port: s.usb_port,
-            usb_bus: s.usb_bus,
-            usb_device: s.usb_device,
-          };
-        });
+        const scannersToSave = assignedScanners.map((s) => ({
+          name: s.name,
+          // display_name: undefined → main-process upsert preserves admin-chosen value via `?? existing.display_name`
+          display_name: undefined as string | undefined,
+          vendor_id: s.vendor_id,
+          product_id: s.product_id,
+          usb_port: s.usb_port,
+          usb_bus: s.usb_bus,
+          usb_device: s.usb_device,
+        }));
 
         const saveResult =
           await window.electron.gravi.saveScannersToDB(scannersToSave);
         if (saveResult.success && saveResult.scanners) {
           console.log('[GraviScan] Auto-saved scanner configuration');
           setConfigSaved(true);
+
+          // Task 2.3: also disable scanners missing from the enabled list
+          try {
+            const enabledIdentities = assignedScanners.map((s) => ({
+              usb_port: s.usb_port,
+              vendor_id: s.vendor_id,
+              product_id: s.product_id,
+              name: s.name,
+              usb_bus: s.usb_bus,
+              usb_device: s.usb_device,
+            }));
+            await window.electron.gravi.disableMissingScanners(
+              enabledIdentities
+            );
+          } catch (err) {
+            console.error(
+              '[GraviScan] disableMissingScanners failed during auto-save:',
+              err
+            );
+          }
 
           const savedScanners = saveResult.scanners as Array<{
             id: string;
@@ -703,7 +780,6 @@ export function useScannerConfig({
     handleAddScannerSlot,
     handleRemoveScannerSlot,
     handleToggleConfigCollapse,
-    handleToggleScannerEnabled,
     clearValidationWarning: () => setValidationWarning(null),
   };
 }

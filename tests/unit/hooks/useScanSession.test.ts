@@ -31,10 +31,11 @@ function makeScannerState(
   scannerId: string,
   overrides: Partial<ScannerPanelState> = {}
 ): ScannerPanelState {
+  // Task 2.7 BREAKING: `enabled` field removed from ScannerPanelState.
+  // Enablement is now derived from scannerAssignments[i].scannerId !== null.
   return {
     scannerId,
     name: `Scanner ${scannerId}`,
-    enabled: true,
     isOnline: true,
     isBusy: false,
     state: 'idle',
@@ -47,6 +48,7 @@ function makeScannerState(
 /** Build the full params object needed by useScanSession. */
 function defaultParams(overrides: Record<string, unknown> = {}) {
   const scannerStates = [makeScannerState('sc1')];
+  const scannerAssignments = [makeAssignment('Scanner 1', 'sc1')];
   return {
     // Scanner states
     scannerStates,
@@ -58,7 +60,9 @@ function defaultParams(overrides: Record<string, unknown> = {}) {
     setScanCompletionCounter: vi.fn(),
 
     // From useScannerConfig
-    scannerAssignments: [makeAssignment('Scanner 1', 'sc1')],
+    scannerAssignments,
+    // Task 2.7.1: ref is required for read-sites inside callbacks
+    scannerAssignmentsRef: { current: scannerAssignments },
     detectedScanners: [createDetectedScanner({ scanner_id: 'sc1' })],
     platformInfo: createPlatformInfo(),
     resolution: 600,
@@ -517,8 +521,12 @@ describe('7.2 — Readiness gate', () => {
   });
 
   it('canStartScan is false when no scanners enabled', () => {
+    // Task 2.7 BREAKING: readiness gate now reads scannerAssignments[i].scannerId,
+    // NOT the removed scannerStates[i].enabled flag.
+    const unassigned = [makeAssignment('Scanner 1', null)];
     const params = defaultParams({
-      scannerStates: [makeScannerState('sc1', { enabled: false })],
+      scannerAssignments: unassigned,
+      scannerAssignmentsRef: { current: unassigned },
     });
     const { result } = renderHook(() => useScanSession(params));
     expect(result.current.canStartScan).toBe(false);
