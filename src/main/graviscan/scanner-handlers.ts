@@ -28,37 +28,49 @@ const MOCK_SCANNER_COUNT = 2;
 // ---------------------------------------------------------------------------
 
 /**
- * Build mock DetectedScanner objects from DB records (or generate fakes when
- * there are fewer DB records than MOCK_SCANNER_COUNT).
+ * Build mock DetectedScanner objects.
+ *
+ * Two cases:
+ * - DB has at least one enabled scanner row → return one mock per row,
+ *   each with the row's real DB id. Do NOT pad up to MOCK_SCANNER_COUNT
+ *   with placeholder ids — that mixes real and fake rows in a way that
+ *   breaks downstream FK consumers (#205 / pre-flight check in
+ *   plate-assignment upsert handlers).
+ * - DB is empty (fresh install) → return MOCK_SCANNER_COUNT placeholder
+ *   scanners with `scanner_id: ''`. The renderer treats these as "new
+ *   scanners not yet in DB" and lets the user save them via Scanner
+ *   Config. Empty string (not a `mock-scanner-N` token) avoids leaking
+ *   a fake id that downstream code might mistake for a real one.
  */
 function buildMockScanners(dbScanners: any[]): DetectedScanner[] {
+  if (dbScanners.length > 0) {
+    return dbScanners.map((row, i) => ({
+      name: row.name,
+      scanner_id: row.id,
+      usb_bus: row.usb_bus ?? 1,
+      usb_device: row.usb_device ?? i + 1,
+      usb_port: row.usb_port ?? `1-${i + 1}`,
+      is_available: true,
+      vendor_id: row.vendor_id,
+      product_id: row.product_id,
+      sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
+    }));
+  }
+
+  // Fresh install — fabricate scanners for the user to save.
   const scanners: DetectedScanner[] = [];
   for (let i = 0; i < MOCK_SCANNER_COUNT; i++) {
-    if (i < dbScanners.length) {
-      scanners.push({
-        name: dbScanners[i].name,
-        scanner_id: dbScanners[i].id,
-        usb_bus: 1,
-        usb_device: i + 1,
-        usb_port: `1-${i + 1}`,
-        is_available: true,
-        vendor_id: dbScanners[i].vendor_id,
-        product_id: dbScanners[i].product_id,
-        sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-      });
-    } else {
-      scanners.push({
-        name: `Mock Scanner ${i + 1}`,
-        scanner_id: `mock-scanner-${i + 1}`,
-        usb_bus: 1,
-        usb_device: i + 1,
-        usb_port: `1-${i + 1}`,
-        is_available: true,
-        vendor_id: '04b8',
-        product_id: '013a',
-        sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-      });
-    }
+    scanners.push({
+      name: `Mock Scanner ${i + 1}`,
+      scanner_id: '', // sentinel: "not yet in DB"
+      usb_bus: 1,
+      usb_device: i + 1,
+      usb_port: `1-${i + 1}`,
+      is_available: true,
+      vendor_id: '04b8',
+      product_id: '013a',
+      sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
+    });
   }
   return scanners;
 }

@@ -97,6 +97,74 @@ describe('scanner-handlers', () => {
       expect(mockDetect).not.toHaveBeenCalled();
     });
 
+    // ─── Bug fix: mock buildMockScanners no longer pads with placeholders ───
+
+    it('mock mode with N enabled DB rows returns exactly N scanners (no placeholder padding)', async () => {
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 'db-1',
+          name: 'Real Scanner',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 1,
+          usb_port: '1-1',
+          enabled: true,
+        },
+      ]);
+
+      const result = await detectScanners(db);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners).toHaveLength(1);
+      expect(result.scanners[0].scanner_id).toBe('db-1');
+      // Critically, NO placeholder `mock-scanner-N` id leaks through
+      expect(
+        result.scanners.some((s) => s.scanner_id.startsWith('mock-'))
+      ).toBe(false);
+    });
+
+    it('mock mode with empty DB returns 2 placeholder scanners with empty scanner_id', async () => {
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      db.graviScanner.findMany.mockResolvedValue([]);
+
+      const result = await detectScanners(db);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners).toHaveLength(2);
+      // Empty string is the sentinel for "not yet in DB"
+      for (const s of result.scanners) {
+        expect(s.scanner_id).toBe('');
+      }
+    });
+
+    it('mock mode does NOT generate fake mock-scanner-N ids when partial DB state exists', async () => {
+      // Reproduces the smoke-test bug: 1 enabled scanner in DB
+      // (the other was disabled by disableMissingScanners). buildMockScanners
+      // used to pad up to MOCK_SCANNER_COUNT=2 with a placeholder
+      // `mock-scanner-2` id, which then leaked to FK consumers.
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 'real-uuid',
+          name: 'Mock Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 1,
+          usb_port: '1-1',
+          enabled: true,
+        },
+      ]);
+
+      const result = await detectScanners(db);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners).toHaveLength(1); // not 2
+      expect(result.scanners[0].scanner_id).toBe('real-uuid');
+    });
+
     it('should return error when database throws', async () => {
       db.graviScanner.findMany.mockRejectedValue(
         new Error('DB connection lost')

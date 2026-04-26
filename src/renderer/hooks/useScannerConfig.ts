@@ -362,9 +362,12 @@ export function useScannerConfig(): UseScannerConfigReturn {
       const key = computeStableKey(s);
       const isUnchecked = uncheckedKeysRef.current.has(key);
       const existing = existingAssignments[index];
+      // scanner_id may be `''` (sentinel for "not yet in DB"); treat as
+      // unassigned so downstream consumers don't FK against a fake id.
+      const id = s.scanner_id || null;
       return {
         slot: existing?.slot || `Scanner ${index + 1}`,
-        scannerId: isUnchecked ? null : s.scanner_id,
+        scannerId: isUnchecked ? null : id,
         usbPort: s.usb_port,
         gridMode: existing?.gridMode || '2grid',
       };
