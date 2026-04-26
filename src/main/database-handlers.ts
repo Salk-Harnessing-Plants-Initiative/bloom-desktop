@@ -1105,6 +1105,35 @@ export function registerDatabaseHandlers() {
         data: Record<string, unknown>;
       }
     ): Promise<DatabaseResponse> => {
+      // Pre-flight: verify the scanner exists, fail loudly if not.
+      try {
+        const scannerExists = await (
+          db as unknown as {
+            graviScanner: {
+              findUnique: (args: { where: { id: string } }) => Promise<unknown>;
+            };
+          }
+        ).graviScanner.findUnique({ where: { id: scanner_id } });
+        if (!scannerExists) {
+          console.error(
+            `[DB] upsert aborted: scanner_id ${scanner_id} not found in GraviScanner (experiment=${experiment_id}, plate_index=${plate_index})`
+          );
+          return {
+            success: false,
+            error: `Scanner ${scanner_id} does not exist. Save scanner configuration first.`,
+          };
+        }
+      } catch (error) {
+        console.error('[DB] upsert pre-flight check failed:', error);
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Pre-flight scanner lookup failed',
+        };
+      }
+
       try {
         const assignment = await db.graviScanPlateAssignment.upsert({
           where: {
@@ -1129,7 +1158,10 @@ export function registerDatabaseHandlers() {
         );
         return { success: true, data: assignment };
       } catch (error) {
-        console.error('[DB] Failed to upsert plate assignment:', error);
+        console.error(
+          `[DB] Failed to upsert plate assignment (experiment=${experiment_id}, scanner=${scanner_id}, plate_index=${plate_index}):`,
+          error
+        );
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -1152,6 +1184,37 @@ export function registerDatabaseHandlers() {
         assignments: Array<Record<string, unknown> & { plate_index: string }>;
       }
     ): Promise<DatabaseResponse> => {
+      // Pre-flight check: verify the scanner_id exists. If not, fail loud
+      // with a useful error instead of letting Prisma's nested-connect
+      // constraint produce an opaque P2025.
+      try {
+        const scannerExists = await (
+          db as unknown as {
+            graviScanner: {
+              findUnique: (args: { where: { id: string } }) => Promise<unknown>;
+            };
+          }
+        ).graviScanner.findUnique({ where: { id: scanner_id } });
+        if (!scannerExists) {
+          console.error(
+            `[DB] upsertMany aborted: scanner_id ${scanner_id} not found in GraviScanner table (experiment=${experiment_id}, count=${assignments.length})`
+          );
+          return {
+            success: false,
+            error: `Scanner ${scanner_id} does not exist. Save scanner configuration first.`,
+          };
+        }
+      } catch (error) {
+        console.error('[DB] upsertMany pre-flight check failed:', error);
+        return {
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Pre-flight scanner lookup failed',
+        };
+      }
+
       try {
         const results = await db.$transaction(
           assignments.map((a) =>
@@ -1180,7 +1243,10 @@ export function registerDatabaseHandlers() {
         );
         return { success: true, data: results };
       } catch (error) {
-        console.error('[DB] Failed to upsert many plate assignments:', error);
+        console.error(
+          `[DB] Failed to upsert many plate assignments (experiment=${experiment_id}, scanner=${scanner_id}):`,
+          error
+        );
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',

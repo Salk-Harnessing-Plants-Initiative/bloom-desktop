@@ -57,7 +57,12 @@ vi.mock('../../../src/main/database', () => ({
     accession: { findMany: vi.fn() },
     scan: { findMany: vi.fn(), create: vi.fn() },
     image: { createMany: vi.fn() },
-    graviScanner: { findMany: vi.fn() },
+    graviScanner: {
+      findMany: vi.fn(),
+      // Pre-flight check on upsert/upsertMany handlers — return a truthy
+      // value to indicate the scanner exists.
+      findUnique: vi.fn().mockResolvedValue({ id: 'scanner-1' }),
+    },
     graviConfig: { findFirst: vi.fn() },
   }),
 }));
