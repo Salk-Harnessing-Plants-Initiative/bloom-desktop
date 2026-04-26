@@ -165,6 +165,151 @@ describe('scanner-handlers', () => {
       expect(result.scanners[0].scanner_id).toBe('real-uuid');
     });
 
+    // ─── surface-disabled-scanners-on-detect proposal ───
+
+    it('(a) mock mode surfaces BOTH enabled and disabled DB rows (Catch-22 prevention)', async () => {
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 'enabled-uuid',
+          name: 'Mock Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 1,
+          usb_port: '1-1',
+          enabled: true,
+        },
+        {
+          id: 'disabled-uuid',
+          name: 'Mock Scanner 2',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+          enabled: false,
+        },
+      ]);
+
+      const result = await detectScanners(db);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners).toHaveLength(2);
+      const ids = result.scanners.map((s) => s.scanner_id).sort();
+      expect(ids).toEqual(['disabled-uuid', 'enabled-uuid']);
+
+      // Verify findMany was called WITHOUT a where: { enabled: true } filter
+      // (i.e., either no where clause, or where clause that doesn't filter by enabled)
+      const findManyCalls = db.graviScanner.findMany.mock.calls;
+      const lastCall = findManyCalls[findManyCalls.length - 1]?.[0];
+      const whereClause = lastCall?.where;
+      // Either no where clause at all, OR where clause without enabled filter
+      if (whereClause && 'enabled' in whereClause) {
+        throw new Error(
+          'detectScanners must NOT filter by enabled — disabled scanners are needed in the renderer for re-enable UX'
+        );
+      }
+    });
+
+    it('(b) each scanner returned in mock mode carries enabled from its DB row', async () => {
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 'a',
+          name: 'A',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 1,
+          usb_port: '1-1',
+          enabled: true,
+        },
+        {
+          id: 'b',
+          name: 'B',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+          enabled: false,
+        },
+      ]);
+
+      const result = await detectScanners(db);
+
+      const a = result.scanners.find((s) => s.scanner_id === 'a');
+      const b = result.scanners.find((s) => s.scanner_id === 'b');
+      expect(a?.enabled).toBe(true);
+      expect(b?.enabled).toBe(false);
+    });
+
+    it('(c) real mode: matched scanners get enabled from DB, unmatched leave it unset', async () => {
+      vi.stubEnv('GRAVISCAN_MOCK', '');
+      mockDetect.mockReturnValue({
+        success: true,
+        scanners: [
+          {
+            name: 'Epson V600',
+            scanner_id: '',
+            usb_bus: 1,
+            usb_device: 1,
+            usb_port: '1-1',
+            is_available: true,
+            vendor_id: '04b8',
+            product_id: '013a',
+          },
+          {
+            name: 'Brand New Epson',
+            scanner_id: '',
+            usb_bus: 1,
+            usb_device: 9,
+            usb_port: '9-9',
+            is_available: true,
+            vendor_id: '04b8',
+            product_id: '013a',
+          },
+        ],
+        count: 2,
+      });
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 'matched-uuid',
+          name: 'Epson V600',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 1,
+          usb_port: '1-1',
+          enabled: false, // disabled in DB
+        },
+      ]);
+
+      const result = await detectScanners(db);
+
+      const matched = result.scanners.find(
+        (s) => s.usb_bus === 1 && s.usb_device === 1
+      );
+      const unmatched = result.scanners.find((s) => s.usb_device === 9);
+      expect(matched?.enabled).toBe(false); // propagated from DB
+      expect(unmatched?.enabled).toBeUndefined(); // newly-discovered, unset
+    });
+
+    it('(d) mock mode with empty DB returns placeholder scanners with enabled unset', async () => {
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      db.graviScanner.findMany.mockResolvedValue([]);
+
+      const result = await detectScanners(db);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners).toHaveLength(2); // MOCK_SCANNER_COUNT placeholders
+      for (const s of result.scanners) {
+        expect(s.scanner_id).toBe(''); // sentinel
+        expect(s.enabled).toBeUndefined(); // newly-discovered default
+      }
+    });
+
     it('should return error when database throws', async () => {
       db.graviScanner.findMany.mockRejectedValue(
         new Error('DB connection lost')

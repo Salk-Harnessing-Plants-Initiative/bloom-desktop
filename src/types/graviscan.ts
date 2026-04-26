@@ -58,6 +58,14 @@ export interface DetectedScanner {
   vendor_id: string;
   product_id: string;
   sane_name?: string; // SANE device identifier (e.g., "epkowa:usb:001:005")
+  /**
+   * DB-side `GraviScanner.enabled` for scanners matched to a DB row. When
+   * absent (undefined), treat as `true` — the scanner is newly-discovered
+   * physical hardware not yet saved to the DB. The renderer uses this to
+   * render the "Enabled" checkbox unchecked for previously-disabled
+   * scanners while still surfacing them so the user can re-enable.
+   */
+  enabled?: boolean;
 }
 
 /**

@@ -54,6 +54,7 @@ function buildMockScanners(dbScanners: any[]): DetectedScanner[] {
       vendor_id: row.vendor_id,
       product_id: row.product_id,
       sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
+      enabled: row.enabled, // propagate DB-side enabled state to renderer
     }));
   }
 
@@ -91,6 +92,7 @@ function matchDetectedToDb(
     if (match) {
       detected.scanner_id = match.id;
       detected.name = match.name;
+      detected.enabled = match.enabled; // propagate DB enabled state
     } else {
       const portMatch = dbScanners.find(
         (s: any) => s.usb_port && s.usb_port === detected.usb_port
@@ -98,7 +100,9 @@ function matchDetectedToDb(
       if (portMatch) {
         detected.scanner_id = portMatch.id;
         detected.name = portMatch.name;
+        detected.enabled = portMatch.enabled; // propagate DB enabled state
       }
+      // Unmatched: leave `enabled` unset → renderer treats as true (default)
     }
   }
 }
@@ -235,10 +239,14 @@ export async function detectScanners(db: PrismaClient) {
   try {
     const mockEnabled = process.env.GRAVISCAN_MOCK?.toLowerCase() === 'true';
 
-    // Get scanner records from database
-    const dbScanners = await (db as any).graviScanner.findMany({
-      where: { enabled: true },
-    });
+    // Query ALL DB rows (enabled and disabled). The renderer needs disabled
+    // rows so the user can re-enable them via the Scanner Configuration page.
+    // Filtering by `enabled: true` here would create a Catch-22 where a
+    // disabled scanner has no UI surface to be re-enabled. Note that
+    // `validateConfig` and `runStartupScannerValidation` continue to filter
+    // by `enabled: true` because their semantic is "scanners I expect to be
+    // operational right now" — disabled scanners are intentionally excluded.
+    const dbScanners = await (db as any).graviScanner.findMany();
 
     let detectedScanners: DetectedScanner[];
 

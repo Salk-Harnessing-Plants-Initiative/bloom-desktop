@@ -361,13 +361,21 @@ export function useScannerConfig(): UseScannerConfigReturn {
     return detected.map((s, index) => {
       const key = computeStableKey(s);
       const isUnchecked = uncheckedKeysRef.current.has(key);
+      // Reconciliation rule: a scanner is rendered as unchecked if EITHER
+      // (a) the localStorage uncheckedScannerKeys map says so (user
+      //     unchecked it in this or a previous session before saving), OR
+      // (b) the DB row has `enabled: false` (user previously saved it
+      //     unchecked).
+      // `enabled === false` uses strict equality so unset/undefined is
+      // treated as `true` (newly-discovered scanners default to checked).
+      const isDisabledInDb = s.enabled === false;
       const existing = existingAssignments[index];
       // scanner_id may be `''` (sentinel for "not yet in DB"); treat as
       // unassigned so downstream consumers don't FK against a fake id.
       const id = s.scanner_id || null;
       return {
         slot: existing?.slot || `Scanner ${index + 1}`,
-        scannerId: isUnchecked ? null : id,
+        scannerId: isUnchecked || isDisabledInDb ? null : id,
         usbPort: s.usb_port,
         gridMode: existing?.gridMode || '2grid',
       };

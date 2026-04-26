@@ -1078,4 +1078,129 @@ describe('useScannerConfig', () => {
       expect(payload[0].display_name).toBeUndefined();
     });
   });
+
+  // ─── surface-disabled-scanners-on-detect proposal ───
+  describe('disabled-DB scanner reconciliation (e/f/g/h)', () => {
+    it('(e) detection result with enabled:false produces assignment with scannerId:null', async () => {
+      gravi().detectScanners.mockResolvedValue({
+        success: true,
+        scanners: [
+          createDetectedScanner({
+            scanner_id: 'enabled-uuid',
+            usb_port: '1-1',
+            enabled: true,
+          }),
+          createDetectedScanner({
+            scanner_id: 'disabled-uuid',
+            usb_port: '1-2',
+            enabled: false,
+          }),
+        ],
+      });
+
+      const { result } = renderScannerConfig();
+
+      await waitFor(() => {
+        expect(result.current.platformLoading).toBe(false);
+      });
+      await act(async () => {
+        await result.current.handleDetectScanners();
+      });
+
+      const assignments = result.current.scannerAssignments;
+      expect(assignments).toHaveLength(2);
+      // Enabled scanner: scannerId set
+      expect(assignments[0].scannerId).toBe('enabled-uuid');
+      // Disabled scanner: scannerId null (renders unchecked)
+      expect(assignments[1].scannerId).toBeNull();
+    });
+
+    it('(f) detection result with enabled:true produces assignment with scannerId set (existing behavior preserved)', async () => {
+      gravi().detectScanners.mockResolvedValue({
+        success: true,
+        scanners: [
+          createDetectedScanner({
+            scanner_id: 's1',
+            usb_port: '1-1',
+            enabled: true,
+          }),
+        ],
+      });
+
+      const { result } = renderScannerConfig();
+      await waitFor(() => {
+        expect(result.current.platformLoading).toBe(false);
+      });
+      await act(async () => {
+        await result.current.handleDetectScanners();
+      });
+
+      expect(result.current.scannerAssignments[0].scannerId).toBe('s1');
+    });
+
+    it('(g) detection result with enabled unset (undefined) is treated as enabled=true', async () => {
+      // createDetectedScanner does NOT set enabled by default — it's undefined
+      gravi().detectScanners.mockResolvedValue({
+        success: true,
+        scanners: [
+          createDetectedScanner({ scanner_id: 's1', usb_port: '1-1' }),
+        ],
+      });
+
+      const { result } = renderScannerConfig();
+      await waitFor(() => {
+        expect(result.current.platformLoading).toBe(false);
+      });
+      await act(async () => {
+        await result.current.handleDetectScanners();
+      });
+
+      // Newly-discovered scanner (unset enabled) defaults to checked
+      expect(result.current.scannerAssignments[0].scannerId).toBe('s1');
+    });
+
+    it('(h) localStorage uncheckedScannerKeys AND DB enabled:false are reconciled (either is enough to uncheck)', async () => {
+      // Pre-seed localStorage with one unchecked key
+      localStorage.setItem(
+        'graviscan:uncheckedScannerKeys',
+        JSON.stringify(['1-1'])
+      );
+
+      gravi().detectScanners.mockResolvedValue({
+        success: true,
+        scanners: [
+          createDetectedScanner({
+            scanner_id: 'a',
+            usb_port: '1-1',
+            enabled: true, // enabled in DB but unchecked in localStorage → unchecked
+          }),
+          createDetectedScanner({
+            scanner_id: 'b',
+            usb_port: '1-2',
+            enabled: false, // disabled in DB → unchecked regardless of localStorage
+          }),
+          createDetectedScanner({
+            scanner_id: 'c',
+            usb_port: '1-3',
+            enabled: true, // enabled in DB AND not in localStorage → checked
+          }),
+        ],
+      });
+
+      const { result } = renderScannerConfig();
+      await waitFor(() => {
+        expect(result.current.platformLoading).toBe(false);
+      });
+      await act(async () => {
+        await result.current.handleDetectScanners();
+      });
+
+      const a = result.current.scannerAssignments[0];
+      const b = result.current.scannerAssignments[1];
+      const c = result.current.scannerAssignments[2];
+      expect(a.scannerId).toBeNull(); // localStorage says unchecked
+      expect(b.scannerId).toBeNull(); // DB enabled:false says unchecked
+      expect(c.scannerId).toBe('c'); // both signals say checked
+    });
+  });
 });
