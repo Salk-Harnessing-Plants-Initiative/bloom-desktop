@@ -37,6 +37,9 @@
         "src/main/cylinderscan/**",
         "src/main/graviscan/**",
         "src/main/main.ts",
+        "src/renderer/graviscan/**",
+        "src/components/graviscan/**",
+        "src/renderer/App.tsx",
         "tests/**"
       ],
       "rules": {

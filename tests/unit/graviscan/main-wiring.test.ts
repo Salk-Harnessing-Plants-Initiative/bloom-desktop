@@ -34,6 +34,10 @@ vi.mock('../../../src/main/graviscan/scan-logger', () => ({
   closeScanLog: vi.fn(),
 }));
 
+vi.mock('../../../src/main/graviscan/scan-persistence', () => ({
+  setupCoordinatorPersistence: vi.fn(),
+}));
+
 import {
   graviSessionFns,
   setupCoordinatorEventForwarding,

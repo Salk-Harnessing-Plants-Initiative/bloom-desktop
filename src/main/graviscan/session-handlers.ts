@@ -25,12 +25,22 @@ export interface ScanCoordinatorLike {
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
+  setSessionContext?(context: unknown): void;
 }
 
 export interface SessionFns {
   getScanSession: () => any;
   setScanSession: (session: any) => void;
   markScanJobRecorded: (jobKey: string) => void;
+}
+
+/**
+ * Optional persistence callbacks for creating/completing GraviScanSession
+ * records in the DB. Injected by register-handlers.ts when db is available.
+ */
+export interface SessionPersistence {
+  createSession: (session: any) => Promise<string | null>;
+  completeSession: (sessionId: string, cancelled: boolean) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +51,11 @@ interface StartScanParams {
   scanners: Array<{
     scannerId: string;
     saneName: string;
-    plates: (PlateConfig & { plate_barcode?: string | null })[];
+    plates: (PlateConfig & {
+      plate_barcode?: string | null;
+      transplant_date?: string | null;
+      custom_note?: string | null;
+    })[];
   }>;
   interval?: { intervalSeconds: number; durationSeconds: number };
   metadata?: {
@@ -61,7 +75,9 @@ export async function startScan(
   coordinator: ScanCoordinatorLike | null,
   params: StartScanParams,
   sessionFns: SessionFns,
-  onError?: (error: string) => void
+  onError?: (error: string) => void,
+  persistence?: SessionPersistence,
+  db?: any
 ): Promise<{ success: boolean; error?: string }> {
   let sessionSet = false;
   try {
@@ -111,8 +127,8 @@ export async function startScan(
           plateIndex: plate.plate_index,
           outputPath: plate.output_path,
           plantBarcode: plate.plate_barcode ?? null,
-          transplantDate: null,
-          customNote: null,
+          transplantDate: plate.transplant_date ?? null,
+          customNote: plate.custom_note ?? null,
           gridMode: plate.grid_mode,
           status: 'pending',
         };
@@ -135,9 +151,8 @@ export async function startScan(
 
     await coordinator.initialize(scannerConfigs);
 
-    // Only set session state AFTER initialize succeeds — avoids briefly
-    // reporting an active scan while the coordinator is still starting up.
-    sessionFns.setScanSession({
+    // Build session state
+    const sessionState = {
       isActive: true,
       isContinuous: !!params.interval,
       experimentId: params.metadata?.experimentId || '',
@@ -150,13 +165,80 @@ export async function startScan(
         sessIntervalMs > 0 ? Math.ceil(sessDurationMs / sessIntervalMs) : 1,
       intervalMs: sessIntervalMs,
       scanStartedAt: Date.now(),
-      scanEndedAt: null,
+      scanEndedAt: null as number | null,
       scanDurationMs: sessDurationMs,
-      coordinatorState: 'scanning',
-      nextScanAt: null,
+      coordinatorState: 'scanning' as const,
+      nextScanAt: null as number | null,
       waveNumber: params.metadata?.waveNumber || 0,
-    });
+    };
+
+    // Create GraviScanSession DB record BEFORE setting session state
+    // so GraviScan records created on grid-complete have a valid session_id.
+    // Per-sessionId is only populated if persistence is wired and the write succeeds.
+    if (persistence && !sessionState.sessionId) {
+      const createdSessionId = await persistence.createSession(sessionState);
+      if (createdSessionId) {
+        sessionState.sessionId = createdSessionId;
+      }
+    }
+
+    // Only set session state AFTER initialize succeeds — avoids briefly
+    // reporting an active scan while the coordinator is still starting up.
+    sessionFns.setScanSession(sessionState);
     sessionSet = true;
+
+    // Populate coordinator session context for metadata.json writer (task 8b.5)
+    if (coordinator.setSessionContext) {
+      const scannerNames = new Map<string, string>();
+      const plateBarcodes = new Map<string, string | null>();
+      const transplantDates = new Map<string, string | null>();
+      const customNotes = new Map<string, string | null>();
+
+      // Task 2.10: resolve scanner names from DB (display_name ?? name ?? scanner_id).
+      // Traceability requires metadata.json carry a human-readable name, not a UUID.
+      let scannerNameMap: Map<string, string> | null = null;
+      if (db) {
+        const scannerIds = params.scanners.map((s) => s.scannerId);
+        const rows = (await db.graviScanner.findMany({
+          where: { id: { in: scannerIds } },
+        })) as Array<{
+          id: string;
+          display_name: string | null;
+          name: string;
+        }>;
+        scannerNameMap = new Map(
+          rows.map((r) => [r.id, r.display_name ?? r.name])
+        );
+      }
+
+      for (const s of params.scanners) {
+        const resolved = scannerNameMap?.get(s.scannerId) ?? s.scannerId;
+        scannerNames.set(s.scannerId, resolved);
+        for (const plate of s.plates) {
+          const key = `${s.scannerId}:${plate.plate_index}`;
+          plateBarcodes.set(key, plate.plate_barcode ?? null);
+          transplantDates.set(key, plate.transplant_date ?? null);
+          customNotes.set(key, plate.custom_note ?? null);
+        }
+      }
+      // Use sessionState.sessionId (which has the DB-issued id from
+      // persistence.createSession when persistence is wired) — falling back
+      // to params.metadata.sessionId if the renderer pre-supplied one.
+      // Reading from params alone would miss the freshly-created DB id.
+      coordinator.setSessionContext({
+        experiment_id: params.metadata?.experimentId || '',
+        phenotyper_id: params.metadata?.phenotyperId || '',
+        wave_number: params.metadata?.waveNumber || 0,
+        session_id: sessionState.sessionId,
+        resolution: params.metadata?.resolution || 300,
+        scannerNames,
+        plateBarcodes,
+        transplantDates,
+        customNotes,
+        intervalSeconds: params.interval?.intervalSeconds ?? null,
+        durationSeconds: params.interval?.durationSeconds ?? null,
+      });
+    }
 
     // Build plates map for scanning
     const platesPerScanner = new Map<string, PlateConfig[]>();
@@ -164,13 +246,21 @@ export async function startScan(
       platesPerScanner.set(s.scannerId, s.plates);
     }
 
-    const handleError = (err: unknown) => {
+    const handleError = async (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
+      const currentSession = sessionFns.getScanSession();
+      if (persistence && currentSession?.sessionId) {
+        await persistence.completeSession(currentSession.sessionId, false);
+      }
       sessionFns.setScanSession(null);
       onError?.(message);
     };
 
-    const handleComplete = () => {
+    const handleComplete = async () => {
+      const currentSession = sessionFns.getScanSession();
+      if (persistence && currentSession?.sessionId) {
+        await persistence.completeSession(currentSession.sessionId, false);
+      }
       sessionFns.setScanSession(null);
     };
 
@@ -242,7 +332,8 @@ export function markJobRecorded(sessionFns: SessionFns, jobKey: string): void {
 
 export async function cancelScan(
   coordinator: ScanCoordinatorLike | null,
-  sessionFns: SessionFns
+  sessionFns: SessionFns,
+  persistence?: SessionPersistence
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!coordinator) {
@@ -250,9 +341,21 @@ export async function cancelScan(
     }
 
     coordinator.cancelAll();
+    // Await shutdown FIRST — this lets in-flight grid-complete handlers
+    // finish running (they read getScanSession() at handler start and will
+    // find the session still valid). If we cleared session first, race
+    // conditions would drop completed cycles. Fixes B6 from PR #196 review.
     await coordinator.shutdown();
-    sessionFns.setScanSession(null);
 
+    // Complete the session record with cancelled=true BEFORE clearing
+    // the session state (persistence reads getScanSession() which gives
+    // us the active sessionId).
+    const currentSession = sessionFns.getScanSession();
+    if (persistence && currentSession?.sessionId) {
+      await persistence.completeSession(currentSession.sessionId, true);
+    }
+
+    sessionFns.setScanSession(null);
     return { success: true };
   } catch (error) {
     // Always clear session — even if shutdown fails, the scan is cancelled

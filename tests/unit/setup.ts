@@ -66,6 +66,101 @@ const mockDatabaseAPI = {
     update: vi.fn().mockResolvedValue({ success: true, data: {} }),
     delete: vi.fn().mockResolvedValue({ success: true, data: {} }),
   },
+  experiments: {
+    list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    get: vi.fn().mockResolvedValue({ success: true, data: null }),
+    create: vi.fn().mockResolvedValue({ success: true, data: {} }),
+    update: vi.fn().mockResolvedValue({ success: true, data: {} }),
+    delete: vi.fn().mockResolvedValue({ success: true }),
+    attachAccession: vi.fn().mockResolvedValue({ success: true }),
+  },
+};
+
+// Mock GraviScan IPC API — 15 invoke methods + 13 event listeners.
+// These mocks return the INNER shape (what preload unwrapGravi exposes),
+// since the renderer hooks read .scanners, .config, .isActive, etc.
+// directly (no { data } nesting).
+const mockGraviAPI = {
+  // Scanner operations
+  detectScanners: vi
+    .fn()
+    .mockResolvedValue({ success: true, scanners: [], count: 0 }),
+  getConfig: vi.fn().mockResolvedValue({ success: true, config: null }),
+  saveConfig: vi.fn().mockResolvedValue({ success: true, config: null }),
+  saveScannersToDB: vi.fn().mockResolvedValue({ success: true }),
+  disableMissingScanners: vi
+    .fn()
+    .mockResolvedValue({ success: true, disabled: 0 }),
+  getPlatformInfo: vi.fn().mockResolvedValue({
+    success: true,
+    supported: true,
+    backend: 'sane',
+    mock_enabled: true,
+  }),
+  validateScanners: vi.fn().mockResolvedValue({
+    success: true,
+    isValidated: true,
+    allScannersAvailable: true,
+  }),
+  validateConfig: vi.fn().mockResolvedValue({
+    success: true,
+    status: 'valid',
+    matched: [],
+    missing: [],
+    new: [],
+    savedScanners: [],
+    detectedScanners: [],
+  }),
+  // Session operations
+  startScan: vi.fn().mockResolvedValue({ success: true }),
+  getScanStatus: vi.fn().mockResolvedValue({ isActive: false, jobs: {} }),
+  markJobRecorded: vi.fn().mockResolvedValue({ success: true }),
+  cancelScan: vi.fn().mockResolvedValue({ success: true }),
+  // Image operations.
+  // getOutputDir's main-process handler returns { success, path } — see
+  // src/main/graviscan/image-handlers.ts:getOutputDir. Mock must mirror
+  // that shape; renderer code (e.g. useTestScan.ts) reads `.path`.
+  getOutputDir: vi
+    .fn()
+    .mockResolvedValue({ success: true, path: '/tmp/graviscan' }),
+  readScanImage: vi
+    .fn()
+    .mockResolvedValue({ success: true, dataUri: 'data:image/jpeg;base64,' }),
+  uploadAllScans: vi.fn().mockResolvedValue({ success: true }),
+  downloadImages: vi.fn().mockResolvedValue({ success: true }),
+  // Event listeners (return cleanup functions)
+  onScanEvent: vi.fn().mockReturnValue(vi.fn()),
+  onGridStart: vi.fn().mockReturnValue(vi.fn()),
+  onGridComplete: vi.fn().mockReturnValue(vi.fn()),
+  onCycleComplete: vi.fn().mockReturnValue(vi.fn()),
+  onIntervalStart: vi.fn().mockReturnValue(vi.fn()),
+  onIntervalWaiting: vi.fn().mockReturnValue(vi.fn()),
+  onIntervalComplete: vi.fn().mockReturnValue(vi.fn()),
+  onOvertime: vi.fn().mockReturnValue(vi.fn()),
+  onCancelled: vi.fn().mockReturnValue(vi.fn()),
+  onScanError: vi.fn().mockReturnValue(vi.fn()),
+  onRenameError: vi.fn().mockReturnValue(vi.fn()),
+  onUploadProgress: vi.fn().mockReturnValue(vi.fn()),
+  onDownloadProgress: vi.fn().mockReturnValue(vi.fn()),
+};
+
+// Mock GraviScan DB read operations + plate assignment CRUD
+const mockGraviScansDB = {
+  list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  getMaxWaveNumber: vi.fn().mockResolvedValue({ success: true, data: 0 }),
+  checkBarcodeUniqueInWave: vi
+    .fn()
+    .mockResolvedValue({ success: true, data: true }),
+};
+
+const mockGraviScanPlateAssignmentsDB = {
+  list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  upsert: vi.fn().mockResolvedValue({ success: true, data: {} }),
+  upsertMany: vi.fn().mockResolvedValue({ success: true, data: [] }),
+};
+
+const mockGraviPlateAccessionsDB = {
+  list: vi.fn().mockResolvedValue({ success: true, data: [] }),
 };
 
 // FIX: Don't spread global.window - just add properties to preserve happy-dom's DOM constructors
@@ -74,9 +169,23 @@ if ((global as any).window) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (global as any).window.electron = {
     python: mockPythonAPI,
-    database: mockDatabaseAPI,
+    database: {
+      ...mockDatabaseAPI,
+      graviscans: mockGraviScansDB,
+      graviscanPlateAssignments: mockGraviScanPlateAssignmentsDB,
+      graviPlateAccessions: mockGraviPlateAccessionsDB,
+    },
     config: {
       getMode: vi.fn().mockResolvedValue({ mode: 'cylinderscan' }),
     },
+    gravi: mockGraviAPI,
   };
 }
+
+// Export GraviScan mocks for tests that need to assert on them
+export {
+  mockGraviAPI,
+  mockGraviScansDB,
+  mockGraviScanPlateAssignmentsDB,
+  mockGraviPlateAccessionsDB,
+};
