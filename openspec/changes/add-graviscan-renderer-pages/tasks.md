@@ -234,4 +234,4 @@
 - [x] 15.2 Run ESLint: `npm run lint` — verify no `no-restricted-imports` violations
 - [x] 15.3 Verify TypeScript compilation: `npx tsc --noEmit`
 - [x] 15.4 Verify existing tests not broken: `tests/unit/pages/App.test.tsx`, `tests/e2e/graviscan-ipc.e2e.ts`
-- [ ] 15.5 Manual smoke test: launch app in GraviScan mode, navigate all new pages, verify workflow steps link correctly
+- [x] 15.5 Manual smoke test: launch app in GraviScan mode, navigate all new pages, verify workflow steps link correctly. **Verified:** Scanner Config, Metadata, GraviScan, BrowseGraviScans pages all load and link correctly. Smoke test surfaced issues tracked separately: #205 (Metadata→CaptureScan state loss), #206 (scan subprocess argparse mismatch). Renderer + DB layer is fully functional.
