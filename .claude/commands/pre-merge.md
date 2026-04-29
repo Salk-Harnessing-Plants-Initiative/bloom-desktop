@@ -135,7 +135,7 @@ Perform a complete pre-merge check following this workflow:
     - Verify no merge conflicts
     - Ensure PR has required approvals
     - Check for "ready to merge" status
-    - **Renderer screenshots captured + reviewed** (only required if the PR touches `src/renderer/`): run `npm run test:e2e:smoke` and read each affected `tests/e2e/screenshots/<mode>-<page>.png` via the Read tool. Apply the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md`. Record findings in the PR description. If the PR doesn't touch `src/renderer/`, mark this checkbox N/A with a note.
+    - **Renderer screenshots captured + reviewed** (only required if the PR touches `src/renderer/`): get the PNGs from EITHER source — (a) run `npm run test:e2e:smoke` locally, OR (b) download the CI `renderer-screenshots-<os>` artifact from the PR check page (`gh run download <run-id> --pattern "renderer-screenshots-*"`). CI uploads with `if: always()` so artifacts exist even on failed runs. Read each affected `tests/e2e/screenshots/<mode>-<page>.png` via the Read tool, apply the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md`, and record findings in the PR description. If the PR doesn't touch `src/renderer/`, mark this checkbox N/A with a note.
 
 ## Output Format
 

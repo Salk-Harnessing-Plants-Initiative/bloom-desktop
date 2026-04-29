@@ -57,9 +57,10 @@ Any change that touches `src/renderer/`, a React component, a page route, or any
 
 1. Make sure the dev server is running locally: `npm run start`. (CI runs it as part of the workflow.)
 2. Run the smoke spec: `npm run test:e2e:smoke`.
-3. The spec writes PNG screenshots of every renderer route to `tests/e2e/screenshots/`. Filenames are `<mode>-<page-name>.png` (e.g., `graviscan-scanner-config.png`).
-4. Read every PNG affected by the change using the `Read` tool. Reading the PNG returns the image to you — actually look at it.
-5. Use the visual-review checklist (next subsection) before claiming the change is done.
+3. **Alternative for PR review**: download the `renderer-screenshots-<os>` artifact from the PR's CI check page. The artifact contains the same PNGs that `npm run test:e2e:smoke` produces locally — use whichever is faster. CI uploads with `if: always()` so the artifact is present even when the spec failed.
+4. The spec writes PNG screenshots of every renderer route to `tests/e2e/screenshots/`. Filenames are `<mode>-<page-name>.png` (e.g., `graviscan-scanner-config.png`).
+5. Read every PNG affected by the change using the `Read` tool. Reading the PNG returns the image to you — actually look at it.
+6. Use the visual-review checklist (next subsection) before claiming the change is done.
 
 ### Visual-review checklist (eyeball-only — no pixel-diff)
 

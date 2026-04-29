@@ -530,7 +530,7 @@ A proposal is "renderer-touching" if its `Impact` section lists ANY file under `
 
 2. **Every named deferral MUST link a filed GitHub issue number.** "Will file later" is not acceptable. The issue must already exist when the proposal is reviewed.
 
-3. **The proposal MUST include a visual-verification task in `tasks.md`.** That task runs `npm run test:e2e:smoke` and reads each affected screenshot via the `Read` tool, applying the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md`. If the change is a no-op rename or otherwise has no visual surface, the proposal MUST state that explicitly.
+3. **The proposal MUST include a visual-verification task in `tasks.md`.** That task runs `npm run test:e2e:smoke` and reads each affected screenshot via the `Read` tool, applying the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md`. Screenshots are uploaded by CI as a `renderer-screenshots-<os>` artifact on each PR check run, so the visual-verification task MAY read them from the artifact (`gh run download <run-id> --pattern "renderer-screenshots-*"`) instead of re-running the smoke spec locally. If the change is a no-op rename or otherwise has no visual surface, the proposal MUST state that explicitly.
 
 4. **If the proposal adds a new page, `tasks.md` MUST include a task that extends `tests/e2e/smoke-renderer.e2e.ts` with the new `RouteSpec` entry**, and the proposal's `Impact` section MUST list that file as `MODIFIED`.
 

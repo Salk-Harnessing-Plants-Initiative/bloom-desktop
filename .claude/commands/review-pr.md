@@ -313,8 +313,9 @@ description: "Review behavioural correctness and edge cases"
 Before synthesizing, confirm that:
 
 - [ ] The PR's file list (from Step 1's `gh pr view` output) includes at least one path under `src/renderer/`. If yes, the visual-review responsibility in Subagent 3 is mandatory.
-- [ ] `tests/e2e/screenshots/` contains at least one PNG newer than the PR's branch creation date. If the directory is empty or all PNGs are stale, the smoke spec was not run; the synthesized review SHALL flag this as BLOCKING.
-- [ ] Each renderer-page change has its corresponding screenshot read via the Read tool. Note in the synthesis section which pages were visually reviewed.
+- [ ] Screenshots are available locally (after running `npm run test:e2e:smoke`) OR from the PR's CI artifact named `renderer-screenshots-<os>` (downloadable from the PR's check page; CI uploads it on every E2E run, including failures, via `if: always()`). Either path is acceptable; reviewers SHOULD prefer the CI artifact when CI has run, since it matches the exact code under review. To grab it: `gh run download <run-id> --pattern "renderer-screenshots-*"`.
+- [ ] If neither source has PNGs newer than the PR's branch creation date, the smoke spec was not run and CI did not upload — flag as BLOCKING.
+- [ ] Each renderer-page change has its corresponding screenshot read via the Read tool. Note in the synthesis section which pages were visually reviewed and which source (local vs CI artifact).
 
 ---
 
