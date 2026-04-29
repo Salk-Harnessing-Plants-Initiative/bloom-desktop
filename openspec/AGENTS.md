@@ -249,6 +249,9 @@ Minimal `design.md` skeleton:
 
 - Goals: [...]
 - Non-Goals: [...]
+  <!-- For renderer-touching proposals, every deferred UI component, sub-page,
+       or rich-interaction surface MUST be named individually with a linked
+       GitHub issue. See "Renderer-touching proposal rules" at end of this file. -->
 
 ## Decisions
 
@@ -518,3 +521,17 @@ openspec archive <change-id> [--yes|-y]  # Mark complete (add --yes for automati
 ```
 
 Remember: Specs are truth. Changes are proposals. Keep them in sync.
+
+## Renderer-touching proposal rules
+
+A proposal is "renderer-touching" if its `Impact` section lists ANY file under `src/renderer/`. For these proposals, the following are HARD requirements (the proposal review SHALL fail otherwise):
+
+1. **Every deferred UI component, sub-page, or rich-interaction surface MUST be named individually in `Non-Goals`.** Examples of unacceptable wording: "remaining components deferred to a follow-up", "additional UI polish out of scope". Examples of acceptable wording: "GraviMetadataUpload component (XLSX upload) deferred to issue #207; ScanFormSection refactor deferred to issue #208".
+
+2. **Every named deferral MUST link a filed GitHub issue number.** "Will file later" is not acceptable. The issue must already exist when the proposal is reviewed.
+
+3. **The proposal MUST include a visual-verification task in `tasks.md`.** That task runs `npm run test:e2e:smoke` and reads each affected screenshot via the `Read` tool, applying the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md`. If the change is a no-op rename or otherwise has no visual surface, the proposal MUST state that explicitly.
+
+4. **If the proposal adds a new page, `tasks.md` MUST include a task that extends `tests/e2e/smoke-renderer.e2e.ts` with the new `RouteSpec` entry**, and the proposal's `Impact` section MUST list that file as `MODIFIED`.
+
+The check: a future maintainer reading this proposal a year from now should be able to (a) point to a tracked issue for every "we'll do that later" claim, AND (b) reproduce the visual review by running `npm run test:e2e:smoke` and reading the captured PNGs.
