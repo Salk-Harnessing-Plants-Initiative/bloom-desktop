@@ -201,6 +201,7 @@ description: "Review scientific rigor, metadata, and UX"
 >    (10 min may be too short during sample preparation between scans)
 > 9. Does the PR guard against resets that fire on empty/null sessions?
 >    (a scientist should not see "session reset" if they never selected anything)
+> 10. **Visual / UX regression review** — if the PR touches `src/renderer/`, run `npm run test:e2e:smoke` locally (Bash tool) before reviewing. Then for each renderer file modified by the PR, read the corresponding screenshot at `tests/e2e/screenshots/<mode>-<page-name>.png` using the Read tool. For each screenshot, evaluate against the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md` and report any layout, affordance, or default-state issues. A PR that touches the renderer but produces no captured screenshot for the affected page is a procedural failure and SHALL be flagged BLOCKING.
 >
 > **PR diff:**
 > {PR_DIFF}
@@ -304,6 +305,16 @@ description: "Review behavioural correctness and edge cases"
 > - BLOCKING: spec-implementation mismatches, cleanup leaks, impossible states
 > - IMPORTANT: edge cases not handled, rapid-trigger issues, component lifecycle bugs
 > - SUGGESTIONS: defensive guards, additional logging
+
+---
+
+## Step 2.5: Visual review prerequisite (renderer-touching PRs only)
+
+Before synthesizing, confirm that:
+
+- [ ] The PR's file list (from Step 1's `gh pr view` output) includes at least one path under `src/renderer/`. If yes, the visual-review responsibility in Subagent 3 is mandatory.
+- [ ] `tests/e2e/screenshots/` contains at least one PNG newer than the PR's branch creation date. If the directory is empty or all PNGs are stale, the smoke spec was not run; the synthesized review SHALL flag this as BLOCKING.
+- [ ] Each renderer-page change has its corresponding screenshot read via the Read tool. Note in the synthesis section which pages were visually reviewed.
 
 ---
 
