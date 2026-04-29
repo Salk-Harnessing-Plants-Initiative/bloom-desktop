@@ -138,6 +138,7 @@ A scanner the user has previously disabled (`GraviScanner.enabled = false` in th
 - **THEN** `scannerAssignments` SHALL contain one entry per detected scanner with `scannerId` set to that scanner's id (not `null`)
 - **AND** each assignment's `gridMode` SHALL default to the currently selected grid mode
 - **AND** each rendered scanner's "Enabled" checkbox SHALL reflect `scannerId !== null`
+- **AND** for fresh-install placeholder scanners (where `DetectedScanner.scanner_id` is the empty-string sentinel), `scannerAssignments[i].scannerId` SHALL preserve the empty-string value rather than coercing to `null` — the empty string is non-null, the checkbox renders checked, and the user defaults to "save these new scanners". The renderer SHALL filter empty-string ids out of any IPC call that uses `scannerId` as a foreign key (`isDbScannerId()` helper) so placeholder ids never reach Prisma. Real DB ids replace the placeholders after the first successful Save + re-detect.
 
 #### Scenario: Disabled scanner from DB is rendered as unchecked but visible
 

@@ -370,12 +370,17 @@ export function useScannerConfig(): UseScannerConfigReturn {
       // treated as `true` (newly-discovered scanners default to checked).
       const isDisabledInDb = s.enabled === false;
       const existing = existingAssignments[index];
-      // scanner_id may be `''` (sentinel for "not yet in DB"); treat as
-      // unassigned so downstream consumers don't FK against a fake id.
-      const id = s.scanner_id || null;
+      // scanner_id may be `''` (sentinel for "not yet in DB"). Preserve it —
+      // the spec scenario "Detection populates scanner assignments" requires
+      // scannerId !== null for every detected scanner so the checkbox
+      // defaults to checked. Downstream consumers (usePlateAssignments,
+      // saveScannersToDB IPC payload builder) filter placeholders by
+      // truthiness, so empty-string ids do NOT leak to FK-bearing IPC.
+      // See: isDbScannerId() helper in this file and parallel filters in
+      // usePlateAssignments.ts.
       return {
         slot: existing?.slot || `Scanner ${index + 1}`,
-        scannerId: isUnchecked || isDisabledInDb ? null : id,
+        scannerId: isUnchecked || isDisabledInDb ? null : s.scanner_id,
         usbPort: s.usb_port,
         gridMode: existing?.gridMode || '2grid',
       };

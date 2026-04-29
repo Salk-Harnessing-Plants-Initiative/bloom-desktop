@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ScannerAssignment, PlateAssignment } from '../../types/graviscan';
-import { createPlateAssignments, AvailablePlate } from '../../types/graviscan';
+import {
+  createPlateAssignments,
+  isDbScannerId,
+  AvailablePlate,
+} from '../../types/graviscan';
 
 interface UsePlateAssignmentsParams {
   selectedExperiment: string;
@@ -76,9 +80,12 @@ export function usePlateAssignments({
     scannerPlateAssignmentsRef.current = scannerPlateAssignments;
   }, [scannerPlateAssignments]);
 
-  // Derived value
+  // Derived value: only scanners with a real DB id participate in
+  // plate-assignment IPC. Placeholder ids (empty string sentinel for
+  // freshly-detected, unsaved scanners) are filtered out so they don't
+  // leak into FK-bearing upserts.
   const assignedScannerIds = scannerAssignments
-    .filter((a) => a.scannerId !== null)
+    .filter((a) => isDbScannerId(a.scannerId))
     .map((a) => a.scannerId as string);
 
   // Stable key for scannerAssignments to avoid infinite re-render loops

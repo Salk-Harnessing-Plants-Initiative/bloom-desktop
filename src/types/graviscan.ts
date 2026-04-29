@@ -385,6 +385,24 @@ export function createEmptyScannerAssignment(
   };
 }
 
+/**
+ * Whether a `ScannerAssignment.scannerId` is a real DB GraviScanner.id —
+ * i.e., something safe to use as a foreign key in plate assignments etc.
+ *
+ * Returns false for both `null` (user unchecked or no detection yet) and
+ * the empty-string sentinel `''` used by buildMockScanners on a fresh
+ * install (the scanner is detected but not yet saved). Only "I have a
+ * real DB id" satisfies this predicate.
+ *
+ * Use this anywhere you'd otherwise write `scannerId !== null` and the
+ * value would be passed to a Prisma FK consumer.
+ */
+export function isDbScannerId(
+  scannerId: string | null | undefined
+): scannerId is string {
+  return typeof scannerId === 'string' && scannerId.length > 0;
+}
+
 // =============================================================================
 // Scan Session State (used by main.ts for IPC session tracking)
 // =============================================================================
