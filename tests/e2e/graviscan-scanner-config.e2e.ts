@@ -191,6 +191,18 @@ test.describe('GraviScan Scanner Config Page', () => {
       timeout: 10000,
     });
 
+    // On fresh DB, detected scanners render unchecked by default
+    // (surface-disabled-scanners-on-detect). User must opt in via checkbox
+    // before Save is enabled.
+    const checkboxes = window.getByRole('checkbox', { name: /Enabled/i });
+    const cbCount = await checkboxes.count();
+    for (let i = 0; i < cbCount; i++) {
+      const cb = checkboxes.nth(i);
+      if (!(await cb.isChecked())) {
+        await cb.check();
+      }
+    }
+
     // Select 2grid radio (default, but verifies it's interactable)
     const gridRadio = window.locator('input[type="radio"][value="2grid"]');
     await gridRadio.check();
@@ -222,6 +234,16 @@ test.describe('GraviScan Scanner Config Page', () => {
     ).toBeVisible({
       timeout: 10000,
     });
+
+    // Enable both detected scanners (placeholder ids start unchecked)
+    const checkboxes = window.getByRole('checkbox', { name: /Enabled/i });
+    const cbCount = await checkboxes.count();
+    for (let i = 0; i < cbCount; i++) {
+      const cb = checkboxes.nth(i);
+      if (!(await cb.isChecked())) {
+        await cb.check();
+      }
+    }
 
     // Set resolution to 600 and save
     await window.locator('select#resolution').selectOption('600');

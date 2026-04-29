@@ -97,6 +97,26 @@ async function launchElectronApp() {
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
 }
 
+/**
+ * Check every "Enabled" checkbox on the Scanner Config page.
+ *
+ * On a fresh test DB, detected mock scanners come back with placeholder
+ * scanner_id values (sentinel for "not yet in DB") and render UNCHECKED by
+ * default — that's the surface-disabled-scanners-on-detect contract: the
+ * user explicitly opts in via the checkbox before Save. Tests must mirror
+ * that flow rather than relying on default-checked behavior.
+ */
+async function checkAllEnabledCheckboxes(page: Page): Promise<void> {
+  const checkboxes = page.getByRole('checkbox', { name: /Enabled/i });
+  const count = await checkboxes.count();
+  for (let i = 0; i < count; i++) {
+    const cb = checkboxes.nth(i);
+    if (!(await cb.isChecked())) {
+      await cb.check();
+    }
+  }
+}
+
 function queryScanners(): Array<{
   id: string;
   name: string;
@@ -161,6 +181,11 @@ test.describe('Scanner Config Save — fix-scanner-config-save-flow', () => {
       window.locator('text=/Mock Scanner|Epson/i').first()
     ).toBeVisible({ timeout: 10000 });
 
+    // On fresh DB, detected mock scanners have placeholder scanner_id and
+    // render unchecked by default (surface-disabled-scanners-on-detect).
+    // Check both Enabled checkboxes before saving.
+    await checkAllEnabledCheckboxes(window);
+
     // Click Save
     await window.getByRole('button', { name: /Save Configuration/i }).click();
 
@@ -200,6 +225,7 @@ test.describe('Scanner Config Save — fix-scanner-config-save-flow', () => {
       window.locator('text=/Mock Scanner|Epson/i').first()
     ).toBeVisible({ timeout: 10000 });
 
+    await checkAllEnabledCheckboxes(window);
     await window.getByRole('button', { name: /Save Configuration/i }).click();
     await window.waitForTimeout(1500);
 
@@ -228,6 +254,7 @@ test.describe('Scanner Config Save — fix-scanner-config-save-flow', () => {
     ).toBeVisible({ timeout: 10000 });
 
     // Save once with both scanners enabled so they exist in DB
+    await checkAllEnabledCheckboxes(window);
     await window.getByRole('button', { name: /Save Configuration/i }).click();
     await window.waitForTimeout(1500);
 
@@ -259,6 +286,8 @@ test.describe('Scanner Config Save — fix-scanner-config-save-flow', () => {
     await expect(
       window.locator('text=/Mock Scanner|Epson/i').first()
     ).toBeVisible({ timeout: 10000 });
+
+    await checkAllEnabledCheckboxes(window);
 
     const saveBtn = window.getByRole('button', {
       name: /Save Configuration/i,
