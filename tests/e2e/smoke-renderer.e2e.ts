@@ -62,6 +62,10 @@ interface RouteSpec {
   readySelector?: string;
 }
 
+// Verified against Layout.tsx alwaysLinks (lines 17–119) on 2026-04-29:
+// 5 entries — Home, Browse Scans, Scientists, Phenotypers, Experiments.
+// /machine-config is reachable from any mode via keyboard shortcut, so it's
+// included in shared even though it's not a sidebar link.
 const SHARED_ROUTES: RouteSpec[] = [
   { pageName: 'home', nav: { kind: 'sidebar-link', name: /^Home$/ } },
   // Machine Config: NOT in sidebar — keyboard shortcut Cmd/Ctrl+Shift+,
@@ -76,14 +80,14 @@ const SHARED_ROUTES: RouteSpec[] = [
           : 'Control+Shift+Comma',
     },
   },
+  { pageName: 'browse-scans', nav: { kind: 'sidebar-link', name: /^Browse Scans$/ } },
   { pageName: 'scientists', nav: { kind: 'sidebar-link', name: /^Scientists$/ } },
   { pageName: 'phenotypers', nav: { kind: 'sidebar-link', name: /^Phenotypers$/ } },
   { pageName: 'experiments', nav: { kind: 'sidebar-link', name: /^Experiments$/ } },
-  { pageName: 'browse-scans', nav: { kind: 'sidebar-link', name: /^Browse Scans$/ } },
-  { pageName: 'browse-graviscan', nav: { kind: 'sidebar-link', name: /^Browse GraviScans$/ } },
 ];
 
 // Cylinder mode (Layout.tsx:289): alwaysLinks + captureLinks.
+// captureLinks (Layout.tsx:121–187): Capture Scan, Camera Settings, Accessions.
 const CYLINDER_ONLY_ROUTES: RouteSpec[] = [
   // /capture-scan — same label as graviscan's /graviscan, but mutually exclusive.
   { pageName: 'capture-scan', nav: { kind: 'sidebar-link', name: /^Capture Scan$/ } },
@@ -92,11 +96,15 @@ const CYLINDER_ONLY_ROUTES: RouteSpec[] = [
 ];
 
 // Graviscan mode (Layout.tsx:291): alwaysLinks + graviScanLinks.
+// graviScanLinks (Layout.tsx:190–266): Scanner Config, Metadata, Capture Scan,
+// Browse GraviScans. NOTE: Browse GraviScans is graviscan-only, NOT shared —
+// it's defined inside graviScanLinks, not alwaysLinks.
 const GRAVISCAN_ONLY_ROUTES: RouteSpec[] = [
   { pageName: 'scanner-config', nav: { kind: 'sidebar-link', name: /^Scanner Config$/ } },
   { pageName: 'metadata', nav: { kind: 'sidebar-link', name: /^Metadata$/ } },
   // In graviscan mode, "Capture Scan" navigates to /graviscan.
   { pageName: 'graviscan', nav: { kind: 'sidebar-link', name: /^Capture Scan$/ } },
+  { pageName: 'browse-graviscan', nav: { kind: 'sidebar-link', name: /^Browse GraviScans$/ } },
 ];
 
 function writeBloomConfig(mode: 'cylinderscan' | 'graviscan'): void {
