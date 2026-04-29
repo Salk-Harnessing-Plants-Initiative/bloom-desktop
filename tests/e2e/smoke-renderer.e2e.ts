@@ -80,19 +80,40 @@ const SHARED_ROUTES: RouteSpec[] = [
           : 'Control+Shift+Comma',
     },
   },
-  { pageName: 'browse-scans', nav: { kind: 'sidebar-link', name: /^Browse Scans$/ } },
-  { pageName: 'scientists', nav: { kind: 'sidebar-link', name: /^Scientists$/ } },
-  { pageName: 'phenotypers', nav: { kind: 'sidebar-link', name: /^Phenotypers$/ } },
-  { pageName: 'experiments', nav: { kind: 'sidebar-link', name: /^Experiments$/ } },
+  {
+    pageName: 'browse-scans',
+    nav: { kind: 'sidebar-link', name: /^Browse Scans$/ },
+  },
+  {
+    pageName: 'scientists',
+    nav: { kind: 'sidebar-link', name: /^Scientists$/ },
+  },
+  {
+    pageName: 'phenotypers',
+    nav: { kind: 'sidebar-link', name: /^Phenotypers$/ },
+  },
+  {
+    pageName: 'experiments',
+    nav: { kind: 'sidebar-link', name: /^Experiments$/ },
+  },
 ];
 
 // Cylinder mode (Layout.tsx:289): alwaysLinks + captureLinks.
 // captureLinks (Layout.tsx:121–187): Capture Scan, Camera Settings, Accessions.
 const CYLINDER_ONLY_ROUTES: RouteSpec[] = [
   // /capture-scan — same label as graviscan's /graviscan, but mutually exclusive.
-  { pageName: 'capture-scan', nav: { kind: 'sidebar-link', name: /^Capture Scan$/ } },
-  { pageName: 'camera-settings', nav: { kind: 'sidebar-link', name: /^Camera Settings$/ } },
-  { pageName: 'accessions', nav: { kind: 'sidebar-link', name: /^Accessions$/ } },
+  {
+    pageName: 'capture-scan',
+    nav: { kind: 'sidebar-link', name: /^Capture Scan$/ },
+  },
+  {
+    pageName: 'camera-settings',
+    nav: { kind: 'sidebar-link', name: /^Camera Settings$/ },
+  },
+  {
+    pageName: 'accessions',
+    nav: { kind: 'sidebar-link', name: /^Accessions$/ },
+  },
 ];
 
 // Graviscan mode (Layout.tsx:291): alwaysLinks + graviScanLinks.
@@ -100,11 +121,20 @@ const CYLINDER_ONLY_ROUTES: RouteSpec[] = [
 // Browse GraviScans. NOTE: Browse GraviScans is graviscan-only, NOT shared —
 // it's defined inside graviScanLinks, not alwaysLinks.
 const GRAVISCAN_ONLY_ROUTES: RouteSpec[] = [
-  { pageName: 'scanner-config', nav: { kind: 'sidebar-link', name: /^Scanner Config$/ } },
+  {
+    pageName: 'scanner-config',
+    nav: { kind: 'sidebar-link', name: /^Scanner Config$/ },
+  },
   { pageName: 'metadata', nav: { kind: 'sidebar-link', name: /^Metadata$/ } },
   // In graviscan mode, "Capture Scan" navigates to /graviscan.
-  { pageName: 'graviscan', nav: { kind: 'sidebar-link', name: /^Capture Scan$/ } },
-  { pageName: 'browse-graviscan', nav: { kind: 'sidebar-link', name: /^Browse GraviScans$/ } },
+  {
+    pageName: 'graviscan',
+    nav: { kind: 'sidebar-link', name: /^Capture Scan$/ },
+  },
+  {
+    pageName: 'browse-graviscan',
+    nav: { kind: 'sidebar-link', name: /^Browse GraviScans$/ },
+  },
 ];
 
 function writeBloomConfig(mode: 'cylinderscan' | 'graviscan'): void {
@@ -172,10 +202,9 @@ async function launchAppForMode(
     windows.find((w) => w.url().includes('localhost')) || windows[0];
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   // Wait for React to mount
-  await window.waitForFunction(
-    () => document.title.includes('Bloom Desktop'),
-    { timeout: 60000 }
-  );
+  await window.waitForFunction(() => document.title.includes('Bloom Desktop'), {
+    timeout: 60000,
+  });
   return { app, window };
 }
 
@@ -229,9 +258,9 @@ test.describe('Smoke: renderer page screenshots', () => {
       await closeElectronApp(app);
     }
     // Sanity: at least the home screenshot should exist
-    expect(
-      fs.existsSync(path.join(SCREENSHOTS_DIR, 'cylinder-home.png'))
-    ).toBe(true);
+    expect(fs.existsSync(path.join(SCREENSHOTS_DIR, 'cylinder-home.png'))).toBe(
+      true
+    );
   });
 
   test('graviscan mode: capture all visible routes', async () => {
