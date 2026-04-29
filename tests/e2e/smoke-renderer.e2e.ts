@@ -21,6 +21,12 @@
  * The Playwright MCP (mcp__playwright__browser_*) cannot drive this Electron
  * app — `window.electron` is undefined in a plain browser. Use this spec or
  * `_electron.launch()` directly.
+ *
+ * CI ARTIFACTS:
+ * CI uploads `tests/e2e/screenshots/` as a `renderer-screenshots-<os>` artifact
+ * downloadable from the PR check page (per the e2e-testing capability spec,
+ * Requirement: CI Integration for E2E Tests). Reviewers can use that artifact
+ * instead of running this spec locally.
  */
 
 import {
