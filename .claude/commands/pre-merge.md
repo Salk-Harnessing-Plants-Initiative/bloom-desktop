@@ -135,6 +135,7 @@ Perform a complete pre-merge check following this workflow:
     - Verify no merge conflicts
     - Ensure PR has required approvals
     - Check for "ready to merge" status
+    - **Renderer screenshots captured + reviewed** (only required if the PR touches `src/renderer/`): run `npm run test:e2e:smoke` and read each affected `tests/e2e/screenshots/<mode>-<page>.png` via the Read tool. Apply the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md`. Record findings in the PR description. If the PR doesn't touch `src/renderer/`, mark this checkbox N/A with a note.
 
 ## Output Format
 
