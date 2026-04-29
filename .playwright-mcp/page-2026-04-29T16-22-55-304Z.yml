@@ -1,6 +1,0 @@
-- generic [active] [ref=e1]:
-  - generic [ref=e2]:
-    - generic [ref=e3] [cursor=pointer]: Main Process
-    - generic [ref=e4] [cursor=pointer]: Renderer Target Bundle (web)
-    - generic [ref=e5] [cursor=pointer]: Renderer Target Bundle (web)
-  - textbox "Terminal input" [ref=e10]

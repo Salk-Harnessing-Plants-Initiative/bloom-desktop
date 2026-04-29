@@ -123,3 +123,4 @@ scripts/*.js
 # Test scan artifacts
 test-scans/
 test-scans-no-meta/
+.playwright-mcp/
