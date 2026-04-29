@@ -50,14 +50,18 @@ const defaultParams = () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   // Restore default happy-path mocks
+  // Mocks use the unwrapped shapes the renderer actually sees through
+  // window.electron.gravi.* (preload's unwrapGravi flattens the envelope).
+  // getOutputDir returns { success, path }; readScanImage returns
+  // { success, dataUri }. See src/main/graviscan/image-handlers.ts.
   mockGraviAPI.getOutputDir.mockResolvedValue({
     success: true,
-    data: '/tmp/graviscan',
+    path: '/tmp/graviscan',
   });
   mockGraviAPI.startScan.mockResolvedValue({ success: true });
   mockGraviAPI.readScanImage.mockResolvedValue({
     success: true,
-    data: 'data:image/tiff;base64,AAAA',
+    dataUri: 'data:image/tiff;base64,AAAA',
   });
   // Event listeners return cleanup fns by default (from setup.ts)
 });

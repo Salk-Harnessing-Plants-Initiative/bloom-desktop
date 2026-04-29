@@ -1043,8 +1043,11 @@ export function registerDatabaseHandlers() {
       }
     ): Promise<DatabaseResponse> => {
       try {
+        // Ignore soft-deleted scans — uniqueness is per active plate barcode
+        // in the wave. graviscans:list also filters `deleted: false`, so a
+        // user can re-scan a barcode after soft-deleting a mistaken scan.
         const existing = await db.graviScan.findFirst({
-          where: { experiment_id, wave_number, plate_barcode },
+          where: { experiment_id, wave_number, plate_barcode, deleted: false },
         });
         return { success: true, data: !existing };
       } catch (error) {

@@ -221,11 +221,15 @@ export async function startScan(
           customNotes.set(key, plate.custom_note ?? null);
         }
       }
+      // Use sessionState.sessionId (which has the DB-issued id from
+      // persistence.createSession when persistence is wired) — falling back
+      // to params.metadata.sessionId if the renderer pre-supplied one.
+      // Reading from params alone would miss the freshly-created DB id.
       coordinator.setSessionContext({
         experiment_id: params.metadata?.experimentId || '',
         phenotyper_id: params.metadata?.phenotyperId || '',
         wave_number: params.metadata?.waveNumber || 0,
-        session_id: params.metadata?.sessionId || null,
+        session_id: sessionState.sessionId,
         resolution: params.metadata?.resolution || 300,
         scannerNames,
         plateBarcodes,

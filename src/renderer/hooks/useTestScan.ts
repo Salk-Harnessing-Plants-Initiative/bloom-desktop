@@ -68,11 +68,13 @@ export function useTestScan({
     const results: Record<string, TestResult> = {};
 
     try {
-      // Get output directory for test scans
+      // Get output directory for test scans.
+      // The main-process handler returns { success, path } (image-handlers.ts:getOutputDir).
+      // unwrapGravi only flattens nested envelopes; it leaves `path` intact.
       const outputDirResult = await window.electron.gravi.getOutputDir();
       const outputDir =
-        outputDirResult.success && outputDirResult.data
-          ? outputDirResult.data
+        outputDirResult.success && outputDirResult.path
+          ? outputDirResult.path
           : '/tmp';
 
       // Test via subprocess: scan all plates per scanner at low resolution
@@ -132,12 +134,13 @@ export function useTestScan({
                 const imgResult = await window.electron.gravi.readScanImage(
                   data.imagePath
                 );
-                if (imgResult.success && imgResult.data) {
+                // readScanImage returns { success, dataUri } (image-handlers.ts).
+                if (imgResult.success && imgResult.dataUri) {
                   setScanImageUris((prev) => ({
                     ...prev,
                     [data.scannerId]: {
                       ...prev[data.scannerId],
-                      [data.plateIndex]: imgResult.data,
+                      [data.plateIndex]: imgResult.dataUri,
                     },
                   }));
                 }

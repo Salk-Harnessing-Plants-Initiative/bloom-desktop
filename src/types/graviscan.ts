@@ -32,6 +32,13 @@ export interface GraviScanMetadataJson {
   capture_date: string;
   interval_seconds?: number;
   duration_seconds?: number;
+  /**
+   * Filename of the image this metadata.json sits next to (without dir).
+   * Optional because legacy single-file scans wrote one shared metadata.json
+   * for the whole grid; per-image writes set this so future readers can
+   * confirm the metadata pairs with the correct TIFF.
+   */
+  image_filename?: string;
 }
 
 // =============================================================================

@@ -3,12 +3,20 @@
  * Provides factory functions to create mock implementations
  * with customizable return values for each IPC method.
  *
+ * IMPORTANT: return shapes must match the *unwrapped* shape that the
+ * renderer sees via `window.electron.gravi.*`. The preload's `unwrapGravi`
+ * helper flattens the main-process `{success, data: <inner>}` envelope and
+ * returns `<inner>` directly. So renderer code reads e.g. `result.scanners`
+ * (not `result.data`), `result.path` (not `result.data`),
+ * `result.dataUri` (not `result.data`). The defaults below mirror that.
+ *
  * Usage:
  *   import { createMockGraviAPI } from '../mocks/gravi-api';
  *   const mockApi = createMockGraviAPI({
  *     detectScanners: vi.fn().mockResolvedValue({
  *       success: true,
- *       data: [createDetectedScanner()],
+ *       scanners: [createDetectedScanner()],
+ *       count: 1,
  *     }),
  *   });
  *   (window.electron.gravi as any) = mockApi;
@@ -26,6 +34,7 @@ export interface MockGraviAPIOverrides {
   getConfig?: ReturnType<typeof vi.fn>;
   saveConfig?: ReturnType<typeof vi.fn>;
   saveScannersToDB?: ReturnType<typeof vi.fn>;
+  disableMissingScanners?: ReturnType<typeof vi.fn>;
   getPlatformInfo?: ReturnType<typeof vi.fn>;
   validateScanners?: ReturnType<typeof vi.fn>;
   validateConfig?: ReturnType<typeof vi.fn>;
@@ -60,49 +69,63 @@ export function createMockGraviAPI(overrides: MockGraviAPIOverrides = {}) {
     // Scanner operations
     detectScanners:
       overrides.detectScanners ??
-      vi.fn().mockResolvedValue({ success: true, data: [] }),
+      vi.fn().mockResolvedValue({ success: true, scanners: [], count: 0 }),
     getConfig:
       overrides.getConfig ??
-      vi.fn().mockResolvedValue({ success: true, data: null }),
+      vi.fn().mockResolvedValue({ success: true, config: null }),
     saveConfig:
       overrides.saveConfig ?? vi.fn().mockResolvedValue({ success: true }),
     saveScannersToDB:
       overrides.saveScannersToDB ??
-      vi.fn().mockResolvedValue({ success: true }),
+      vi.fn().mockResolvedValue({ success: true, scanners: [] }),
+    disableMissingScanners:
+      overrides.disableMissingScanners ??
+      vi.fn().mockResolvedValue({ success: true, disabled: 0 }),
     getPlatformInfo:
       overrides.getPlatformInfo ??
       vi.fn().mockResolvedValue({
         success: true,
-        data: { supported: true, backend: 'sane', mock_enabled: true },
+        supported: true,
+        backend: 'sane',
+        mock_enabled: true,
       }),
     validateScanners:
       overrides.validateScanners ??
-      vi.fn().mockResolvedValue({
-        success: true,
-        data: { isValidated: true, allScannersAvailable: true },
-      }),
+      vi
+        .fn()
+        .mockResolvedValue({ isValidated: true, allScannersAvailable: true }),
     validateConfig:
       overrides.validateConfig ??
-      vi.fn().mockResolvedValue({ success: true, data: { status: 'valid' } }),
-    // Session operations
+      vi.fn().mockResolvedValue({
+        success: true,
+        status: 'valid',
+        matched: [],
+        missing: [],
+        new: [],
+        detectedScanners: [],
+      }),
+    // Session operations.
+    // getScanStatus returns a plain status object (NOT wrapped in {success,data})
+    // because the main-process handler returns the status directly.
     startScan:
       overrides.startScan ?? vi.fn().mockResolvedValue({ success: true }),
     getScanStatus:
       overrides.getScanStatus ??
-      vi.fn().mockResolvedValue({ success: true, data: { isActive: false } }),
+      vi.fn().mockResolvedValue({ isActive: false, jobs: {} }),
     markJobRecorded:
       overrides.markJobRecorded ?? vi.fn().mockResolvedValue({ success: true }),
     cancelScan:
       overrides.cancelScan ?? vi.fn().mockResolvedValue({ success: true }),
-    // Image operations
+    // Image operations — main-process handlers use `path` and `dataUri`,
+    // not `.data`. See src/main/graviscan/image-handlers.ts.
     getOutputDir:
       overrides.getOutputDir ??
-      vi.fn().mockResolvedValue({ success: true, data: '/tmp/graviscan' }),
+      vi.fn().mockResolvedValue({ success: true, path: '/tmp/graviscan' }),
     readScanImage:
       overrides.readScanImage ??
       vi.fn().mockResolvedValue({
         success: true,
-        data: 'data:image/jpeg;base64,',
+        dataUri: 'data:image/jpeg;base64,',
       }),
     uploadAllScans:
       overrides.uploadAllScans ?? vi.fn().mockResolvedValue({ success: true }),

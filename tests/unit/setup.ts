@@ -88,6 +88,9 @@ const mockGraviAPI = {
   getConfig: vi.fn().mockResolvedValue({ success: true, config: null }),
   saveConfig: vi.fn().mockResolvedValue({ success: true, config: null }),
   saveScannersToDB: vi.fn().mockResolvedValue({ success: true }),
+  disableMissingScanners: vi
+    .fn()
+    .mockResolvedValue({ success: true, disabled: 0 }),
   getPlatformInfo: vi.fn().mockResolvedValue({
     success: true,
     supported: true,
@@ -113,10 +116,13 @@ const mockGraviAPI = {
   getScanStatus: vi.fn().mockResolvedValue({ isActive: false, jobs: {} }),
   markJobRecorded: vi.fn().mockResolvedValue({ success: true }),
   cancelScan: vi.fn().mockResolvedValue({ success: true }),
-  // Image operations
+  // Image operations.
+  // getOutputDir's main-process handler returns { success, path } — see
+  // src/main/graviscan/image-handlers.ts:getOutputDir. Mock must mirror
+  // that shape; renderer code (e.g. useTestScan.ts) reads `.path`.
   getOutputDir: vi
     .fn()
-    .mockResolvedValue({ success: true, output_dir: '/tmp/graviscan' }),
+    .mockResolvedValue({ success: true, path: '/tmp/graviscan' }),
   readScanImage: vi
     .fn()
     .mockResolvedValue({ success: true, dataUri: 'data:image/jpeg;base64,' }),

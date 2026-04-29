@@ -203,6 +203,8 @@ describe('db:graviscans:checkBarcodeUniqueInWave', () => {
         experiment_id: 'exp-1',
         wave_number: 3,
         plate_barcode: 'PLATE-42',
+        // Soft-deleted rows are ignored — uniqueness is per active scan only.
+        deleted: false,
       },
     });
   });

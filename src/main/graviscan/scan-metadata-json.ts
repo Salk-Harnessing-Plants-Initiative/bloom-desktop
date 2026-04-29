@@ -49,7 +49,7 @@ export function buildGraviMetadataObject(
   context: GraviScanMetadataContext,
   captureDate: Date = new Date()
 ): GraviScanMetadataJson {
-  const result: Record<string, unknown> = {
+  const result: GraviScanMetadataJson = {
     metadata_version: 1,
     scan_type: 'graviscan',
     experiment_id: context.experiment_id,
@@ -92,7 +92,7 @@ export function buildGraviMetadataObject(
     result.image_filename = context.image_filename;
   }
 
-  return result as unknown as GraviScanMetadataJson;
+  return result;
 }
 
 /**
