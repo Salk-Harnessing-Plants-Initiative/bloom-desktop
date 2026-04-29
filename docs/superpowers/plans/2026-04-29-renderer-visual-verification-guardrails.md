@@ -21,11 +21,13 @@
 - [ ] **Step 1: Confirm `_electron.launch()` is the right entry point**
 
 Run:
+
 ```bash
 grep -n "_electron as electron\|require('electron')" tests/e2e/app-launch.e2e.ts
 ```
 
 Expected output includes:
+
 ```
 33:  _electron as electron,
 48:const electronPath: string = require('electron');
@@ -36,41 +38,45 @@ If line numbers shifted but the imports still exist, that's fine — the plan on
 - [ ] **Step 2: Confirm route map (verified 2026-04-29)**
 
 Run:
+
 ```bash
 grep -nE "<Route path=" src/renderer/App.tsx
 ```
 
 Expected route table (this is the source of truth for the smoke spec's `RouteSpec` arrays in Task 3):
 
-| Route | Mode | Page component | Sidebar label (verified) | Sidebar visible? |
-|---|---|---|---|---|
-| `/` | both | `Home` | `Home` | yes |
-| `/machine-config` | both | `MachineConfiguration` | (none) | NO — accessed via Cmd+Shift+, keyboard shortcut |
-| `/scientists` | both | `Scientists` | `Scientists` | yes |
-| `/phenotypers` | both | `Phenotypers` | `Phenotypers` | yes |
-| `/experiments` | both | `Experiments` | `Experiments` | yes |
-| `/browse-scans` | both | `BrowseScans` | `Browse Scans` | yes |
-| `/browse-graviscan` | both | `BrowseGraviScans` | `Browse GraviScans` | yes |
-| `/camera-settings` | cylinder only | `CameraSettings` | `Camera Settings` | yes (cylinder mode) |
-| `/capture-scan` | cylinder only | `CaptureScan` | `Capture Scan` | yes (cylinder mode) |
-| `/accessions` | cylinder only | `Accessions` | `Accessions` | yes (cylinder mode) |
-| `/scanner-config` | graviscan only | `ScannerConfig` | `Scanner Config` | yes (graviscan mode) |
-| `/metadata` | graviscan only | `Metadata` | `Metadata` | yes (graviscan mode) |
-| `/graviscan` | graviscan only | `GraviScanPage` | `Capture Scan` | yes (graviscan mode) — **NOTE: same label as cylinder's /capture-scan, mutually exclusive by mode** |
-| `/scan/:scanId` | both | `ScanPreview` | (none) | parameterized — SKIP in smoke spec |
+| Route               | Mode           | Page component         | Sidebar label (verified) | Sidebar visible?                                                                                    |
+| ------------------- | -------------- | ---------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
+| `/`                 | both           | `Home`                 | `Home`                   | yes                                                                                                 |
+| `/machine-config`   | both           | `MachineConfiguration` | (none)                   | NO — accessed via Cmd+Shift+, keyboard shortcut                                                     |
+| `/scientists`       | both           | `Scientists`           | `Scientists`             | yes                                                                                                 |
+| `/phenotypers`      | both           | `Phenotypers`          | `Phenotypers`            | yes                                                                                                 |
+| `/experiments`      | both           | `Experiments`          | `Experiments`            | yes                                                                                                 |
+| `/browse-scans`     | both           | `BrowseScans`          | `Browse Scans`           | yes                                                                                                 |
+| `/browse-graviscan` | both           | `BrowseGraviScans`     | `Browse GraviScans`      | yes                                                                                                 |
+| `/camera-settings`  | cylinder only  | `CameraSettings`       | `Camera Settings`        | yes (cylinder mode)                                                                                 |
+| `/capture-scan`     | cylinder only  | `CaptureScan`          | `Capture Scan`           | yes (cylinder mode)                                                                                 |
+| `/accessions`       | cylinder only  | `Accessions`           | `Accessions`             | yes (cylinder mode)                                                                                 |
+| `/scanner-config`   | graviscan only | `ScannerConfig`        | `Scanner Config`         | yes (graviscan mode)                                                                                |
+| `/metadata`         | graviscan only | `Metadata`             | `Metadata`               | yes (graviscan mode)                                                                                |
+| `/graviscan`        | graviscan only | `GraviScanPage`        | `Capture Scan`           | yes (graviscan mode) — **NOTE: same label as cylinder's /capture-scan, mutually exclusive by mode** |
+| `/scan/:scanId`     | both           | `ScanPreview`          | (none)                   | parameterized — SKIP in smoke spec                                                                  |
 
 If `App.tsx` or `Layout.tsx` has changed labels or routes since 2026-04-29:
+
 1. Update this table.
 2. Update the `RouteSpec` arrays in Task 3 Step 2 to match.
 
 - [ ] **Step 3: Verify sidebar link labels (verified 2026-04-29)**
 
 Run:
+
 ```bash
 grep -nE "label: '" src/renderer/Layout.tsx
 ```
 
 Expected output (from the codebase as of 2026-04-29):
+
 ```
 20:    label: 'Home',
 40:    label: 'Browse Scans',
@@ -93,11 +99,13 @@ If any label has changed, update Task 3 Step 2's `navLocator` regexes accordingl
 - [ ] **Step 4: Verify helper APIs**
 
 Run:
+
 ```bash
 grep -nE "^export" tests/e2e/helpers/electron-cleanup.ts tests/e2e/helpers/bloom-config.ts
 ```
 
 Expected:
+
 - `tests/e2e/helpers/electron-cleanup.ts` exports `async function closeElectronApp(electronApp: ElectronApplication | undefined, options?: { timeout?: number; verbose?: boolean }): Promise<void>`. The smoke spec calls it with one arg.
 - `tests/e2e/helpers/bloom-config.ts` exports `createTestBloomConfig(testScansDir?: string): void` (hard-codes `SCANNER_MODE=cylinderscan`) and `cleanupTestBloomConfig(): void`. The smoke spec writes its own `.env` inline because we need both modes — see Task 2's `writeBloomConfig()` helper.
 
@@ -106,6 +114,7 @@ If signatures differ, update Task 2's helper functions.
 - [ ] **Step 5: Verify Playwright config**
 
 Run:
+
 ```bash
 grep -nE "projects:|testDir" playwright.config.ts
 ```
@@ -117,6 +126,7 @@ If `projects:` is now present, update Task 4 Step 2's npm script to include the 
 - [ ] **Step 6: Verify dev server is running (smoke spec depends on it)**
 
 Run:
+
 ```bash
 lsof -iTCP -sTCP:LISTEN -P | grep -E ":3000|:9000"
 ```
@@ -126,6 +136,7 @@ Expected: at least one node process listening on port 9000 AND port 3000. If no 
 - [ ] **Step 7: Verify webpack dev bundle exists**
 
 Run:
+
 ```bash
 test -f .webpack/main/index.js && echo "OK" || echo "MISSING"
 ```
@@ -141,6 +152,7 @@ Do NOT commit anything from this task. Proceed to Task 1.
 ## Task 1: Set up screenshots directory + .gitignore
 
 **Files:**
+
 - Create: `tests/e2e/screenshots/.gitkeep`
 - Modify: `.gitignore`
 
@@ -175,13 +187,16 @@ tests/e2e/screenshots/*.png
 - [ ] **Step 3: Verify the gitignore rule works**
 
 Run:
+
 ```bash
 touch tests/e2e/screenshots/test.png
 git status tests/e2e/screenshots/
 ```
+
 Expected: `test.png` does NOT appear in `git status` output. `.gitkeep` is already tracked (or stages cleanly).
 
 Then clean up:
+
 ```bash
 rm tests/e2e/screenshots/test.png
 ```
@@ -198,6 +213,7 @@ git commit -m "chore(e2e): add tests/e2e/screenshots/ output directory + gitigno
 ## Task 2: Write the smoke spec (full content, verified locators)
 
 **Files:**
+
 - Create: `tests/e2e/smoke-renderer.e2e.ts`
 
 The spec uses the verified route map from Task 0 and the verified `RouteSpec` shape from Task 3 Step 2 below. Task 2 and Task 3 are sequential: Task 2 writes the spec; Task 3 runs it and captures screenshots; if any locator fails, Task 3 Step 6 records the failure and the engineer fixes the locator inline (it's a regex change, not a structural change).
@@ -285,27 +301,57 @@ const SHARED_ROUTES: RouteSpec[] = [
           : 'Control+Shift+Comma',
     },
   },
-  { pageName: 'scientists', nav: { kind: 'sidebar-link', name: /^Scientists$/ } },
-  { pageName: 'phenotypers', nav: { kind: 'sidebar-link', name: /^Phenotypers$/ } },
-  { pageName: 'experiments', nav: { kind: 'sidebar-link', name: /^Experiments$/ } },
-  { pageName: 'browse-scans', nav: { kind: 'sidebar-link', name: /^Browse Scans$/ } },
-  { pageName: 'browse-graviscan', nav: { kind: 'sidebar-link', name: /^Browse GraviScans$/ } },
+  {
+    pageName: 'scientists',
+    nav: { kind: 'sidebar-link', name: /^Scientists$/ },
+  },
+  {
+    pageName: 'phenotypers',
+    nav: { kind: 'sidebar-link', name: /^Phenotypers$/ },
+  },
+  {
+    pageName: 'experiments',
+    nav: { kind: 'sidebar-link', name: /^Experiments$/ },
+  },
+  {
+    pageName: 'browse-scans',
+    nav: { kind: 'sidebar-link', name: /^Browse Scans$/ },
+  },
+  {
+    pageName: 'browse-graviscan',
+    nav: { kind: 'sidebar-link', name: /^Browse GraviScans$/ },
+  },
 ];
 
 // Cylinder mode (Layout.tsx:289): alwaysLinks + captureLinks.
 const CYLINDER_ONLY_ROUTES: RouteSpec[] = [
   // /capture-scan — same label as graviscan's /graviscan, but mutually exclusive.
-  { pageName: 'capture-scan', nav: { kind: 'sidebar-link', name: /^Capture Scan$/ } },
-  { pageName: 'camera-settings', nav: { kind: 'sidebar-link', name: /^Camera Settings$/ } },
-  { pageName: 'accessions', nav: { kind: 'sidebar-link', name: /^Accessions$/ } },
+  {
+    pageName: 'capture-scan',
+    nav: { kind: 'sidebar-link', name: /^Capture Scan$/ },
+  },
+  {
+    pageName: 'camera-settings',
+    nav: { kind: 'sidebar-link', name: /^Camera Settings$/ },
+  },
+  {
+    pageName: 'accessions',
+    nav: { kind: 'sidebar-link', name: /^Accessions$/ },
+  },
 ];
 
 // Graviscan mode (Layout.tsx:291): alwaysLinks + graviScanLinks.
 const GRAVISCAN_ONLY_ROUTES: RouteSpec[] = [
-  { pageName: 'scanner-config', nav: { kind: 'sidebar-link', name: /^Scanner Config$/ } },
+  {
+    pageName: 'scanner-config',
+    nav: { kind: 'sidebar-link', name: /^Scanner Config$/ },
+  },
   { pageName: 'metadata', nav: { kind: 'sidebar-link', name: /^Metadata$/ } },
   // In graviscan mode, "Capture Scan" navigates to /graviscan.
-  { pageName: 'graviscan', nav: { kind: 'sidebar-link', name: /^Capture Scan$/ } },
+  {
+    pageName: 'graviscan',
+    nav: { kind: 'sidebar-link', name: /^Capture Scan$/ },
+  },
 ];
 
 function writeBloomConfig(mode: 'cylinderscan' | 'graviscan'): void {
@@ -373,10 +419,9 @@ async function launchAppForMode(
     windows.find((w) => w.url().includes('localhost')) || windows[0];
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   // Wait for React to mount
-  await window.waitForFunction(
-    () => document.title.includes('Bloom Desktop'),
-    { timeout: 60000 }
-  );
+  await window.waitForFunction(() => document.title.includes('Bloom Desktop'), {
+    timeout: 60000,
+  });
   return { app, window };
 }
 
@@ -430,9 +475,9 @@ test.describe('Smoke: renderer page screenshots', () => {
       await closeElectronApp(app);
     }
     // Sanity: at least the home screenshot should exist
-    expect(
-      fs.existsSync(path.join(SCREENSHOTS_DIR, 'cylinder-home.png'))
-    ).toBe(true);
+    expect(fs.existsSync(path.join(SCREENSHOTS_DIR, 'cylinder-home.png'))).toBe(
+      true
+    );
   });
 
   test('graviscan mode: capture all visible routes', async () => {
@@ -471,6 +516,7 @@ git commit -m "test(e2e): add smoke-renderer spec for visual verification of all
 ## Task 3: Run the smoke spec and verify every screenshot landed
 
 **Files:**
+
 - Possibly modify: `tests/e2e/smoke-renderer.e2e.ts` (only if a locator regex fails — see Step 6)
 
 Task 2's spec uses verified locators. This task runs it, confirms all expected screenshots land, and provides the recovery path if any locator turns out to be wrong (e.g., Layout.tsx changed since 2026-04-29).
@@ -555,6 +601,7 @@ ONLY do this step if Step 4 found missing PNGs.
 For each missing screenshot's `pageName`, find the corresponding `RouteSpec` entry in `tests/e2e/smoke-renderer.e2e.ts`. Open the live app (or read `src/renderer/Layout.tsx`) and find the actual visible label for that link. Update the regex.
 
 Common gotchas:
+
 - Label has trailing/leading whitespace: relax the regex from `/^X$/` to `/^\s*X\s*$/`.
 - Label uses an em-dash or other unicode: include it in the regex.
 - The link is rendered conditionally (e.g., gated on `mode === 'graviscan'`) and your test launched the wrong mode — verify the test case matches the route's required mode.
@@ -564,6 +611,7 @@ After fixing, re-run Step 3 and re-confirm Step 4.
 - [ ] **Step 7: Read 3 screenshots via the Read tool to actually look at them**
 
 Use the Read tool on each of:
+
 - `tests/e2e/screenshots/cylinder-home.png`
 - `tests/e2e/screenshots/graviscan-scanner-config.png`
 - `tests/e2e/screenshots/graviscan-graviscan.png`
@@ -586,6 +634,7 @@ If Step 6 was a no-op, skip this commit.
 ## Task 4: Add npm script for the smoke spec
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Read current scripts**
@@ -628,6 +677,7 @@ git commit -m "chore: add test:e2e:smoke npm script"
 ## Task 5: Document the workflow in the electron-playwright-workflow skill
 
 **Files:**
+
 - Modify: `.claude/skills/electron-playwright-workflow/SKILL.md`
 
 - [ ] **Step 1: Read the existing skill to find the right insertion point**
@@ -683,7 +733,6 @@ Do NOT waste time trying to use the MCP browser to "look at" the app's renderer 
 - New page added: extend `SHARED_ROUTES`, `CYLINDER_ONLY_ROUTES`, or `GRAVISCAN_ONLY_ROUTES` in `tests/e2e/smoke-renderer.e2e.ts` with the new `RouteSpec` entry.
 - Route requires interaction before it's visually meaningful (e.g., a wizard step that needs prior input): write a focused E2E spec that drives the interaction and screenshots after each step. The smoke spec captures default state only.
 - Pixel-diff regression suite: NOT in scope today. If someone proposes adding `toHaveScreenshot()` baseline assertions, treat that as a separate proposal.
-
 ```
 
 - [ ] **Step 3: Verify the file still parses**
@@ -706,6 +755,7 @@ git commit -m "docs(skill): mandate visual verification for renderer changes via
 ## Task 6: Update the new-feature command
 
 **Files:**
+
 - Modify: `.claude/commands/new-feature.md`
 
 - [ ] **Step 1: Read the file**
@@ -719,7 +769,6 @@ cat .claude/commands/new-feature.md
 Open `.claude/commands/new-feature.md`. At the END of the file (after the last existing line), append:
 
 ```markdown
-
 ## Renderer / UI guardrails (MANDATORY for any change touching `src/renderer/`)
 
 If the feature touches the renderer, the OpenSpec proposal MUST include the following in its task list:
@@ -751,6 +800,7 @@ git commit -m "docs(commands): require renderer-touching proposals to include vi
 ## Task 7: Update the review-pr command
 
 **Files:**
+
 - Modify: `.claude/commands/review-pr.md`
 
 - [ ] **Step 1: Find the right insertion point**
@@ -781,7 +831,6 @@ Before synthesizing, confirm that:
 - [ ] The PR's file list (from Step 1's `gh pr view` output) includes at least one path under `src/renderer/`. If yes, the visual-review responsibility in Subagent 3 is mandatory.
 - [ ] `tests/e2e/screenshots/` contains at least one PNG newer than the PR's branch creation date. If the directory is empty or all PNGs are stale, the smoke spec was not run; the synthesized review SHALL flag this as BLOCKING.
 - [ ] Each renderer-page change has its corresponding screenshot read via the Read tool. Note in the synthesis section which pages were visually reviewed.
-
 ```
 
 - [ ] **Step 4: Verify**
@@ -804,6 +853,7 @@ git commit -m "docs(commands): review-pr 5-agent team must read screenshot artif
 ## Task 8: Update the pre-merge command
 
 **Files:**
+
 - Modify: `.claude/commands/pre-merge.md`
 
 - [ ] **Step 1: Find the existing checklist or final-verification section**
@@ -840,6 +890,7 @@ git commit -m "docs(commands): pre-merge requires renderer screenshot capture + 
 ## Task 9: Update OpenSpec conventions
 
 **Files:**
+
 - Modify: `openspec/AGENTS.md`
 
 - [ ] **Step 1: Find the design-doc Goals/Non-Goals section**
@@ -882,7 +933,6 @@ State up front what's out of scope so reviewers don't ask. Common categories:
 - Backwards compatibility / migration tooling for changes that don't ship to existing users
 - Performance work that's downstream of the immediate functional fix
 - Refactors that would expand the proposal's scope beyond review-able size
-
 ```
 
 - [ ] **Step 3: Verify validation still works**
@@ -921,6 +971,7 @@ Expected: exactly 20 PNGs (10 per mode). If the count is below 20, scan the test
 - [ ] **Step 2: Read 3 representative screenshots via the Read tool**
 
 Use the `Read` tool on:
+
 - `tests/e2e/screenshots/cylinder-home.png`
 - `tests/e2e/screenshots/graviscan-scanner-config.png`
 - `tests/e2e/screenshots/graviscan-graviscan.png`
@@ -980,18 +1031,18 @@ git push
 
 **Spec coverage check:**
 
-| User-stated requirement | Task that implements it |
-|---|---|
-| (1) Smoke spec covers all renderer pages | Tasks 2–4 |
-| (2) Update electron-playwright-workflow SKILL.md | Task 5 |
-| (3) Update new-feature command | Task 6 |
-| (4) Update review-pr command | Task 7 |
-| (5) Update pre-merge command | Task 8 |
-| (6) Update OpenSpec AGENTS.md | Task 9 |
-| End-to-end smoke spec works locally | Task 10 |
-| `playwright.config.ts` UNCHANGED | Confirmed: no task touches it. Smoke spec calls `page.screenshot()` explicitly. |
-| Eyeball-only, no pixel-diff | Confirmed: no `toHaveScreenshot()` anywhere. |
-| Document MCP-vs-Electron limitation | Task 5 (skill) + Task 2 spec header comment. |
+| User-stated requirement                          | Task that implements it                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| (1) Smoke spec covers all renderer pages         | Tasks 2–4                                                                       |
+| (2) Update electron-playwright-workflow SKILL.md | Task 5                                                                          |
+| (3) Update new-feature command                   | Task 6                                                                          |
+| (4) Update review-pr command                     | Task 7                                                                          |
+| (5) Update pre-merge command                     | Task 8                                                                          |
+| (6) Update OpenSpec AGENTS.md                    | Task 9                                                                          |
+| End-to-end smoke spec works locally              | Task 10                                                                         |
+| `playwright.config.ts` UNCHANGED                 | Confirmed: no task touches it. Smoke spec calls `page.screenshot()` explicitly. |
+| Eyeball-only, no pixel-diff                      | Confirmed: no `toHaveScreenshot()` anywhere.                                    |
+| Document MCP-vs-Electron limitation              | Task 5 (skill) + Task 2 spec header comment.                                    |
 
 **Placeholder scan:** No "TBD", "TODO", "implement later", "fill in details", "Add appropriate error handling", or "Similar to Task N" anywhere. Code blocks are complete.
 
