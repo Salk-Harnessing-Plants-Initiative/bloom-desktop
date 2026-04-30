@@ -5,11 +5,12 @@ interface UseWaveNumberParams {
   selectedExperiment: string;
   scannerPlateAssignments: Record<string, PlateAssignment[]>;
   scanCompletionCounter: number;
+  /** Lifted wave state — owned by parent so other hooks can read it */
+  waveNumber: number;
+  setWaveNumber: React.Dispatch<React.SetStateAction<number>>;
 }
 
 interface UseWaveNumberReturn {
-  waveNumber: number;
-  setWaveNumber: React.Dispatch<React.SetStateAction<number>>;
   suggestedWaveNumber: number | null;
   barcodeWaveConflicts: Record<string, string>;
   waveRestoredRef: React.MutableRefObject<boolean>;
@@ -19,8 +20,9 @@ export function useWaveNumber({
   selectedExperiment,
   scannerPlateAssignments,
   scanCompletionCounter,
+  waveNumber,
+  setWaveNumber,
 }: UseWaveNumberParams): UseWaveNumberReturn {
-  const [waveNumber, setWaveNumber] = useState<number>(0);
   const [suggestedWaveNumber, setSuggestedWaveNumber] = useState<number | null>(
     null
   );
@@ -127,8 +129,6 @@ export function useWaveNumber({
   ]);
 
   return {
-    waveNumber,
-    setWaveNumber,
     suggestedWaveNumber,
     barcodeWaveConflicts,
     waveRestoredRef,

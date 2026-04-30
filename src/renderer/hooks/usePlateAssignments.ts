@@ -8,6 +8,8 @@ interface UsePlateAssignmentsParams {
   selectedExperiment: string;
   scannerAssignments: ScannerAssignment[];
   setScanError: React.Dispatch<React.SetStateAction<string | null>>;
+  /** Current wave number — used to pick wave-scoped metadata for graviscan experiments */
+  waveNumber: number;
 }
 
 export interface UsePlateAssignmentsReturn {
@@ -33,6 +35,7 @@ export function usePlateAssignments({
   selectedExperiment,
   scannerAssignments,
   setScanError,
+  waveNumber,
 }: UsePlateAssignmentsParams): UsePlateAssignmentsReturn {
   const { showToast } = useToast();
 
@@ -100,23 +103,42 @@ export function usePlateAssignments({
       let hasGraviMetadata = false;
 
       try {
-        // First get the experiment to find its accession
+        // Resolve which accession_id provides metadata:
+        // - CylinderScan experiments: Experiment.accession_id (legacy single link)
+        // - GraviScan experiments: GraviExperimentWaveMetadata for the current wave
         const expResult =
           await window.electron.database.experiments.get(selectedExperiment);
         console.log('[GraviScan] Experiment data:', expResult.data);
 
-        if (
-          !expResult.success ||
-          !expResult.data ||
-          !expResult.data.accession_id
-        ) {
-          console.log('[GraviScan] No accession linked to experiment');
+        let accessionId: string | null = null;
+        if (expResult.success && expResult.data) {
+          if (expResult.data.experiment_type === 'graviscan') {
+            const linksResult =
+              await window.electron.database.experiments.listGraviMetadata(
+                selectedExperiment
+              );
+            if (linksResult.success && linksResult.data) {
+              const match = linksResult.data.find(
+                (l) => l.wave_number === waveNumber
+              );
+              accessionId = match?.accession_id ?? null;
+              console.log(
+                `[GraviScan] Wave ${waveNumber} accession:`,
+                accessionId
+              );
+            }
+          } else {
+            accessionId = expResult.data.accession_id ?? null;
+          }
+        }
+
+        if (!accessionId) {
+          console.log('[GraviScan] No accession linked for current wave');
           setAvailableBarcodes([]);
           setBarcodeGenotypes({});
           setIsGraviMetadata(false);
           setAvailablePlates([]);
         } else {
-          const accessionId = expResult.data.accession_id;
           console.log(
             '[GraviScan] Fetching mappings for accession:',
             accessionId
@@ -279,7 +301,7 @@ export function usePlateAssignments({
     }
 
     loadExperimentData();
-  }, [selectedExperiment, scannerAssignments]);
+  }, [selectedExperiment, scannerAssignments, waveNumber]);
 
   // Auto-assign plates from GraviScan metadata to scanner grid positions
   // First-come-first-served by metadata row order, sorted across scanners
