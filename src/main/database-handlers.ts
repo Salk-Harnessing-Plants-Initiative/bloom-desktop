@@ -40,6 +40,20 @@ function logDatabaseOperation(
 }
 
 /**
+ * Count how many experiments reference a given Accessions record across both
+ * link paths: Experiment.accession_id (CylinderScan) and GraviExperimentWaveMetadata
+ * (GraviScan). Used by delete handlers to block deletion when references exist.
+ */
+async function countMetadataReferences(accessionId: string): Promise<number> {
+  const db = getDatabase();
+  const [cylRefs, gravRefs] = await Promise.all([
+    db.experiment.count({ where: { accession_id: accessionId } }),
+    db.graviExperimentWaveMetadata.count({ where: { accession_id: accessionId } }),
+  ]);
+  return cylRefs + gravRefs;
+}
+
+/**
  * Register all database IPC handlers
  *
  * Handlers follow naming convention: db:{model}:{action}
@@ -183,6 +197,110 @@ export function registerDatabaseHandlers() {
         return { success: true, data: experiment };
       } catch (error) {
         console.error('[DB] Failed to attach accession to experiment:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  // ============================================
+  // GraviScan wave-scoped metadata linking
+  // ============================================
+
+  ipcMain.handle(
+    'db:experiments:linkGraviMetadata',
+    async (
+      _event,
+      experimentId: string,
+      waveNumber: number,
+      accessionId: string
+    ): Promise<DatabaseResponse> => {
+      try {
+        const existing = await db.graviExperimentWaveMetadata.findUnique({
+          where: {
+            experiment_id_wave_number: {
+              experiment_id: experimentId,
+              wave_number: waveNumber,
+            },
+          },
+        });
+        if (existing) {
+          return {
+            success: false,
+            error: `Wave ${waveNumber} already has linked metadata. Unlink first.`,
+          };
+        }
+
+        const link = await db.graviExperimentWaveMetadata.create({
+          data: {
+            experiment_id: experimentId,
+            wave_number: waveNumber,
+            accession_id: accessionId,
+          },
+        });
+
+        logDatabaseOperation(
+          'CREATE',
+          'GraviExperimentWaveMetadata',
+          `experiment=${experimentId} wave=${waveNumber} accession=${accessionId}`
+        );
+        return { success: true, data: link };
+      } catch (error) {
+        console.error('[DB:Metadata] linkGraviMetadata failed:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:experiments:unlinkGraviMetadata',
+    async (
+      _event,
+      experimentId: string,
+      waveNumber: number
+    ): Promise<DatabaseResponse> => {
+      try {
+        await db.graviExperimentWaveMetadata.delete({
+          where: {
+            experiment_id_wave_number: {
+              experiment_id: experimentId,
+              wave_number: waveNumber,
+            },
+          },
+        });
+        logDatabaseOperation(
+          'DELETE',
+          'GraviExperimentWaveMetadata',
+          `experiment=${experimentId} wave=${waveNumber}`
+        );
+        return { success: true };
+      } catch (error) {
+        console.error('[DB:Metadata] unlinkGraviMetadata failed:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    'db:experiments:listGraviMetadata',
+    async (_event, experimentId: string): Promise<DatabaseResponse> => {
+      try {
+        const links = await db.graviExperimentWaveMetadata.findMany({
+          where: { experiment_id: experimentId },
+          include: { accession: true },
+          orderBy: { wave_number: 'asc' },
+        });
+        return { success: true, data: links };
+      } catch (error) {
+        console.error('[DB:Metadata] listGraviMetadata failed:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -449,26 +567,30 @@ export function registerDatabaseHandlers() {
     'db:accessions:delete',
     async (_event, id: string): Promise<DatabaseResponse> => {
       try {
-        // Delete in transaction (cascade will handle plant mappings)
+        // Block deletion if metadata is linked to any experiment
+        // (cylinderscan: Experiment.accession_id, graviscan: GraviExperimentWaveMetadata)
+        const linkedCount = await countMetadataReferences(id);
+        if (linkedCount > 0) {
+          return {
+            success: false,
+            error: `Metadata is linked to ${linkedCount} experiment(s). Unlink before deleting.`,
+          };
+        }
+
         const result = await db.$transaction(async (tx) => {
-          // First delete all plant mappings
           await tx.plantAccessionMappings.deleteMany({
             where: { accession_file_id: id },
           });
-
-          // Then delete the accession
           const accession = await tx.accessions.delete({
             where: { id },
           });
-
           return accession;
         });
 
         logDatabaseOperation('DELETE', 'Accession', `id=${id}`);
-
         return { success: true, data: result };
       } catch (error) {
-        console.error('[DB] Failed to delete accession:', error);
+        console.error('[DB:Metadata] Failed to delete accession:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -1730,26 +1852,27 @@ export function registerDatabaseHandlers() {
     'db:graviPlateAccessions:delete',
     async (_event, metadataFileId: string): Promise<DatabaseResponse> => {
       try {
+        // Block deletion if metadata is linked to any experiment
+        const linkedCount = await countMetadataReferences(metadataFileId);
+        if (linkedCount > 0) {
+          return {
+            success: false,
+            error: `Metadata is linked to ${linkedCount} experiment(s). Unlink before deleting.`,
+          };
+        }
+
         await db.$transaction(async (tx) => {
-          // Get all plate accession IDs for this file
           const plates = await tx.graviPlateAccession.findMany({
             where: { metadata_file_id: metadataFileId },
             select: { id: true },
           });
 
-          // Delete section mappings
           await tx.graviPlateSectionMapping.deleteMany({
-            where: {
-              gravi_plate_id: { in: plates.map((p) => p.id) },
-            },
+            where: { gravi_plate_id: { in: plates.map((p) => p.id) } },
           });
-
-          // Delete plate accessions
           await tx.graviPlateAccession.deleteMany({
             where: { metadata_file_id: metadataFileId },
           });
-
-          // Delete the parent Accessions record
           await tx.accessions.delete({
             where: { id: metadataFileId },
           });
@@ -1763,7 +1886,7 @@ export function registerDatabaseHandlers() {
 
         return { success: true };
       } catch (error) {
-        console.error('[DB] Failed to delete gravi plate accessions:', error);
+        console.error('[DB:Metadata] Failed to delete gravi plate accessions:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
