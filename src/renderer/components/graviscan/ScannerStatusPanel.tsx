@@ -32,22 +32,33 @@ export function ScannerStatusPanel({
   const [scanners, setScanners] = useState<ScannerStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Fetch real-time scanner status from main process
+  const loadStatus = async () => {
+    try {
+      const result = await window.electron.graviscan.getScannerStatus();
+      if (result.success) {
+        setScanners(result.scanners);
+      }
+    } catch {
+      // graviscan may not be available
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load scanner status on mount
   useEffect(() => {
-    const loadStatus = async () => {
-      try {
-        const result = await window.electron.graviscan.getScannerStatus();
-        if (result.success) {
-          setScanners(result.scanners);
-        }
-      } catch {
-        // graviscan may not be available
-      } finally {
-        setLoading(false);
-      }
-    };
     loadStatus();
   }, []);
+
+  // Poll while any scanner is in transient 'starting' state. Catches the case
+  // where init events fired before the component mounted/subscribed.
+  useEffect(() => {
+    const hasStarting = scanners.some((s) => s.status === 'starting');
+    if (!hasStarting) return;
+    const id = setInterval(loadStatus, 1500);
+    return () => clearInterval(id);
+  }, [scanners]);
 
   // Subscribe to real-time status updates
   useEffect(() => {

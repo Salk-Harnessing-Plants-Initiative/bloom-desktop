@@ -120,6 +120,15 @@ export function useScannerStatus(): UseScannerStatusReturn {
     loadScannerData();
   }, [loadScannerData]);
 
+  // Poll while any scanner is in transient 'starting' state. Catches the case
+  // where init events fired before the component mounted/subscribed.
+  useEffect(() => {
+    const hasStarting = scannerStatuses.some((s) => s.status === 'starting');
+    if (!hasStarting) return;
+    const id = setInterval(loadScannerData, 1500);
+    return () => clearInterval(id);
+  }, [scannerStatuses, loadScannerData]);
+
   // Subscribe to real-time status updates
   useEffect(() => {
     const cleanup = window.electron.graviscan.onScannerInitStatus?.(
