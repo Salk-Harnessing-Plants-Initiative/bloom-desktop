@@ -40,6 +40,7 @@ model Experiment {
   graviscanScans       GraviScan[]
   graviscanSessions    GraviScanSession[]
   graviscanPlateAssignments GraviScanPlateAssignment[]
+  waveMetadata         GraviExperimentWaveMetadata[]
 }
 
 model Accessions {
@@ -49,6 +50,7 @@ model Accessions {
   experiments Experiment[]             @relation("AccessionToExperiment")
   mappings    PlantAccessionMappings[]
   graviPlateAccessions GraviPlateAccession[]
+  waveLinks   GraviExperimentWaveMetadata[]
 }
 
 model PlantAccessionMappings {
@@ -252,4 +254,21 @@ model GraviPlateSectionMapping {
   @@unique([gravi_plate_id, plant_qr])
   @@index([gravi_plate_id])
   @@index([plant_qr])
+}
+
+// Wave-scoped metadata link: each (experiment, wave) has at most one metadata file.
+// GraviScan-only — CylinderScan continues to use Experiment.accession_id.
+model GraviExperimentWaveMetadata {
+  id            String   @id @default(uuid())
+  experiment_id String
+  wave_number   Int
+  accession_id  String
+  createdAt     DateTime @default(now())
+
+  experiment    Experiment @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
+  accession     Accessions @relation(fields: [accession_id], references: [id])
+
+  @@unique([experiment_id, wave_number])
+  @@index([experiment_id])
+  @@index([accession_id])
 }
