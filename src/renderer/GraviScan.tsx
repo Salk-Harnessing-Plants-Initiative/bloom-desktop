@@ -112,6 +112,10 @@ export function GraviScan() {
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanSuccess, setScanSuccess] = useState<string | null>(null);
 
+  // Wave state — lifted here so usePlateAssignments can read the current
+  // wave to look up GraviExperimentWaveMetadata for graviscan experiments.
+  const [waveNumber, setWaveNumber] = useState<number>(0);
+
   // Plate assignments (extracted hook)
   const {
     scannerPlateAssignments,
@@ -127,20 +131,18 @@ export function GraviScan() {
     selectedExperiment,
     scannerAssignments,
     setScanError,
+    waveNumber,
   });
 
-  // Wave tracking (extracted hook)
-  const {
-    waveNumber,
-    setWaveNumber,
-    suggestedWaveNumber,
-    barcodeWaveConflicts,
-    waveRestoredRef,
-  } = useWaveNumber({
-    selectedExperiment,
-    scannerPlateAssignments,
-    scanCompletionCounter,
-  });
+  // Wave tracking (extracted hook — auto-suggest, conflict detection)
+  const { suggestedWaveNumber, barcodeWaveConflicts, waveRestoredRef } =
+    useWaveNumber({
+      selectedExperiment,
+      scannerPlateAssignments,
+      scanCompletionCounter,
+      waveNumber,
+      setWaveNumber,
+    });
 
   // Get assigned scanner IDs (scanners that have been assigned to slots)
   const assignedScannerIds = scannerAssignments
