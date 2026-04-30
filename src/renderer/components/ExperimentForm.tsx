@@ -87,6 +87,7 @@ export function ExperimentForm({
     handleSubmit,
     formState: { errors },
     reset,
+    watch,
   } = useForm<ExperimentFormData>({
     resolver: zodResolver(experimentSchema),
     defaultValues: {
@@ -97,25 +98,49 @@ export function ExperimentForm({
     },
   });
 
+  const selectedExperimentType = watch('experiment_type');
+  const isGraviscan = selectedExperimentType === 'graviscan';
+
   const onSubmit = async (data: ExperimentFormData) => {
     setIsSubmitting(true);
     setSubmitError(null);
 
     try {
+      // GraviScan: metadata links via GraviExperimentWaveMetadata at wave 0
+      // CylinderScan: metadata links via Experiment.accession_id (legacy path)
+      const isGraviscanSubmit = data.experiment_type === 'graviscan';
       const createData = {
         name: data.name.trim(),
         species: data.species,
         experiment_type: data.experiment_type,
         scientist: { connect: { id: data.scientist_id } },
-        accession: { connect: { id: data.accession_id } },
+        ...(isGraviscanSubmit
+          ? {}
+          : { accession: { connect: { id: data.accession_id } } }),
       };
 
       const result =
         await window.electron.database.experiments.create(createData);
 
-      if (!result.success) {
+      if (!result.success || !result.data) {
         setSubmitError(result.error || 'Failed to create experiment');
         return;
+      }
+
+      // GraviScan: link the chosen metadata file to wave 0
+      if (isGraviscanSubmit) {
+        const linkResult =
+          await window.electron.database.experiments.linkGraviMetadata(
+            result.data.id,
+            0,
+            data.accession_id
+          );
+        if (!linkResult.success) {
+          setSubmitError(
+            `Experiment created but metadata link failed: ${linkResult.error}`
+          );
+          return;
+        }
       }
 
       // Success - reset form and notify parent
@@ -250,7 +275,7 @@ export function ExperimentForm({
           htmlFor="accession-select"
           className="block text-xs font-bold mb-1"
         >
-          Accession File
+          {isGraviscan ? 'Metadata File (Wave 0)' : 'Accession File'}
         </label>
         <select
           id="accession-select"
