@@ -4,6 +4,7 @@ import type {
   ExperimentWithScans,
   GraviScanWithRelations,
 } from '../types/graviscan';
+import type { WaveMetadataLink } from '../types/database';
 import { formatPlateIndex } from '../types/graviscan';
 
 interface FlatImage {
@@ -50,6 +51,60 @@ export function ExperimentDetail() {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [waveLinks, setWaveLinks] = useState<WaveMetadataLink[]>([]);
+  const [availableMetadata, setAvailableMetadata] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [linkWaveNumber, setLinkWaveNumber] = useState<number>(1);
+  const [linkAccessionId, setLinkAccessionId] = useState<string>('');
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  const loadWaveLinks = useCallback(async () => {
+    if (!experimentId) return;
+    const result =
+      await window.electron.database.experiments.listGraviMetadata(
+        experimentId
+      );
+    if (result.success && result.data) {
+      setWaveLinks(result.data);
+    }
+  }, [experimentId]);
+
+  const loadAvailableMetadata = useCallback(async () => {
+    const result =
+      await window.electron.database.graviPlateAccessions.listFiles();
+    if (result.success && result.data) {
+      setAvailableMetadata(result.data);
+    }
+  }, []);
+
+  const handleUnlink = async (waveNumber: number) => {
+    if (!experimentId) return;
+    const result =
+      await window.electron.database.experiments.unlinkGraviMetadata(
+        experimentId,
+        waveNumber
+      );
+    if (result.success) {
+      await loadWaveLinks();
+    }
+  };
+
+  const handleLink = async () => {
+    if (!experimentId || !linkAccessionId) return;
+    setLinkError(null);
+    const result = await window.electron.database.experiments.linkGraviMetadata(
+      experimentId,
+      linkWaveNumber,
+      linkAccessionId
+    );
+    if (result.success) {
+      setLinkAccessionId('');
+      await loadWaveLinks();
+    } else {
+      setLinkError(result.error || 'Failed to link metadata');
+    }
+  };
 
   // Filter state
   const [selectedScanner, setSelectedScanner] = useState<string | null>(null);
@@ -88,7 +143,9 @@ export function ExperimentDetail() {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [experimentId]);
+    loadWaveLinks();
+    loadAvailableMetadata();
+  }, [experimentId, loadWaveLinks, loadAvailableMetadata]);
 
   // Derive scanner list and wave numbers from experiment data
   const scanners: ScannerInfo[] = experiment
@@ -389,11 +446,76 @@ export function ExperimentDetail() {
               {hasMultipleWaves ? `${waveNumbers.length} waves` : 'Single wave'}
             </span>
           </div>
-          {experiment.accession && (
-            <div>
-              <span className="font-medium text-gray-600">Accession:</span>{' '}
-              <span className="text-gray-900">{experiment.accession.name}</span>
+        </div>
+
+        {/* Wave-scoped linked metadata (GraviScan) */}
+        <div className="mt-4">
+          <div className="font-medium text-gray-600 mb-2">Linked Metadata</div>
+          {waveLinks.length > 0 ? (
+            <div className="space-y-1 mb-3">
+              {waveLinks.map((link) => (
+                <div
+                  key={link.id}
+                  className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded border border-gray-200 text-sm"
+                >
+                  <div>
+                    <span className="font-medium text-gray-700">
+                      Wave {link.wave_number}:
+                    </span>{' '}
+                    <span className="text-gray-900">
+                      {link.accession.name}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleUnlink(link.wave_number)}
+                    className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                  >
+                    Unlink
+                  </button>
+                </div>
+              ))}
             </div>
+          ) : (
+            <div className="text-sm text-gray-500 mb-3">
+              No metadata linked yet.
+            </div>
+          )}
+
+          {availableMetadata.length > 0 && (
+            <div className="flex items-center gap-2 text-sm">
+              <label className="text-gray-600">Wave</label>
+              <input
+                type="number"
+                min={1}
+                value={linkWaveNumber}
+                onChange={(e) =>
+                  setLinkWaveNumber(parseInt(e.target.value, 10) || 1)
+                }
+                className="w-16 px-2 py-1 border border-gray-300 rounded"
+              />
+              <select
+                value={linkAccessionId}
+                onChange={(e) => setLinkAccessionId(e.target.value)}
+                className="flex-1 px-2 py-1 border border-gray-300 rounded"
+              >
+                <option value="">Select metadata file...</option>
+                {availableMetadata.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleLink}
+                disabled={!linkAccessionId}
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Link
+              </button>
+            </div>
+          )}
+          {linkError && (
+            <div className="text-sm text-red-600 mt-2">{linkError}</div>
           )}
         </div>
       </div>
