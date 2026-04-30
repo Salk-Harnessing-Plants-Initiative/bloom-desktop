@@ -14,7 +14,7 @@
  *   SANE_USB_FILTER=009:002 LD_PRELOAD=./libusb-filter.so scanimage -d "epkowa:interpreter:009:002" ...
  *
  * Build:
- *   gcc -shared -fPIC -o libusb-filter.so libusb-filter.c -ldl $(pkg-config --cflags libusb-1.0)
+ *   gcc -shared -fPIC -o libusb-filter.so libusb-filter.c -ldl $(pkg-config --cflags --libs libusb-1.0)
  */
 
 #define _GNU_SOURCE
