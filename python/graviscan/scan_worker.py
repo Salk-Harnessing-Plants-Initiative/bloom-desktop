@@ -83,6 +83,21 @@ def emit_event(event: dict) -> None:
     print(f"EVENT:{json.dumps(event)}", flush=True)
 
 
+def _with_et_timestamp(output_path: str) -> str:
+    """Insert _et_YYYYMMDDTHHMMSS into the filename right after _st_YYYYMMDDTHHMMSS.
+
+    Coordinator gives us a path like "..._st_20260413T120530_cy1_S1_00.tif".
+    We return "..._st_20260413T120530_et_20260413T120545_cy1_S1_00.tif".
+    If no _st_ pattern is found, returns the path unchanged.
+    """
+    et = datetime.now().strftime("%Y%m%dT%H%M%S")
+    import re
+
+    return re.sub(
+        r"(_st_\d{8}T\d{6})", lambda m: f"{m.group(1)}_et_{et}", output_path, count=1
+    )
+
+
 def log(scanner_id: str, msg: str) -> None:
     """Log a debug message to stderr (not parsed as events)."""
     print(f"[{scanner_id}] {msg}", file=sys.stderr, flush=True)
@@ -281,9 +296,9 @@ class ScanWorker:
 
         try:
             if self.mock:
-                self._mock_scan(grid_mode, plate_index, resolution, output_path)
+                final_path = self._mock_scan(grid_mode, plate_index, resolution, output_path)
             else:
-                self._sane_scan(grid_mode, plate_index, resolution, output_path)
+                final_path = self._sane_scan(grid_mode, plate_index, resolution, output_path)
 
             duration_ms = int((time.time() - start_time) * 1000)
 
@@ -293,7 +308,7 @@ class ScanWorker:
                     "scanner_id": self.scanner_id,
                     "plate_index": plate_index,
                     "job_id": job_id,
-                    "path": output_path,
+                    "path": final_path,
                     "duration_ms": duration_ms,
                 }
             )
@@ -319,8 +334,10 @@ class ScanWorker:
         plate_index: str,
         resolution: int,
         output_path: str,
-    ) -> None:
+    ) -> str:
         """Perform a scan using python-sane directly.
+
+        Returns the final path the file was saved to (with _et_ timestamp inserted).
 
         Uses x_resolution/y_resolution (epkowa per-axis options) instead of the
         generic resolution option which only supports [400,800,1600,3200].
@@ -383,8 +400,11 @@ class ScanWorker:
                 tiff_meta = _build_tiff_metadata(
                     self.scanner_id, grid_mode, plate_index, resolution, region
                 )
+                # Compute final path with _et_ timestamp before save
+                final_path = _with_et_timestamp(output_path)
+                os.makedirs(os.path.dirname(final_path), exist_ok=True)
                 image.save(
-                    output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+                    final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
                 )
 
                 # Cancel to return device to IDLE state for next scan
@@ -393,8 +413,8 @@ class ScanWorker:
                 except Exception:
                     pass
 
-                log(self.scanner_id, f"Scan saved: {output_path}")
-                return
+                log(self.scanner_id, f"Scan saved: {final_path}")
+                return final_path
 
             except Exception as e:
                 last_error = str(e)
@@ -531,8 +551,11 @@ class ScanWorker:
 
     def _mock_scan(
         self, grid_mode: str, plate_index: str, resolution: int, output_path: str
-    ) -> None:
-        """Generate a mock scan image (checkerboard pattern)."""
+    ) -> str:
+        """Generate a mock scan image (checkerboard pattern).
+
+        Returns the final path the file was saved to (with _et_ timestamp inserted).
+        """
         import numpy as np
         from PIL import Image
 
@@ -556,13 +579,16 @@ class ScanWorker:
 
         image = Image.fromarray(img_array, mode="RGB")
 
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        # Compute final path with _et_ timestamp before save
+        final_path = _with_et_timestamp(output_path)
+        os.makedirs(os.path.dirname(final_path), exist_ok=True)
         tiff_meta = _build_tiff_metadata(
             self.scanner_id, grid_mode, plate_index, resolution, region
         )
-        image.save(output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
+        image.save(final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
 
-        log(self.scanner_id, f"Mock scan saved: {output_path}")
+        log(self.scanner_id, f"Mock scan saved: {final_path}")
+        return final_path
 
 
     def _shutdown(self) -> None:

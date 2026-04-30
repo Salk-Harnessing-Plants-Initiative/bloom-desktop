@@ -311,7 +311,6 @@ const databaseAPI: DatabaseAPI = {
       ids: string[];
       scan_started_at: string;
       scan_ended_at: string;
-      renamed_files?: { oldPath: string; newPath: string }[];
     }) => ipcRenderer.invoke('db:graviscans:update-grid-timestamps', data),
     browseByExperiment: (params?: {
       offset?: number;
@@ -702,7 +701,6 @@ const graviscanAPI = {
       gridIndex: string;
       scanStartedAt: string;
       scanEndedAt: string;
-      renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
     }) => void
   ) => {
     const listener = (
@@ -712,7 +710,6 @@ const graviscanAPI = {
         gridIndex: string;
         scanStartedAt: string;
         scanEndedAt: string;
-        renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
       }
     ) => callback(data);
     ipcRenderer.on('graviscan:grid-complete', listener);

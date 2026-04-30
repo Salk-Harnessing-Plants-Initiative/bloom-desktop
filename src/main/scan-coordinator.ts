@@ -16,8 +16,6 @@
  */
 
 import { EventEmitter } from 'events';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   ScannerSubprocess,
   PlateConfig,
@@ -379,52 +377,14 @@ export class ScanCoordinator extends EventEmitter {
         `[ScanCoordinator] Row [${rowGrids.join(',')}]: complete (et_${etTimestamp})`
       );
 
-      // Rename output files and group by grid index
-      const renamedByGrid: Map<
-        string,
-        { oldPath: string; newPath: string; scannerId: string }[]
-      > = new Map();
-      for (const gridIndex of rowGrids) renamedByGrid.set(gridIndex, []);
-
-      for (const result of results) {
-        if (!result) continue;
-        for (const { plateIndex, path: outputPath } of result.outputPaths) {
-          try {
-            const dir = path.dirname(outputPath);
-            const ext = path.extname(outputPath);
-            const base = path.basename(outputPath, ext);
-
-            const newBase = base.replace(
-              /(_st_\d{8}T\d{6})/,
-              `$1_et_${etTimestamp}`
-            );
-            const newPath = path.join(dir, newBase + ext);
-
-            if (fs.existsSync(outputPath)) {
-              fs.renameSync(outputPath, newPath);
-              console.log(
-                `[ScanCoordinator] Renamed: ${path.basename(outputPath)} → ${path.basename(newPath)}`
-              );
-              renamedByGrid.get(plateIndex)?.push({
-                oldPath: outputPath,
-                newPath,
-                scannerId: result.scannerId,
-              });
-            }
-          } catch (err) {
-            console.error(
-              `[ScanCoordinator] Failed to rename output file:`,
-              err
-            );
-          }
-        }
-      }
+      // No file rename needed — Python worker writes files with final
+      // _st_TIMESTAMP_et_TIMESTAMP_ filenames directly. Paths emitted via
+      // scan-complete events are the final paths on disk.
 
       // Emit grid-complete per grid with shared row timestamps
       for (const gridIndex of rowGrids) {
         this.emit('grid-complete', {
           cycle: this.currentCycle,
-          renamedFiles: renamedByGrid.get(gridIndex) || [],
           gridIndex,
           scanStartedAt: gridStartedAt.toISOString(),
           scanEndedAt: gridEndedAt.toISOString(),

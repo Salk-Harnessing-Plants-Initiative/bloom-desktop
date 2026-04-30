@@ -1217,7 +1217,7 @@ export function registerDatabaseHandlers() {
     }
   );
 
-  // Update grid timestamps and renamed file paths for specific GraviScan records
+  // Update grid timestamps for specific GraviScan records
   ipcMain.handle(
     'db:graviscans:update-grid-timestamps',
     async (
@@ -1226,11 +1226,9 @@ export function registerDatabaseHandlers() {
         ids: string[];
         scan_started_at: string;
         scan_ended_at: string;
-        renamed_files?: { oldPath: string; newPath: string }[];
       }
     ): Promise<DatabaseResponse> => {
       try {
-        // Update timestamps on all records in the grid
         const result = await db.graviScan.updateMany({
           where: {
             id: { in: data.ids },
@@ -1241,28 +1239,10 @@ export function registerDatabaseHandlers() {
           },
         });
 
-        // Update paths for renamed files (old path → new path)
-        if (data.renamed_files && data.renamed_files.length > 0) {
-          for (const rf of data.renamed_files) {
-            await db.graviScan.updateMany({
-              where: {
-                id: { in: data.ids },
-                path: rf.oldPath,
-              },
-              data: { path: rf.newPath },
-            });
-            // Also update the associated GraviImage path
-            await db.graviImage.updateMany({
-              where: { path: rf.oldPath },
-              data: { path: rf.newPath },
-            });
-          }
-        }
-
         logDatabaseOperation(
           'UPDATE',
           'GraviScan',
-          `Updated ${result.count} records with grid timestamps${data.renamed_files?.length ? ` and ${data.renamed_files.length} renamed paths` : ''}`
+          `Updated ${result.count} records with grid timestamps`
         );
         return { success: true, data: { count: result.count } };
       } catch (error) {

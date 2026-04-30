@@ -430,7 +430,6 @@ export interface DatabaseAPI {
       ids: string[];
       scan_started_at: string;
       scan_ended_at: string;
-      renamed_files?: { oldPath: string; newPath: string }[];
     }) => Promise<DatabaseResponse<{ count: number }>>;
     browseByExperiment: (params?: {
       offset?: number;
@@ -983,7 +982,6 @@ export interface GraviScanAPI {
       gridIndex: string;
       scanStartedAt: string;
       scanEndedAt: string;
-      renamedFiles: { oldPath: string; newPath: string; scannerId: string }[];
     }) => void
   ) => () => void;
 

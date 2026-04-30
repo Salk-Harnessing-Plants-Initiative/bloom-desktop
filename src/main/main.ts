@@ -411,27 +411,12 @@ function initializeScanCoordinator(): void {
         `Grid ${data.gridIndex} complete: st=${data.scanStartedAt} et=${data.scanEndedAt}`
       );
 
-      // Update session job imagePaths to reflect renamed files (adds _et_ timestamp)
-      // Without this, downstream consumers (QR verification, file browser) get stale paths
-      // Note: don't check isActive — grid-complete fires after session deactivates for row 2
-      if (scanSession && data.renamedFiles) {
-        for (const rf of data.renamedFiles) {
-          const jobKey = `${rf.scannerId}:${data.gridIndex}`;
-          const job = scanSession.jobs[jobKey];
-          if (job && job.imagePath === rf.oldPath) {
-            job.imagePath = rf.newPath;
-            scanLog(`Updated job path: ${jobKey} → ${rf.newPath}`);
-          }
-        }
-      }
-
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('graviscan:grid-complete', {
           cycle: data.cycle,
           gridIndex: data.gridIndex,
           scanStartedAt: data.scanStartedAt,
           scanEndedAt: data.scanEndedAt,
-          renamedFiles: data.renamedFiles || [],
         });
       }
     });

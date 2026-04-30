@@ -654,10 +654,6 @@ export function useScanSession({
                   ids: recordIds,
                   scan_started_at: data.scanStartedAt,
                   scan_ended_at: data.scanEndedAt,
-                  renamed_files: data.renamedFiles?.map((rf) => ({
-                    oldPath: rf.oldPath,
-                    newPath: rf.newPath,
-                  })),
                 });
               if (result.success) {
                 console.log(
@@ -676,35 +672,6 @@ export function useScanSession({
               );
             }
             delete gridRecordIdsRef.current[data.gridIndex];
-          }
-
-          // Load preview images from renamed files
-          if (data.renamedFiles && data.renamedFiles.length > 0) {
-            for (const rf of data.renamedFiles) {
-              const plateMatch = rf.newPath.match(/_S\d+_(\d+)\.[^.]+$/);
-              if (!plateMatch || !rf.scannerId) continue;
-              const plateIndex = plateMatch[1];
-
-              try {
-                const imgResult = await window.electron.graviscan.readScanImage(
-                  rf.newPath
-                );
-                if (imgResult.success && imgResult.dataUri) {
-                  setScanImageUris((prev) => {
-                    if (prev[rf.scannerId]?.[plateIndex]) return prev;
-                    return {
-                      ...prev,
-                      [rf.scannerId]: {
-                        ...prev[rf.scannerId],
-                        [plateIndex]: imgResult.dataUri,
-                      },
-                    };
-                  });
-                }
-              } catch {
-                /* ignore */
-              }
-            }
           }
         })();
         pendingDbWritesRef.current.push(gridWritePromise);
