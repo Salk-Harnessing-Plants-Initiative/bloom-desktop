@@ -278,26 +278,13 @@ export class ScanCoordinator extends EventEmitter {
       }
     }
 
-    // Group grids by row for 4grid mode (same-row grids scanned together)
-    const gridMode =
-      platesPerScanner.values().next().value?.[0]?.grid_mode || '2grid';
-    const rowGroups: string[][] = [];
-    if (gridMode === '4grid') {
-      const topRow = gridIndices.filter((i) => ['00', '01'].includes(i));
-      const bottomRow = gridIndices.filter((i) => ['10', '11'].includes(i));
-      if (topRow.length > 0) rowGroups.push(topRow);
-      if (bottomRow.length > 0) rowGroups.push(bottomRow);
-    } else {
-      // 2grid: each plate is its own row group (no merge benefit)
-      for (const gi of gridIndices) rowGroups.push([gi]);
-    }
-
     console.log(
-      `[ScanCoordinator] Cycle ${this.currentCycle}: scanning ${gridIndices.length} grid(s) [${gridIndices.join(', ')}] in ${rowGroups.length} row group(s) across ${this.subprocesses.size} scanner(s)`
+      `[ScanCoordinator] Cycle ${this.currentCycle}: scanning ${gridIndices.length} grid(s) [${gridIndices.join(', ')}] across ${this.subprocesses.size} scanner(s)`
     );
 
-    // Iterate row groups sequentially
-    for (const rowGrids of rowGroups) {
+    // Iterate grids sequentially — each plate scans at its exact grid ROI
+    for (const gridIndex of gridIndices) {
+      const rowGrids = [gridIndex];
       if (this.cancelled) break;
 
       const gridStartedAt = new Date();

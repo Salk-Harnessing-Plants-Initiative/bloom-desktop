@@ -35,12 +35,7 @@ from datetime import datetime, timezone
 
 from PIL.TiffImagePlugin import ImageFileDirectory_v2, IFDRational
 
-from .scan_regions import (
-    get_scan_region,
-    get_row_groups,
-    get_row_bounding_box,
-    get_crop_box,
-)
+from .scan_regions import get_scan_region
 
 # Application version embedded in TIFF metadata
 _BLOOM_VERSION = "0.1.0"
@@ -225,7 +220,7 @@ class ScanWorker:
         self._shutdown()
 
     def _handle_scan(self, cmd: dict) -> None:
-        """Handle a scan command — scan plates, using row-merge for 4grid."""
+        """Handle a scan command — scan each plate at its exact grid ROI."""
         plates = cmd.get("plates", [])
         if not plates:
             log(self.scanner_id, "Scan command with no plates, ignoring")
@@ -236,49 +231,20 @@ class ScanWorker:
 
         self._cycle += 1
 
-        # Check if row-merge is possible: all plates must be 4grid
-        grid_mode = plates[0].get("grid_mode", "2grid")
-        use_row_merge = grid_mode == "4grid" and len(plates) > 1
-
-        if use_row_merge:
-            # Group plates by row
-            row_groups = get_row_groups(grid_mode)
-            plate_by_index = {p["plate_index"]: p for p in plates}
-
-            for row_name, row_indices in row_groups.items():
-                with self._cancel_lock:
-                    if self._cancel_requested:
-                        break
-
-                # Only include plates that were actually requested
-                row_plates = [
-                    plate_by_index[idx] for idx in row_indices if idx in plate_by_index
-                ]
-                if not row_plates:
-                    continue
-
-                if len(row_plates) >= 2:
-                    # Row-merge: scan bounding box once, crop plates
-                    self._scan_row(row_plates)
-                else:
-                    # Single plate in this row — scan individually
-                    self._scan_plate(row_plates[0])
-        else:
-            # 2grid or single plate — scan each individually
-            for plate in plates:
-                with self._cancel_lock:
-                    if self._cancel_requested:
-                        job_id = str(uuid.uuid4())
-                        emit_event(
-                            {
-                                "type": "scan-cancelled",
-                                "scanner_id": self.scanner_id,
-                                "plate_index": plate.get("plate_index", "?"),
-                                "job_id": job_id,
-                            }
-                        )
-                        break
-                self._scan_plate(plate)
+        for plate in plates:
+            with self._cancel_lock:
+                if self._cancel_requested:
+                    job_id = str(uuid.uuid4())
+                    emit_event(
+                        {
+                            "type": "scan-cancelled",
+                            "scanner_id": self.scanner_id,
+                            "plate_index": plate.get("plate_index", "?"),
+                            "job_id": job_id,
+                        }
+                    )
+                    break
+            self._scan_plate(plate)
 
         emit_event(
             {
@@ -598,182 +564,6 @@ class ScanWorker:
 
         log(self.scanner_id, f"Mock scan saved: {output_path}")
 
-    def _scan_row(self, row_plates: list) -> None:
-        """Scan a row of plates using row-merge: one scan, crop each plate."""
-        grid_mode = row_plates[0].get("grid_mode", "4grid")
-        resolution = row_plates[0].get("resolution", 300)
-        plate_indices = [p["plate_index"] for p in row_plates]
-
-        # Emit scan-started for all plates in the row
-        job_ids = {}
-        for plate in row_plates:
-            job_id = str(uuid.uuid4())
-            job_ids[plate["plate_index"]] = job_id
-            emit_event(
-                {
-                    "type": "scan-started",
-                    "scanner_id": self.scanner_id,
-                    "plate_index": plate["plate_index"],
-                    "job_id": job_id,
-                }
-            )
-
-        start_time = time.time()
-
-        try:
-            bbox = get_row_bounding_box(grid_mode, plate_indices)
-
-            if self.mock:
-                row_image = self._mock_scan_row(bbox, resolution)
-            else:
-                row_image = self._sane_scan_row(bbox, resolution)
-
-            # Crop and save each plate
-            for plate in row_plates:
-                crop_box = get_crop_box(
-                    grid_mode, plate["plate_index"], bbox, resolution
-                )
-                plate_image = row_image.crop(crop_box)
-                output_path = plate["output_path"]
-                plate_region = get_scan_region(grid_mode, plate["plate_index"])
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                tiff_meta = _build_tiff_metadata(
-                    self.scanner_id,
-                    grid_mode,
-                    plate["plate_index"],
-                    resolution,
-                    plate_region,
-                )
-                plate_image.save(
-                    output_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
-                )
-                log(
-                    self.scanner_id,
-                    f"Cropped plate {plate['plate_index']} saved: {output_path}",
-                )
-
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # Emit scan-complete for each plate
-            for plate in row_plates:
-                emit_event(
-                    {
-                        "type": "scan-complete",
-                        "scanner_id": self.scanner_id,
-                        "plate_index": plate["plate_index"],
-                        "job_id": job_ids[plate["plate_index"]],
-                        "path": plate["output_path"],
-                        "duration_ms": duration_ms,
-                    }
-                )
-
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            log(self.scanner_id, f"Row scan error ({plate_indices}): {e}")
-            for plate in row_plates:
-                emit_event(
-                    {
-                        "type": "scan-error",
-                        "scanner_id": self.scanner_id,
-                        "plate_index": plate["plate_index"],
-                        "job_id": job_ids[plate["plate_index"]],
-                        "error": str(e),
-                        "duration_ms": duration_ms,
-                    }
-                )
-
-    def _sane_scan_row(self, bbox, resolution: int):
-        """Scan a row bounding box and return the PIL Image (no save).
-
-        Uses the same python-sane approach as _sane_scan() but with
-        the bounding box region and returns the image for cropping.
-        """
-
-        MAX_RETRIES = 5
-        last_error = None
-
-        log(
-            self.scanner_id,
-            f"Row-merge scan at {resolution}dpi "
-            f"bbox=({bbox.left},{bbox.top})-({bbox.left+bbox.width},{bbox.top+bbox.height})",
-        )
-
-        for attempt in range(MAX_RETRIES):
-            if attempt > 0:
-                backoff = min(2 * (attempt + 1), 15)
-                log(
-                    self.scanner_id,
-                    f"Retry backoff: waiting {backoff}s before attempt {attempt + 1}/{MAX_RETRIES}...",
-                )
-                time.sleep(backoff)
-
-            try:
-                if not self._device_is_open:
-                    self._reopen_device()
-
-                assert self._device is not None
-
-                # Set resolution and mode BEFORE geometry (epkowa requirement)
-                self._device.x_resolution = resolution
-                self._device.y_resolution = resolution
-                self._device.mode = "Color"
-
-                # Set bounding box geometry
-                self._device.tl_x = bbox.left
-                self._device.tl_y = bbox.top
-                self._device.br_x = bbox.left + bbox.width
-                self._device.br_y = bbox.top + bbox.height
-
-                self._device.start()
-                image = self._device.snap()
-
-                if image is None:
-                    raise RuntimeError("snap() returned None")
-
-                try:
-                    self._device.cancel()
-                except Exception:
-                    pass
-
-                log(
-                    self.scanner_id,
-                    f"Row-merge scan complete: {image.size[0]}x{image.size[1]} px",
-                )
-                return image
-
-            except Exception as e:
-                last_error = str(e)
-                log(
-                    self.scanner_id,
-                    f"Row scan failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}",
-                )
-                self._close_device()
-
-        raise RuntimeError(
-            f"Row scan failed after {MAX_RETRIES} attempts: {last_error}"
-        )
-
-    def _mock_scan_row(self, bbox, resolution: int):
-        """Generate a mock row scan image (checkerboard) and return PIL Image."""
-        import numpy as np
-        from PIL import Image
-
-        pixels = bbox.to_pixels(resolution)
-        width = max(pixels["width"], 100)
-        height = max(pixels["height"], 100)
-
-        time.sleep(0.5)
-
-        square_size = max(width // 20, 10)
-        img_array = np.zeros((height, width, 3), dtype=np.uint8)
-        for y in range(height):
-            for x in range(width):
-                if ((x // square_size) + (y // square_size)) % 2 == 0:
-                    img_array[y, x] = [255, 255, 255]
-                else:
-                    img_array[y, x] = [128, 128, 128]
-
-        return Image.fromarray(img_array, mode="RGB")
 
     def _shutdown(self) -> None:
         """Clean shutdown: close device and exit SANE."""

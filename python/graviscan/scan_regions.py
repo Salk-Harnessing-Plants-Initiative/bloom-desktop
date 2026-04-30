@@ -6,7 +6,7 @@ Coordinates are in millimeters, matching the original graviscan.cfg.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 @dataclass
@@ -112,87 +112,6 @@ def get_scan_region(grid_mode: str, plate_index: str) -> ScanRegion:
 # Epson V600 scanner bed limits (mm)
 SCANNER_MAX_X = 215.9
 SCANNER_MAX_Y = 297.0
-
-# Row groupings for 4-grid mode (grids sharing the same vertical range)
-GRID_4_ROW_GROUPS: Dict[str, List[str]] = {
-    "top": ["00", "01"],
-    "bottom": ["10", "11"],
-}
-
-
-def get_row_groups(grid_mode: str) -> Dict[str, List[str]]:
-    """Get row groupings for a grid mode.
-
-    For 4grid, grids are grouped by row (same vertical range).
-    For 2grid, each plate is its own group (different vertical positions).
-
-    Returns:
-        Dict mapping row name to list of plate indices.
-    """
-    if grid_mode == "4grid":
-        return GRID_4_ROW_GROUPS
-    elif grid_mode == "2grid":
-        # 2grid plates are at different vertical positions — no row merge
-        return {"top": ["01"], "bottom": ["00"]}
-    else:
-        raise ValueError(f"Invalid grid_mode '{grid_mode}'.")
-
-
-def get_row_bounding_box(grid_mode: str, plate_indices: List[str]) -> ScanRegion:
-    """Compute the bounding box covering all plates in a row group.
-
-    Args:
-        grid_mode: "2grid" or "4grid"
-        plate_indices: List of plate indices in the row (e.g. ["00", "01"])
-
-    Returns:
-        ScanRegion covering the union of all specified plates,
-        clamped to scanner max width.
-    """
-    regions = [get_scan_region(grid_mode, idx) for idx in plate_indices]
-
-    min_top = min(r.top for r in regions)
-    min_left = min(r.left for r in regions)
-    max_bottom = max(r.top + r.height for r in regions)
-    max_right = min(max(r.left + r.width for r in regions), SCANNER_MAX_X)
-
-    return ScanRegion(
-        top=min_top,
-        left=min_left,
-        width=max_right - min_left,
-        height=max_bottom - min_top,
-    )
-
-
-def get_crop_box(
-    grid_mode: str,
-    plate_index: str,
-    bbox: ScanRegion,
-    dpi: int,
-) -> Tuple[int, int, int, int]:
-    """Get PIL crop box for a plate relative to the row bounding box.
-
-    Args:
-        grid_mode: "2grid" or "4grid"
-        plate_index: The plate to crop (e.g. "00")
-        bbox: The row bounding box that was scanned
-        dpi: Scan resolution in DPI
-
-    Returns:
-        (left, upper, right, lower) in pixels for PIL Image.crop()
-    """
-    region = get_scan_region(grid_mode, plate_index)
-    mm_per_inch = 25.4
-    px_per_mm = dpi / mm_per_inch
-
-    # Plate position relative to bounding box origin
-    left = int((region.left - bbox.left) * px_per_mm)
-    upper = int((region.top - bbox.top) * px_per_mm)
-    right = int((region.left - bbox.left + region.width) * px_per_mm)
-    lower = int((region.top - bbox.top + region.height) * px_per_mm)
-
-    return (left, upper, right, lower)
-
 
 def get_all_plate_indices(grid_mode: str) -> list:
     """Get all valid plate indices for a grid mode.
