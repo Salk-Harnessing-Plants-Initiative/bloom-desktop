@@ -56,6 +56,35 @@ export function ConfigureScanner() {
     loadScannerConfig();
   }, [loadScannerConfig]);
 
+  // Subscribe to real-time scanner status events (during reset, init, etc.)
+  useEffect(() => {
+    const cleanup = window.electron.graviscan.onScannerInitStatus?.(
+      (event: { scannerId: string; status: string; error?: string }) => {
+        setScanners((prev) =>
+          prev.map((s) =>
+            s.scannerId === event.scannerId
+              ? {
+                  ...s,
+                  status: event.status as SavedScanner['status'],
+                  error: event.error,
+                }
+              : s
+          )
+        );
+      }
+    );
+    return cleanup;
+  }, []);
+
+  // Poll while any scanner is in transient 'starting' state. Catches the case
+  // where init events fired before subscription (e.g., during Reset USB cycle).
+  useEffect(() => {
+    const hasStarting = scanners.some((s) => s.status === 'starting');
+    if (!hasStarting) return;
+    const id = setInterval(loadScannerConfig, 1500);
+    return () => clearInterval(id);
+  }, [scanners, loadScannerConfig]);
+
   // Check if a scan is currently active
   useEffect(() => {
     const checkScanStatus = async () => {
@@ -240,6 +269,11 @@ export function ConfigureScanner() {
                 onClick={async () => {
                   setDetecting(true);
                   setDetectionError(null);
+                  // Immediately mark all scanners as 'starting' for instant
+                  // visual feedback during the 5s shutdown+wait before init events fire
+                  setScanners((prev) =>
+                    prev.map((s) => ({ ...s, status: 'starting' as const }))
+                  );
                   try {
                     const result =
                       await window.electron.graviscan.resetUsb();

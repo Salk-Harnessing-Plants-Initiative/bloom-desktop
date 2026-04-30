@@ -200,6 +200,14 @@ export class ScanCoordinator extends EventEmitter {
             `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
           );
 
+          // Emit 'starting' so the UI can show progress while spawn() runs
+          // (SANE init can take up to 30s — without this the UI sees no
+          // intermediate state between the previous status and 'ready').
+          this.emit('scanner-init-status', {
+            scannerId: scanner.scannerId,
+            status: 'starting',
+          });
+
           return sub
             .spawn()
             .then(() => {
