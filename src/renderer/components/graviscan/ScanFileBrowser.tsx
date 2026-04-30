@@ -51,35 +51,49 @@ export function ScanFileBrowser({
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevFileCount = useRef(0);
+  const sessionDirRef = useRef(sessionDir);
+  sessionDirRef.current = sessionDir;
+
+  // Always reads the latest sessionDir via ref so event listeners stay correct
+  const loadFiles = async () => {
+    try {
+      const result = await window.electron.graviscan.listScanFiles(
+        sessionDirRef.current ?? undefined
+      );
+      if (result.success) {
+        setFiles(result.files);
+
+        // Auto-scroll to top when new files appear
+        if (
+          result.files.length > prevFileCount.current &&
+          scrollRef.current
+        ) {
+          scrollRef.current.scrollTop = 0;
+        }
+        prevFileCount.current = result.files.length;
+      }
+    } catch (err) {
+      console.warn('[ScanFileBrowser] listScanFiles failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Poll for files — refresh every 2s during scan, 5s otherwise
   useEffect(() => {
-    const loadFiles = async () => {
-      try {
-        const result = await window.electron.graviscan.listScanFiles(sessionDir ?? undefined);
-        if (result.success) {
-          setFiles(result.files);
-
-          // Auto-scroll to top when new files appear
-          if (
-            result.files.length > prevFileCount.current &&
-            scrollRef.current
-          ) {
-            scrollRef.current.scrollTop = 0;
-          }
-          prevFileCount.current = result.files.length;
-        }
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadFiles();
     const interval = setInterval(loadFiles, isScanning ? 2000 : 5000);
     return () => clearInterval(interval);
   }, [isScanning, sessionDir]);
+
+  // Refresh immediately when a scan completes — catches the case where
+  // polling missed a file write (events fire before next interval tick).
+  useEffect(() => {
+    const cleanup = window.electron.graviscan.onScanComplete?.(() => {
+      loadFiles();
+    });
+    return cleanup;
+  }, []);
 
   const handleOpenFolder = async (filePath: string) => {
     await window.electron.graviscan.openFolder(filePath);
