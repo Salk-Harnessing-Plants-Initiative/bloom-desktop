@@ -30,7 +30,7 @@ interface LsusbDevice {
 
 interface LsusbTreeEntry {
   bus: number;
-  port: number;
+  portPath: string; // Hierarchical port path: "3" for direct, "2.3" for port 3 of hub on port 2
   device: number;
 }
 
@@ -62,33 +62,47 @@ function parseLsusb(output: string): LsusbDevice[] {
 }
 
 /**
- * Parse `lsusb -t` output to map Bus:Device → Port for stable identification.
+ * Parse `lsusb -t` output to map Bus:Device → port path for stable identification.
+ *
+ * Builds hierarchical port paths to disambiguate hub-attached devices.
+ * Indent level (4 spaces per depth) determines hub topology.
  *
  * Example output:
  *   /:  Bus 001.Port 001: Dev 001, ...
- *       |__ Port 001: Dev 007, ...
- *       |__ Port 009: Dev 013, ...
+ *       |__ Port 002: Dev 002, ... Driver=hub        → portPath "2"
+ *           |__ Port 003: Dev 016, ...               → portPath "2.3" (behind hub)
+ *       |__ Port 003: Dev 012, ...                   → portPath "3"
+ *       |__ Port 010: Dev 015, ...                   → portPath "10"
  */
 function parseLsusbTree(output: string): LsusbTreeEntry[] {
   const entries: LsusbTreeEntry[] = [];
   let currentBus = 0;
+  // Stack of port numbers at each depth, indexed by depth (1, 2, ...)
+  const portStack: number[] = [];
 
   for (const line of output.split('\n')) {
     // Match bus root: "/:  Bus 001.Port 001: Dev 001, ..."
     const busMatch = line.match(/Bus (\d+)\.Port \d+: Dev \d+/);
     if (busMatch) {
       currentBus = parseInt(busMatch[1], 10);
+      portStack.length = 0;
       continue;
     }
 
-    // Match port entries: "|__ Port 001: Dev 007, ..."
-    const portMatch = line.match(/Port (\d+): Dev (\d+)/);
+    // Match port entries: "    |__ Port 001: Dev 007, ..."
+    // Indent depth = number of 4-space groups before "|__"
+    const portMatch = line.match(/^( +)\|__ Port (\d+): Dev (\d+)/);
     if (portMatch && currentBus > 0) {
-      entries.push({
-        bus: currentBus,
-        port: parseInt(portMatch[1], 10),
-        device: parseInt(portMatch[2], 10),
-      });
+      const depth = Math.max(1, Math.floor(portMatch[1].length / 4));
+      const port = parseInt(portMatch[2], 10);
+      const device = parseInt(portMatch[3], 10);
+
+      // Set this depth's port and trim deeper levels
+      portStack[depth - 1] = port;
+      portStack.length = depth;
+
+      const portPath = portStack.join('.');
+      entries.push({ bus: currentBus, portPath, device });
     }
   }
 
@@ -111,11 +125,11 @@ function buildDisplayName(productId: string): string {
 }
 
 /**
- * Build a stable USB port string from bus and port numbers.
- * Format: "1-7" (bus 1, port 7)
+ * Build a stable USB port string from bus and hierarchical port path.
+ * Format: "1-7" (bus 1, port 7), "1-2.3" (bus 1, port 3 of hub on port 2)
  */
-function buildUsbPort(bus: number, port: number): string {
-  return `${bus}-${port}`;
+function buildUsbPort(bus: number, portPath: string): string {
+  return `${bus}-${portPath}`;
 }
 
 /**
@@ -154,21 +168,22 @@ export function detectEpsonScanners(): {
       console.warn('[lsusb] lsusb -t failed, port mapping unavailable');
     }
 
-    // Build device→port lookup
-    const portMap = new Map<string, number>();
+    // Build device→portPath lookup
+    const portMap = new Map<string, string>();
     for (const entry of treeEntries) {
-      portMap.set(`${entry.bus}:${entry.device}`, entry.port);
+      portMap.set(`${entry.bus}:${entry.device}`, entry.portPath);
     }
 
     // Build DetectedScanner array
     const scanners: DetectedScanner[] = epsonDevices.map((dev) => {
-      const port = portMap.get(`${dev.bus}:${dev.device}`);
+      const portPath = portMap.get(`${dev.bus}:${dev.device}`);
       return {
         name: buildDisplayName(dev.productId),
         scanner_id: '', // Will be matched against DB by caller
         usb_bus: dev.bus,
         usb_device: dev.device,
-        usb_port: port !== undefined ? buildUsbPort(dev.bus, port) : '',
+        usb_port:
+          portPath !== undefined ? buildUsbPort(dev.bus, portPath) : '',
         is_available: true,
         vendor_id: dev.vendorId,
         product_id: dev.productId,
