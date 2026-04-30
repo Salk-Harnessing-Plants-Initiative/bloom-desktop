@@ -184,6 +184,7 @@ export function GraviScan() {
     setScanImageUris,
     scanningPlateIndex,
     setScanningPlateIndex,
+    currentSessionDir,
     handleStartScan,
     handleCancelScan,
     handleResetScanners,
@@ -671,6 +672,7 @@ export function GraviScan() {
                       .filter(Boolean)
                   )
                 }
+                sessionDir={currentSessionDir}
               />
             </div>
           </div>
