@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ExperimentForm } from './components/ExperimentForm';
+import type { WaveMetadataLink } from '../types/database';
 
 interface Scientist {
   id: string;
@@ -35,9 +36,15 @@ export function Experiments() {
   // Attach accession state
   const [attachExperimentId, setAttachExperimentId] = useState<string>('');
   const [attachAccessionId, setAttachAccessionId] = useState<string>('');
+  const [attachWaveNumber, setAttachWaveNumber] = useState<number>(0);
   const [isAttaching, setIsAttaching] = useState(false);
   const [attachSuccess, setAttachSuccess] = useState<string | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
+
+  // Wave-scoped metadata links per graviscan experiment
+  const [waveLinksMap, setWaveLinksMap] = useState<
+    Record<string, WaveMetadataLink[]>
+  >({});
 
   const fetchExperiments = useCallback(async () => {
     try {
@@ -63,6 +70,24 @@ export function Experiments() {
       if (sorted.length > 0) {
         setAttachExperimentId((prev) => (prev === '' ? sorted[0].id : prev));
       }
+
+      // Load wave-scoped metadata links for graviscan experiments
+      const graviscanExps = filtered.filter(
+        (e) => e.experiment_type === 'graviscan'
+      );
+      const linksMap: Record<string, WaveMetadataLink[]> = {};
+      await Promise.all(
+        graviscanExps.map(async (exp) => {
+          const linkResult =
+            await window.electron.database.experiments.listGraviMetadata(
+              exp.id
+            );
+          if (linkResult.success && linkResult.data) {
+            linksMap[exp.id] = linkResult.data;
+          }
+        })
+      );
+      setWaveLinksMap(linksMap);
     } catch (err) {
       console.error('Error fetching experiments:', err);
       setError('An unexpected error occurred while loading experiments');
@@ -104,6 +129,16 @@ export function Experiments() {
     fetchAccessions();
   }, [fetchExperiments, fetchScientists, fetchAccessions]);
 
+  // Auto-suggest next wave number when selected graviscan experiment changes
+  useEffect(() => {
+    const links = waveLinksMap[attachExperimentId] || [];
+    const next =
+      links.length > 0
+        ? Math.max(...links.map((l) => l.wave_number)) + 1
+        : 0;
+    setAttachWaveNumber(next);
+  }, [attachExperimentId, waveLinksMap]);
+
   const handleExperimentCreated = () => {
     // Refresh the list after successful creation
     fetchExperiments();
@@ -118,14 +153,27 @@ export function Experiments() {
     setAttachSuccess(null);
     setAttachError(null);
 
+    const selectedExp = experiments.find((e) => e.id === attachExperimentId);
+    const isGraviscan = selectedExp?.experiment_type === 'graviscan';
+
     try {
-      const result = await window.electron.database.experiments.attachAccession(
-        attachExperimentId,
-        attachAccessionId
-      );
+      const result = isGraviscan
+        ? await window.electron.database.experiments.linkGraviMetadata(
+            attachExperimentId,
+            attachWaveNumber,
+            attachAccessionId
+          )
+        : await window.electron.database.experiments.attachAccession(
+            attachExperimentId,
+            attachAccessionId
+          );
 
       if (result.success) {
-        setAttachSuccess('Accession successfully attached.');
+        setAttachSuccess(
+          isGraviscan
+            ? `Metadata linked to wave ${attachWaveNumber}.`
+            : 'Accession successfully attached.'
+        );
         fetchExperiments();
       } else {
         setAttachError(result.error || 'Failed to attach accession');
@@ -167,13 +215,27 @@ export function Experiments() {
           </div>
         ) : (
           <ul className="experiments-list h-64 overflow-auto border rounded-md max-w-full mr-10 text-sm">
-            {experiments.map((experiment) => (
+            {experiments.map((experiment) => {
+              const links = waveLinksMap[experiment.id] || [];
+              return (
               <li key={experiment.id} className="mb-2 p-2">
                 <div className="flex justify-between items-center">
                   <span>{getExperimentDisplay(experiment)}</span>
                 </div>
+                {experiment.experiment_type === 'graviscan' && links.length > 0 && (
+                  <div className="ml-4 mt-1 text-xs text-gray-600 space-y-0.5">
+                    {links
+                      .sort((a, b) => a.wave_number - b.wave_number)
+                      .map((link) => (
+                        <div key={link.id}>
+                          Wave {link.wave_number}: {link.accession.name}
+                        </div>
+                      ))}
+                  </div>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
@@ -219,6 +281,28 @@ export function Experiments() {
               )}
             </select>
           </div>
+
+          {experiments.find((e) => e.id === attachExperimentId)
+            ?.experiment_type === 'graviscan' && (
+            <div className="mb-4">
+              <label
+                htmlFor="attach-wave-number"
+                className="text-xs font-bold block mb-1"
+              >
+                Wave Number:
+              </label>
+              <input
+                id="attach-wave-number"
+                type="number"
+                min={0}
+                value={attachWaveNumber}
+                onChange={(e) =>
+                  setAttachWaveNumber(parseInt(e.target.value, 10) || 0)
+                }
+                className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
+              />
+            </div>
+          )}
 
           <div className="mb-4">
             <label
