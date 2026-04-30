@@ -78,6 +78,9 @@ const config: ForgeConfig = {
       './node_modules/@prisma/client', // Prisma Client package
       './prisma/schema.prisma', // Schema for runtime introspection
       './prisma/migrations', // Migration SQL files for first-launch DB setup
+
+      // LD_PRELOAD USB filter for parallel scanner isolation (Linux only)
+      './src/main/native/libusb-filter.so',
     ],
     afterCopy: [
       // Copy sharp and all its runtime dependencies into resources/node_modules/

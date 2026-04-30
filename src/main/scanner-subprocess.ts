@@ -110,16 +110,39 @@ export class ScannerSubprocess extends EventEmitter {
       `[ScannerSubprocess:${this.scannerId}] Spawning: ${this.pythonPath} ${args.join(' ')}`
     );
 
+    // Build environment variables for subprocess
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      // In dev: ensure `python/` is on PYTHONPATH so `-m graviscan.scan_worker` resolves
+      PYTHONPATH: [path.join(process.cwd(), 'python'), process.env.PYTHONPATH]
+        .filter(Boolean)
+        .join(':'),
+    };
+
+    // LD_PRELOAD USB filter for parallel scanner isolation (Linux only, real mode)
+    // The epkowa SANE backend claims ALL Epson USB interfaces during sane_open().
+    // libusb-filter.so intercepts libusb_open() and restricts to the assigned scanner.
+    if (process.platform === 'linux' && !this.mock) {
+      const soPath = this.isPackaged
+        ? path.join(process.resourcesPath, 'libusb-filter.so')
+        : path.join(process.cwd(), 'src', 'main', 'native', 'libusb-filter.so');
+
+      // Extract bus:device from saneName (e.g., "epkowa:interpreter:001:007" → "001:007")
+      const parts = this.saneName.split(':');
+      const usbFilter = `${parts[2]}:${parts[3]}`;
+
+      env.LD_PRELOAD = soPath;
+      env.SANE_USB_FILTER = usbFilter;
+
+      console.log(
+        `[ScannerSubprocess:${this.scannerId}] LD_PRELOAD=${soPath} SANE_USB_FILTER=${usbFilter}`
+      );
+    }
+
     this.proc = spawn(this.pythonPath, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: process.cwd(),
-      env: {
-        ...process.env,
-        // In dev: ensure `python/` is on PYTHONPATH so `-m graviscan.scan_worker` resolves
-        PYTHONPATH: [path.join(process.cwd(), 'python'), process.env.PYTHONPATH]
-          .filter(Boolean)
-          .join(':'),
-      },
+      env,
     });
 
     // Parse stdout line-by-line for EVENT: messages
