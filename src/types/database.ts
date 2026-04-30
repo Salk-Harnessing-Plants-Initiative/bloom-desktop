@@ -114,6 +114,23 @@ export interface DatabaseResponse<T = unknown> {
   total?: number;
 }
 
+/**
+ * Wave-scoped metadata link returned by listGraviMetadata.
+ * GraviScan-only — links one metadata file to a specific (experiment, wave).
+ */
+export interface WaveMetadataLink {
+  id: string;
+  experiment_id: string;
+  wave_number: number;
+  accession_id: string;
+  createdAt: Date;
+  accession: {
+    id: string;
+    name: string;
+    createdAt: Date;
+  };
+}
+
 // ============================================
 // Filter Types
 // ============================================

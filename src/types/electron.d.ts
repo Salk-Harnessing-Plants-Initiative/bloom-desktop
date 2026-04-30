@@ -37,6 +37,7 @@ import {
   ScanFilters,
   PaginatedScanFilters,
   PaginatedScansResponse,
+  WaveMetadataLink,
 } from './database';
 import {
   DetectedScanner,
@@ -279,6 +280,18 @@ export interface DatabaseAPI {
       experimentId: string,
       accessionId: string
     ) => Promise<DatabaseResponse<ExperimentWithRelations>>;
+    linkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number,
+      accessionId: string
+    ) => Promise<DatabaseResponse<WaveMetadataLink>>;
+    unlinkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number
+    ) => Promise<DatabaseResponse>;
+    listGraviMetadata: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<WaveMetadataLink[]>>;
   };
   scans: {
     list: {

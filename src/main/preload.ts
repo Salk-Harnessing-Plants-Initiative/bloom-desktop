@@ -178,6 +178,25 @@ const databaseAPI: DatabaseAPI = {
         experimentId,
         accessionId
       ),
+    linkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number,
+      accessionId: string
+    ) =>
+      ipcRenderer.invoke(
+        'db:experiments:linkGraviMetadata',
+        experimentId,
+        waveNumber,
+        accessionId
+      ),
+    unlinkGraviMetadata: (experimentId: string, waveNumber: number) =>
+      ipcRenderer.invoke(
+        'db:experiments:unlinkGraviMetadata',
+        experimentId,
+        waveNumber
+      ),
+    listGraviMetadata: (experimentId: string) =>
+      ipcRenderer.invoke('db:experiments:listGraviMetadata', experimentId),
   },
   scans: {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>
