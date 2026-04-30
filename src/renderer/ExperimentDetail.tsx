@@ -67,6 +67,12 @@ export function ExperimentDetail() {
       );
     if (result.success && result.data) {
       setWaveLinks(result.data);
+      // Auto-suggest next wave number = max(existing) + 1
+      const nextWave =
+        result.data.length > 0
+          ? Math.max(...result.data.map((l) => l.wave_number)) + 1
+          : 0;
+      setLinkWaveNumber(nextWave);
     }
   }, [experimentId]);
 
@@ -486,10 +492,10 @@ export function ExperimentDetail() {
               <label className="text-gray-600">Wave</label>
               <input
                 type="number"
-                min={1}
+                min={0}
                 value={linkWaveNumber}
                 onChange={(e) =>
-                  setLinkWaveNumber(parseInt(e.target.value, 10) || 1)
+                  setLinkWaveNumber(parseInt(e.target.value, 10) || 0)
                 }
                 className="w-16 px-2 py-1 border border-gray-300 rounded"
               />
