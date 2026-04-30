@@ -7,17 +7,36 @@ We need:
 2. Deletion protection — block deleting a metadata file that's still linked to any experiment (cylinder OR graviscan)
 3. Explicit unlink action before delete
 
+## How metadata is stored (unchanged)
+
+`Accessions` (and its child rows `GraviPlateAccession` + `GraviPlateSectionMapping`) remain the metadata file storage for both scanner modes. We are NOT replacing or duplicating the metadata content — we're only changing how an experiment links to it.
+
+```
+Accessions                          ← metadata file (id, name, createdAt)
+   ├─→ GraviPlateAccession           ← rows (plate_id, accession, transplant_date, custom_note)
+   │     └─→ GraviPlateSectionMapping ← rows (section_id, plant_qr, medium)
+   │
+   ├─ existing link (CylinderScan):
+   │     Experiment.accession_id  →  Accessions.id     (one-to-one)
+   │
+   └─ new link (GraviScan):
+         GraviExperimentWaveMetadata.accession_id  →  Accessions.id   (one-to-many per wave)
+```
+
+Uploading a metadata CSV continues to populate `Accessions` + `GraviPlateAccession` + `GraviPlateSectionMapping`. The only thing that's new is the link table.
+
 ## What Changes
 
 ### CylinderScan: unchanged
 
-`Experiment.accession_id` stays. CylinderScan still has one metadata file per experiment.
+`Experiment.accession_id` stays. CylinderScan still has one metadata file per experiment, linked the same way it does today.
 
-### GraviScan: new wave-scoped table
+### GraviScan: new wave-scoped link table
 
 - New table `GraviExperimentWaveMetadata(experiment_id, wave_number, accession_id)` with `@@unique([experiment_id, wave_number])`
 - Used ONLY by GraviScan experiments (`experiment_type = 'graviscan'`)
-- Existing GraviScan experiments with `Experiment.accession_id` set: migrated to wave_number=1, then `accession_id` cleared on the experiment row
+- `accession_id` still references the existing `Accessions` table — same metadata, just a different link
+- Existing GraviScan experiments with `Experiment.accession_id` set: migrated to a `GraviExperimentWaveMetadata` row with `wave_number=1`, then `accession_id` cleared on the experiment row
 
 ### Delete protection (both flows)
 
