@@ -327,11 +327,15 @@ export class ScanCoordinator extends EventEmitter {
         }
         isFirst = false;
 
-        // Update timestamps and cycle numbers in output paths
+        // Update timestamps and cycle numbers in output paths.
+        // IMPORTANT: anchor the timestamp regex to `_st_` so we only replace
+        // the per-grid start timestamp in the FILENAME, not the session
+        // timestamp in the FOLDER name (which would create a new folder
+        // every cycle).
         const platesToScan: PlateConfig[] = rowPlates.map((plate) => ({
           ...plate,
           output_path: plate.output_path
-            .replace(/(\d{8}T\d{6})/, stTimestamp)
+            .replace(/_st_\d{8}T\d{6}/, `_st_${stTimestamp}`)
             .replace(/_cy\d+_/, `_cy${this.currentCycle}_`),
         }));
 
