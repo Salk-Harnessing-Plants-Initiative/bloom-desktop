@@ -21,7 +21,26 @@ import {
   ScannerSubprocess,
   PlateConfig,
   ScanWorkerEvent,
+  ScanWorkerPlate,
 } from './scanner-subprocess';
+
+/**
+ * Compose the final scan output filename for a given cycle from PlateConfig
+ * components. Pure function — no string mutation, no regex.
+ *
+ * Format: {exp_name}_wave{N}_st_{stTimestamp}_cy{cycle}_{system_prefix}{scanner_tag}_{plate_index}.tif
+ */
+export function composeScanFilename(
+  plate: PlateConfig,
+  stTimestamp: string,
+  cycle: number
+): string {
+  return (
+    `${plate.exp_name}_wave${plate.wave_number}_st_${stTimestamp}` +
+    `_cy${cycle}_${plate.system_prefix}${plate.scanner_tag}` +
+    `_${plate.plate_index}.tif`
+  );
+}
 
 // =============================================================================
 // Types
@@ -336,19 +355,17 @@ export class ScanCoordinator extends EventEmitter {
         }
         isFirst = false;
 
-        // Update timestamps and cycle numbers in output filenames only
-        // (apply regex to basename to avoid mangling date-like directory names)
-        const platesToScan: PlateConfig[] = rowPlates.map((plate) => {
-          const dir = path.dirname(plate.output_path);
-          const basename = path
-            .basename(plate.output_path)
-            .replace(/(\d{8}T\d{6})/, stTimestamp)
-            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
-          return {
-            ...plate,
-            output_path: path.join(dir, basename),
-          };
-        });
+        // Compose the output_path fresh from components for this cycle.
+        // No regex, no string mutation — every cycle rebuilds from PlateConfig.
+        const platesToScan: ScanWorkerPlate[] = rowPlates.map((plate) => ({
+          plate_index: plate.plate_index,
+          grid_mode: plate.grid_mode,
+          resolution: plate.resolution,
+          output_path: path.join(
+            plate.output_dir,
+            composeScanFilename(plate, stTimestamp, this.currentCycle)
+          ),
+        }));
 
         const promise = new Promise<{
           scannerId: string;

@@ -1468,6 +1468,18 @@ export function registerGraviscanHandlers(
         };
       }
     ) => {
+      // Compose cycle-1 output path purely for session-state tracking.
+      // The actual per-cycle path is built fresh in the coordinator.
+      const cycle1Path = (
+        plate: PlateConfig & { plate_barcode?: string | null }
+      ): string => {
+        const filename =
+          `${plate.exp_name}_wave${plate.wave_number}` +
+          `_st_${plate.session_timestamp}_cy1` +
+          `_${plate.system_prefix}${plate.scanner_tag}` +
+          `_${plate.plate_index}.tif`;
+        return path.join(plate.output_dir, filename);
+      };
       try {
         const coordinator = getCoordinator?.();
         if (!coordinator) {
@@ -1508,7 +1520,7 @@ export function registerGraviscanHandlers(
             jobs[key] = {
               scannerId: s.scannerId,
               plateIndex: plate.plate_index,
-              outputPath: plate.output_path,
+              outputPath: cycle1Path(plate),
               plantBarcode: plate.plate_barcode ?? null,
               transplantDate: null,
               customNote: null,
@@ -1712,6 +1724,27 @@ export function registerGraviscanHandlers(
             : 'Failed to get output directory',
         path: null,
       };
+    }
+  });
+
+  /**
+   * Create a directory recursively. Idempotent — succeeds if it already
+   * exists. Used by the renderer to create the per-session scan folder
+   * upfront, before any cycle begins.
+   */
+  ipcMain.handle('graviscan:ensure-dir', async (_event, dirPath: string) => {
+    try {
+      if (!dirPath || typeof dirPath !== 'string') {
+        return { success: false, error: 'dirPath is required' };
+      }
+      await fs.promises.mkdir(dirPath, { recursive: true });
+      console.log(`[GraviScan:ENSURE-DIR] Ready: ${dirPath}`);
+      return { success: true, path: dirPath };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to ensure directory';
+      console.error(`[GraviScan:ENSURE-DIR] ${message}`);
+      return { success: false, error: message };
     }
   });
 
