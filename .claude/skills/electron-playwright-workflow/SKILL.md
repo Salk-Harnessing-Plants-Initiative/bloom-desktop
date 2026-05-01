@@ -49,6 +49,42 @@ Renderer Process (React)  ←→  Preload Bridge  ←→  Main Process (Node.js)
 - Update `src/types/electron.d.ts` when adding IPC methods
 - Use `contextBridge.exposeInMainWorld` in preload for new APIs
 
+## Visual verification of renderer changes (MANDATORY)
+
+Any change that touches `src/renderer/`, a React component, a page route, or anything user-visible MUST be visually verified before being claimed done. Code-correctness review (typecheck, lint, unit tests) does not catch UX problems — monolithic 500-line forms, missing affordances, broken layouts, redundant pages, ugly defaults. Several incidents in this codebase shipped renderer code that compiled, passed all tests, and had unusable UX.
+
+### How to verify
+
+1. Make sure the dev server is running locally: `npm run start`. (CI runs it as part of the workflow.)
+2. Run the smoke spec: `npm run test:e2e:smoke`.
+3. **Alternative for PR review**: download the `renderer-screenshots-<os>` artifact from the PR's CI check page. The artifact contains the same PNGs that `npm run test:e2e:smoke` produces locally — use whichever is faster. CI uploads with `if: always()` so the artifact is present even when the spec failed.
+4. The spec writes PNG screenshots of every renderer route to `tests/e2e/screenshots/`. Filenames are `<mode>-<page-name>.png` (e.g., `graviscan-scanner-config.png`).
+5. Read every PNG affected by the change using the `Read` tool. Reading the PNG returns the image to you — actually look at it.
+6. Use the visual-review checklist (next subsection) before claiming the change is done.
+
+### Visual-review checklist (eyeball-only — no pixel-diff)
+
+- Does the page render at all? (Easy to miss when a hook crashes silently — the page may appear blank or render an error boundary.)
+- Is the primary action obvious? One Save button vs. several? Disabled-state distinguishable from enabled?
+- Sensible defaults, or empty page? An empty form with no defaults is usually a bug.
+- Are error / success / partial-failure states reachable? (Banners, toast, inline messages — visible? dismissable?)
+- Layout coherent or 600-line scroll? If the page is one giant inline form, file a componentization follow-up.
+- Compare against the pilot/reference design if one exists. **Different ≠ acceptable; degraded vs. reference IS a regression.**
+
+### Why MCP Playwright cannot drive this app
+
+The Playwright MCP tools (`mcp__playwright__browser_*`) drive Chrome via DevTools Protocol. This Electron app's renderer relies on `window.electron.*` injected by the preload script. That injection only happens inside Electron — pointing MCP Playwright at `http://localhost:3000/main_window` loads the HTML but every IPC call fails because `window.electron` is undefined.
+
+To drive the actual app for UI work, use `@playwright/test`'s `_electron.launch()` API in an E2E spec. The smoke spec at `tests/e2e/smoke-renderer.e2e.ts` is the canonical pattern; mirror its `launchAppForMode()` helper for any new visual test.
+
+Do NOT waste time trying to use the MCP browser to "look at" the app's renderer pages.
+
+### When the smoke spec is insufficient
+
+- New page added: extend `SHARED_ROUTES`, `CYLINDER_ONLY_ROUTES`, or `GRAVISCAN_ONLY_ROUTES` in `tests/e2e/smoke-renderer.e2e.ts` with the new `RouteSpec` entry.
+- Route requires interaction before it's visually meaningful (e.g., a wizard step that needs prior input): write a focused E2E spec that drives the interaction and screenshots after each step. The smoke spec captures default state only.
+- Pixel-diff regression suite: NOT in scope today. If someone proposes adding `toHaveScreenshot()` baseline assertions, treat that as a separate proposal.
+
 ## Testing Commands
 
 ### Quick Reference

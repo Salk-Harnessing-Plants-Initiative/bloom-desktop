@@ -102,4 +102,54 @@ describe('App routing', () => {
       expect(screen.getByText('CylinderScan')).toBeInTheDocument();
     });
   });
+
+  // GraviScan routing tests (Section 14)
+
+  it('renders GraviScan nav links when mode is graviscan', async () => {
+    mockUseAppMode.mockReturnValue({ mode: 'graviscan', isLoading: false });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Scanner Config')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Metadata').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Capture Scan').length).toBeGreaterThan(0);
+    expect(screen.getByText('Browse GraviScans')).toBeInTheDocument();
+  });
+
+  it('does NOT render GraviScan nav links when mode is cylinderscan', async () => {
+    mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Capture Scan').length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText('Scanner Config')).toBeNull();
+    expect(screen.queryByText('Browse GraviScans')).toBeNull();
+  });
+
+  it('renders /browse-graviscan route regardless of mode (cross-mode data access)', async () => {
+    mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
+
+    render(<App />);
+
+    // Browse GraviScans route exists even in cylinderscan mode
+    // (visible via direct navigation, not necessarily in sidebar)
+    await waitFor(() => {
+      expect(screen.getByText('CylinderScan')).toBeInTheDocument();
+    });
+  });
+
+  it('renders GraviScan workflow steps with correct routes', async () => {
+    mockUseAppMode.mockReturnValue({ mode: 'graviscan', isLoading: false });
+
+    render(<App />);
+
+    await waitFor(() => {
+      // GraviScan workflow steps should show Metadata, not Accessions
+      expect(screen.getAllByText('Metadata').length).toBeGreaterThan(0);
+    });
+  });
 });

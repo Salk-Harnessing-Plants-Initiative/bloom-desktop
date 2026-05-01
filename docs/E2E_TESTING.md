@@ -313,6 +313,56 @@ npx prisma generate
 
 These are empirically determined values from CI testing. Too short = tests fail to connect to dev server. Too long = wasted CI time.
 
+## Renderer Smoke Spec
+
+`tests/e2e/smoke-renderer.e2e.ts` is a special-purpose Playwright spec whose only job is **producing screenshot artifacts** of every renderer page in every supported scanner mode. It is the visual-verification gate for any change that touches `src/renderer/`.
+
+### What it does
+
+- Launches the Electron app once per scanner mode (`cylinderscan`, `graviscan`)
+- Navigates to every visible renderer route (sidebar links + the `/machine-config` keyboard shortcut)
+- Writes a full-page PNG per route to `tests/e2e/screenshots/<mode>-<page-name>.png`
+- 19 PNGs total (9 cylinder + 10 graviscan) — captured in ~20 seconds
+
+It is **NOT a behavior-assertion test**. It passes if every page renders without throwing AND a PNG is written. Layout-quality / UX judgment is deferred to humans reviewing the captured PNGs.
+
+### When to use it
+
+- Any PR that modifies `src/renderer/`, a React component, a page route, or anything user-visible.
+- The OpenSpec proposal's `tasks.md` MUST include a visual-verification task that runs this spec and reads the relevant PNGs (see `openspec/AGENTS.md` "Renderer-touching proposal rules").
+
+### How to run locally
+
+```bash
+# Terminal 1: dev server
+npm run start
+
+# Terminal 2: smoke spec
+npm run test:e2e:smoke
+```
+
+PNGs land in `tests/e2e/screenshots/`. Read them via the Read tool (in Claude) or open them in any image viewer. The visual-review checklist is in `.claude/skills/electron-playwright-workflow/SKILL.md`.
+
+### How to read in CI (preferred for PR review)
+
+CI uploads `tests/e2e/screenshots/` as a `renderer-screenshots-<os>` artifact on every E2E run, success or failure (`if: always()`). Reviewers can download it without running the spec themselves:
+
+```bash
+# Find the run id from the PR's check page, then:
+gh run download <run-id> --pattern "renderer-screenshots-*"
+ls renderer-screenshots-ubuntu-latest/   # or macos-latest, windows-latest
+```
+
+Or click "Artifacts" on the PR's check page in the GitHub UI and download the zip.
+
+The CI artifact path is the canonical evidence for `pre-merge` and `review-pr` flows — running locally is for local development only.
+
+### MCP Playwright cannot drive this app
+
+The Playwright MCP (`mcp__playwright__browser_*`) drives Chrome via DevTools Protocol. The Electron renderer relies on `window.electron.*` injected by the preload script, which only happens inside Electron. Pointing MCP Playwright at `http://localhost:3000/main_window` loads the HTML but every IPC call fails because `window.electron` is undefined.
+
+To drive the actual app, use `@playwright/test`'s `_electron.launch()` (the smoke spec is the canonical pattern). Don't waste time trying MCP for this.
+
 ## Common Pitfalls & Solutions
 
 ### ❌ Pitfall 1: Port Conflict Error (Windows)

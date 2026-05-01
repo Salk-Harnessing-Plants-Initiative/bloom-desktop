@@ -545,6 +545,20 @@ jobs:
             test-results/
           retention-days: 7
 
+      # Upload renderer-smoke screenshots (always — even on success).
+      # Reviewers download these from the PR check page to perform visual
+      # verification without running `npm run test:e2e:smoke` locally.
+      # See openspec/specs/e2e-testing requirements:
+      #   - "CI Integration for E2E Tests" → "CI job uploads renderer smoke screenshots on every run"
+      #   - "Renderer Smoke Spec" → "Captured screenshots are reviewable without running the spec"
+      - name: Upload renderer smoke screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: renderer-screenshots-${{ matrix.os }}
+          path: tests/e2e/screenshots/*.png
+          if-no-files-found: warn
+
   # Test packaged app database integration (macOS only for speed)
   test-package-database:
     needs: build-python

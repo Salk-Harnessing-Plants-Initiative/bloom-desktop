@@ -21,6 +21,8 @@ let scanSession: ScanSessionState | null = null;
 let scanCoordinator: ScanCoordinator | null = null;
 let _getMainWindow: (() => BrowserWindow | null) | null = null;
 let _coordinatorCreating: Promise<ScanCoordinator> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _db: any = null;
 
 // =============================================================================
 // Session state management
@@ -113,6 +115,14 @@ export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
       setupCoordinatorEventForwarding(scanCoordinator, _getMainWindow);
     }
 
+    // Wire DB persistence on coordinator events
+    if (_db) {
+      const { setupCoordinatorPersistence } = await import(
+        './scan-persistence'
+      );
+      setupCoordinatorPersistence(scanCoordinator, _db, graviSessionFns);
+    }
+
     return scanCoordinator;
   })();
 
@@ -141,8 +151,9 @@ export async function initGraviScan(
 
   console.log('[Main] GraviScan mode detected, registering handlers...');
 
-  // Cache for coordinator event forwarding
+  // Cache for coordinator event forwarding and persistence
   _getMainWindow = getMainWindow;
+  _db = db;
 
   // Lazy import to avoid loading sharp/native modules in cylinderscan mode
   const { registerGraviScanHandlers } = await import('./register-handlers');

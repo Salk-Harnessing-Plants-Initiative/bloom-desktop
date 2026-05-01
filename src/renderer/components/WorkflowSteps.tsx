@@ -78,8 +78,8 @@ export const graviScanSteps: WorkflowStep[] = [
   {
     step: 3,
     title: 'Metadata',
-    description: 'Configure experiment metadata fields',
-    route: '/experiments',
+    description: 'Configure plate assignments and scan metadata',
+    route: '/metadata',
     icon: '📝',
   },
   {
@@ -93,14 +93,14 @@ export const graviScanSteps: WorkflowStep[] = [
     step: 5,
     title: 'Capture Scan',
     description: 'Capture a time-lapse gravitropism scan',
-    route: '/capture-scan',
+    route: '/graviscan',
     icon: '🔄',
   },
   {
     step: 6,
     title: 'Browse Scans',
     description: 'Review and manage captured scans',
-    route: '/browse-scans',
+    route: '/browse-graviscan',
     icon: '📋',
   },
 ];

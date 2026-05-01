@@ -29,3 +29,15 @@ You are a scientific programmer that values testing, code quality, reproducibili
 6. **Get user approval**: Present the reviewed proposal to the user and wait for explicit approval before proceeding to implementation.
 
 7. **Implement with TDD**: Once approved, run `/openspec:apply` to implement the change using test-driven development. Write tests before implementation code.
+
+## Renderer / UI guardrails (MANDATORY for any change touching `src/renderer/`)
+
+If the feature touches the renderer, the OpenSpec proposal MUST include the following in its task list:
+
+1. **Visual verification task** in the proposal's Section "Manual verification" or equivalent: an explicit step that runs `npm run test:e2e:smoke` and reads each affected screenshot via the `Read` tool. The acceptance criterion is "every page touched by this change has been visually reviewed against the visual-review checklist in `.claude/skills/electron-playwright-workflow/SKILL.md`."
+
+2. **Smoke-spec extension** (only if a new page is added): a task that adds the new page's `RouteSpec` entry to `tests/e2e/smoke-renderer.e2e.ts`. The proposal's `Impact` section must list this file as `MODIFIED`.
+
+3. **Deferred-component disclosure** in the proposal's `Non-Goals` section: if any UI component, sub-page, or rich-interaction surface is being deferred to a follow-up, the proposal MUST list each by name AND link a filed GitHub issue for it. Vague language like "remaining components deferred" is not acceptable. The check: a future maintainer reading this proposal a year from now should be able to point to a tracked issue for every "we'll do that later" claim.
+
+If the proposal is missing any of these for a renderer-touching change, the proposal review must fail.

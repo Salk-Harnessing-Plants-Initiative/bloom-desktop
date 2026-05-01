@@ -3,6 +3,45 @@
  */
 
 // =============================================================================
+// Metadata JSON
+// Written alongside scan images for portability without the SQLite database.
+// =============================================================================
+
+/**
+ * Metadata object written to metadata.json for GraviScan scans.
+ * Contains all fields needed to reproduce or trace a scan.
+ */
+export interface GraviScanMetadataJson {
+  metadata_version: number;
+  scan_type: 'graviscan';
+  experiment_id: string;
+  phenotyper_id: string;
+  scanner_id: string;
+  scanner_name: string;
+  grid_mode: string;
+  resolution_dpi: number;
+  format: string;
+  plate_index: string;
+  plate_barcode?: string;
+  transplant_date?: string;
+  custom_note?: string;
+  wave_number: number;
+  cycle_number: number;
+  session_id: string | null;
+  scan_started_at: string;
+  capture_date: string;
+  interval_seconds?: number;
+  duration_seconds?: number;
+  /**
+   * Filename of the image this metadata.json sits next to (without dir).
+   * Optional because legacy single-file scans wrote one shared metadata.json
+   * for the whole grid; per-image writes set this so future readers can
+   * confirm the metadata pairs with the correct TIFF.
+   */
+  image_filename?: string;
+}
+
+// =============================================================================
 // Scan Timing Constants
 // Empirical values from Epson Perfection V600 at 1200dpi with 2 scanners.
 // Measured: ~1m15s for 2 grids, ~2m36s for 4 grids.
@@ -26,6 +65,14 @@ export interface DetectedScanner {
   vendor_id: string;
   product_id: string;
   sane_name?: string; // SANE device identifier (e.g., "epkowa:usb:001:005")
+  /**
+   * DB-side `GraviScanner.enabled` for scanners matched to a DB row. When
+   * absent (undefined), treat as `true` — the scanner is newly-discovered
+   * physical hardware not yet saved to the DB. The renderer uses this to
+   * render the "Enabled" checkbox unchecked for previously-disabled
+   * scanners while still surfacing them so the user can re-enable.
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -212,11 +259,14 @@ export type ScannerState =
 
 /**
  * Per-scanner state for tracking scan progress.
+ *
+ * Note: there is no `enabled` field — "user wants this scanner included" is
+ * derived from `scannerAssignments[i].scannerId !== null`. The DB column
+ * `GraviScanner.enabled` is a separate persistence concept and remains.
  */
 export interface ScannerPanelState {
   scannerId: string;
   name: string;
-  enabled: boolean;
   isOnline: boolean;
   isBusy: boolean;
   state: ScannerState;
@@ -333,6 +383,24 @@ export function createEmptyScannerAssignment(
     usbPort: null,
     gridMode: '2grid', // Default to 2-grid
   };
+}
+
+/**
+ * Whether a `ScannerAssignment.scannerId` is a real DB GraviScanner.id —
+ * i.e., something safe to use as a foreign key in plate assignments etc.
+ *
+ * Returns false for both `null` (user unchecked or no detection yet) and
+ * the empty-string sentinel `''` used by buildMockScanners on a fresh
+ * install (the scanner is detected but not yet saved). Only "I have a
+ * real DB id" satisfies this predicate.
+ *
+ * Use this anywhere you'd otherwise write `scannerId !== null` and the
+ * value would be passed to a Prisma FK consumer.
+ */
+export function isDbScannerId(
+  scannerId: string | null | undefined
+): scannerId is string {
+  return typeof scannerId === 'string' && scannerId.length > 0;
 }
 
 // =============================================================================

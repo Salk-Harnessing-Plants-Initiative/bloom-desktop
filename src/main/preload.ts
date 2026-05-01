@@ -242,6 +242,53 @@ const databaseAPI: DatabaseAPI = {
     create: (data: ImageCreateData[]) =>
       ipcRenderer.invoke('db:images:create', data),
   },
+  // GraviScan DB read operations + plate assignment CRUD
+  graviscans: {
+    list: (filters?: { experiment_id?: string }) =>
+      ipcRenderer.invoke('db:graviscans:list', filters),
+    getMaxWaveNumber: (experimentId: string) =>
+      ipcRenderer.invoke('db:graviscans:getMaxWaveNumber', experimentId),
+    checkBarcodeUniqueInWave: (params: {
+      experiment_id: string;
+      wave_number: number;
+      plate_barcode: string;
+    }) => ipcRenderer.invoke('db:graviscans:checkBarcodeUniqueInWave', params),
+  },
+  graviscanPlateAssignments: {
+    list: (experimentId: string, scannerId: string) =>
+      ipcRenderer.invoke('db:graviscanPlateAssignments:list', {
+        experiment_id: experimentId,
+        scanner_id: scannerId,
+      }),
+    upsert: (
+      experimentId: string,
+      scannerId: string,
+      plateIndex: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: any
+    ) =>
+      ipcRenderer.invoke('db:graviscanPlateAssignments:upsert', {
+        experiment_id: experimentId,
+        scanner_id: scannerId,
+        plate_index: plateIndex,
+        data,
+      }),
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      assignments: any[]
+    ) =>
+      ipcRenderer.invoke('db:graviscanPlateAssignments:upsertMany', {
+        experiment_id: experimentId,
+        scanner_id: scannerId,
+        assignments,
+      }),
+  },
+  graviPlateAccessions: {
+    list: (accessionId: string) =>
+      ipcRenderer.invoke('db:graviPlateAccessions:list', accessionId),
+  },
 };
 
 /**
@@ -291,34 +338,61 @@ const sessionAPI = {
  * GraviScan API exposed to renderer
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Unwrap nested { success, data } envelopes from the graviscan IPC handlers.
+ *
+ * The main-process `wrapHandler` returns `{ success, data }` where `data`
+ * is whatever the underlying handler returned. Many underlying handlers
+ * already return an object with their own `success` flag plus typed fields
+ * (e.g. `{ success, config }` or `{ success, scanners }`), which produces
+ * a doubly-wrapped response: `{ success: true, data: { success: true, config } }`.
+ *
+ * The renderer hooks (ported from the pilot) expect the inner shape,
+ * so we flatten here: if `result.data` is an object, return that; otherwise
+ * pass the wrapper through unchanged.
+ */
+async function unwrapGravi(channel: string, ...args: any[]): Promise<any> {
+  const result = await ipcRenderer.invoke(channel, ...args);
+  if (
+    result &&
+    typeof result === 'object' &&
+    result.data &&
+    typeof result.data === 'object'
+  ) {
+    return result.data;
+  }
+  return result;
+}
+
 const graviAPI = {
   // Scanner operations
-  detectScanners: () => ipcRenderer.invoke('graviscan:detect-scanners'),
-  getConfig: () => ipcRenderer.invoke('graviscan:get-config'),
-  saveConfig: (config: any) =>
-    ipcRenderer.invoke('graviscan:save-config', config),
+  detectScanners: () => unwrapGravi('graviscan:detect-scanners'),
+  getConfig: () => unwrapGravi('graviscan:get-config'),
+  saveConfig: (config: any) => unwrapGravi('graviscan:save-config', config),
   saveScannersToDB: (scanners: any) =>
-    ipcRenderer.invoke('graviscan:save-scanners-db', scanners),
-  getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
+    unwrapGravi('graviscan:save-scanners-db', scanners),
+  disableMissingScanners: (enabledIdentities: any) =>
+    unwrapGravi('graviscan:disable-missing-scanners', enabledIdentities),
+  getPlatformInfo: () => unwrapGravi('graviscan:platform-info'),
   validateScanners: (ids: string[]) =>
-    ipcRenderer.invoke('graviscan:validate-scanners', ids),
-  validateConfig: () => ipcRenderer.invoke('graviscan:validate-config'),
+    unwrapGravi('graviscan:validate-scanners', ids),
+  validateConfig: () => unwrapGravi('graviscan:validate-config'),
 
   // Session operations
-  startScan: (params: any) =>
-    ipcRenderer.invoke('graviscan:start-scan', params),
-  getScanStatus: () => ipcRenderer.invoke('graviscan:get-scan-status'),
+  startScan: (params: any) => unwrapGravi('graviscan:start-scan', params),
+  getScanStatus: () => unwrapGravi('graviscan:get-scan-status'),
   markJobRecorded: (jobKey: string) =>
-    ipcRenderer.invoke('graviscan:mark-job-recorded', jobKey),
-  cancelScan: () => ipcRenderer.invoke('graviscan:cancel-scan'),
+    unwrapGravi('graviscan:mark-job-recorded', jobKey),
+  cancelScan: () => unwrapGravi('graviscan:cancel-scan'),
 
   // Image operations
-  getOutputDir: () => ipcRenderer.invoke('graviscan:get-output-dir'),
+  getOutputDir: () => unwrapGravi('graviscan:get-output-dir'),
   readScanImage: (filePath: string, opts?: any) =>
-    ipcRenderer.invoke('graviscan:read-scan-image', filePath, opts),
-  uploadAllScans: () => ipcRenderer.invoke('graviscan:upload-all-scans'),
+    unwrapGravi('graviscan:read-scan-image', filePath, opts),
+  uploadAllScans: () => unwrapGravi('graviscan:upload-all-scans'),
   downloadImages: (params: any) =>
-    ipcRenderer.invoke('graviscan:download-images', params),
+    unwrapGravi('graviscan:download-images', params),
 
   // Event listeners with cleanup functions
   onScanEvent: (callback: (event: any) => void) => {
@@ -375,6 +449,11 @@ const graviAPI = {
     const listener = (_event: unknown, data: any) => callback(data);
     ipcRenderer.on('graviscan:scan-error', listener);
     return () => ipcRenderer.removeListener('graviscan:scan-error', listener);
+  },
+  onRenameError: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:rename-error', listener);
+    return () => ipcRenderer.removeListener('graviscan:rename-error', listener);
   },
   onUploadProgress: (callback: (data: any) => void) => {
     const listener = (_event: unknown, data: any) => callback(data);

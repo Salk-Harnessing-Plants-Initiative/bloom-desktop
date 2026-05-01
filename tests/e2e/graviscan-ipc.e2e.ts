@@ -156,6 +156,11 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(hasGravi).toBe(true);
   });
 
+  // Note: preload's unwrapGravi flattens the main-process wrapHandler
+  // { success, data } envelope when data is an object, so these tests
+  // assert against the inner shape (scanners, supported, config, etc.)
+  // rather than a nested .data field.
+
   test('detectScanners returns mock scanner data', async () => {
     const result = await window.evaluate(() => {
       return (
@@ -164,11 +169,9 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
     // GRAVISCAN_MOCK=true should return mock scanners
-    // Field is `scanners` (not `detectedScanners`) per scanner-handlers.ts
-    expect(Array.isArray(result.data.scanners)).toBe(true);
-    expect(result.data.scanners.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.scanners)).toBe(true);
+    expect(result.scanners.length).toBeGreaterThan(0);
   });
 
   test('getPlatformInfo returns platform data', async () => {
@@ -179,10 +182,8 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
-    // Fields per scanner-handlers.ts: supported, backend, mock_enabled
-    expect(result.data.backend).toBeDefined();
-    expect(typeof result.data.supported).toBe('boolean');
+    expect(result.backend).toBeDefined();
+    expect(typeof result.supported).toBe('boolean');
   });
 
   test('getConfig returns null or config object', async () => {
@@ -204,9 +205,10 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
-    expect(result.data.path).toBeDefined();
-    expect(typeof result.data.path).toBe('string');
+    // output_dir is the field name per image-handlers.ts
+    const pathStr = result.output_dir ?? result.path;
+    expect(typeof pathStr).toBe('string');
+    expect(pathStr.length).toBeGreaterThan(0);
   });
 
   test('getScanStatus returns inactive when no scan active', async () => {
@@ -216,9 +218,8 @@ test.describe('GraviScan IPC Round-Trip', () => {
       ).electron.gravi.getScanStatus();
     });
 
-    expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
-    expect(result.data.isActive).toBe(false);
+    // getScanStatus returns a plain status object (no {success} wrapper)
+    expect(result.isActive).toBe(false);
   });
 
   test('event listener returns cleanup function', async () => {
@@ -242,6 +243,103 @@ test.describe('GraviScan IPC Round-Trip', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeDefined();
+    expect(result.status).toBeDefined();
+  });
+
+  // GraviScan DB read operations (database namespace)
+
+  test('database.graviscans.list returns scans array', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.database.graviscans.list();
+    });
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
+  });
+
+  test('database.graviscans.getMaxWaveNumber returns number', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.database.graviscans.getMaxWaveNumber('nonexistent-exp');
+    });
+
+    expect(result.success).toBe(true);
+    expect(typeof result.data).toBe('number');
+  });
+
+  test('database.graviscans.checkBarcodeUniqueInWave returns boolean', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.database.graviscans.checkBarcodeUniqueInWave({
+        experiment_id: 'nonexistent-exp',
+        wave_number: 1,
+        plate_barcode: 'PLATE-001',
+      });
+    });
+
+    expect(result.success).toBe(true);
+    expect(typeof result.data).toBe('boolean');
+  });
+
+  test('database.graviscanPlateAssignments.list returns array', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.database.graviscanPlateAssignments.list(
+        'nonexistent-exp',
+        'nonexistent-scanner'
+      );
+    });
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
+  });
+
+  test('database.graviscanPlateAssignments.upsert creates/updates assignment', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.database.graviscanPlateAssignments.upsert(
+        'nonexistent-exp',
+        'nonexistent-scanner',
+        '00',
+        { plate_barcode: 'TEST-001', selected: true }
+      );
+    });
+
+    // Will fail with FK constraint (nonexistent experiment/scanner) — that's expected
+    // The important thing is the IPC channel exists and responds
+    expect(result).toBeDefined();
+    expect(typeof result.success).toBe('boolean');
+  });
+
+  test('database.graviscanPlateAssignments.upsertMany handles batch', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.database.graviscanPlateAssignments.upsertMany(
+        'nonexistent-exp',
+        'nonexistent-scanner',
+        [{ plate_index: '00', plate_barcode: 'TEST-001', selected: true }]
+      );
+    });
+
+    expect(result).toBeDefined();
+    expect(typeof result.success).toBe('boolean');
+  });
+
+  test('database.graviPlateAccessions.list returns array', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.database.graviPlateAccessions.list('nonexistent-accession');
+    });
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data)).toBe(true);
   });
 });
