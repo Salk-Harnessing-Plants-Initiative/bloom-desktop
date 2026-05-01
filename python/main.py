@@ -92,9 +92,15 @@ def main():
     parser.add_argument(
         "--scan-worker", action="store_true", help="Run as scan worker subprocess"
     )
-    parser.add_argument("--scanner-id", type=str, help="Scanner UUID (scan-worker mode)")
-    parser.add_argument("--device", type=str, help="SANE device name (scan-worker mode)")
-    parser.add_argument("--mock", action="store_true", help="Use mock scanner (scan-worker mode)")
+    parser.add_argument(
+        "--scanner-id", type=str, help="Scanner UUID (scan-worker mode)"
+    )
+    parser.add_argument(
+        "--device", type=str, help="SANE device name (scan-worker mode)"
+    )
+    parser.add_argument(
+        "--mock", action="store_true", help="Use mock scanner (scan-worker mode)"
+    )
     args = parser.parse_args()
 
     if args.scan_worker:

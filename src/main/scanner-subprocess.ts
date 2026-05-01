@@ -21,11 +21,40 @@ import * as readline from 'readline';
 // Types
 // =============================================================================
 
+/**
+ * Components from which the coordinator composes the per-cycle output path.
+ * The renderer creates `output_dir` upfront via `graviscan:ensure-dir` and
+ * passes these components — no pre-baked `output_path` string is mutated.
+ */
 export interface PlateConfig {
   plate_index: string;
   grid_mode: string;
   resolution: number;
-  output_path: string;
+  output_dir: string;
+  exp_name: string;
+  session_timestamp: string; // YYYYMMDDTHHmmss
+  wave_number: number;
+  scanner_tag: string; // e.g. "Sc1"
+  system_prefix: string; // e.g. "" or "GS1_"
+}
+
+/**
+ * Shape sent to the Python scan worker on stdin. Carries the same
+ * components as PlateConfig plus the per-cycle `cycle` number and
+ * `st_timestamp`. The Python worker composes the final filename
+ * (including `_et_`) at save time — no path is ever pre-baked in TS.
+ */
+export interface ScanWorkerPlate {
+  plate_index: string;
+  grid_mode: string;
+  resolution: number;
+  output_dir: string;
+  exp_name: string;
+  st_timestamp: string;
+  wave_number: number;
+  scanner_tag: string;
+  system_prefix: string;
+  cycle: number;
 }
 
 export interface ScanWorkerEvent {
@@ -211,9 +240,11 @@ export class ScannerSubprocess extends EventEmitter {
 
   /**
    * Send a scan command for a batch of plates.
-   * Returns immediately — listen for events to track progress.
+   * Plates already carry their final `output_path` for this cycle — composed
+   * by the coordinator. Returns immediately — listen for events to track
+   * progress.
    */
-  scan(plates: PlateConfig[]): void {
+  scan(plates: ScanWorkerPlate[]): void {
     this.sendCommand({ action: 'scan', plates });
     this.state = 'scanning';
   }

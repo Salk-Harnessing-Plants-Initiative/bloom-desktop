@@ -442,6 +442,12 @@ const graviscanAPI = {
   validateConfig: () => ipcRenderer.invoke('graviscan:validate-config'),
   // Scan output
   getOutputDir: () => ipcRenderer.invoke('graviscan:get-output-dir'),
+  ensureDir: (dirPath: string) =>
+    ipcRenderer.invoke('graviscan:ensure-dir', dirPath) as Promise<{
+      success: boolean;
+      path?: string;
+      error?: string;
+    }>,
   listScanFiles: (dirPath?: string) =>
     ipcRenderer.invoke('graviscan:list-scan-files', dirPath) as Promise<{
       success: boolean;
@@ -471,7 +477,13 @@ const graviscanAPI = {
         plate_index: string;
         grid_mode: string;
         resolution: number;
-        output_path: string;
+        output_dir: string;
+        exp_name: string;
+        session_timestamp: string;
+        wave_number: number;
+        scanner_tag: string;
+        system_prefix: string;
+        plate_barcode?: string | null;
       }>;
     }>;
     interval?: { intervalSeconds: number; durationSeconds: number };
@@ -498,7 +510,6 @@ const graviscanAPI = {
         {
           scannerId: string;
           plateIndex: string;
-          outputPath: string;
           plantBarcode: string | null;
           gridMode: string;
           status: 'pending' | 'scanning' | 'complete' | 'error';

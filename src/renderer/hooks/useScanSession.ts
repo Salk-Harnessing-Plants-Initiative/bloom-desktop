@@ -20,7 +20,6 @@ interface ListItem {
 export interface ScanJobInfo {
   scannerId: string;
   plateIndex: string;
-  outputPath: string;
   plantBarcode: string | null;
   transplantDate: string | null;
   customNote: string | null;
@@ -970,7 +969,6 @@ export function useScanSession({
             restoredPending.set(key, {
               scannerId: job.scannerId,
               plateIndex: job.plateIndex,
-              outputPath: job.outputPath,
               plantBarcode: job.plantBarcode,
               transplantDate: job.transplantDate ?? null,
               customNote: job.customNote ?? null,
@@ -1226,14 +1224,33 @@ export function useScanSession({
         .replace(/[^a-zA-Z0-9]/g, '_')
         .slice(0, 20);
 
-      // Per-experiment session folder: {baseDir}/{expName}_{timestamp}/
-      const sessionDir = `${outputDir}/${sanitizedExpName}_${timestamp}`;
+      // Per-experiment-and-wave session folder: {baseDir}/{expName}_wave{N}_{timestamp}/
+      const sessionDir = `${outputDir}/${sanitizedExpName}_wave${waveNumber}_${timestamp}`;
       setCurrentSessionDir(sessionDir);
+
+      // Create the session folder upfront in the main process. The Python
+      // worker's lazy mkdir is left in place as defense-in-depth.
+      const ensureResult = await window.electron.graviscan.ensureDir(sessionDir);
+      if (!ensureResult.success) {
+        console.error(
+          '[GraviScan] Failed to create session folder:',
+          ensureResult.error
+        );
+        setScanError(
+          `Failed to create scan folder: ${ensureResult.error || 'unknown error'}`
+        );
+        setIsScanning(false);
+        return;
+      }
 
       // Track pending plates for DB record creation on scan-complete events
       const newPendingPlates = new Map<string, ScanJobInfo>();
+      const systemPrefix = platformInfo?.system_name
+        ? `${platformInfo.system_name}_`
+        : '';
 
-      // Build scan config for each scanner
+      // Build scan config for each scanner — pass components, never a
+      // pre-baked output_path. Coordinator composes per-cycle paths.
       const scannerConfigs = enabledScanners.map((scanner, scannerIdx) => {
         const scannerAssignmentsList =
           scannerPlateAssignments[scanner.scannerId] || [];
@@ -1250,22 +1267,15 @@ export function useScanSession({
         );
         const saneName = detected?.sane_name || '';
 
-        const plates = selectedPlatesForScanner.map((plate) => {
-          // Always include scanner index to keep filenames unique across
-          // scanners on the same machine. Use "Sc" prefix (scanner) to avoid
-          // collision with the metadata "S" prefix used for plate sections.
-          const scannerTag = `Sc${scannerIdx + 1}`;
-          const systemPrefix = platformInfo?.system_name
-            ? `${platformInfo.system_name}_`
-            : '';
-          const filename = `${sanitizedExpName}_st_${timestamp}_cy1_${systemPrefix}${scannerTag}_${plate.plateIndex}.tif`;
-          const outputPath = `${sessionDir}/${filename}`;
+        // "Sc" prefix avoids collision with the metadata "S" prefix used
+        // for plate sections.
+        const scannerTag = `Sc${scannerIdx + 1}`;
 
+        const plates = selectedPlatesForScanner.map((plate) => {
           const jobKey = `${scanner.scannerId}:${plate.plateIndex}`;
           newPendingPlates.set(jobKey, {
             scannerId: scanner.scannerId,
             plateIndex: plate.plateIndex,
-            outputPath,
             plantBarcode: plate.plantBarcode || null,
             transplantDate: plate.transplantDate || null,
             customNote: plate.customNote || null,
@@ -1276,7 +1286,12 @@ export function useScanSession({
             plate_index: plate.plateIndex,
             grid_mode: scannerGridMode,
             resolution: resolution,
-            output_path: outputPath,
+            output_dir: sessionDir,
+            exp_name: sanitizedExpName,
+            session_timestamp: timestamp,
+            wave_number: waveNumber,
+            scanner_tag: scannerTag,
+            system_prefix: systemPrefix,
             plate_barcode: plate.plantBarcode || null,
           };
         });
