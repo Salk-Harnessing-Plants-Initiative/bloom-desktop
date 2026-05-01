@@ -39,14 +39,22 @@ export interface PlateConfig {
 }
 
 /**
- * Shape sent to the Python scan worker on stdin. Coordinator composes
- * `output_path` per cycle from PlateConfig components and packages this.
+ * Shape sent to the Python scan worker on stdin. Carries the same
+ * components as PlateConfig plus the per-cycle `cycle` number and
+ * `st_timestamp`. The Python worker composes the final filename
+ * (including `_et_`) at save time — no path is ever pre-baked in TS.
  */
 export interface ScanWorkerPlate {
   plate_index: string;
   grid_mode: string;
   resolution: number;
-  output_path: string;
+  output_dir: string;
+  exp_name: string;
+  st_timestamp: string;
+  wave_number: number;
+  scanner_tag: string;
+  system_prefix: string;
+  cycle: number;
 }
 
 export interface ScanWorkerEvent {

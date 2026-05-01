@@ -54,6 +54,46 @@ def _make_worker(scanner_id="test-scanner", device_name="mock-device", mock=True
     return ScanWorker(scanner_id=scanner_id, device_name=device_name, mock=mock)
 
 
+def _make_plate(
+    output_dir,
+    plate_index="00",
+    grid_mode="2grid",
+    resolution=300,
+    *,
+    exp_name="exp",
+    st_timestamp="20260301T120000",
+    wave_number=1,
+    scanner_tag="Sc1",
+    system_prefix="",
+    cycle=1,
+):
+    """Build a component-shaped plate dict for the worker's scan command."""
+    return {
+        "plate_index": plate_index,
+        "grid_mode": grid_mode,
+        "resolution": resolution,
+        "output_dir": str(output_dir),
+        "exp_name": exp_name,
+        "st_timestamp": st_timestamp,
+        "wave_number": wave_number,
+        "scanner_tag": scanner_tag,
+        "system_prefix": system_prefix,
+        "cycle": cycle,
+    }
+
+
+def _scan_complete_paths(stdout: str) -> list[str]:
+    """Extract `path` from every scan-complete event in captured stdout."""
+    paths = []
+    for line in stdout.strip().split("\n"):
+        if not line.startswith("EVENT:"):
+            continue
+        event = json.loads(line.removeprefix("EVENT:"))
+        if event.get("type") == "scan-complete":
+            paths.append(event["path"])
+    return paths
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Section 2 — Pure Logic (No Mocks)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -124,20 +164,18 @@ class TestMockScan:
     @patch("time.sleep")
     def test_generates_tiff(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan.tif"
-        w._mock_scan("2grid", "00", 300, str(out))
-        assert out.exists()
-        img = Image.open(out)
+        final = w._mock_scan(_make_plate(tmp_path, plate_index="00"))
+        assert os.path.exists(final)
+        img = Image.open(final)
         assert img.format == "TIFF"
 
     @patch("time.sleep")
     def test_correct_dimensions(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan.tif"
-        w._mock_scan("2grid", "00", 300, str(out))
+        final = w._mock_scan(_make_plate(tmp_path, plate_index="00"))
         region = get_scan_region("2grid", "00")
         px = region.to_pixels(300)
-        img = Image.open(out)
+        img = Image.open(final)
         expected_w = max(px["width"], 100)
         expected_h = max(px["height"], 100)
         assert img.size == (expected_w, expected_h)
@@ -145,9 +183,10 @@ class TestMockScan:
     @patch("time.sleep")
     def test_tiff_has_metadata(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan.tif"
-        w._mock_scan("4grid", "01", 300, str(out))
-        img = Image.open(out)
+        final = w._mock_scan(
+            _make_plate(tmp_path, plate_index="01", grid_mode="4grid")
+        )
+        img = Image.open(final)
         desc = json.loads(img.tag_v2[270])
         assert desc["grid_mode"] == "4grid"
         assert desc["plate_index"] == "01"
@@ -245,9 +284,11 @@ class TestSaneScanRetryLogic:
         w._sane = mock_sane
         w._device = mock_device
 
-        out_path = str(tmp_path / "scan.tif")
-        _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
-        assert os.path.exists(out_path)
+        plate = _make_plate(tmp_path, plate_index="00")
+        _capture_stderr(w._sane_scan, plate)
+        # File path is composed at save time; verify a .tif exists in output_dir.
+        tifs = list(tmp_path.glob("*.tif"))
+        assert len(tifs) == 1
         assert call_count == 3  # failed 2, succeeded on 3rd
 
     @patch("time.sleep")
@@ -259,9 +300,7 @@ class TestSaneScanRetryLogic:
         w._device = mock_device
 
         with pytest.raises(RuntimeError, match="Scan failed after 5 attempts"):
-            _capture_stderr(
-                w._sane_scan, "2grid", "00", 300, str(tmp_path / "fail.tif")
-            )
+            _capture_stderr(w._sane_scan, _make_plate(tmp_path, plate_index="00"))
 
 
 class TestReopenDevice:
@@ -357,14 +396,7 @@ class TestRunCommandLoop:
         scan_cmd = json.dumps(
             {
                 "action": "scan",
-                "plates": [
-                    {
-                        "plate_index": "00",
-                        "grid_mode": "2grid",
-                        "resolution": 300,
-                        "output_path": str(tmp_path / "plate00.tif"),
-                    }
-                ],
+                "plates": [_make_plate(tmp_path, plate_index="00")],
             }
         )
         quit_cmd = json.dumps({"action": "quit"})
@@ -390,18 +422,10 @@ class TestFullScanCycleMock:
         w = _make_worker()
         _capture_stdout(w.initialize)
 
-        out_path = str(tmp_path / "plate00.tif")
         scan_cmd = json.dumps(
             {
                 "action": "scan",
-                "plates": [
-                    {
-                        "plate_index": "00",
-                        "grid_mode": "2grid",
-                        "resolution": 300,
-                        "output_path": out_path,
-                    }
-                ],
+                "plates": [_make_plate(tmp_path, plate_index="00")],
             }
         )
         quit_cmd = json.dumps({"action": "quit"})
@@ -418,7 +442,10 @@ class TestFullScanCycleMock:
         assert "scan-started" in types
         assert "scan-complete" in types
         assert "cycle-done" in types
-        assert os.path.exists(out_path)
+        # The actual file written is reported in the scan-complete event payload.
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 1
+        assert os.path.exists(complete_paths[0])
 
 
 class TestFourGridRowMerge:
@@ -429,16 +456,10 @@ class TestFourGridRowMerge:
         w = _make_worker()
         _capture_stdout(w.initialize)
 
-        plates = []
-        for idx in ("00", "01", "10", "11"):
-            plates.append(
-                {
-                    "plate_index": idx,
-                    "grid_mode": "4grid",
-                    "resolution": 300,
-                    "output_path": str(tmp_path / f"plate_{idx}.tif"),
-                }
-            )
+        plates = [
+            _make_plate(tmp_path, plate_index=idx, grid_mode="4grid")
+            for idx in ("00", "01", "10", "11")
+        ]
 
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
         quit_cmd = json.dumps({"action": "quit"})
@@ -446,20 +467,13 @@ class TestFourGridRowMerge:
         with patch("sys.stdin", io.StringIO(f"{scan_cmd}\n{quit_cmd}\n")):
             out = _capture_stdout(w.run)
 
-        # All 4 TIFFs should exist
-        for idx in ("00", "01", "10", "11"):
-            path = tmp_path / f"plate_{idx}.tif"
-            assert path.exists(), f"Missing {path}"
+        # All 4 TIFFs should exist — paths reported in scan-complete events.
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 4
+        for path in complete_paths:
+            assert os.path.exists(path), f"Missing {path}"
             img = Image.open(path)
             assert img.size[0] > 0 and img.size[1] > 0
-
-        events = [
-            json.loads(line.removeprefix("EVENT:"))
-            for line in out.strip().split("\n")
-            if line.startswith("EVENT:")
-        ]
-        complete_events = [e for e in events if e["type"] == "scan-complete"]
-        assert len(complete_events) == 4
 
 
 class TestTwoGridIndividualScans:
@@ -471,18 +485,8 @@ class TestTwoGridIndividualScans:
         _capture_stdout(w.initialize)
 
         plates = [
-            {
-                "plate_index": "00",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p00.tif"),
-            },
-            {
-                "plate_index": "01",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p01.tif"),
-            },
+            _make_plate(tmp_path, plate_index="00"),
+            _make_plate(tmp_path, plate_index="01"),
         ]
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
         quit_cmd = json.dumps({"action": "quit"})
@@ -490,8 +494,10 @@ class TestTwoGridIndividualScans:
         with patch("sys.stdin", io.StringIO(f"{scan_cmd}\n{quit_cmd}\n")):
             out = _capture_stdout(w.run)
 
-        assert (tmp_path / "p00.tif").exists()
-        assert (tmp_path / "p01.tif").exists()
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 2
+        for path in complete_paths:
+            assert os.path.exists(path)
 
         events = [
             json.loads(line.removeprefix("EVENT:"))
@@ -512,27 +518,19 @@ class TestFourGridSinglePlateInRow:
 
         # Only plate "00" from top row — should NOT row-merge
         plates = [
-            {
-                "plate_index": "00",
-                "grid_mode": "4grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p00.tif"),
-            },
-            {
-                "plate_index": "10",
-                "grid_mode": "4grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p10.tif"),
-            },
+            _make_plate(tmp_path, plate_index="00", grid_mode="4grid"),
+            _make_plate(tmp_path, plate_index="10", grid_mode="4grid"),
         ]
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
         quit_cmd = json.dumps({"action": "quit"})
 
         with patch("sys.stdin", io.StringIO(f"{scan_cmd}\n{quit_cmd}\n")):
-            _capture_stdout(w.run)
+            out = _capture_stdout(w.run)
 
-        assert (tmp_path / "p00.tif").exists()
-        assert (tmp_path / "p10.tif").exists()
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 2
+        for path in complete_paths:
+            assert os.path.exists(path)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -550,18 +548,8 @@ class TestCancelMidCycle:
 
         # We'll cancel between the two plates
         plates = [
-            {
-                "plate_index": "00",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p00.tif"),
-            },
-            {
-                "plate_index": "01",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p01.tif"),
-            },
+            _make_plate(tmp_path, plate_index="00"),
+            _make_plate(tmp_path, plate_index="01"),
         ]
 
         original_scan_plate = w._scan_plate
@@ -589,14 +577,7 @@ class TestCancelFlagClearedOnNewScan:
 
         # New scan should clear the flag
         scan_cmd = {
-            "plates": [
-                {
-                    "plate_index": "00",
-                    "grid_mode": "2grid",
-                    "resolution": 300,
-                    "output_path": str(tmp_path / "p.tif"),
-                }
-            ],
+            "plates": [_make_plate(tmp_path, plate_index="00")],
         }
         _capture_stdout(w._handle_scan, scan_cmd)
         assert w._cancel_requested is False
@@ -728,12 +709,7 @@ class TestScanPlateErrorEmitsEvent:
         with patch.object(w, "_mock_scan", side_effect=RuntimeError("boom")):
             out = _capture_stdout(
                 w._scan_plate,
-                {
-                    "plate_index": "00",
-                    "grid_mode": "2grid",
-                    "resolution": 300,
-                    "output_path": "/tmp/nope.tif",
-                },
+                _make_plate("/tmp/nope-dir", plate_index="00"),
             )
 
         events = [
@@ -757,18 +733,8 @@ class TestScanRowErrorAllPlates:
 
         with patch.object(w, "_mock_scan_row", side_effect=RuntimeError("row fail")):
             row_plates = [
-                {
-                    "plate_index": "00",
-                    "grid_mode": "4grid",
-                    "resolution": 300,
-                    "output_path": "/tmp/p00.tif",
-                },
-                {
-                    "plate_index": "01",
-                    "grid_mode": "4grid",
-                    "resolution": 300,
-                    "output_path": "/tmp/p01.tif",
-                },
+                _make_plate("/tmp", plate_index="00", grid_mode="4grid"),
+                _make_plate("/tmp", plate_index="01", grid_mode="4grid"),
             ]
             out = _capture_stdout(w._scan_row, row_plates)
 
@@ -794,16 +760,7 @@ class TestCycleDoneAlwaysEmitted:
         with patch.object(w, "_mock_scan", side_effect=RuntimeError("fail")):
             out = _capture_stdout(
                 w._handle_scan,
-                {
-                    "plates": [
-                        {
-                            "plate_index": "00",
-                            "grid_mode": "2grid",
-                            "resolution": 300,
-                            "output_path": str(tmp_path / "p.tif"),
-                        },
-                    ]
-                },
+                {"plates": [_make_plate(tmp_path, plate_index="00")]},
             )
 
         events = [
@@ -826,10 +783,9 @@ class TestMetadataJSONRoundtrip:
     @patch("time.sleep")
     def test_roundtrip(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out_path = str(tmp_path / "meta.tif")
-        w._mock_scan("2grid", "00", 300, out_path)
+        final = w._mock_scan(_make_plate(tmp_path, plate_index="00"))
 
-        img = Image.open(out_path)
+        img = Image.open(final)
         desc = json.loads(img.tag_v2[270])
         assert desc["scanner_id"] == "test-scanner"
         assert desc["grid_mode"] == "2grid"
@@ -846,10 +802,11 @@ class TestResolutionTagsMatchInput:
     @patch("time.sleep")
     def test_resolution_tags(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out_path = str(tmp_path / "res.tif")
-        w._mock_scan("2grid", "00", 600, out_path)
+        final = w._mock_scan(
+            _make_plate(tmp_path, plate_index="00", resolution=600)
+        )
 
-        img = Image.open(out_path)
+        img = Image.open(final)
         # tag 282 = XResolution
         x_res = img.tag_v2.get(282)
         # IFDRational stores as tuple or value
@@ -865,10 +822,12 @@ class TestMetadataDifferentGridModes:
     @patch("time.sleep")
     def test_grid_mode_metadata(self, mock_sleep, tmp_path):
         w = _make_worker()
-        path_2g = str(tmp_path / "2g.tif")
-        path_4g = str(tmp_path / "4g.tif")
-        w._mock_scan("2grid", "00", 300, path_2g)
-        w._mock_scan("4grid", "00", 300, path_4g)
+        dir_2g = tmp_path / "g2"
+        dir_4g = tmp_path / "g4"
+        path_2g = w._mock_scan(_make_plate(dir_2g, plate_index="00"))
+        path_4g = w._mock_scan(
+            _make_plate(dir_4g, plate_index="00", grid_mode="4grid")
+        )
 
         desc_2g = json.loads(Image.open(path_2g).tag_v2[270])
         desc_4g = json.loads(Image.open(path_4g).tag_v2[270])

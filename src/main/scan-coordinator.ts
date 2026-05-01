@@ -16,31 +16,12 @@
  */
 
 import { EventEmitter } from 'events';
-import * as path from 'path';
 import {
   ScannerSubprocess,
   PlateConfig,
   ScanWorkerEvent,
   ScanWorkerPlate,
 } from './scanner-subprocess';
-
-/**
- * Compose the final scan output filename for a given cycle from PlateConfig
- * components. Pure function — no string mutation, no regex.
- *
- * Format: {exp_name}_wave{N}_st_{stTimestamp}_cy{cycle}_{system_prefix}{scanner_tag}_{plate_index}.tif
- */
-export function composeScanFilename(
-  plate: PlateConfig,
-  stTimestamp: string,
-  cycle: number
-): string {
-  return (
-    `${plate.exp_name}_wave${plate.wave_number}_st_${stTimestamp}` +
-    `_cy${cycle}_${plate.system_prefix}${plate.scanner_tag}` +
-    `_${plate.plate_index}.tif`
-  );
-}
 
 // =============================================================================
 // Types
@@ -334,11 +315,10 @@ export class ScanCoordinator extends EventEmitter {
         `[ScanCoordinator] Row [${rowGrids.join(',')}]: starting (st_${stTimestamp})`
       );
 
-      // For each scanner, find all plates in this row and send them together
-      const rowDonePromises: Promise<{
-        scannerId: string;
-        outputPaths: { plateIndex: string; path: string }[];
-      } | null>[] = [];
+      // For each scanner, find all plates in this row and send them together.
+      // Promises resolve when each scanner reports cycle-done; only the
+      // arrival of cycle-done matters, so the resolved value is void.
+      const rowDonePromises: Promise<void>[] = [];
       let isFirst = true;
 
       for (const [scannerId, sub] of this.subprocesses) {
@@ -355,37 +335,32 @@ export class ScanCoordinator extends EventEmitter {
         }
         isFirst = false;
 
-        // Compose the output_path fresh from components for this cycle.
-        // No regex, no string mutation — every cycle rebuilds from PlateConfig.
+        // Forward components to Python — no composition in TS. The worker
+        // builds the final filename (including `_et_`) at save time, since
+        // `et` is only knowable then.
         const platesToScan: ScanWorkerPlate[] = rowPlates.map((plate) => ({
           plate_index: plate.plate_index,
           grid_mode: plate.grid_mode,
           resolution: plate.resolution,
-          output_path: path.join(
-            plate.output_dir,
-            composeScanFilename(plate, stTimestamp, this.currentCycle)
-          ),
+          output_dir: plate.output_dir,
+          exp_name: plate.exp_name,
+          st_timestamp: stTimestamp,
+          wave_number: plate.wave_number,
+          scanner_tag: plate.scanner_tag,
+          system_prefix: plate.system_prefix,
+          cycle: this.currentCycle,
         }));
 
-        const promise = new Promise<{
-          scannerId: string;
-          outputPaths: { plateIndex: string; path: string }[];
-        } | null>((resolve) => {
+        const promise = new Promise<void>((resolve) => {
           const onCycleDone = () => {
             sub.removeListener('cycle-done', onCycleDone);
             sub.removeListener('exit', onExit);
-            resolve({
-              scannerId,
-              outputPaths: platesToScan.map((p) => ({
-                plateIndex: p.plate_index,
-                path: p.output_path,
-              })),
-            });
+            resolve();
           };
           const onExit = () => {
             sub.removeListener('cycle-done', onCycleDone);
             sub.removeListener('exit', onExit);
-            resolve(null);
+            resolve();
           };
           sub.on('cycle-done', onCycleDone);
           sub.on('exit', onExit);
@@ -396,7 +371,7 @@ export class ScanCoordinator extends EventEmitter {
       }
 
       // Wait for ALL scanners to complete this row
-      const results = await Promise.all(rowDonePromises);
+      await Promise.all(rowDonePromises);
 
       const gridEndedAt = new Date();
       const etTimestamp = gridEndedAt

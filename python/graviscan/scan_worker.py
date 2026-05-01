@@ -11,9 +11,20 @@ Usage:
 
 Protocol:
     Commands (stdin, line-delimited JSON):
-        {"action":"scan","plates":[{"plate_index":"00","grid_mode":"2grid","resolution":300,"output_path":"/tmp/scan.jpg"}, ...]}
+        {"action":"scan","plates":[
+            {
+                "plate_index":"00","grid_mode":"2grid","resolution":300,
+                "output_dir":"/tmp/expA_wave1_20260301T120000",
+                "exp_name":"expA","st_timestamp":"20260301T120000",
+                "wave_number":1,"scanner_tag":"Sc1","system_prefix":"",
+                "cycle":1
+            }, ...
+        ]}
         {"action":"cancel"}
         {"action":"quit"}
+
+    The worker composes the final filename at save time including `_et_`,
+    so `et` reflects the actual save moment.
 
     Events (stdout, line-prefixed):
         EVENT:{"type":"ready","scanner_id":"<id>"}
@@ -83,19 +94,23 @@ def emit_event(event: dict) -> None:
     print(f"EVENT:{json.dumps(event)}", flush=True)
 
 
-def _with_et_timestamp(output_path: str) -> str:
-    """Insert _et_YYYYMMDDTHHMMSS into the filename right after _st_YYYYMMDDTHHMMSS.
+def compose_output_path(plate: dict, et: str) -> str:
+    """Build the final scan output path from plate components.
 
-    Coordinator gives us a path like "..._st_20260413T120530_cy1_S1_00.tif".
-    We return "..._st_20260413T120530_et_20260413T120545_cy1_S1_00.tif".
-    If no _st_ pattern is found, returns the path unchanged.
+    The coordinator forwards components — never a pre-baked path — and the
+    worker stamps `et` (end timestamp) at save time. Returns:
+
+        {output_dir}/{exp_name}_wave{wave_number}_st_{st_timestamp}_et_{et}
+            _cy{cycle}_{system_prefix}{scanner_tag}_{plate_index}.tif
     """
-    et = datetime.now().strftime("%Y%m%dT%H%M%S")
-    import re
-
-    return re.sub(
-        r"(_st_\d{8}T\d{6})", lambda m: f"{m.group(1)}_et_{et}", output_path, count=1
+    filename = (
+        f"{plate['exp_name']}_wave{plate['wave_number']}"
+        f"_st_{plate['st_timestamp']}_et_{et}"
+        f"_cy{plate['cycle']}"
+        f"_{plate['system_prefix']}{plate['scanner_tag']}"
+        f"_{plate['plate_index']}.tif"
     )
+    return os.path.join(plate["output_dir"], filename)
 
 
 def log(scanner_id: str, msg: str) -> None:
@@ -278,9 +293,6 @@ class ScanWorker:
     def _scan_plate(self, plate: dict) -> None:
         """Scan a single plate."""
         plate_index = plate.get("plate_index", "00")
-        grid_mode = plate.get("grid_mode", "2grid")
-        resolution = plate.get("resolution", 300)
-        output_path = plate.get("output_path", "/tmp/scan.jpg")
         job_id = str(uuid.uuid4())
 
         emit_event(
@@ -296,9 +308,9 @@ class ScanWorker:
 
         try:
             if self.mock:
-                final_path = self._mock_scan(grid_mode, plate_index, resolution, output_path)
+                final_path = self._mock_scan(plate)
             else:
-                final_path = self._sane_scan(grid_mode, plate_index, resolution, output_path)
+                final_path = self._sane_scan(plate)
 
             duration_ms = int((time.time() - start_time) * 1000)
 
@@ -328,16 +340,12 @@ class ScanWorker:
                 }
             )
 
-    def _sane_scan(
-        self,
-        grid_mode: str,
-        plate_index: str,
-        resolution: int,
-        output_path: str,
-    ) -> str:
+    def _sane_scan(self, plate: dict) -> str:
         """Perform a scan using python-sane directly.
 
-        Returns the final path the file was saved to (with _et_ timestamp inserted).
+        Returns the final path the file was saved to. The filename — including
+        `_et_` end timestamp — is composed at save time from the plate
+        components.
 
         Uses x_resolution/y_resolution (epkowa per-axis options) instead of the
         generic resolution option which only supports [400,800,1600,3200].
@@ -349,6 +357,9 @@ class ScanWorker:
         Retries up to 5 times with exponential backoff on failure.
         """
         MAX_RETRIES = 5
+        plate_index = plate["plate_index"]
+        grid_mode = plate["grid_mode"]
+        resolution = plate["resolution"]
         region = get_scan_region(grid_mode, plate_index)
 
         log(
@@ -357,8 +368,8 @@ class ScanWorker:
             f"region=({region.left},{region.top})-({region.left+region.width},{region.top+region.height})",
         )
 
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        # Ensure output directory exists upfront so retries don't race
+        os.makedirs(plate["output_dir"], exist_ok=True)
 
         last_error = None
 
@@ -396,13 +407,14 @@ class ScanWorker:
                 if image is None:
                     raise RuntimeError("snap() returned None")
 
-                # Save as TIFF with LZW compression and metadata
+                # Save as TIFF with LZW compression and metadata.
+                # Compose the final filename here so `_et_` reflects the
+                # actual save moment, not the scan-start moment.
                 tiff_meta = _build_tiff_metadata(
                     self.scanner_id, grid_mode, plate_index, resolution, region
                 )
-                # Compute final path with _et_ timestamp before save
-                final_path = _with_et_timestamp(output_path)
-                os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                et = datetime.now().strftime("%Y%m%dT%H%M%S")
+                final_path = compose_output_path(plate, et)
                 image.save(
                     final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
                 )
@@ -549,16 +561,18 @@ class ScanWorker:
         self._device.br_y = max_br_y
         self._device.cancel()
 
-    def _mock_scan(
-        self, grid_mode: str, plate_index: str, resolution: int, output_path: str
-    ) -> str:
+    def _mock_scan(self, plate: dict) -> str:
         """Generate a mock scan image (checkerboard pattern).
 
-        Returns the final path the file was saved to (with _et_ timestamp inserted).
+        Composes the final filename at save time including `_et_`, mirroring
+        the SANE path. Returns the path written.
         """
         import numpy as np
         from PIL import Image
 
+        plate_index = plate["plate_index"]
+        grid_mode = plate["grid_mode"]
+        resolution = plate["resolution"]
         region = get_scan_region(grid_mode, plate_index)
         pixels = region.to_pixels(resolution)
         width = max(pixels["width"], 100)
@@ -579,12 +593,12 @@ class ScanWorker:
 
         image = Image.fromarray(img_array, mode="RGB")
 
-        # Compute final path with _et_ timestamp before save
-        final_path = _with_et_timestamp(output_path)
-        os.makedirs(os.path.dirname(final_path), exist_ok=True)
+        os.makedirs(plate["output_dir"], exist_ok=True)
         tiff_meta = _build_tiff_metadata(
             self.scanner_id, grid_mode, plate_index, resolution, region
         )
+        et = datetime.now().strftime("%Y%m%dT%H%M%S")
+        final_path = compose_output_path(plate, et)
         image.save(final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
 
         log(self.scanner_id, f"Mock scan saved: {final_path}")
