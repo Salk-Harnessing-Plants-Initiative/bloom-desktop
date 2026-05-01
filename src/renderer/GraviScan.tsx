@@ -388,12 +388,15 @@ export function GraviScan() {
     selectedPlates.length > 0 &&
     !hasBarcodeConflicts;
   const scannersReady = scannerStatuses.some((s) => s.status === 'ready');
-  const canStartScan = canScan && isFormValid && scannersReady;
+  const canStartScan =
+    canScan && isFormValid && scannersReady && !waveMissingMetadata;
 
   // Build validation messages for missing fields
   const validationMessages: string[] = [];
   if (!selectedExperiment) validationMessages.push('Experiment');
   if (!selectedPhenotyper) validationMessages.push('Phenotyper');
+  if (waveMissingMetadata)
+    validationMessages.push(`Metadata for wave ${waveNumber}`);
 
   return (
     <div className="space-y-6">
@@ -427,10 +430,10 @@ export function GraviScan() {
       )}
 
       {waveMissingMetadata && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start">
             <svg
-              className="h-5 w-5 text-amber-500 mr-3 flex-shrink-0 mt-0.5"
+              className="h-5 w-5 text-red-500 mr-3 flex-shrink-0 mt-0.5"
               fill="currentColor"
               viewBox="0 0 20 20"
             >
@@ -441,13 +444,12 @@ export function GraviScan() {
               />
             </svg>
             <div className="flex-1">
-              <p className="text-amber-800 text-sm font-medium">
-                Wave {waveNumber} has no linked metadata
+              <p className="text-red-800 text-sm font-medium">
+                You cannot scan without adding metadata for wave {waveNumber}
               </p>
-              <p className="text-amber-700 text-xs mt-1">
-                You can scan without metadata, but plate auto-fill and QR
-                verification will be skipped. Link metadata to wave {waveNumber} on
-                the Experiments page to enable auto-fill.
+              <p className="text-red-700 text-xs mt-1">
+                Link a metadata file to wave {waveNumber} on the Experiments
+                page before scanning.
               </p>
             </div>
           </div>
