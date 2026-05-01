@@ -1251,8 +1251,14 @@ export function useScanSession({
         const saneName = detected?.sane_name || '';
 
         const plates = selectedPlatesForScanner.map((plate) => {
-          const systemTag = platformInfo?.system_name || `S${scannerIdx + 1}`;
-          const filename = `${sanitizedExpName}_st_${timestamp}_cy1_${systemTag}_${plate.plateIndex}.tif`;
+          // Always include scanner index to keep filenames unique across
+          // scanners on the same machine. Use "Sc" prefix (scanner) to avoid
+          // collision with the metadata "S" prefix used for plate sections.
+          const scannerTag = `Sc${scannerIdx + 1}`;
+          const systemPrefix = platformInfo?.system_name
+            ? `${platformInfo.system_name}_`
+            : '';
+          const filename = `${sanitizedExpName}_st_${timestamp}_cy1_${systemPrefix}${scannerTag}_${plate.plateIndex}.tif`;
           const outputPath = `${sessionDir}/${filename}`;
 
           const jobKey = `${scanner.scannerId}:${plate.plateIndex}`;
