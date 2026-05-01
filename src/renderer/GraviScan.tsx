@@ -125,6 +125,7 @@ export function GraviScan() {
     barcodeGenotypes,
     isGraviMetadata,
     availablePlates,
+    waveMissingMetadata,
     handleTogglePlate,
     handlePlateBarcode,
   } = usePlateAssignments({
@@ -387,12 +388,15 @@ export function GraviScan() {
     selectedPlates.length > 0 &&
     !hasBarcodeConflicts;
   const scannersReady = scannerStatuses.some((s) => s.status === 'ready');
-  const canStartScan = canScan && isFormValid && scannersReady;
+  const canStartScan =
+    canScan && isFormValid && scannersReady && !waveMissingMetadata;
 
   // Build validation messages for missing fields
   const validationMessages: string[] = [];
   if (!selectedExperiment) validationMessages.push('Experiment');
   if (!selectedPhenotyper) validationMessages.push('Phenotyper');
+  if (waveMissingMetadata)
+    validationMessages.push(`Metadata for wave ${waveNumber}`);
 
   return (
     <div className="space-y-6">
@@ -421,6 +425,33 @@ export function GraviScan() {
             <span className="text-blue-700 text-sm font-medium">
               Scan in Progress
             </span>
+          </div>
+        </div>
+      )}
+
+      {waveMissingMetadata && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <svg
+              className="h-5 w-5 text-red-500 mr-3 flex-shrink-0 mt-0.5"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a1 1 0 011 1v3a1 1 0 11-2 0V7a1 1 0 011-1zm0 8a1 1 0 100-2 1 1 0 000 2z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <div className="flex-1">
+              <p className="text-red-800 text-sm font-medium">
+                You cannot scan without adding metadata for wave {waveNumber}
+              </p>
+              <p className="text-red-700 text-xs mt-1">
+                Link a metadata file to wave {waveNumber} on the Experiments
+                page before scanning.
+              </p>
+            </div>
           </div>
         </div>
       )}

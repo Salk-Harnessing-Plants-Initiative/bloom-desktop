@@ -23,6 +23,8 @@ export interface UsePlateAssignmentsReturn {
   barcodeGenotypes: Record<string, string | null>;
   isGraviMetadata: boolean;
   availablePlates: AvailablePlate[];
+  /** True when graviscan experiment's current wave has no linked metadata */
+  waveMissingMetadata: boolean;
   handleTogglePlate: (scannerId: string, plateIndex: string) => void;
   handlePlateBarcode: (
     scannerId: string,
@@ -50,6 +52,8 @@ export function usePlateAssignments({
   const [isGraviMetadata, setIsGraviMetadata] = useState(false);
   // Available plates from GraviScan metadata (used when isGraviMetadata is true)
   const [availablePlates, setAvailablePlates] = useState<AvailablePlate[]>([]);
+  // True when graviscan experiment's current wave has no linked metadata
+  const [waveMissingMetadata, setWaveMissingMetadata] = useState(false);
 
   // Plate assignments per scanner - each scanner has its own plate assignments (stored in database)
   const [scannerPlateAssignments, setScannerPlateAssignments] = useState<
@@ -111,8 +115,13 @@ export function usePlateAssignments({
         console.log('[GraviScan] Experiment data:', expResult.data);
 
         let accessionId: string | null = null;
+        const isGraviscanExp =
+          expResult.success &&
+          expResult.data &&
+          expResult.data.experiment_type === 'graviscan';
+
         if (expResult.success && expResult.data) {
-          if (expResult.data.experiment_type === 'graviscan') {
+          if (isGraviscanExp) {
             const linksResult =
               await window.electron.database.experiments.listGraviMetadata(
                 selectedExperiment
@@ -131,6 +140,9 @@ export function usePlateAssignments({
             accessionId = expResult.data.accession_id ?? null;
           }
         }
+
+        // Flag the missing-metadata state for graviscan experiments
+        setWaveMissingMetadata(Boolean(isGraviscanExp) && !accessionId);
 
         if (!accessionId) {
           console.log('[GraviScan] No accession linked for current wave');
@@ -217,6 +229,23 @@ export function usePlateAssignments({
               setBarcodeGenotypes({});
             }
           }
+        }
+
+        // For graviscan experiments where the current wave has NO linked metadata,
+        // skip the DB load — assignments in DB are not wave-scoped (they're keyed
+        // by experiment+scanner), so they belong to a different wave's metadata.
+        // Reset to empty defaults instead.
+        if (isGraviscanExp && !hasGraviMetadata) {
+          const emptyAssignments: Record<string, PlateAssignment[]> = {};
+          for (const scannerId of assignedScannerIds) {
+            const scannerAssignment = scannerAssignments.find(
+              (a) => a.scannerId === scannerId
+            );
+            const scannerGridMode = scannerAssignment?.gridMode || '2grid';
+            emptyAssignments[scannerId] = createPlateAssignments(scannerGridMode);
+          }
+          setScannerPlateAssignments(emptyAssignments);
+          return;
         }
 
         // Load plate assignments from database for each assigned scanner
@@ -491,6 +520,7 @@ export function usePlateAssignments({
     barcodeGenotypes,
     isGraviMetadata,
     availablePlates,
+    waveMissingMetadata,
     handleTogglePlate,
     handlePlateBarcode,
   };
