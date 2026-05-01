@@ -604,7 +604,6 @@ class ScanWorker:
         log(self.scanner_id, f"Mock scan saved: {final_path}")
         return final_path
 
-
     def _shutdown(self) -> None:
         """Clean shutdown: close device and exit SANE."""
         log(self.scanner_id, "Shutting down...")

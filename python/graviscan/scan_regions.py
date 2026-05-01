@@ -113,6 +113,7 @@ def get_scan_region(grid_mode: str, plate_index: str) -> ScanRegion:
 SCANNER_MAX_X = 215.9
 SCANNER_MAX_Y = 297.0
 
+
 def get_all_plate_indices(grid_mode: str) -> list:
     """Get all valid plate indices for a grid mode.
 

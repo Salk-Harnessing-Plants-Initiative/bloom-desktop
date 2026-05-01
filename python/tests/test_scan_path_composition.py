@@ -87,7 +87,6 @@ class TestComposeOutputPath:
         path = compose_output_path(_plate(), et="20260301T120530")
         basename = os.path.basename(path)
         pattern = re.compile(
-            r"^expA_wave2_st_20260301T120000_et_20260301T120530"
-            r"_cy1_Sc1_001\.tif$"
+            r"^expA_wave2_st_20260301T120000_et_20260301T120530" r"_cy1_Sc1_001\.tif$"
         )
         assert pattern.match(basename), basename

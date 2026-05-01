@@ -183,9 +183,7 @@ class TestMockScan:
     @patch("time.sleep")
     def test_tiff_has_metadata(self, mock_sleep, tmp_path):
         w = _make_worker()
-        final = w._mock_scan(
-            _make_plate(tmp_path, plate_index="01", grid_mode="4grid")
-        )
+        final = w._mock_scan(_make_plate(tmp_path, plate_index="01", grid_mode="4grid"))
         img = Image.open(final)
         desc = json.loads(img.tag_v2[270])
         assert desc["grid_mode"] == "4grid"
@@ -723,7 +721,9 @@ class TestScanPlateErrorEmitsEvent:
         assert "duration_ms" in error_events[0]
 
 
-@pytest.mark.skip(reason="Row-merge scanning removed — _scan_row/_mock_scan_row no longer exist")
+@pytest.mark.skip(
+    reason="Row-merge scanning removed — _scan_row/_mock_scan_row no longer exist"
+)
 class TestScanRowErrorAllPlates:
     """7.2 row scan fails → ALL plates in row get scan-error events."""
 
@@ -802,9 +802,7 @@ class TestResolutionTagsMatchInput:
     @patch("time.sleep")
     def test_resolution_tags(self, mock_sleep, tmp_path):
         w = _make_worker()
-        final = w._mock_scan(
-            _make_plate(tmp_path, plate_index="00", resolution=600)
-        )
+        final = w._mock_scan(_make_plate(tmp_path, plate_index="00", resolution=600))
 
         img = Image.open(final)
         # tag 282 = XResolution
@@ -825,9 +823,7 @@ class TestMetadataDifferentGridModes:
         dir_2g = tmp_path / "g2"
         dir_4g = tmp_path / "g4"
         path_2g = w._mock_scan(_make_plate(dir_2g, plate_index="00"))
-        path_4g = w._mock_scan(
-            _make_plate(dir_4g, plate_index="00", grid_mode="4grid")
-        )
+        path_4g = w._mock_scan(_make_plate(dir_4g, plate_index="00", grid_mode="4grid"))
 
         desc_2g = json.loads(Image.open(path_2g).tag_v2[270])
         desc_4g = json.loads(Image.open(path_4g).tag_v2[270])

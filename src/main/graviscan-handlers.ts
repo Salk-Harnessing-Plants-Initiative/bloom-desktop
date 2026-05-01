@@ -11,6 +11,7 @@ import { ipcMain, app, BrowserWindow, dialog, shell } from 'electron';
 import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
 import { resolveGraviScanPath } from './graviscan-path-utils';
@@ -563,7 +564,6 @@ export function registerGraviscanHandlers(
   ipcMain.handle('graviscan:reset-scanners', async () => {
     try {
       console.log('[GraviScan:RESET] Killing all scanner processes...');
-      const { execSync } = require('child_process');
       execSync('pkill -f "bloom-hardware --scan-worker" 2>/dev/null || true');
 
       const coordinator = getCoordinator?.();
