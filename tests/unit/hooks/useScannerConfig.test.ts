@@ -1203,4 +1203,116 @@ describe('useScannerConfig', () => {
       expect(c.scannerId).toBe('c'); // both signals say checked
     });
   });
+
+  // ============================================================================
+  // fix-renderer-empty-scanner-id-collision regression suite
+  // ============================================================================
+
+  describe('placeholder-id collision (fix-renderer-empty-scanner-id-collision)', () => {
+    it('two placeholder scanners build assignments with distinct usbPort values', async () => {
+      const s1 = createDetectedScanner({ scanner_id: '', usb_port: '1-1' });
+      const s2 = createDetectedScanner({ scanner_id: '', usb_port: '1-2' });
+      gravi().detectScanners.mockResolvedValue({
+        success: true,
+        scanners: [s1, s2],
+      });
+
+      const { result } = renderScannerConfig();
+      await waitFor(() => {
+        expect(result.current.platformLoading).toBe(false);
+      });
+      await act(async () => {
+        await result.current.handleDetectScanners();
+      });
+
+      expect(result.current.scannerAssignments).toHaveLength(2);
+      // Both share placeholder scannerId ''
+      expect(result.current.scannerAssignments[0].scannerId).toBe('');
+      expect(result.current.scannerAssignments[1].scannerId).toBe('');
+      // But have distinct usb_port values — the canonical stable identity
+      expect(result.current.scannerAssignments[0].usbPort).toBe('1-1');
+      expect(result.current.scannerAssignments[1].usbPort).toBe('1-2');
+    });
+
+    it('auto-save with two placeholder scanners sends payload of length 2 (regression for the empty-string Array.find collision)', async () => {
+      const s1 = createDetectedScanner({ scanner_id: '', usb_port: '1-1' });
+      const s2 = createDetectedScanner({ scanner_id: '', usb_port: '1-2' });
+      gravi().detectScanners.mockResolvedValue({
+        success: true,
+        scanners: [s1, s2],
+      });
+      gravi().saveScannersToDB.mockResolvedValue({
+        success: true,
+        scanners: [],
+      });
+
+      const { result } = renderScannerConfig();
+      await waitFor(() => {
+        expect(result.current.platformLoading).toBe(false);
+      });
+      await act(async () => {
+        await result.current.handleDetectScanners();
+      });
+
+      gravi().saveScannersToDB.mockClear();
+      gravi().saveConfig.mockClear();
+
+      // Trigger auto-save via resolution change
+      act(() => {
+        result.current.setResolution(600);
+      });
+
+      await waitFor(
+        () => {
+          expect(gravi().saveScannersToDB).toHaveBeenCalled();
+        },
+        { timeout: 2000 }
+      );
+
+      const payload = gravi().saveScannersToDB.mock.calls[0][0];
+      // The bug collapses N=2 placeholders to 1 because find((s) => s.scanner_id === '')
+      // returns detectedScanners[0] for both lookups. Post-fix: 2 distinct entries by usb_port.
+      expect(payload).toHaveLength(2);
+      const ports = (payload as { usb_port: string }[])
+        .map((p) => p.usb_port)
+        .sort();
+      expect(ports).toEqual(['1-1', '1-2']);
+    });
+
+    it('re-checking a previously unchecked placeholder restores its usbPort (handleScannerAssignment truthiness fix)', async () => {
+      const s1 = createDetectedScanner({ scanner_id: '', usb_port: '1-1' });
+      gravi().detectScanners.mockResolvedValue({
+        success: true,
+        scanners: [s1],
+      });
+
+      const { result } = renderScannerConfig();
+      await waitFor(() => {
+        expect(result.current.platformLoading).toBe(false);
+      });
+      await act(async () => {
+        await result.current.handleDetectScanners();
+      });
+
+      // Initial state: checked, with usbPort populated
+      expect(result.current.scannerAssignments[0].scannerId).toBe('');
+      expect(result.current.scannerAssignments[0].usbPort).toBe('1-1');
+
+      // Uncheck
+      act(() => {
+        result.current.handleScannerAssignment(0, null);
+      });
+      expect(result.current.scannerAssignments[0].scannerId).toBeNull();
+
+      // Re-check with the placeholder id
+      act(() => {
+        result.current.handleScannerAssignment(0, '');
+      });
+      // After re-check the assignment must carry the placeholder id AND usbPort.
+      // Bug: `if (scannerId)` is falsy for '' so usbPort drops to null; with the fix
+      // (`scannerId !== null`) the usbPort is restored from detectedScanners[0].
+      expect(result.current.scannerAssignments[0].scannerId).toBe('');
+      expect(result.current.scannerAssignments[0].usbPort).toBe('1-1');
+    });
+  });
 });

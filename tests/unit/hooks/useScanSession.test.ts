@@ -35,6 +35,7 @@ function makeScannerState(
   // Enablement is now derived from scannerAssignments[i].scannerId !== null.
   return {
     scannerId,
+    usbPort: '1-1',
     name: `Scanner ${scannerId}`,
     isOnline: true,
     isBusy: false,
@@ -542,5 +543,44 @@ describe('7.2 — Readiness gate', () => {
     const params = defaultParams();
     const { result } = renderHook(() => useScanSession(params));
     expect(result.current.canStartScan).toBe(true);
+  });
+});
+
+// ============================================================================
+// fix-renderer-empty-scanner-id-collision: isScannerEnabled regression
+// ============================================================================
+
+describe('isScannerEnabled — placeholder-id gate (fix-renderer-empty-scanner-id-collision)', () => {
+  it('returns true for a real DB scannerId', () => {
+    const assignments = [makeAssignment('Scanner 1', 'real-uuid')];
+    const params = defaultParams({
+      scannerAssignments: assignments,
+      scannerAssignmentsRef: { current: assignments },
+    });
+    const { result } = renderHook(() => useScanSession(params));
+    expect(result.current.isScannerEnabled('real-uuid')).toBe(true);
+  });
+
+  it('returns false for the empty-string placeholder id (would FK-violate downstream)', () => {
+    // Bug pre-fix: `some((a) => a.scannerId === scannerId)` returns true for ''
+    // because the assignment carries '' verbatim. Post-fix: isDbScannerId('') is
+    // false, so isScannerEnabled gates Start Scan on real DB ids only.
+    const assignments = [makeAssignment('Scanner 1', '')];
+    const params = defaultParams({
+      scannerAssignments: assignments,
+      scannerAssignmentsRef: { current: assignments },
+    });
+    const { result } = renderHook(() => useScanSession(params));
+    expect(result.current.isScannerEnabled('')).toBe(false);
+  });
+
+  it('returns false for an unknown scannerId', () => {
+    const assignments = [makeAssignment('Scanner 1', 'real-uuid')];
+    const params = defaultParams({
+      scannerAssignments: assignments,
+      scannerAssignmentsRef: { current: assignments },
+    });
+    const { result } = renderHook(() => useScanSession(params));
+    expect(result.current.isScannerEnabled('not-a-real-id')).toBe(false);
   });
 });

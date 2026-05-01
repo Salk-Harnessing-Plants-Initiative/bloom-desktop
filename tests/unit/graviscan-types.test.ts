@@ -11,6 +11,9 @@ import {
   generateScannerSlotName,
   generateScannerSlots,
   createEmptyScannerAssignment,
+  findDetectedForAssignment,
+  findIndexDetectedForAssignment,
+  findAssignmentForDetected,
 } from '../../src/types/graviscan';
 import type { PlateConfig, ScannerConfig } from '../../src/types/graviscan';
 import type { ScanCoordinatorLike } from '../../src/main/graviscan/session-handlers';
@@ -203,6 +206,225 @@ describe('GraviScan TypeScript Types', () => {
       };
       /* eslint-enable @typescript-eslint/no-unused-vars */
       expect(mockCoordinator.isScanning).toBe(false);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // fix-renderer-empty-scanner-id-collision: helpers
+  // ──────────────────────────────────────────────────────────────────────
+
+  describe('findDetectedForAssignment', () => {
+    const detected = [
+      {
+        scanner_id: '',
+        usb_port: '1-1',
+        vendor_id: '04b8',
+        product_id: '013a',
+        name: 'Epson V850',
+        usb_bus: '1',
+        usb_device: '2',
+      },
+      {
+        scanner_id: '',
+        usb_port: '1-2',
+        vendor_id: '04b8',
+        product_id: '013a',
+        name: 'Epson V850',
+        usb_bus: '1',
+        usb_device: '3',
+      },
+    ];
+
+    it('returns the detected scanner whose usb_port matches assignment.usbPort', () => {
+      const result = findDetectedForAssignment(detected, {
+        scannerId: '',
+        usbPort: '1-1',
+      });
+      expect(result).toBeDefined();
+      expect(result.usb_port).toBe('1-1');
+    });
+
+    it('two placeholder lookups return two distinct detected scanners', () => {
+      const a = findDetectedForAssignment(detected, {
+        scannerId: '',
+        usbPort: '1-1',
+      });
+      const b = findDetectedForAssignment(detected, {
+        scannerId: '',
+        usbPort: '1-2',
+      });
+      expect(a.usb_port).toBe('1-1');
+      expect(b.usb_port).toBe('1-2');
+      expect(a).not.toBe(b);
+    });
+
+    it('returns undefined when assignment.usbPort is null', () => {
+      const result = findDetectedForAssignment(detected, {
+        scannerId: 'some-id',
+        usbPort: null,
+      });
+      expect(result).toBeUndefined();
+    });
+
+    it('falls back to composite key when both assignment and detected have empty usb_port', () => {
+      const detectedEmptyPort = [
+        {
+          scanner_id: '',
+          usb_port: '',
+          vendor_id: '04b8',
+          product_id: '013a',
+          name: 'Epson V850',
+          usb_bus: '1',
+          usb_device: '2',
+        },
+        {
+          scanner_id: '',
+          usb_port: '',
+          vendor_id: '04b8',
+          product_id: '013a',
+          name: 'Epson V850',
+          usb_bus: '1',
+          usb_device: '3',
+        },
+      ];
+      const a = findDetectedForAssignment(detectedEmptyPort, {
+        scannerId: '',
+        usbPort: '',
+        vendorId: '04b8',
+        productId: '013a',
+        name: 'Epson V850',
+        usbBus: '1',
+        usbDevice: '2',
+      });
+      const b = findDetectedForAssignment(detectedEmptyPort, {
+        scannerId: '',
+        usbPort: '',
+        vendorId: '04b8',
+        productId: '013a',
+        name: 'Epson V850',
+        usbBus: '1',
+        usbDevice: '3',
+      });
+      expect(a.usb_device).toBe('2');
+      expect(b.usb_device).toBe('3');
+    });
+
+    it('returns undefined when assignment has valid usbPort but no detected match', () => {
+      const result = findDetectedForAssignment(detected, {
+        scannerId: 'real-id',
+        usbPort: '9-9',
+      });
+      expect(result).toBeUndefined();
+    });
+
+    it('returns undefined for empty detected array', () => {
+      const result = findDetectedForAssignment([], {
+        scannerId: '',
+        usbPort: '1-1',
+      });
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('findIndexDetectedForAssignment', () => {
+    const detected = [
+      { scanner_id: '', usb_port: '1-1' },
+      { scanner_id: '', usb_port: '1-2' },
+    ];
+
+    it('returns the array index for the matching scanner', () => {
+      expect(
+        findIndexDetectedForAssignment(detected, {
+          scannerId: '',
+          usbPort: '1-1',
+        })
+      ).toBe(0);
+      expect(
+        findIndexDetectedForAssignment(detected, {
+          scannerId: '',
+          usbPort: '1-2',
+        })
+      ).toBe(1);
+    });
+
+    it('returns -1 when no match', () => {
+      expect(
+        findIndexDetectedForAssignment(detected, {
+          scannerId: '',
+          usbPort: '9-9',
+        })
+      ).toBe(-1);
+    });
+
+    it('returns -1 when assignment.usbPort is null and composite has no match', () => {
+      expect(
+        findIndexDetectedForAssignment(detected, {
+          scannerId: 'real',
+          usbPort: null,
+        })
+      ).toBe(-1);
+    });
+  });
+
+  describe('findAssignmentForDetected (inverse direction)', () => {
+    const assignments = [
+      { scannerId: '', usbPort: '1-1' },
+      { scannerId: '', usbPort: '1-2' },
+    ];
+
+    it('returns the assignment whose usbPort matches detected.usb_port', () => {
+      const a = findAssignmentForDetected(assignments, {
+        scanner_id: '',
+        usb_port: '1-1',
+      });
+      const b = findAssignmentForDetected(assignments, {
+        scanner_id: '',
+        usb_port: '1-2',
+      });
+      expect(a.usbPort).toBe('1-1');
+      expect(b.usbPort).toBe('1-2');
+      expect(a).not.toBe(b);
+    });
+
+    it('falls back to composite key when detected.usb_port is empty', () => {
+      const assignmentsWithComposite = [
+        {
+          scannerId: '',
+          usbPort: '',
+          vendorId: '04b8',
+          productId: '013a',
+          name: 'Epson V850',
+          usbBus: '1',
+          usbDevice: '2',
+        },
+        {
+          scannerId: '',
+          usbPort: '',
+          vendorId: '04b8',
+          productId: '013a',
+          name: 'Epson V850',
+          usbBus: '1',
+          usbDevice: '3',
+        },
+      ];
+      const result = findAssignmentForDetected(assignmentsWithComposite, {
+        scanner_id: '',
+        usb_port: '',
+        vendor_id: '04b8',
+        product_id: '013a',
+        name: 'Epson V850',
+        usb_bus: '1',
+        usb_device: '3',
+      });
+      expect(result.usbDevice).toBe('3');
+    });
+
+    it('returns undefined when no assignment matches', () => {
+      const result = findAssignmentForDetected(assignments, {
+        scanner_id: '',
+        usb_port: '9-9',
+      });
+      expect(result).toBeUndefined();
     });
   });
 });

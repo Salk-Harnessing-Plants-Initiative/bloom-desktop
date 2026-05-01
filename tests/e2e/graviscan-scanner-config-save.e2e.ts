@@ -261,9 +261,17 @@ test.describe('Scanner Config Save — fix-scanner-config-save-flow', () => {
     const beforeRows = queryScanners();
     expect(beforeRows.length).toBeGreaterThanOrEqual(2);
 
-    // Uncheck the first Enabled checkbox
-    const firstCheckbox = window.locator('input[type="checkbox"]').first();
-    await firstCheckbox.uncheck();
+    // Uncheck the first Enabled checkbox.
+    // Use role+name scoping so DevTools (auto-opened in dev mode) does not
+    // shadow the locator with its own input[type=checkbox] elements.
+    // Click directly rather than using uncheck() so we can decouple the click
+    // event from Playwright's state-change auto-assertion (the React state
+    // update is async and the auto-save effect re-renders).
+    const firstCheckbox = window
+      .getByRole('checkbox', { name: /Enabled/i })
+      .first();
+    await firstCheckbox.click();
+    await expect(firstCheckbox).not.toBeChecked({ timeout: 3000 });
 
     // Save again
     await window.getByRole('button', { name: /Save Configuration/i }).click();
