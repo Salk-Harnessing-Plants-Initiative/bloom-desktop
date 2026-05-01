@@ -225,7 +225,9 @@ export function Layout() {
     totalCycles?: number;
     coordinatorState?: string;
     isContinuous?: boolean;
+    scanStartedAt?: number | null;
   } | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Load scanner name from scanner identity service
   useEffect(() => {
@@ -297,6 +299,26 @@ export function Layout() {
     const interval = setInterval(poll, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  // Tick once a second so the banner's elapsed counter updates between polls.
+  useEffect(() => {
+    if (!scanStatus?.isActive || !scanStatus.scanStartedAt) return;
+    setNowMs(Date.now());
+    const interval = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [scanStatus?.isActive, scanStatus?.scanStartedAt]);
+
+  const elapsedSec =
+    scanStatus?.scanStartedAt != null
+      ? Math.max(0, Math.floor((nowMs - scanStatus.scanStartedAt) / 1000))
+      : null;
+
+  const formatHMS = (totalSec: number): string => {
+    const hh = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+    const ss = String(totalSec % 60).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  };
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -469,6 +491,11 @@ export function Layout() {
                     ? ' (waiting for next cycle)'
                     : ''}
                 </span>
+                {elapsedSec !== null && (
+                  <span className="text-xs font-mono bg-blue-700/40 px-2 py-0.5 rounded">
+                    {formatHMS(elapsedSec)}
+                  </span>
+                )}
               </div>
               <span className="text-xs opacity-80">Click to view</span>
             </div>

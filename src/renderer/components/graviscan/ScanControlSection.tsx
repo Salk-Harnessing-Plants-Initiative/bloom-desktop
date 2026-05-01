@@ -249,31 +249,30 @@ export function ScanControlSection({
                   : 'Scanning plates...'}
               </span>
             </div>
-            {/* Elapsed time and estimated remaining — only shown between scans */}
-            {intervalCountdown !== null && intervalCountdown > 0 && (
-              <div className="flex items-center justify-between text-xs text-indigo-500">
-                <span>
-                  Elapsed:{' '}
-                  {String(Math.floor(elapsedSeconds / 3600)).padStart(2, '0')}:
-                  {String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(
-                    2,
-                    '0'
-                  )}
-                  :{String(elapsedSeconds % 60).padStart(2, '0')}
-                </span>
-                {currentCycle > 0 && totalCycles > currentCycle && (
-                  <span>
-                    {(() => {
-                      const avgCycleSeconds = elapsedSeconds / currentCycle;
-                      const remainingSeconds = Math.round(
-                        (totalCycles - currentCycle) * avgCycleSeconds
-                      );
-                      return `~${String(Math.floor(remainingSeconds / 3600)).padStart(2, '0')}:${String(Math.floor((remainingSeconds % 3600) / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')} remaining`;
-                    })()}
-                  </span>
+            {/* Elapsed time + estimated remaining — visible throughout the
+                whole continuous run, including while a scan is in progress. */}
+            <div className="flex items-center justify-between text-xs text-indigo-500">
+              <span>
+                Elapsed:{' '}
+                {String(Math.floor(elapsedSeconds / 3600)).padStart(2, '0')}:
+                {String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(
+                  2,
+                  '0'
                 )}
-              </div>
-            )}
+                :{String(elapsedSeconds % 60).padStart(2, '0')}
+              </span>
+              {currentCycle > 0 && totalCycles > currentCycle && (
+                <span>
+                  {(() => {
+                    const avgCycleSeconds = elapsedSeconds / currentCycle;
+                    const remainingSeconds = Math.round(
+                      (totalCycles - currentCycle) * avgCycleSeconds
+                    );
+                    return `~${String(Math.floor(remainingSeconds / 3600)).padStart(2, '0')}:${String(Math.floor((remainingSeconds % 3600) / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')} remaining`;
+                  })()}
+                </span>
+              )}
+            </div>
             {/* Overtime banner */}
             {overtimeMs !== null && (
               <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded text-sm text-amber-800">
