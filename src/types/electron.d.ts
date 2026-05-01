@@ -799,7 +799,6 @@ export interface GraviScanAPI {
       {
         scannerId: string;
         plateIndex: string;
-        outputPath: string;
         plantBarcode: string | null;
         transplantDate?: string | null;
         customNote?: string | null;

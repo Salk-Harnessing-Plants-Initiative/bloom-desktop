@@ -1468,18 +1468,6 @@ export function registerGraviscanHandlers(
         };
       }
     ) => {
-      // Compose cycle-1 output path purely for session-state tracking.
-      // The actual per-cycle path is built fresh in the coordinator.
-      const cycle1Path = (
-        plate: PlateConfig & { plate_barcode?: string | null }
-      ): string => {
-        const filename =
-          `${plate.exp_name}_wave${plate.wave_number}` +
-          `_st_${plate.session_timestamp}_cy1` +
-          `_${plate.system_prefix}${plate.scanner_tag}` +
-          `_${plate.plate_index}.tif`;
-        return path.join(plate.output_dir, filename);
-      };
       try {
         const coordinator = getCoordinator?.();
         if (!coordinator) {
@@ -1497,13 +1485,14 @@ export function registerGraviscanHandlers(
             : '(one-shot)'
         );
 
-        // Build scan session state for persistence across renderer remounts
+        // Build scan session state for persistence across renderer remounts.
+        // No predicted output path — `imagePath` is filled on scan-complete
+        // with the actual path Python wrote to disk.
         const jobs: Record<
           string,
           {
             scannerId: string;
             plateIndex: string;
-            outputPath: string;
             plantBarcode: string | null;
             transplantDate: string | null;
             customNote: string | null;
@@ -1520,7 +1509,6 @@ export function registerGraviscanHandlers(
             jobs[key] = {
               scannerId: s.scannerId,
               plateIndex: plate.plate_index,
-              outputPath: cycle1Path(plate),
               plantBarcode: plate.plate_barcode ?? null,
               transplantDate: null,
               customNote: null,

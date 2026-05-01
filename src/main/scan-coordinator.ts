@@ -374,19 +374,15 @@ export class ScanCoordinator extends EventEmitter {
       await Promise.all(rowDonePromises);
 
       const gridEndedAt = new Date();
-      const etTimestamp = gridEndedAt
-        .toISOString()
-        .replace(/[-:]/g, '')
-        .slice(0, 15);
       this.currentGridEndedAt = gridEndedAt.toISOString();
 
       console.log(
-        `[ScanCoordinator] Row [${rowGrids.join(',')}]: complete (et_${etTimestamp})`
+        `[ScanCoordinator] Row [${rowGrids.join(',')}]: complete`
       );
 
-      // No file rename needed — Python worker writes files with final
-      // _st_TIMESTAMP_et_TIMESTAMP_ filenames directly. Paths emitted via
-      // scan-complete events are the final paths on disk.
+      // The Python worker composed the final filename (including `_et_`)
+      // at save time. The actual paths on disk are emitted via
+      // scan-complete events.
 
       // Emit grid-complete per grid with shared row timestamps
       for (const gridIndex of rowGrids) {

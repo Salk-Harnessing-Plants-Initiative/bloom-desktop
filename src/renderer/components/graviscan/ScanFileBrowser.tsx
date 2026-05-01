@@ -18,8 +18,6 @@ interface ScanFile {
 
 interface ScanFileBrowserProps {
   isScanning: boolean;
-  /** Set of file paths currently being written (scan-started but not scan-complete) */
-  writingFiles: Set<string>;
   /** Set of file paths that need manual QR review */
   needsReviewFiles?: Set<string>;
   /** Session directory to list files from (per-experiment folder) */
@@ -43,7 +41,6 @@ function formatTime(isoString: string): string {
 
 export function ScanFileBrowser({
   isScanning,
-  writingFiles,
   needsReviewFiles = new Set(),
   sessionDir,
 }: ScanFileBrowserProps) {
@@ -119,14 +116,6 @@ export function ScanFileBrowser({
     <div className="flex flex-col h-full">
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {files.map((file) => {
-          // Match by full path or filename (paths may differ after rename)
-          const isWriting =
-            writingFiles.has(file.path) ||
-            [...writingFiles].some(
-              (wf) =>
-                wf.split('/').pop() === file.name ||
-                wf.split('\\').pop() === file.name
-            );
           const needsReview =
             needsReviewFiles.has(file.path) ||
             [...needsReviewFiles].some(
@@ -138,41 +127,22 @@ export function ScanFileBrowser({
           return (
             <button
               key={file.path}
-              onClick={() => !isWriting && handleOpenFolder(file.path)}
-              disabled={isWriting}
-              className={`w-full text-left px-3 py-2 border-b border-gray-100 flex items-center gap-2 transition-colors ${
-                isWriting
-                  ? 'bg-amber-50 cursor-not-allowed'
-                  : 'hover:bg-blue-50 cursor-pointer'
-              }`}
+              onClick={() => handleOpenFolder(file.path)}
+              className="w-full text-left px-3 py-2 border-b border-gray-100 flex items-center gap-2 transition-colors hover:bg-blue-50 cursor-pointer"
             >
               {/* File icon */}
               <div className="flex-shrink-0">
-                {isWriting ? (
-                  <svg
-                    className="w-4 h-4 text-amber-500 animate-pulse"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="w-4 h-4 text-green-500"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                )}
+                <svg
+                  className="w-4 h-4 text-green-500"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
               </div>
 
               {/* File info */}
@@ -183,12 +153,7 @@ export function ScanFileBrowser({
                 </p>
                 <p className="text-xs text-gray-400">
                   {formatFileSize(file.size)} · {formatTime(file.modifiedAt)}
-                  {isWriting && (
-                    <span className="ml-2 text-amber-600 font-medium">
-                      Writing...
-                    </span>
-                  )}
-                  {!isWriting && needsReview && (
+                  {needsReview && (
                     <span className="ml-2 text-amber-600 font-medium">
                       Needs Review
                     </span>
@@ -197,21 +162,19 @@ export function ScanFileBrowser({
               </div>
 
               {/* Open folder icon */}
-              {!isWriting && (
-                <svg
-                  className="w-3.5 h-3.5 text-gray-400 flex-shrink-0"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                  />
-                </svg>
-              )}
+              <svg
+                className="w-3.5 h-3.5 text-gray-400 flex-shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
+              </svg>
             </button>
           );
         })}

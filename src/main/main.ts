@@ -98,7 +98,6 @@ let scanCoordinator: ScanCoordinator | null = null;
 interface ScanSessionJob {
   scannerId: string;
   plateIndex: string;
-  outputPath: string;
   plantBarcode: string | null;
   gridMode: string;
   status: 'pending' | 'scanning' | 'complete' | 'error';

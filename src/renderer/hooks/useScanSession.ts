@@ -20,7 +20,6 @@ interface ListItem {
 export interface ScanJobInfo {
   scannerId: string;
   plateIndex: string;
-  outputPath: string;
   plantBarcode: string | null;
   transplantDate: string | null;
   customNote: string | null;
@@ -970,7 +969,6 @@ export function useScanSession({
             restoredPending.set(key, {
               scannerId: job.scannerId,
               plateIndex: job.plateIndex,
-              outputPath: job.outputPath,
               plantBarcode: job.plantBarcode,
               transplantDate: job.transplantDate ?? null,
               customNote: job.customNote ?? null,
@@ -1274,16 +1272,10 @@ export function useScanSession({
         const scannerTag = `Sc${scannerIdx + 1}`;
 
         const plates = selectedPlatesForScanner.map((plate) => {
-          const expectedCycle1Filename =
-            `${sanitizedExpName}_wave${waveNumber}_st_${timestamp}_cy1` +
-            `_${systemPrefix}${scannerTag}_${plate.plateIndex}.tif`;
-          const cycle1ExpectedPath = `${sessionDir}/${expectedCycle1Filename}`;
-
           const jobKey = `${scanner.scannerId}:${plate.plateIndex}`;
           newPendingPlates.set(jobKey, {
             scannerId: scanner.scannerId,
             plateIndex: plate.plateIndex,
-            outputPath: cycle1ExpectedPath,
             plantBarcode: plate.plantBarcode || null,
             transplantDate: plate.transplantDate || null,
             customNote: plate.customNote || null,
