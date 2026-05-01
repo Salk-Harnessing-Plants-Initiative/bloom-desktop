@@ -195,13 +195,21 @@ export function useTestScan({
         // User can cancel via the UI if needed.
       });
 
-      // Build test scan configs — all plates per scanner using its configured grid mode
-      const scannerConfigs = assignedScanners.map((scanner) => {
+      // Build test scan configs — all plates per scanner using its configured grid mode.
+      // Test scans are one-shot: cycle 1, no wave, no exp name. Components are
+      // mostly placeholders that produce a recognizable test filename.
+      const testTimestamp = new Date()
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .slice(0, 15);
+      const scannerConfigs = assignedScanners.map((scanner, idx) => {
         const assignment = scannerAssignments.find(
           (a) => a.scannerId === scanner.scanner_id
         );
         const gridMode = assignment?.gridMode || '2grid';
         const plateIndices = PLATE_INDICES[gridMode];
+        const scannerTag = `Sc${idx + 1}`;
+        const shortId = scanner.scanner_id.slice(0, 8);
 
         return {
           scannerId: scanner.scanner_id,
@@ -210,7 +218,12 @@ export function useTestScan({
             plate_index: plateIndex,
             grid_mode: gridMode,
             resolution: 200, // Minimum resolution accepted by epkowa without rounding
-            output_path: `${outputDir}/test-scan-${scanner.scanner_id.slice(0, 8)}-${plateIndex}.tif`,
+            output_dir: outputDir,
+            exp_name: `test-${shortId}`,
+            session_timestamp: testTimestamp,
+            wave_number: 0,
+            scanner_tag: scannerTag,
+            system_prefix: '',
           })),
         };
       });

@@ -692,6 +692,16 @@ export interface GraviScanAPI {
   }>;
 
   /**
+   * Create a directory recursively. Idempotent — succeeds if it
+   * already exists. Used to create the per-session scan folder upfront.
+   */
+  ensureDir: (dirPath: string) => Promise<{
+    success: boolean;
+    path?: string;
+    error?: string;
+  }>;
+
+  /**
    * List files in the scan output directory.
    */
   listScanFiles: (dirPath?: string) => Promise<{
@@ -740,7 +750,12 @@ export interface GraviScanAPI {
         plate_index: string;
         grid_mode: string;
         resolution: number;
-        output_path: string;
+        output_dir: string;
+        exp_name: string;
+        session_timestamp: string;
+        wave_number: number;
+        scanner_tag: string;
+        system_prefix: string;
         plate_barcode?: string | null;
       }>;
     }>;
@@ -784,7 +799,6 @@ export interface GraviScanAPI {
       {
         scannerId: string;
         plateIndex: string;
-        outputPath: string;
         plantBarcode: string | null;
         transplantDate?: string | null;
         customNote?: string | null;

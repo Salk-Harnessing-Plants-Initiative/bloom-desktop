@@ -46,17 +46,31 @@ class TestBuildTiffMetadata:
 class TestMockScanTiffMetadata:
     """Test that mock scans produce TIFFs with embedded metadata."""
 
+    def _make_plate(
+        self, output_dir, plate_index="00", grid_mode="2grid", resolution=300
+    ):
+        return {
+            "plate_index": plate_index,
+            "grid_mode": grid_mode,
+            "resolution": resolution,
+            "output_dir": str(output_dir),
+            "exp_name": "exp",
+            "st_timestamp": "20260301T120000",
+            "wave_number": 1,
+            "scanner_tag": "Sc1",
+            "system_prefix": "",
+            "cycle": 1,
+        }
+
     def test_mock_scan_embeds_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, "scan.tif")
-
             worker = ScanWorker(
                 scanner_id="test-scanner", device_name="mock", mock=True
             )
-            worker._mock_scan("2grid", "00", 300, output_path)
+            final_path = worker._mock_scan(self._make_plate(tmpdir))
 
             # Read TIFF and check tags
-            img = Image.open(output_path)
+            img = Image.open(final_path)
             tag_data = img.tag_v2
 
             # ImageDescription
@@ -82,16 +96,21 @@ class TestMockScanTiffMetadata:
         """Verify metadata reflects the actual grid mode and plate index."""
         with tempfile.TemporaryDirectory() as tmpdir:
             for grid_mode, plate_index in [("2grid", "01"), ("4grid", "10")]:
-                output_path = os.path.join(
-                    tmpdir, f"scan_{grid_mode}_{plate_index}.tif"
-                )
+                subdir = os.path.join(tmpdir, f"{grid_mode}_{plate_index}")
 
                 worker = ScanWorker(
                     scanner_id="test-scanner", device_name="mock", mock=True
                 )
-                worker._mock_scan(grid_mode, plate_index, 600, output_path)
+                final_path = worker._mock_scan(
+                    self._make_plate(
+                        subdir,
+                        plate_index=plate_index,
+                        grid_mode=grid_mode,
+                        resolution=600,
+                    )
+                )
 
-                img = Image.open(output_path)
+                img = Image.open(final_path)
                 desc = json.loads(img.tag_v2[270])
                 assert desc["grid_mode"] == grid_mode
                 assert desc["plate_index"] == plate_index

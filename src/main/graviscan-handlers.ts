@@ -11,6 +11,7 @@ import { ipcMain, app, BrowserWindow, dialog, shell } from 'electron';
 import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
 import { resolveGraviScanPath } from './graviscan-path-utils';
@@ -563,7 +564,6 @@ export function registerGraviscanHandlers(
   ipcMain.handle('graviscan:reset-scanners', async () => {
     try {
       console.log('[GraviScan:RESET] Killing all scanner processes...');
-      const { execSync } = require('child_process');
       execSync('pkill -f "bloom-hardware --scan-worker" 2>/dev/null || true');
 
       const coordinator = getCoordinator?.();
@@ -1485,13 +1485,14 @@ export function registerGraviscanHandlers(
             : '(one-shot)'
         );
 
-        // Build scan session state for persistence across renderer remounts
+        // Build scan session state for persistence across renderer remounts.
+        // No predicted output path — `imagePath` is filled on scan-complete
+        // with the actual path Python wrote to disk.
         const jobs: Record<
           string,
           {
             scannerId: string;
             plateIndex: string;
-            outputPath: string;
             plantBarcode: string | null;
             transplantDate: string | null;
             customNote: string | null;
@@ -1508,7 +1509,6 @@ export function registerGraviscanHandlers(
             jobs[key] = {
               scannerId: s.scannerId,
               plateIndex: plate.plate_index,
-              outputPath: plate.output_path,
               plantBarcode: plate.plate_barcode ?? null,
               transplantDate: null,
               customNote: null,
@@ -1712,6 +1712,27 @@ export function registerGraviscanHandlers(
             : 'Failed to get output directory',
         path: null,
       };
+    }
+  });
+
+  /**
+   * Create a directory recursively. Idempotent — succeeds if it already
+   * exists. Used by the renderer to create the per-session scan folder
+   * upfront, before any cycle begins.
+   */
+  ipcMain.handle('graviscan:ensure-dir', async (_event, dirPath: string) => {
+    try {
+      if (!dirPath || typeof dirPath !== 'string') {
+        return { success: false, error: 'dirPath is required' };
+      }
+      await fs.promises.mkdir(dirPath, { recursive: true });
+      console.log(`[GraviScan:ENSURE-DIR] Ready: ${dirPath}`);
+      return { success: true, path: dirPath };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to ensure directory';
+      console.error(`[GraviScan:ENSURE-DIR] ${message}`);
+      return { success: false, error: message };
     }
   });
 

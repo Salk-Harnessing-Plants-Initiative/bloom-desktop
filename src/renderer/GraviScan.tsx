@@ -42,26 +42,12 @@ export function GraviScan() {
       return 300;
     }
   });
-  const [writingFiles, setWritingFiles] = useState<Set<string>>(new Set());
   // Map plateKey → imagePath for completed scans (used to link verification results to files)
   const [completedFilePaths, setCompletedFilePaths] = useState<
     Record<string, string>
   >({});
 
-  // Track which files are currently being written
   useEffect(() => {
-    const cleanupStarted = window.electron.graviscan.onScanStarted((data) => {
-      // File path comes from the session jobs — get it from scan status
-      window.electron.graviscan.getScanStatus().then((status) => {
-        if (!status?.jobs) return;
-        const jobKey = `${data.scannerId}:${data.plateIndex}`;
-        const job = status.jobs[jobKey];
-        if (job?.outputPath) {
-          setWritingFiles((prev) => new Set([...prev, job.outputPath]));
-        }
-      });
-    });
-
     const cleanupComplete = window.electron.graviscan.onScanComplete((data) => {
       if (data.imagePath) {
         const plateKey = `${data.scannerId}:${data.plateIndex}`;
@@ -69,16 +55,10 @@ export function GraviScan() {
           ...prev,
           [plateKey]: data.imagePath,
         }));
-        setWritingFiles((prev) => {
-          const next = new Set(prev);
-          next.delete(data.imagePath);
-          return next;
-        });
       }
     });
 
     return () => {
-      cleanupStarted();
       cleanupComplete();
     };
   }, []);
@@ -696,7 +676,6 @@ export function GraviScan() {
             <div className="flex-1 overflow-hidden">
               <ScanFileBrowser
                 isScanning={isScanning}
-                writingFiles={writingFiles}
                 needsReviewFiles={
                   new Set(
                     Object.entries(verificationResults)
