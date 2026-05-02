@@ -18,8 +18,7 @@ import { resolveGraviScanPath } from './graviscan-path-utils';
 import type { ScanCoordinator, ScannerConfig } from './scan-coordinator';
 import type { PlateConfig } from './scanner-subprocess';
 import { getScanSession, setScanSession, markScanJobRecorded } from './main';
-// Bloom upload temporarily disabled (proxy size limit) — re-enable when fixed
-// import { uploadAllPendingScans } from './graviscan-upload';
+import { uploadAllPendingScans } from './graviscan-upload';
 import { runBoxBackup } from './box-backup';
 import { readQrCodes } from './qr-reader';
 import type {
@@ -1894,9 +1893,10 @@ export function registerGraviscanHandlers(
   // ==========================================================================
 
   /**
-   * Upload all pending/failed scans to Box backup.
-   * Bloom (Supabase) upload is temporarily disabled due to proxy size limit.
-   * Sends progress events to the renderer via 'graviscan:box-backup-progress'.
+   * Upload all pending/failed scans to Bloom (Supabase) and Box (rclone).
+   * Both run in parallel; their results are merged. Progress events:
+   *   'graviscan:upload-progress'      — Bloom per-image progress
+   *   'graviscan:box-backup-progress'  — Box per-file progress
    */
   let uploadInProgress = false;
   ipcMain.handle('graviscan:upload-all-scans', async () => {
@@ -1912,28 +1912,60 @@ export function registerGraviscanHandlers(
     }
     uploadInProgress = true;
     try {
-      console.log(
-        '[GraviScan:UPLOAD] Bloom upload disabled (proxy size limit) — Box backup only'
-      );
+      console.log('[GraviScan:UPLOAD] Starting Bloom + Box upload in parallel');
 
       const mainWindow = getMainWindow?.();
 
-      // Bloom upload temporarily disabled — proxy at api.bloom.salk.edu
-      // rejects files >50MB. Re-enable by restoring uploadAllPendingScans
-      // to a Promise.allSettled alongside runBoxBackup.
+      const [bloomSettled, boxSettled] = await Promise.allSettled([
+        uploadAllPendingScans(db, (progress) => {
+          mainWindow?.webContents.send('graviscan:upload-progress', progress);
+        }),
+        runBoxBackup(db, (progress) => {
+          mainWindow?.webContents.send('graviscan:box-backup-progress', progress);
+        }),
+      ]);
 
-      const boxResult = await runBoxBackup(db, (progress) => {
-        mainWindow?.webContents.send('graviscan:box-backup-progress', progress);
-      });
+      const bloomResult =
+        bloomSettled.status === 'fulfilled'
+          ? bloomSettled.value
+          : {
+              success: false,
+              uploaded: 0,
+              skipped: 0,
+              failed: 0,
+              errors: [
+                `Bloom upload threw: ${
+                  bloomSettled.reason instanceof Error
+                    ? bloomSettled.reason.message
+                    : String(bloomSettled.reason)
+                }`,
+              ],
+            };
+      const boxResult =
+        boxSettled.status === 'fulfilled'
+          ? boxSettled.value
+          : {
+              success: false,
+              experiments: 0,
+              filesCopied: 0,
+              errors: [
+                `Box backup threw: ${
+                  boxSettled.reason instanceof Error
+                    ? boxSettled.reason.message
+                    : String(boxSettled.reason)
+                }`,
+              ],
+            };
 
-      console.log('[GraviScan:UPLOAD] Box backup result:', boxResult);
+      console.log('[GraviScan:UPLOAD] Bloom result:', bloomResult);
+      console.log('[GraviScan:UPLOAD] Box result:', boxResult);
 
       return {
-        success: boxResult.success,
-        uploaded: boxResult.filesCopied,
-        skipped: 0,
-        failed: boxResult.errors.length,
-        errors: boxResult.errors,
+        success: bloomResult.success && boxResult.success,
+        uploaded: bloomResult.uploaded + boxResult.filesCopied,
+        skipped: bloomResult.skipped,
+        failed: bloomResult.failed + boxResult.errors.length,
+        errors: [...bloomResult.errors, ...boxResult.errors],
       };
     } catch (error) {
       console.error('[GraviScan:UPLOAD] Error:', error);

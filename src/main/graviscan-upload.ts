@@ -159,20 +159,22 @@ async function processImageJobs(
   metadataIdMap: Map<string, number>,
   onProgress?: (progress: UploadProgress) => void
 ): Promise<UploadResult> {
+  // Bounded concurrency for Bloom uploads. Each image is 3 round-trips
+  // (insert RPC → file upload → update RPC); 4 workers keeps HTTPS pipes
+  // saturated without overwhelming Bloom's API or the local network when
+  // running alongside rclone's Box backup.
+  const UPLOAD_CONCURRENCY = 4;
+
   const errors: string[] = [];
   const total = imageJobs.length;
   let uploaded = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (const { scan, image } of imageJobs) {
-    onProgress?.({
-      total,
-      completed: uploaded + skipped + failed,
-      failed,
-      currentFile: path.basename(image.path),
-    });
+  type Job = (typeof imageJobs)[number];
 
+  const processOne = async (job: Job): Promise<void> => {
+    const { scan, image } = job;
     try {
       // Resolve stale paths (DB may have _st_ only, disk file renamed with _et_)
       const resolvedPath = resolveGraviScanPath(image.path);
@@ -183,7 +185,7 @@ async function processImageJobs(
           data: { status: 'failed' },
         });
         failed++;
-        continue;
+        return;
       }
       if (resolvedPath !== image.path) {
         console.log(
@@ -248,7 +250,7 @@ async function processImageJobs(
           data: { status: 'failed' },
         });
         failed++;
-        continue;
+        return;
       }
 
       if (scanId === null) {
@@ -257,7 +259,7 @@ async function processImageJobs(
           data: { status: 'uploaded' },
         });
         skipped++;
-        continue;
+        return;
       }
 
       const ext = path.extname(image.path);
@@ -279,7 +281,7 @@ async function processImageJobs(
           data: { status: 'failed' },
         });
         failed++;
-        continue;
+        return;
       }
 
       const { error: imageError } = await (
@@ -299,7 +301,7 @@ async function processImageJobs(
           data: { status: 'failed' },
         });
         failed++;
-        continue;
+        return;
       }
 
       await db.graviImage.update({
@@ -316,7 +318,29 @@ async function processImageJobs(
       });
       failed++;
     }
-  }
+  };
+
+  // Worker-pool pattern: N workers share a single index cursor and pull
+  // from `imageJobs` until the queue is exhausted. Counter mutations are
+  // safe because JS is single-threaded between awaits.
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= imageJobs.length) return;
+      const job = imageJobs[idx];
+      await processOne(job);
+      onProgress?.({
+        total,
+        completed: uploaded + skipped + failed,
+        failed,
+        currentFile: path.basename(job.image.path),
+      });
+    }
+  };
+
+  const workerCount = Math.min(UPLOAD_CONCURRENCY, imageJobs.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   onProgress?.({
     total,
