@@ -105,6 +105,7 @@ export interface UseScanSessionParams {
   selectedPhenotyper: string;
   setSelectedPhenotyper: React.Dispatch<React.SetStateAction<string>>;
   experiments: ListItem[];
+  phenotypers: ListItem[];
 
   // Derived
   assignedScannerIds: string[];
@@ -180,6 +181,7 @@ export function useScanSession({
   selectedPhenotyper,
   setSelectedPhenotyper,
   experiments,
+  phenotypers,
   assignedScannerIds,
   selectedPlates,
 }: UseScanSessionParams): UseScanSessionReturn {
@@ -1248,6 +1250,8 @@ export function useScanSession({
       const systemPrefix = platformInfo?.system_name
         ? `${platformInfo.system_name}_`
         : '';
+      const phenotyperName =
+        phenotypers.find((p) => p.id === selectedPhenotyper)?.name || '';
 
       // Build scan config for each scanner — pass components, never a
       // pre-baked output_path. Coordinator composes per-cycle paths.
@@ -1292,6 +1296,7 @@ export function useScanSession({
             wave_number: waveNumber,
             scanner_tag: scannerTag,
             system_prefix: systemPrefix,
+            phenotyper_name: phenotyperName,
             plate_barcode: plate.plantBarcode || null,
           };
         });

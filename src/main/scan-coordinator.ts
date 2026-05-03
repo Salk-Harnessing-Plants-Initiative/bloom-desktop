@@ -349,6 +349,7 @@ export class ScanCoordinator extends EventEmitter {
           scanner_tag: plate.scanner_tag,
           system_prefix: plate.system_prefix,
           cycle: this.currentCycle,
+          phenotyper_name: plate.phenotyper_name,
         }));
 
         const promise = new Promise<void>((resolve) => {

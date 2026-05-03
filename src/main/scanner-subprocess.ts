@@ -36,6 +36,7 @@ export interface PlateConfig {
   wave_number: number;
   scanner_tag: string; // e.g. "Sc1"
   system_prefix: string; // e.g. "" or "GS1_"
+  phenotyper_name: string; // embedded in TIFF ImageDescription JSON
 }
 
 /**
@@ -55,6 +56,7 @@ export interface ScanWorkerPlate {
   scanner_tag: string;
   system_prefix: string;
   cycle: number;
+  phenotyper_name: string;
 }
 
 export interface ScanWorkerEvent {

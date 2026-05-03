@@ -54,22 +54,23 @@ _BLOOM_VERSION = "0.1.0"
 
 def _build_tiff_metadata(
     scanner_id: str,
-    grid_mode: str,
-    plate_index: str,
-    resolution: int,
+    plate: dict,
     region,
 ) -> ImageFileDirectory_v2:
     """Build TIFF metadata tags for a scan image.
 
     Embeds scan provenance into standard TIFF tags so files are self-describing.
-    Structured metadata goes into ImageDescription as JSON.
+    Structured metadata (incl. experiment + phenotyper attribution) goes into
+    ImageDescription as JSON so the .tif is portable to Box, downstream
+    pipelines, or scientists' laptops without the local DB.
     """
+    resolution = plate["resolution"]
     ifd = ImageFileDirectory_v2()
     ifd[270] = json.dumps(
         {  # ImageDescription
             "scanner_id": scanner_id,
-            "grid_mode": grid_mode,
-            "plate_index": plate_index,
+            "grid_mode": plate["grid_mode"],
+            "plate_index": plate["plate_index"],
             "resolution_dpi": resolution,
             "scan_region_mm": {
                 "top": region.top,
@@ -77,6 +78,10 @@ def _build_tiff_metadata(
                 "width": region.width,
                 "height": region.height,
             },
+            "exp_name": plate["exp_name"],
+            "wave_number": plate["wave_number"],
+            "st_timestamp": plate["st_timestamp"],
+            "phenotyper_name": plate.get("phenotyper_name") or "",
             "capture_timestamp": datetime.now(timezone.utc).isoformat(),
             "bloom_version": _BLOOM_VERSION,
         }
@@ -410,9 +415,7 @@ class ScanWorker:
                 # Save as TIFF with LZW compression and metadata.
                 # Compose the final filename here so `_et_` reflects the
                 # actual save moment, not the scan-start moment.
-                tiff_meta = _build_tiff_metadata(
-                    self.scanner_id, grid_mode, plate_index, resolution, region
-                )
+                tiff_meta = _build_tiff_metadata(self.scanner_id, plate, region)
                 et = datetime.now().strftime("%Y%m%dT%H%M%S")
                 final_path = compose_output_path(plate, et)
                 image.save(
@@ -594,9 +597,7 @@ class ScanWorker:
         image = Image.fromarray(img_array, mode="RGB")
 
         os.makedirs(plate["output_dir"], exist_ok=True)
-        tiff_meta = _build_tiff_metadata(
-            self.scanner_id, grid_mode, plate_index, resolution, region
-        )
+        tiff_meta = _build_tiff_metadata(self.scanner_id, plate, region)
         et = datetime.now().strftime("%Y%m%dT%H%M%S")
         final_path = compose_output_path(plate, et)
         image.save(final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)

@@ -210,6 +210,7 @@ export function GraviScan() {
     selectedPhenotyper,
     setSelectedPhenotyper,
     experiments,
+    phenotypers,
     assignedScannerIds,
     selectedPlates,
   });

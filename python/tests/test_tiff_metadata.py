@@ -10,12 +10,38 @@ from python.graviscan.scan_worker import ScanWorker, _build_tiff_metadata
 from python.graviscan.scan_regions import get_scan_region
 
 
+def _make_plate_for_metadata(
+    plate_index="00",
+    grid_mode="2grid",
+    resolution=300,
+    exp_name="exp",
+    st_timestamp="20260301T120000",
+    wave_number=1,
+    phenotyper_name="",
+):
+    return {
+        "plate_index": plate_index,
+        "grid_mode": grid_mode,
+        "resolution": resolution,
+        "output_dir": "/tmp",
+        "exp_name": exp_name,
+        "st_timestamp": st_timestamp,
+        "wave_number": wave_number,
+        "scanner_tag": "Sc1",
+        "system_prefix": "",
+        "cycle": 1,
+        "phenotyper_name": phenotyper_name,
+    }
+
+
 class TestBuildTiffMetadata:
     """Test the _build_tiff_metadata helper."""
 
     def test_returns_ifd_with_standard_tags(self):
         region = get_scan_region("2grid", "00")
-        ifd = _build_tiff_metadata("scanner-001", "2grid", "00", 300, region)
+        ifd = _build_tiff_metadata(
+            "scanner-001", _make_plate_for_metadata(plate_index="00"), region
+        )
 
         # ImageDescription (270) — JSON string
         desc = json.loads(ifd[270])
@@ -30,6 +56,12 @@ class TestBuildTiffMetadata:
         assert desc["scan_region_mm"]["height"] == region.height
         assert "capture_timestamp" in desc
         assert "bloom_version" in desc
+
+        # New embedded fields
+        assert desc["exp_name"] == "exp"
+        assert desc["wave_number"] == 1
+        assert desc["st_timestamp"] == "20260301T120000"
+        assert desc["phenotyper_name"] == ""
 
         # Software (305)
         assert ifd[305] == "Bloom Desktop / GraviScan"
@@ -60,6 +92,7 @@ class TestMockScanTiffMetadata:
             "scanner_tag": "Sc1",
             "system_prefix": "",
             "cycle": 1,
+            "phenotyper_name": "",
         }
 
     def test_mock_scan_embeds_metadata(self):

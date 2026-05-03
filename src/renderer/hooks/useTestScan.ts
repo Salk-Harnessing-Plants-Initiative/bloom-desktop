@@ -224,6 +224,7 @@ export function useTestScan({
             wave_number: 0,
             scanner_tag: scannerTag,
             system_prefix: '',
+            phenotyper_name: '',
           })),
         };
       });
