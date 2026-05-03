@@ -202,6 +202,9 @@ export function usePlateAssignments({
                   id: plate.id,
                   plate_id: plate.plate_id,
                   accession: plate.accession,
+                  transplant_date: plate.transplant_date
+                    ? new Date(plate.transplant_date).toISOString().split('T')[0]
+                    : null,
                   custom_note: plate.custom_note ?? null,
                   sectionCount: new Set(
                     (plate.sections || []).map((s) => s.plate_section_id)
@@ -485,10 +488,28 @@ export function usePlateAssignments({
         }
       }
 
+      // Pull transplant_date + custom_note from the matching metadata row so
+      // they flow through the assignment → scan → DB → both upload paths.
+      // Without this copy, GraviScan rows are written with null on these
+      // fields and the Box CSV ends up empty even though the metadata sheet
+      // has the values.
+      const matchedPlate = barcode
+        ? availablePlates.find((p) => p.plate_id === barcode)
+        : undefined;
+      const transplantDate = matchedPlate?.transplant_date ?? null;
+      const customNote = matchedPlate?.custom_note ?? null;
+
       setScannerPlateAssignments((prev) => {
         const assignments = prev[scannerId] || [];
         const updated = assignments.map((p) =>
-          p.plateIndex === plateIndex ? { ...p, plantBarcode: barcode } : p
+          p.plateIndex === plateIndex
+            ? {
+                ...p,
+                plantBarcode: barcode,
+                transplantDate,
+                customNote,
+              }
+            : p
         );
 
         // Save to database if experiment is selected
@@ -496,6 +517,8 @@ export function usePlateAssignments({
           window.electron.database.graviscanPlateAssignments
             .upsert(selectedExperiment, scannerId, plateIndex, {
               plate_barcode: barcode,
+              transplant_date: transplantDate,
+              custom_note: customNote,
             })
             .then((result) => {
               console.log('[GraviScan] Upsert response:', result);
@@ -508,7 +531,7 @@ export function usePlateAssignments({
         return { ...prev, [scannerId]: updated };
       });
     },
-    [selectedExperiment, scannerPlateAssignments, setScanError]
+    [selectedExperiment, scannerPlateAssignments, availablePlates, setScanError]
   );
 
   return {

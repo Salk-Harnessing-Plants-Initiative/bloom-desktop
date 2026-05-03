@@ -236,6 +236,7 @@ export interface AvailablePlate {
   id: string; // GraviPlateAccession database ID
   plate_id: string; // Human-readable plate identifier (e.g., "PLATE_001")
   accession: string; // Accession/genotype line (e.g., "Ara-1")
+  transplant_date: string | null; // ISO date from metadata CSV; copied to assignment on barcode pick
   custom_note: string | null; // User-defined note from metadata CSV
   sectionCount: number; // Number of sections on this plate
   plantQrCodes: string[]; // All plant QR codes from sections
