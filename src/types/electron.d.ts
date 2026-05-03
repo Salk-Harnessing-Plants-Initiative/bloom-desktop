@@ -756,6 +756,7 @@ export interface GraviScanAPI {
         wave_number: number;
         scanner_tag: string;
         system_prefix: string;
+        phenotyper_name: string;
         plate_barcode?: string | null;
       }>;
     }>;

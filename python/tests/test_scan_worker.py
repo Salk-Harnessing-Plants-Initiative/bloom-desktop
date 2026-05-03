@@ -66,6 +66,7 @@ def _make_plate(
     scanner_tag="Sc1",
     system_prefix="",
     cycle=1,
+    phenotyper_name="",
 ):
     """Build a component-shaped plate dict for the worker's scan command."""
     return {
@@ -79,6 +80,7 @@ def _make_plate(
         "scanner_tag": scanner_tag,
         "system_prefix": system_prefix,
         "cycle": cycle,
+        "phenotyper_name": phenotyper_name,
     }
 
 
@@ -947,7 +949,9 @@ class TestBuildTiffMetadata:
 
     def test_returns_ifd(self):
         region = get_scan_region("2grid", "00")
-        ifd = _build_tiff_metadata("scanner-1", "2grid", "00", 300, region)
+        ifd = _build_tiff_metadata(
+            "scanner-1", _make_plate("/tmp", plate_index="00"), region
+        )
         # 270 = ImageDescription
         desc = json.loads(ifd[270])
         assert desc["scanner_id"] == "scanner-1"
@@ -957,10 +961,35 @@ class TestBuildTiffMetadata:
 
     def test_software_tag(self):
         region = get_scan_region("4grid", "10")
-        ifd = _build_tiff_metadata("s1", "4grid", "10", 600, region)
+        ifd = _build_tiff_metadata(
+            "s1",
+            _make_plate(
+                "/tmp", plate_index="10", grid_mode="4grid", resolution=600
+            ),
+            region,
+        )
         assert ifd[305] == "Bloom Desktop / GraviScan"
 
     def test_resolution_unit(self):
         region = get_scan_region("2grid", "01")
-        ifd = _build_tiff_metadata("s1", "2grid", "01", 300, region)
+        ifd = _build_tiff_metadata(
+            "s1", _make_plate("/tmp", plate_index="01"), region
+        )
         assert ifd[296] == 2  # inches
+
+    def test_embeds_exp_wave_st_phenotyper(self):
+        region = get_scan_region("2grid", "00")
+        plate = _make_plate(
+            "/tmp",
+            plate_index="00",
+            exp_name="myexp",
+            wave_number=3,
+            st_timestamp="20260502T101530",
+        )
+        plate["phenotyper_name"] = "Alice"
+        ifd = _build_tiff_metadata("scanner-1", plate, region)
+        desc = json.loads(ifd[270])
+        assert desc["exp_name"] == "myexp"
+        assert desc["wave_number"] == 3
+        assert desc["st_timestamp"] == "20260502T101530"
+        assert desc["phenotyper_name"] == "Alice"
