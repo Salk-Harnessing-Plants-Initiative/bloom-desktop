@@ -98,6 +98,49 @@ established conservative pattern.
   save-scanners-db.* Inconsistent semantics: one code path destroys
   history, another preserves it. Operator behavior unpredictable.
 
+### Decision 2b: loadEnvConfig return shape is widened, not replaced
+
+**What:** The new fields `slackWebhookUrl?: string` and
+`libusbEndpointRecovery?: boolean` are added to the existing
+`MachineConfig` interface as OPTIONAL properties. The `loadEnvConfig`
+return shape remains structurally compatible with all existing
+callers (those callers ignore the new optional fields by default).
+
+**Why:** Existing handlers like `config:get`, the renderer-side
+machine-config form, and `getDefaultConfig` already destructure or
+spread `MachineConfig` instances. Replacing the shape would force
+changes across many call sites. Adding optional fields preserves
+backward compatibility.
+
+**Implementation note:** TypeScript's strict-mode optional-property
+inference means downstream type-narrowing (`if (config.slackWebhookUrl)`)
+works without `any` casts. Tests verify that `loadEnvConfig()`'s
+return type continues to satisfy `MachineConfig` (assignment
+compatibility check via a typed variable).
+
+### Decision 2c: GRAVISCAN_RESOLUTIONS type narrowing and legacy values
+
+**What:** The `GRAVISCAN_RESOLUTIONS` constant in
+`src/types/graviscan.ts` is trimmed from
+`[200, 400, 600, 800, 1200, 1600, 3200, 6400]` to
+`[200, 400, 600, 800, 1200, 1600]` and kept as `as const`. This
+narrows the derived type `GraviScanResolution = typeof GRAVISCAN_RESOLUTIONS[number]`
+to exclude 3200 and 6400.
+
+A separate type `LegacyGraviScanResolution = GraviScanResolution | 3200 | 6400`
+SHALL be added to `src/types/graviscan.ts` for DB-read paths where a
+persisted `GraviConfig.resolution` may still carry a legacy value
+from before this PR. Renderer code reading from the DB SHALL use
+`LegacyGraviScanResolution` and narrow to `GraviScanResolution` via
+an `isValidResolution()` type-guard helper.
+
+**Why:** The runtime warn in `scan_worker.py` (Task 8) covers the
+runtime safety net. The type discrimination covers the
+compile-time safety. Without it, any renderer that reads
+`config.resolution` from the DB and assigns to a `GraviScanResolution`
+typed variable will produce a TypeScript compilation error after the
+trim.
+
 ### Decision 3: Slack webhook URL and libusb-recovery toggle are env vars
 
 **What:** Two new env vars loaded by `config-store.ts`:

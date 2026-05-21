@@ -30,11 +30,37 @@ events with payload `{type, scanner_id, plate_index, job_id, error}`
 only. The wedge detector (Task 5) requires two additional fields:
 
 - `bytes_received: int` — number of image bytes successfully read
-  from the device before failure. Default to `0` when the failure
-  occurs before any bytes are transferred.
+  from the device before failure.
 - `wall_seconds: float` — elapsed seconds from the scan start to the
   scan-error emission. Measured with `time.monotonic()` (not wall
   clock).
+
+**Pragmatic instrumentation strategy.** python-sane's `snap()` returns
+a fully-decoded PIL Image and does not expose an incremental byte
+counter. Since the V600 wedge case (which this feature primarily
+targets) fails inside `sane.start()` or before `snap()` returns ANY
+data, the pragmatic measurement is:
+
+- If the failure occurs before or during `sane.start()` (most common
+  wedge case): `bytes_received = 0`.
+- If `snap()` returned a partial image and post-snap processing
+  failed: `bytes_received = len(image.tobytes())` (approximate, but
+  unambiguous about "got data" vs "got nothing").
+- If `snap()` raised mid-stream: `bytes_received = 0` (python-sane
+  does not surface partial-byte progress to userspace).
+
+This is a deliberate simplification — the wedge detector's main
+signal is "got 0 bytes after 120 s," which this captures precisely.
+Future enhancement could intercept libusb to count bytes more
+accurately (similar to the libusb-filter shim pattern), but is out
+of scope here.
+
+**Timing consistency.** The existing `duration_ms` field (line 320
+and 334) uses `time.time()`. For consistency, this task SHALL migrate
+`duration_ms` to also use `time.monotonic()` so both timing fields
+are immune to system-clock adjustments. Test:
+`duration_ms` and `wall_seconds * 1000` are within 10 ms of each
+other on a successful + failed scan.
 
 These fields are also useful for operator log inspection beyond the
 wedge detector.
@@ -51,6 +77,13 @@ wedge detector.
   `wall_seconds == 100.0`).
 - *test:* existing scan-error fields (`type`, `scanner_id`, `plate_index`,
   `job_id`, `error`) are still present and unchanged.
+- *test:* on a successful scan, `duration_ms` field still appears on the
+  `scan-complete` event and uses `time.monotonic()` (mock
+  `time.monotonic()` with `[0.0, 5.0]` ⇒ expect `duration_ms == 5000`).
+- *test:* on a failed scan, the corresponding `scan-error` event's
+  `wall_seconds * 1000` and the `duration_ms` field that *would* have
+  been emitted on success are within 10 ms (both measured via same
+  monotonic clock).
 
 **Checklist:**
 
@@ -175,10 +208,22 @@ operator-blocker.
 **Checklist:**
 
 - [ ] 3.1 Write the tests above
-- [ ] 3.2 Audit all `db.graviScanner.findMany()` and `db.graviScanner.findFirst()`
-      call sites in `src/main/` (search via Grep). For each, confirm
-      whether the call should filter `enabled: true`. Add a code comment
-      at any call sites that intentionally include disabled rows.
+- [ ] 3.2 Audit all `db.graviScanner.*` call sites in `src/main/`. The
+      known sites (as of `feature/graviscan-prod` HEAD) live in
+      `src/main/graviscan-handlers.ts` at lines 77, 245, 461, 470,
+      490, 616, 633, 668, 702, 830, 922, 987, 2188. For each, confirm
+      whether the call should filter `enabled: true`:
+      - **MUST filter:** any read path that surfaces scanners to the UI
+        or to scan-time decisions (get-scanner-status, validate-config
+        success path, worker spawn validation)
+      - **MAY include disabled:** historical lookups by `usb_bus +
+        usb_device` or `usb_port` during upsert/re-detect path (where
+        the goal is to find ANY row for that hardware, including
+        previously-disabled ones to re-enable)
+      Add a one-line code comment at every call site stating the
+      decision and (for the MAY-include-disabled cases) the
+      justification. Re-run the audit at PR-ready time to catch any
+      newly-introduced query.
 - [ ] 3.3 Implement disable-not-deleted-stale logic in `save-scanners-db`
 - [ ] 3.4 Change `validate-config` delete→update(enabled=false)
 - [ ] 3.5 Ensure re-detect path re-enables (upsert pattern, not
@@ -292,10 +337,20 @@ required for unit tests — it runs on the rig.)
 - [ ] 4.3 Implement the C-side wrapper in `libusb-filter.c`
 - [ ] 4.4 Add a one-time init log line on stderr indicating "endpoint
       recovery: on/off"
-- [ ] 4.5 Add a build target for the shim (Makefile or npm script that
-      wraps `gcc -shared -fPIC -ldl …`)
-- [ ] 4.6 Verify `forge.config.ts` packaging still copies the rebuilt
-      .so to `Resources/`
+- [ ] 4.5 Add a build target for the shim. Concrete shape:
+      - `scripts/build-libusb-filter.sh` (Linux) wraps
+        `gcc -shared -fPIC -ldl -o src/main/native/libusb-filter.so
+        src/main/native/libusb-filter.c $(pkg-config --cflags --libs libusb-1.0)`
+      - `package.json` adds `"build:native": "bash scripts/build-libusb-filter.sh"`
+        and a `prepackage` hook that runs it on Linux only:
+        `"prepackage": "node -e \"process.platform==='linux' && require('child_process').execSync('npm run build:native', {stdio:'inherit'})\""`
+      - On macOS/Windows the script is a no-op (echoes "skipping
+        libusb-filter build on non-Linux")
+- [ ] 4.6 Update `forge.config.ts:83` to make the `libusb-filter.so`
+      copy conditional on `process.platform === 'linux'`. Today the
+      copy unconditionally references the `.so` which causes
+      packaging warnings on macOS/Windows even though the file
+      doesn't exist there.
 - [ ] 4.7 Write `tests/integration/test-libusb-shim.sh` for rig-side
       validation; document how to run it in `docs/SCANNER_TESTING.md`
 - [ ] 4.8 `npm run test:unit` passes; on the rig: build the .so, run
@@ -411,13 +466,30 @@ Failure modes (defense against URL leakage and hung fetches):
 - *test:* a fetch failure (network error) is logged but does NOT throw
   or crash the caller.
 - *test:* a non-2xx response is logged but does NOT throw.
-- *test:* a fetch that hangs is aborted after a configured timeout
-  (e.g., 10 seconds, via AbortController). Use `vi.useFakeTimers()`
-  to advance time without waiting.
+- *test:* a fetch that hangs is aborted after a configured 10-second
+  timeout. Setup: mock `globalThis.fetch` to return a Promise that
+  never resolves; spy on `AbortController.prototype.abort`; use
+  `vi.useFakeTimers()`; call `notify()`; advance time by 10000 ms;
+  assert `AbortController.prototype.abort` was called exactly once;
+  assert the fetch Promise rejects (with the abort reason);
+  assert the notifier's `notify()` Promise resolves (no throw to
+  caller); assert `console.error` was called with a sanitized
+  message.
 - *test:* the logged error message does NOT contain the webhook URL,
-  full request object, or any request headers. Capture `console.error`
-  output and assert via regex that no `https://hooks.slack.com/...`
-  pattern appears.
+  full request object, or any request headers. Capture
+  `console.error` output (`vi.spyOn(console, 'error')`) across all
+  failure modes (network error, non-2xx status, timeout). For each
+  case, assert NO entry in the `console.error.mock.calls` array
+  contains the substrings `"hooks.slack.com"` or
+  `"/services/"` or any path segment past the protocol.
+- *test:* the same rate-limit key persists across cycle boundaries
+  within one session. Setup: configure rate-limit window 60 s; emit
+  `wedge-detected` for `(scanner=A, session=S)` in cycle 3 at T=0;
+  advance fake time 45 s; emit `cycle-start` (cycle 4) followed by
+  another `wedge-detected` for the same `(A, S)`; assert fetch
+  called only ONCE. Then advance fake time another 16 s (now T=61);
+  emit `wedge-detected` again for `(A, S)`; assert fetch now called
+  a second time. Proves the key is per-session, not per-cycle.
 
 **Checklist:**
 
@@ -527,9 +599,13 @@ newly-re-enabled) `enabled=true` row.
 - *test:* worker scan with `resolution=3200` emits a `dpi-warning`
   event (via EVENT: stdout) but still proceeds to attempt the scan
   (in mock mode the scan completes).
-- *test:* the `dpi-warning` event JSON has the documented shape:
-  `{"type":"dpi-warning","scanner_id":"<id>","requested_dpi":3200,
-  "validated_set":[200,400,600,800,1200,1600],"timestamp":"<ISO8601>"}`.
+- *test:* the `dpi-warning` event JSON has the EXACT documented shape:
+  assert `type === "dpi-warning"`, `scanner_id` is a string,
+  `requested_dpi` is an integer (not a string), `validated_set` is
+  EXACTLY the list `[200, 400, 600, 800, 1200, 1600]` (same order),
+  `timestamp` matches the ISO-8601-with-timezone regex
+  `/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}:\d{2}$/`,
+  and no extra unexpected keys are present.
 - *test:* clarification — when the requested DPI is unvalidated, the
   worker passes the requested value through to `device.x_resolution`
   and `device.y_resolution` UNMODIFIED (the SANE driver may then round
@@ -541,12 +617,21 @@ newly-re-enabled) `enabled=true` row.
 
 - [ ] 8.1 Write the tests above
 - [ ] 8.2 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts:166`
-- [ ] 8.3 Verify "(recommended)" tag still attaches to 1200 in
+- [ ] 8.3 Add a sibling type `LegacyGraviScanResolution` and a
+      type-guard helper `isValidResolution(value: number):
+      value is GraviScanResolution` in `src/types/graviscan.ts`
+      (per design.md Decision 2c) — for renderer code paths that
+      read possibly-stale `GraviConfig.resolution` from the DB
+- [ ] 8.4 Verify "(recommended)" tag still attaches to 1200 in
       `ConfigureScanner.tsx:366-377` and
       `ScannerConfigSection.tsx:580-591`
-- [ ] 8.4 Add `_validate_dpi` helper and `dpi-warning` event emission
+- [ ] 8.5 Find DB-read callers of `config.resolution` in the renderer
+      via Grep; update them to use `LegacyGraviScanResolution`
+      with the new type-guard helper so a stale 3200 from DB
+      doesn't break compilation
+- [ ] 8.6 Add `_validate_dpi` helper and `dpi-warning` event emission
       in `scan_worker.py`
-- [ ] 8.5 `npm run test:unit` passes; `pytest python/tests/` passes
+- [ ] 8.7 `npm run test:unit` passes; `pytest python/tests/` passes
 
 ---
 
@@ -617,9 +702,11 @@ the formula's job is order-of-magnitude flagging, not precision).
 **TDD — tests to write FIRST in
 `tests/unit/cadence-estimator.test.ts`:**
 
-The formula is specified in `design.md` Decision 7. Tests check
-order-of-magnitude correctness within ±15% of empirical anchors, not
-precise values:
+The formula is specified in `design.md` Decision 7 (per-plate
+constant is ~102 s at 1200 dpi 140×140 mm, derived from the 4-plate
+production run's cycle-gap median of 418 s in investigation summary
+Section 3 Table 3). Tests check order-of-magnitude correctness within
+±15% of empirical anchors, not precise values:
 
 - *test:* `estimateCycleSeconds({platesPerScanner: 2, scannerCount: 5,
   dpi: 1200, regionMm: {w: 140, h: 140}})` returns a value in

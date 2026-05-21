@@ -161,7 +161,13 @@ Seven independently-testable items, scoped to bug-fixes and small additions:
   - `src/main/native/libusb-filter.c` (extend with libusb_bulk_transfer
     wrapper)
 - **Affected code (Python):**
-  - `python/graviscan/scan_worker.py` (DPI runtime validation warn)
+  - `python/graviscan/scan_worker.py`:
+    - Extend `scan-error` event payload with `bytes_received` and
+      `wall_seconds` fields (Task 0)
+    - Remove the `self._reset_usb_device()` call at line 519 inside
+      `_reopen_device()` (Task 3.5) — method itself retained
+    - Add DPI runtime validation warn + `dpi-warning` event emission
+      (Task 8)
 - **Database:** No schema change. Existing `GraviScanner.enabled` and
   `GraviScanner.grid_mode` columns are now honored end-to-end.
 - **Documentation:** `README.md` (env vars), `.env.example` (NEW or

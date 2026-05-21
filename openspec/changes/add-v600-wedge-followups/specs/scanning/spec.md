@@ -276,15 +276,18 @@ The `_reopen_device()` recovery path in `python/graviscan/scan_worker.py` SHALL 
 
 Per investigation summary Section 1.2 ("kernel evidence showed every USB read got a response — the failure is inside the scanner, firmware most likely") and issue #228 ("USBDEVFS_RESET makes wedges worse; controller FLR detaches the scanner entirely; only physical AC power-cycle recovers"), the kernel-level reset is actively harmful on V600 wedges and provides no demonstrated benefit on non-wedge transient failures.
 
-The `_reset_usb_device()` method itself MAY remain in the codebase for testability and potential future reconsideration. No production code path SHALL invoke it. The remaining recovery sequence — `device.cancel()` → `device.close()` → `sane.exit()` → `time.sleep(3)` → `sane.init()` → `sane.open()` — SHALL be sufficient for non-wedge transient failures and SHALL fail fast (via `sane.open()` raising) on wedged scanners rather than compounding the wedge via FLR.
+The `_reset_usb_device()` method itself MAY remain in the codebase for testability and potential future reconsideration. No production code path SHALL invoke it. The remaining recovery sequence — `device.cancel()` (line 504–507) → `device.close()` (line 508–511) → `sane.exit()` (line 512–516) → `time.sleep(3)` (line 522) → `sane.init()` (line 532) → `sane.open()` (line 533) — SHALL be sufficient for non-wedge transient failures and SHALL fail fast (via `sane.open()` raising) on wedged scanners rather than compounding the wedge via the `USBDEVFS_RESET` ioctl (which per #228 can trigger controller FLR and detach the scanner entirely).
+
+The 3-second `time.sleep()` at line 522 SHALL be preserved as a conservative bus-settle interval. It is annotated with a doc-comment explaining its retained purpose now that `USBDEVFS_RESET` no longer immediately precedes it.
 
 #### Scenario: Recovery path does not call USBDEVFS_RESET
 
 - **GIVEN** a `ScanWorker` whose most recent scan attempt failed
 - **WHEN** `_reopen_device()` is invoked on the next scan attempt
 - **THEN** the method SHALL NOT invoke `_reset_usb_device()`
-- **AND** the method SHALL invoke `sane.exit()`, `sane.init()`, and `sane.open()` in the existing order
-- **AND** the 3-second sleep between exit and init SHALL be preserved (allows USB bus to settle)
+- **AND** the method SHALL invoke (in order): `device.cancel()`, `device.close()`, `sane.exit()`, `time.sleep(3)`, `sane.init()`, `sane.open()`
+- **AND** the 3-second sleep SHALL be preserved as a bus-settle interval (allows USB bus to quiesce before `sane.init()`)
+- **AND** the existing 3-attempt retry-with-backoff loop around `sane.open()` (lines 530–550) SHALL be preserved
 
 #### Scenario: _reset_usb_device method preserved for testability
 
