@@ -122,10 +122,19 @@ static void endpoint_recovery_init(void) {
     if (endpoint_recovery_enabled != -1) {
         return;
     }
+    /* getenv() returns a pointer to a static buffer that other threads
+     * (or libc internals) may clobber. Copy into a local buffer before
+     * inspecting so the read is safe even under concurrent getenv. */
     const char *val = getenv("LIBUSB_ENDPOINT_RECOVERY");
+    char val_copy[16];
+    val_copy[0] = '\0';
+    if (val) {
+        strncpy(val_copy, val, sizeof(val_copy) - 1);
+        val_copy[sizeof(val_copy) - 1] = '\0';
+    }
     /* Default ON: unset OR any non-"false" value enables. */
     int enabled = 1;
-    if (val && (strcasecmp(val, "false") == 0)) {
+    if (val_copy[0] && strcasecmp(val_copy, "false") == 0) {
         enabled = 0;
     }
     endpoint_recovery_enabled = enabled;
@@ -143,14 +152,25 @@ int libusb_bulk_transfer(libusb_device_handle *dev,
     if (!real_libusb_bulk_transfer) {
         real_libusb_bulk_transfer = dlsym(RTLD_NEXT, "libusb_bulk_transfer");
         if (!real_libusb_bulk_transfer) {
+            /* If we can't find the real symbol, abort() fails fast and
+             * makes the misconfiguration obvious. Returning an error
+             * would let the caller invoke us again — and on the next
+             * call we'd hit the same dlsym failure. Better to crash
+             * loudly than misbehave silently. */
             fprintf(stderr,
                     "[libusb-filter] FATAL: cannot find real libusb_bulk_transfer\n");
-            return LIBUSB_ERROR_OTHER;
+            abort();
         }
     }
     if (!real_libusb_clear_halt) {
         real_libusb_clear_halt = dlsym(RTLD_NEXT, "libusb_clear_halt");
-        /* clear_halt absence is non-fatal — we just can't recover. */
+        if (!real_libusb_clear_halt) {
+            /* Non-fatal: endpoint recovery just becomes a no-op for the
+             * lifetime of the process. Log once so the cause is
+             * visible if recovery is later expected to be active. */
+            fprintf(stderr,
+                    "[libusb-filter] WARNING: libusb_clear_halt not found via dlsym; endpoint recovery disabled\n");
+        }
     }
     endpoint_recovery_init();
 
