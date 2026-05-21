@@ -107,6 +107,46 @@ describe('loadEnvConfig — new env vars', () => {
     });
   });
 
+  describe('saveEnvConfig round-trip', () => {
+    it('persists slack_webhook_url across load → save → load', async () => {
+      fs.writeFileSync(
+        envPath,
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z\n',
+      );
+      const { saveEnvConfig } = await import('../../src/main/config-store');
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const c2 = loadEnvConfig(envPath);
+      expect(c2.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/X/Y/Z',
+      );
+    });
+
+    it('persists libusb_endpoint_recovery=false across save', async () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=false\n');
+      const { saveEnvConfig } = await import('../../src/main/config-store');
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const c2 = loadEnvConfig(envPath);
+      expect(c2.libusb_endpoint_recovery).toBe(false);
+    });
+
+    it('omits both vars from the saved file when undefined', async () => {
+      const { saveEnvConfig, getDefaultConfig } = await import(
+        '../../src/main/config-store'
+      );
+      const cfg = {
+        ...getDefaultConfig(),
+        slack_webhook_url: undefined,
+        libusb_endpoint_recovery: undefined,
+      };
+      saveEnvConfig(cfg, envPath);
+      const written = fs.readFileSync(envPath, 'utf-8');
+      expect(written).not.toMatch(/BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL/);
+      expect(written).not.toMatch(/LIBUSB_ENDPOINT_RECOVERY/);
+    });
+  });
+
   describe('both vars together', () => {
     it('reads both vars from the same .env file', () => {
       fs.writeFileSync(

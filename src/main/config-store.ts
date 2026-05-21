@@ -548,8 +548,11 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     }
   }
 
-  // Write KEY=value format with sections
-  const content = [
+  // Write KEY=value format with sections. The V600 wedge-followups
+  // section is appended only when the values are actually configured —
+  // otherwise an empty assignment (e.g., `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=`)
+  // would semantically mean "feature disabled" but also clutter the file.
+  const lines: string[] = [
     '# Machine Configuration',
     `SCANNER_NAME=${config.scanner_name}`,
     `CAMERA_IP_ADDRESS=${config.camera_ip_address}`,
@@ -563,9 +566,28 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     '',
     '# GraviScan System',
     `GRAVISCAN_SYSTEM_NAME=${config.graviscan_system_name}`,
-  ].join('\n');
+  ];
 
-  fs.writeFileSync(envPath, content, 'utf-8');
+  // V600 wedge-followups section (#228 + #236). Only write the lines
+  // for values that are explicitly configured.
+  if (
+    config.slack_webhook_url !== undefined ||
+    config.libusb_endpoint_recovery !== undefined
+  ) {
+    lines.push('', '# GraviScan V600 wedge follow-ups (#228 + #236)');
+    if (config.slack_webhook_url !== undefined) {
+      lines.push(
+        `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=${config.slack_webhook_url}`,
+      );
+    }
+    if (config.libusb_endpoint_recovery !== undefined) {
+      lines.push(
+        `LIBUSB_ENDPOINT_RECOVERY=${config.libusb_endpoint_recovery}`,
+      );
+    }
+  }
+
+  fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
 }
 
 // ========================================
