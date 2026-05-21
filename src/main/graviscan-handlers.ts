@@ -15,6 +15,7 @@ import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
 import { resolveGraviScanPath } from './graviscan-path-utils';
+import { upsertScannerRow } from './scanner-upsert';
 import type { ScanCoordinator, ScannerConfig } from './scan-coordinator';
 import type { PlateConfig } from './scanner-subprocess';
 import { getScanSession, setScanSession, markScanJobRecorded } from './main';
@@ -455,84 +456,22 @@ export function registerGraviscanHandlers(
         const savedScanners: GraviScanner[] = [];
 
         for (const scanner of scanners) {
-          // Look up existing scanner by USB bus + device (unique physical identifier)
-          let existing: GraviScanner | null = null;
-          if (scanner.usb_bus != null && scanner.usb_device != null) {
-            existing = (await db.graviScanner.findFirst({
-              where: {
-                usb_bus: scanner.usb_bus,
-                usb_device: scanner.usb_device,
-              },
-            })) as GraviScanner | null;
-          }
-          // Fallback: match by usb_port (stable across replug, unlike usb_device)
-          if (!existing && scanner.usb_port) {
-            existing = (await db.graviScanner.findFirst({
-              where: { usb_port: scanner.usb_port },
-            })) as GraviScanner | null;
-            if (existing) {
-              console.log(
-                '[GraviScan:SAVE] Matched by usb_port fallback:',
-                existing.name,
-                existing.id,
-                `port:${existing.usb_port}`
-              );
-            }
-          }
-
-          if (existing) {
-            console.log(
-              '[GraviScan:SAVE] Updating existing scanner (matched by bus:device):',
-              existing.name,
-              existing.id,
-              `bus:${existing.usb_bus} dev:${existing.usb_device}`
-            );
-            const updated = await db.graviScanner.update({
-              where: { id: existing.id },
-              data: {
-                name: scanner.name,
-                display_name:
-                  scanner.display_name ?? existing.display_name ?? null,
-                vendor_id: scanner.vendor_id,
-                product_id: scanner.product_id,
-                usb_port: scanner.usb_port || null,
-                usb_bus: scanner.usb_bus || null,
-                usb_device: scanner.usb_device || null,
-              },
-            });
-            console.log('[GraviScan:SAVE] Updated scanner:', {
-              id: updated.id,
-              name: updated.name,
-              usb_bus: updated.usb_bus,
-              usb_device: updated.usb_device,
-            });
-            savedScanners.push(updated as GraviScanner);
-          } else {
-            console.log(
-              '[GraviScan:SAVE] Creating new scanner:',
-              scanner.name,
-              `bus:${scanner.usb_bus} dev:${scanner.usb_device}`
-            );
-            const created = await db.graviScanner.create({
-              data: {
-                name: scanner.name,
-                display_name: scanner.display_name || null,
-                vendor_id: scanner.vendor_id,
-                product_id: scanner.product_id,
-                usb_port: scanner.usb_port || null,
-                usb_bus: scanner.usb_bus || null,
-                usb_device: scanner.usb_device || null,
-                enabled: true,
-              },
-            });
-            console.log('[GraviScan:SAVE] Created scanner:', {
-              id: created.id,
-              name: created.name,
-              usb_bus: created.usb_bus,
-              usb_device: created.usb_device,
-            });
-            savedScanners.push(created as GraviScanner);
-          }
+          // Delegate the find-existing-and-upsert logic to the testable
+          // helper. The helper handles grid_mode persistence (#231) and
+          // the fallback policy: payload value wins, then existing DB
+          // value on UPDATE, then "4grid" schema default on CREATE.
+          const saved = await upsertScannerRow(
+            db as unknown as Parameters<typeof upsertScannerRow>[0],
+            scanner,
+          );
+          console.log('[GraviScan:SAVE] Saved scanner:', {
+            id: saved.id,
+            name: saved.name,
+            usb_bus: saved.usb_bus,
+            usb_device: saved.usb_device,
+            grid_mode: saved.grid_mode,
+          });
+          savedScanners.push(saved as GraviScanner);
         }
 
         console.log(

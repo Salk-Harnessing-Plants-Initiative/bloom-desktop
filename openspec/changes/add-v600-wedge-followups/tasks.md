@@ -177,15 +177,22 @@ operator-blocker.
 
 **Checklist:**
 
-- [ ] 2.1 Write the unit tests above (use a test-DB Prisma client or
-      in-memory SQLite as in existing patterns)
-- [ ] 2.2 Write the E2E test above (mirrors `tests/e2e/graviscan-workflow.e2e.ts` pattern)
-- [ ] 2.3 Add `grid_mode: scanner.grid_mode ?? existing.grid_mode` to
-      the UPDATE block (around graviscan-handlers.ts:490-502)
-- [ ] 2.4 Add `grid_mode: scanner.grid_mode ?? '4grid'` to the CREATE
-      block (around graviscan-handlers.ts:516-526)
-- [ ] 2.5 `npm run test:unit` and `npm run test:e2e` (or selective)
-      pass; manual UI smoke as a sanity check
+- [x] 2.1 Write the unit tests above
+      (`tests/unit/graviscan-save-scanners.test.ts`, 7 tests covering
+      UPDATE persistence, UPDATE fallback to existing value when payload
+      omits grid_mode, CREATE persistence, CREATE fallback to "4grid"
+      default, and the Prisma data-block field assertions)
+- [ ] 2.2 Write the E2E test (deferred — covered by the unit-test
+      contract; a manual UI smoke on the rig validates the round-trip)
+- [x] 2.3 Add `grid_mode: scanner.grid_mode ?? existing.grid_mode` to
+      the UPDATE block (now lives in `src/main/scanner-upsert.ts` —
+      extracted from the IPC handler for testability)
+- [x] 2.4 Add `grid_mode: scanner.grid_mode ?? '4grid'` to the CREATE
+      block (also in `scanner-upsert.ts`)
+- [x] 2.5 `npx vitest run tests/unit/graviscan-save-scanners.test.ts`
+      passes 7/7; full Vitest run continues to pass. `npx tsc
+      --noEmit` is clean after `npx prisma generate`. Manual UI smoke
+      to be performed during Task 12 rig validation.
 
 ---
 
