@@ -491,6 +491,14 @@ class ScanWorker:
         Parses bus:device from the SANE device name and issues USBDEVFS_RESET.
         This is a soft reset — the bus:device address stays the same.
         Only runs on Linux; silently skips on other platforms.
+
+        NOTE (2026-05-21, #228): This method is no longer called by
+        _reopen_device(). The V600 USB-wedge investigation found that
+        USBDEVFS_RESET makes wedges worse — it can trigger controller
+        FLR (function-level reset) and detach the scanner entirely. The
+        method is retained for testability and potential future
+        reconsideration; do NOT re-add a production call site without
+        revisiting the investigation summary (Section 1.2) and #228.
         """
         import platform
 
@@ -543,10 +551,15 @@ class ScanWorker:
             except Exception:
                 pass
 
-        # Flush stale USB bulk transfers before SANE reinit
-        self._reset_usb_device()
+        # USBDEVFS_RESET removed 2026-05-21 per investigation summary
+        # Section 1.2 and #228. Kernel-level reset makes V600 wedges
+        # worse (controller FLR detaches the scanner entirely). The
+        # _reset_usb_device() method is retained for testability.
 
-        # Let the USB bus settle after releasing the device
+        # Let the USB bus settle after releasing the device. The
+        # 3-second interval predates USBDEVFS_RESET removal; it is a
+        # conservative bus-settle pause that helps SANE re-enumerate
+        # cleanly even on non-wedge transient failures.
         time.sleep(3)
 
         log(self.scanner_id, f"Full SANE reinit for device: {self.device_name}")

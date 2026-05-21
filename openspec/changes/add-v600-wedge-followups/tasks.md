@@ -272,22 +272,27 @@ future reconsideration — only the production call site is removed.
 
 **Checklist:**
 
-- [ ] 3.5.1 Write the tests above
-- [ ] 3.5.2 Remove the `self._reset_usb_device()` call at
+- [x] 3.5.1 Write the tests above
+      (`python/tests/test_scan_worker_recovery.py`)
+- [x] 3.5.2 Remove the `self._reset_usb_device()` call at
       `scan_worker.py:519`
-- [ ] 3.5.3 Add a doc-comment ABOVE the deletion site (or in the
-      function docstring) explaining: "USBDEVFS_RESET removed
-      2026-05-21 per investigation summary Section 1.2 and #228 —
-      kernel-level reset makes V600 wedges worse via FLR.
-      `_reset_usb_device()` method retained for testability."
-- [ ] 3.5.4 Add a doc-comment ABOVE `_reset_usb_device()` itself:
-      "Currently unused by production code paths. Retained for
-      tests, observability, and potential future reconsideration.
-      Do NOT call from `_reopen_device()` — see investigation
-      summary."
-- [ ] 3.5.5 `pytest python/tests/` passes (including all existing
-      `_reset_usb_device` tests at `test_scan_worker.py:364-385`
-      and `test_scan_worker.py:901-938`)
+- [x] 3.5.3 Add a doc-comment ABOVE the deletion site explaining:
+      "USBDEVFS_RESET removed 2026-05-21 per investigation summary
+      Section 1.2 and #228 — kernel-level reset makes V600 wedges
+      worse via FLR. _reset_usb_device() method retained for
+      testability." 3-second sleep retained with its own
+      explanatory comment.
+- [x] 3.5.4 Add a doc-comment to `_reset_usb_device()` itself:
+      "NOTE (2026-05-21, #228): no longer called by _reopen_device()
+      ... retained for testability and potential future
+      reconsideration; do NOT re-add a production call site without
+      revisiting the investigation summary."
+- [x] 3.5.5 `pytest python/tests/test_scan_worker_recovery.py` passes
+      7/7. `pytest python/tests/test_scan_worker.py` passes 53/54
+      (the 1 failure is the pre-existing Windows-only fcntl issue,
+      unrelated). All existing `_reset_usb_device` tests at
+      `test_scan_worker.py:364-385` and `test_scan_worker.py:901-938`
+      still pass.
 - [ ] 3.5.6 Manual rig validation (folded into Task 12): trigger a
       non-wedge SANE-busy condition (e.g., quickly start two
       scanimage processes) and confirm `_reopen_device()` recovers
