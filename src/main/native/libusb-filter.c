@@ -84,3 +84,90 @@ int libusb_open(libusb_device *dev, libusb_device_handle **handle) {
     fprintf(stderr, "[libusb-filter] Blocked: Epson device %s (allowed: %s)\n", dev_id, filter_str);
     return LIBUSB_ERROR_BUSY;
 }
+
+/* ------------------------------------------------------------------
+ * Endpoint-recovery wrapper for libusb_bulk_transfer (#228 Task 4)
+ *
+ * Problem: epkowa's retry logic does NOT call libusb_clear_halt() after
+ * a stalled IN endpoint, so a transient timeout leaves the device in a
+ * "stuck endpoint" state that persists across retries AND across
+ * subsequent scanimage invocations. Only physical AC power-cycle
+ * recovers without this wrapper.
+ *
+ * Fix: intercept libusb_bulk_transfer. On LIBUSB_ERROR_TIMEOUT or
+ * LIBUSB_ERROR_PIPE for an IN endpoint (high bit of endpoint addr set),
+ * call libusb_clear_halt() to issue ClearFeature(ENDPOINT_HALT). This
+ * clears device-side stall AND resets the host/device data toggle.
+ *
+ * Other backends (genesys, pixma) already do this internally. This is
+ * defense-in-depth specifically for the epkowa + V600 combination.
+ *
+ * Controlled by env var LIBUSB_ENDPOINT_RECOVERY:
+ *   - unset OR any value other than "false" (case-insensitive) → on
+ *   - "false" (case-insensitive) → wrapper is a pass-through
+ * Init-time log line on stderr reports the resolved state.
+ * ------------------------------------------------------------------ */
+
+static int (*real_libusb_bulk_transfer)(libusb_device_handle *dev,
+                                        unsigned char endpoint,
+                                        unsigned char *data,
+                                        int length,
+                                        int *transferred,
+                                        unsigned int timeout) = NULL;
+static int (*real_libusb_clear_halt)(libusb_device_handle *dev,
+                                     unsigned char endpoint) = NULL;
+static int endpoint_recovery_enabled = -1; /* -1 unread, 0 off, 1 on */
+
+static void endpoint_recovery_init(void) {
+    if (endpoint_recovery_enabled != -1) {
+        return;
+    }
+    const char *val = getenv("LIBUSB_ENDPOINT_RECOVERY");
+    /* Default ON: unset OR any non-"false" value enables. */
+    int enabled = 1;
+    if (val && (strcasecmp(val, "false") == 0)) {
+        enabled = 0;
+    }
+    endpoint_recovery_enabled = enabled;
+    fprintf(stderr,
+            "[libusb-filter] endpoint recovery: %s\n",
+            enabled ? "on" : "off");
+}
+
+int libusb_bulk_transfer(libusb_device_handle *dev,
+                         unsigned char endpoint,
+                         unsigned char *data,
+                         int length,
+                         int *transferred,
+                         unsigned int timeout) {
+    if (!real_libusb_bulk_transfer) {
+        real_libusb_bulk_transfer = dlsym(RTLD_NEXT, "libusb_bulk_transfer");
+        if (!real_libusb_bulk_transfer) {
+            fprintf(stderr,
+                    "[libusb-filter] FATAL: cannot find real libusb_bulk_transfer\n");
+            return LIBUSB_ERROR_OTHER;
+        }
+    }
+    if (!real_libusb_clear_halt) {
+        real_libusb_clear_halt = dlsym(RTLD_NEXT, "libusb_clear_halt");
+        /* clear_halt absence is non-fatal — we just can't recover. */
+    }
+    endpoint_recovery_init();
+
+    int rc = real_libusb_bulk_transfer(dev, endpoint, data, length,
+                                       transferred, timeout);
+
+    /* Only act on IN endpoints (high bit set) when recovery is on. */
+    if (endpoint_recovery_enabled &&
+        (rc == LIBUSB_ERROR_TIMEOUT || rc == LIBUSB_ERROR_PIPE) &&
+        (endpoint & 0x80) &&
+        real_libusb_clear_halt) {
+        fprintf(stderr,
+                "[libusb-filter] Bulk-IN endpoint 0x%02x %s — clear_halt\n",
+                endpoint,
+                rc == LIBUSB_ERROR_TIMEOUT ? "TIMEOUT" : "PIPE");
+        real_libusb_clear_halt(dev, endpoint);
+    }
+
+    return rc;
+}

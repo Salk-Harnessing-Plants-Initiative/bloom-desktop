@@ -18,6 +18,71 @@ import { scanLog } from './scan-logger';
 import * as readline from 'readline';
 
 // =============================================================================
+// Subprocess env construction (Task 4 #228 — testable pure function)
+// =============================================================================
+
+export interface BuildSubprocessEnvArgs {
+  platform: NodeJS.Platform;
+  mock: boolean;
+  /** SANE name like "epkowa:interpreter:001:007". Used to derive
+   *  SANE_USB_FILTER on Linux real-mode. */
+  saneName: string;
+  /** Additional path prepended to PYTHONPATH (dev: `<repo>/python`). */
+  pythonExtraPath: string;
+  /** Absolute path to the libusb-filter.so for LD_PRELOAD on Linux. */
+  libusbFilterSoPath: string;
+  /** Snapshot of the main-process env. Not mutated. */
+  processEnv: Record<string, string | undefined>;
+}
+
+/**
+ * Build the env object passed to `child_process.spawn()` for a scan
+ * worker. Extracted from `ScannerSubprocess.spawn()` so the env
+ * construction is unit-testable without spawning real processes.
+ *
+ * On Linux + real mode:
+ *  - LD_PRELOAD = libusbFilterSoPath
+ *  - SANE_USB_FILTER = "<bus>:<dev>" from saneName
+ *  - LIBUSB_ENDPOINT_RECOVERY = "true" by default, or "false" if the
+ *    main-process env has LIBUSB_ENDPOINT_RECOVERY=false
+ *    (case-insensitive). Reads the C-shim's wrapper toggle per #228.
+ *
+ * On macOS/Windows or in mock mode: none of these are set (the shim
+ * isn't loaded; recovery is irrelevant).
+ */
+export function buildSubprocessEnv(
+  args: BuildSubprocessEnvArgs,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {
+    ...args.processEnv,
+    PYTHONPATH: [args.pythonExtraPath, args.processEnv.PYTHONPATH]
+      .filter(Boolean)
+      .join(':'),
+  };
+
+  if (args.platform === 'linux' && !args.mock) {
+    // saneName looks like "epkowa:interpreter:001:007"
+    const parts = args.saneName.split(':');
+    env.LD_PRELOAD = args.libusbFilterSoPath;
+    env.SANE_USB_FILTER = `${parts[2]}:${parts[3]}`;
+    const raw = args.processEnv.LIBUSB_ENDPOINT_RECOVERY;
+    env.LIBUSB_ENDPOINT_RECOVERY =
+      typeof raw === 'string' && raw.toLowerCase() === 'false'
+        ? 'false'
+        : 'true';
+  } else {
+    // On non-Linux or mock mode, the shim isn't loaded — strip these
+    // vars from the inherited env so the subprocess sees a clean
+    // environment. Avoids accidentally propagating a stale toggle.
+    delete env.LD_PRELOAD;
+    delete env.SANE_USB_FILTER;
+    delete env.LIBUSB_ENDPOINT_RECOVERY;
+  }
+
+  return env;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -142,31 +207,21 @@ export class ScannerSubprocess extends EventEmitter {
     );
 
     // Build environment variables for subprocess
-    const env: Record<string, string | undefined> = {
-      ...process.env,
-      // In dev: ensure `python/` is on PYTHONPATH so `-m graviscan.scan_worker` resolves
-      PYTHONPATH: [path.join(process.cwd(), 'python'), process.env.PYTHONPATH]
-        .filter(Boolean)
-        .join(':'),
-    };
+    const libusbFilterSoPath = this.isPackaged
+      ? path.join(process.resourcesPath, 'libusb-filter.so')
+      : path.join(process.cwd(), 'src', 'main', 'native', 'libusb-filter.so');
+    const env = buildSubprocessEnv({
+      platform: process.platform,
+      mock: this.mock,
+      saneName: this.saneName,
+      pythonExtraPath: path.join(process.cwd(), 'python'),
+      libusbFilterSoPath,
+      processEnv: process.env as Record<string, string | undefined>,
+    });
 
-    // LD_PRELOAD USB filter for parallel scanner isolation (Linux only, real mode)
-    // The epkowa SANE backend claims ALL Epson USB interfaces during sane_open().
-    // libusb-filter.so intercepts libusb_open() and restricts to the assigned scanner.
-    if (process.platform === 'linux' && !this.mock) {
-      const soPath = this.isPackaged
-        ? path.join(process.resourcesPath, 'libusb-filter.so')
-        : path.join(process.cwd(), 'src', 'main', 'native', 'libusb-filter.so');
-
-      // Extract bus:device from saneName (e.g., "epkowa:interpreter:001:007" → "001:007")
-      const parts = this.saneName.split(':');
-      const usbFilter = `${parts[2]}:${parts[3]}`;
-
-      env.LD_PRELOAD = soPath;
-      env.SANE_USB_FILTER = usbFilter;
-
+    if (env.LD_PRELOAD) {
       console.log(
-        `[ScannerSubprocess:${this.scannerId}] LD_PRELOAD=${soPath} SANE_USB_FILTER=${usbFilter}`
+        `[ScannerSubprocess:${this.scannerId}] LD_PRELOAD=${env.LD_PRELOAD} SANE_USB_FILTER=${env.SANE_USB_FILTER} LIBUSB_ENDPOINT_RECOVERY=${env.LIBUSB_ENDPOINT_RECOVERY}`
       );
     }
 

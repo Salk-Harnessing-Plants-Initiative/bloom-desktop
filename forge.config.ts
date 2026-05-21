@@ -80,7 +80,12 @@ const config: ForgeConfig = {
       './prisma/migrations', // Migration SQL files for first-launch DB setup
 
       // LD_PRELOAD USB filter for parallel scanner isolation (Linux only)
-      './src/main/native/libusb-filter.so',
+      // — built by `scripts/build-libusb-filter.sh` (npm run build:native).
+      // Excluded from macOS/Windows builds so packaging doesn't error
+      // when the .so doesn't exist on those platforms.
+      ...(process.platform === 'linux'
+        ? ['./src/main/native/libusb-filter.so']
+        : []),
     ],
     afterCopy: [
       // Copy sharp and all its runtime dependencies into resources/node_modules/
