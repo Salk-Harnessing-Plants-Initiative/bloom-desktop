@@ -129,10 +129,16 @@ or a sibling getter. Document in `.env.example` and README.
 
 **Checklist:**
 
-- [ ] 1.1 Write the tests above
-- [ ] 1.2 Add `slackWebhookUrl?: string` and
-      `libusbEndpointRecovery?: boolean` to the return shape
-- [ ] 1.3 Implement env-var parsing in `config-store.ts:loadEnvConfig`
+- [x] 1.1 Write the tests above (`tests/unit/config-store-env.test.ts`,
+      14 tests covering absent/present URL, default-true recovery,
+      case-insensitive false, both vars together, no regression to
+      existing fields)
+- [x] 1.2 Add `slack_webhook_url?: string` and
+      `libusb_endpoint_recovery?: boolean` (snake_case to match existing
+      MachineConfig field convention)
+- [x] 1.3 Implement env-var parsing in `config-store.ts:loadEnvConfig`
+      with explicit empty-string handling for the URL (treats empty
+      as undefined) and default-true for the recovery toggle
 - [ ] 1.4 Append (do NOT overwrite) `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL`
       and `LIBUSB_ENDPOINT_RECOVERY` sections to the existing
       `.env.example` at the repo root, with documented placeholders

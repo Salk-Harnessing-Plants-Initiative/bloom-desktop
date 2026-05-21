@@ -41,6 +41,22 @@ export interface MachineConfig {
 
   /** GraviScan system name for uploads and Box backup */
   graviscan_system_name: string;
+
+  /**
+   * Slack webhook URL for V600 wedge notifications (#236).
+   * Loaded from BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL in ~/.bloom/.env.
+   * Absent or empty ⇒ Slack notifier is disabled.
+   * SECRET — never log or expose.
+   */
+  slack_webhook_url?: string;
+
+  /**
+   * libusb endpoint-recovery shim toggle (#228).
+   * Loaded from LIBUSB_ENDPOINT_RECOVERY in ~/.bloom/.env.
+   * Default true (wrapper active). Set "false" (case-insensitive) to
+   * disable the libusb_clear_halt-on-bulk-timeout wrapper.
+   */
+  libusb_endpoint_recovery?: boolean;
 }
 
 /**
@@ -458,11 +474,30 @@ export function loadEnvConfig(envPath: string): MachineConfig {
           case 'GRAVISCAN_SYSTEM_NAME':
             envConfig.graviscan_system_name = value;
             break;
+          case 'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL':
+            // Empty string ⇒ feature disabled (treat as undefined).
+            // The notifier reads slack_webhook_url; undefined disables.
+            if (value !== '') {
+              envConfig.slack_webhook_url = value;
+            }
+            break;
+          case 'LIBUSB_ENDPOINT_RECOVERY':
+            // Default ON. Only the case-insensitive string "false" disables.
+            envConfig.libusb_endpoint_recovery =
+              value.toLowerCase() !== 'false';
+            break;
         }
       }
     }
   } catch {
     // Ignore errors reading .env
+  }
+
+  // Default libusb_endpoint_recovery to true when unset (.env doesn't
+  // mention the variable). The explicit "false" value is the only way
+  // to disable the wrapper.
+  if (envConfig.libusb_endpoint_recovery === undefined) {
+    envConfig.libusb_endpoint_recovery = true;
   }
 
   // Merge: defaults < legacyConfig < envConfig

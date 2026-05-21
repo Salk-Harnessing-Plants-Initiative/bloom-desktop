@@ -51,6 +51,23 @@ from .scan_regions import get_scan_region
 # Application version embedded in TIFF metadata
 _BLOOM_VERSION = "0.1.0"
 
+# V600 DPI values empirically validated against the wedge envelope.
+# Per investigation summary (2026-05-18) Section 2.2 and #232/#233:
+# production code uses x_resolution/y_resolution flags which honor
+# arbitrary requested DPI values. This is the set that has been
+# tested in production at the bytes-threshold envelope.
+V600_VALIDATED_DPI = {200, 400, 600, 800, 1200, 1600}
+
+
+def _validate_dpi(dpi: int) -> bool:
+    """Return True if `dpi` is in the V600-validated production set.
+
+    See `V600_VALIDATED_DPI`. Used to gate the dpi-warning event in
+    `_scan_plate`. The check is a numeric set membership and does not
+    enforce — callers SHALL warn-then-proceed (#232).
+    """
+    return dpi in V600_VALIDATED_DPI
+
 
 def _build_tiff_metadata(
     scanner_id: str,
@@ -324,6 +341,32 @@ class ScanWorker:
                 "job_id": job_id,
             }
         )
+
+        # DPI runtime validation safety net (#232). The UI dropdown is
+        # already restricted to the validated set, but a misconfigured
+        # call path (programmatic import, stale GraviConfig row, etc.)
+        # could still request an unsupported value. Warn-then-proceed
+        # rather than abort — the SANE backend may still produce a
+        # usable scan via internal rounding.
+        requested_dpi = plate.get("resolution")
+        if isinstance(requested_dpi, int) and not _validate_dpi(requested_dpi):
+            sorted_set = sorted(V600_VALIDATED_DPI)
+            log(
+                self.scanner_id,
+                f"WARNING: requested DPI {requested_dpi} is outside validated set "
+                f"{sorted_set}; proceeding with scan attempt anyway",
+            )
+            emit_event(
+                {
+                    "type": "dpi-warning",
+                    "scanner_id": self.scanner_id,
+                    "requested_dpi": requested_dpi,
+                    "validated_set": sorted_set,
+                    "timestamp": datetime.now(timezone.utc)
+                    .astimezone()
+                    .isoformat(timespec="seconds"),
+                }
+            )
 
         start_time = time.monotonic()
         # Reset bytes accumulator; inner scan methods set it on success.
