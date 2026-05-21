@@ -292,6 +292,42 @@ Required test coverage of 80% reached. Total coverage: 84.50%
 [PASS] IPC commands functional: 3/3 tested
 ```
 
+## Environment variables (GraviScan production rig)
+
+The GraviScan production rig reads two optional environment variables
+from `~/.bloom/.env` to control wedge-handling behavior. Both are
+deployed per-rig, not committed to git, and default to safe values when
+absent.
+
+| Variable | Default | Behavior |
+|---|---|---|
+| `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL` | unset | When set, the main process POSTs a structured message to this Slack webhook URL whenever the V600 WedgeDetector fires (#236). Rate-limited to 1 message per (scanner, session) per minute. Absent or empty ⇒ Slack notifications disabled. **SECRET — never commit a real value.** |
+| `LIBUSB_ENDPOINT_RECOVERY` | `true` | Controls the `libusb_clear_halt()`-on-bulk-IN-timeout wrapper in the LD_PRELOAD shim (#228). The shim defends against epkowa's stuck-endpoint bug on V600 scanners. Only case-insensitive `false` disables; any other value (or unset) leaves it on. |
+
+### Deploying
+
+On the rig, append the two lines to `~/.bloom/.env`:
+
+```bash
+BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
+LIBUSB_ENDPOINT_RECOVERY=true
+```
+
+Restart `bloom-graviscan`. At startup the main process hydrates
+`process.env` from this file and propagates the values to the scan
+worker subprocesses (LD_PRELOAD chain) and the Slack notifier.
+
+`.env.example` carries placeholder lines so developers see the
+canonical name and default; copy to your local `.env` if you want to
+exercise the features in development.
+
+### Verification
+
+After deploy, confirm the shim log line appears on stderr of a
+scan_worker subprocess: `[libusb-filter] endpoint recovery: on`. If
+this is missing, the shim didn't load (check `LD_PRELOAD` env var
+and that `libusb-filter.so` exists at the expected path).
+
 ## Contributing
 
 Please see migration issues in the [Issues](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues) tab. All PRs should:
