@@ -38,6 +38,11 @@ export function ConfigureScanner() {
   const [legacyResolutionWarning, setLegacyResolutionWarning] = useState<
     number | null
   >(null);
+  /** Set to N>0 after a Detect call disables N stale scanner rows.
+   *  Cleared when the operator dismisses or re-detects. (#230 visibility) */
+  const [staleDisabledNotice, setStaleDisabledNotice] = useState<
+    number | null
+  >(null);
   const [loading, setLoading] = useState(true);
 
   // Load existing scanner config from DB on mount
@@ -127,6 +132,7 @@ export function ConfigureScanner() {
 
   // Detect scanners → auto-assign labels → save to DB
   const handleDetect = async () => {
+    setStaleDisabledNotice(null);
     setDetecting(true);
     setDetectionError(null);
     setSaveSuccess(false);
@@ -172,6 +178,7 @@ export function ConfigureScanner() {
         }
       );
 
+      const previousScannerIds = new Set(scanners.map((s) => s.scannerId));
       const saveResult =
         await window.electron.graviscan.saveScannersDb(scannersToSave);
 
@@ -184,6 +191,19 @@ export function ConfigureScanner() {
       const refreshedStatus =
         await window.electron.graviscan.getScannerStatus();
       if (refreshedStatus.success) {
+        // #230: compute which previously-visible scanners disappeared
+        // (the disable-on-detect path made them stale). Surface a one-
+        // shot info banner so the operator gets feedback rather than
+        // a silent row vanish.
+        const newScannerIds = new Set(
+          refreshedStatus.scanners.map((s) => s.scannerId),
+        );
+        const disabledCount = [...previousScannerIds].filter(
+          (id) => !newScannerIds.has(id),
+        ).length;
+        if (disabledCount > 0) {
+          setStaleDisabledNotice(disabledCount);
+        }
         setScanners(refreshedStatus.scanners);
       }
     } catch (err) {
@@ -298,6 +318,28 @@ export function ConfigureScanner() {
             onClick={() => setSaveError(null)}
             className="text-red-600 hover:text-red-800 ml-2"
             aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {staleDisabledNotice !== null && (
+        <div
+          className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex items-start justify-between"
+          role="status"
+          data-testid="stale-disabled-notice"
+        >
+          <p className="text-sm text-blue-800">
+            {staleDisabledNotice} previously-detected scanner
+            {staleDisabledNotice === 1 ? '' : 's'} no longer
+            enumerating — automatically disabled. Reconnect the
+            hardware and click Detect to re-enable.
+          </p>
+          <button
+            type="button"
+            onClick={() => setStaleDisabledNotice(null)}
+            className="text-blue-600 hover:text-blue-800 ml-2"
+            aria-label="Dismiss notice"
           >
             ×
           </button>
