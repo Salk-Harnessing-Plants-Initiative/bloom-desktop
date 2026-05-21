@@ -87,18 +87,22 @@ wedge detector.
 
 **Checklist:**
 
-- [ ] 0.1 Write the tests above
-- [ ] 0.2 Plumb a `bytes_received` accumulator through the per-plate
-      scan loop (increment as bytes are read from the device)
-- [ ] 0.3 Capture `scan_start = time.monotonic()` at scan start; on
-      error emit `wall_seconds = time.monotonic() - scan_start`
-- [ ] 0.4 Update the event payload in `_emit_scan_error` to include
-      both fields
-- [ ] 0.5 Document the event shape in a doc-string for
-      `_emit_scan_error` so future readers know the contract
-- [ ] 0.6 `pytest python/tests/` passes; the existing scan-error
-      consumer in `src/main/scanner-subprocess.ts` is unaffected
-      (additive fields)
+- [x] 0.1 Write the tests above (`python/tests/test_scan_worker_events.py`)
+- [x] 0.2 Plumb a `bytes_received` accumulator via `self._last_scan_bytes_received`,
+      reset in `_scan_plate` and set in `_sane_scan` + `_mock_scan` on
+      successful image acquisition
+- [x] 0.3 Capture `scan_start = time.monotonic()` at scan start; on
+      error emit `wall_seconds = time.monotonic() - scan_start`. Migrated
+      `duration_ms` to monotonic() for timing consistency.
+- [x] 0.4 Update the scan-error event payload to include both fields;
+      scan-complete keeps its existing fields but now uses monotonic timing
+- [x] 0.5 Document the event shape in the `_scan_plate` doc-string and
+      reference investigation summary Section 1.2 + #236
+- [x] 0.6 `pytest python/tests/test_scan_worker_events.py` passes 6/6;
+      existing `python/tests/test_scan_worker.py` passes 53/54 (the 1
+      failure is the pre-existing Windows-only `fcntl` platform issue in
+      `TestUSBResetPathConstruction.test_path_from_device_name`,
+      unrelated to this task)
 
 ---
 
