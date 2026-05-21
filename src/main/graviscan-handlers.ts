@@ -492,6 +492,8 @@ export function registerGraviscanHandlers(
           db as unknown as Parameters<typeof disableStaleScannerRows>[0],
           currentUsbPorts,
         );
+        // Log only when something was disabled to avoid noise on
+        // every Detect click (most calls disable nothing).
         if (staleResult.disabled.length > 0) {
           console.log(
             `[GraviScan:SAVE] Disabled ${staleResult.disabled.length} stale scanner(s) not in current detection set:`,
