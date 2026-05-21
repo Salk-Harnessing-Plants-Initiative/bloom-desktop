@@ -109,3 +109,53 @@ export async function upsertScannerRow(
   });
   return created as GraviScannerRow;
 }
+
+export interface DisableStaleResult {
+  /** scanner_id of every row that was newly disabled by this call */
+  disabled: string[];
+}
+
+/**
+ * Disable (set enabled=false) on every enabled `GraviScanner` row whose
+ * `usb_port` is NOT in the provided current-detection set.
+ *
+ * Implements the disable-on-detect policy from #230: stale rows are
+ * preserved in the DB (`enabled=false`) rather than deleted, so the
+ * FK chain from `GraviScan.scanner_id` and
+ * `GraviScanPlateAssignment.scanner_id` remains intact (the Prisma
+ * schema has no `ON DELETE CASCADE` on those references).
+ *
+ * Rows with a null `usb_port` are NOT touched — they cannot be matched
+ * against the detection set and are typically transient
+ * partially-saved states (`reset-usb` clears bus/device for
+ * re-detection but preserves the port).
+ *
+ * Already-disabled rows are not touched (the query filter excludes
+ * them).
+ *
+ * @returns the `id` of each row that was newly disabled.
+ */
+export async function disableStaleScannerRows(
+  db: PrismaClient,
+  currentUsbPorts: readonly string[],
+): Promise<DisableStaleResult> {
+  const enabled = (await db.graviScanner.findMany({
+    where: { enabled: true },
+  })) as GraviScannerRow[];
+
+  const portSet = new Set(currentUsbPorts);
+  const disabled: string[] = [];
+
+  for (const row of enabled) {
+    if (row.usb_port === null) continue; // can't match — leave alone
+    if (portSet.has(row.usb_port)) continue; // still present
+
+    await db.graviScanner.update({
+      where: { id: row.id },
+      data: { enabled: false },
+    });
+    disabled.push(row.id);
+  }
+
+  return { disabled };
+}

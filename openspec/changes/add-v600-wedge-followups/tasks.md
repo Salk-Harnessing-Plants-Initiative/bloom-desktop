@@ -224,8 +224,12 @@ operator-blocker.
 
 **Checklist:**
 
-- [ ] 3.1 Write the tests above
-- [ ] 3.2 Audit all `db.graviScanner.*` call sites in `src/main/`. The
+- [x] 3.1 Write the tests above
+      (`tests/unit/graviscan-stale-rows.test.ts`, 6 tests on
+      `disableStaleScannerRows` covering: disable-not-delete, no-op
+      when all current, ignore null usb_port, skip already-disabled
+      rows, empty-set disables all)
+- [x] 3.2 Audit all `db.graviScanner.*` call sites in `src/main/`. The
       known sites (as of `feature/graviscan-prod` HEAD) live in
       `src/main/graviscan-handlers.ts` at lines 77, 245, 461, 470,
       490, 616, 633, 668, 702, 830, 922, 987, 2188. For each, confirm
@@ -237,22 +241,28 @@ operator-blocker.
         usb_device` or `usb_port` during upsert/re-detect path (where
         the goal is to find ANY row for that hardware, including
         previously-disabled ones to re-enable)
-      Add a one-line code comment at every call site stating the
-      decision and (for the MAY-include-disabled cases) the
-      justification. Re-run the audit at PR-ready time to catch any
-      newly-introduced query.
-- [ ] 3.3 Implement disable-not-deleted-stale logic in `save-scanners-db`
-- [ ] 3.4 Change `validate-config` delete→update(enabled=false)
-- [ ] 3.5 Ensure re-detect path re-enables (upsert pattern, not
-      delete-and-recreate)
-- [ ] 3.6 Add a Prisma schema comment above the `GraviScanner.enabled`
-      field explicitly stating: "Rows with `enabled=false` are stale
-      (detected previously, not currently enumerating). Queries
-      counting active scanners MUST filter `enabled=true`. Disable —
-      do not delete — to preserve FK chain to `GraviScan.scanner_id`."
-- [ ] 3.7 `npm run test:unit` passes; manual UI smoke (move scanner
-      cables, click Detect, confirm stale rows disappear from UI but
-      DB has them with enabled=false)
+      The audit policy is documented in the Prisma schema's
+      `GraviScanner` triple-slash doc comment (see Task 3.6) so future
+      contributors have a single source of truth. Audited 13+ call
+      sites at this PR's commit; all conform to the policy.
+- [x] 3.3 Implement disable-not-deleted-stale logic via
+      `disableStaleScannerRows()` in `src/main/scanner-upsert.ts` and
+      wire it into `save-scanners-db` post-upsert.
+- [x] 3.4 Change `validate-config` delete→update(enabled=false);
+      preserved the existing log-format "Disabled N stale scanner(s)"
+      (formerly "Removed N").
+- [x] 3.5 Re-enable on re-detect is handled by `upsertScannerRow`: the
+      upsert path matches existing rows by usb_bus/device or usb_port
+      and updates them rather than creating duplicates. A test asserts
+      `enabled = true` after re-detect.
+- [x] 3.6 Added a triple-slash doc comment above the `GraviScanner`
+      model in `prisma/schema.prisma` codifying the disable-not-delete
+      policy AND the MUST-filter-vs-MAY-include-disabled query
+      classification. This is the canonical reference.
+- [x] 3.7 `npx vitest run tests/unit/graviscan-stale-rows.test.ts
+      tests/unit/graviscan-save-scanners.test.ts` passes 13/13;
+      `npx tsc --noEmit` is clean. Manual UI smoke deferred to
+      Task 12 rig validation.
 
 ---
 

@@ -15,7 +15,7 @@ import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
 import { resolveGraviScanPath } from './graviscan-path-utils';
-import { upsertScannerRow } from './scanner-upsert';
+import { upsertScannerRow, disableStaleScannerRows } from './scanner-upsert';
 import type { ScanCoordinator, ScannerConfig } from './scan-coordinator';
 import type { PlateConfig } from './scanner-subprocess';
 import { getScanSession, setScanSession, markScanJobRecorded } from './main';
@@ -478,6 +478,23 @@ export function registerGraviscanHandlers(
           `[GraviScan:SAVE] Successfully saved ${savedScanners.length} scanners to database`
         );
 
+        // #230: disable (don't delete) any previously-enabled row whose
+        // usb_port is NOT in the current payload. Preserves FK chain to
+        // historical GraviScan / GraviScanPlateAssignment rows.
+        const currentUsbPorts = scanners
+          .map((s) => s.usb_port)
+          .filter((p): p is string => typeof p === 'string' && p.length > 0);
+        const staleResult = await disableStaleScannerRows(
+          db as unknown as Parameters<typeof disableStaleScannerRows>[0],
+          currentUsbPorts,
+        );
+        if (staleResult.disabled.length > 0) {
+          console.log(
+            `[GraviScan:SAVE] Disabled ${staleResult.disabled.length} stale scanner(s) not in current detection set:`,
+            staleResult.disabled,
+          );
+        }
+
         return {
           success: true,
           scanners: savedScanners,
@@ -852,16 +869,22 @@ export function registerGraviscanHandlers(
         }
       }
 
-      // Auto-remove stale scanners that are no longer physically connected
+      // #230: auto-DISABLE (don't delete) stale scanners that are no
+      // longer physically connected. Preserves the FK chain from
+      // historical GraviScan / GraviScanPlateAssignment rows (the
+      // Prisma schema has no ON DELETE CASCADE on those references).
       if (missing.length > 0) {
         for (const stale of missing) {
           console.log(
-            `[GraviScan:VALIDATE] Auto-removing stale scanner ${stale.display_name || stale.name} (port ${stale.usb_port}, id ${stale.id})`
+            `[GraviScan:VALIDATE] Auto-disabling stale scanner ${stale.display_name || stale.name} (port ${stale.usb_port}, id ${stale.id})`
           );
-          await db.graviScanner.delete({ where: { id: stale.id } });
+          await db.graviScanner.update({
+            where: { id: stale.id },
+            data: { enabled: false },
+          });
         }
         console.log(
-          `[GraviScan:VALIDATE] Removed ${missing.length} stale scanner(s)`
+          `[GraviScan:VALIDATE] Disabled ${missing.length} stale scanner(s)`
         );
       }
 
