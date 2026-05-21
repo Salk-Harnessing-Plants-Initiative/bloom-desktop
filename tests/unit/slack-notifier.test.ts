@@ -260,15 +260,6 @@ describe('SlackNotifier', () => {
       // Mock fetch to honor AbortSignal — reject with AbortError when
       // the signal aborts.
       let signal: AbortSignal | undefined;
-      const fetchPromise = new Promise<Response>((_resolve, reject) => {
-        const onAbort = () => {
-          reject(new DOMException('aborted', 'AbortError'));
-        };
-        // We'll wire signal in the fetch call below
-        setTimeout(() => {
-          if (signal?.aborted) onAbort();
-        }, 0);
-      });
       fetchMock.mockImplementation((_url: string, init: RequestInit) => {
         signal = init.signal as AbortSignal;
         return new Promise((_resolve, reject) => {

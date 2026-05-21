@@ -56,7 +56,7 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
    */
   function buildPipeline(opts: { webhookUrl?: string }) {
     const notifier = new SlackNotifier({ webhookUrl: opts.webhookUrl });
-    let detector: WedgeDetector | null = new WedgeDetector({
+    const detector: WedgeDetector | null = new WedgeDetector({
       sessionId: 'sess-test',
       onWedge: (evt) => void notifier.notify(evt),
     });
