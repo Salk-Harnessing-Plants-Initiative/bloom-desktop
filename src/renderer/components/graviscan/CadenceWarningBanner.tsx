@@ -57,10 +57,11 @@ export function CadenceWarningBanner({
       <div className="text-sm text-amber-800">
         <strong>Configured cadence won&apos;t be honored.</strong> At{' '}
         {platesPerScanner} plates × {scannerCount} scanners × {dpi} DPI ×{' '}
-        {regionMm.w}×{regionMm.h} mm, each cycle will take ~{estimateMin} min —
-        longer than your {intervalMinutes} min interval. Cycles will run
-        back-to-back. To honor the {intervalMinutes} min cadence: use fewer
-        plates per scanner, lower the DPI, or shorten the scan region.
+        {regionMm.w}×{regionMm.h} mm, each cycle will take ~{estimateMin} min
+        — longer than your {intervalMinutes} min interval. Cycles will run
+        back-to-back. To honor the {intervalMinutes} min cadence: switch to
+        2-grid mode (reconfigure on the Machine Configuration page) or lower
+        the DPI.
       </div>
     </div>
   );

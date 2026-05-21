@@ -516,7 +516,8 @@ export function ConfigureScanner() {
                 >
                   {GRAVISCAN_RESOLUTIONS.map((res) => (
                     <option key={res} value={res}>
-                      {res} DPI{res === 1200 ? ' (recommended)' : ''}
+                      {res} DPI
+                      {res === 1200 ? ' (production, validated at 140×140 mm)' : ''}
                     </option>
                   ))}
                 </select>

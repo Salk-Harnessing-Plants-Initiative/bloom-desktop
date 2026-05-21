@@ -87,8 +87,11 @@ describe('CadenceWarningBanner', () => {
       />,
     );
     const txt = container.textContent ?? '';
-    expect(txt).toContain('fewer plates');
+    expect(txt).toContain('2-grid');
     expect(txt).toContain('lower the DPI');
-    expect(txt).toContain('shorten the scan region');
+    // "Shorten the scan region" was removed — there is no UI control
+    // for it. The banner only suggests options the operator can act
+    // on from the UI.
+    expect(txt).not.toContain('shorten');
   });
 });

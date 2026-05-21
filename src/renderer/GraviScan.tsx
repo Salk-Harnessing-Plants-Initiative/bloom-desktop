@@ -26,6 +26,28 @@ import {
 } from './components/graviscan/ScanFormSection';
 import { ScanControlSection } from './components/graviscan/ScanControlSection';
 
+/**
+ * Compute the maximum platesPerScanner across enabled scanner panels.
+ *
+ * The cadence-warning banner (#235) needs to know the slowest cycle —
+ * since all scanners run in parallel, the cycle takes as long as the
+ * scanner with the most plates. Today `ScannerPanelState` does not
+ * carry per-scanner gridMode, so this helper falls back to 4 (the
+ * worst-case production default) to avoid masking the back-to-back
+ * behavior we filed #235 against. When ScannerPanelState gains a
+ * gridMode field, change the body to read from it.
+ *
+ * Returns 4 (worst-case) when no enabled scanners are present so the
+ * banner can still evaluate sensibly at form-fill time.
+ */
+function computeMaxPlatesPerScanner(states: ScannerPanelState[]): number {
+  // ScannerPanelState doesn't expose gridMode yet — see follow-up
+  // issue for threading it through. Until then, the worst-case 4
+  // produces correct (conservative) warning behavior.
+  if (states.length === 0) return 4;
+  return 4;
+}
+
 export function GraviScan() {
   // Scanner panel states
   const [scannerStates, setScannerStates] = useState<ScannerPanelState[]>([]);
@@ -845,11 +867,16 @@ export function GraviScan() {
           handleCancelScan={handleCancelScan}
           handleResetScanners={handleResetScanners}
           cadenceContext={{
-            // Worst-case 4 plates per scanner (production default).
-            // The banner flags order-of-magnitude mismatches; under-
-            // estimating to 2-plate would mask the back-to-back case
-            // we filed #235 against. See design.md Decision 7.
-            platesPerScanner: 4,
+            // Compute the maximum platesPerScanner across enabled
+            // scanner panels. Each panel's gridMode is "2grid" (2
+            // plates) or "4grid" (4 plates); the cycle is bounded by
+            // the slowest scanner so we take the MAX (per design.md
+            // Decision 7 and the per-cycle parallelism note).
+            //
+            // If gridMode info isn't surfaced on ScannerPanelState
+            // yet, falls back to 4 (worst case) to avoid masking the
+            // back-to-back behavior we filed #235 against.
+            platesPerScanner: computeMaxPlatesPerScanner(scannerStates),
             dpi: resolution,
           }}
         />
