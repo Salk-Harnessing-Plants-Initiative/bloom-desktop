@@ -61,10 +61,28 @@ export function buildSubprocessEnv(
   };
 
   if (args.platform === 'linux' && !args.mock) {
-    // saneName looks like "epkowa:interpreter:001:007"
+    // saneName looks like "epkowa:interpreter:001:007"; the 3rd and
+    // 4th colon-separated tokens are the USB bus and address as
+    // 3-digit zero-padded decimal. Validate before passing the values
+    // through to SANE_USB_FILTER — a malformed DB value here could
+    // misconfigure the libusb shim (it does substring match on the
+    // filter), so we reject early rather than silently passing
+    // garbage through.
     const parts = args.saneName.split(':');
+    if (parts.length < 4) {
+      throw new Error(
+        `Invalid saneName format (expected at least 4 colon-separated tokens): ${args.saneName}`,
+      );
+    }
+    const usbBus = parts[2];
+    const usbDev = parts[3];
+    if (!/^\d{3}$/.test(usbBus) || !/^\d{3}$/.test(usbDev)) {
+      throw new Error(
+        `Invalid saneName USB bus/address (expected 3-digit decimal): ${args.saneName}`,
+      );
+    }
     env.LD_PRELOAD = args.libusbFilterSoPath;
-    env.SANE_USB_FILTER = `${parts[2]}:${parts[3]}`;
+    env.SANE_USB_FILTER = `${usbBus}:${usbDev}`;
     const raw = args.processEnv.LIBUSB_ENDPOINT_RECOVERY;
     env.LIBUSB_ENDPOINT_RECOVERY =
       typeof raw === 'string' && raw.toLowerCase() === 'false'

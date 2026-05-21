@@ -102,6 +102,56 @@ describe('buildSubprocessEnv (Task 4 #228)', () => {
     expect(env.LIBUSB_ENDPOINT_RECOVERY).toBeUndefined();
   });
 
+  describe('saneName validation', () => {
+    it('throws when saneName has fewer than 4 colon-separated tokens', () => {
+      expect(() =>
+        buildSubprocessEnv({
+          ...args,
+          saneName: 'epkowa:interpreter:001',
+          platform: 'linux',
+          mock: false,
+          processEnv: baseEnv,
+        }),
+      ).toThrow(/at least 4 colon-separated tokens/);
+    });
+
+    it('throws when USB bus is not 3-digit decimal', () => {
+      expect(() =>
+        buildSubprocessEnv({
+          ...args,
+          saneName: 'epkowa:interpreter:abc:007',
+          platform: 'linux',
+          mock: false,
+          processEnv: baseEnv,
+        }),
+      ).toThrow(/3-digit decimal/);
+    });
+
+    it('throws when USB address is not 3-digit decimal', () => {
+      expect(() =>
+        buildSubprocessEnv({
+          ...args,
+          saneName: 'epkowa:interpreter:001:7',
+          platform: 'linux',
+          mock: false,
+          processEnv: baseEnv,
+        }),
+      ).toThrow(/3-digit decimal/);
+    });
+
+    it('does NOT validate saneName on non-Linux (shim not loaded)', () => {
+      // Should not throw even though saneName is malformed
+      const env = buildSubprocessEnv({
+        ...args,
+        saneName: 'malformed',
+        platform: 'darwin',
+        mock: false,
+        processEnv: baseEnv,
+      });
+      expect(env.LD_PRELOAD).toBeUndefined();
+    });
+  });
+
   it('preserves the input processEnv (does not mutate)', () => {
     const input = { ...baseEnv, EXISTING: 'value' };
     const env = buildSubprocessEnv({

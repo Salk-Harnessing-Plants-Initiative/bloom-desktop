@@ -7,6 +7,12 @@
  * wired into `ScanCoordinator` events by `main.ts` and to feed
  * `SlackNotifier` (Task 6).
  *
+ * Configuration:
+ *   The wedge-detector itself has no configuration. The notifier it
+ *   feeds reads `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL` — see the
+ *   "Environment variables" section of the repo README and
+ *   `.env.example` for deployment.
+ *
  * See:
  *   - investigation summary 2026-05-18 Section 1.2 (wedge mechanism)
  *   - issue #228 (root cause + libusb endpoint-recovery)
@@ -124,6 +130,7 @@ export class WedgeDetector {
 
   private cycleNumber = 0;
   private perScanner = new Map<string, PerScannerState>();
+  private warnedAboutMissingFields = false;
 
   constructor(opts: WedgeDetectorOptions) {
     this.sessionId = opts.sessionId;
@@ -146,14 +153,34 @@ export class WedgeDetector {
    * until the matching `onScanEnd` arrives — if the scan recovers
    * (success=true), the pending error is discarded; if it doesn't
    * recover, signatures are evaluated.
+   *
+   * Defensive: if the payload is missing `bytes_received` or
+   * `wall_seconds` (older Python worker that predates Task 0), the
+   * device_io_120s_zero_bytes signature can never match — log a one-
+   * time-per-detector warning so the configuration drift is visible.
+   * The detector still tracks the scanner for sane_start_invalid and
+   * consecutive_failures.
    */
   onScanError(err: ScanErrorInput): void {
+    if (
+      typeof err.bytes_received !== 'number' ||
+      typeof err.wall_seconds !== 'number'
+    ) {
+      if (!this.warnedAboutMissingFields) {
+        this.warnedAboutMissingFields = true;
+        console.warn(
+          `[WedgeDetector] scan-error event missing bytes_received or wall_seconds — `
+            + `device_io_120s_zero_bytes signature will not fire. Is the Python worker on a `
+            + `pre-Task-0 version?`,
+        );
+      }
+    }
     const state = this.getOrCreateState(err.scanner_id);
     state.pendingErrors.push({
       plate_index: err.plate_index,
       error: err.error,
-      bytes_received: err.bytes_received,
-      wall_seconds: err.wall_seconds,
+      bytes_received: typeof err.bytes_received === 'number' ? err.bytes_received : -1,
+      wall_seconds: typeof err.wall_seconds === 'number' ? err.wall_seconds : -1,
     });
   }
 

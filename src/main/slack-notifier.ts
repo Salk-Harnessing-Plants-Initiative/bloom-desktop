@@ -3,6 +3,12 @@
  * webhook URL. Consumes `wedge-detected` events emitted by the
  * `WedgeDetector` (Task 5).
  *
+ * Configuration:
+ *   Reads `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL` from `~/.bloom/.env`
+ *   via `config-store.ts` (loaded into `process.env` by `main.ts`).
+ *   See the repo README's "Environment variables" section and
+ *   `.env.example` for deployment. SECRET — never logged.
+ *
  * Defensive properties (per design.md Decision 4 and #236):
  *  - Absent webhook URL ⇒ no-op (feature disabled). No fetch, no
  *    error, no log spam.

@@ -105,6 +105,19 @@ describe('WedgeDetector', () => {
       ]);
     });
 
+    it('does NOT emit if the scan recovers (scan-complete follows scan-error)', () => {
+      detector.onScanError(
+        makeScanError({
+          error: 'Error during device I/O',
+          bytes_received: 0,
+          wall_seconds: 121,
+        }),
+      );
+      // Scan ultimately succeeded — recovered transient I/O error.
+      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: true });
+      expect(emitted).toEqual([]);
+    });
+
     it('does NOT emit when bytes_received > 0 (only one sub-condition fails)', () => {
       detector.onScanError(
         makeScanError({
@@ -238,6 +251,47 @@ describe('WedgeDetector', () => {
         (e) => e.signature === 'consecutive_failures',
       ).length;
       expect(count).toBe(1);
+    });
+  });
+
+  describe('defensive handling of incomplete scan-error payloads', () => {
+    it('warns once when scan-error event is missing bytes_received or wall_seconds', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const d = new WedgeDetector({
+        sessionId: 'sess-1',
+        onWedge: () => {},
+      });
+      d.onCycleStart(1);
+      d.onScanError({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        job_id: 'j1',
+        error: 'some error',
+        // missing bytes_received and wall_seconds
+      } as never);
+      d.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      // Warning mentions the missing fields and the pre-Task-0 hint
+      expect(warnSpy.mock.calls[0][0]).toMatch(/bytes_received or wall_seconds/);
+      warnSpy.mockRestore();
+    });
+
+    it('still fires sane_start_invalid even without bytes_received/wall_seconds', () => {
+      const events: Array<{ signature: WedgeSignature }> = [];
+      const d = new WedgeDetector({
+        sessionId: 'sess-1',
+        onWedge: (evt) => events.push({ signature: evt.signature }),
+      });
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      d.onCycleStart(1);
+      d.onScanError({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        job_id: 'j1',
+        error: 'sane_start: Invalid argument',
+      } as never);
+      d.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      expect(events).toEqual([{ signature: 'sane_start_invalid' }]);
     });
   });
 

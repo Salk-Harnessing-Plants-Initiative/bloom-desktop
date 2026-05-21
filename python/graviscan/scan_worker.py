@@ -368,9 +368,13 @@ class ScanWorker:
                 }
             )
 
-        start_time = time.monotonic()
-        # Reset bytes accumulator; inner scan methods set it on success.
+        # Reset bytes accumulator BEFORE capturing start time so the
+        # later scan-error event path always reads a fresh 0 even if
+        # something between here and the inner scan call were to throw.
+        # (Today nothing can throw between the two lines, but the order
+        # is defensive against future refactors.)
         self._last_scan_bytes_received = 0
+        start_time = time.monotonic()
 
         try:
             if self.mock:
