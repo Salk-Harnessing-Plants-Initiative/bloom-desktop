@@ -306,7 +306,24 @@ absent.
 
 ### Deploying
 
-On the rig, append the two lines to `~/.bloom/.env`:
+On a fresh Linux rig, install the build-time prerequisites once:
+
+```bash
+sudo apt install build-essential libusb-1.0-0-dev pkg-config
+```
+
+`build-essential` provides `gcc` (required by `npm run build:native`);
+`libusb-1.0-0-dev` provides the headers + `.pc` file used by
+`pkg-config --cflags --libs libusb-1.0`. Without these, the
+LD_PRELOAD shim build silently skips on non-Linux but fails loudly on
+Linux with a missing-tool message.
+
+Note: this PR does NOT add any database schema columns or migrations.
+Existing rigs do NOT need to run `npx prisma migrate deploy`.
+A one-time `npx prisma generate` after pulling is enough to update
+the generated client to pick up the schema's new doc-comments.
+
+On the rig, append the two env-var lines to `~/.bloom/.env`:
 
 ```bash
 BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...
