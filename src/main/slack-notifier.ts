@@ -62,8 +62,33 @@ export class SlackNotifier {
   private readonly timeoutMs: number;
   private readonly now: () => number;
 
-  /** Last-sent timestamp per `(scanner_id, session_id)` key. */
+  /** Last-sent timestamp per `(scanner_id, session_id)` key.
+   *  Pruned opportunistically (see `maybePruneRateLimitMap`) so an
+   *  app process that runs for months doesn't grow this map without
+   *  bound. */
   private lastSent = new Map<string, number>();
+  /** Map-size threshold above which we prune entries older than
+   *  `pruneAgeMs`. Sized so a typical 6-month rig run with ≤100
+   *  scanners × hourly sessions stays well below it. */
+  private readonly pruneThreshold = 10_000;
+  /** Prune entries older than this many ms. */
+  private readonly pruneAgeMs = 24 * 60 * 60 * 1000; // 24h
+
+  /**
+   * Drop entries from `lastSent` whose timestamps are older than
+   * `pruneAgeMs`. Called opportunistically after each send so the map
+   * never grows without bound across very long-lived sessions.
+   *
+   * Bounded: only runs when the map has more than `pruneThreshold`
+   * entries, so the cost is dominated by typical-case operation.
+   */
+  private maybePruneRateLimitMap(now: number): void {
+    if (this.lastSent.size <= this.pruneThreshold) return;
+    const threshold = now - this.pruneAgeMs;
+    for (const [k, ts] of this.lastSent.entries()) {
+      if (ts < threshold) this.lastSent.delete(k);
+    }
+  }
 
   constructor(opts: SlackNotifierOptions) {
     this.webhookUrl =
@@ -94,6 +119,7 @@ export class SlackNotifier {
     // Record send time BEFORE the fetch so concurrent calls are also
     // rate-limited (and so failed POSTs don't bypass rate-limit).
     this.lastSent.set(key, now);
+    this.maybePruneRateLimitMap(now);
 
     const body = JSON.stringify({ text: buildMessageText(evt) });
     const ctrl = new AbortController();
