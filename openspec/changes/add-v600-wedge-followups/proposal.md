@@ -45,8 +45,22 @@ Seven independently-testable items, scoped to bug-fixes and small additions:
   Intercept `libusb_bulk_transfer`; on `LIBUSB_ERROR_TIMEOUT` or
   `LIBUSB_ERROR_PIPE` for an IN endpoint, call `libusb_clear_halt()` to
   reset the host/device data toggle. Opt-in/opt-out via env var, defaults
-  to ON. Defense-in-depth — not required for production. Closes
+  to ON. Defense-in-depth — not required for production. Closes part of
   [#228](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/228).
+- **Remove the harmful `USBDEVFS_RESET` ioctl from the recovery path.**
+  `python/graviscan/scan_worker.py:519` currently calls
+  `_reset_usb_device()` (which issues `USBDEVFS_RESET` to
+  `/dev/bus/usb/<bus>/<dev>`) inside `_reopen_device()` after any scan
+  failure. The investigation summary Section 1.2 and issue #228
+  explicitly documented this ioctl makes V600 wedges *worse* — it can
+  trigger controller FLR (function-level reset) and detach the
+  scanner entirely. The fix is to NOT call this from production code
+  paths. The method itself stays (for tests, observability, and
+  potential future reconsideration) but no production caller
+  remains. The remaining recovery sequence
+  (`sane.exit()` → sleep → `sane.init()` → `sane.open()`) is
+  sufficient for non-wedge transient failures. Closes the remaining
+  scope of [#228](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/228).
 - **Add runtime DPI validation warning.** When the scan worker is asked
   to scan at a resolution outside the V600-validated set
   `{200, 400, 600, 800, 1200, 1600}`, the worker logs a warning and
@@ -164,9 +178,11 @@ Seven independently-testable items, scoped to bug-fixes and small additions:
   do change (rows with `enabled=false` now mean "stale, not currently
   enumerating" rather than implicitly never-existing); this is documented
   in `design.md` and a Prisma schema comment, but no migration is needed.
-- **Removing the `_reset_usb_device()` ioctl call** in scan_worker.py
-  (mentioned in #228 as harmful but is a separate concern that needs its
-  own analysis; the investigation did not validate removing it).
+- **Deleting the `_reset_usb_device()` method itself.** The method
+  stays in the codebase (tested, observable) — only the production
+  *call site* in `_reopen_device()` is removed. This preserves the
+  ability to re-enable via a single-line revert if a future scenario
+  needs the kernel-level reset.
 - **#228 candidate fixes 2–5.** This proposal scopes only Fix 1 from
   issue #228 (the `libusb_clear_halt`-on-bulk-timeout wrapper). The
   investigation's other proposed mitigations are NOT in scope here:

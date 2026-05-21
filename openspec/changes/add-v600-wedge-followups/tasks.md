@@ -194,6 +194,58 @@ operator-blocker.
 
 ---
 
+## Task 3.5 — Remove USBDEVFS_RESET from production recovery path (scanning)
+
+**Goal:** Stop invoking `_reset_usb_device()` from
+`_reopen_device()` in `python/graviscan/scan_worker.py:519`. The
+investigation summary Section 1.2 and issue #228 explicitly found
+this ioctl makes V600 wedges worse (it can trigger controller FLR
+and detach the scanner). The method itself stays for testability and
+future reconsideration — only the production call site is removed.
+
+**TDD — tests to write FIRST in `python/tests/test_scan_worker_recovery.py`:**
+
+- *test:* `_reopen_device()` does NOT call `_reset_usb_device` (use
+  `unittest.mock.patch.object` to spy on the method; assert call
+  count is 0 after `_reopen_device()` completes).
+- *test:* `_reopen_device()` DOES call `sane.exit()`, then
+  `time.sleep(3)`, then `sane.init()`, then `sane.open()` in that
+  order (use `unittest.mock` + `mock.call_args_list` to verify
+  ordering).
+- *test:* `_reset_usb_device()` method is still importable from the
+  `ScanWorker` class and runs without raising on a non-Linux
+  platform (existing tests at `test_scan_worker.py:364-385` should
+  continue to pass).
+- *test:* on a simulated SANE-busy transient failure (sane.open
+  raises once, then succeeds on retry), `_reopen_device()` completes
+  successfully without USBDEVFS_RESET. The existing 3-attempt
+  retry-with-backoff in `_reopen_device()` is preserved.
+
+**Checklist:**
+
+- [ ] 3.5.1 Write the tests above
+- [ ] 3.5.2 Remove the `self._reset_usb_device()` call at
+      `scan_worker.py:519`
+- [ ] 3.5.3 Add a doc-comment ABOVE the deletion site (or in the
+      function docstring) explaining: "USBDEVFS_RESET removed
+      2026-05-21 per investigation summary Section 1.2 and #228 —
+      kernel-level reset makes V600 wedges worse via FLR.
+      `_reset_usb_device()` method retained for testability."
+- [ ] 3.5.4 Add a doc-comment ABOVE `_reset_usb_device()` itself:
+      "Currently unused by production code paths. Retained for
+      tests, observability, and potential future reconsideration.
+      Do NOT call from `_reopen_device()` — see investigation
+      summary."
+- [ ] 3.5.5 `pytest python/tests/` passes (including all existing
+      `_reset_usb_device` tests at `test_scan_worker.py:364-385`
+      and `test_scan_worker.py:901-938`)
+- [ ] 3.5.6 Manual rig validation (folded into Task 12): trigger a
+      non-wedge SANE-busy condition (e.g., quickly start two
+      scanimage processes) and confirm `_reopen_device()` recovers
+      without the ioctl
+
+---
+
 ## Task 4 — libusb endpoint-recovery wrapper extension (scanning, native code)
 
 **Goal:** Extend `src/main/native/libusb-filter.c` to also intercept

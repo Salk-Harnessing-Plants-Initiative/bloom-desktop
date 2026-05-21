@@ -270,6 +270,39 @@ leaking into stderr, log files, or any downstream log aggregation.
 
 ---
 
+### Requirement: USBDEVFS_RESET Removed from Recovery Path
+
+The `_reopen_device()` recovery path in `python/graviscan/scan_worker.py` SHALL NOT invoke `_reset_usb_device()` (the helper that issues `USBDEVFS_RESET` ioctl via `/dev/bus/usb/<bus>/<dev>`).
+
+Per investigation summary Section 1.2 ("kernel evidence showed every USB read got a response — the failure is inside the scanner, firmware most likely") and issue #228 ("USBDEVFS_RESET makes wedges worse; controller FLR detaches the scanner entirely; only physical AC power-cycle recovers"), the kernel-level reset is actively harmful on V600 wedges and provides no demonstrated benefit on non-wedge transient failures.
+
+The `_reset_usb_device()` method itself MAY remain in the codebase for testability and potential future reconsideration. No production code path SHALL invoke it. The remaining recovery sequence — `device.cancel()` → `device.close()` → `sane.exit()` → `time.sleep(3)` → `sane.init()` → `sane.open()` — SHALL be sufficient for non-wedge transient failures and SHALL fail fast (via `sane.open()` raising) on wedged scanners rather than compounding the wedge via FLR.
+
+#### Scenario: Recovery path does not call USBDEVFS_RESET
+
+- **GIVEN** a `ScanWorker` whose most recent scan attempt failed
+- **WHEN** `_reopen_device()` is invoked on the next scan attempt
+- **THEN** the method SHALL NOT invoke `_reset_usb_device()`
+- **AND** the method SHALL invoke `sane.exit()`, `sane.init()`, and `sane.open()` in the existing order
+- **AND** the 3-second sleep between exit and init SHALL be preserved (allows USB bus to settle)
+
+#### Scenario: _reset_usb_device method preserved for testability
+
+- **GIVEN** the codebase after this change
+- **WHEN** a test or maintenance script imports `_reset_usb_device` from `scan_worker`
+- **THEN** the method SHALL still exist on the `ScanWorker` class
+- **AND** SHALL behave identically to its current implementation (issues USBDEVFS_RESET on Linux, silent skip on other platforms)
+- **AND** SHALL carry a doc-comment explaining why no production code calls it
+
+#### Scenario: Non-wedge transient failure still recovers
+
+- **GIVEN** a scanner is healthy but a single scan fails (e.g., SANE busy, transient bus contention)
+- **WHEN** `_reopen_device()` runs without USBDEVFS_RESET
+- **THEN** `sane.init()` + `sane.open()` SHALL succeed (existing retry-with-backoff logic preserved)
+- **AND** the next scan attempt in the outer retry loop SHALL proceed normally
+
+---
+
 ### Requirement: libusb Endpoint Recovery Wrapper
 
 The `src/main/native/libusb-filter.c` LD_PRELOAD shim SHALL intercept
