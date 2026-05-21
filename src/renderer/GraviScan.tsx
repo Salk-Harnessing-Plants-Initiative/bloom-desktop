@@ -844,6 +844,14 @@ export function GraviScan() {
           handleStartScan={handleStartScan}
           handleCancelScan={handleCancelScan}
           handleResetScanners={handleResetScanners}
+          cadenceContext={{
+            // Worst-case 4 plates per scanner (production default).
+            // The banner flags order-of-magnitude mismatches; under-
+            // estimating to 2-plate would mask the back-to-back case
+            // we filed #235 against. See design.md Decision 7.
+            platesPerScanner: 4,
+            dpi: resolution,
+          }}
         />
       </div>
     </div>

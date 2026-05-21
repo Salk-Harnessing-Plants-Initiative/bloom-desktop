@@ -1,6 +1,7 @@
 import type { ScannerPanelState } from '../../../types/graviscan';
 import { MIN_SCAN_INTERVAL_MINUTES } from '../../../types/graviscan';
 import { ScannerPanel } from '../ScannerPanel';
+import { CadenceWarningBanner } from './CadenceWarningBanner';
 
 interface ScanControlSectionProps {
   // Error/success messages
@@ -40,6 +41,16 @@ interface ScanControlSectionProps {
   handleStartScan: () => void;
   handleCancelScan: () => void;
   handleResetScanners: () => void;
+
+  // Cadence context (#235): when provided, the form shows a predictive
+  // warning if cycle-time prediction exceeds the configured interval.
+  // Omit to disable the banner (e.g., when context data isn't available).
+  cadenceContext?: {
+    /** Max plates per scanner across enabled scanners (drives cycle time). */
+    platesPerScanner: number;
+    /** Currently-selected DPI. */
+    dpi: number;
+  };
 }
 
 export function ScanControlSection({
@@ -67,6 +78,7 @@ export function ScanControlSection({
   handleStartScan,
   handleCancelScan,
   handleResetScanners,
+  cadenceContext,
 }: ScanControlSectionProps) {
   return (
     <>
@@ -233,6 +245,16 @@ export function ScanControlSection({
                 ? `~${Math.floor(scanDurationMinutes / scanIntervalMinutes)} cycles over ${scanDurationMinutes >= 60 ? `${Math.floor(scanDurationMinutes / 60)}h ${scanDurationMinutes % 60}m` : `${scanDurationMinutes}m`}`
                 : 'Duration must be greater than or equal to interval'}
             </div>
+            {/* Predictive cadence warning (#235) — fires before Start when
+             * estimated cycle wall time exceeds the configured interval. */}
+            {cadenceContext && !isScanning && (
+              <CadenceWarningBanner
+                platesPerScanner={cadenceContext.platesPerScanner}
+                scannerCount={scannerStates.length}
+                dpi={cadenceContext.dpi}
+                intervalMinutes={scanIntervalMinutes}
+              />
+            )}
           </div>
         )}
 
