@@ -434,6 +434,12 @@ const graviscanAPI = {
       success: boolean;
       error?: string;
     }>,
+  /** Disable a single scanner (#230 UI half / Task 9). Sets enabled=false
+   * on the row and stops the worker. */
+  disableScanner: (scannerId: string) =>
+    ipcRenderer.invoke('graviscan:disable-scanner', scannerId) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
   resetUsb: () => ipcRenderer.invoke('graviscan:reset-usb'),
   getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
   validateScanners: (cachedScannerIds: string[]) =>

@@ -642,6 +642,16 @@ export interface GraviScanAPI {
   }>;
 
   /**
+   * Disable a single scanner (#230 UI half / Task 9).
+   * Sets enabled=false on the matching row and stops the worker.
+   * Returns { ok: true } on success or { ok: false, error } on failure
+   * (e.g., scanner_id not found).
+   */
+  disableScanner: (
+    scannerId: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+
+  /**
    * Full USB reset: shutdown SANE → clear USB addresses → re-detect → re-initialize.
    */
   resetUsb: () => Promise<ResetUsbResult>;

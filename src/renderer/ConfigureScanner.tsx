@@ -200,6 +200,21 @@ export function ConfigureScanner() {
     }
   };
 
+  // #230 UI half / Task 9: per-row Remove button. Disables the scanner
+  // (enabled=false) and stops its worker. The row disappears from the
+  // visible list on the next get-scanner-status refresh.
+  const handleRemoveScanner = async (scannerId: string) => {
+    const result = await window.electron.graviscan.disableScanner(scannerId);
+    if (result.ok) {
+      // Optimistic local removal; the next get-scanner-status refresh
+      // confirms persistence.
+      setScanners((prev) => prev.filter((s) => s.scannerId !== scannerId));
+    } else {
+      const err = (result as { ok: false; error: string }).error;
+      console.error('[ConfigureScanner] Remove failed:', err);
+    }
+  };
+
   // Save resolution
   const handleSaveResolution = async () => {
     setSaving(true);
@@ -341,16 +356,29 @@ export function ConfigureScanner() {
                       </div>
                     </div>
 
-                    <select
-                      value={scanner.gridMode}
-                      onChange={(e) =>
-                        handleGridModeChange(scanner.scannerId, e.target.value)
-                      }
-                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="2grid">2-Grid</option>
-                      <option value="4grid">4-Grid</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={scanner.gridMode}
+                        onChange={(e) =>
+                          handleGridModeChange(
+                            scanner.scannerId,
+                            e.target.value,
+                          )
+                        }
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="2grid">2-Grid</option>
+                        <option value="4grid">4-Grid</option>
+                      </select>
+                      <button
+                        onClick={() => handleRemoveScanner(scanner.scannerId)}
+                        title="Disable this scanner (#230)"
+                        className="px-2 py-1 text-xs border border-red-200 text-red-700 hover:bg-red-50 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                        data-testid={`remove-scanner-${scanner.scannerId}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

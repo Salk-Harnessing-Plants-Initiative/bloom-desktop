@@ -15,7 +15,11 @@ import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
 import { resolveGraviScanPath } from './graviscan-path-utils';
-import { upsertScannerRow, disableStaleScannerRows } from './scanner-upsert';
+import {
+  upsertScannerRow,
+  disableStaleScannerRows,
+  disableScannerById,
+} from './scanner-upsert';
 import type { ScanCoordinator, ScannerConfig } from './scan-coordinator';
 import type { PlateConfig } from './scanner-subprocess';
 import { getScanSession, setScanSession, markScanJobRecorded } from './main';
@@ -495,6 +499,37 @@ export function registerGraviscanHandlers(
           );
         }
 
+        // #234: spawn worker for any saved scanner that is enabled and
+        // doesn't already have a ready worker. Lets a newly-detected
+        // scanner come online without an app restart.
+        const coordinator = getCoordinator?.();
+        if (coordinator) {
+          for (const saved of savedScanners) {
+            const s = saved as GraviScanner;
+            if (s.enabled && !coordinator.hasWorker(s.id)) {
+              console.log(
+                `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${s.id} (port ${s.usb_port})`,
+              );
+              // Construct a ScannerConfig matching the auto-init path.
+              const saneName = `epkowa:interpreter:${String(
+                s.usb_bus ?? 0,
+              ).padStart(3, '0')}:${String(s.usb_device ?? 0).padStart(3, '0')}`;
+              await coordinator
+                .addScanner({
+                  scannerId: s.id,
+                  saneName,
+                  plates: [],
+                })
+                .catch((err: unknown) => {
+                  console.error(
+                    `[GraviScan:SAVE] Failed to spawn worker for ${s.id}:`,
+                    err,
+                  );
+                });
+            }
+          }
+        }
+
         return {
           success: true,
           scanners: savedScanners,
@@ -510,6 +545,38 @@ export function registerGraviscanHandlers(
         };
       }
     }
+  );
+
+  /**
+   * Disable a single scanner row (#230 UI half / Task 9).
+   * Backs the per-row Remove button on the Configure Scanner page.
+   * Sets enabled=false on the matching GraviScanner row and asks the
+   * coordinator to stop the worker (if any).
+   */
+  ipcMain.handle(
+    'graviscan:disable-scanner',
+    async (_event, scannerId: string) => {
+      try {
+        const coordinator = getCoordinator?.() ?? null;
+        const result = await disableScannerById(
+          db as unknown as Parameters<typeof disableScannerById>[0],
+          coordinator,
+          scannerId,
+        );
+        if (result.ok) {
+          console.log(`[GraviScan:DISABLE] Scanner ${scannerId} disabled`);
+        } else {
+          const err = (result as { ok: false; error: string }).error;
+          console.warn('[GraviScan:DISABLE]', err);
+        }
+        return result;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to disable scanner';
+        console.error('[GraviScan:DISABLE] Error:', error);
+        return { ok: false as const, error: message };
+      }
+    },
   );
 
   /**

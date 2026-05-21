@@ -115,6 +115,59 @@ export interface DisableStaleResult {
   disabled: string[];
 }
 
+export type DisableScannerResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/**
+ * Minimal coordinator interface used by `disableScannerById`. Allows
+ * tests to inject mocks without depending on the full ScanCoordinator
+ * class.
+ */
+export interface CoordinatorLike {
+  hasWorker(scannerId: string): boolean;
+  stopScanner(scannerId: string): Promise<void>;
+}
+
+/**
+ * Disable a single scanner by ID (#230 UI half / Task 9).
+ *
+ * Sets `enabled=false` on the matching row and stops the associated
+ * subprocess if one is running. Idempotent — disabling an
+ * already-disabled scanner is a no-op success. Returns
+ * `{ok: false, error}` when the row does not exist (used by the
+ * IPC handler to surface a toast).
+ *
+ * The coordinator parameter may be null (e.g., during early app
+ * startup before auto-init has run); the DB update still happens.
+ */
+export async function disableScannerById(
+  db: PrismaClient,
+  coordinator: CoordinatorLike | null,
+  scannerId: string,
+): Promise<DisableScannerResult> {
+  const row = (await db.graviScanner.findUnique({
+    where: { id: scannerId },
+  })) as GraviScannerRow | null;
+
+  if (!row) {
+    return { ok: false, error: `Scanner ${scannerId} not found` };
+  }
+
+  if (row.enabled) {
+    await db.graviScanner.update({
+      where: { id: scannerId },
+      data: { enabled: false },
+    });
+  }
+
+  if (coordinator && coordinator.hasWorker(scannerId)) {
+    await coordinator.stopScanner(scannerId);
+  }
+
+  return { ok: true };
+}
+
 /**
  * Disable (set enabled=false) on every enabled `GraviScanner` row whose
  * `usb_port` is NOT in the provided current-detection set.
