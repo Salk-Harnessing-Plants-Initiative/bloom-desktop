@@ -125,23 +125,24 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
     expect(body.text).toContain('sane_start_invalid');
   });
 
-  it('recovered scan (scan-error then scan-complete same plate) → no Slack POST', async () => {
+  it('lone scan-complete with no preceding scan-error → no Slack POST (true recovered-scan path)', async () => {
+    // ARCHITECTURE NOTE (Copilot PR #237 review): the coordinator
+    // surfaces only the FINAL outcome of a per-plate scan attempt —
+    // either scan-complete OR scan-error, never both for the same
+    // (scanner_id, plate_index). The Python worker's internal retry
+    // loop handles transient failures internally; the wiring sees
+    // success or failure at the boundary.
+    //
+    // This means the "scan-error then scan-complete same plate"
+    // sequence does NOT occur via the production wiring. The
+    // WedgeDetector still SUPPORTS that sequence (recovered-scan
+    // suppression at the detector level — see wedge-detector.test.ts)
+    // for future architectures that might surface intermediate
+    // outcomes, but the wiring path here funnels final outcomes only.
+    //
+    // What we ACTUALLY assert at the wiring level: a lone scan-
+    // complete with no preceding scan-error fires no notification.
     const { feedEvent } = buildPipeline({ webhookUrl: WEBHOOK });
-    feedEvent({
-      type: 'scan-error',
-      scanner_id: 'sc-1',
-      plate_index: '00',
-      job_id: 'j1',
-      error: 'sane_start: Invalid argument',
-      bytes_received: 0,
-      wall_seconds: 5,
-      cycle_number: 1,
-    });
-    // Simulate the recovery — note: in the current main.ts wiring,
-    // scan-error and scan-complete for the same plate don't both fire
-    // because the coordinator surfaces the FINAL outcome only.
-    // However we test the API contract here: scan-complete after
-    // scan-error for same plate must NOT fire a wedge.
     feedEvent({
       type: 'scan-complete',
       scanner_id: 'sc-1',
@@ -150,14 +151,7 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
       cycle_number: 1,
     });
     await new Promise((r) => setTimeout(r, 0));
-    // Because the first feedEvent's onScanEnd fired with success=false
-    // already (the wiring pattern), the recovered-scan scenario as
-    // expressed in the test sees a wedge fire. This is correct
-    // behavior given how the wiring infers success from scan-error.
-    // The TRUE recovered-scan scenario (worker retries internally
-    // and surfaces only scan-complete) is what this test confirms:
-    // a lone scan-complete after no scan-error → no notification.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('no fetch when webhook URL is absent (feature disabled)', async () => {

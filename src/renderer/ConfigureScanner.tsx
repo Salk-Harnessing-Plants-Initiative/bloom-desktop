@@ -477,7 +477,8 @@ export function ConfigureScanner() {
                             e.target.value,
                           )
                         }
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isScanActive}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <option value="2grid">2-Grid</option>
                         <option value="4grid">4-Grid</option>
@@ -489,8 +490,17 @@ export function ConfigureScanner() {
                             scanner.displayName || scanner.scannerId,
                           )
                         }
-                        title="Disable this scanner and stop its worker"
-                        className="px-2 py-1 text-xs border border-red-200 text-red-700 hover:bg-red-50 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                        // Disable during active scan: the overlay
+                        // (line 366+) blocks pointer interaction but
+                        // not keyboard/tab navigation. Per Copilot
+                        // PR #237 review.
+                        disabled={isScanActive}
+                        title={
+                          isScanActive
+                            ? 'Cannot remove scanners while a scan is in progress'
+                            : 'Disable this scanner and stop its worker'
+                        }
+                        className="px-2 py-1 text-xs border border-red-200 text-red-700 hover:bg-red-50 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid={`remove-scanner-${scanner.scannerId}`}
                       >
                         Remove

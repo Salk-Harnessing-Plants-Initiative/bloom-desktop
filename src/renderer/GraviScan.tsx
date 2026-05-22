@@ -40,11 +40,24 @@ import { ScanControlSection } from './components/graviscan/ScanControlSection';
  * Returns 4 (worst-case) when no enabled scanners are present so the
  * banner can still evaluate sensibly at form-fill time.
  */
-function computeMaxPlatesPerScanner(states: ScannerPanelState[]): number {
-  // ScannerPanelState doesn't expose gridMode yet — see follow-up
-  // issue for threading it through. Until then, the worst-case 4
-  // produces correct (conservative) warning behavior.
-  if (states.length === 0) return 4;
+function cadenceFallbackPlatesPerScanner(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _states: ScannerPanelState[],
+): number {
+  // Honest naming: this is a worst-case fallback, not a real
+  // computation. ScannerPanelState doesn't expose gridMode yet, so we
+  // can't compute the actual max across enabled panels. Always returns
+  // 4 (production default + worst case), which makes the cadence
+  // warning conservative: it fires whenever ANY grid_mode would
+  // back-to-back at the operator's interval. Per Copilot PR #237
+  // review (the previous "computeMax" name promised computation it
+  // didn't deliver).
+  //
+  // When ScannerPanelState gains a gridMode field (see follow-up
+  // #239 / future task), replace the body with:
+  //   _states.filter(s => s.enabled).reduce(
+  //     (m, s) => Math.max(m, s.gridMode === '4grid' ? 4 : 2), 0
+  //   ) || 4
   return 4;
 }
 
@@ -876,7 +889,7 @@ export function GraviScan() {
             // If gridMode info isn't surfaced on ScannerPanelState
             // yet, falls back to 4 (worst case) to avoid masking the
             // back-to-back behavior we filed #235 against.
-            platesPerScanner: computeMaxPlatesPerScanner(scannerStates),
+            platesPerScanner: cadenceFallbackPlatesPerScanner(scannerStates),
             dpi: resolution,
           }}
         />

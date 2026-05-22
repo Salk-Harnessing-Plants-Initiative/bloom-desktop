@@ -41,14 +41,27 @@ export interface SlackNotifierOptions {
 }
 
 function buildMessageText(evt: WedgeDetectedEvent): string {
+  // Operator-friendly identity: prefer display_name when the wiring
+  // populated it (main.ts does a DB lookup before notify); fall back
+  // to the scanner_id otherwise. USB path included on a separate line
+  // so the operator can locate the physical scanner. Per Copilot PR
+  // #237 review.
+  const identity = evt.display_name
+    ? `${evt.display_name} (${evt.scanner_id})`
+    : evt.scanner_id;
   const lines = [
-    `🚨 V600 wedge on scanner ${evt.scanner_id}`,
+    `🚨 V600 wedge on scanner ${identity}`,
+  ];
+  if (evt.usb_port) {
+    lines.push(`USB path: ${evt.usb_port}`);
+  }
+  lines.push(
     `Signature: ${evt.signature}`,
     `Session: ${evt.session_id}, Cycle: ${evt.cycle_number}`,
     `Time: ${evt.timestamp}`,
     'Physical AC power-cycle required.',
     `Investigation summary: ${INVESTIGATION_SUMMARY_URL}`,
-  ];
+  );
   return lines.join('\n');
 }
 

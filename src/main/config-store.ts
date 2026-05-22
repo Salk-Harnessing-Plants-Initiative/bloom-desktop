@@ -493,12 +493,14 @@ export function loadEnvConfig(envPath: string): MachineConfig {
     // Ignore errors reading .env
   }
 
-  // Default libusb_endpoint_recovery to true when unset (.env doesn't
-  // mention the variable). The explicit "false" value is the only way
-  // to disable the wrapper.
-  if (envConfig.libusb_endpoint_recovery === undefined) {
-    envConfig.libusb_endpoint_recovery = true;
-  }
+  // Note: we DELIBERATELY do not default libusb_endpoint_recovery to
+  // true here when it's absent from the file. Per Copilot PR #237
+  // review: defaulting here causes saveEnvConfig() to then write the
+  // value back into the file even when the operator never explicitly
+  // set it (the load→save cycle pollutes ~/.bloom/.env). The runtime
+  // default is enforced where the value is actually consumed — see
+  // main.ts (startup log + process.env hydration) and the C-shim
+  // (endpoint_recovery_init() defaults to ON when getenv returns null).
 
   // Merge: defaults < legacyConfig < envConfig
   const merged: MachineConfig = {

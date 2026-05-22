@@ -21,7 +21,7 @@
     "package": "npm run build:python && npm run build:native && electron-forge package",
     "make": "npm run build:python && npm run build:native && electron-forge make",
     "build:python": "node scripts/build-python.js",
-    "build:native": "bash scripts/build-libusb-filter.sh",
+    "build:native": "node scripts/build-libusb-filter.cjs",
     "build:webpack": "npx webpack --config webpack.main.config.ts --config webpack.renderer.config.ts",
     "test:python": "uv run pytest python/tests -v --cov=python --cov-report=term --cov-report=html",
     "test:unit": "vitest run",

@@ -58,6 +58,14 @@ export interface WedgeDetectedEvent {
   timestamp: string;
   /** Original error message that triggered the match (for diagnosis). */
   error_message: string;
+  /** Optional operator-friendly identity, populated by the main-process
+   *  wiring before forwarding to the SlackNotifier. The detector
+   *  itself does not know these — it only knows scanner_id. Per
+   *  Copilot PR #237 review: Slack messages must include display name
+   *  and USB path so operators can locate the physical scanner
+   *  without cross-referencing logs. */
+  display_name?: string;
+  usb_port?: string;
 }
 
 export interface WedgeDetectorOptions {

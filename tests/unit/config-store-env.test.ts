@@ -59,15 +59,20 @@ describe('loadEnvConfig — new env vars', () => {
   });
 
   describe('LIBUSB_ENDPOINT_RECOVERY', () => {
-    it('defaults to true when .env file does not exist', () => {
+    // Note: loadEnvConfig() returns undefined when the variable is
+    // not in the .env file. The runtime default of "on" is enforced
+    // at the consumer (main.ts startup + C-shim init), not here. See
+    // the Copilot PR #237 review for why — otherwise load→save would
+    // pollute ~/.bloom/.env with the defaulted value.
+    it('returns undefined when .env file does not exist', () => {
       const config = loadEnvConfig(envPath);
-      expect(config.libusb_endpoint_recovery).toBe(true);
+      expect(config.libusb_endpoint_recovery).toBeUndefined();
     });
 
-    it('defaults to true when .env exists but the variable is not set', () => {
+    it('returns undefined when .env exists but the variable is not set', () => {
       fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
       const config = loadEnvConfig(envPath);
-      expect(config.libusb_endpoint_recovery).toBe(true);
+      expect(config.libusb_endpoint_recovery).toBeUndefined();
     });
 
     it('is false when set to "false"', () => {
@@ -129,6 +134,19 @@ describe('loadEnvConfig — new env vars', () => {
       saveEnvConfig(c1, envPath);
       const c2 = loadEnvConfig(envPath);
       expect(c2.libusb_endpoint_recovery).toBe(false);
+    });
+
+    it('load→save does NOT add LIBUSB_ENDPOINT_RECOVERY when it was absent from the file (Copilot review)', async () => {
+      // Pre-condition: .env file has unrelated lines, NOTHING about
+      // libusb_endpoint_recovery.
+      fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
+      const { saveEnvConfig } = await import('../../src/main/config-store');
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const written = fs.readFileSync(envPath, 'utf-8');
+      // The saved file SHALL not contain the line — load→save must
+      // not pollute ~/.bloom/.env with values the operator never set.
+      expect(written).not.toMatch(/LIBUSB_ENDPOINT_RECOVERY/);
     });
 
     it('omits both vars from the saved file when undefined', async () => {

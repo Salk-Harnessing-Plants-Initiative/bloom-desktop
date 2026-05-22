@@ -12,7 +12,7 @@
  * against a mock Prisma client).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { upsertScannerRow } from '../../src/main/scanner-upsert';
 
 interface MockGraviScanner {
@@ -161,6 +161,47 @@ describe('upsertScannerRow — grid_mode persistence (#231)', () => {
       expect(db.graviScanner.update).toHaveBeenCalledTimes(1);
       const updateCall = db.graviScanner.update.mock.calls[0][0];
       expect(updateCall.data).toHaveProperty('grid_mode', '2grid');
+    });
+  });
+
+  describe('re-enable on re-detect (Copilot review)', () => {
+    it('UPDATE re-enables a previously-disabled row when re-detected', async () => {
+      // Pre-condition: row exists in DB but was disabled by a prior
+      // disable-stale-rows pass (operator unplugged then re-plugged).
+      const db = makeMockDb([
+        makeRow({ id: 'row-1', enabled: false, grid_mode: '2grid' }),
+      ]);
+      const payload: UpsertPayload = {
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013c',
+        usb_port: '1-1',
+        usb_bus: 1,
+        usb_device: 7,
+        grid_mode: '2grid',
+      };
+
+      await upsertScannerRow(db as never, payload);
+
+      // The row must come back enabled — otherwise it stays invisible
+      // to UI queries that filter enabled=true.
+      expect(db._rows[0].enabled).toBe(true);
+    });
+
+    it('UPDATE Prisma call sets enabled=true in the data block', async () => {
+      const db = makeMockDb([
+        makeRow({ id: 'row-1', enabled: false }),
+      ]);
+      await upsertScannerRow(db as never, {
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013c',
+        usb_port: '1-1',
+        usb_bus: 1,
+        usb_device: 7,
+      });
+      const updateCall = db.graviScanner.update.mock.calls[0][0];
+      expect(updateCall.data).toHaveProperty('enabled', true);
     });
   });
 

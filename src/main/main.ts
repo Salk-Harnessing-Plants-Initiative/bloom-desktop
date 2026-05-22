@@ -390,6 +390,17 @@ function initializeScanCoordinator(): void {
           lastSeenCycleNumber = event.cycle_number;
         }
         if (event.type === 'scan-error') {
+          // ARCHITECTURE NOTE (Copilot PR #237 review): the
+          // coordinator surfaces only the FINAL outcome of a scan
+          // attempt — either scan-complete OR scan-error, never both
+          // for the same (scanner_id, plate_index). The Python
+          // worker's internal retry loop handles transient failures.
+          // So we treat scan-error as terminal here: onScanError
+          // followed immediately by onScanEnd(success=false). The
+          // WedgeDetector's recovered-scan logic remains useful for
+          // future architectures that surface per-attempt outcomes,
+          // but at this wiring level we feed final outcomes only.
+          //
           // Worker emits scan-error with the new bytes_received and
           // wall_seconds fields (Task 0). Defensive defaults if absent.
           wedgeDetector.onScanError({
@@ -495,8 +506,34 @@ function initializeScanCoordinator(): void {
       const sessionId = scanSession?.sessionId ?? `session-${data.startedAt}`;
       wedgeDetector = new WedgeDetector({
         sessionId,
-        onWedge: (evt) => {
-          void slackNotifier.notify(evt);
+        onWedge: async (evt) => {
+          // Enrich the event with operator-friendly identity (display
+          // name + USB path) before passing to the notifier — the
+          // detector only knows scanner_id. Per Copilot PR #237 review.
+          let enriched = evt;
+          try {
+            const db = getDatabase();
+            const row = await db.graviScanner.findUnique({
+              where: { id: evt.scanner_id },
+              select: { display_name: true, name: true, usb_port: true },
+            });
+            if (row) {
+              enriched = {
+                ...evt,
+                display_name: row.display_name ?? row.name,
+                usb_port: row.usb_port ?? undefined,
+              };
+            }
+          } catch (err) {
+            // Lookup failure shouldn't block notification — the
+            // un-enriched event still reaches Slack with the
+            // scanner_id at minimum.
+            console.error(
+              '[main] wedge-detected enrichment lookup failed:',
+              err instanceof Error ? err.message : err,
+            );
+          }
+          void slackNotifier.notify(enriched);
           scanLog(
             `[WedgeDetector] wedge-detected scanner=${evt.scanner_id} signature=${evt.signature} cycle=${evt.cycle_number}`
           );
@@ -1236,7 +1273,15 @@ app.on('ready', async () => {
         config.libusb_endpoint_recovery,
       );
       console.log(
-        `[GraviScan] LIBUSB_ENDPOINT_RECOVERY resolved to: ${config.libusb_endpoint_recovery}`,
+        `[GraviScan] LIBUSB_ENDPOINT_RECOVERY explicitly set to: ${config.libusb_endpoint_recovery}`,
+      );
+    } else {
+      // Not set in ~/.bloom/.env — the C-shim's
+      // endpoint_recovery_init() will default to ON when getenv
+      // returns null. Log here so the operator sees the resolved
+      // state without inspecting subprocess stderr.
+      console.log(
+        '[GraviScan] LIBUSB_ENDPOINT_RECOVERY not set in env — wrapper defaults to ON',
       );
     }
     console.log(

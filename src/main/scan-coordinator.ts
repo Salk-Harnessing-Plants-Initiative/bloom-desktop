@@ -289,11 +289,14 @@ export class ScanCoordinator extends EventEmitter {
       return new Promise<void>((resolve) => {
         const handler = () => {
           this.off('cycle-complete', handler);
-          // Recurse — by now isScanning should be false; spawn
-          // immediately.
-          this.spawnSingleScanner(config)
+          // Re-enter addScanner so the hasWorker idempotency guard
+          // re-runs. Without this, two queued addScanner calls for
+          // the same scanner_id (e.g., operator clicks Detect twice
+          // mid-scan) would each spawn a duplicate subprocess and
+          // overwrite the map entry. Per Copilot PR #237 review.
+          this.addScanner(config)
             .catch(() => {
-              // already logged
+              // already logged inside spawnSingleScanner
             })
             .finally(() => resolve());
         };
@@ -322,13 +325,18 @@ export class ScanCoordinator extends EventEmitter {
 
   /**
    * Internal: spawn one ScannerSubprocess and wire its events.
-   * Mirrors the per-scanner block inside `initialize()` so behaviour
-   * stays consistent. Used by both `initialize()` and `addScanner()`.
+   * Used by `addScanner()` for the single-scanner-spawn case.
+   *
+   * NOTE: `initialize()` has its OWN per-scanner spawn implementation
+   * because it uses `Promise.allSettled()` to spawn all subprocesses
+   * in parallel — the concurrency model differs from this method's
+   * sequential single-spawn. The two implementations are kept in
+   * sync by convention (mirroring event listeners + error handling),
+   * not by code sharing. Per Copilot PR #237 review.
    *
    * On spawn failure, removes the entry from the map and records the
    * error in `initErrors` for `getScannerStatuses()` to surface. Does
-   * NOT throw — the caller (initialize or addScanner) decides whether
-   * to propagate based on its semantics.
+   * NOT throw — the caller decides whether to propagate.
    */
   private async spawnSingleScanner(config: ScannerConfig): Promise<void> {
     const sub = new ScannerSubprocess(

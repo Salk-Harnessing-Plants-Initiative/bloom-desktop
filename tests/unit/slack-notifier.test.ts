@@ -84,6 +84,35 @@ describe('SlackNotifier', () => {
       expect((init as RequestInit).method).toBe('POST');
     });
 
+    it('includes display_name + usb_port when populated (operator triage)', async () => {
+      const n = new SlackNotifier({ webhookUrl: TEST_URL });
+      await n.notify(
+        makeWedge({
+          scanner_id: 'sc-uuid-1',
+          display_name: 'Scanner 3',
+          usb_port: '17-2',
+        }),
+      );
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      const body = JSON.parse(init.body as string);
+      const t = body.text as string;
+      expect(t).toContain('Scanner 3');
+      expect(t).toContain('sc-uuid-1');
+      expect(t).toContain('USB path: 17-2');
+    });
+
+    it('falls back to scanner_id-only when display_name + usb_port absent', async () => {
+      const n = new SlackNotifier({ webhookUrl: TEST_URL });
+      await n.notify(makeWedge({ scanner_id: 'sc-uuid-1' }));
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      const body = JSON.parse(init.body as string);
+      const t = body.text as string;
+      expect(t).toContain('sc-uuid-1');
+      // No "(parens)" identity since display_name is absent
+      expect(t).not.toContain('(sc-uuid-1)');
+      expect(t).not.toContain('USB path:');
+    });
+
     it('sends a JSON body with text containing scanner_id, signature, CTA, and Box link', async () => {
       const n = new SlackNotifier({ webhookUrl: TEST_URL });
       await n.notify(

@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>  /* strcasecmp() — POSIX, separate from <string.h> */
 #include <libusb-1.0/libusb.h>
 
 #define EPSON_VENDOR_ID 0x04b8

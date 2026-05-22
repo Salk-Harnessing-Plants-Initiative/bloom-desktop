@@ -87,6 +87,13 @@ export async function upsertScannerRow(
         // row's value when the payload omits the field so we don't clobber
         // a previously-saved operator selection.
         grid_mode: payload.grid_mode ?? existing.grid_mode,
+        // Re-enable on re-detect (Copilot PR #237 review): a row matched
+        // by usb_bus/device or usb_port that was previously disabled by
+        // disableStaleScannerRows() needs to come back enabled when
+        // operators re-plug the hardware. Without this the row would
+        // stay enabled=false and remain invisible to UI queries that
+        // filter on enabled.
+        enabled: true,
       },
     });
     return updated as GraviScannerRow;
