@@ -219,3 +219,42 @@ export async function disableStaleScannerRows(
 
   return { disabled };
 }
+
+/**
+ * Stop running `scan_worker` subprocesses for scanner IDs that were
+ * just disabled by `disableStaleScannerRows` (or any equivalent caller).
+ *
+ * Without this, a freshly-disabled scanner whose worker happens to be
+ * running keeps holding USB / SANE resources — particularly painful on
+ * Linux where `libusb_open` is exclusive per device. Per Copilot PR
+ * #237 review (#20).
+ *
+ * Defensive properties:
+ *  - Empty input list → no coordinator interaction at all.
+ *  - `coordinator.stopScanner` rejecting for one scanner does NOT
+ *    propagate or short-circuit the loop; the others still get stopped.
+ *
+ * @param coordinator the live ScanCoordinator (or a test mock matching
+ *   {@link CoordinatorLike}).
+ * @param disabledIds the scanner IDs returned by
+ *   `disableStaleScannerRows().disabled` (or any equivalent).
+ */
+export async function stopWorkersForDisabledScanners(
+  coordinator: CoordinatorLike,
+  disabledIds: readonly string[],
+): Promise<void> {
+  for (const id of disabledIds) {
+    if (!coordinator.hasWorker(id)) continue;
+    try {
+      await coordinator.stopScanner(id);
+    } catch (err) {
+      // One stuck worker must not derail stopping the others. Log
+      // and continue. The caller (graviscan:save-scanners-db) is
+      // already inside a try/catch that returns to the renderer.
+      console.error(
+        `[stopWorkersForDisabledScanners] Failed to stop worker for ${id}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}

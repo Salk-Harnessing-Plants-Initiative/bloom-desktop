@@ -19,6 +19,7 @@ import {
   upsertScannerRow,
   disableStaleScannerRows,
   disableScannerById,
+  stopWorkersForDisabledScanners,
 } from './scanner-upsert';
 import type { ScanCoordinator, ScannerConfig } from './scan-coordinator';
 import type { PlateConfig } from './scanner-subprocess';
@@ -501,10 +502,24 @@ export function registerGraviscanHandlers(
           );
         }
 
+        const coordinator = getCoordinator?.();
+
+        // Per Copilot PR #237 review (#20): when stale rows are
+        // disabled, also stop their running scan_worker subprocesses
+        // so they don't keep holding USB / SANE resources after
+        // disable. Particularly important on Linux where libusb_open
+        // is exclusive per device. No-op when no rows were disabled
+        // or the coordinator isn't initialized yet.
+        if (coordinator && staleResult.disabled.length > 0) {
+          await stopWorkersForDisabledScanners(
+            coordinator,
+            staleResult.disabled,
+          );
+        }
+
         // #234: spawn worker for any saved scanner that is enabled and
         // doesn't already have a ready worker. Lets a newly-detected
         // scanner come online without an app restart.
-        const coordinator = getCoordinator?.();
         if (coordinator) {
           for (const saved of savedScanners) {
             const s = saved as GraviScanner;
