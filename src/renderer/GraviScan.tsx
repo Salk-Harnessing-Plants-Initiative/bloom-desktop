@@ -42,7 +42,7 @@ import { ScanControlSection } from './components/graviscan/ScanControlSection';
  */
 function cadenceFallbackPlatesPerScanner(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _states: ScannerPanelState[],
+  _states: ScannerPanelState[]
 ): number {
   // Honest naming: this is a worst-case fallback, not a real
   // computation. ScannerPanelState doesn't expose gridMode yet, so we
