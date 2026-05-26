@@ -163,4 +163,51 @@ describe('buildSubprocessEnv (Task 4 #228)', () => {
     expect(env.EXISTING).toBe('value');
     expect(input).not.toHaveProperty('LD_PRELOAD');
   });
+
+  // Copilot PR #237 review (#16): PYTHONPATH was joined with ':'
+  // unconditionally. On Windows the path delimiter is ';', so the
+  // joined value was a single semicolon-less string that breaks
+  // module resolution. Should use path.delimiter or its
+  // platform-specific equivalent.
+  describe('PYTHONPATH cross-platform delimiter (#16)', () => {
+    it('on Linux, joins PYTHONPATH entries with ":"', () => {
+      const env = buildSubprocessEnv({
+        ...args,
+        platform: 'linux',
+        mock: false,
+        processEnv: { ...baseEnv, PYTHONPATH: '/existing/path' },
+      });
+      expect(env.PYTHONPATH).toBe('/repo/python:/existing/path');
+    });
+
+    it('on Windows, joins PYTHONPATH entries with ";"', () => {
+      const env = buildSubprocessEnv({
+        ...args,
+        platform: 'win32',
+        mock: true, // mock mode on Windows, since real-mode is Linux-only
+        processEnv: { ...baseEnv, PYTHONPATH: 'C:\\existing\\path' },
+      });
+      expect(env.PYTHONPATH).toBe('/repo/python;C:\\existing\\path');
+    });
+
+    it('on macOS, joins PYTHONPATH entries with ":"', () => {
+      const env = buildSubprocessEnv({
+        ...args,
+        platform: 'darwin',
+        mock: true,
+        processEnv: { ...baseEnv, PYTHONPATH: '/existing/path' },
+      });
+      expect(env.PYTHONPATH).toBe('/repo/python:/existing/path');
+    });
+
+    it('when processEnv has no PYTHONPATH, uses just the extra path', () => {
+      const env = buildSubprocessEnv({
+        ...args,
+        platform: 'win32',
+        mock: true,
+        processEnv: baseEnv, // no PYTHONPATH
+      });
+      expect(env.PYTHONPATH).toBe('/repo/python');
+    });
+  });
 });

@@ -402,22 +402,20 @@ function initializeScanCoordinator(): void {
           // but at this wiring level we feed final outcomes only.
           //
           // Worker emits scan-error with the new bytes_received and
-          // wall_seconds fields (Task 0). Defensive defaults if absent.
+          // wall_seconds fields (Task 0). Per Copilot PR #237 review
+          // (#15): pass undefined through when absent so the detector
+          // can surface a pre-Task-0 Python worker via its
+          // missing-fields warning. Defaulting to 0 here would make
+          // the fields ALWAYS numeric to the detector and prevent
+          // the configuration-drift warning from ever firing.
           wedgeDetector.onScanError({
             scanner_id: event.scanner_id,
             plate_index: event.plate_index,
             job_id: event.job_id,
             error: event.error,
-            bytes_received:
-              typeof (event as { bytes_received?: number }).bytes_received ===
-              'number'
-                ? (event as { bytes_received: number }).bytes_received
-                : 0,
-            wall_seconds:
-              typeof (event as { wall_seconds?: number }).wall_seconds ===
-              'number'
-                ? (event as { wall_seconds: number }).wall_seconds
-                : 0,
+            bytes_received: (event as { bytes_received?: number })
+              .bytes_received,
+            wall_seconds: (event as { wall_seconds?: number }).wall_seconds,
           });
           wedgeDetector.onScanEnd({
             scanner_id: event.scanner_id,

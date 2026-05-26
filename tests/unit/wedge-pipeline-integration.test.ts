@@ -74,17 +74,17 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
         lastSeenCycle = event.cycle_number;
       }
       if (event.type === 'scan-error') {
+        // Per Copilot PR #237 review (#15): pass undefined through
+        // when fields are absent. Defaulting to 0 would mask the
+        // WedgeDetector's missing-fields warning and prevent
+        // detection of a pre-Task-0 Python worker at runtime.
         detector.onScanError({
           scanner_id: event.scanner_id,
           plate_index: event.plate_index,
           job_id: event.job_id,
           error: event.error ?? '',
-          bytes_received:
-            typeof event.bytes_received === 'number'
-              ? event.bytes_received
-              : 0,
-          wall_seconds:
-            typeof event.wall_seconds === 'number' ? event.wall_seconds : 0,
+          bytes_received: event.bytes_received,
+          wall_seconds: event.wall_seconds,
         });
         detector.onScanEnd({
           scanner_id: event.scanner_id,
@@ -202,6 +202,73 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
       (fetchMock.mock.calls[0][1] as RequestInit).body as string,
     );
     expect(body.text).toContain('consecutive_failures');
+  });
+
+  // Copilot PR #237 review (#15): the wiring previously defaulted
+  // bytes_received and wall_seconds to 0 when absent. That made
+  // them ALWAYS numeric to the WedgeDetector — which checks
+  // `typeof !== 'number'` to fire its "missing fields" warning.
+  // Result: the warning never triggered, even when the Python worker
+  // was pre-Task-0 and genuinely omitting the fields. Pass undefined
+  // through instead so the detector can surface the configuration
+  // drift.
+  describe('pre-Task-0 worker detection (#15)', () => {
+    it('logs missing-fields warning when scan-error has no bytes_received', async () => {
+      const warnSpy = vi.spyOn(console, 'warn');
+      const { feedEvent } = buildPipeline({ webhookUrl: WEBHOOK });
+      feedEvent({
+        type: 'scan-error',
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        job_id: 'j1',
+        error: 'some error',
+        // bytes_received omitted
+        wall_seconds: 5,
+        cycle_number: 1,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('missing bytes_received or wall_seconds'),
+      );
+    });
+
+    it('logs missing-fields warning when scan-error has no wall_seconds', async () => {
+      const warnSpy = vi.spyOn(console, 'warn');
+      const { feedEvent } = buildPipeline({ webhookUrl: WEBHOOK });
+      feedEvent({
+        type: 'scan-error',
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        job_id: 'j1',
+        error: 'some error',
+        bytes_received: 0,
+        // wall_seconds omitted
+        cycle_number: 1,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('missing bytes_received or wall_seconds'),
+      );
+    });
+
+    it('does NOT log missing-fields warning when both fields are present', async () => {
+      const warnSpy = vi.spyOn(console, 'warn');
+      const { feedEvent } = buildPipeline({ webhookUrl: WEBHOOK });
+      feedEvent({
+        type: 'scan-error',
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        job_id: 'j1',
+        error: 'some error',
+        bytes_received: 0,
+        wall_seconds: 5,
+        cycle_number: 1,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('missing bytes_received or wall_seconds'),
+      );
+    });
   });
 
   it('cycle boundary resets per-scanner counter', async () => {

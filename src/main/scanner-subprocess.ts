@@ -53,11 +53,16 @@ export interface BuildSubprocessEnvArgs {
 export function buildSubprocessEnv(
   args: BuildSubprocessEnvArgs,
 ): Record<string, string | undefined> {
+  // Per Copilot PR #237 review (#16): derive the PYTHONPATH delimiter
+  // from `args.platform` rather than the hardcoded ':' that breaks on
+  // Windows. `path.delimiter` reads `process.platform` at runtime and
+  // wouldn't honor the test fixture's `args.platform`.
+  const pathDelimiter = args.platform === 'win32' ? ';' : ':';
   const env: Record<string, string | undefined> = {
     ...args.processEnv,
     PYTHONPATH: [args.pythonExtraPath, args.processEnv.PYTHONPATH]
       .filter(Boolean)
-      .join(':'),
+      .join(pathDelimiter),
   };
 
   if (args.platform === 'linux' && !args.mock) {
