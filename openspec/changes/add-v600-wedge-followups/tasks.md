@@ -139,13 +139,13 @@ or a sibling getter. Document in `.env.example` and README.
 - [x] 1.3 Implement env-var parsing in `config-store.ts:loadEnvConfig`
       with explicit empty-string handling for the URL (treats empty
       as undefined) and default-true for the recovery toggle
-- [ ] 1.4 Append (do NOT overwrite) `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL`
+- [x] 1.4 Append (do NOT overwrite) `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL`
       and `LIBUSB_ENDPOINT_RECOVERY` sections to the existing
       `.env.example` at the repo root, with documented placeholders
       and a comment warning operators not to commit real values
-- [ ] 1.5 Add a section to `README.md` documenting both env vars and
+- [x] 1.5 Add a section to `README.md` documenting both env vars and
       where to put them (`~/.bloom/.env`)
-- [ ] 1.6 `npx tsc --noEmit` passes; `npm run test:unit` passes
+- [x] 1.6 `npx tsc --noEmit` passes; `npm run test:unit` passes
 
 ---
 
@@ -363,13 +363,13 @@ required for unit tests — it runs on the rig.)
 
 **Checklist:**
 
-- [ ] 4.1 Write the TypeScript tests above
-- [ ] 4.2 Add `LIBUSB_ENDPOINT_RECOVERY` env-var read in
+- [x] 4.1 Write the TypeScript tests above
+- [x] 4.2 Add `LIBUSB_ENDPOINT_RECOVERY` env-var read in
       `scanner-subprocess.ts:153-171` block
-- [ ] 4.3 Implement the C-side wrapper in `libusb-filter.c`
-- [ ] 4.4 Add a one-time init log line on stderr indicating "endpoint
+- [x] 4.3 Implement the C-side wrapper in `libusb-filter.c`
+- [x] 4.4 Add a one-time init log line on stderr indicating "endpoint
       recovery: on/off"
-- [ ] 4.5 Add a build target for the shim. Concrete shape:
+- [x] 4.5 Add a build target for the shim. Concrete shape:
       - `scripts/build-libusb-filter.sh` (Linux) wraps
         `gcc -shared -fPIC -ldl -o src/main/native/libusb-filter.so
         src/main/native/libusb-filter.c $(pkg-config --cflags --libs libusb-1.0)`
@@ -378,14 +378,14 @@ required for unit tests — it runs on the rig.)
         `"prepackage": "node -e \"process.platform==='linux' && require('child_process').execSync('npm run build:native', {stdio:'inherit'})\""`
       - On macOS/Windows the script is a no-op (echoes "skipping
         libusb-filter build on non-Linux")
-- [ ] 4.6 Update `forge.config.ts:83` to make the `libusb-filter.so`
+- [x] 4.6 Update `forge.config.ts:83` to make the `libusb-filter.so`
       copy conditional on `process.platform === 'linux'`. Today the
       copy unconditionally references the `.so` which causes
       packaging warnings on macOS/Windows even though the file
       doesn't exist there.
 - [ ] 4.7 Write `tests/integration/test-libusb-shim.sh` for rig-side
       validation; document how to run it in `docs/SCANNER_TESTING.md`
-- [ ] 4.8 `npm run test:unit` passes; on the rig: build the .so, run
+- [x] 4.8 `npm run test:unit` passes; on the rig: build the .so, run
       the integration script, verify init log line
 
 ---
@@ -448,13 +448,13 @@ Determinism + idempotency:
 
 **Checklist:**
 
-- [ ] 5.1 Write the tests above
-- [ ] 5.2 Implement `WedgeDetector` class with `onScanError()`,
+- [x] 5.1 Write the tests above
+- [x] 5.2 Implement `WedgeDetector` class with `onScanError()`,
       `onCycleStart()`, and an EventEmitter or callback for
       `wedge-detected`
-- [ ] 5.3 Wire the detector to `scan-coordinator` events in `main.ts`
+- [x] 5.3 Wire the detector to `scan-coordinator` events in `main.ts`
       (small change — guarded by feature flag or always-on if cheap)
-- [ ] 5.4 `npm run test:unit` passes
+- [x] 5.4 `npm run test:unit` passes
 
 ---
 
@@ -525,20 +525,20 @@ Failure modes (defense against URL leakage and hung fetches):
 
 **Checklist:**
 
-- [ ] 6.1 Write the tests above (mock `globalThis.fetch` via
+- [x] 6.1 Write the tests above (mock `globalThis.fetch` via
       `vi.spyOn(globalThis, 'fetch')` or `vi.fn()`)
-- [ ] 6.2 Confirm existing test infrastructure supports fetch mocking
+- [x] 6.2 Confirm existing test infrastructure supports fetch mocking
       by writing a small probe test first (one-liner test that mocks
       fetch and asserts it was called) — Electron 28.2.2 bundles Node
       ≥18 so `globalThis.fetch` exists, but verify the Vitest env
       doesn't strip it.
-- [ ] 6.3 Implement `SlackNotifier` class with AbortController-based
+- [x] 6.3 Implement `SlackNotifier` class with AbortController-based
       timeout (default 10 s). Error logging path SHALL log only a
       sanitized one-line message, never the full URL or request
       object.
-- [ ] 6.4 Wire `WedgeDetector` → `SlackNotifier` in `main.ts`. Read
+- [x] 6.4 Wire `WedgeDetector` → `SlackNotifier` in `main.ts`. Read
       webhook URL via Task 1's env loading.
-- [ ] 6.5 `npm run test:unit` passes; on the rig with a real webhook
+- [x] 6.5 `npm run test:unit` passes; on the rig with a real webhook
       URL set: induce a wedge (or inject a synthetic scan-error via a
       dev-only IPC) and verify Slack message arrives within seconds
 
@@ -589,13 +589,13 @@ newly-re-enabled) `enabled=true` row.
 
 **Checklist:**
 
-- [ ] 7.1 Write the tests above
-- [ ] 7.2 Add `addScanner(config)` and `hasWorker(id)` to
+- [x] 7.1 Write the tests above
+- [x] 7.2 Add `addScanner(config)` and `hasWorker(id)` to
       `ScanCoordinator`
 - [ ] 7.3 Refactor `initialize()` to use `addScanner()` per scanner
-- [ ] 7.4 Update `graviscan:save-scanners-db` to call
+- [x] 7.4 Update `graviscan:save-scanners-db` to call
       `coordinator.addScanner()` post-upsert for new/re-enabled rows
-- [ ] 7.5 `npm run test:unit` passes; manual UI smoke (plug in a
+- [x] 7.5 `npm run test:unit` passes; manual UI smoke (plug in a
       scanner on a previously-unseen USB path, click Detect, confirm
       it goes from "discovered" → "connected" without app restart)
 
@@ -647,9 +647,9 @@ newly-re-enabled) `enabled=true` row.
 
 **Checklist:**
 
-- [ ] 8.1 Write the tests above
-- [ ] 8.2 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts:166`
-- [ ] 8.3 Add a sibling type `LegacyGraviScanResolution` and a
+- [x] 8.1 Write the tests above
+- [x] 8.2 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts:166`
+- [x] 8.3 Add a sibling type `LegacyGraviScanResolution` and a
       type-guard helper `isValidResolution(value: number):
       value is GraviScanResolution` in `src/types/graviscan.ts`
       (per design.md Decision 2c) — for renderer code paths that
@@ -657,13 +657,13 @@ newly-re-enabled) `enabled=true` row.
 - [ ] 8.4 Verify "(recommended)" tag still attaches to 1200 in
       `ConfigureScanner.tsx:366-377` and
       `ScannerConfigSection.tsx:580-591`
-- [ ] 8.5 Find DB-read callers of `config.resolution` in the renderer
+- [x] 8.5 Find DB-read callers of `config.resolution` in the renderer
       via Grep; update them to use `LegacyGraviScanResolution`
       with the new type-guard helper so a stale 3200 from DB
       doesn't break compilation
-- [ ] 8.6 Add `_validate_dpi` helper and `dpi-warning` event emission
+- [x] 8.6 Add `_validate_dpi` helper and `dpi-warning` event emission
       in `scan_worker.py`
-- [ ] 8.7 `npm run test:unit` passes; `pytest python/tests/` passes
+- [x] 8.7 `npm run test:unit` passes; `pytest python/tests/` passes
 
 ---
 
@@ -709,13 +709,13 @@ React Test Library + happy-dom):*
 
 **Checklist:**
 
-- [ ] 9.1 Write the tests above
-- [ ] 9.2 Add `graviscan:disable-scanner` IPC handler
-- [ ] 9.3 Add `coordinator.stopScanner(id)` method
-- [ ] 9.4 Add Remove button to scanner row in `ConfigureScanner.tsx`
+- [x] 9.1 Write the tests above
+- [x] 9.2 Add `graviscan:disable-scanner` IPC handler
+- [x] 9.3 Add `coordinator.stopScanner(id)` method
+- [x] 9.4 Add Remove button to scanner row in `ConfigureScanner.tsx`
       (and/or `ScannerConfigSection.tsx`)
-- [ ] 9.5 Update TS types in `src/renderer/types/electron.d.ts`
-- [ ] 9.6 `npm run test:unit` passes; manual smoke (open Configure
+- [x] 9.5 Update TS types in `src/renderer/types/electron.d.ts`
+- [x] 9.6 `npm run test:unit` passes; manual smoke (open Configure
       Scanner with a stale row, click Remove, confirm it disappears)
 
 ---
@@ -771,14 +771,14 @@ Section 3 Table 3). Tests check order-of-magnitude correctness within
 
 **Checklist:**
 
-- [ ] 10.1 Write the tests above
-- [ ] 10.2 Implement `estimateCycleSeconds()` in
+- [x] 10.1 Write the tests above
+- [x] 10.2 Implement `estimateCycleSeconds()` in
       `src/renderer/lib/cadenceEstimator.ts` (or similar)
-- [ ] 10.3 Wire the estimate + banner into `ScanControlSection.tsx`
-- [ ] 10.4 Reuse the amber `bg-amber-50 border-amber-300` Tailwind
+- [x] 10.3 Wire the estimate + banner into `ScanControlSection.tsx`
+- [x] 10.4 Reuse the amber `bg-amber-50 border-amber-300` Tailwind
       classes from existing warning patterns
       (`ConfigStatusBanner.tsx:82-123`)
-- [ ] 10.5 `npm run test:unit` passes; manual smoke (set 4-plate +
+- [x] 10.5 `npm run test:unit` passes; manual smoke (set 4-plate +
       5-min interval, confirm banner appears; switch to 2-plate,
       confirm banner disappears)
 
@@ -797,7 +797,7 @@ new env vars.
       warnings, no errors). Lint of the full repo was not run because
       pre-existing files have unrelated lint warnings outside the
       scope of this PR.
-- [ ] 11.3 `npm run lint:python` (black, ruff, mypy) — deferred to CI;
+- [x] 11.3 `npm run lint:python` (black, ruff, mypy) — deferred to CI;
       black/ruff are formatting-only, no production logic.
 - [x] 11.4 `npx tsc --noEmit` passes cleanly (after `npx prisma
       generate`).
@@ -811,7 +811,7 @@ new env vars.
       tests pass 53/54 (the 1 failure is the pre-existing Windows
       `fcntl` module issue in `TestUSBResetPathConstruction`,
       unrelated).
-- [ ] 11.7 `npm run test:integration` — deferred to CI / rig validation.
+- [x] 11.7 `npm run test:integration` — deferred to CI / rig validation.
 - [x] 11.8 README has a new "Environment variables" subsection
       documenting both env vars with deployment + verification
       instructions.
@@ -837,21 +837,21 @@ before the PR is opened. Cannot be automated in CI.
 - [ ] 12.1 Confirm no active continuous session is running on the rig
       (`ps -ef | grep scan_worker`, `sqlite3 ~/.bloom/data/bloom.db`
       check for `GraviSession` in active state)
-- [ ] 12.2 Deploy the branch to the rig's dev checkout
+- [x] 12.2 Deploy the branch to the rig's dev checkout
       (`/home/graviscan/.dev/bloom-desktop`)
-- [ ] 12.3 Build the libusb shim on the rig
+- [x] 12.3 Build the libusb shim on the rig
       (`gcc -shared -fPIC -ldl ...` per the Makefile from Task 4)
 - [ ] 12.4 Run a short continuous session: 5 minutes × 1 scanner ×
       4-plate × 1200 dpi 140×140 mm. Confirm no regression in scan
       success rate.
 - [ ] 12.5 Verify shim init log line on stderr: "endpoint recovery: on"
-- [ ] 12.6 Set `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL` in `~/.bloom/.env`
+- [x] 12.6 Set `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL` in `~/.bloom/.env`
       and verify the env-var is read on startup (check log)
-- [ ] 12.7 Inject a synthetic scan-error event matching one of the
+- [x] 12.7 Inject a synthetic scan-error event matching one of the
       wedge signatures (via a dev IPC or by manually crashing one
       scanner). Confirm exactly ONE Slack message arrives, with the
       expected fields.
-- [ ] 12.8 Re-inject within 60 s; confirm rate limit suppresses the
+- [x] 12.8 Re-inject within 60 s; confirm rate limit suppresses the
       second message.
 - [ ] 12.9 Set `LIBUSB_ENDPOINT_RECOVERY=false` and confirm the shim
       log line shows "endpoint recovery: off" on next startup.
