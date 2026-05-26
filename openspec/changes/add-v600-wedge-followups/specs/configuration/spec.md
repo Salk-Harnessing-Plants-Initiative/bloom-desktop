@@ -75,12 +75,21 @@ variables (Linux non-mock only).
 The variable SHALL be documented in `README.md` (a new "Environment
 variables" subsection) and in `.env.example`.
 
-#### Scenario: Unset env var defaults to enabled
+#### Scenario: Unset env var resolves to the default-on behavior at the consumer
 
 - **GIVEN** `~/.bloom/.env` does not set `LIBUSB_ENDPOINT_RECOVERY`
 - **WHEN** the main process starts
 - **THEN** `loadEnvConfig()` SHALL return
-  `libusbEndpointRecovery = true`
+  `libusbEndpointRecovery = undefined`
+  (deliberately omitting a default at the load layer to keep a
+  subsequent `saveEnvConfig()` from writing a spurious line into
+  `~/.bloom/.env`)
+- **AND** the runtime default of "on" SHALL be applied at the
+  consumer: `main.ts` logs that the wrapper defaults to ON and
+  does not hydrate `process.env.LIBUSB_ENDPOINT_RECOVERY`;
+  the C-shim's `endpoint_recovery_init()` checks
+  `getenv("LIBUSB_ENDPOINT_RECOVERY")`, sees `NULL`, and proceeds
+  with `endpoint_recovery_enabled = 1`
 
 #### Scenario: Explicit "false" disables the wrapper
 

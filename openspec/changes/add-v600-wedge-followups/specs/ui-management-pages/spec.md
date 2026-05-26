@@ -26,11 +26,15 @@ empirically tested by the investigation. The `(recommended)` tag on
   `[200, 400, 600, 800, 1200, 1600]` (in that order)
 - **AND** `3200` and `6400` SHALL NOT be selectable
 
-#### Scenario: 1200 dpi remains marked as recommended
+#### Scenario: 1200 dpi remains marked with its production-validated label
 
 - **GIVEN** the DPI dropdown is rendered
 - **WHEN** the operator inspects the options
-- **THEN** the `1200` option SHALL be labeled with `(recommended)`
+- **THEN** the `1200` option SHALL carry a suffix indicating it is
+  the production-validated resolution (currently
+  `(production, validated at 140×140 mm)` per Cluster K — the
+  literal copy may evolve, but the requirement is that 1200 is
+  visually distinguished as the operator's intended default)
 
 #### Scenario: GRAVISCAN_RESOLUTIONS constant is the single source
 
@@ -83,22 +87,35 @@ actively running on that scanner.
   set) and visually grayed
 - **AND** clicking it SHALL NOT call the disable-scanner IPC
 
-#### Scenario: Failure shows an error message
+#### Scenario: Failure surfaces an inline error message
 
 - **GIVEN** the disable-scanner IPC returns `{ ok: false, error: msg }`
 - **WHEN** the response arrives
-- **THEN** the UI SHALL display the error message via the existing
-  toast pattern (`useToast.showToast({type: 'error', ...})`)
+- **THEN** the UI SHALL surface the error message via the
+  ConfigureScanner page's inline save-error banner
+  (`setSaveError(\`Failed to remove scanner: ${err}\`)`) so the
+  operator sees the failure without leaving the page or chasing a
+  fading toast
+- **AND** the scanner row SHALL remain visible until the operator
+  retries or dismisses the banner
 
-#### Scenario: Success shows a confirmation toast
+#### Scenario: Success removes the row optimistically on the same page
 
 - **GIVEN** the disable-scanner IPC returns `{ ok: true }`
 - **WHEN** the response arrives
-- **THEN** the UI SHALL display a success toast with copy
-  `"Scanner removed."` via the existing toast pattern
-  (`useToast.showToast({type: 'success', message: 'Scanner removed.'})`)
+- **THEN** the UI SHALL remove the row from the local scanner list
+  immediately (`setScanners((prev) => prev.filter(...))`) — the
+  visual confirmation is the row disappearing from the page
 - **AND** the scanner list SHALL refresh on the next
-  `get-scanner-status` poll to confirm the removal
+  `get-scanner-status` poll to confirm the removal against the DB
+
+(Note: the original spec called for `useToast.showToast` for both
+the success and failure paths. Per Cluster D (commit 4540537) the
+implementation uses the existing inline `saveError` banner pattern
+on the ConfigureScanner page, which is consistent with the page's
+other save/error feedback and avoids introducing a new toast
+dependency. The spec was updated to match the shipped behavior;
+re-introducing toasts is a future-redo concern.)
 
 ---
 
