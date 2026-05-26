@@ -19,7 +19,6 @@ import re
 import sys
 from unittest.mock import patch
 
-import pytest
 
 from python.graviscan.scan_worker import ScanWorker, _validate_dpi, V600_VALIDATED_DPI
 

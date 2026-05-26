@@ -17,7 +17,7 @@ describe('CadenceWarningBanner', () => {
         scannerCount={5}
         dpi={1200}
         intervalMinutes={5}
-      />,
+      />
     );
     expect(queryByTestId('cadence-warning-banner')).toBeTruthy();
   });
@@ -29,7 +29,7 @@ describe('CadenceWarningBanner', () => {
         scannerCount={5}
         dpi={1200}
         intervalMinutes={5}
-      />,
+      />
     );
     expect(queryByTestId('cadence-warning-banner')).toBeNull();
   });
@@ -41,7 +41,7 @@ describe('CadenceWarningBanner', () => {
         scannerCount={5}
         dpi={1200}
         intervalMinutes={5}
-      />,
+      />
     );
     expect(queryByTestId('cadence-warning-banner')).toBeTruthy();
     rerender(
@@ -50,7 +50,7 @@ describe('CadenceWarningBanner', () => {
         scannerCount={5}
         dpi={600}
         intervalMinutes={5}
-      />,
+      />
     );
     // 4 plates × (600/1200) × 102 s = 204 s ≤ 300 s ⇒ banner hidden
     expect(queryByTestId('cadence-warning-banner')).toBeNull();
@@ -63,7 +63,7 @@ describe('CadenceWarningBanner', () => {
         scannerCount={5}
         dpi={1200}
         intervalMinutes={5}
-      />,
+      />
     );
     expect(queryByTestId('cadence-warning-banner')).toBeTruthy();
     rerender(
@@ -72,7 +72,7 @@ describe('CadenceWarningBanner', () => {
         scannerCount={5}
         dpi={1200}
         intervalMinutes={5}
-      />,
+      />
     );
     expect(queryByTestId('cadence-warning-banner')).toBeNull();
   });
@@ -84,7 +84,7 @@ describe('CadenceWarningBanner', () => {
         scannerCount={5}
         dpi={1200}
         intervalMinutes={5}
-      />,
+      />
     );
     const txt = container.textContent ?? '';
     expect(txt).toContain('2-grid');
