@@ -483,9 +483,7 @@ class ScanWorker:
                 # Record raw RGB bytes received over USB. Used by the
                 # WedgeDetector (#236) to distinguish "0 bytes after 120 s"
                 # from "partial bytes received then failed."
-                self._last_scan_bytes_received = (
-                    image.width * image.height * 3
-                )
+                self._last_scan_bytes_received = image.width * image.height * 3
 
                 # Save as TIFF with LZW compression and metadata.
                 # Compose the final filename here so `_et_` reflects the

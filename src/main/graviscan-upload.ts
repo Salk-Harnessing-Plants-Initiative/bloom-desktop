@@ -325,7 +325,10 @@ async function processImageJobs(
   // safe because JS is single-threaded between awaits.
   let cursor = 0;
   const worker = async (): Promise<void> => {
-    while (true) {
+    // eslint-friendly idiomatic infinite loop — exit condition is
+    // inside (idx >= imageJobs.length → return). Avoids
+    // no-constant-condition vs `while (true)`.
+    for (;;) {
       const idx = cursor++;
       if (idx >= imageJobs.length) return;
       const job = imageJobs[idx];

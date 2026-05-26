@@ -19,7 +19,9 @@ import pytest
 from python.graviscan.scan_worker import ScanWorker
 
 
-def _make_worker(scanner_id="test-scanner", device_name="epkowa:interpreter:001:007", mock=False):
+def _make_worker(
+    scanner_id="test-scanner", device_name="epkowa:interpreter:001:007", mock=False
+):
     """Make a real-mode (not mock) worker so _reopen_device executes."""
     return ScanWorker(scanner_id=scanner_id, device_name=device_name, mock=mock)
 
@@ -39,8 +41,9 @@ class TestReopenDeviceDoesNotCallResetUsbDevice:
         mock_sane.open.return_value = MagicMock()  # mock device
         w._sane = mock_sane
 
-        with patch.object(w, "_reset_usb_device") as mock_reset, patch(
-            "python.graviscan.scan_worker.time.sleep"
+        with (
+            patch.object(w, "_reset_usb_device") as mock_reset,
+            patch("python.graviscan.scan_worker.time.sleep"),
         ):
             w._reopen_device()
 
@@ -62,8 +65,9 @@ class TestReopenDeviceDoesNotCallResetUsbDevice:
         ]
         w._sane = mock_sane
 
-        with patch.object(w, "_reset_usb_device") as mock_reset, patch(
-            "python.graviscan.scan_worker.time.sleep"
+        with (
+            patch.object(w, "_reset_usb_device") as mock_reset,
+            patch("python.graviscan.scan_worker.time.sleep"),
         ):
             w._reopen_device()
 
@@ -170,8 +174,9 @@ class TestNonWedgeTransientRecovery:
         ]
         w._sane = mock_sane
 
-        with patch.object(w, "_reset_usb_device"), patch(
-            "python.graviscan.scan_worker.time.sleep"
+        with (
+            patch.object(w, "_reset_usb_device"),
+            patch("python.graviscan.scan_worker.time.sleep"),
         ):
             w._reopen_device()
 
@@ -188,8 +193,9 @@ class TestNonWedgeTransientRecovery:
         mock_sane.open.side_effect = RuntimeError("persistent failure")
         w._sane = mock_sane
 
-        with patch.object(w, "_reset_usb_device"), patch(
-            "python.graviscan.scan_worker.time.sleep"
+        with (
+            patch.object(w, "_reset_usb_device"),
+            patch("python.graviscan.scan_worker.time.sleep"),
         ):
             with pytest.raises(RuntimeError, match="Failed to reopen device"):
                 w._reopen_device()

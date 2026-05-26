@@ -123,9 +123,9 @@ class TestDpiWarningEventShape:
         events = _parse_events(stdout)
 
         dpi_warnings = [e for e in events if e["type"] == "dpi-warning"]
-        assert len(dpi_warnings) == 1, (
-            f"expected 1 dpi-warning event, got events: {events}"
-        )
+        assert (
+            len(dpi_warnings) == 1
+        ), f"expected 1 dpi-warning event, got events: {events}"
 
     @patch("time.sleep")
     def test_dpi_warning_event_has_correct_shape(self, _mock_sleep, tmp_path):
@@ -151,9 +151,9 @@ class TestDpiWarningEventShape:
         iso_pattern = re.compile(
             r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}:?\d{2}$"
         )
-        assert iso_pattern.match(evt["timestamp"]), (
-            f"timestamp does not match ISO 8601: {evt['timestamp']}"
-        )
+        assert iso_pattern.match(
+            evt["timestamp"]
+        ), f"timestamp does not match ISO 8601: {evt['timestamp']}"
 
     @patch("time.sleep")
     def test_unvalidated_dpi_logs_warning_to_stderr(self, _mock_sleep, tmp_path):

@@ -145,10 +145,13 @@ class TestScanErrorEventFields:
         plate = _make_plate(tmp_path)
 
         # First monotonic() call: scan start. Second: error emission.
-        with patch(
-            "python.graviscan.scan_worker.time.monotonic",
-            side_effect=[100.0, 200.0],
-        ), patch.object(w, "_mock_scan", side_effect=RuntimeError("boom")):
+        with (
+            patch(
+                "python.graviscan.scan_worker.time.monotonic",
+                side_effect=[100.0, 200.0],
+            ),
+            patch.object(w, "_mock_scan", side_effect=RuntimeError("boom")),
+        ):
             stdout = _capture_stdout(w._scan_plate, plate)
 
         events = _parse_events(stdout)
@@ -185,9 +188,7 @@ class TestScanCompleteEventTiming:
         assert scan_completes[0]["duration_ms"] == 5000
 
     @patch("time.sleep")
-    def test_duration_ms_and_wall_seconds_use_same_clock(
-        self, _mock_sleep, tmp_path
-    ):
+    def test_duration_ms_and_wall_seconds_use_same_clock(self, _mock_sleep, tmp_path):
         """On a failed scan, duration_ms (int ms) and wall_seconds (float s)
         SHALL both come from the same monotonic clock — their values
         SHALL agree within 10 ms."""
@@ -195,10 +196,13 @@ class TestScanCompleteEventTiming:
         plate = _make_plate(tmp_path)
 
         # Two monotonic readings: start, error
-        with patch(
-            "python.graviscan.scan_worker.time.monotonic",
-            side_effect=[50.0, 57.123],
-        ), patch.object(w, "_mock_scan", side_effect=RuntimeError("err")):
+        with (
+            patch(
+                "python.graviscan.scan_worker.time.monotonic",
+                side_effect=[50.0, 57.123],
+            ),
+            patch.object(w, "_mock_scan", side_effect=RuntimeError("err")),
+        ):
             stdout = _capture_stdout(w._scan_plate, plate)
 
         events = _parse_events(stdout)
@@ -216,9 +220,7 @@ class TestSuccessfulMockScanBytesReceived:
     raw RGB bytes of the rendered image (width * height * 3)."""
 
     @patch("time.sleep")
-    def test_successful_mock_scan_does_not_emit_scan_error(
-        self, _mock_sleep, tmp_path
-    ):
+    def test_successful_mock_scan_does_not_emit_scan_error(self, _mock_sleep, tmp_path):
         """A clean mock scan path produces a scan-complete event, no
         scan-error. We don't assert bytes_received on the success path
         directly (scan-complete carries duration_ms, not bytes); just
