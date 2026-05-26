@@ -192,9 +192,19 @@ ls -la out/make/deb/x64/
 **Install the new .deb (replaces /usr/lib/bloom-graviscan):**
 
 ```bash
-sudo apt install --reinstall ./out/make/deb/x64/bloom-graviscan_*.deb
-# Or: sudo dpkg -i ./out/make/deb/x64/bloom-graviscan_*.deb
+sudo dpkg -i ./out/make/deb/x64/bloom-graviscan_*.deb
 ```
+
+⚠️ **Use `dpkg -i`, NOT `apt install`.** Issue #226: the Epson `iscan`
+package declares `Depends: libsane (>= 1.0.11-3)` but Ubuntu 24.04
+renamed `libsane` → `libsane1`. apt's dependency resolver bails on
+the broken `iscan` state even though we're not touching iscan.
+`dpkg -i` only checks bloom-graviscan's own deps (which are fine) and
+sidesteps the apt-wide resolver.
+
+Confirmed on the rig 2026-05-26: `apt install --reinstall` fails with
+`iscan : Depends: libsane (>= 1.0.11-3) but it is not installable`;
+`dpkg -i` succeeds cleanly. See https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/226.
 
 - [ ] Install completes without errors
 - [ ] `dpkg -l | grep bloom-graviscan` shows the new version

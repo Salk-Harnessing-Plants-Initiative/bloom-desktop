@@ -302,7 +302,7 @@ absent.
 | Variable | Default | Behavior |
 |---|---|---|
 | `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL` | unset | When set, the main process POSTs a structured message to this Slack webhook URL whenever the V600 WedgeDetector fires (#236). Rate-limited to 1 message per (scanner, session) per minute. Absent or empty ⇒ Slack notifications disabled. **SECRET — never commit a real value.** |
-| `LIBUSB_ENDPOINT_RECOVERY` | `true` | Controls the `libusb_clear_halt()`-on-bulk-IN-timeout wrapper in the LD_PRELOAD shim (#228). The shim defends against epkowa's stuck-endpoint bug on V600 scanners. Only case-insensitive `false` disables; any other value (or unset) leaves it on. |
+| `LIBUSB_ENDPOINT_RECOVERY` | `true` | Controls the `libusb_clear_halt()`-on-bulk-IN-timeout wrapper in the LD_PRELOAD shim (#228). The shim defends against epkowa's stuck-endpoint bug on V600 scanners. Only case-insensitive `false` disables; any other value (or unset) leaves it on. **For production rigs running V600 scanners, keep this `true`.** Confirmed during PR #237 rig validation 2026-05-26 that all 5 scanners hit bulk-IN endpoint-0x81 timeouts at scan-start and the wrapper recovered them silently via `libusb_clear_halt` — without this, those timeouts would have surfaced as wedges or stalled scans. Only set to `false` when intentionally reproducing the unwrapped-stack behavior for diagnostics. |
 
 ### Deploying
 
@@ -333,6 +333,25 @@ LIBUSB_ENDPOINT_RECOVERY=true
 Restart `bloom-graviscan`. At startup the main process hydrates
 `process.env` from this file and propagates the values to the scan
 worker subprocesses (LD_PRELOAD chain) and the Slack notifier.
+
+#### Installing a new `.deb` on the rig (Ubuntu 24.04+)
+
+Use `dpkg -i`, **NOT** `apt install`, to install or reinstall the
+bloom-graviscan `.deb`:
+
+```bash
+sudo dpkg -i ./out/make/deb/x64/bloom-graviscan_<version>_amd64.deb
+```
+
+The Epson `iscan` driver package on the rig declares
+`Depends: libsane (>= 1.0.11-3)` against a package name that
+Ubuntu 24.04 renamed (`libsane` → `libsane1`). apt's dependency
+resolver bails on this even when reinstalling unrelated packages —
+see [#226](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/226).
+`dpkg -i` only checks `bloom-graviscan`'s own dependencies and works
+around the apt-wide resolver, so the install succeeds. The shim,
+chrome-sandbox setuid bit, and `.desktop` file are all set up
+correctly by the post-install script either way.
 
 `.env.example` carries placeholder lines so developers see the
 canonical name and default; copy to your local `.env` if you want to
