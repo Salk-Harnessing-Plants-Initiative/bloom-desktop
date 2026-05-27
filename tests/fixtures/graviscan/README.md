@@ -2,7 +2,7 @@
 
 ## accessions-sample.xlsx
 
-Canonical sample accessions file for the GraviScan "Upload Accessions" flow. Used as the linked example in the [Bloom Desktop — GraviScan operator manual](../../docs/superpowers/specs/2026-05-26-graviscan-user-manual-design.md).
+Canonical sample accessions file for the GraviScan "Upload Accessions" flow. Used as the linked example in the [Bloom Desktop — GraviScan operator manual](../../../docs/superpowers/specs/2026-05-26-graviscan-user-manual-design.md).
 
 **Columns** (header row required; header names below are the spec-canonical snake_case form, but the in-app column-mapping UI lets operators map any header to the right field):
 
@@ -18,6 +18,6 @@ Canonical sample accessions file for the GraviScan "Upload Accessions" flow. Use
 
 The sample covers 3 plates × 4 sections = 12 rows, with 3 different accessions (Col-0, Ler-0, Cvi-0) demonstrating the "one accession per plate" rule.
 
-**Source:** copied from `/home/graviscan/Desktop/test-metadata-sample.xlsx` on the production rig 2026-05-26, during the PR #237 rig validation brainstorm. The same file is uploaded to the team Box folder; the operator manual links the Box URL.
+**Source:** copied from `/home/graviscan/Desktop/test-metadata-sample.xlsx` on the production rig 2026-05-26, during the PR #237 rig validation brainstorm. The same file will be uploaded to the team Box folder (URL captured during operator-manual publication on Notion).
 
 **Code reference:** see `src/renderer/components/GraviMetadataUpload.tsx` (validates + parses) and `src/renderer/utils/graviMetadataValidation.ts` (validation rules).
