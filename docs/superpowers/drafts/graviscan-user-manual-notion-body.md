@@ -78,7 +78,7 @@ The accessions upload file MUST be Excel (.xlsx or .xls), 15 MB max. There is no
 </callout>
 
 <callout icon="💡" color="gray_background">
-A sample accessions file is available in the repo at `tests/fixtures/graviscan/accessions-sample.xlsx` and is also uploaded to the shared Box folder. Download it as a template before building your own file.
+A sample accessions file is available in the repo at `tests/fixtures/graviscan/accessions-sample.xlsx` and is also uploaded to the shared Box folder ([Box folder URL — operator-provided; placeholder until link is shared]). Download it as a template before building your own file.
 </callout>
 
 - Click "Upload Accessions" on the Experiment row
@@ -136,13 +136,12 @@ If the AMBER cadence-warning banner appears: your interval is too short for the 
 # 9. Start the scan + monitor
 
 <callout icon="📢" color="yellow_background">
-Wedge alerts come via Slack only — the app does NOT show wedge banners in the UI. Check `#topic-graviscan-alerts` in Slack at LEAST every 30 min during long runs. A missed alert means missed data.
+Wedge alerts via Slack only — no UI banners. A missed alert means missed data.
 </callout>
 
 - Click Start Scan
 - Watch the progress panel + `#topic-graviscan-alerts` in Slack
-- Check Slack at LEAST every 30 min during long runs
-- Wedge alerts come via Slack only — the app does NOT show wedge banners in the UI
+- Check Slack at LEAST every 30 min during long runs — the app does NOT show wedge banners in the UI
 
 # 10. Browse + Upload
 

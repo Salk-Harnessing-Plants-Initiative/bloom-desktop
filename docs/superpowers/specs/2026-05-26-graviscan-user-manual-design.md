@@ -11,7 +11,7 @@ Produce a concise, operator-facing user manual for the **GraviScan** workflow in
 
 The target reader is a plant scientist who runs scans daily and needs:
 
-1. A ~10-minute happy-path walkthrough they can follow front-to-back the first time (~1700-word body, single page)
+1. A ~10-minute happy-path walkthrough they can follow front-to-back the first time (~1200-word body, single page)
 2. A reference they can skim later for specific steps
 3. Honest guardrails about the failure modes (especially V600 wedges, scanner-port stability, and the irreversible nature of time-lapse data loss)
 
@@ -52,7 +52,7 @@ Engineering Wiki (database)
 
 The user's initial scope was "happy path only" (Approach A, ~500-800 words). During discussion they added: first-time setup (phenotyper / scientist / experiment / accessions), troubleshooting (wedge response), plate-placement protocol, Test Scan verification, disc-space + Slack-channel guidance.
 
-Final shape: ~1700-word single-page manual, **all critical content inline**, with `<mention-page>` cross-links only to existing simple admin pages and the Brady QR code prep doc. No new sub-pages.
+Final shape: ~1200-word single-page manual, **all critical content inline**, with `<mention-page>` cross-links only to existing simple admin pages and the Brady QR code prep doc. No new sub-pages.
 
 Rejected alternatives:
 
