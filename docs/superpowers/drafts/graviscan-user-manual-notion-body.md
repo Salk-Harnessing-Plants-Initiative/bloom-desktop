@@ -69,6 +69,8 @@ Experiment names must be unique. Use the naming convention `<Gene/Treatment>_<Mo
 
 <!-- MENTION_PAGE: Experiments -->
 
+<!-- SCREENSHOT 5: New Experiment form in Bloom Desktop; ALT: The New Experiment creation form in Bloom Desktop showing the experiment name field, species picker, and scientist dropdown -->
+
 # 6. (when you have accessions) Add Accessions to the Experiment
 
 <callout icon="📢" color="yellow_background">
@@ -119,8 +121,6 @@ Test Scan — strongly recommended before long-running experiments. Run a single
 - For QR-code prep: see <!-- MENTION_PAGE: Making QR Codes with Brady Label Maker -->
 
 <!-- SCREENSHOT 7: Physical photo of plates placed correctly on a flatbed scanner, QR codes facing down; ALT: A photograph of Petri plates placed on a flatbed scanner with QR code labels facing down toward the scan surface -->
-
-<!-- SCREENSHOT 5: New Experiment form in Bloom Desktop; ALT: The New Experiment creation form in Bloom Desktop showing the experiment name field, species picker, and scientist dropdown -->
 
 # 8. Choose scan mode
 
