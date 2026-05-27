@@ -45,17 +45,13 @@ Do NOT unplug a scanner and move it to a different USB port. Moving a scanner to
 
 # 3. (one-time-per-phenotyper) Add yourself as Phenotyper
 
-- Open the Phenotypers admin page and add yourself if your name is not already in the dropdown
+- In Bloom Desktop, open the **Phenotypers** admin page (in-app route) and add yourself if your name is not already in the dropdown
 - Return to the main app — your name will now appear in the Phenotyper dropdown
-
-<!-- MENTION_PAGE: Phenotypers -->
 
 # 4. (one-time-per-scientist) Add yourself as Scientist
 
-- Open the Scientists admin page and add yourself if your name is not already in the dropdown
+- In Bloom Desktop, open the **Scientists** admin page (in-app route) and add yourself if your name is not already in the dropdown
 - Return to the main app — your name will now appear in the Scientist dropdown when creating an Experiment
-
-<!-- MENTION_PAGE: Scientists -->
 
 # 5. (per experiment) Add your Experiment
 
@@ -63,11 +59,9 @@ Do NOT unplug a scanner and move it to a different USB port. Moving a scanner to
 Experiment names must be unique. Use the naming convention `<Gene/Treatment>_<Month>_<Year>` (e.g., `Col0_May_2026`). Data with the same experiment name is aggregated in Bloom — a duplicate name will mix your data with a previous experiment.
 </callout>
 
-- Visit the Experiments page → click New Experiment
+- In Bloom Desktop, visit the **Experiments** admin page (in-app route) → click New Experiment
 - Naming convention: `<Gene/Treatment>_<Month>_<Year>` — must be unique
 - Pick species, scientist (yourself)
-
-<!-- MENTION_PAGE: Experiments -->
 
 <!-- SCREENSHOT 5: New Experiment form in Bloom Desktop; ALT: The New Experiment creation form in Bloom Desktop showing the experiment name field, species picker, and scientist dropdown -->
 
@@ -118,7 +112,7 @@ Test Scan — strongly recommended before long-running experiments. Run a single
   - QR code visible from the scanner side (face down on the flatbed)
   - QR detection is post-scan and is NOT 100% accurate
   - Wrong placement requires DB cleanup we'd rather avoid
-- For QR-code prep: see <!-- MENTION_PAGE: Making QR Codes with Brady Label Maker -->
+- For QR-code prep: see <mention-page url="https://www.notion.so/1304a67a766780bd812de2490cb412ef"/>
 
 <!-- SCREENSHOT 7: Physical photo of plates placed correctly on a flatbed scanner, QR codes facing down; ALT: A photograph of Petri plates placed on a flatbed scanner with QR code labels facing down toward the scan surface -->
 
@@ -208,7 +202,7 @@ Escalate — ping Benfica/Elizabeth in `#topic-graviscan-alerts` — when any of
 - No alert at all but you suspect a scanner is wedging (Slack env may be broken)
 </callout>
 
-Background context: see <!-- MENTION_PAGE: V600 USB Wedge Investigation Summary -->
+Background context: see <mention-page url="https://www.notion.so/3664a67a76678161b6bdfb985092f4d8"/>
 
 <!-- SCREENSHOT 10: Slack #topic-graviscan-alerts channel showing a synthetic wedge alert message from the PR #237 rig validation test (2026-05-22); ALT: The Slack #topic-graviscan-alerts channel displaying an example wedge alert notification message -->
 
