@@ -15,6 +15,7 @@ import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
 import { resolveGraviScanPath } from './graviscan-path-utils';
+import { getGraviscanOutputDir } from './graviscan-output-dir';
 import {
   upsertScannerRow,
   disableStaleScannerRows,
@@ -1721,21 +1722,17 @@ export function registerGraviscanHandlers(
   /**
    * Get the scan output directory path.
    * Development: .graviscan/ in project root
-   * Production: ~/.bloom/graviscan/
+   * Production: SCANS_DIR from ~/.bloom/.env if set, otherwise ~/.bloom/graviscan/
    */
   ipcMain.handle('graviscan:get-output-dir', async () => {
     try {
-      const isDev = process.env.NODE_ENV === 'development';
-      let outputDir: string;
-
-      if (isDev) {
-        // Development: use .graviscan in project root
-        outputDir = path.join(app.getAppPath(), '.graviscan');
-      } else {
-        // Production: use ~/.bloom/graviscan/
-        const homeDir = app.getPath('home');
-        outputDir = path.join(homeDir, '.bloom', 'graviscan');
-      }
+      const homeDir = app.getPath('home');
+      const outputDir = getGraviscanOutputDir({
+        envPath: path.join(homeDir, '.bloom', '.env'),
+        homeDir,
+        appPath: app.getAppPath(),
+        isDev: process.env.NODE_ENV === 'development',
+      });
 
       // Ensure directory exists
       if (!fs.existsSync(outputDir)) {
@@ -1791,10 +1788,13 @@ export function registerGraviscanHandlers(
       try {
         let outputDir = dirPath;
         if (!outputDir) {
-          const isDev = process.env.NODE_ENV === 'development';
-          outputDir = isDev
-            ? path.join(app.getAppPath(), '.graviscan')
-            : path.join(app.getPath('home'), '.bloom', 'graviscan');
+          const homeDir = app.getPath('home');
+          outputDir = getGraviscanOutputDir({
+            envPath: path.join(homeDir, '.bloom', '.env'),
+            homeDir,
+            appPath: app.getAppPath(),
+            isDev: process.env.NODE_ENV === 'development',
+          });
         }
 
         if (!fs.existsSync(outputDir)) {
