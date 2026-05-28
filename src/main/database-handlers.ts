@@ -14,6 +14,7 @@ import type {
   ExperimentWithGraviScans,
   GraviScanWithAllRelations,
 } from '../types/graviscan-store';
+import { naturalCompare } from '../utils/natural-sort';
 
 /**
  * Standard response format for database operations
@@ -1798,13 +1799,14 @@ export function registerDatabaseHandlers() {
       try {
         const plates = await db.graviPlateAccession.findMany({
           where: { metadata_file_id: metadataFileId },
-          include: {
-            sections: {
-              orderBy: { plate_section_id: 'asc' },
-            },
-          },
-          orderBy: { plate_id: 'asc' },
+          include: { sections: true },
         });
+        plates.sort((a, b) => naturalCompare(a.plate_id, b.plate_id));
+        for (const plate of plates) {
+          plate.sections.sort((a, b) =>
+            naturalCompare(a.plate_section_id, b.plate_section_id)
+          );
+        }
         return { success: true, data: plates };
       } catch (error) {
         console.error('[DB] Failed to list gravi plate accessions:', error);

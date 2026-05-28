@@ -168,4 +168,69 @@ describe('validateGraviMetadata', () => {
     const errors = validateGraviMetadata(rows);
     expect(errors).toHaveLength(0);
   });
+
+  describe('plate_id pattern check', () => {
+    const row = (
+      plateId: string,
+      sectionId = 'S1',
+      plantQr = `QR-${plateId}`
+    ): GraviMetadataRow => ({
+      plateId,
+      sectionId,
+      plantQr,
+      accession: 'Ara-1',
+      medium: 'MS',
+    });
+
+    it('accepts consistent zero-padded ids (P001..P012)', () => {
+      const rows = ['P001', 'P002', 'P003', 'P010', 'P012'].map((id) =>
+        row(id)
+      );
+      const errors = validateGraviMetadata(rows);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('accepts unpadded ids with varying digit width (PLATE_1..PLATE_25)', () => {
+      const rows = ['PLATE_1', 'PLATE_2', 'PLATE_9', 'PLATE_25'].map((id) =>
+        row(id)
+      );
+      const errors = validateGraviMetadata(rows);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rejects mismatched prefix and names the outlier', () => {
+      const rows = ['P001', 'P002', 'Plate3'].map((id) => row(id));
+      const errors = validateGraviMetadata(rows);
+      const prefixErr = errors.find((e) => e.includes('prefix'));
+      expect(prefixErr).toBeDefined();
+      expect(prefixErr).toContain('Plate3');
+    });
+
+    it('rejects mismatched zero-padding width', () => {
+      const rows = ['P01', 'P02', 'P003'].map((id) => row(id));
+      const errors = validateGraviMetadata(rows);
+      const padErr = errors.find((e) => e.includes('padding'));
+      expect(padErr).toBeDefined();
+      expect(padErr).toContain('P003');
+    });
+
+    it('rejects plate_id with no numeric suffix', () => {
+      const rows = ['P001', 'P002', 'plate'].map((id) => row(id));
+      const errors = validateGraviMetadata(rows);
+      const suffixErr = errors.find((e) => e.includes('end in a number'));
+      expect(suffixErr).toBeDefined();
+      expect(suffixErr).toContain('plate');
+    });
+
+    it('rejects plate_id with trailing non-digit (P3x)', () => {
+      const rows = ['P1', 'P2', 'P3x'].map((id) => row(id));
+      const errors = validateGraviMetadata(rows);
+      expect(errors.some((e) => e.includes('P3x'))).toBe(true);
+    });
+
+    it('accepts single plate with valid format', () => {
+      const errors = validateGraviMetadata([row('P001')]);
+      expect(errors).toHaveLength(0);
+    });
+  });
 });

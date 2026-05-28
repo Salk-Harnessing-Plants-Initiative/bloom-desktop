@@ -283,6 +283,7 @@ export function GraviMetadataUpload({
       };
 
       const rows: ParsedRow[] = [];
+      const partialRowNumbers: number[] = [];
       for (let i = 1; i < allData.length; i++) {
         const row = allData[i] || [];
         const plateId = String(row[plateIdIdx] ?? '').trim();
@@ -304,24 +305,48 @@ export function GraviMetadataUpload({
             ? String(row[customNoteIdx] ?? '').trim() || null
             : null;
 
-        if (
-          plateId &&
-          sectionId &&
-          plantQr &&
-          accession &&
-          medium &&
-          transplantDate
-        ) {
-          rows.push({
-            plateId,
-            sectionId,
-            plantQr,
-            accession,
-            medium,
-            transplantDate,
-            customNote,
-          });
+        const requiredFields = [
+          plateId,
+          sectionId,
+          plantQr,
+          accession,
+          medium,
+          transplantDate,
+        ];
+        const filledRequired = requiredFields.filter((v) => v).length;
+        // hasAnyContent covers the customNote-only case, so a row with just a
+        // stray note still gets flagged instead of silently dropped.
+        const hasAnyContent = filledRequired > 0 || customNote !== null;
+
+        if (!hasAnyContent) continue; // trailing Excel padding — skip silently
+        if (filledRequired < requiredFields.length) {
+          // Excel row number = allData index + 1 (header is row 1)
+          partialRowNumbers.push(i + 1);
+          continue;
         }
+        rows.push({
+          plateId,
+          sectionId,
+          plantQr,
+          accession,
+          medium,
+          transplantDate,
+          customNote,
+        });
+      }
+
+      if (partialRowNumbers.length > 0) {
+        const shown = partialRowNumbers.slice(0, 10).join(', ');
+        const more =
+          partialRowNumbers.length > 10
+            ? ` (+${partialRowNumbers.length - 10} more)`
+            : '';
+        setValidationErrors([
+          `Row(s) ${shown}${more} have some required cells filled and others empty. Fill all required columns or leave the row entirely blank.`,
+        ]);
+        setMessage(null);
+        setIsUploading(false);
+        return;
       }
 
       if (rows.length === 0) {
@@ -455,7 +480,10 @@ export function GraviMetadataUpload({
   return (
     <div className="space-y-4">
       {/* Upload Zone */}
-      <div className="p-6 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:border-gray-400 transition-colors">
+      <div
+        data-testid="gravi-upload-zone"
+        className="p-6 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 hover:border-gray-400 transition-colors"
+      >
         <div className="text-center">
           <p className="text-sm text-gray-600 font-medium mb-2">
             Upload GraviScan Metadata Excel File
@@ -468,6 +496,7 @@ export function GraviMetadataUpload({
             ref={fileInputRef}
             type="file"
             accept=".xlsx,.xls"
+            data-testid="file-input"
             onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
             className="hidden"
           />
@@ -559,6 +588,7 @@ export function GraviMetadataUpload({
                 </label>
                 <select
                   value={mapping[field] || ''}
+                  data-testid={`mapping-${field}`}
                   onChange={(e) => handleMappingChange(field, e.target.value)}
                   className={`w-full border rounded-md px-2 py-1.5 text-sm ${
                     mapping[field] ? COLUMN_COLORS[field] : ''
@@ -648,6 +678,7 @@ export function GraviMetadataUpload({
           <button
             onClick={handleUpload}
             disabled={!requiredMapped || isUploading}
+            data-testid="upload-button"
             className={`px-4 py-2 text-sm font-medium rounded-md ${
               requiredMapped && !isUploading
                 ? 'bg-blue-600 text-white hover:bg-blue-700'
