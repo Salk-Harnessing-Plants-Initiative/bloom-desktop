@@ -51,6 +51,23 @@ from .scan_regions import get_scan_region
 # Application version embedded in TIFF metadata
 _BLOOM_VERSION = "0.1.0"
 
+# V600 DPI values empirically validated against the wedge envelope.
+# Per investigation summary (2026-05-18) Section 2.2 and #232/#233:
+# production code uses x_resolution/y_resolution flags which honor
+# arbitrary requested DPI values. This is the set that has been
+# tested in production at the bytes-threshold envelope.
+V600_VALIDATED_DPI = {200, 400, 600, 800, 1200, 1600}
+
+
+def _validate_dpi(dpi: int) -> bool:
+    """Return True if `dpi` is in the V600-validated production set.
+
+    See `V600_VALIDATED_DPI`. Used to gate the dpi-warning event in
+    `_scan_plate`. The check is a numeric set membership and does not
+    enforce — callers SHALL warn-then-proceed (#232).
+    """
+    return dpi in V600_VALIDATED_DPI
+
 
 def _build_tiff_metadata(
     scanner_id: str,
@@ -136,6 +153,11 @@ class ScanWorker:
         self._cancel_requested = False
         self._cancel_lock = threading.Lock()
         self._cycle = 0
+        # Raw RGB bytes received during the most recent scan attempt.
+        # Reset to 0 at the start of each plate; set by _sane_scan or
+        # _mock_scan on successful image acquisition. Exposed via the
+        # scan-error event for wedge detection (#236).
+        self._last_scan_bytes_received = 0
 
     def initialize(self) -> bool:
         """Initialize SANE and open the device. Returns True on success."""
@@ -296,7 +318,18 @@ class ScanWorker:
         log(self.scanner_id, "Cancel requested — will stop after current plate")
 
     def _scan_plate(self, plate: dict) -> None:
-        """Scan a single plate."""
+        """Scan a single plate.
+
+        Emits scan-started, then either scan-complete (with duration_ms) or
+        scan-error (with duration_ms, bytes_received, wall_seconds).
+
+        Timing uses time.monotonic() so it is immune to wall-clock
+        adjustments. The bytes_received field reflects raw RGB bytes of
+        any image data received before failure (0 for the common
+        sane.start-failed case; image_width * image_height * 3 if snap()
+        returned). See investigation summary Section 1.2 and #236 for
+        the wedge-detection use case that motivates these fields.
+        """
         plate_index = plate.get("plate_index", "00")
         job_id = str(uuid.uuid4())
 
@@ -309,7 +342,39 @@ class ScanWorker:
             }
         )
 
-        start_time = time.time()
+        # DPI runtime validation safety net (#232). The UI dropdown is
+        # already restricted to the validated set, but a misconfigured
+        # call path (programmatic import, stale GraviConfig row, etc.)
+        # could still request an unsupported value. Warn-then-proceed
+        # rather than abort — the SANE backend may still produce a
+        # usable scan via internal rounding.
+        requested_dpi = plate.get("resolution")
+        if isinstance(requested_dpi, int) and not _validate_dpi(requested_dpi):
+            sorted_set = sorted(V600_VALIDATED_DPI)
+            log(
+                self.scanner_id,
+                f"WARNING: requested DPI {requested_dpi} is outside validated set "
+                f"{sorted_set}; proceeding with scan attempt anyway",
+            )
+            emit_event(
+                {
+                    "type": "dpi-warning",
+                    "scanner_id": self.scanner_id,
+                    "requested_dpi": requested_dpi,
+                    "validated_set": sorted_set,
+                    "timestamp": datetime.now(timezone.utc)
+                    .astimezone()
+                    .isoformat(timespec="seconds"),
+                }
+            )
+
+        # Reset bytes accumulator BEFORE capturing start time so the
+        # later scan-error event path always reads a fresh 0 even if
+        # something between here and the inner scan call were to throw.
+        # (Today nothing can throw between the two lines, but the order
+        # is defensive against future refactors.)
+        self._last_scan_bytes_received = 0
+        start_time = time.monotonic()
 
         try:
             if self.mock:
@@ -317,7 +382,7 @@ class ScanWorker:
             else:
                 final_path = self._sane_scan(plate)
 
-            duration_ms = int((time.time() - start_time) * 1000)
+            duration_ms = int((time.monotonic() - start_time) * 1000)
 
             emit_event(
                 {
@@ -331,7 +396,8 @@ class ScanWorker:
             )
 
         except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
+            elapsed_s = time.monotonic() - start_time
+            duration_ms = int(elapsed_s * 1000)
             log(self.scanner_id, f"Scan error (plate {plate_index}): {e}")
 
             emit_event(
@@ -342,6 +408,8 @@ class ScanWorker:
                     "job_id": job_id,
                     "error": str(e),
                     "duration_ms": duration_ms,
+                    "bytes_received": self._last_scan_bytes_received,
+                    "wall_seconds": elapsed_s,
                 }
             )
 
@@ -412,6 +480,11 @@ class ScanWorker:
                 if image is None:
                     raise RuntimeError("snap() returned None")
 
+                # Record raw RGB bytes received over USB. Used by the
+                # WedgeDetector (#236) to distinguish "0 bytes after 120 s"
+                # from "partial bytes received then failed."
+                self._last_scan_bytes_received = image.width * image.height * 3
+
                 # Save as TIFF with LZW compression and metadata.
                 # Compose the final filename here so `_et_` reflects the
                 # actual save moment, not the scan-start moment.
@@ -463,6 +536,14 @@ class ScanWorker:
         Parses bus:device from the SANE device name and issues USBDEVFS_RESET.
         This is a soft reset — the bus:device address stays the same.
         Only runs on Linux; silently skips on other platforms.
+
+        NOTE (2026-05-21, #228): This method is no longer called by
+        _reopen_device(). The V600 USB-wedge investigation found that
+        USBDEVFS_RESET makes wedges worse — it can trigger controller
+        FLR (function-level reset) and detach the scanner entirely. The
+        method is retained for testability and potential future
+        reconsideration; do NOT re-add a production call site without
+        revisiting the investigation summary (Section 1.2) and #228.
         """
         import platform
 
@@ -515,10 +596,15 @@ class ScanWorker:
             except Exception:
                 pass
 
-        # Flush stale USB bulk transfers before SANE reinit
-        self._reset_usb_device()
+        # USBDEVFS_RESET removed 2026-05-21 per investigation summary
+        # Section 1.2 and #228. Kernel-level reset makes V600 wedges
+        # worse (controller FLR detaches the scanner entirely). The
+        # _reset_usb_device() method is retained for testability.
 
-        # Let the USB bus settle after releasing the device
+        # Let the USB bus settle after releasing the device. The
+        # 3-second interval predates USBDEVFS_RESET removal; it is a
+        # conservative bus-settle pause that helps SANE re-enumerate
+        # cleanly even on non-wedge transient failures.
         time.sleep(3)
 
         log(self.scanner_id, f"Full SANE reinit for device: {self.device_name}")
@@ -595,6 +681,11 @@ class ScanWorker:
                     img_array[y, x] = [128, 128, 128]
 
         image = Image.fromarray(img_array, mode="RGB")
+
+        # Record raw RGB bytes (mirrors _sane_scan's behavior so the
+        # scan-error/scan-complete payloads remain consistent between
+        # mock and real scanners).
+        self._last_scan_bytes_received = image.width * image.height * 3
 
         os.makedirs(plate["output_dir"], exist_ok=True)
         tiff_meta = _build_tiff_metadata(self.scanner_id, plate, region)

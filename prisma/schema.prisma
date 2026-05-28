@@ -198,6 +198,25 @@ model GraviImage {
   @@index([graviscan_id])
 }
 
+/// Physical scanner record. `enabled=false` means the row is stale
+/// (the scanner was previously detected on this `usb_port` but is no
+/// longer enumerating). Stale rows are DISABLED, not deleted, so the
+/// FK chain from `GraviScan.scanner_id` and
+/// `GraviScanPlateAssignment.scanner_id` stays intact (there is no
+/// `ON DELETE CASCADE` on those references).
+///
+/// Query policy (see also `src/main/scanner-upsert.ts`):
+///   - MUST filter `enabled: true` for: any read path surfaced to
+///     the UI (`get-scanner-status`), validation/spawn decisions,
+///     active-scanner counts in analytics.
+///   - MAY include disabled rows for: historical upsert lookups
+///     (find-by-bus/device or find-by-usb_port) where the intent is
+///     to re-enable, audit/maintenance queries, and FK joins that
+///     resolve scanner identity for historical scans.
+///
+/// Established 2026-05-21 by #230 (the V600 wedge investigation
+/// follow-up PR). Before that, stale rows were deleted, which
+/// orphaned historical `GraviScan.scanner_id` references.
 model GraviScanner {
   id               String                    @id @default(uuid())
   name             String

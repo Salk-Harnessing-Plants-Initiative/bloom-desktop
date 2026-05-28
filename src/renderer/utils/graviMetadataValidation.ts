@@ -11,12 +11,104 @@ export interface GraviMetadataRow {
   transplantDate?: string | null;
 }
 
+function summarizeIds(ids: string[], max = 5): string {
+  if (ids.length <= max) return ids.join(', ');
+  return `${ids.slice(0, max).join(', ')} (+${ids.length - max} more)`;
+}
+
+/**
+ * Plate IDs in one file must share a consistent prefix + numeric suffix shape
+ * so the natural-sort ordering (P1 < P2 < P10) matches the user's intent.
+ * Rejects mixed prefixes (P001 vs Plate3) and mixed zero-padding widths
+ * (P01 vs P003) — those usually mean a typo, not deliberate intent.
+ */
+export function validatePlateIdPattern(plateIds: string[]): string[] {
+  const errors: string[] = [];
+  const unique = Array.from(new Set(plateIds));
+  if (unique.length === 0) return errors;
+
+  const parsed = unique.map((id) => {
+    const match = id.match(/^(.*?)(\d+)$/);
+    return {
+      id,
+      prefix: match?.[1] ?? null,
+      digits: match?.[2] ?? null,
+    };
+  });
+
+  const missingSuffix = parsed
+    .filter((p) => p.digits === null)
+    .map((p) => p.id);
+  if (missingSuffix.length > 0) {
+    errors.push(
+      `Plate ID(s) must end in a number: ${summarizeIds(missingSuffix)}`
+    );
+  }
+
+  const valid = parsed.filter(
+    (p): p is { id: string; prefix: string; digits: string } =>
+      p.digits !== null
+  );
+  if (valid.length === 0) return errors;
+
+  const prefixCounts = new Map<string, number>();
+  for (const p of valid) {
+    prefixCounts.set(p.prefix, (prefixCounts.get(p.prefix) ?? 0) + 1);
+  }
+  if (prefixCounts.size > 1) {
+    let canonical = '';
+    let maxCount = -1;
+    for (const [prefix, count] of prefixCounts) {
+      if (count > maxCount) {
+        canonical = prefix;
+        maxCount = count;
+      }
+    }
+    const outliers = valid.filter((p) => p.prefix !== canonical).map((p) => p.id);
+    errors.push(
+      `Plate IDs do not share a consistent prefix (expected "${canonical}…"): ${summarizeIds(outliers)}`
+    );
+  }
+
+  const anyPadded = valid.some(
+    (p) => p.digits.length > 1 && p.digits.startsWith('0')
+  );
+  if (anyPadded) {
+    const widthCounts = new Map<number, number>();
+    for (const p of valid) {
+      const w = p.digits.length;
+      widthCounts.set(w, (widthCounts.get(w) ?? 0) + 1);
+    }
+    if (widthCounts.size > 1) {
+      let canonicalWidth = 0;
+      let maxCount = -1;
+      for (const [w, count] of widthCounts) {
+        if (count > maxCount) {
+          canonicalWidth = w;
+          maxCount = count;
+        }
+      }
+      const outliers = valid
+        .filter((p) => p.digits.length !== canonicalWidth)
+        .map((p) => p.id);
+      errors.push(
+        `Plate IDs use inconsistent number padding (expected ${canonicalWidth} digits, e.g. ${'0'.repeat(canonicalWidth - 1)}1): ${summarizeIds(outliers)}`
+      );
+    }
+  }
+
+  return errors;
+}
+
 /**
  * Validates GraviScan metadata rows.
  * Returns an array of error messages (empty = valid).
  */
 export function validateGraviMetadata(rows: GraviMetadataRow[]): string[] {
   const errors: string[] = [];
+
+  // Plate ID pattern (shared prefix + consistent padding within the file)
+  errors.push(...validatePlateIdPattern(rows.map((r) => r.plateId)));
 
   // Check consistent accession per plate
   const plateAccessions = new Map<string, Set<string>>();

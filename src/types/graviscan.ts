@@ -162,12 +162,43 @@ export interface GraviScanPlatformInfo {
 
 /**
  * Available resolutions for GraviScan (DPI).
+ *
+ * Trimmed to the V600 empirically-validated set per #232 +
+ * investigation summary 2026-05-18 Section 2.2. The previous range
+ * (200–6400) included values (3200, 6400) outside the validated
+ * wedge envelope. The UI dropdown and any code that produces fresh
+ * resolution values SHALL select from this set.
+ *
+ * Pre-trim persisted values may still exist on `GraviConfig.resolution`
+ * — use `LegacyGraviScanResolution` for DB-read code paths and
+ * `isValidResolution` to narrow to `GraviScanResolution`.
  */
 export const GRAVISCAN_RESOLUTIONS = [
-  200, 400, 600, 800, 1200, 1600, 3200, 6400,
+  200, 400, 600, 800, 1200, 1600,
 ] as const;
 
 export type GraviScanResolution = (typeof GRAVISCAN_RESOLUTIONS)[number];
+
+/**
+ * Union of the current valid set plus historical values that may still
+ * appear in persisted DB rows from before the #232 trim. DB-read code
+ * paths SHALL type-narrow via `isValidResolution()` before assigning to
+ * a `GraviScanResolution`.
+ */
+export type LegacyGraviScanResolution = GraviScanResolution | 3200 | 6400;
+
+/**
+ * Type-guard: narrows an arbitrary `number` (e.g., from a DB read) to
+ * `GraviScanResolution` if it is in the current validated set.
+ *
+ * Renderer code that reads `GraviConfig.resolution` SHALL use this
+ * helper to avoid a TypeScript compile error after the #232 trim,
+ * AND to handle stale-value cases gracefully at runtime (e.g.,
+ * surface a "pick a new value" prompt to the operator).
+ */
+export function isValidResolution(value: number): value is GraviScanResolution {
+  return (GRAVISCAN_RESOLUTIONS as readonly number[]).includes(value);
+}
 
 /**
  * Grid mode options.

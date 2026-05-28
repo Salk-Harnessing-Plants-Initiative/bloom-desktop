@@ -41,6 +41,8 @@ import {
   autoInitScanners,
 } from './graviscan-handlers';
 import { scanLog, cleanupOldLogs, closeScanLog } from './scan-logger';
+import { WedgeDetector } from './wedge-detector';
+import { SlackNotifier } from './slack-notifier';
 import {
   loadEnvConfig,
   saveEnvConfig,
@@ -272,6 +274,24 @@ function initializeScanCoordinator(): void {
       mockEnabled
     );
 
+    // Wedge detection + Slack notification wiring (#236).
+    // The detector tracks per-scanner-per-cycle scan-error signatures
+    // and emits a wedge-detected event when one of three V600 wedge
+    // signatures fires. The notifier POSTs a structured Slack message
+    // (rate-limited per (scanner_id, session_id) per minute).
+    //
+    // The notifier reads webhook URL from process.env (hydrated by
+    // loadEnvConfig from ~/.bloom/.env earlier in init). Absent URL ⇒
+    // no-op.
+    //
+    // The detector is created per scan session (replaced on
+    // interval-start) so its sessionId matches the active session.
+    const slackNotifier = new SlackNotifier({
+      webhookUrl: process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL,
+    });
+    let wedgeDetector: WedgeDetector | null = null;
+    let lastSeenCycleNumber = -1;
+
     // Log scan events to persistent file + forward to renderer + update session state
     scanCoordinator.on('scan-event', (event) => {
       // Persistent file logging
@@ -359,6 +379,58 @@ function initializeScanCoordinator(): void {
         }
       }
 
+      // Feed the wedge detector (#236). Cycle boundaries inferred
+      // from cycle_number changes on incoming events.
+      if (wedgeDetector) {
+        if (
+          typeof event.cycle_number === 'number' &&
+          event.cycle_number !== lastSeenCycleNumber
+        ) {
+          wedgeDetector.onCycleStart(event.cycle_number);
+          lastSeenCycleNumber = event.cycle_number;
+        }
+        if (event.type === 'scan-error') {
+          // ARCHITECTURE NOTE (Copilot PR #237 review): the
+          // coordinator surfaces only the FINAL outcome of a scan
+          // attempt — either scan-complete OR scan-error, never both
+          // for the same (scanner_id, plate_index). The Python
+          // worker's internal retry loop handles transient failures.
+          // So we treat scan-error as terminal here: onScanError
+          // followed immediately by onScanEnd(success=false). The
+          // WedgeDetector's recovered-scan logic remains useful for
+          // future architectures that surface per-attempt outcomes,
+          // but at this wiring level we feed final outcomes only.
+          //
+          // Worker emits scan-error with the new bytes_received and
+          // wall_seconds fields (Task 0). Per Copilot PR #237 review
+          // (#15): pass undefined through when absent so the detector
+          // can surface a pre-Task-0 Python worker via its
+          // missing-fields warning. Defaulting to 0 here would make
+          // the fields ALWAYS numeric to the detector and prevent
+          // the configuration-drift warning from ever firing.
+          wedgeDetector.onScanError({
+            scanner_id: event.scanner_id,
+            plate_index: event.plate_index,
+            job_id: event.job_id,
+            error: event.error,
+            bytes_received: (event as { bytes_received?: number })
+              .bytes_received,
+            wall_seconds: (event as { wall_seconds?: number }).wall_seconds,
+          });
+          wedgeDetector.onScanEnd({
+            scanner_id: event.scanner_id,
+            plate_index: event.plate_index,
+            success: false,
+          });
+        } else if (event.type === 'scan-complete') {
+          wedgeDetector.onScanEnd({
+            scanner_id: event.scanner_id,
+            plate_index: event.plate_index,
+            success: true,
+          });
+        }
+      }
+
       if (!mainWindow || mainWindow.isDestroyed()) return;
 
       switch (event.type) {
@@ -425,6 +497,47 @@ function initializeScanCoordinator(): void {
       scanLog(
         `Continuous scan started: ${data.totalCycles} cycles, ${data.intervalMs}ms interval, ${data.durationMs}ms duration`
       );
+      // (Re)create the wedge detector for this session so its sessionId
+      // matches and per-scanner counters are clean (#236). Use the
+      // active GraviScanSession.id if available; fall back to a
+      // timestamp-based id if not.
+      const sessionId = scanSession?.sessionId ?? `session-${data.startedAt}`;
+      wedgeDetector = new WedgeDetector({
+        sessionId,
+        onWedge: async (evt) => {
+          // Enrich the event with operator-friendly identity (display
+          // name + USB path) before passing to the notifier — the
+          // detector only knows scanner_id. Per Copilot PR #237 review.
+          let enriched = evt;
+          try {
+            const db = getDatabase();
+            const row = await db.graviScanner.findUnique({
+              where: { id: evt.scanner_id },
+              select: { display_name: true, name: true, usb_port: true },
+            });
+            if (row) {
+              enriched = {
+                ...evt,
+                display_name: row.display_name ?? row.name,
+                usb_port: row.usb_port ?? undefined,
+              };
+            }
+          } catch (err) {
+            // Lookup failure shouldn't block notification — the
+            // un-enriched event still reaches Slack with the
+            // scanner_id at minimum.
+            console.error(
+              '[main] wedge-detected enrichment lookup failed:',
+              err instanceof Error ? err.message : err,
+            );
+          }
+          void slackNotifier.notify(enriched);
+          scanLog(
+            `[WedgeDetector] wedge-detected scanner=${evt.scanner_id} signature=${evt.signature} cycle=${evt.cycle_number}`
+          );
+        },
+      });
+      lastSeenCycleNumber = -1;
       // Persist timing to session state
       if (scanSession) {
         scanSession.totalCycles = data.totalCycles;
@@ -488,6 +601,10 @@ function initializeScanCoordinator(): void {
       scanLog(
         `Scan session complete: ${data.cyclesCompleted}/${data.totalCycles} cycles (cancelled=${data.cancelled}, overtimeMs=${data.overtimeMs})`
       );
+      // Tear down the wedge detector (#236) — a new one is built on
+      // the next interval-start.
+      wedgeDetector = null;
+      lastSeenCycleNumber = -1;
       // Deactivate continuous session when all cycles are done
       if (scanSession?.isActive && scanSession.isContinuous) {
         console.log(
@@ -1133,6 +1250,37 @@ app.on('ready', async () => {
     scannerIdentity.name = config.scanner_name || '';
     if (config.graviscan_system_name) {
       process.env.GRAVISCAN_SYSTEM_NAME = config.graviscan_system_name;
+    }
+    // Hydrate process.env so subprocesses inherit and modules
+    // initialized later (SlackNotifier, scanner-subprocess.spawn)
+    // see the values.
+    if (config.slack_webhook_url) {
+      process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL = config.slack_webhook_url;
+      // Confirm to the rig admin that the URL was loaded WITHOUT
+      // logging the URL itself (it's a secret).
+      console.log(
+        '[GraviScan] Slack webhook URL loaded from ~/.bloom/.env',
+      );
+    } else {
+      console.log(
+        '[GraviScan] BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL not set — Slack notifications disabled',
+      );
+    }
+    if (config.libusb_endpoint_recovery !== undefined) {
+      process.env.LIBUSB_ENDPOINT_RECOVERY = String(
+        config.libusb_endpoint_recovery,
+      );
+      console.log(
+        `[GraviScan] LIBUSB_ENDPOINT_RECOVERY explicitly set to: ${config.libusb_endpoint_recovery}`,
+      );
+    } else {
+      // Not set in ~/.bloom/.env — the C-shim's
+      // endpoint_recovery_init() will default to ON when getenv
+      // returns null. Log here so the operator sees the resolved
+      // state without inspecting subprocess stderr.
+      console.log(
+        '[GraviScan] LIBUSB_ENDPOINT_RECOVERY not set in env — wrapper defaults to ON',
+      );
     }
     console.log(
       '[Scanner Identity] Initialized:',

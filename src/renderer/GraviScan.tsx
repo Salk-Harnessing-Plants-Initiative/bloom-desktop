@@ -26,6 +26,41 @@ import {
 } from './components/graviscan/ScanFormSection';
 import { ScanControlSection } from './components/graviscan/ScanControlSection';
 
+/**
+ * Compute the maximum platesPerScanner across enabled scanner panels.
+ *
+ * The cadence-warning banner (#235) needs to know the slowest cycle —
+ * since all scanners run in parallel, the cycle takes as long as the
+ * scanner with the most plates. Today `ScannerPanelState` does not
+ * carry per-scanner gridMode, so this helper falls back to 4 (the
+ * worst-case production default) to avoid masking the back-to-back
+ * behavior we filed #235 against. When ScannerPanelState gains a
+ * gridMode field, change the body to read from it.
+ *
+ * Returns 4 (worst-case) when no enabled scanners are present so the
+ * banner can still evaluate sensibly at form-fill time.
+ */
+function cadenceFallbackPlatesPerScanner(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _states: ScannerPanelState[]
+): number {
+  // Honest naming: this is a worst-case fallback, not a real
+  // computation. ScannerPanelState doesn't expose gridMode yet, so we
+  // can't compute the actual max across enabled panels. Always returns
+  // 4 (production default + worst case), which makes the cadence
+  // warning conservative: it fires whenever ANY grid_mode would
+  // back-to-back at the operator's interval. Per Copilot PR #237
+  // review (the previous "computeMax" name promised computation it
+  // didn't deliver).
+  //
+  // When ScannerPanelState gains a gridMode field (see follow-up
+  // #239 / future task), replace the body with:
+  //   _states.filter(s => s.enabled).reduce(
+  //     (m, s) => Math.max(m, s.gridMode === '4grid' ? 4 : 2), 0
+  //   ) || 4
+  return 4;
+}
+
 export function GraviScan() {
   // Scanner panel states
   const [scannerStates, setScannerStates] = useState<ScannerPanelState[]>([]);
@@ -381,6 +416,34 @@ export function GraviScan() {
 
   return (
     <div className="space-y-6">
+      {/*
+        Mock-mode banner — visible when GRAVISCAN_MOCK=true so the
+        operator (or E2E harness) can see at a glance that no real
+        scanners are involved. Wired here rather than via the dead-
+        code `ConfigStatusBanner` component (which is currently
+        unused on this page). Asserted by
+        tests/e2e/graviscan-workflow.e2e.ts:132.
+      */}
+      {platformInfo?.mock_enabled && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-center">
+            <svg
+              className="h-4 w-4 text-yellow-400 mr-2"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span className="text-yellow-700 text-xs font-medium">
+              Mock Mode - Simulated scanners
+            </span>
+          </div>
+        </div>
+      )}
       {isScanning && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 sticky top-0 z-40">
           <div className="flex items-center">
@@ -844,6 +907,19 @@ export function GraviScan() {
           handleStartScan={handleStartScan}
           handleCancelScan={handleCancelScan}
           handleResetScanners={handleResetScanners}
+          cadenceContext={{
+            // Compute the maximum platesPerScanner across enabled
+            // scanner panels. Each panel's gridMode is "2grid" (2
+            // plates) or "4grid" (4 plates); the cycle is bounded by
+            // the slowest scanner so we take the MAX (per design.md
+            // Decision 7 and the per-cycle parallelism note).
+            //
+            // If gridMode info isn't surfaced on ScannerPanelState
+            // yet, falls back to 4 (worst case) to avoid masking the
+            // back-to-back behavior we filed #235 against.
+            platesPerScanner: cadenceFallbackPlatesPerScanner(scannerStates),
+            dpi: resolution,
+          }}
         />
       </div>
     </div>

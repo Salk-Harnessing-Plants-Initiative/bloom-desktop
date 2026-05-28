@@ -253,6 +253,146 @@ export class ScanCoordinator extends EventEmitter {
   }
 
   /**
+   * Returns true iff a subprocess for `scannerId` is in the map AND
+   * in the ready state (#234 dependency). Used by `save-scanners-db`
+   * to skip already-running scanners before calling `addScanner`.
+   */
+  hasWorker(scannerId: string): boolean {
+    const sub = this.subprocesses.get(scannerId);
+    return !!sub && sub.isReady;
+  }
+
+  /**
+   * Spawn a single new scanner subprocess and add it to the map.
+   * No-op if a ready worker for `scannerId` already exists.
+   *
+   * Called from `graviscan:save-scanners-db` for newly-created /
+   * re-enabled scanner rows (#234) so the operator does not need to
+   * restart the app to bring a new scanner online.
+   *
+   * Mid-scan safety: if `isScanning === true` this method queues the
+   * spawn for after the next `cycle-complete` event. The Promise
+   * resolves once the queued spawn actually runs.
+   *
+   * Does not throw on spawn failure — errors are surfaced via the
+   * `scanner-init-status` event matching the existing initialize()
+   * pattern.
+   */
+  async addScanner(config: ScannerConfig): Promise<void> {
+    if (this.hasWorker(config.scannerId)) {
+      return; // idempotent — already ready
+    }
+
+    // If a scan is in flight, queue the spawn until after the cycle
+    // completes (do NOT disturb the event loop mid-cycle).
+    if (this.isScanning) {
+      return new Promise<void>((resolve) => {
+        const handler = () => {
+          this.off('cycle-complete', handler);
+          // Re-enter addScanner so the hasWorker idempotency guard
+          // re-runs. Without this, two queued addScanner calls for
+          // the same scanner_id (e.g., operator clicks Detect twice
+          // mid-scan) would each spawn a duplicate subprocess and
+          // overwrite the map entry. Per Copilot PR #237 review.
+          this.addScanner(config)
+            .catch(() => {
+              // already logged inside spawnSingleScanner
+            })
+            .finally(() => resolve());
+        };
+        this.on('cycle-complete', handler);
+      });
+    }
+
+    await this.spawnSingleScanner(config);
+  }
+
+  /**
+   * Stop a single scanner subprocess and remove it from the map.
+   *
+   * Called from `graviscan:disable-scanner` (Task 9) when an operator
+   * removes a scanner via the Configure Scanner page. No-op if no
+   * worker exists for `scannerId`.
+   */
+  async stopScanner(scannerId: string): Promise<void> {
+    const sub = this.subprocesses.get(scannerId);
+    if (!sub) return;
+    sub.removeAllListeners();
+    await sub.shutdown(5000);
+    this.subprocesses.delete(scannerId);
+    this.initErrors.delete(scannerId);
+  }
+
+  /**
+   * Internal: spawn one ScannerSubprocess and wire its events.
+   * Used by `addScanner()` for the single-scanner-spawn case.
+   *
+   * NOTE: `initialize()` has its OWN per-scanner spawn implementation
+   * because it uses `Promise.allSettled()` to spawn all subprocesses
+   * in parallel — the concurrency model differs from this method's
+   * sequential single-spawn. The two implementations are kept in
+   * sync by convention (mirroring event listeners + error handling),
+   * not by code sharing. Per Copilot PR #237 review.
+   *
+   * On spawn failure, removes the entry from the map and records the
+   * error in `initErrors` for `getScannerStatuses()` to surface. Does
+   * NOT throw — the caller decides whether to propagate.
+   */
+  private async spawnSingleScanner(config: ScannerConfig): Promise<void> {
+    const sub = new ScannerSubprocess(
+      this.pythonPath,
+      this.isPackaged,
+      config.scannerId,
+      config.saneName,
+      this.mock,
+    );
+
+    sub.on('event', (event: ScanWorkerEvent) => {
+      this.emit('scan-event', {
+        ...event,
+        cycle_number: this.currentCycle,
+        scan_started_at: this.currentGridStartedAt,
+        scan_ended_at: this.currentGridEndedAt,
+      });
+    });
+
+    sub.on('exit', (info: { scannerId: string; code: number | null }) => {
+      console.log(
+        `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`,
+      );
+      this.subprocesses.delete(info.scannerId);
+    });
+
+    this.subprocesses.set(config.scannerId, sub);
+
+    this.emit('scanner-init-status', {
+      scannerId: config.scannerId,
+      status: 'starting',
+    });
+
+    try {
+      await sub.spawn();
+      this.emit('scanner-init-status', {
+        scannerId: config.scannerId,
+        status: 'ready',
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      console.error(
+        `[ScanCoordinator] Scanner ${config.scannerId} init failed: ${message}`,
+      );
+      this.subprocesses.delete(config.scannerId);
+      this.initErrors.set(config.scannerId, message);
+      this.emit('scanner-init-status', {
+        scannerId: config.scannerId,
+        status: 'error',
+        error: message,
+      });
+    }
+  }
+
+  /**
    * Scan all plates once across all scanners (in parallel).
    * Resolves when all scanners have reported cycle-done.
    */

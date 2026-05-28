@@ -41,6 +41,22 @@ export interface MachineConfig {
 
   /** GraviScan system name for uploads and Box backup */
   graviscan_system_name: string;
+
+  /**
+   * Slack webhook URL for V600 wedge notifications (#236).
+   * Loaded from BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL in ~/.bloom/.env.
+   * Absent or empty ⇒ Slack notifier is disabled.
+   * SECRET — never log or expose.
+   */
+  slack_webhook_url?: string;
+
+  /**
+   * libusb endpoint-recovery shim toggle (#228).
+   * Loaded from LIBUSB_ENDPOINT_RECOVERY in ~/.bloom/.env.
+   * Default true (wrapper active). Set "false" (case-insensitive) to
+   * disable the libusb_clear_halt-on-bulk-timeout wrapper.
+   */
+  libusb_endpoint_recovery?: boolean;
 }
 
 /**
@@ -458,12 +474,33 @@ export function loadEnvConfig(envPath: string): MachineConfig {
           case 'GRAVISCAN_SYSTEM_NAME':
             envConfig.graviscan_system_name = value;
             break;
+          case 'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL':
+            // Empty string ⇒ feature disabled (treat as undefined).
+            // The notifier reads slack_webhook_url; undefined disables.
+            if (value !== '') {
+              envConfig.slack_webhook_url = value;
+            }
+            break;
+          case 'LIBUSB_ENDPOINT_RECOVERY':
+            // Default ON. Only the case-insensitive string "false" disables.
+            envConfig.libusb_endpoint_recovery =
+              value.toLowerCase() !== 'false';
+            break;
         }
       }
     }
   } catch {
     // Ignore errors reading .env
   }
+
+  // Note: we DELIBERATELY do not default libusb_endpoint_recovery to
+  // true here when it's absent from the file. Per Copilot PR #237
+  // review: defaulting here causes saveEnvConfig() to then write the
+  // value back into the file even when the operator never explicitly
+  // set it (the load→save cycle pollutes ~/.bloom/.env). The runtime
+  // default is enforced where the value is actually consumed — see
+  // main.ts (startup log + process.env hydration) and the C-shim
+  // (endpoint_recovery_init() defaults to ON when getenv returns null).
 
   // Merge: defaults < legacyConfig < envConfig
   const merged: MachineConfig = {
@@ -513,8 +550,11 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     }
   }
 
-  // Write KEY=value format with sections
-  const content = [
+  // Write KEY=value format with sections. The V600 wedge-followups
+  // section is appended only when the values are actually configured —
+  // otherwise an empty assignment (e.g., `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=`)
+  // would semantically mean "feature disabled" but also clutter the file.
+  const lines: string[] = [
     '# Machine Configuration',
     `SCANNER_NAME=${config.scanner_name}`,
     `CAMERA_IP_ADDRESS=${config.camera_ip_address}`,
@@ -528,9 +568,28 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     '',
     '# GraviScan System',
     `GRAVISCAN_SYSTEM_NAME=${config.graviscan_system_name}`,
-  ].join('\n');
+  ];
 
-  fs.writeFileSync(envPath, content, 'utf-8');
+  // V600 wedge-followups section (#228 + #236). Only write the lines
+  // for values that are explicitly configured.
+  if (
+    config.slack_webhook_url !== undefined ||
+    config.libusb_endpoint_recovery !== undefined
+  ) {
+    lines.push('', '# GraviScan V600 wedge follow-ups (#228 + #236)');
+    if (config.slack_webhook_url !== undefined) {
+      lines.push(
+        `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=${config.slack_webhook_url}`,
+      );
+    }
+    if (config.libusb_endpoint_recovery !== undefined) {
+      lines.push(
+        `LIBUSB_ENDPOINT_RECOVERY=${config.libusb_endpoint_recovery}`,
+      );
+    }
+  }
+
+  fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
 }
 
 // ========================================

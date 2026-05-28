@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { DetectedScanner } from '../types/graviscan';
-import { GRAVISCAN_RESOLUTIONS } from '../types/graviscan';
+import { GRAVISCAN_RESOLUTIONS, isValidResolution } from '../types/graviscan';
 
 interface SavedScanner {
   scannerId: string;
@@ -31,6 +31,18 @@ export function ConfigureScanner() {
   const [resolution, setResolution] = useState(1200);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  /** Set when the persisted GraviConfig.resolution is no longer in the
+   *  validated set (e.g., a legacy 3200/6400 row from before the #232
+   *  trim). The operator must pick a new value before save. */
+  const [legacyResolutionWarning, setLegacyResolutionWarning] = useState<
+    number | null
+  >(null);
+  /** Set to N>0 after a Detect call disables N stale scanner rows.
+   *  Cleared when the operator dismisses or re-detects. (#230 visibility) */
+  const [staleDisabledNotice, setStaleDisabledNotice] = useState<
+    number | null
+  >(null);
   const [loading, setLoading] = useState(true);
 
   // Load existing scanner config from DB on mount
@@ -43,7 +55,18 @@ export function ConfigureScanner() {
 
       const configResult = await window.electron.graviscan.getConfig();
       if (configResult.success && configResult.config) {
-        setResolution(configResult.config.resolution);
+        const savedResolution = configResult.config.resolution;
+        // Guard against legacy values (3200/6400) that were valid before
+        // the #232 dropdown trim but are no longer offered. Fall back to
+        // 1200 (the production target) and surface a warning so the
+        // operator picks an explicit value before saving.
+        if (isValidResolution(savedResolution)) {
+          setResolution(savedResolution);
+          setLegacyResolutionWarning(null);
+        } else {
+          setResolution(1200);
+          setLegacyResolutionWarning(savedResolution);
+        }
       }
     } catch {
       // ignore
@@ -109,6 +132,7 @@ export function ConfigureScanner() {
 
   // Detect scanners → auto-assign labels → save to DB
   const handleDetect = async () => {
+    setStaleDisabledNotice(null);
     setDetecting(true);
     setDetectionError(null);
     setSaveSuccess(false);
@@ -154,6 +178,7 @@ export function ConfigureScanner() {
         }
       );
 
+      const previousScannerIds = new Set(scanners.map((s) => s.scannerId));
       const saveResult =
         await window.electron.graviscan.saveScannersDb(scannersToSave);
 
@@ -166,6 +191,19 @@ export function ConfigureScanner() {
       const refreshedStatus =
         await window.electron.graviscan.getScannerStatus();
       if (refreshedStatus.success) {
+        // #230: compute which previously-visible scanners disappeared
+        // (the disable-on-detect path made them stale). Surface a one-
+        // shot info banner so the operator gets feedback rather than
+        // a silent row vanish.
+        const newScannerIds = new Set(
+          refreshedStatus.scanners.map((s) => s.scannerId),
+        );
+        const disabledCount = [...previousScannerIds].filter(
+          (id) => !newScannerIds.has(id),
+        ).length;
+        if (disabledCount > 0) {
+          setStaleDisabledNotice(disabledCount);
+        }
         setScanners(refreshedStatus.scanners);
       }
     } catch (err) {
@@ -197,6 +235,37 @@ export function ConfigureScanner() {
         grid_mode: s.scannerId === scannerId ? gridMode : s.gridMode,
       }));
       await window.electron.graviscan.saveScannersDb(allToSave);
+    }
+  };
+
+  // #230 UI half / Task 9: per-row Remove button. Disables the scanner
+  // (enabled=false) and stops its worker. The row disappears from the
+  // visible list on the next get-scanner-status refresh.
+  //
+  // Behavior:
+  //  - Confirms with the operator before invoking the IPC (the action is
+  //    destructive — disables the worker, drops the row from the UI).
+  //  - Only removes the row from local state AFTER the IPC succeeds, so
+  //    a failure leaves the row visible (no silent UI/DB drift).
+  //  - On IPC failure, surfaces the error inline via setSaveError so the
+  //    operator gets immediate feedback rather than only a console log.
+  const handleRemoveScanner = async (
+    scannerId: string,
+    displayName: string,
+  ) => {
+    const confirmed = window.confirm(
+      `Remove scanner "${displayName}"? This disables it and stops its worker. `
+        + `The row will return if the scanner is re-detected.`,
+    );
+    if (!confirmed) return;
+
+    const result = await window.electron.graviscan.disableScanner(scannerId);
+    if (result.ok) {
+      setScanners((prev) => prev.filter((s) => s.scannerId !== scannerId));
+    } else {
+      const err = (result as { ok: false; error: string }).error;
+      console.error('[ConfigureScanner] Remove failed:', err);
+      setSaveError(`Failed to remove scanner: ${err}`);
     }
   };
 
@@ -234,6 +303,64 @@ export function ConfigureScanner() {
         Detect and configure USB scanners for GraviScan. This configuration
         persists across app restarts.
       </p>
+
+      {/* Inline alerts (errors, legacy-resolution warnings, etc.).
+       *  These live above the form so they're visible without scrolling. */}
+      {saveError && (
+        <div
+          className="mb-4 p-3 bg-red-50 border border-red-300 rounded-lg flex items-start justify-between"
+          role="alert"
+          data-testid="configure-scanner-error"
+        >
+          <p className="text-sm text-red-800">{saveError}</p>
+          <button
+            type="button"
+            onClick={() => setSaveError(null)}
+            className="text-red-600 hover:text-red-800 ml-2"
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {staleDisabledNotice !== null && (
+        <div
+          className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex items-start justify-between"
+          role="status"
+          data-testid="stale-disabled-notice"
+        >
+          <p className="text-sm text-blue-800">
+            {staleDisabledNotice} previously-detected scanner
+            {staleDisabledNotice === 1 ? '' : 's'} no longer
+            enumerating — automatically disabled. Reconnect the
+            hardware and click Detect to re-enable.
+          </p>
+          <button
+            type="button"
+            onClick={() => setStaleDisabledNotice(null)}
+            className="text-blue-600 hover:text-blue-800 ml-2"
+            aria-label="Dismiss notice"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {legacyResolutionWarning !== null && (
+        <div
+          className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg"
+          role="alert"
+          data-testid="legacy-resolution-warning"
+        >
+          <p className="text-sm text-amber-800">
+            <strong>Saved DPI ({legacyResolutionWarning}) is no longer
+            supported.</strong>{' '}
+            The empirically-validated set is{' '}
+            {GRAVISCAN_RESOLUTIONS.join(', ')} DPI (per the V600 wedge
+            investigation). Please choose a valid value below and click Save
+            Resolution.
+          </p>
+        </div>
+      )}
 
       <div className="relative">
         {isScanActive && (
@@ -341,16 +468,44 @@ export function ConfigureScanner() {
                       </div>
                     </div>
 
-                    <select
-                      value={scanner.gridMode}
-                      onChange={(e) =>
-                        handleGridModeChange(scanner.scannerId, e.target.value)
-                      }
-                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="2grid">2-Grid</option>
-                      <option value="4grid">4-Grid</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={scanner.gridMode}
+                        onChange={(e) =>
+                          handleGridModeChange(
+                            scanner.scannerId,
+                            e.target.value,
+                          )
+                        }
+                        disabled={isScanActive}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <option value="2grid">2-Grid</option>
+                        <option value="4grid">4-Grid</option>
+                      </select>
+                      <button
+                        onClick={() =>
+                          handleRemoveScanner(
+                            scanner.scannerId,
+                            scanner.displayName || scanner.scannerId,
+                          )
+                        }
+                        // Disable during active scan: the overlay
+                        // (line 366+) blocks pointer interaction but
+                        // not keyboard/tab navigation. Per Copilot
+                        // PR #237 review.
+                        disabled={isScanActive}
+                        title={
+                          isScanActive
+                            ? 'Cannot remove scanners while a scan is in progress'
+                            : 'Disable this scanner and stop its worker'
+                        }
+                        className="px-2 py-1 text-xs border border-red-200 text-red-700 hover:bg-red-50 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        data-testid={`remove-scanner-${scanner.scannerId}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -371,7 +526,8 @@ export function ConfigureScanner() {
                 >
                   {GRAVISCAN_RESOLUTIONS.map((res) => (
                     <option key={res} value={res}>
-                      {res} DPI{res === 1200 ? ' (recommended)' : ''}
+                      {res} DPI
+                      {res === 1200 ? ' (production, validated at 140×140 mm)' : ''}
                     </option>
                   ))}
                 </select>

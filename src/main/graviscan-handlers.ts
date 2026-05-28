@@ -15,6 +15,13 @@ import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
 import { resolveGraviScanPath } from './graviscan-path-utils';
+import { getGraviscanOutputDir } from './graviscan-output-dir';
+import {
+  upsertScannerRow,
+  disableStaleScannerRows,
+  disableScannerById,
+  stopWorkersForDisabledScanners,
+} from './scanner-upsert';
 import type { ScanCoordinator, ScannerConfig } from './scan-coordinator';
 import type { PlateConfig } from './scanner-subprocess';
 import { getScanSession, setScanSession, markScanJobRecorded } from './main';
@@ -455,89 +462,91 @@ export function registerGraviscanHandlers(
         const savedScanners: GraviScanner[] = [];
 
         for (const scanner of scanners) {
-          // Look up existing scanner by USB bus + device (unique physical identifier)
-          let existing: GraviScanner | null = null;
-          if (scanner.usb_bus != null && scanner.usb_device != null) {
-            existing = (await db.graviScanner.findFirst({
-              where: {
-                usb_bus: scanner.usb_bus,
-                usb_device: scanner.usb_device,
-              },
-            })) as GraviScanner | null;
-          }
-          // Fallback: match by usb_port (stable across replug, unlike usb_device)
-          if (!existing && scanner.usb_port) {
-            existing = (await db.graviScanner.findFirst({
-              where: { usb_port: scanner.usb_port },
-            })) as GraviScanner | null;
-            if (existing) {
-              console.log(
-                '[GraviScan:SAVE] Matched by usb_port fallback:',
-                existing.name,
-                existing.id,
-                `port:${existing.usb_port}`
-              );
-            }
-          }
-
-          if (existing) {
-            console.log(
-              '[GraviScan:SAVE] Updating existing scanner (matched by bus:device):',
-              existing.name,
-              existing.id,
-              `bus:${existing.usb_bus} dev:${existing.usb_device}`
-            );
-            const updated = await db.graviScanner.update({
-              where: { id: existing.id },
-              data: {
-                name: scanner.name,
-                display_name:
-                  scanner.display_name ?? existing.display_name ?? null,
-                vendor_id: scanner.vendor_id,
-                product_id: scanner.product_id,
-                usb_port: scanner.usb_port || null,
-                usb_bus: scanner.usb_bus || null,
-                usb_device: scanner.usb_device || null,
-              },
-            });
-            console.log('[GraviScan:SAVE] Updated scanner:', {
-              id: updated.id,
-              name: updated.name,
-              usb_bus: updated.usb_bus,
-              usb_device: updated.usb_device,
-            });
-            savedScanners.push(updated as GraviScanner);
-          } else {
-            console.log(
-              '[GraviScan:SAVE] Creating new scanner:',
-              scanner.name,
-              `bus:${scanner.usb_bus} dev:${scanner.usb_device}`
-            );
-            const created = await db.graviScanner.create({
-              data: {
-                name: scanner.name,
-                display_name: scanner.display_name || null,
-                vendor_id: scanner.vendor_id,
-                product_id: scanner.product_id,
-                usb_port: scanner.usb_port || null,
-                usb_bus: scanner.usb_bus || null,
-                usb_device: scanner.usb_device || null,
-                enabled: true,
-              },
-            });
-            console.log('[GraviScan:SAVE] Created scanner:', {
-              id: created.id,
-              name: created.name,
-              usb_bus: created.usb_bus,
-              usb_device: created.usb_device,
-            });
-            savedScanners.push(created as GraviScanner);
-          }
+          // Delegate the find-existing-and-upsert logic to the testable
+          // helper. The helper handles grid_mode persistence (#231) and
+          // the fallback policy: payload value wins, then existing DB
+          // value on UPDATE, then "4grid" schema default on CREATE.
+          const saved = await upsertScannerRow(
+            db as unknown as Parameters<typeof upsertScannerRow>[0],
+            scanner,
+          );
+          console.log('[GraviScan:SAVE] Saved scanner:', {
+            id: saved.id,
+            name: saved.name,
+            usb_bus: saved.usb_bus,
+            usb_device: saved.usb_device,
+            grid_mode: saved.grid_mode,
+          });
+          savedScanners.push(saved as GraviScanner);
         }
 
         console.log(
           `[GraviScan:SAVE] Successfully saved ${savedScanners.length} scanners to database`
         );
+
+        // #230: disable (don't delete) any previously-enabled row whose
+        // usb_port is NOT in the current payload. Preserves FK chain to
+        // historical GraviScan / GraviScanPlateAssignment rows.
+        const currentUsbPorts = scanners
+          .map((s) => s.usb_port)
+          .filter((p): p is string => typeof p === 'string' && p.length > 0);
+        const staleResult = await disableStaleScannerRows(
+          db as unknown as Parameters<typeof disableStaleScannerRows>[0],
+          currentUsbPorts,
+        );
+        // Log only when something was disabled to avoid noise on
+        // every Detect click (most calls disable nothing).
+        if (staleResult.disabled.length > 0) {
+          console.log(
+            `[GraviScan:SAVE] Disabled ${staleResult.disabled.length} stale scanner(s) not in current detection set:`,
+            staleResult.disabled,
+          );
+        }
+
+        const coordinator = getCoordinator?.();
+
+        // Per Copilot PR #237 review (#20): when stale rows are
+        // disabled, also stop their running scan_worker subprocesses
+        // so they don't keep holding USB / SANE resources after
+        // disable. Particularly important on Linux where libusb_open
+        // is exclusive per device. No-op when no rows were disabled
+        // or the coordinator isn't initialized yet.
+        if (coordinator && staleResult.disabled.length > 0) {
+          await stopWorkersForDisabledScanners(
+            coordinator,
+            staleResult.disabled,
+          );
+        }
+
+        // #234: spawn worker for any saved scanner that is enabled and
+        // doesn't already have a ready worker. Lets a newly-detected
+        // scanner come online without an app restart.
+        if (coordinator) {
+          for (const saved of savedScanners) {
+            const s = saved as GraviScanner;
+            if (s.enabled && !coordinator.hasWorker(s.id)) {
+              console.log(
+                `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${s.id} (port ${s.usb_port})`,
+              );
+              // Construct a ScannerConfig matching the auto-init path.
+              const saneName = `epkowa:interpreter:${String(
+                s.usb_bus ?? 0,
+              ).padStart(3, '0')}:${String(s.usb_device ?? 0).padStart(3, '0')}`;
+              await coordinator
+                .addScanner({
+                  scannerId: s.id,
+                  saneName,
+                  plates: [],
+                })
+                .catch((err: unknown) => {
+                  console.error(
+                    `[GraviScan:SAVE] Failed to spawn worker for ${s.id}:`,
+                    err,
+                  );
+                });
+            }
+          }
+        }
 
         return {
           success: true,
@@ -554,6 +563,38 @@ export function registerGraviscanHandlers(
         };
       }
     }
+  );
+
+  /**
+   * Disable a single scanner row (#230 UI half / Task 9).
+   * Backs the per-row Remove button on the Configure Scanner page.
+   * Sets enabled=false on the matching GraviScanner row and asks the
+   * coordinator to stop the worker (if any).
+   */
+  ipcMain.handle(
+    'graviscan:disable-scanner',
+    async (_event, scannerId: string) => {
+      try {
+        const coordinator = getCoordinator?.() ?? null;
+        const result = await disableScannerById(
+          db as unknown as Parameters<typeof disableScannerById>[0],
+          coordinator,
+          scannerId,
+        );
+        if (result.ok) {
+          console.log(`[GraviScan:DISABLE] Scanner ${scannerId} disabled`);
+        } else {
+          const err = (result as { ok: false; error: string }).error;
+          console.warn('[GraviScan:DISABLE]', err);
+        }
+        return result;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to disable scanner';
+        console.error('[GraviScan:DISABLE] Error:', error);
+        return { ok: false as const, error: message };
+      }
+    },
   );
 
   /**
@@ -913,16 +954,22 @@ export function registerGraviscanHandlers(
         }
       }
 
-      // Auto-remove stale scanners that are no longer physically connected
+      // #230: auto-DISABLE (don't delete) stale scanners that are no
+      // longer physically connected. Preserves the FK chain from
+      // historical GraviScan / GraviScanPlateAssignment rows (the
+      // Prisma schema has no ON DELETE CASCADE on those references).
       if (missing.length > 0) {
         for (const stale of missing) {
           console.log(
-            `[GraviScan:VALIDATE] Auto-removing stale scanner ${stale.display_name || stale.name} (port ${stale.usb_port}, id ${stale.id})`
+            `[GraviScan:VALIDATE] Auto-disabling stale scanner ${stale.display_name || stale.name} (port ${stale.usb_port}, id ${stale.id})`
           );
-          await db.graviScanner.delete({ where: { id: stale.id } });
+          await db.graviScanner.update({
+            where: { id: stale.id },
+            data: { enabled: false },
+          });
         }
         console.log(
-          `[GraviScan:VALIDATE] Removed ${missing.length} stale scanner(s)`
+          `[GraviScan:VALIDATE] Disabled ${missing.length} stale scanner(s)`
         );
       }
 
@@ -1675,21 +1722,17 @@ export function registerGraviscanHandlers(
   /**
    * Get the scan output directory path.
    * Development: .graviscan/ in project root
-   * Production: ~/.bloom/graviscan/
+   * Production: SCANS_DIR from ~/.bloom/.env if set, otherwise ~/.bloom/graviscan/
    */
   ipcMain.handle('graviscan:get-output-dir', async () => {
     try {
-      const isDev = process.env.NODE_ENV === 'development';
-      let outputDir: string;
-
-      if (isDev) {
-        // Development: use .graviscan in project root
-        outputDir = path.join(app.getAppPath(), '.graviscan');
-      } else {
-        // Production: use ~/.bloom/graviscan/
-        const homeDir = app.getPath('home');
-        outputDir = path.join(homeDir, '.bloom', 'graviscan');
-      }
+      const homeDir = app.getPath('home');
+      const outputDir = getGraviscanOutputDir({
+        envPath: path.join(homeDir, '.bloom', '.env'),
+        homeDir,
+        appPath: app.getAppPath(),
+        isDev: process.env.NODE_ENV === 'development',
+      });
 
       // Ensure directory exists
       if (!fs.existsSync(outputDir)) {
@@ -1745,10 +1788,13 @@ export function registerGraviscanHandlers(
       try {
         let outputDir = dirPath;
         if (!outputDir) {
-          const isDev = process.env.NODE_ENV === 'development';
-          outputDir = isDev
-            ? path.join(app.getAppPath(), '.graviscan')
-            : path.join(app.getPath('home'), '.bloom', 'graviscan');
+          const homeDir = app.getPath('home');
+          outputDir = getGraviscanOutputDir({
+            envPath: path.join(homeDir, '.bloom', '.env'),
+            homeDir,
+            appPath: app.getAppPath(),
+            isDev: process.env.NODE_ENV === 'development',
+          });
         }
 
         if (!fs.existsSync(outputDir)) {

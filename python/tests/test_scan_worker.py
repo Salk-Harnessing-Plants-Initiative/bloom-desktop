@@ -963,18 +963,14 @@ class TestBuildTiffMetadata:
         region = get_scan_region("4grid", "10")
         ifd = _build_tiff_metadata(
             "s1",
-            _make_plate(
-                "/tmp", plate_index="10", grid_mode="4grid", resolution=600
-            ),
+            _make_plate("/tmp", plate_index="10", grid_mode="4grid", resolution=600),
             region,
         )
         assert ifd[305] == "Bloom Desktop / GraviScan"
 
     def test_resolution_unit(self):
         region = get_scan_region("2grid", "01")
-        ifd = _build_tiff_metadata(
-            "s1", _make_plate("/tmp", plate_index="01"), region
-        )
+        ifd = _build_tiff_metadata("s1", _make_plate("/tmp", plate_index="01"), region)
         assert ifd[296] == 2  # inches
 
     def test_embeds_exp_wave_st_phenotyper(self):
