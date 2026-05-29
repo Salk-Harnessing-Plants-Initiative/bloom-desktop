@@ -19,7 +19,16 @@ interface Plate {
   id: string;
   plate_id: string;
   accession: string;
+  transplant_date: string | Date | null;
+  custom_note: string | null;
   sections: Section[];
+}
+
+function formatDate(value: string | Date | null): string {
+  if (!value) return '—';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toISOString().split('T')[0];
 }
 
 interface GraviMetadataListProps {
@@ -180,59 +189,96 @@ export function GraviMetadataList({ refreshTrigger }: GraviMetadataListProps) {
               </button>
             </div>
 
-            {/* Expanded plate details */}
+            {/* Expanded: one flat table with row-merged plate-level cells */}
             {isExpanded && (
-              <div className="border-t bg-gray-50 px-4 py-3">
+              <div className="border-t bg-gray-50 px-4 py-3 overflow-x-auto">
                 {isLoadingPlates ? (
                   <p className="text-xs text-gray-500">Loading plates...</p>
                 ) : filePlates && filePlates.length > 0 ? (
-                  <div className="space-y-3">
-                    {filePlates.map((plate) => (
-                      <div key={plate.id}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-semibold text-gray-700">
-                            {plate.plate_id}
-                          </span>
-                          <span className="text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                            {plate.accession}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {plate.sections.length} section(s)
-                          </span>
-                        </div>
-                        <table className="w-full text-xs border rounded">
-                          <thead>
-                            <tr className="bg-gray-100">
-                              <th className="px-2 py-1 text-left text-gray-600">
-                                Section
-                              </th>
-                              <th className="px-2 py-1 text-left text-gray-600">
-                                Plant QR
-                              </th>
-                              <th className="px-2 py-1 text-left text-gray-600">
-                                Medium
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {plate.sections.map((section) => (
-                              <tr key={section.id} className="border-t">
-                                <td className="px-2 py-1 text-gray-700">
-                                  {section.plate_section_id}
+                  <table className="w-full text-xs border bg-white">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="px-2 py-1.5 text-left text-gray-600 border">
+                          Plate ID
+                        </th>
+                        <th className="px-2 py-1.5 text-left text-gray-600 border">
+                          Accession
+                        </th>
+                        <th className="px-2 py-1.5 text-left text-gray-600 border">
+                          Transplant Date
+                        </th>
+                        <th className="px-2 py-1.5 text-left text-gray-600 border">
+                          Custom Note
+                        </th>
+                        <th className="px-2 py-1.5 text-left text-gray-600 border">
+                          Section
+                        </th>
+                        <th className="px-2 py-1.5 text-left text-gray-600 border">
+                          Plant QR
+                        </th>
+                        <th className="px-2 py-1.5 text-left text-gray-600 border">
+                          Medium
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filePlates.flatMap((plate) => {
+                        const sections =
+                          plate.sections.length > 0
+                            ? plate.sections
+                            : [
+                                {
+                                  id: `${plate.id}-empty`,
+                                  plate_section_id: '—',
+                                  plant_qr: '—',
+                                  medium: null,
+                                },
+                              ];
+                        const span = sections.length;
+                        return sections.map((section, idx) => (
+                          <tr key={section.id} className="border-t">
+                            {idx === 0 && (
+                              <>
+                                <td
+                                  rowSpan={span}
+                                  className="px-2 py-1 align-top border font-medium text-gray-800 bg-gray-50"
+                                >
+                                  {plate.plate_id}
                                 </td>
-                                <td className="px-2 py-1 text-gray-700">
-                                  {section.plant_qr}
+                                <td
+                                  rowSpan={span}
+                                  className="px-2 py-1 align-top border text-amber-700 bg-gray-50"
+                                >
+                                  {plate.accession}
                                 </td>
-                                <td className="px-2 py-1 text-gray-500">
-                                  {section.medium || '—'}
+                                <td
+                                  rowSpan={span}
+                                  className="px-2 py-1 align-top border text-gray-600 bg-gray-50"
+                                >
+                                  {formatDate(plate.transplant_date)}
                                 </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
-                  </div>
+                                <td
+                                  rowSpan={span}
+                                  className="px-2 py-1 align-top border text-gray-600 bg-gray-50 break-words"
+                                >
+                                  {plate.custom_note || '—'}
+                                </td>
+                              </>
+                            )}
+                            <td className="px-2 py-1 border text-gray-700">
+                              {section.plate_section_id}
+                            </td>
+                            <td className="px-2 py-1 border text-gray-700 break-all">
+                              {section.plant_qr}
+                            </td>
+                            <td className="px-2 py-1 border text-gray-500">
+                              {section.medium || '—'}
+                            </td>
+                          </tr>
+                        ));
+                      })}
+                    </tbody>
+                  </table>
                 ) : (
                   <p className="text-xs text-gray-500">No plates found</p>
                 )}
