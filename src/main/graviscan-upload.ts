@@ -594,6 +594,56 @@ export async function uploadAllPendingScans(
     return { success: true, uploaded: 0, skipped: 0, failed: 0, errors: [] };
   }
 
+  // Wave-aware accession resolution: for GraviScan experiments the metadata
+  // file is linked per-wave via GraviExperimentWaveMetadata, NOT the legacy
+  // Experiment.accession_id. When the legacy field is null, fall back to the
+  // wave-link before passing scans to uploadMetadata and processImageJobs.
+  // Without this, metadata upload silently skips every plate ("No accession
+  // on experiment, skipping") and the gravi_scan_metadata_* tables stay empty
+  // even though the upload appears to succeed.
+  const involvedExperimentIds = Array.from(
+    new Set(scans.map((s) => s.experiment_id))
+  );
+  const waveLinks = await db.graviExperimentWaveMetadata.findMany({
+    where: { experiment_id: { in: involvedExperimentIds } },
+    include: {
+      accession: {
+        include: {
+          graviPlateAccessions: { include: { sections: true } },
+        },
+      },
+    },
+  });
+  const waveAccessionMap = new Map<
+    string,
+    (typeof waveLinks)[number]['accession']
+  >();
+  for (const link of waveLinks) {
+    waveAccessionMap.set(
+      `${link.experiment_id}::${link.wave_number}`,
+      link.accession
+    );
+  }
+  let enrichedFromWaveLink = 0;
+  for (const scan of scans) {
+    if (scan.experiment.accession) continue;
+    const fallback = waveAccessionMap.get(
+      `${scan.experiment_id}::${scan.wave_number}`
+    );
+    if (fallback) {
+      // Type-safe mutation: the wave-link payload has the same shape we
+      // included for the legacy accession (name + graviPlateAccessions w/
+      // sections), so existing uploadMetadata + processImageJobs are happy.
+      scan.experiment.accession = fallback;
+      enrichedFromWaveLink++;
+    }
+  }
+  if (enrichedFromWaveLink > 0) {
+    console.log(
+      `[GraviScan:UPLOAD] Resolved accession via GraviExperimentWaveMetadata for ${enrichedFromWaveLink}/${scans.length} scans`
+    );
+  }
+
   // Upload sessions first, then map local session IDs to Supabase session IDs
   const { sessionIdMap, errors: sessionErrors } = await uploadSessions(
     clients.store,
