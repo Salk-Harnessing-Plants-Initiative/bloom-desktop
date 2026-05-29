@@ -648,7 +648,7 @@ export interface GraviScanAPI {
    * (e.g., scanner_id not found).
    */
   disableScanner: (
-    scannerId: string,
+    scannerId: string
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
 
   /**
@@ -1082,6 +1082,7 @@ export interface GraviScanAPI {
     total: number;
     copied: number;
     errors: string[];
+    savedTo?: string;
   }>;
 }
 

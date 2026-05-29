@@ -641,12 +641,14 @@ export function BrowseGraviScans() {
                               experimentName: exp.name,
                               waveNumber: waveNum,
                             });
-                          if (result.errors?.[0] === 'Cancelled') return;
                           const waveLabel =
                             waveNum !== undefined ? ` (Wave ${waveNum})` : '';
+                          const where = result.savedTo
+                            ? `\nSaved to: ${result.savedTo}`
+                            : '';
                           if (result.copied > 0) {
                             alert(
-                              `Downloaded ${result.copied} of ${result.total} images${waveLabel}.${result.errors?.length ? `\n${result.errors.length} files could not be copied.` : ''}`
+                              `Downloaded ${result.copied} of ${result.total} images${waveLabel}.${where}${result.errors?.length ? `\n${result.errors.length} files could not be copied.` : ''}`
                             );
                           } else if (result.total === 0) {
                             alert(

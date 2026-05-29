@@ -7,7 +7,7 @@
  * - Scan operations
  */
 
-import { ipcMain, app, BrowserWindow, dialog, shell } from 'electron';
+import { ipcMain, app, BrowserWindow, shell } from 'electron';
 import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -468,7 +468,7 @@ export function registerGraviscanHandlers(
           // value on UPDATE, then "4grid" schema default on CREATE.
           const saved = await upsertScannerRow(
             db as unknown as Parameters<typeof upsertScannerRow>[0],
-            scanner,
+            scanner
           );
           console.log('[GraviScan:SAVE] Saved scanner:', {
             id: saved.id,
@@ -492,14 +492,14 @@ export function registerGraviscanHandlers(
           .filter((p): p is string => typeof p === 'string' && p.length > 0);
         const staleResult = await disableStaleScannerRows(
           db as unknown as Parameters<typeof disableStaleScannerRows>[0],
-          currentUsbPorts,
+          currentUsbPorts
         );
         // Log only when something was disabled to avoid noise on
         // every Detect click (most calls disable nothing).
         if (staleResult.disabled.length > 0) {
           console.log(
             `[GraviScan:SAVE] Disabled ${staleResult.disabled.length} stale scanner(s) not in current detection set:`,
-            staleResult.disabled,
+            staleResult.disabled
           );
         }
 
@@ -514,7 +514,7 @@ export function registerGraviscanHandlers(
         if (coordinator && staleResult.disabled.length > 0) {
           await stopWorkersForDisabledScanners(
             coordinator,
-            staleResult.disabled,
+            staleResult.disabled
           );
         }
 
@@ -526,12 +526,15 @@ export function registerGraviscanHandlers(
             const s = saved as GraviScanner;
             if (s.enabled && !coordinator.hasWorker(s.id)) {
               console.log(
-                `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${s.id} (port ${s.usb_port})`,
+                `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${s.id} (port ${s.usb_port})`
               );
               // Construct a ScannerConfig matching the auto-init path.
               const saneName = `epkowa:interpreter:${String(
-                s.usb_bus ?? 0,
-              ).padStart(3, '0')}:${String(s.usb_device ?? 0).padStart(3, '0')}`;
+                s.usb_bus ?? 0
+              ).padStart(
+                3,
+                '0'
+              )}:${String(s.usb_device ?? 0).padStart(3, '0')}`;
               await coordinator
                 .addScanner({
                   scannerId: s.id,
@@ -541,7 +544,7 @@ export function registerGraviscanHandlers(
                 .catch((err: unknown) => {
                   console.error(
                     `[GraviScan:SAVE] Failed to spawn worker for ${s.id}:`,
-                    err,
+                    err
                   );
                 });
             }
@@ -579,7 +582,7 @@ export function registerGraviscanHandlers(
         const result = await disableScannerById(
           db as unknown as Parameters<typeof disableScannerById>[0],
           coordinator,
-          scannerId,
+          scannerId
         );
         if (result.ok) {
           console.log(`[GraviScan:DISABLE] Scanner ${scannerId} disabled`);
@@ -594,7 +597,7 @@ export function registerGraviscanHandlers(
         console.error('[GraviScan:DISABLE] Error:', error);
         return { ok: false as const, error: message };
       }
-    },
+    }
   );
 
   /**
@@ -750,7 +753,9 @@ export function registerGraviscanHandlers(
 
         scannerConfigs.push({
           scannerId: saved.id,
-          saneName: detected.sane_name || `epkowa:interpreter:${String(detected.usb_bus).padStart(3, '0')}:${String(detected.usb_device).padStart(3, '0')}`,
+          saneName:
+            detected.sane_name ||
+            `epkowa:interpreter:${String(detected.usb_bus).padStart(3, '0')}:${String(detected.usb_device).padStart(3, '0')}`,
           plates: [],
         });
         scannerStatuses.push({ id: saved.id, status: 'ready' });
@@ -1802,7 +1807,13 @@ export function registerGraviscanHandlers(
         }
 
         const imageExts = ['.tif', '.tiff', '.png', '.jpg', '.jpeg'];
-        const files: { name: string; path: string; size: number; modifiedAt: string; folder: string }[] = [];
+        const files: {
+          name: string;
+          path: string;
+          size: number;
+          modifiedAt: string;
+          folder: string;
+        }[] = [];
 
         const entries = fs.readdirSync(outputDir, { withFileTypes: true });
         const folderName = path.basename(outputDir);
@@ -1847,8 +1858,7 @@ export function registerGraviscanHandlers(
 
         files.sort(
           (a, b) =>
-            new Date(b.modifiedAt).getTime() -
-            new Date(a.modifiedAt).getTime()
+            new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
         );
 
         return { success: true, files };
@@ -1967,7 +1977,10 @@ export function registerGraviscanHandlers(
           mainWindow?.webContents.send('graviscan:upload-progress', progress);
         }),
         runBoxBackup(db, (progress) => {
-          mainWindow?.webContents.send('graviscan:box-backup-progress', progress);
+          mainWindow?.webContents.send(
+            'graviscan:box-backup-progress',
+            progress
+          );
         }),
       ]);
 
@@ -2043,26 +2056,12 @@ export function registerGraviscanHandlers(
     ) => {
       try {
         const mainWindow = getMainWindow?.();
-        if (!mainWindow) {
-          return {
-            success: false,
-            total: 0,
-            copied: 0,
-            errors: ['No main window'],
-          };
-        }
 
-        // Open native folder picker
-        const dialogResult = await dialog.showOpenDialog(mainWindow, {
-          title: 'Select download folder',
-          properties: ['openDirectory', 'createDirectory'],
-        });
-
-        if (dialogResult.canceled || !dialogResult.filePaths[0]) {
-          return { success: false, total: 0, copied: 0, errors: ['Cancelled'] };
-        }
-
-        const targetDir = dialogResult.filePaths[0];
+        // Save directly to the user's Downloads folder. No picker dialog —
+        // one-click download. The renderer surfaces the final path in its
+        // success message.
+        const downloadsDir = app.getPath('downloads');
+        const expDir = path.join(downloadsDir, params.experimentName);
 
         // Query images for this experiment, optionally filtered by wave
         const scans = await db.graviScan.findMany({
@@ -2078,7 +2077,9 @@ export function registerGraviscanHandlers(
             experiment: {
               include: {
                 accession: {
-                  include: { graviPlateAccessions: true },
+                  include: {
+                    graviPlateAccessions: { include: { sections: true } },
+                  },
                 },
               },
             },
@@ -2090,7 +2091,28 @@ export function registerGraviscanHandlers(
           ],
         });
 
-        const expDir = path.join(targetDir, params.experimentName);
+        // Wave-aware metadata lookup: GraviScan experiments link metadata via
+        // GraviExperimentWaveMetadata, not the legacy Experiment.accession_id.
+        const waveLinks = await db.graviExperimentWaveMetadata.findMany({
+          where: { experiment_id: params.experimentId },
+          include: {
+            accession: {
+              include: {
+                graviPlateAccessions: { include: { sections: true } },
+              },
+            },
+          },
+        });
+        const waveAccessionMap = new Map<
+          number,
+          (typeof waveLinks)[number]['accession']['graviPlateAccessions']
+        >();
+        for (const link of waveLinks) {
+          waveAccessionMap.set(
+            link.wave_number,
+            link.accession.graviPlateAccessions
+          );
+        }
 
         // Group scans by wave number for subfolder organization
         const waveGroups = new Map<number, typeof scans>();
@@ -2100,20 +2122,72 @@ export function registerGraviscanHandlers(
           waveGroups.get(wave)!.push(scan);
         }
 
-        const csvHeader =
+        // CSV cells may carry commas, quotes, or newlines (custom_note free
+        // text). Quote any cell containing those and escape embedded quotes.
+        const csvCell = (value: string | number | null | undefined): string => {
+          if (value === null || value === undefined) return '';
+          const s = String(value);
+          if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+            return '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        };
+
+        const metaHeader =
           'experiment,wave_number,plate_barcode,plate_index,grid_mode,capture_date,accession,transplant_date,custom_note,image_filename';
+        const platesHeader =
+          'experiment,wave_number,plate_id,accession,transplant_date,custom_note';
+        const sectionsHeader =
+          'experiment,wave_number,plate_id,section_id,plant_qr,medium';
+
         const filesToCopy: { src: string; dest: string }[] = [];
 
         for (const [waveNum, waveScans] of waveGroups) {
           const waveDir = path.join(expDir, `wave_${waveNum}`);
           fs.mkdirSync(waveDir, { recursive: true });
 
-          const csvRows: string[] = [csvHeader];
+          const wavePlates =
+            waveAccessionMap.get(waveNum) ??
+            // Fall back to legacy single-accession link (cylinderscan path)
+            waveScans[0]?.experiment.accession?.graviPlateAccessions ??
+            [];
+
+          const metaRows: string[] = [metaHeader];
+          const platesRows: string[] = [platesHeader];
+          const sectionsRows: string[] = [sectionsHeader];
+
+          // Per-plate + per-section rows from the wave-linked accession
+          for (const plate of wavePlates) {
+            platesRows.push(
+              [
+                csvCell(params.experimentName),
+                csvCell(waveNum),
+                csvCell(plate.plate_id),
+                csvCell(plate.accession),
+                csvCell(
+                  plate.transplant_date
+                    ? plate.transplant_date.toISOString().split('T')[0]
+                    : ''
+                ),
+                csvCell(plate.custom_note),
+              ].join(',')
+            );
+            for (const section of plate.sections ?? []) {
+              sectionsRows.push(
+                [
+                  csvCell(params.experimentName),
+                  csvCell(waveNum),
+                  csvCell(plate.plate_id),
+                  csvCell(section.plate_section_id),
+                  csvCell(section.plant_qr),
+                  csvCell(section.medium),
+                ].join(',')
+              );
+            }
+          }
 
           for (const scan of waveScans) {
-            const plateAccessions =
-              scan.experiment.accession?.graviPlateAccessions ?? [];
-            const matchedPlate = plateAccessions.find(
+            const matchedPlate = wavePlates.find(
               (p) => p.plate_id === scan.plate_barcode
             );
             const accession = matchedPlate?.accession ?? '';
@@ -2128,31 +2202,48 @@ export function registerGraviscanHandlers(
                 dest: path.join(waveDir, originalFilename),
               });
 
-              csvRows.push(
+              metaRows.push(
                 [
-                  params.experimentName,
-                  scan.wave_number,
-                  scan.plate_barcode ?? '',
-                  scan.plate_index,
-                  scan.grid_mode,
-                  scan.capture_date.toISOString(),
-                  accession,
-                  scan.transplant_date
-                    ? scan.transplant_date.toISOString().split('T')[0]
-                    : '',
-                  scan.custom_note ?? '',
-                  originalFilename,
+                  csvCell(params.experimentName),
+                  csvCell(scan.wave_number),
+                  csvCell(scan.plate_barcode),
+                  csvCell(scan.plate_index),
+                  csvCell(scan.grid_mode),
+                  csvCell(scan.capture_date.toISOString()),
+                  csvCell(accession),
+                  csvCell(
+                    scan.transplant_date
+                      ? scan.transplant_date.toISOString().split('T')[0]
+                      : ''
+                  ),
+                  csvCell(scan.custom_note),
+                  csvCell(originalFilename),
                 ].join(',')
               );
             }
           }
 
-          // Write metadata.csv per wave subfolder
+          // Write the three CSVs per wave subfolder. plates/sections only
+          // emitted when there's data, so analysts don't get empty files.
           fs.writeFileSync(
             path.join(waveDir, 'metadata.csv'),
-            csvRows.join('\n') + '\n',
+            metaRows.join('\n') + '\n',
             'utf-8'
           );
+          if (platesRows.length > 1) {
+            fs.writeFileSync(
+              path.join(waveDir, 'plates.csv'),
+              platesRows.join('\n') + '\n',
+              'utf-8'
+            );
+          }
+          if (sectionsRows.length > 1) {
+            fs.writeFileSync(
+              path.join(waveDir, 'sections.csv'),
+              sectionsRows.join('\n') + '\n',
+              'utf-8'
+            );
+          }
         }
 
         // Copy files with progress (async, 4 concurrent copies)
@@ -2168,7 +2259,7 @@ export function registerGraviscanHandlers(
           try {
             await fs.promises.copyFile(file.src, file.dest);
             copied++;
-            mainWindow.webContents.send('graviscan:download-progress', {
+            mainWindow?.webContents.send('graviscan:download-progress', {
               total: filesToCopy.length,
               completed: copied,
               currentFile: path.basename(file.dest),
@@ -2198,6 +2289,7 @@ export function registerGraviscanHandlers(
           total: filesToCopy.length,
           copied,
           errors,
+          savedTo: expDir,
         };
       } catch (error) {
         console.error('[GraviScan:DOWNLOAD] Error:', error);
