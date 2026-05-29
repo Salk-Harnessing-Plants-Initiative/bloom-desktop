@@ -207,7 +207,9 @@ export function useScanSession({
     Record<string, string>
   >({});
   // Current scan session directory (per-experiment folder)
-  const [currentSessionDir, setCurrentSessionDir] = useState<string | null>(null);
+  const [currentSessionDir, setCurrentSessionDir] = useState<string | null>(
+    null
+  );
 
   // QR verification state
   const [verificationStatus, setVerificationStatus] = useState<
@@ -1188,6 +1190,8 @@ export function useScanSession({
           const assignmentsToSave = assignments.map((a) => ({
             plate_index: a.plateIndex,
             plate_barcode: a.plantBarcode,
+            transplant_date: a.transplantDate ?? null,
+            custom_note: a.customNote ?? null,
             selected: a.selected,
           }));
           await window.electron.database.graviscanPlateAssignments.upsertMany(
@@ -1232,7 +1236,8 @@ export function useScanSession({
 
       // Create the session folder upfront in the main process. The Python
       // worker's lazy mkdir is left in place as defense-in-depth.
-      const ensureResult = await window.electron.graviscan.ensureDir(sessionDir);
+      const ensureResult =
+        await window.electron.graviscan.ensureDir(sessionDir);
       if (!ensureResult.success) {
         console.error(
           '[GraviScan] Failed to create session folder:',

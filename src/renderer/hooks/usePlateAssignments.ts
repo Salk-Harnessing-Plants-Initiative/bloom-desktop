@@ -203,7 +203,9 @@ export function usePlateAssignments({
                   plate_id: plate.plate_id,
                   accession: plate.accession,
                   transplant_date: plate.transplant_date
-                    ? new Date(plate.transplant_date).toISOString().split('T')[0]
+                    ? new Date(plate.transplant_date)
+                        .toISOString()
+                        .split('T')[0]
                     : null,
                   custom_note: plate.custom_note ?? null,
                   sectionCount: new Set(
@@ -245,7 +247,8 @@ export function usePlateAssignments({
               (a) => a.scannerId === scannerId
             );
             const scannerGridMode = scannerAssignment?.gridMode || '2grid';
-            emptyAssignments[scannerId] = createPlateAssignments(scannerGridMode);
+            emptyAssignments[scannerId] =
+              createPlateAssignments(scannerGridMode);
           }
           setScannerPlateAssignments(emptyAssignments);
           return;
@@ -375,6 +378,8 @@ export function usePlateAssignments({
           return {
             ...pos,
             plantBarcode: plate.plate_id,
+            transplantDate: plate.transplant_date,
+            customNote: plate.custom_note,
             selected: true,
           };
         }
@@ -396,6 +401,8 @@ export function usePlateAssignments({
               assignments.map((a) => ({
                 plate_index: a.plateIndex,
                 plate_barcode: a.plantBarcode,
+                transplant_date: a.transplantDate ?? null,
+                custom_note: a.customNote ?? null,
                 selected: a.selected,
               }))
             )
