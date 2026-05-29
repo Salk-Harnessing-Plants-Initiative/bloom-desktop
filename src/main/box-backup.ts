@@ -291,8 +291,33 @@ interface ScanRow {
   image_filename: string;
 }
 
+interface PlateRow {
+  plate_id: string;
+  accession: string;
+  transplant_date: Date | null;
+  custom_note: string | null;
+}
+
+interface SectionRow {
+  plate_id: string;
+  section_id: string;
+  plant_qr: string;
+  medium: string | null;
+}
+
+// CSV cells may carry commas, quotes, or newlines (from custom_note free text).
+// Quote any cell containing those and escape embedded quotes.
+function csvCell(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const s = String(value);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
 /**
- * Export metadata CSV with scan-level data (wave_number from GraviScan).
+ * Per-scan metadata (one row per image).
  */
 function exportMetadataCSV(
   experimentName: string,
@@ -306,20 +331,78 @@ function exportMetadataCSV(
   for (const r of scanRows) {
     rows.push(
       [
-        experimentName,
-        r.wave_number,
-        r.plate_barcode ?? '',
-        r.plate_index,
-        r.grid_mode,
-        r.capture_date.toISOString(),
-        r.accession,
-        r.transplant_date ? r.transplant_date.toISOString().split('T')[0] : '',
-        r.custom_note ?? '',
-        r.image_filename,
+        csvCell(experimentName),
+        csvCell(r.wave_number),
+        csvCell(r.plate_barcode),
+        csvCell(r.plate_index),
+        csvCell(r.grid_mode),
+        csvCell(r.capture_date.toISOString()),
+        csvCell(r.accession),
+        csvCell(
+          r.transplant_date ? r.transplant_date.toISOString().split('T')[0] : ''
+        ),
+        csvCell(r.custom_note),
+        csvCell(r.image_filename),
       ].join(',')
     );
   }
 
+  return rows.join('\n') + '\n';
+}
+
+/**
+ * Per-plate metadata (one row per plate in the wave's linked accession).
+ * Comes from GraviPlateAccession + GraviExperimentWaveMetadata lookup.
+ */
+function exportPlatesCSV(
+  experimentName: string,
+  waveNumber: number,
+  plateRows: PlateRow[]
+): string {
+  const rows: string[] = [];
+  rows.push(
+    'experiment,wave_number,plate_id,accession,transplant_date,custom_note'
+  );
+  for (const p of plateRows) {
+    rows.push(
+      [
+        csvCell(experimentName),
+        csvCell(waveNumber),
+        csvCell(p.plate_id),
+        csvCell(p.accession),
+        csvCell(
+          p.transplant_date ? p.transplant_date.toISOString().split('T')[0] : ''
+        ),
+        csvCell(p.custom_note),
+      ].join(',')
+    );
+  }
+  return rows.join('\n') + '\n';
+}
+
+/**
+ * Per-section metadata (one row per plate section in the wave's linked accession).
+ * Comes from GraviPlateSectionMapping joined to the wave's plates.
+ */
+function exportSectionsCSV(
+  experimentName: string,
+  waveNumber: number,
+  sectionRows: SectionRow[]
+): string {
+  const rows: string[] = [];
+  rows.push('experiment,wave_number,plate_id,section_id,plant_qr,medium');
+  for (const s of sectionRows) {
+    rows.push(
+      [
+        csvCell(experimentName),
+        csvCell(waveNumber),
+        csvCell(s.plate_id),
+        csvCell(s.section_id),
+        csvCell(s.plant_qr),
+        csvCell(s.medium),
+      ].join(',')
+    );
+  }
   return rows.join('\n') + '\n';
 }
 
@@ -383,12 +466,45 @@ export async function runBoxBackup(
     return result;
   }
 
+  // Wave-aware metadata lookup: (experiment_id, wave_number) → linked accession's plates.
+  // GraviScan experiments link metadata via GraviExperimentWaveMetadata (one per wave),
+  // not via the legacy Experiment.accession_id. Build a map up front.
+  const involvedExperimentIds = Array.from(
+    new Set(scans.map((s) => s.experiment_id))
+  );
+  const waveLinks = await db.graviExperimentWaveMetadata.findMany({
+    where: { experiment_id: { in: involvedExperimentIds } },
+    include: {
+      accession: {
+        include: {
+          graviPlateAccessions: { include: { sections: true } },
+        },
+      },
+    },
+  });
+  const waveAccessionMap = new Map<
+    string,
+    (typeof waveLinks)[number]['accession']['graviPlateAccessions']
+  >();
+  for (const link of waveLinks) {
+    waveAccessionMap.set(
+      `${link.experiment_id}::${link.wave_number}`,
+      link.accession.graviPlateAccessions
+    );
+  }
+
   // Group scans by experiment name → wave number
   const experimentWaveMap = new Map<
     string,
     Map<
       number,
-      { imageIds: string[]; imagePaths: string[]; scanRows: ScanRow[] }
+      {
+        imageIds: string[];
+        imagePaths: string[];
+        scanRows: ScanRow[];
+        plateRows: PlateRow[];
+        sectionRows: SectionRow[];
+      }
     >
   >();
 
@@ -401,13 +517,42 @@ export async function runBoxBackup(
     const waveMap = experimentWaveMap.get(expName)!;
     const waveNum = scan.wave_number;
     if (!waveMap.has(waveNum)) {
-      waveMap.set(waveNum, { imageIds: [], imagePaths: [], scanRows: [] });
+      // First scan we see for this (experiment, wave) — also seed plate/section
+      // rows from the wave-linked accession so plates.csv + sections.csv get
+      // emitted alongside metadata.csv.
+      const waveKey = `${scan.experiment_id}::${waveNum}`;
+      const platesForWave = waveAccessionMap.get(waveKey) ?? [];
+      const plateRows: PlateRow[] = platesForWave.map((p) => ({
+        plate_id: p.plate_id,
+        accession: p.accession,
+        transplant_date: p.transplant_date,
+        custom_note: p.custom_note,
+      }));
+      const sectionRows: SectionRow[] = platesForWave.flatMap((p) =>
+        p.sections.map((s) => ({
+          plate_id: p.plate_id,
+          section_id: s.plate_section_id,
+          plant_qr: s.plant_qr,
+          medium: s.medium,
+        }))
+      );
+      waveMap.set(waveNum, {
+        imageIds: [],
+        imagePaths: [],
+        scanRows: [],
+        plateRows,
+        sectionRows,
+      });
     }
 
-    // Look up accession from plate accessions if available
-    const plateAccessions =
-      scan.experiment.accession?.graviPlateAccessions ?? [];
-    const matchedAccession = plateAccessions.find(
+    // Wave-aware accession lookup: GraviScan experiments use
+    // GraviExperimentWaveMetadata, not the legacy Experiment.accession_id.
+    // Fall back to the legacy path for cylinderscan-shaped data.
+    const wavePlates =
+      waveAccessionMap.get(`${scan.experiment_id}::${waveNum}`) ??
+      scan.experiment.accession?.graviPlateAccessions ??
+      [];
+    const matchedAccession = wavePlates.find(
       (pa) => pa.plate_id === scan.plate_barcode
     );
     const accession = matchedAccession?.accession ?? '';
@@ -516,28 +661,61 @@ export async function runBoxBackup(
         });
       }
 
-      // Export and copy metadata CSV per wave
-      if (data.scanRows.length > 0) {
-        const csvContent = exportMetadataCSV(expName, data.scanRows);
-        const tmpCsvPath = path.join(
-          os.tmpdir(),
-          `graviscan-metadata-${expName}-wave${waveNum}.csv`
-        );
+      // Export and copy CSV files per wave. Three separate files so each level
+      // (scan, plate, section) can be consumed independently downstream and
+      // joined on (experiment, wave_number, plate_id) when needed.
+      const csvJobs: Array<{
+        rowsLen: number;
+        content: string;
+        tmpName: string;
+        boxName: string;
+      }> = [];
 
+      if (data.scanRows.length > 0) {
+        csvJobs.push({
+          rowsLen: data.scanRows.length,
+          content: exportMetadataCSV(expName, data.scanRows),
+          tmpName: `graviscan-metadata-${expName}-wave${waveNum}.csv`,
+          boxName: 'metadata.csv',
+        });
+      }
+      if (data.plateRows.length > 0) {
+        csvJobs.push({
+          rowsLen: data.plateRows.length,
+          content: exportPlatesCSV(expName, waveNum, data.plateRows),
+          tmpName: `graviscan-plates-${expName}-wave${waveNum}.csv`,
+          boxName: 'plates.csv',
+        });
+      }
+      if (data.sectionRows.length > 0) {
+        csvJobs.push({
+          rowsLen: data.sectionRows.length,
+          content: exportSectionsCSV(expName, waveNum, data.sectionRows),
+          tmpName: `graviscan-sections-${expName}-wave${waveNum}.csv`,
+          boxName: 'sections.csv',
+        });
+      }
+
+      for (const job of csvJobs) {
+        const tmpCsvPath = path.join(os.tmpdir(), job.tmpName);
         try {
-          fs.writeFileSync(tmpCsvPath, csvContent, 'utf-8');
+          fs.writeFileSync(tmpCsvPath, job.content, 'utf-8');
           const csvResult = await rcloneCopyFile(
             tmpCsvPath,
-            'metadata.csv',
+            job.boxName,
             boxDest
           );
           if (!csvResult.success) {
             result.errors.push(
-              `${expName}/wave_${waveNum} metadata: ${csvResult.error}`
+              `${expName}/wave_${waveNum} ${job.boxName}: ${csvResult.error}`
             );
             console.error(
-              `[BoxBackup] Failed to copy metadata for ${expName}/wave_${waveNum}:`,
+              `[BoxBackup] Failed to copy ${job.boxName} for ${expName}/wave_${waveNum}:`,
               csvResult.error
+            );
+          } else {
+            console.log(
+              `[BoxBackup] Uploaded ${job.boxName} (${job.rowsLen} rows) for ${expName}/wave_${waveNum}`
             );
           }
         } finally {
