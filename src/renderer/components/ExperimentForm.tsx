@@ -53,6 +53,14 @@ const experimentSchema = z.object({
   experiment_type: z.enum(['cylinder', 'graviscan']),
   scientist_id: z.string().min(1, 'Scientist is required'),
   accession_id: z.string().min(1, 'Accession is required'),
+  // GraviScan-only: which wave does the chosen metadata file belong to.
+  // Defaults to 0 (first wave) but the operator can pick anything when
+  // seeding a wave directly (e.g. importing corrected wave-5 metadata
+  // into a freshly created experiment).
+  wave_number: z.coerce
+    .number()
+    .int('Wave number must be a whole number')
+    .min(0, 'Wave number cannot be negative'),
 });
 
 type ExperimentFormData = z.infer<typeof experimentSchema>;
@@ -95,6 +103,7 @@ export function ExperimentForm({
       experiment_type: APP_MODE === 'graviscan' ? 'graviscan' : 'cylinder',
       scientist_id: '',
       accession_id: '',
+      wave_number: 0,
     },
   });
 
@@ -127,12 +136,13 @@ export function ExperimentForm({
         return;
       }
 
-      // GraviScan: link the chosen metadata file to wave 0
+      // GraviScan: link the chosen metadata file to the wave the operator
+      // picked. Defaults to 0 if untouched (first wave of a new experiment).
       if (isGraviscanSubmit) {
         const linkResult =
           await window.electron.database.experiments.linkGraviMetadata(
             result.data.id,
-            0,
+            data.wave_number,
             data.accession_id
           );
         if (!linkResult.success) {
@@ -150,6 +160,7 @@ export function ExperimentForm({
         experiment_type: APP_MODE === 'graviscan' ? 'graviscan' : 'cylinder',
         scientist_id: '',
         accession_id: '',
+        wave_number: 0,
       });
       onSuccess();
     } catch (error) {
@@ -275,7 +286,7 @@ export function ExperimentForm({
           htmlFor="accession-select"
           className="block text-xs font-bold mb-1"
         >
-          {isGraviscan ? 'Metadata File (Wave 0)' : 'Accession File'}
+          {isGraviscan ? 'Metadata File' : 'Accession File'}
         </label>
         <select
           id="accession-select"
@@ -296,6 +307,35 @@ export function ExperimentForm({
           </p>
         )}
       </div>
+
+      {isGraviscan && (
+        <div className="mb-4">
+          <label
+            htmlFor="wave-number-input"
+            className="block text-xs font-bold mb-1"
+          >
+            Link to wave
+          </label>
+          <input
+            id="wave-number-input"
+            type="number"
+            min={0}
+            step={1}
+            {...register('wave_number')}
+            className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-[200px] border border-gray-300"
+            disabled={isSubmitting}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Which wave does this metadata file belong to? Use 0 for the first
+            wave of a new experiment.
+          </p>
+          {errors.wave_number && (
+            <p className="mt-1 text-xs text-red-600">
+              {errors.wave_number.message}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-center">
         <button
