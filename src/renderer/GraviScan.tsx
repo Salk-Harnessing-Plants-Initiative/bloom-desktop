@@ -537,32 +537,55 @@ export function GraviScan() {
           const duplicates = Object.entries(verificationResults).filter(
             ([, r]) => r.status === 'duplicate_qr'
           );
-          const hasIssues = needsReview.length > 0 || duplicates.length > 0;
+          const unreadable = Object.entries(verificationResults).filter(
+            ([, r]) => r.status === 'unreadable'
+          );
+          // unreadable is an issue too — without it, an all-unreadable run
+          // would show the green "Complete" banner with no detail, which
+          // looks like everything passed when in fact nothing was verified.
+          const hasIssues =
+            needsReview.length > 0 ||
+            duplicates.length > 0 ||
+            unreadable.length > 0;
+
+          // Severity: duplicate > unreadable > needs_review > none.
+          // Duplicates are red (data corruption risk); the others are amber.
+          const severity =
+            duplicates.length > 0
+              ? 'red'
+              : unreadable.length > 0 || needsReview.length > 0
+                ? 'amber'
+                : 'green';
+
+          const title =
+            duplicates.length > 0
+              ? 'QR Verification — Duplicate QR Codes Detected'
+              : unreadable.length > 0
+                ? 'QR Verification — Some Plates Unreadable'
+                : needsReview.length > 0
+                  ? 'QR Verification — Manual Review Needed'
+                  : 'QR Verification Complete';
 
           return (
             <div
               className={`rounded-lg p-4 ${
-                hasIssues
-                  ? duplicates.length > 0
-                    ? 'bg-red-50 border border-red-200'
-                    : 'bg-amber-50 border border-amber-200'
-                  : 'bg-green-50 border border-green-200'
+                severity === 'red'
+                  ? 'bg-red-50 border border-red-200'
+                  : severity === 'amber'
+                    ? 'bg-amber-50 border border-amber-200'
+                    : 'bg-green-50 border border-green-200'
               }`}
             >
               <span
                 className={`text-sm font-medium ${
-                  hasIssues
-                    ? duplicates.length > 0
-                      ? 'text-red-700'
-                      : 'text-amber-700'
-                    : 'text-green-700'
+                  severity === 'red'
+                    ? 'text-red-700'
+                    : severity === 'amber'
+                      ? 'text-amber-700'
+                      : 'text-green-700'
                 }`}
               >
-                {duplicates.length > 0
-                  ? 'QR Verification — Duplicate QR Codes Detected'
-                  : needsReview.length > 0
-                    ? 'QR Verification — Manual Review Needed'
-                    : 'QR Verification Complete'}
+                {title}
               </span>
               {duplicates.length > 0 && (
                 <div className="mt-2 text-xs text-red-600 space-y-1">
@@ -574,6 +597,16 @@ export function GraviScan() {
                           ({r.duplicateQrCodes.join(', ')})
                         </span>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {unreadable.length > 0 && (
+                <div className="mt-2 text-xs text-amber-700 space-y-1">
+                  {unreadable.map(([key]) => (
+                    <div key={key}>
+                      Grid {key.split(':')[1]}: no QR code detected — operator
+                      should inspect the image
                     </div>
                   ))}
                 </div>
@@ -594,6 +627,11 @@ export function GraviScan() {
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+              {!hasIssues && (
+                <div className="mt-2 text-xs text-green-600">
+                  {Object.keys(verificationResults).length} plate(s) verified.
                 </div>
               )}
             </div>

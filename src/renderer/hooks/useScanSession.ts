@@ -282,7 +282,20 @@ export function useScanSession({
   async function runPostScanVerification() {
     // Get completed jobs from the scan session
     const status = await window.electron.graviscan.getScanStatus();
-    if (!status?.jobs) return null;
+    if (!status?.jobs) {
+      // Session state already torn down — surface this rather than vanishing
+      // silently so the operator knows verification was attempted.
+      console.warn(
+        '[GraviScan:VERIFY] No scan session state; skipping verification'
+      );
+      showToast({
+        type: 'warning',
+        message:
+          'QR verification skipped — scan session state unavailable. ' +
+          'Inspect images on the Browse Scans page instead.',
+      });
+      return null;
+    }
 
     console.log(
       '[GraviScan:VERIFY] Session jobs:',
@@ -298,8 +311,13 @@ export function useScanSession({
       assignedPlateId: string;
     }> = [];
 
+    // Track skip reasons so we can explain why no plates were eligible.
+    let skippedNotComplete = 0;
+    let skippedNoBarcode = 0;
+
     for (const [key, job] of Object.entries(status.jobs)) {
       if (job.status !== 'complete' || !job.imagePath) {
+        skippedNotComplete++;
         console.log(
           `[GraviScan:VERIFY] Skipping job ${key}: status=${job.status}, imagePath=${job.imagePath ? 'yes' : 'no'}`
         );
@@ -313,6 +331,7 @@ export function useScanSession({
       );
 
       if (!assignment?.plantBarcode) {
+        skippedNoBarcode++;
         console.log(
           `[GraviScan:VERIFY] Skipping job ${key}: no plantBarcode in assignment. Scanner ${job.scannerId}, plate ${job.plateIndex}, assignments count: ${assignments.length}`
         );
@@ -328,7 +347,27 @@ export function useScanSession({
     }
 
     if (plates.length === 0) {
-      console.log('[GraviScan] No plates to verify, skipping');
+      console.warn(
+        `[GraviScan:VERIFY] No plates to verify (skipped: ${skippedNotComplete} not-complete, ${skippedNoBarcode} no-barcode)`
+      );
+      // The two skip causes have very different operator implications, so
+      // surface them distinctly rather than a single "skipped" message.
+      if (skippedNoBarcode > 0 && skippedNotComplete === 0) {
+        showToast({
+          type: 'warning',
+          message: `QR verification skipped — ${skippedNoBarcode} plate(s) had no assigned barcode.`,
+        });
+      } else if (skippedNotComplete > 0 && skippedNoBarcode === 0) {
+        showToast({
+          type: 'warning',
+          message: `QR verification skipped — ${skippedNotComplete} plate scan(s) didn't complete.`,
+        });
+      } else {
+        showToast({
+          type: 'warning',
+          message: `QR verification skipped — no plates eligible (${skippedNoBarcode} no-barcode, ${skippedNotComplete} not-complete).`,
+        });
+      }
       return null;
     }
 
