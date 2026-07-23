@@ -1,6 +1,6 @@
 # Lint & Format Code
 
-Run linting and formatting checks across TypeScript and Python code to ensure code quality and consistent style.
+Run linting and formatting checks across TypeScript and Python code to ensure code quality and consistent style. This command is **check-only**; to auto-fix formatting, use `/fix-formatting`.
 
 ## Commands
 
@@ -105,5 +105,7 @@ All linting and formatting checks run in CI (`.github/workflows/pr-checks.yml`):
 
 ## Related Commands
 
+- `/fix-formatting` - Auto-fix style issues (this command only checks)
 - `/coverage` - Check test coverage after fixing code
 - `/pr-description` - Create PR with linting verification checklist
+- `/pre-merge` - Full gate: format-check + lint + typecheck + test + build

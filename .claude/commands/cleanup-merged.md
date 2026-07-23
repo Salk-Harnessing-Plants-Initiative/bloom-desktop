@@ -4,7 +4,17 @@ Clean up a feature branch after PR is merged and archive completed OpenSpec prop
 
 ## Commands
 
-### Step 1: Switch to Main and Pull Latest
+### Step 1: Confirm the PR is actually merged
+
+Never delete a branch before GitHub confirms the PR merged.
+
+```bash
+gh pr view <pr-number> --json state,mergedAt,headRefName
+```
+
+Proceed **only if** `"state": "MERGED"`. If it is `OPEN` or `CLOSED` (not merged), stop — do not delete the branch.
+
+### Step 2: Switch to Main and Pull Latest
 
 ```bash
 # Switch to main branch
@@ -14,27 +24,32 @@ git checkout main
 git pull origin main
 ```
 
-### Step 2: Delete Local Feature Branch
+### Step 3: Delete Local Feature Branch
 
 ```bash
 # Delete local feature branch (use -D if branch wasn't fully merged locally)
 git branch -d <branch-name>
 
-# Or force delete if needed
+# Or force delete if needed — only after Step 1 confirmed state == MERGED
 git branch -D <branch-name>
 ```
 
-### Step 3: Delete Remote Feature Branch
+On a **squash merge**, git prints `warning: the branch '<branch>' is not yet merged to HEAD` because the squashed commit is not an ancestor of `main`. **This is expected and the delete still succeeds** with `-D` once Step 1 has confirmed the PR is merged.
+
+### Step 4: Delete Remote Feature Branch and Prune
 
 ```bash
-# Delete remote branch
+# Delete remote branch (skip if GitHub already auto-deleted it on merge)
 git push origin --delete <branch-name>
 
 # Or using GitHub CLI
 gh pr view <pr-number> --json headRefName --jq '.headRefName' | xargs -I {} git push origin --delete {}
+
+# Prune the stale remote-tracking ref either way
+git fetch --prune origin
 ```
 
-### Step 4: Archive Completed OpenSpec Proposals
+### Step 5: Archive Completed OpenSpec Proposals
 
 **CRITICAL**: You must be on the `main` branch (after pulling the merged PR) before archiving. Archiving on a feature branch will not update the base specs on main.
 
@@ -63,7 +78,7 @@ npx openspec archive fix-code-review-findings --yes    # depends on specs from a
 npx openspec archive fix-copilot-review-findings --yes
 ```
 
-### Step 5: Verify Archives
+### Step 6: Verify Archives
 
 ```bash
 # List archived proposals
@@ -260,7 +275,7 @@ gh pr view --web
 
 - `/pr-description` - Template used before merge
 - `/review-pr` - Checklist used during review
-- `/changelog` - Update changelog after merge
+- `/update-changelog` - Update changelog after merge
 
 ## Best Practices
 
@@ -277,8 +292,9 @@ gh pr view --web
 
 After cleanup, verify:
 
+- [ ] `gh pr view <n> --json state` showed `MERGED` before any branch deletion
 - [ ] Local branch deleted: `git branch` doesn't show old branch
-- [ ] Remote branch deleted: `git branch -r` doesn't show origin/branch
+- [ ] Remote branch deleted and pruned: `git branch -r` doesn't show origin/branch
 - [ ] Main is up to date: `git status` shows "up to date with origin/main"
 - [ ] OpenSpec proposals archived: `openspec list` shows no active changes
 - [ ] Specs updated: New specs in `openspec/specs/` (if applicable)

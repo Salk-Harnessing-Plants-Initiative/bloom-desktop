@@ -27,9 +27,10 @@ gh pr diff $PR_NUMBER
 gh pr checks $PR_NUMBER
 
 # Get any existing Copilot review comments
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 gh api graphql -f query='
 query {
-  repository(owner: "Salk-Harnessing-Plants-Initiative", name: "bloom-desktop") {
+  repository(owner: "'"${REPO%%/*}"'", name: "'"${REPO##*/}"'") {
     pullRequest(number: '$PR_NUMBER') {
       reviews(first: 10) {
         nodes {

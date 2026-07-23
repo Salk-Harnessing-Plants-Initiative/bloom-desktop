@@ -88,12 +88,12 @@ The system SHALL provide a `/review-pr` command that provides a comprehensive co
 
 ### Requirement: Changelog Command
 
-The system SHALL provide a `/changelog` command that documents version tracking and changelog format.
+The system SHALL provide a `/update-changelog` command that documents version tracking and changelog format.
 
 #### Scenario: Developer adds changelog entry
 
 - **GIVEN** a developer has completed a feature
-- **WHEN** they invoke `/changelog` command
+- **WHEN** they invoke `/update-changelog` command
 - **THEN** the command SHALL document standard changelog format (Added, Changed, Fixed, etc.)
 - **AND** SHALL provide examples of good changelog entries
 - **AND** SHALL document tracking of dependency versions (Electron, Python, Node.js)
