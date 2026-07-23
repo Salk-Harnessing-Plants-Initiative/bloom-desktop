@@ -8,22 +8,27 @@ Run all quality checks, create PR, review feedback, and update changelog before 
 
 Perform a complete pre-merge check following this workflow:
 
+### Phase 0: Fast Sweep (optional shortcut)
+
+0. **Environment + CI reproduction**
+   - First time on this machine, or after dependency changes: run `/validate-env`
+   - Run `/run-ci-locally` to reproduce CI jobs 1-6 (format, lint, typecheck, unit tests, build) in one pass — this covers the same ground as Phases 1-2 below in less detail. Use it as a fast gate; fall back to the phase-by-phase steps below if it fails and you need to isolate which check broke.
+
 ### Phase 1: Code Quality Checks
 
-1. **Linting**
-   - Run `/lint` command
+1. **Formatting**
+   - Run `/fix-formatting` if you know there are formatting issues; otherwise run `npm run format:check` / `uv run black --check python/` directly
+   - Commit any formatting changes separately from logic changes
+
+2. **Linting**
+   - Run `/lint` command (ESLint + ruff, check-only)
    - Verify no errors or warnings
    - If failures: fix them and re-run
 
-2. **TypeScript Type Checking**
-   - Run `npx tsc --noEmit`
+3. **TypeScript Type Checking**
+   - Run `npx prisma generate && npx tsc --noEmit`
    - Verify no type errors
    - If failures: fix them and re-run
-
-3. **Formatting**
-   - Run `npm run format`
-   - Verify all files formatted
-   - Commit any formatting changes
 
 ### Phase 2: Test Coverage
 
@@ -67,7 +72,7 @@ Perform a complete pre-merge check following this workflow:
    - Check if current branch has an active OpenSpec proposal
    - Verify all tasks in `tasks.md` are completed
    - Ensure acceptance criteria are met
-   - Note: After merge, use `/cleanup-branch` to archive proposals on main (do NOT archive on the feature branch)
+   - Note: After merge, use `/cleanup-merged` to archive proposals on main (do NOT archive on the feature branch)
 
 ### Phase 6: Pull Request
 
@@ -101,6 +106,7 @@ Perform a complete pre-merge check following this workflow:
 ### Phase 8: Review Feedback
 
 12. **Review PR Comments**
+    - Run `/copilot-review` to fetch and triage GitHub Copilot inline comments specifically
     - Run `/review-pr` command
     - Check for GitHub Actions failures
     - Review comments from:
@@ -121,7 +127,7 @@ Perform a complete pre-merge check following this workflow:
 ### Phase 9: Changelog
 
 14. **Update Changelog**
-    - Run `/changelog` command
+    - Run `/update-changelog` command
     - Add entry for this PR
     - Follow semantic versioning
     - Include migration notes if needed
@@ -138,7 +144,7 @@ Perform a complete pre-merge check following this workflow:
 
 ## Output Format
 
-Provide a comprehensive summary in this format:
+Use the three-state checkbox convention from `/pr-description`: `[x]` verified green, `[!]` pre-existing failure on `main` (link the issue), `[ ]` not yet verified / doesn't apply. Provide a comprehensive summary in this format:
 
 ```markdown
 # Pre-Merge Check Results
@@ -213,3 +219,17 @@ Run this command before:
 - Use judgment to skip irrelevant checks but document why
 - If OpenSpec is not being used, skip that phase
 - For hotfixes, abbreviated checks may be acceptable (document reasoning)
+
+## Related Commands
+
+- `/validate-env` - confirm environment is healthy (Phase 0, first-time/after dependency changes)
+- `/run-ci-locally` - fast local reproduction of CI jobs 1-6 (Phase 0 shortcut for Phases 1-2)
+- `/fix-formatting` - auto-format before the check
+- `/lint` - lint + typecheck
+- `/coverage` - test coverage report
+- `/copilot-review` - triage GitHub Copilot inline comments
+- `/review-pr` - adversarial multi-lens PR review
+- `/ci-debug` - debug a failing CI run
+- `/update-changelog` - maintain the changelog
+- `/pr-description` - generate the PR body
+- `/cleanup-merged` - post-merge branch cleanup + OpenSpec archive

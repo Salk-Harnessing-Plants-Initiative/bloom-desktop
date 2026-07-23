@@ -18,6 +18,24 @@ gh pr diff --name-only
 gh pr checks
 ```
 
+## Checkbox Convention (READ FIRST)
+
+Use a three-state convention for verification checkboxes — don't tick `[x]` out of habit:
+
+- `[x]` — Verified green. You ran the command and it passed.
+- `[!]` — Pre-existing failure on `main`. This PR introduces no new failures. Link the issue tracking the baseline bug.
+- `[ ]` — Not yet verified, or doesn't apply.
+
+The `[!]` state exists because docs/config/refactor PRs often inherit lint/typecheck/build failures that already exist on `main`. Ticking `[x]` on those would be a false claim.
+
+Example:
+
+```
+- [x] Unit tests pass — 47 passing
+- [!] `npm run format:check` fails on pre-existing issue (#12), not introduced here
+- [ ] Coverage check (not run — no new code added)
+```
+
 ## PR Description Template
 
 ```markdown
@@ -30,6 +48,15 @@ gh pr checks
 - [Bullet point list of specific changes]
 - [Group related changes together]
 - [Use present tense: "Add X", "Fix Y", "Update Z"]
+
+## OpenSpec Change
+
+- Change ID: `<change-id>`
+- Affected capabilities: `<capability-1>`, `<capability-2>`
+- Delta types: ADDED / MODIFIED / REMOVED
+- All `tasks.md` items complete: yes/no
+
+(If this PR is too small for an OpenSpec proposal — typo, dep bump, test-only — say "No OpenSpec change: <reason>".)
 
 ## Testing
 
@@ -66,7 +93,7 @@ gh pr checks
 
 ## Build & Packaging
 
-- [ ] TypeScript compiles without errors (`npm run compile`)
+- [ ] TypeScript compiles without errors (`npx prisma generate && npx tsc --noEmit`)
 - [ ] Python executable builds successfully (`npm run build:python`)
 - [ ] Packaged app tested (`npm run package` and manual verification) - if packaging changes
 
@@ -229,4 +256,7 @@ Closes #47 (IPC race condition on Windows)
 
 - `/lint` - Run linting before creating PR
 - `/coverage` - Check coverage before creating PR
+- `/pre-merge` - Full pre-merge gate before opening this PR
 - `/review-pr` - Use this checklist when reviewing PRs
+- `/copilot-review` - Fetch and triage GitHub Copilot inline comments
+- `/cleanup-merged` - Post-merge cleanup workflow

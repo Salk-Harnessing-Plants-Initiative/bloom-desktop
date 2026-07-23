@@ -1,105 +1,142 @@
-# View GitHub Copilot Review Comments
+Find and display all GitHub Copilot inline review comments on the current branch's pull request, then offer to address them.
 
-**Quick command to view all GitHub Copilot inline code review comments for a PR**
-
-## Quick Usage (GraphQL - Recommended)
+## Step 1: Find the PR
 
 ```bash
-# For specific PR number (simpler, more reliable)
+BRANCH=$(git branch --show-current)
+gh pr list --state open --head "$BRANCH"
+```
+
+If no PR exists, inform the user and exit — create one with `/pr-description` first.
+
+## Step 2: Get PR Number
+
+Extract the PR number from the list output.
+
+## Step 3: Fetch Copilot Review via GraphQL
+
+Resolve the repo dynamically — never hardcode the owner/name:
+
+```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+
 gh api graphql -f query='
 query {
-  repository(owner: "Salk-Harnessing-Plants-Initiative", name: "bloom-desktop") {
-    pullRequest(number: PR_NUMBER) {
+  repository(owner: "'"${REPO%%/*}"'", name: "'"${REPO##*/}"'") {
+    pullRequest(number: <PR_NUMBER>) {
       reviews(first: 10) {
         nodes {
           author { login }
+          body
           comments(first: 50) {
-            nodes {
-              path
-              line
-              body
-            }
+            nodes { path line body diffHunk }
           }
         }
       }
     }
   }
-}
-' --jq '.data.repository.pullRequest.reviews.nodes[] | select(.author.login | contains("opilot")) | .comments.nodes[] | "File: \(.path):\(.line)\n\(.body)\n" + ("="*80)'
+}' --jq '.data.repository.pullRequest.reviews.nodes[] | select(.author.login | contains("opilot")) | .comments.nodes[] | "File: \(.path):\(.line)\n\(.body)\n" + ("="*80)'
 ```
 
-## Alternative: REST API
+### Alternative: REST API
 
 ```bash
-# View Copilot comments for specific PR (REST API)
-gh api repos/Salk-Harnessing-Plants-Initiative/bloom-desktop/pulls/PR_NUMBER/comments --jq '.[] | "File: \(.path):\(.line // .original_line)\n\(.body)\n" + ("="*80)'
-
-# For current PR dynamically
-gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/$(gh pr view --json number -q .number)/comments --jq '.[] | "File: \(.path):\(.line // .original_line)\n\(.body)\n" + ("="*80)'
+gh api repos/$REPO/pulls/<PR_NUMBER>/comments --jq '.[] | "File: \(.path):\(.line // .original_line)\n\(.body)\n" + ("="*80)'
 ```
 
-## What This Does
+- GitHub Copilot inline comments come from user **"Copilot"**.
+- Review summaries come from **"copilot-pull-request-reviewer[bot]"**.
+- GraphQL fetches both review body and inline comments in one call; REST requires separate calls for reviews vs. comments.
 
-1. Fetches all inline code review comments from Copilot
-2. Formats each comment showing:
-   - File path and line number
-   - Comment body
-   - Separator line between comments
+## Step 4: Parse Copilot Comments
 
-## Important Notes
+From the response, extract:
 
-- GitHub Copilot inline comments come from user **"Copilot"**
-- Review summaries come from **"copilot-pull-request-reviewer[bot]"**
-- GraphQL approach can fetch both in one query (more efficient)
-- REST API requires separate calls for reviews vs comments
+- Reviews where `author.login` matches Copilot
+- `body` — the overview, which may contain a "Comments suppressed due to low confidence" note
+- Inline comments, each with `path`, `body`, and `diffHunk`
 
-## Get Review Summary
+## Step 5: Categorize
 
-To see the overall review summary from Copilot:
+Organize all Copilot feedback into priority tiers:
 
-```bash
-# GraphQL (gets review body + inline comments in one call)
-gh api graphql -f query='
-query {
-  repository(owner: "Salk-Harnessing-Plants-Initiative", name: "bloom-desktop") {
-    pullRequest(number: PR_NUMBER) {
-      reviews(first: 10) {
-        nodes {
-          author { login }
-          state
-          body
-          submittedAt
-        }
-      }
-    }
-  }
-}
-' --jq '.data.repository.pullRequest.reviews.nodes[] | select(.author.login | contains("opilot")) | {state, submitted: .submittedAt, body}'
+1. **High Priority** — bugs, type errors, security issues, process-boundary violations (renderer/main/Python)
+2. **Medium Priority** — code quality, maintainability, best practices
+3. **Low Priority / Informational** — style suggestions, optimizations, low-confidence notes
 
-# REST API
-gh api repos/Salk-Harnessing-Plants-Initiative/bloom-desktop/pulls/PR_NUMBER/reviews --jq '.[] | select(.user.login | contains("copilot")) | {state: .state, submitted_at: .submitted_at, body: .body}'
+## Step 6: Display Formatted Summary
+
+```markdown
+# GitHub Copilot Review for PR #<N>
+
+**Branch**: <branch-name>
+**PR Title**: <title>
+**Repo**: <owner>/<repo>
+
+## Overview
+
+[Copilot's general PR overview comment]
+
+## High Priority Issues (<count>)
+
+1. **File**: path/to/file:42
+   - **Issue**: Description of the problem
+   - **Suggestion**: What Copilot recommends
+   - **Confidence**: High / Medium / Low
+   - **Status**: Open / Fixed in <commit>
+
+## Medium Priority Suggestions (<count>)
+
+[Same format]
+
+## Low Priority / Informational (<count>)
+
+[Same format]
+
+## Summary
+
+- Total comments: <N>
+- High priority: <N>
+- Medium priority: <N>
+- Low priority / informational: <N>
+
+## Recommended Actions
+
+- [Specific tasks to address the feedback]
 ```
 
-## Typical Copilot Comments Include
+## Step 7: Offer to Address
 
-- Code quality suggestions
-- Error handling improvements
-- Type safety recommendations
-- Best practice violations
-- Inconsistencies with documented patterns
-- Missing edge case handling
+After displaying the summary, ask the user:
+
+```
+Would you like me to:
+1. Address all high-priority issues now
+2. Create a plan to address specific issues
+3. Explain any of these suggestions in detail
+4. Mark low-confidence suggestions as reviewed (document why they're being skipped)
+```
+
+## Edge Cases
+
+- **No Copilot comments** — report "No GitHub Copilot comments found on this PR."
+- **PR not found** — suggest creating a PR via `/pr-description` first.
+- **Multiple open PRs for this branch** — list all and ask which to check.
+- **Copilot not enabled** — inform the user that Copilot reviews aren't enabled for this repo.
+
+## Best Practices
+
+- Always run this before requesting human review.
+- Address high-confidence suggestions promptly.
+- Evaluate low-confidence suggestions carefully — they may be false positives.
+- When ignoring a suggestion, document why in the PR or a code comment.
 
 ## Integration with Pre-Merge Checks
 
-This command should be run as part of the pre-merge workflow (Phase 8: Review Feedback) to ensure all Copilot feedback is addressed before merging.
+This command runs as part of `/pre-merge` (Phase 8: Review Feedback) to ensure all Copilot feedback is addressed before merging.
 
-## Example Output
+## Related Commands
 
-```
-File: src/main/database-handlers.ts:310
-Empty string fallback for optional genotype_id creates inconsistent data. Should use `null` or `undefined` for missing optional values...
-================================================================================
-File: src/renderer/components/AccessionList.tsx:56
-Missing error handling when edit save fails. If `result.success` is false, the user is left in edit mode with no feedback...
-================================================================================
-```
+- `/review-pr` - adversarial multi-lens PR review (includes a Copilot check pass)
+- `/pre-merge` - full pre-merge gate (includes this command)
+- `/ci-debug` - debug CI failures that Copilot may have flagged
