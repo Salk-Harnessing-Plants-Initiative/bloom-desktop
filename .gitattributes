@@ -1,0 +1,13 @@
+# Normalize all text files to LF line endings on checkin, regardless of a
+# contributor's local core.autocrlf setting. This matches what Prettier
+# writes by default and what the Linux CI runners already use, avoiding
+# the CRLF/LF "noise" that made git status report hundreds of unmodified
+# files as changed on Windows checkouts (see issue #253).
+* text=auto eol=lf
+
+# Explicit binary overrides for tracked binary assets. git's text=auto
+# heuristic (NUL-byte detection) would likely classify these correctly on
+# its own, but pinning them avoids any risk of accidental normalization.
+*.png binary
+*.db binary
+*.xlsx binary
