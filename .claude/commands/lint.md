@@ -10,9 +10,6 @@ Run linting and formatting checks across TypeScript and Python code to ensure co
 # Run ESLint
 npm run lint
 
-# Format code with Prettier
-npm run format
-
 # Check formatting without making changes
 npm run format:check
 ```
@@ -20,10 +17,7 @@ npm run format:check
 ### Python
 
 ```bash
-# Format Python code with black
-uv run black python/
-
-# Check Python formatting (CI mode)
+# Check Python formatting (CI mode) — does not modify files
 uv run black --check python/
 
 # Lint Python code with ruff
@@ -47,13 +41,12 @@ npx prisma validate
 
 ### TypeScript/JavaScript
 
-1. **Review formatting changes** - Check the diff to ensure Prettier changes look correct
+1. **If `format:check` fails** - Run `/fix-formatting` to auto-fix, then re-run `/lint`
 2. **Fix ESLint errors** - Address any linting errors reported by ESLint
-3. **Commit formatting separately** - If Prettier changed files, commit them separately from logic changes
 
 ### Python
 
-1. **Review black formatting** - Check Python code formatting changes
+1. **If `black --check` fails** - Run `/fix-formatting` to auto-fix, then re-run `/lint`
 2. **Fix ruff warnings** - Address linting warnings reported by ruff
 3. **Fix mypy type errors** - Add type hints or fix type inconsistencies
 4. **Test after changes** - Run `npm run test:python` to ensure tests still pass

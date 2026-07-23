@@ -82,11 +82,11 @@ git commit
 
 ## Comparison with /lint
 
-| Command | Purpose | Modifies files? |
-|---|---|---|
-| `/fix-formatting` | Auto-fix style | Yes |
-| `/lint` | Check code quality + types | No |
-| `npm run format:check` / `uv run black --check python/` | Verify formatting without fixing | No |
+| Command                                                 | Purpose                          | Modifies files? |
+| ------------------------------------------------------- | -------------------------------- | --------------- |
+| `/fix-formatting`                                       | Auto-fix style                   | Yes             |
+| `/lint`                                                 | Check code quality + types       | No              |
+| `npm run format:check` / `uv run black --check python/` | Verify formatting without fixing | No              |
 
 **Recommended order:** `/fix-formatting` → `/lint` → commit.
 

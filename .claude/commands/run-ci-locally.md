@@ -4,26 +4,26 @@ Reproduce the CI gate locally before pushing. This mirrors the jobs in `.github/
 
 ## What CI actually runs
 
-| # | Job | Platform(s) | Local repro |
-|---|---|---|---|
-| 1 | Lint - Node.js | Linux | `npm run lint && npm run format:check` |
-| 2 | Lint - Python | Linux | `uv run black --check python/ && uv run ruff check python/ && uv run mypy python/` |
-| 3 | Test - Database Migrations | Linux | `./scripts/verify-migrations.sh && npm run test:db-upgrade` |
-| 4 | Compile - TypeScript | Linux | `npx prisma generate && npx tsc --noEmit` |
-| 5 | Test - TypeScript Unit | Linux | `npx prisma generate && npx prisma migrate deploy && npm run test:unit:coverage` |
-| 6 | Test - Python | Linux | `npm run test:python` |
-| 7 | Test - E2E IPC Coverage | Linux | `npm run test:e2e:coverage` |
-| 8 | Build - Python Executable | Linux/macOS/Windows | `npm run build:python` |
-| 9 | Test - Integration | Linux/macOS/Windows (needs #8) | `npm run test:ipc && npm run test:camera && npm run test:daq && npm run test:scanner` |
-| 10 | Test - Dev Mode Database | Linux (needs #8) | `npx prisma generate && npm run test:dev:database` |
-| 11 | Test - E2E Dev Build | Linux/macOS/Windows (needs #8) | `npm run test:e2e` (dev server must be running) |
-| 12 | Test - Packaged App Database | macOS (needs #8) | `npm run test:package:database` |
+| #   | Job                          | Platform(s)                    | Local repro                                                                                                                                                                               |
+| --- | ---------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Lint - Node.js               | Linux                          | `npm run lint && npm run format:check`                                                                                                                                                    |
+| 2   | Lint - Python                | Linux                          | `uv run black --check python/ && uv run ruff check python/ && uv run mypy python/`                                                                                                        |
+| 3   | Test - Database Migrations   | Linux                          | `./scripts/verify-migrations.sh && npm run test:db-upgrade`                                                                                                                               |
+| 4   | Compile - TypeScript         | Linux                          | `BLOOM_DATABASE_URL='file:./dev.db' npx prisma generate && npx tsc --noEmit`                                                                                                              |
+| 5   | Test - TypeScript Unit       | Linux                          | `BLOOM_DATABASE_URL='file:./dev.db' npx prisma generate && BLOOM_DATABASE_URL='file:./dev.db' npx prisma migrate deploy && BLOOM_DATABASE_URL='file:./dev.db' npm run test:unit:coverage` |
+| 6   | Test - Python                | Linux                          | `npm run test:python`                                                                                                                                                                     |
+| 7   | Test - E2E IPC Coverage      | Linux                          | `npm run test:e2e:coverage`                                                                                                                                                               |
+| 8   | Build - Python Executable    | Linux/macOS/Windows            | `npm run build:python`                                                                                                                                                                    |
+| 9   | Test - Integration           | Linux/macOS/Windows (needs #8) | `npm run test:ipc && npm run test:camera && npm run test:daq && npm run test:scanner`                                                                                                     |
+| 10  | Test - Dev Mode Database     | Linux (needs #8)               | `npx prisma generate && npm run test:dev:database`                                                                                                                                        |
+| 11  | Test - E2E Dev Build         | Linux/macOS/Windows (needs #8) | `npm run test:e2e` (dev server must be running)                                                                                                                                           |
+| 12  | Test - Packaged App Database | macOS (needs #8)               | `npm run test:package:database`                                                                                                                                                           |
 
 Jobs 9, 10, 11, 12 depend on job 8's build artifact (`build-python`); reproduce job 8 first if testing those locally.
 
 ## Standard local sweep (fast subset — jobs 1-6)
 
-Run these in order, stopping on the first failure:
+Run these in order, stopping on the first failure. Jobs 4 and 5 set `BLOOM_DATABASE_URL: 'file:./dev.db'` in CI — the commands below scope it inline (`VAR=value cmd`) rather than `export`ing it, so it doesn't leak into your shell. Per `.env.example`, do not add `BLOOM_DATABASE_URL` to your `.env` file or export it persistently — a stale exported value silently changes which database Prisma targets in later, unrelated commands.
 
 ```bash
 # 1. Format check
@@ -35,12 +35,12 @@ npm run lint
 uv run ruff check python/
 uv run mypy python/
 
-# 3. Type check
-npx prisma generate
+# 3. Type check (CI sets BLOOM_DATABASE_URL for Prisma steps — match it, don't reuse a stale export)
+BLOOM_DATABASE_URL='file:./dev.db' npx prisma generate
 npx tsc --noEmit
 
 # 4. Tests
-npm run test:unit
+BLOOM_DATABASE_URL='file:./dev.db' npm run test:unit
 npm run test:python
 
 # 5. Build (Python executable)
@@ -71,13 +71,13 @@ Fix: run /fix-formatting for format failures, or /lint for lint details.
 
 ## Quick fixes
 
-| Step | Fix |
-|------|-----|
-| Format check | Run `/fix-formatting` |
-| Lint | Run `/lint` locally, fix errors |
-| Type check | Fix type errors reported by `npx tsc --noEmit` / `uv run mypy python/` |
-| Tests | Read test output and fix; use `/tdd` for a structured fix loop |
-| Build | Run `npm run build:python` locally; check `scripts/build-python.js` output |
+| Step         | Fix                                                                        |
+| ------------ | -------------------------------------------------------------------------- |
+| Format check | Run `/fix-formatting`                                                      |
+| Lint         | Run `/lint` locally, fix errors                                            |
+| Type check   | Fix type errors reported by `npx tsc --noEmit` / `uv run mypy python/`     |
+| Tests        | Read test output and fix; use `/tdd` for a structured fix loop             |
+| Build        | Run `npm run build:python` locally; check `scripts/build-python.js` output |
 
 ## Dependencies and environment
 

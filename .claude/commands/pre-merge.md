@@ -8,6 +8,12 @@ Run all quality checks, create PR, review feedback, and update changelog before 
 
 Perform a complete pre-merge check following this workflow:
 
+### Phase 0: Fast Sweep (optional shortcut)
+
+0. **Environment + CI reproduction**
+   - First time on this machine, or after dependency changes: run `/validate-env`
+   - Run `/run-ci-locally` to reproduce CI jobs 1-6 (format, lint, typecheck, unit tests, build) in one pass — this covers the same ground as Phases 1-2 below in less detail. Use it as a fast gate; fall back to the phase-by-phase steps below if it fails and you need to isolate which check broke.
+
 ### Phase 1: Code Quality Checks
 
 1. **Formatting**
@@ -216,6 +222,8 @@ Run this command before:
 
 ## Related Commands
 
+- `/validate-env` - confirm environment is healthy (Phase 0, first-time/after dependency changes)
+- `/run-ci-locally` - fast local reproduction of CI jobs 1-6 (Phase 0 shortcut for Phases 1-2)
 - `/fix-formatting` - auto-format before the check
 - `/lint` - lint + typecheck
 - `/coverage` - test coverage report

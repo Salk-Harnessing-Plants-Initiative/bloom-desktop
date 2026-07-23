@@ -59,10 +59,10 @@ Check `vitest.config.ts` `include` pattern (TS) or `pyproject.toml` `python_file
 
 ## Type Checker vs Test Runner
 
-| Tool | Catches | Misses |
-|---|---|---|
-| `npm run test:unit` / `npm run test:python` | Runtime behavior, logic bugs, regressions | Type errors |
-| `npx tsc --noEmit` / `uv run mypy python/` | Type errors | Runtime behavior |
+| Tool                                        | Catches                                   | Misses           |
+| ------------------------------------------- | ----------------------------------------- | ---------------- |
+| `npm run test:unit` / `npm run test:python` | Runtime behavior, logic bugs, regressions | Type errors      |
+| `npx tsc --noEmit` / `uv run mypy python/`  | Type errors                               | Runtime behavior |
 
 Run both — `/pre-merge` enforces this.
 

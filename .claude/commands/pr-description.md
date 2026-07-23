@@ -29,6 +29,7 @@ Use a three-state convention for verification checkboxes — don't tick `[x]` ou
 The `[!]` state exists because docs/config/refactor PRs often inherit lint/typecheck/build failures that already exist on `main`. Ticking `[x]` on those would be a false claim.
 
 Example:
+
 ```
 - [x] Unit tests pass — 47 passing
 - [!] `npm run format:check` fails on pre-existing issue (#12), not introduced here

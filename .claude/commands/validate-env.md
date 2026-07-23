@@ -33,15 +33,15 @@ uv run pytest python/tests -q
 
 ## Common fixes
 
-| Symptom | Fix |
-|---------|-----|
-| `npm`/`node` not found or wrong version | Use nvm/fnm to switch to Node >=20 |
-| `uv` not found | Install via the [uv installer script](https://docs.astral.sh/uv/getting-started/installation/) |
-| Deps not synced / import errors | `npm ci` (delete `node_modules` first if stale); `uv sync --extra dev --frozen` |
-| Prisma client out of date ("cannot find module '.prisma/client'") | `npx prisma generate` |
-| pypylon / nidaqmx import errors | These are hardware SDK bindings — mock hardware paths don't need the real SDK installed, but the Python package itself must still `pip`-install cleanly; see `python/PYINSTALLER.md` |
-| `GRAVISCAN_MOCK` / hardware mock env vars missing | Check `.env.example` for the flags this repo uses to run without real hardware attached |
-| Missing system dependency (Linux, pypylon) | `apt-get install` steps documented in `.github/workflows/pr-checks.yml` under "Install system dependencies for pypylon" |
+| Symptom                                                           | Fix                                                                                                                                                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm`/`node` not found or wrong version                           | Use nvm/fnm to switch to Node >=20                                                                                                                                                   |
+| `uv` not found                                                    | Install via the [uv installer script](https://docs.astral.sh/uv/getting-started/installation/)                                                                                       |
+| Deps not synced / import errors                                   | `npm ci` (delete `node_modules` first if stale); `uv sync --extra dev --frozen`                                                                                                      |
+| Prisma client out of date ("cannot find module '.prisma/client'") | `npx prisma generate`                                                                                                                                                                |
+| pypylon / nidaqmx import errors                                   | These are hardware SDK bindings — mock hardware paths don't need the real SDK installed, but the Python package itself must still `pip`-install cleanly; see `python/PYINSTALLER.md` |
+| `GRAVISCAN_MOCK` / hardware mock env vars missing                 | Check `.env.example` for the flags this repo uses to run without real hardware attached                                                                                              |
+| Missing system dependency (Linux, pypylon)                        | `apt-get install` steps documented in `.github/workflows/pr-checks.yml` under "Install system dependencies for pypylon"                                                              |
 
 ## Notes
 
