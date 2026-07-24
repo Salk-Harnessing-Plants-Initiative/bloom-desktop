@@ -92,7 +92,7 @@ two, at different layers:
 - **Runtime linking**: even once installation succeeds, the `epkowa`
   backend binary (`libsane-epkowa.so.1`) is dynamically linked against
   the old ABI's soname (`libxml2.so.2`). `libxml2-16` provides a
-  genuinely different, incompatible ABI (that's *why* the soname was
+  genuinely different, incompatible ABI (that's _why_ the soname was
   bumped) — it does not provide `.so.2`, so `epkowa` fails to `dlopen`
   even if the package-level dependency is satisfied by some other
   means (e.g. a dummy `equivs` stub).
