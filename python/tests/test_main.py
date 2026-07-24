@@ -104,19 +104,44 @@ def test_main_prints_import_status(capsys):
 
 
 def test_main_scan_worker_mode_routing():
-    """Test that --scan-worker routes to scan_worker_mode with correct args."""
-    with patch("sys.argv", ["bloom-hardware", "--scan-worker", "--scanner-id", "test-uuid", "--device", "test-device"]):
-        with patch("python.main.scan_worker_mode") as mock_scan_worker_mode:
+    """Test that --scan-worker routes to scan_worker_mode with correct args.
+
+    Mocks run_worker (not scan_worker_mode) so scan_worker_mode's own
+    try/except import-fallback logic actually executes during the test.
+    """
+    argv = [
+        "bloom-hardware",
+        "--scan-worker",
+        "--scanner-id",
+        "test-uuid",
+        "--device",
+        "test-device",
+    ]
+    with patch("sys.argv", argv):
+        with patch("python.graviscan.scan_worker.run_worker") as mock_run_worker:
             main()
-            mock_scan_worker_mode.assert_called_once_with("test-uuid", "test-device", False)
+            mock_run_worker.assert_called_once_with("test-uuid", "test-device", False)
 
 
 def test_main_scan_worker_mode_with_mock():
-    """Test that --scan-worker --mock passes mock=True to scan_worker_mode."""
-    with patch("sys.argv", ["bloom-hardware", "--scan-worker", "--scanner-id", "test-uuid", "--device", "test-device", "--mock"]):
-        with patch("python.main.scan_worker_mode") as mock_scan_worker_mode:
+    """Test that --scan-worker --mock passes mock=True to scan_worker_mode.
+
+    Mocks run_worker (not scan_worker_mode) so scan_worker_mode's own
+    try/except import-fallback logic actually executes during the test.
+    """
+    argv = [
+        "bloom-hardware",
+        "--scan-worker",
+        "--scanner-id",
+        "test-uuid",
+        "--device",
+        "test-device",
+        "--mock",
+    ]
+    with patch("sys.argv", argv):
+        with patch("python.graviscan.scan_worker.run_worker") as mock_run_worker:
             main()
-            mock_scan_worker_mode.assert_called_once_with("test-uuid", "test-device", True)
+            mock_run_worker.assert_called_once_with("test-uuid", "test-device", True)
 
 
 def test_main_scan_worker_mode_missing_scanner_id():
