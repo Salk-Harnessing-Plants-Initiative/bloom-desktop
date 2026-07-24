@@ -9,7 +9,10 @@ V600 on a fresh Ubuntu 24.04+ machine, without permanently breaking
 Historically, setting up a new GraviScan rig required force-installing
 `iscan` with `sudo dpkg --ignore-depends=libsane -i iscan_*.deb`,
 because Ubuntu 24.04 renamed `libsane` to `libsane1` and the old
-`iscan` build only declared a hard dependency on the former.
+`iscan` build only declared a hard dependency on the former. (Ubuntu
+26.04 separately renamed `libxml2` to `libxml2-16` — a different
+package, a different release, addressed by [step 2](#2-fix-libxml2--a-two-level-problem)
+below. These are two independent renames, not one event.)
 
 That workaround "works" in the sense that scanning functions
 afterward, but it leaves `apt`'s dependency graph in a genuinely
@@ -37,13 +40,23 @@ confirmed with an actual scan (not just device enumeration).
    decision, not an implicit side effect of driver setup).
 2. Extract the downloaded bundle — you should get `install.sh` plus
    `core/`, `data/`, and `plugins/` subdirectories, each with one `.deb`.
-3. Copy it to the target machine and run:
+3. Plug in and power on the scanner (the script's final step performs
+   a real test scan, not just detection, so it needs the device present).
+4. Copy the bundle to the target machine and run:
 
    ```bash
    ./scripts/setup-graviscan-scanner-driver.sh /path/to/extracted/bundle
    ```
 
-4. Verify with an actual scan, not just detection:
+   **Before running**: this script uses `sudo` throughout — it installs
+   system packages (including one fetched from Ubuntu's archive over
+   the network), edits `/etc/sane.d/dll.conf`, and reloads udev rules.
+   Read through it first if you want to know exactly what it touches
+   before granting it root.
+
+   The script's own last step already performs the real-scan
+   verification described below — you shouldn't need to run this
+   manually, but if you want to re-check independently later:
 
    ```bash
    scanimage -d 'epkowa:interpreter:BUS:DEVICE' --resolution 400 --format=tiff > test.tiff
@@ -66,10 +79,12 @@ fix candidate in issue #226 — confirmed here.)
 
 ### 2. Fix libxml2 — a two-level problem
 
-Ubuntu also renamed `libxml2` to `libxml2-16`. Unlike `libsane`,
-`iscan`'s dependency on `libxml2` has **no** OR-alternative, so this
-still needs an explicit fix. But it's not one problem — it's two,
-at different layers:
+Separately, Ubuntu 26.04 renamed `libxml2` to `libxml2-16` (this did
+**not** happen in 24.04, which still ships plain `libxml2` — the
+libsane and libxml2 renames landed two releases apart). Unlike
+`libsane`, `iscan`'s dependency on `libxml2` has **no** OR-alternative,
+so this still needs an explicit fix. But it's not one problem — it's
+two, at different layers:
 
 - **Package metadata**: `apt`/`dpkg` won't resolve `Depends: libxml2`
   against `libxml2-16` — nothing on the system is literally named
@@ -96,6 +111,16 @@ Because `libxml2` (old) and `libxml2-16` (current) use different
 sonames and file paths, they coexist on disk without conflict — only
 `epkowa` resolves against the old one; everything else on the system
 keeps using `libxml2-16`.
+
+The script downloads this over HTTPS and verifies it against a pinned
+SHA256 checksum before installing it with `sudo dpkg -i` — a package
+fetched from the network and installed as root should be verified,
+not installed blind. **Maintenance note**: this is a pinned,
+point-in-time archive artifact. If Ubuntu ever removes it from the
+pool (old package versions do eventually get pruned), the script will
+fail its checksum/fetch and need a new URL + checksum — see the
+comment above `OLD_LIBXML2_URL` in the script, and the troubleshooting
+entry below.
 
 ### 3. Verify apt is still consistent
 
@@ -151,6 +176,16 @@ You're using an old `iscan` build (pre-2.30.6ish) that lacks the
 `| libsane1` OR-alternative. Download a current version instead —
 Epson's own download portal serves the latest by default.
 
+### `curl: (22) The requested URL returned error: 404` on the libxml2 download
+
+The pinned old-`libxml2` build has been removed from Ubuntu's archive.
+Browse https://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/ for
+another build whose version string contains `+really2.9.x` (or a plain
+`2.9.x` release) — any of them ship the same `.so.2` ABI. Update both
+`OLD_LIBXML2_URL` and `OLD_LIBXML2_SHA256` (compute the latter with
+`sha256sum` on the downloaded file) in the script, and update the
+version numbers referenced in this doc.
+
 ### Scanner not detected after running the script
 
 1. Confirm it's physically detected at the USB level first (separate
@@ -163,10 +198,11 @@ Epson's own download portal serves the latest by default.
 2. Check `dll.conf` actually has `epkowa`:
    `grep epkowa /etc/sane.d/dll.conf`
 3. Check the backend actually loads (no missing library):
-   `ldd /usr/lib/x86_64-linux-gnu/sane/libsane-epkowa.so.1 | grep "not found"`
-   Any output here means a still-missing dependency — re-run the
-   script, or track down the specific missing `.so` the same way this
-   doc tracked down `libxml2.so.2`.
+   `LC_ALL=C ldd /usr/lib/x86_64-linux-gnu/sane/libsane-epkowa.so.1 | grep "not found"`
+   (`LC_ALL=C` keeps the "not found" phrasing consistent regardless of
+   locale.) Any output here means a still-missing dependency — re-run
+   the script, or track down the specific missing `.so` the same way
+   this doc tracked down `libxml2.so.2`.
 
 ### Applying this to the real production rig
 
