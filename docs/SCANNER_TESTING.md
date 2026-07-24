@@ -475,5 +475,8 @@ The Scanner provides:
 
 - [Camera Testing Guide](CAMERA_TESTING.md)
 - [DAQ Testing Guide](DAQ_TESTING.md)
+- [GraviScan Scanner Driver Setup](GRAVISCAN_SCANNER_DRIVER_SETUP.md) —
+  the Epson flatbed scanner used by GraviScan, a different scanner
+  subsystem from the CylinderScan turntable+camera "Scanner" this doc covers
 - [Python Backend API](../python/README.md)
 - [Integration Tests](../tests/integration/)

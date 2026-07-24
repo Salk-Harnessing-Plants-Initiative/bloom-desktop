@@ -300,4 +300,5 @@ Update mocks when:
 - **Camera testing**: `docs/CAMERA_TESTING.md`
 - **DAQ testing**: `docs/DAQ_TESTING.md`
 - **Scanner testing**: `docs/SCANNER_TESTING.md`
+- **GraviScan scanner driver setup**: `docs/GRAVISCAN_SCANNER_DRIVER_SETUP.md`
 - **PyInstaller**: `python/PYINSTALLER.md`
