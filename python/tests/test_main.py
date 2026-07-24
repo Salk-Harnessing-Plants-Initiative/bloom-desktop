@@ -170,13 +170,17 @@ def test_main_scan_worker_mode_mock_without_device():
 
 def test_main_scan_worker_mode_missing_scanner_id():
     """Test that --scan-worker without --scanner-id raises parser error."""
-    with patch("sys.argv", ["bloom-hardware", "--scan-worker", "--device", "test-device"]):
+    with patch(
+        "sys.argv", ["bloom-hardware", "--scan-worker", "--device", "test-device"]
+    ):
         with pytest.raises(SystemExit):
             main()
 
 
 def test_main_scan_worker_mode_missing_device():
     """Test that --scan-worker without --device raises parser error."""
-    with patch("sys.argv", ["bloom-hardware", "--scan-worker", "--scanner-id", "test-uuid"]):
+    with patch(
+        "sys.argv", ["bloom-hardware", "--scan-worker", "--scanner-id", "test-uuid"]
+    ):
         with pytest.raises(SystemExit):
             main()
