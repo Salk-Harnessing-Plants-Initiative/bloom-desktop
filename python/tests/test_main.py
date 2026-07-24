@@ -144,6 +144,30 @@ def test_main_scan_worker_mode_with_mock():
             mock_run_worker.assert_called_once_with("test-uuid", "test-device", True)
 
 
+def test_main_scan_worker_mode_mock_without_device():
+    """Test that --scan-worker --scanner-id X --mock (no --device) routes successfully.
+
+    This is the packaged+mock subprocess contract used by
+    src/main/graviscan/scanner-subprocess.ts: when GRAVISCAN_MOCK=true, the
+    worker is spawned without --device. Validation must allow this and fall
+    back to a non-empty device placeholder rather than calling parser.error.
+
+    Mocks run_worker (not scan_worker_mode) so scan_worker_mode's own
+    try/except import-fallback logic actually executes during the test.
+    """
+    argv = [
+        "bloom-hardware",
+        "--scan-worker",
+        "--scanner-id",
+        "test-uuid",
+        "--mock",
+    ]
+    with patch("sys.argv", argv):
+        with patch("python.graviscan.scan_worker.run_worker") as mock_run_worker:
+            main()
+            mock_run_worker.assert_called_once_with("test-uuid", "mock-device", True)
+
+
 def test_main_scan_worker_mode_missing_scanner_id():
     """Test that --scan-worker without --scanner-id raises parser error."""
     with patch("sys.argv", ["bloom-hardware", "--scan-worker", "--device", "test-device"]):
