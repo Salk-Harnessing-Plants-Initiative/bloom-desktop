@@ -253,7 +253,9 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
     // guaranteed path to reach api.bloom.salk.edu. Skip unless a developer
     // has configured real credentials locally. See GH issue #254.
     test.skip(
-      !process.env.BLOOM_TEST_USERNAME,
+      !process.env.BLOOM_TEST_USERNAME ||
+        !process.env.BLOOM_TEST_PASSWORD ||
+        !process.env.BLOOM_ANON_KEY,
       'Requires live Bloom API credentials - set BLOOM_TEST_USERNAME/BLOOM_TEST_PASSWORD/BLOOM_ANON_KEY locally to run this test'
     );
 
@@ -293,7 +295,9 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
   test('should not require full form completion to fetch scanners', async () => {
     // Requires a live round-trip to the real Bloom API - see comment above.
     test.skip(
-      !process.env.BLOOM_TEST_USERNAME,
+      !process.env.BLOOM_TEST_USERNAME ||
+        !process.env.BLOOM_TEST_PASSWORD ||
+        !process.env.BLOOM_ANON_KEY,
       'Requires live Bloom API credentials - set BLOOM_TEST_USERNAME/BLOOM_TEST_PASSWORD/BLOOM_ANON_KEY locally to run this test'
     );
 
