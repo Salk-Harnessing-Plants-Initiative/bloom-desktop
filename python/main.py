@@ -79,7 +79,7 @@ def scan_worker_mode(scanner_id: str, device: str, mock: bool = False):
     try:
         from python.graviscan.scan_worker import run_worker
     except ModuleNotFoundError:
-        from graviscan.scan_worker import run_worker  # type: ignore[import-not-found]
+        from graviscan.scan_worker import run_worker  # type: ignore[import-not-found,no-redef]
     run_worker(scanner_id, device, mock)
 
 
