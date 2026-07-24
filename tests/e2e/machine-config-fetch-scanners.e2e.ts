@@ -246,19 +246,31 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
   });
 
   test('should populate scanner dropdown after successful fetch', async () => {
+    // Requires a live round-trip to the real Bloom API with a real test
+    // account. BLOOM_TEST_USERNAME/PASSWORD/ANON_KEY are documented in
+    // .env.example as being for manual testing - they are not (and should
+    // not be) wired up as CI secrets, since GitHub-hosted runners have no
+    // guaranteed path to reach api.bloom.salk.edu. Skip unless a developer
+    // has configured real credentials locally. See GH issue #254.
+    test.skip(
+      !process.env.BLOOM_TEST_USERNAME ||
+        !process.env.BLOOM_TEST_PASSWORD ||
+        !process.env.BLOOM_ANON_KEY,
+      'Requires live Bloom API credentials - set BLOOM_TEST_USERNAME/BLOOM_TEST_PASSWORD/BLOOM_ANON_KEY locally to run this test'
+    );
+
     // Fill in VALID test credentials (from .env)
     await window.fill(
       'input[id*="creds-username"]',
-      process.env.BLOOM_TEST_USERNAME || 'bloom_desktop_test@salk.edu'
+      process.env.BLOOM_TEST_USERNAME || 'your-test-username@salk.edu'
     );
     await window.fill(
       'input[id*="creds-password"]',
-      process.env.BLOOM_TEST_PASSWORD || 'bloom_desktop_test_123'
+      process.env.BLOOM_TEST_PASSWORD || 'your-test-password'
     );
     await window.fill(
       'input[id*="creds-anonkey"]',
-      process.env.BLOOM_ANON_KEY ||
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICAgInJvbGUiOiAiYW5vbiIsCiAgICAiaXNzIjogInN1cGFiYXNlIiwKICAgICJpYXQiOiAxNjg3NTkwMDAwLAogICAgImV4cCI6IDE4NDU0NDI4MDAKfQ.ev7gXAhB8Uv6pgRF9B5oEpmlYI6l15DUIlAQBWSGxPU'
+      process.env.BLOOM_ANON_KEY || 'your-anon-key-here'
     );
 
     // Click the fetch button
@@ -281,19 +293,26 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
   });
 
   test('should not require full form completion to fetch scanners', async () => {
+    // Requires a live round-trip to the real Bloom API - see comment above.
+    test.skip(
+      !process.env.BLOOM_TEST_USERNAME ||
+        !process.env.BLOOM_TEST_PASSWORD ||
+        !process.env.BLOOM_ANON_KEY,
+      'Requires live Bloom API credentials - set BLOOM_TEST_USERNAME/BLOOM_TEST_PASSWORD/BLOOM_ANON_KEY locally to run this test'
+    );
+
     // Fill ONLY credentials (not camera IP or scans directory)
     await window.fill(
       'input[id*="creds-username"]',
-      process.env.BLOOM_TEST_USERNAME || 'bloom_desktop_test@salk.edu'
+      process.env.BLOOM_TEST_USERNAME || 'your-test-username@salk.edu'
     );
     await window.fill(
       'input[id*="creds-password"]',
-      process.env.BLOOM_TEST_PASSWORD || 'bloom_desktop_test_123'
+      process.env.BLOOM_TEST_PASSWORD || 'your-test-password'
     );
     await window.fill(
       'input[id*="creds-anonkey"]',
-      process.env.BLOOM_ANON_KEY ||
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICAgInJvbGUiOiAiYW5vbiIsCiAgICAiaXNzIjogInN1cGFiYXNlIiwKICAgICJpYXQiOiAxNjg3NTkwMDAwLAogICAgImV4cCI6IDE4NDU0NDI4MDAKfQ.ev7gXAhB8Uv6pgRF9B5oEpmlYI6l15DUIlAQBWSGxPU'
+      process.env.BLOOM_ANON_KEY || 'your-anon-key-here'
     );
 
     // Click fetch button - should work without filling other fields
