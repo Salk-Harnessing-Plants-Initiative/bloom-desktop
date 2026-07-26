@@ -6,7 +6,7 @@ Coordinates are in millimeters, matching the original graviscan.cfg.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict
 
 
 @dataclass
@@ -116,6 +116,7 @@ def get_scan_region(grid_mode: str, plate_index: str) -> ScanRegion:
 # Epson Perfection V600 scanner bed limits (mm) — A4 scan area
 SCANNER_MAX_X = 215.9
 SCANNER_MAX_Y = 297.0
+
 
 def get_all_plate_indices(grid_mode: str) -> list:
     """Get all valid plate indices for a grid mode.

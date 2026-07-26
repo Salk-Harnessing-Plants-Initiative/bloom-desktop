@@ -787,7 +787,9 @@ class TestScanPlateErrorEmitsEvent:
         assert "duration_ms" in error_events[0]
 
 
-@pytest.mark.skip(reason="Row-merge scanning removed — _scan_row/_mock_scan_row no longer exist")
+@pytest.mark.skip(
+    reason="Row-merge scanning removed — _scan_row/_mock_scan_row no longer exist"
+)
 class TestScanRowErrorAllPlates:
     """7.2 row scan fails → ALL plates in row get scan-error events."""
 
