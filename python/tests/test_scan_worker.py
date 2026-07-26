@@ -19,6 +19,7 @@ from python.graviscan.scan_worker import (
     _build_tiff_metadata,
     emit_event,
     log,
+    run_worker,
 )
 from python.graviscan.scan_regions import get_scan_region
 
@@ -407,6 +408,45 @@ class TestRunCommandLoop:
         assert "scan-started" in out
         assert "scan-complete" in out
         assert "cycle-done" in out
+
+
+class TestRunWorkerExitCode:
+    """3.9 run_worker() exit-code contract.
+
+    Mocks ScanWorker itself (construction, .initialize(), .run()) so no real
+    hardware/SANE is touched — this tests the exit-code contract of
+    run_worker(), not scanner behavior. sys.exit() raises a real SystemExit,
+    so we assert on it directly rather than mocking sys.exit.
+    """
+
+    def test_init_failure_exits_1_and_skips_run(self):
+        mock_worker = MagicMock()
+        mock_worker.initialize.return_value = False
+
+        with patch(
+            "python.graviscan.scan_worker.ScanWorker", return_value=mock_worker
+        ) as mock_cls:
+            with pytest.raises(SystemExit) as exc_info:
+                run_worker("scanner-1", "mock-device", mock=True)
+
+        mock_cls.assert_called_once_with(
+            scanner_id="scanner-1", device_name="mock-device", mock=True
+        )
+        mock_worker.initialize.assert_called_once()
+        mock_worker.run.assert_not_called()
+        assert exc_info.value.code == 1
+
+    def test_clean_completion_calls_run_then_exits_0(self):
+        mock_worker = MagicMock()
+        mock_worker.initialize.return_value = True
+
+        with patch("python.graviscan.scan_worker.ScanWorker", return_value=mock_worker):
+            with pytest.raises(SystemExit) as exc_info:
+                run_worker("scanner-1", "mock-device", mock=True)
+
+        mock_worker.initialize.assert_called_once()
+        mock_worker.run.assert_called_once()
+        assert exc_info.value.code == 0
 
 
 # ═══════════════════════════════════════════════════════════════════════════

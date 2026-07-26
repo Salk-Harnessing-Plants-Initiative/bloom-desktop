@@ -86,10 +86,11 @@ def scan_worker_mode(scanner_id: str, device: str, mock: bool = False):
 def main():
     """Main entry point - routes to interactive, IPC, or scan-worker mode."""
     parser = argparse.ArgumentParser(description="Bloom Hardware Interface")
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--ipc", action="store_true", help="Run in IPC mode for Electron communication"
     )
-    parser.add_argument(
+    mode_group.add_argument(
         "--scan-worker", action="store_true", help="Run as scan worker subprocess"
     )
     parser.add_argument(
