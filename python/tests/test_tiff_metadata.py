@@ -48,15 +48,17 @@ class TestMockScanTiffMetadata:
 
     def test_mock_scan_embeds_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, "scan.tif")
+            output_path = os.path.join(tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif")
 
             worker = ScanWorker(
                 scanner_id="test-scanner", device_name="mock", mock=True
             )
-            worker._mock_scan("2grid", "00", 300, output_path)
+            final_path = worker._mock_scan("2grid", "00", 300, output_path)
 
-            # Read TIFF and check tags
-            img = Image.open(output_path)
+            # Read TIFF and check tags — read from the path _mock_scan
+            # actually returned (the final, _et_-stamped path), not the
+            # pre-_et_ output_path that was passed in.
+            img = Image.open(final_path)
             tag_data = img.tag_v2
 
             # ImageDescription
@@ -83,15 +85,16 @@ class TestMockScanTiffMetadata:
         with tempfile.TemporaryDirectory() as tmpdir:
             for grid_mode, plate_index in [("2grid", "01"), ("4grid", "10")]:
                 output_path = os.path.join(
-                    tmpdir, f"scan_{grid_mode}_{plate_index}.tif"
+                    tmpdir,
+                    f"scan_{grid_mode}_{plate_index}_st_20260301T120000_cy1_S1_00.tif",
                 )
 
                 worker = ScanWorker(
                     scanner_id="test-scanner", device_name="mock", mock=True
                 )
-                worker._mock_scan(grid_mode, plate_index, 600, output_path)
+                final_path = worker._mock_scan(grid_mode, plate_index, 600, output_path)
 
-                img = Image.open(output_path)
+                img = Image.open(final_path)
                 desc = json.loads(img.tag_v2[270])
                 assert desc["grid_mode"] == grid_mode
                 assert desc["plate_index"] == plate_index
