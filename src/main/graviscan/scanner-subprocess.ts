@@ -21,6 +21,94 @@ import { scanLog } from './scan-logger';
 import type { PlateConfig } from '../../types/graviscan';
 
 // =============================================================================
+// Subprocess env construction (Task 4 #228 — testable pure function)
+// =============================================================================
+
+export interface BuildSubprocessEnvArgs {
+  platform: NodeJS.Platform;
+  mock: boolean;
+  /** SANE name like "epkowa:interpreter:001:007". Used to derive
+   *  SANE_USB_FILTER on Linux real-mode. */
+  saneName: string;
+  /** Additional path prepended to PYTHONPATH (dev: `<repo>/python`). */
+  pythonExtraPath: string;
+  /** Absolute path to the libusb-filter.so for LD_PRELOAD on Linux. */
+  libusbFilterSoPath: string;
+  /** Snapshot of the main-process env. Not mutated. */
+  processEnv: Record<string, string | undefined>;
+}
+
+/**
+ * Build the env object passed to `child_process.spawn()` for a scan
+ * worker. Extracted from `ScannerSubprocess.spawn()` so the env
+ * construction is unit-testable without spawning real processes.
+ *
+ * On Linux + real mode:
+ *  - LD_PRELOAD = libusbFilterSoPath
+ *  - SANE_USB_FILTER = "<bus>:<dev>" from saneName
+ *  - LIBUSB_ENDPOINT_RECOVERY = "true" by default, or "false" if the
+ *    main-process env has LIBUSB_ENDPOINT_RECOVERY=false
+ *    (case-insensitive). Reads the C-shim's wrapper toggle per #228.
+ *
+ * On macOS/Windows or in mock mode: none of these are set (the shim
+ * isn't loaded; recovery is irrelevant).
+ */
+export function buildSubprocessEnv(
+  args: BuildSubprocessEnvArgs
+): Record<string, string | undefined> {
+  // Per Copilot PR #237 review (#16): derive the PYTHONPATH delimiter
+  // from `args.platform` rather than the hardcoded ':' that breaks on
+  // Windows. `path.delimiter` reads `process.platform` at runtime and
+  // wouldn't honor the test fixture's `args.platform`.
+  const pathDelimiter = args.platform === 'win32' ? ';' : ':';
+  const env: Record<string, string | undefined> = {
+    ...args.processEnv,
+    PYTHONPATH: [args.pythonExtraPath, args.processEnv.PYTHONPATH]
+      .filter(Boolean)
+      .join(pathDelimiter),
+  };
+
+  if (args.platform === 'linux' && !args.mock) {
+    // saneName looks like "epkowa:interpreter:001:007"; the 3rd and
+    // 4th colon-separated tokens are the USB bus and address as
+    // 3-digit zero-padded decimal. Validate before passing the values
+    // through to SANE_USB_FILTER — a malformed DB value here could
+    // misconfigure the libusb shim (it does substring match on the
+    // filter), so we reject early rather than silently passing
+    // garbage through.
+    const parts = args.saneName.split(':');
+    if (parts.length < 4) {
+      throw new Error(
+        `Invalid saneName format (expected at least 4 colon-separated tokens): ${args.saneName}`
+      );
+    }
+    const usbBus = parts[2];
+    const usbDev = parts[3];
+    if (!/^\d{3}$/.test(usbBus) || !/^\d{3}$/.test(usbDev)) {
+      throw new Error(
+        `Invalid saneName USB bus/address (expected 3-digit decimal): ${args.saneName}`
+      );
+    }
+    env.LD_PRELOAD = args.libusbFilterSoPath;
+    env.SANE_USB_FILTER = `${usbBus}:${usbDev}`;
+    const raw = args.processEnv.LIBUSB_ENDPOINT_RECOVERY;
+    env.LIBUSB_ENDPOINT_RECOVERY =
+      typeof raw === 'string' && raw.toLowerCase() === 'false'
+        ? 'false'
+        : 'true';
+  } else {
+    // On non-Linux or mock mode, the shim isn't loaded — strip these
+    // vars from the inherited env so the subprocess sees a clean
+    // environment. Avoids accidentally propagating a stale toggle.
+    delete env.LD_PRELOAD;
+    delete env.SANE_USB_FILTER;
+    delete env.LIBUSB_ENDPOINT_RECOVERY;
+  }
+
+  return env;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -107,16 +195,29 @@ export class ScannerSubprocess extends EventEmitter {
       `[ScannerSubprocess:${this.scannerId}] Spawning: ${this.pythonPath} ${args.join(' ')}`
     );
 
+    // Build environment variables for subprocess
+    const libusbFilterSoPath = this.isPackaged
+      ? path.join(process.resourcesPath, 'libusb-filter.so')
+      : path.join(process.cwd(), 'src', 'main', 'native', 'libusb-filter.so');
+    const env = buildSubprocessEnv({
+      platform: process.platform,
+      mock: this.mock,
+      saneName: this.saneName,
+      pythonExtraPath: path.join(process.cwd(), 'python'),
+      libusbFilterSoPath,
+      processEnv: process.env as Record<string, string | undefined>,
+    });
+
+    if (env.LD_PRELOAD) {
+      console.log(
+        `[ScannerSubprocess:${this.scannerId}] LD_PRELOAD=${env.LD_PRELOAD} SANE_USB_FILTER=${env.SANE_USB_FILTER} LIBUSB_ENDPOINT_RECOVERY=${env.LIBUSB_ENDPOINT_RECOVERY}`
+      );
+    }
+
     this.proc = spawn(this.pythonPath, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: process.cwd(),
-      env: {
-        ...process.env,
-        // In dev: ensure `python/` is on PYTHONPATH so `-m graviscan.scan_worker` resolves
-        PYTHONPATH: [path.join(process.cwd(), 'python'), process.env.PYTHONPATH]
-          .filter(Boolean)
-          .join(path.delimiter),
-      },
+      env,
     });
 
     // Parse stdout line-by-line for EVENT: messages

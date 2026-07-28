@@ -58,6 +58,8 @@ function emitLine(line: string) {
 describe('ScannerSubprocess', () => {
   let subprocess: ScannerSubprocess;
 
+  const originalResourcesPath = process.resourcesPath;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockProcessHandlers = {};
@@ -68,6 +70,10 @@ describe('ScannerSubprocess', () => {
       'epkowa:interpreter:001:002',
       false // not mock
     );
+    // Electron sets process.resourcesPath on the main process; stub it here
+    // since these tests run under plain Node (Task 5 #171 wiring reads it
+    // to derive libusbFilterSoPath in packaged mode).
+    process.resourcesPath = '/mock/resources';
     // Suppress console output
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -76,6 +82,7 @@ describe('ScannerSubprocess', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    process.resourcesPath = originalResourcesPath;
   });
 
   describe('spawn()', () => {
