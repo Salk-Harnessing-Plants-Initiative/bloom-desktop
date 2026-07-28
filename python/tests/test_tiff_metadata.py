@@ -48,9 +48,7 @@ class TestMockScanTiffMetadata:
 
     def test_mock_scan_embeds_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(
-                tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif"
-            )
+            output_path = os.path.join(tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif")
 
             worker = ScanWorker(
                 scanner_id="test-scanner", device_name="mock", mock=True
@@ -94,9 +92,7 @@ class TestMockScanTiffMetadata:
                 worker = ScanWorker(
                     scanner_id="test-scanner", device_name="mock", mock=True
                 )
-                final_path = worker._mock_scan(
-                    grid_mode, plate_index, 600, output_path
-                )
+                final_path = worker._mock_scan(grid_mode, plate_index, 600, output_path)
 
                 img = Image.open(final_path)
                 desc = json.loads(img.tag_v2[270])

@@ -345,7 +345,9 @@ export class ScanCoordinator
       const gridEndedAt = new Date();
       this.currentGridEndedAt = gridEndedAt.toISOString();
 
-      scanLog(`Cycle ${this.currentCycle}: row [${rowGrids.join(',')}] complete`);
+      scanLog(
+        `Cycle ${this.currentCycle}: row [${rowGrids.join(',')}] complete`
+      );
 
       // Verify output files. The Python worker composed the final filename
       // (including `_et_`) at save time, so the paths from the scan-complete

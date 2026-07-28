@@ -1105,9 +1105,7 @@ class TestRealHardwarePathComposition:
         w = ScanWorker(scanner_id="hw-test-scanner", device_name=device, mock=False)
         assert w.initialize(), "Failed to initialize real SANE device"
 
-        output_path = str(
-            tmp_path / "hwtest_st_20260301T120000_cy1_S1_00.tif"
-        )
+        output_path = str(tmp_path / "hwtest_st_20260301T120000_cy1_S1_00.tif")
         final_path = None
         try:
             final_path = w._sane_scan("2grid", "00", 300, output_path)
