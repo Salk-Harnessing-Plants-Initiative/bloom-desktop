@@ -36,6 +36,7 @@ vi.mock('fs', async () => {
     existsSync: vi.fn().mockReturnValue(true),
     mkdirSync: vi.fn(),
     writeFileSync: vi.fn(),
+    readFileSync: vi.fn(),
     promises: {
       copyFile: vi.fn().mockResolvedValue(undefined),
     },
@@ -73,6 +74,8 @@ describe('image-handlers', () => {
     db = createMockDb();
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
+    // Default: no GRAVISCAN_OUTPUT_DIR override — falls back to hardcoded path.
+    vi.mocked(fs.readFileSync).mockReturnValue('');
     mockResolvePath.mockReset();
     mockRunBoxBackup.mockReset();
     resetUploadState();
@@ -125,6 +128,19 @@ describe('image-handlers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('EACCES');
     });
+
+    it('should use GRAVISCAN_OUTPUT_DIR from ~/.bloom/.env when set in production', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.mocked(app.getPath).mockReturnValue('/home/user');
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        'GRAVISCAN_OUTPUT_DIR=/data/bloom/graviscan\n'
+      );
+
+      const result = getOutputDir();
+
+      expect(result.success).toBe(true);
+      expect(result.path).toBe('/data/bloom/graviscan');
+    });
   });
 
   describe('readScanImage', () => {
@@ -169,6 +185,67 @@ describe('image-handlers', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Invalid TIFF');
+    });
+
+    it('should serialize concurrent calls through the decode queue (no overlapping decodes)', async () => {
+      // Concurrent sharp/libvips decodes crash with GLib threading errors on
+      // Linux — readScanImage() queues decodes onto a module-level chain so
+      // they run strictly one at a time. Prove that here: fire two calls
+      // without awaiting the first, and assert the underlying sharp calls
+      // happen one-at-a-time in issue order, with both promises still
+      // resolving correctly with their own result.
+      mockResolvePath.mockImplementation((p: string) => p);
+
+      const callOrder: string[] = [];
+      let resolveFirst: (() => void) | undefined;
+      let callIndex = 0;
+
+      // Override jpeg() to hand back a distinct, independently-controllable
+      // toBuffer() promise per call, tracked via start/end markers.
+      sharpMockInstance.jpeg.mockImplementation(() => {
+        const idx = ++callIndex;
+        callOrder.push(`start:${idx}`);
+        return {
+          toBuffer: vi.fn().mockImplementation(() => {
+            if (idx === 1) {
+              return new Promise<Buffer>((resolve) => {
+                resolveFirst = () => {
+                  callOrder.push('end:1');
+                  resolve(Buffer.from('first-data'));
+                };
+              });
+            }
+            callOrder.push(`end:${idx}`);
+            return Promise.resolve(Buffer.from(`data-${idx}`));
+          }),
+        };
+      });
+
+      // Fire both calls without awaiting the first.
+      const firstPromise = readScanImage('/scan/first.tiff');
+      const secondPromise = readScanImage('/scan/second.tiff');
+
+      // Flush pending microtasks/macrotasks. Only the first decode should
+      // have started — the second is queued behind it.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(callOrder).toEqual(['start:1']);
+
+      // Let the first decode finish; only then should the second start.
+      resolveFirst?.();
+      const [firstResult, secondResult] = await Promise.all([
+        firstPromise,
+        secondPromise,
+      ]);
+
+      expect(callOrder).toEqual(['start:1', 'end:1', 'start:2', 'end:2']);
+      expect(firstResult.success).toBe(true);
+      expect(firstResult.dataUri).toBe(
+        `data:image/jpeg;base64,${Buffer.from('first-data').toString('base64')}`
+      );
+      expect(secondResult.success).toBe(true);
+      expect(secondResult.dataUri).toBe(
+        `data:image/jpeg;base64,${Buffer.from('data-2').toString('base64')}`
+      );
     });
   });
 

@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import sharp from 'sharp';
 import { resolveGraviScanPath } from '../graviscan-path-utils';
 import { runBoxBackup } from '../box-backup';
+import { getGraviscanOutputDir } from '../graviscan-output-dir';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -52,13 +53,23 @@ export function resetUploadState(): void {
 }
 
 // ---------------------------------------------------------------------------
+// Sequential image-decode queue
+// ---------------------------------------------------------------------------
+
+// Concurrent sharp/libvips decodes crash with GLib threading errors on
+// Linux. Queue all readScanImage() work onto this chain so decodes run
+// strictly sequentially.
+let imageLoadQueue: Promise<unknown> = Promise.resolve();
+
+// ---------------------------------------------------------------------------
 // getOutputDir
 // ---------------------------------------------------------------------------
 
 /**
  * Get the scan output directory path.
  * Development: .graviscan/ in project root
- * Production: ~/.bloom/graviscan/
+ * Production: GRAVISCAN_OUTPUT_DIR from ~/.bloom/.env if set, otherwise
+ * ~/.bloom/graviscan/
  */
 export function getOutputDir(): {
   success: boolean;
@@ -66,15 +77,13 @@ export function getOutputDir(): {
   error?: string;
 } {
   try {
-    const isDev = process.env.NODE_ENV === 'development';
-    let outputDir: string;
-
-    if (isDev) {
-      outputDir = path.join(app.getAppPath(), '.graviscan');
-    } else {
-      const homeDir = app.getPath('home');
-      outputDir = path.join(homeDir, '.bloom', 'graviscan');
-    }
+    const homeDir = app.getPath('home');
+    const outputDir = getGraviscanOutputDir({
+      envPath: path.join(homeDir, '.bloom', '.env'),
+      homeDir,
+      appPath: app.getAppPath(),
+      isDev: process.env.NODE_ENV === 'development',
+    });
 
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -102,44 +111,58 @@ export function getOutputDir(): {
  * Read a scan image file and return as base64 data URI.
  * Converts TIFF to JPEG. Thumbnail: quality 85, 400px resize.
  * Full: quality 95, no resize.
+ *
+ * Queued via `imageLoadQueue` so concurrent calls decode strictly
+ * sequentially — concurrent sharp/libvips decodes crash with GLib
+ * threading errors on Linux.
  */
 export async function readScanImage(
   filePath: string,
   options?: { full?: boolean }
 ): Promise<{ success: boolean; dataUri?: string; error?: string }> {
-  try {
-    const resolvedPath = resolveGraviScanPath(filePath);
-    if (!resolvedPath) {
-      console.log(
-        `[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`
-      );
-      return { success: false, error: 'File not found' };
-    }
-    if (resolvedPath !== filePath) {
-      console.log(
-        `[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`
-      );
-      filePath = resolvedPath;
-    }
+  const decode = async (): Promise<{
+    success: boolean;
+    dataUri?: string;
+    error?: string;
+  }> => {
+    try {
+      const resolvedPath = resolveGraviScanPath(filePath);
+      if (!resolvedPath) {
+        console.log(
+          `[read-scan-image] File not found: ${filePath} (tried extensions + _et_ fallback)`
+        );
+        return { success: false, error: 'File not found' };
+      }
+      if (resolvedPath !== filePath) {
+        console.log(
+          `[read-scan-image] Resolved: ${path.basename(filePath)} -> ${path.basename(resolvedPath)}`
+        );
+        filePath = resolvedPath;
+      }
 
-    const quality = options?.full ? FULL_QUALITY : THUMBNAIL_QUALITY;
-    const pipeline = sharp(filePath);
-    if (!options?.full) {
-      pipeline.resize(THUMBNAIL_WIDTH, null, { withoutEnlargement: true });
-    }
-    const jpegBuffer = await pipeline.jpeg({ quality }).toBuffer();
-    const base64 = jpegBuffer.toString('base64');
+      const quality = options?.full ? FULL_QUALITY : THUMBNAIL_QUALITY;
+      const pipeline = sharp(filePath);
+      if (!options?.full) {
+        pipeline.resize(THUMBNAIL_WIDTH, null, { withoutEnlargement: true });
+      }
+      const jpegBuffer = await pipeline.jpeg({ quality }).toBuffer();
+      const base64 = jpegBuffer.toString('base64');
 
-    return {
-      success: true,
-      dataUri: `data:image/jpeg;base64,${base64}`,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to read image',
-    };
-  }
+      return {
+        success: true,
+        dataUri: `data:image/jpeg;base64,${base64}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to read image',
+      };
+    }
+  };
+
+  const result = imageLoadQueue.then(decode);
+  imageLoadQueue = result;
+  return result;
 }
 
 // ---------------------------------------------------------------------------
