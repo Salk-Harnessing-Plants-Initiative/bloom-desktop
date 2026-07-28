@@ -29,6 +29,10 @@ vi.mock('../../../src/main/box-backup', () => ({
   runBoxBackup: vi.fn(),
 }));
 
+vi.mock('../../../src/main/graviscan-upload', () => ({
+  uploadAllPendingScans: vi.fn(),
+}));
+
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
@@ -46,10 +50,12 @@ vi.mock('fs', async () => {
 import { app } from 'electron';
 import { resolveGraviScanPath } from '../../../src/main/graviscan-path-utils';
 import { runBoxBackup } from '../../../src/main/box-backup';
+import { uploadAllPendingScans } from '../../../src/main/graviscan-upload';
 import * as fs from 'fs';
 
 const mockResolvePath = vi.mocked(resolveGraviScanPath);
 const mockRunBoxBackup = vi.mocked(runBoxBackup);
+const mockUploadAllPendingScans = vi.mocked(uploadAllPendingScans);
 
 function createMockDb() {
   return {
@@ -78,6 +84,7 @@ describe('image-handlers', () => {
     vi.mocked(fs.readFileSync).mockReturnValue('');
     mockResolvePath.mockReset();
     mockRunBoxBackup.mockReset();
+    mockUploadAllPendingScans.mockReset();
     resetUploadState();
     sharpMockInstance.resize.mockClear();
     sharpMockInstance.jpeg.mockClear();
@@ -250,6 +257,18 @@ describe('image-handlers', () => {
   });
 
   describe('uploadAllScans', () => {
+    beforeEach(() => {
+      // Default: Bloom upload has nothing to do — most tests below only
+      // care about Box behavior unless they override this.
+      mockUploadAllPendingScans.mockResolvedValue({
+        success: true,
+        uploaded: 0,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+      });
+    });
+
     it('should trigger box backup and report results', async () => {
       mockRunBoxBackup.mockResolvedValue({
         success: true,
@@ -277,6 +296,117 @@ describe('image-handlers', () => {
 
       expect(second.success).toBe(false);
       expect(second.errors).toContain('Upload already in progress');
+    });
+
+    it('should run Bloom and Box uploads in parallel', async () => {
+      mockUploadAllPendingScans.mockResolvedValue({
+        success: true,
+        uploaded: 3,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+      });
+      mockRunBoxBackup.mockResolvedValue({
+        success: true,
+        experiments: 1,
+        filesCopied: 3,
+        errors: [],
+      } as any);
+
+      const result = await uploadAllScans(db);
+
+      expect(mockUploadAllPendingScans).toHaveBeenCalled();
+      expect(mockRunBoxBackup).toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.uploaded).toBe(6); // 3 Bloom + 3 Box
+    });
+
+    it('should let Box complete successfully when Bloom upload fails', async () => {
+      mockUploadAllPendingScans.mockResolvedValue({
+        success: false,
+        uploaded: 0,
+        skipped: 0,
+        failed: 2,
+        errors: ['Bloom: authentication failed'],
+      });
+      mockRunBoxBackup.mockResolvedValue({
+        success: true,
+        experiments: 1,
+        filesCopied: 4,
+        errors: [],
+      } as any);
+
+      const result = await uploadAllScans(db);
+
+      // Box's success is not masked by Bloom's failure.
+      expect(mockRunBoxBackup).toHaveBeenCalled();
+      expect(result.success).toBe(false); // overall still false (Bloom failed)
+      expect(result.uploaded).toBe(4); // Box's files still counted
+      expect(result.failed).toBe(2);
+      expect(result.errors).toContain('Bloom: authentication failed');
+    });
+
+    it('should let Bloom complete successfully when Box backup fails', async () => {
+      mockUploadAllPendingScans.mockResolvedValue({
+        success: true,
+        uploaded: 5,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+      });
+      mockRunBoxBackup.mockResolvedValue({
+        success: false,
+        experiments: 0,
+        filesCopied: 0,
+        errors: ['rclone not installed'],
+      } as any);
+
+      const result = await uploadAllScans(db);
+
+      // Bloom's success is not masked by Box's failure.
+      expect(mockUploadAllPendingScans).toHaveBeenCalled();
+      expect(result.success).toBe(false); // overall still false (Box failed)
+      expect(result.uploaded).toBe(5); // Bloom's uploads still counted
+      expect(result.errors).toContain('rclone not installed');
+    });
+
+    it('should isolate a thrown Bloom upload from a successful Box backup', async () => {
+      mockUploadAllPendingScans.mockRejectedValue(
+        new Error('Unexpected Bloom crash')
+      );
+      mockRunBoxBackup.mockResolvedValue({
+        success: true,
+        experiments: 1,
+        filesCopied: 2,
+        errors: [],
+      } as any);
+
+      const result = await uploadAllScans(db);
+
+      expect(result.success).toBe(false);
+      expect(result.uploaded).toBe(2); // Box still completed and is counted
+      expect(
+        result.errors.some((e) => e.includes('Unexpected Bloom crash'))
+      ).toBe(true);
+    });
+
+    it('should isolate a thrown Box backup from a successful Bloom upload', async () => {
+      mockUploadAllPendingScans.mockResolvedValue({
+        success: true,
+        uploaded: 3,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+      });
+      mockRunBoxBackup.mockRejectedValue(new Error('Unexpected Box crash'));
+
+      const result = await uploadAllScans(db);
+
+      expect(result.success).toBe(false);
+      expect(result.uploaded).toBe(3); // Bloom still completed and is counted
+      expect(
+        result.errors.some((e) => e.includes('Unexpected Box crash'))
+      ).toBe(true);
     });
   });
 
