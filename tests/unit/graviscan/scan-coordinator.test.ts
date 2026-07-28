@@ -17,12 +17,10 @@ vi.mock('fs', () => ({
   promises: {
     access: vi.fn().mockResolvedValue(undefined),
     stat: vi.fn().mockResolvedValue({ size: 1024 }),
-    rename: vi.fn().mockResolvedValue(undefined),
   },
   // Keep existsSync for any other code that might use it
   existsSync: vi.fn().mockReturnValue(true),
   statSync: vi.fn().mockReturnValue({ size: 1024 }),
-  renameSync: vi.fn(),
 }));
 
 import * as fs from 'fs';
@@ -58,6 +56,24 @@ function createMockSubprocess(scannerId: string): EventEmitter & {
   });
 }
 
+// Helper to emit a scan-complete event per plate, as the real
+// ScannerSubprocess does when the Python worker reports each plate's final
+// (already-_et_-stamped) path. `sub` is whatever mock subprocess received
+// the `scan()` call; `plates` is the array `scan()` was called with.
+function emitScanCompleteForPlates(
+  sub: EventEmitter,
+  plates: PlateConfig[]
+): void {
+  for (const plate of plates) {
+    sub.emit('scan-complete', {
+      type: 'scan-complete',
+      scanner_id: 'test-scanner',
+      plate_index: plate.plate_index,
+      path: plate.output_path,
+    });
+  }
+}
+
 // Track created subprocesses
 let createdSubprocesses: ReturnType<typeof createMockSubprocess>[];
 
@@ -78,7 +94,6 @@ describe('ScanCoordinator', () => {
     // Mock fs.promises
     vi.mocked(fs.promises.access).mockResolvedValue(undefined);
     vi.mocked(fs.promises.stat).mockResolvedValue({ size: 1024 } as fs.Stats);
-    vi.mocked(fs.promises.rename).mockResolvedValue(undefined);
 
     // Suppress console
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -270,6 +285,13 @@ describe('ScanCoordinator', () => {
       expect(cycleComplete).toHaveBeenCalledWith(
         expect.objectContaining({ cycle: 1 })
       );
+
+      // grid-complete no longer carries rename bookkeeping — the Python
+      // worker writes the final filename directly, so there is nothing to
+      // rename and nothing to report here.
+      const gridCompletePayload = gridComplete.mock.calls[0][0];
+      expect(gridCompletePayload).not.toHaveProperty('renamedFiles');
+      expect(gridCompletePayload).not.toHaveProperty('renameErrors');
     });
 
     it('regex path rewriting only affects filename, not directory', async () => {
@@ -379,15 +401,58 @@ describe('ScanCoordinator', () => {
       await coordinator.initialize(makeScanners(1));
 
       const sub = createdSubprocesses[0];
-      sub.scan.mockImplementation(() => {
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        emitScanCompleteForPlates(sub, plates);
         process.nextTick(() => sub.emit('cycle-done', {}));
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
       await coordinator.scanOnce(platesMap);
 
-      // fs.promises.access should have been called to verify output files
+      // fs.promises.access should have been called to verify output files —
+      // using the real path from the scan-complete event, not a
+      // coordinator-predicted one.
       expect(fs.promises.access).toHaveBeenCalled();
+    });
+
+    it('verifies the path reported by scan-complete, not the path it sent', async () => {
+      // The Python worker now composes the final filename (with _et_)
+      // itself at save time, so it can legitimately report a DIFFERENT
+      // path than the one the coordinator sent via sub.scan(). The
+      // coordinator must verify (and later use) the real reported path.
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      const sentPath = '/tmp/scan_st_20260410T120000_cy1_S1_00.tif';
+      const realFinalPath =
+        '/tmp/scan_st_20260410T120000_et_20260410T120530_cy1_S1_00.tif';
+
+      sub.scan.mockImplementation(() => {
+        sub.emit('scan-complete', {
+          type: 'scan-complete',
+          scanner_id: 'scanner-1',
+          plate_index: '00',
+          path: realFinalPath,
+        });
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const platesMap = new Map<string, PlateConfig[]>();
+      platesMap.set('scanner-1', [
+        {
+          plate_index: '00',
+          grid_mode: '2grid',
+          resolution: 600,
+          output_path: sentPath,
+        },
+      ]);
+
+      await coordinator.scanOnce(platesMap);
+
+      // Verification ran against the reported final path, not the sent one.
+      expect(fs.promises.access).toHaveBeenCalledWith(realFinalPath);
+      expect(fs.promises.access).not.toHaveBeenCalledWith(sentPath);
     });
 
     it('emits scan-error when stat rejects (filesystem race)', async () => {
@@ -395,7 +460,8 @@ describe('ScanCoordinator', () => {
       await coordinator.initialize(makeScanners(1));
 
       const sub = createdSubprocesses[0];
-      sub.scan.mockImplementation(() => {
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        emitScanCompleteForPlates(sub, plates);
         process.nextTick(() => sub.emit('cycle-done', {}));
       });
 
@@ -413,33 +479,6 @@ describe('ScanCoordinator', () => {
       expect(scanError).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Cannot stat'),
-        })
-      );
-    });
-
-    it('emits rename-error when rename fails', async () => {
-      const coordinator = await createCoordinator();
-      await coordinator.initialize(makeScanners(1));
-
-      const sub = createdSubprocesses[0];
-      sub.scan.mockImplementation(() => {
-        process.nextTick(() => sub.emit('cycle-done', {}));
-      });
-
-      // Make rename fail
-      vi.mocked(fs.promises.rename).mockRejectedValue(
-        new Error('ENOSPC: no space left on device')
-      );
-
-      const renameError = vi.fn();
-      coordinator.on('rename-error', renameError);
-
-      const platesMap = makePlatesMap(['scanner-1']);
-      await coordinator.scanOnce(platesMap);
-
-      expect(renameError).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining('ENOSPC'),
         })
       );
     });
@@ -553,7 +592,8 @@ describe('ScanCoordinator', () => {
       await coordinator.initialize(makeScanners(1));
 
       const sub = createdSubprocesses[0];
-      sub.scan.mockImplementation(() => {
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        emitScanCompleteForPlates(sub, plates);
         process.nextTick(() => sub.emit('cycle-done', {}));
       });
 
@@ -580,7 +620,8 @@ describe('ScanCoordinator', () => {
       await coordinator.initialize(makeScanners(1));
 
       const sub = createdSubprocesses[0];
-      sub.scan.mockImplementation(() => {
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        emitScanCompleteForPlates(sub, plates);
         process.nextTick(() => sub.emit('cycle-done', {}));
       });
 
@@ -597,21 +638,6 @@ describe('ScanCoordinator', () => {
           error: expect.stringContaining('zero-size'),
         })
       );
-    });
-
-    it('logs successful renames via scanLog', async () => {
-      const coordinator = await createCoordinator();
-      await coordinator.initialize(makeScanners(1));
-
-      const sub = createdSubprocesses[0];
-      sub.scan.mockImplementation(() => {
-        process.nextTick(() => sub.emit('cycle-done', {}));
-      });
-
-      const platesMap = makePlatesMap(['scanner-1']);
-      await coordinator.scanOnce(platesMap);
-
-      expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('Renamed:'));
     });
 
     it('logs grid-complete events via scanLog', async () => {

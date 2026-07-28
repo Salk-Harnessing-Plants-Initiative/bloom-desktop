@@ -8,7 +8,9 @@
  * Adapted from Ben's scan-coordinator.ts (PR #138) with:
  * - Types imported from shared types file
  * - Implements ScanCoordinatorLike interface
- * - Rename failures surfaced as events
+ * - Real per-plate output paths learned from scan-complete events (the
+ *   Python worker composes the final _et_-stamped filename at save time,
+ *   so no post-save rename is needed — see #154)
  * - File verification after scan-complete
  * - USB stagger delay logged
  * - Dead CoordinatorEvent type removed
@@ -280,24 +282,34 @@ export class ScanCoordinator
           };
         });
 
+        // Accumulate the REAL per-plate paths from each plate's own
+        // scan-complete event. The worker now composes the final filename
+        // (including `_et_`) at save time, so the path we sent above is no
+        // longer guaranteed to be the path on disk — we must learn it from
+        // the event, not assume it.
+        const outputPaths: { plateIndex: string; path: string }[] = [];
+
         const promise = new Promise<{
           scannerId: string;
           outputPaths: { plateIndex: string; path: string }[];
         } | null>((resolve) => {
           const cleanup = () => {
             clearTimeout(rowTimeout);
+            sub.removeListener('scan-complete', onScanComplete);
             sub.removeListener('cycle-done', onCycleDone);
             sub.removeListener('exit', onExit);
           };
+          const onScanComplete = (event: ScanWorkerEvent) => {
+            if (event.plate_index && event.path) {
+              outputPaths.push({
+                plateIndex: event.plate_index,
+                path: event.path,
+              });
+            }
+          };
           const onCycleDone = () => {
             cleanup();
-            resolve({
-              scannerId,
-              outputPaths: platesToScan.map((p) => ({
-                plateIndex: p.plate_index,
-                path: p.output_path,
-              })),
-            });
+            resolve({ scannerId, outputPaths });
           };
           const onExit = () => {
             cleanup();
@@ -314,6 +326,7 @@ export class ScanCoordinator
             });
             resolve(null);
           }, SCAN_ROW_TIMEOUT_MS);
+          sub.on('scan-complete', onScanComplete);
           sub.on('cycle-done', onCycleDone);
           sub.on('exit', onExit);
         });
@@ -326,31 +339,19 @@ export class ScanCoordinator
       const results = await Promise.all(rowDonePromises);
 
       // Check cancelled after await — if cancel fired during the scan,
-      // skip file verification and renaming for this row
+      // skip file verification for this row
       if (this.cancelled) break;
 
       const gridEndedAt = new Date();
-      const etTimestamp = gridEndedAt
-        .toISOString()
-        .replace(/[-:]/g, '')
-        .slice(0, 15);
       this.currentGridEndedAt = gridEndedAt.toISOString();
 
-      scanLog(
-        `Cycle ${this.currentCycle}: row [${rowGrids.join(',')}] complete (et_${etTimestamp})`
-      );
+      scanLog(`Cycle ${this.currentCycle}: row [${rowGrids.join(',')}] complete`);
 
-      // Verify output files and rename with end timestamps
-      const renamedByGrid: Map<
-        string,
-        { oldPath: string; newPath: string; scannerId: string }[]
-      > = new Map();
-      const renameErrors: {
-        scannerId: string;
-        filePath: string;
-        error: string;
-      }[] = [];
-      for (const gridIndex of rowGrids) renamedByGrid.set(gridIndex, []);
+      // Verify output files. The Python worker composed the final filename
+      // (including `_et_`) at save time, so the paths from the scan-complete
+      // events above are already final — no rename is needed here.
+      const verifiedByGrid: Map<string, number> = new Map();
+      for (const gridIndex of rowGrids) verifiedByGrid.set(gridIndex, 0);
 
       for (const result of results) {
         if (!result) continue;
@@ -393,43 +394,10 @@ export class ScanCoordinator
             continue;
           }
 
-          // Rename to include end timestamp
-          try {
-            const dir = path.dirname(outputPath);
-            const ext = path.extname(outputPath);
-            const base = path.basename(outputPath, ext);
-
-            const newBase = base.replace(
-              /(_st_\d{8}T\d{6})/,
-              `$1_et_${etTimestamp}`
-            );
-            const newPath = path.join(dir, newBase + ext);
-
-            await fs.promises.rename(outputPath, newPath);
-            scanLog(
-              `[${result.scannerId}] Renamed: ${path.basename(outputPath)} → ${path.basename(newPath)}`
-            );
-            renamedByGrid.get(plateIndex)?.push({
-              oldPath: outputPath,
-              newPath,
-              scannerId: result.scannerId,
-            });
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            scanLog(
-              `[${result.scannerId}] Failed to rename ${outputPath}: ${errMsg}`
-            );
-            renameErrors.push({
-              scannerId: result.scannerId,
-              filePath: outputPath,
-              error: errMsg,
-            });
-            this.emit('rename-error', {
-              scannerId: result.scannerId,
-              filePath: outputPath,
-              error: errMsg,
-            });
-          }
+          verifiedByGrid.set(
+            plateIndex,
+            (verifiedByGrid.get(plateIndex) || 0) + 1
+          );
         }
       }
 
@@ -437,14 +405,12 @@ export class ScanCoordinator
       for (const gridIndex of rowGrids) {
         this.emit('grid-complete', {
           cycle: this.currentCycle,
-          renamedFiles: renamedByGrid.get(gridIndex) || [],
-          renameErrors,
           gridIndex,
           scanStartedAt: gridStartedAt.toISOString(),
           scanEndedAt: gridEndedAt.toISOString(),
         });
         scanLog(
-          `Cycle ${this.currentCycle}: grid ${gridIndex} complete — ${(renamedByGrid.get(gridIndex) || []).length} files renamed`
+          `Cycle ${this.currentCycle}: grid ${gridIndex} complete — ${verifiedByGrid.get(gridIndex) || 0} files verified`
         );
       }
     }

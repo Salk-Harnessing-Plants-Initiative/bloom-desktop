@@ -61,7 +61,6 @@ export function setupCoordinatorEventForwarding(
     'overtime',
     'cancelled',
     'scan-error',
-    'rename-error',
   ];
 
   for (const eventName of events) {

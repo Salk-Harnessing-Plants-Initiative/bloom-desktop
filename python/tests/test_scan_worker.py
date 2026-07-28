@@ -7,6 +7,7 @@ state management, and USB reset platform mocking.
 import io
 import json
 import os
+import re
 import sys
 import threading
 from unittest.mock import MagicMock, patch
@@ -53,6 +54,18 @@ def _capture_stderr(func, *args, **kwargs):
 def _make_worker(scanner_id="test-scanner", device_name="mock-device", mock=True):
     """Create a ScanWorker with sensible test defaults."""
     return ScanWorker(scanner_id=scanner_id, device_name=device_name, mock=mock)
+
+
+def _scan_complete_paths(stdout: str) -> list:
+    """Extract `path` from every scan-complete event in captured stdout."""
+    paths = []
+    for line in stdout.strip().split("\n"):
+        if not line.startswith("EVENT:"):
+            continue
+        event = json.loads(line.removeprefix("EVENT:"))
+        if event.get("type") == "scan-complete":
+            paths.append(event["path"])
+    return paths
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -125,20 +138,20 @@ class TestMockScan:
     @patch("time.sleep")
     def test_generates_tiff(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan.tif"
-        w._mock_scan("2grid", "00", 300, str(out))
-        assert out.exists()
-        img = Image.open(out)
+        out = tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"
+        final = w._mock_scan("2grid", "00", 300, str(out))
+        assert os.path.exists(final)
+        img = Image.open(final)
         assert img.format == "TIFF"
 
     @patch("time.sleep")
     def test_correct_dimensions(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan.tif"
-        w._mock_scan("2grid", "00", 300, str(out))
+        out = tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"
+        final = w._mock_scan("2grid", "00", 300, str(out))
         region = get_scan_region("2grid", "00")
         px = region.to_pixels(300)
-        img = Image.open(out)
+        img = Image.open(final)
         expected_w = max(px["width"], 100)
         expected_h = max(px["height"], 100)
         assert img.size == (expected_w, expected_h)
@@ -146,9 +159,9 @@ class TestMockScan:
     @patch("time.sleep")
     def test_tiff_has_metadata(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan.tif"
-        w._mock_scan("4grid", "01", 300, str(out))
-        img = Image.open(out)
+        out = tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"
+        final = w._mock_scan("4grid", "01", 300, str(out))
+        img = Image.open(final)
         desc = json.loads(img.tag_v2[270])
         assert desc["grid_mode"] == "4grid"
         assert desc["plate_index"] == "01"
@@ -246,9 +259,12 @@ class TestSaneScanRetryLogic:
         w._sane = mock_sane
         w._device = mock_device
 
-        out_path = str(tmp_path / "scan.tif")
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
         _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
-        assert os.path.exists(out_path)
+        # Final path is composed at save time (_et_ inserted) — the original
+        # out_path is never written; verify the actual saved .tif exists.
+        tifs = list(tmp_path.glob("*.tif"))
+        assert len(tifs) == 1
         assert call_count == 3  # failed 2, succeeded on 3rd
 
     @patch("time.sleep")
@@ -430,7 +446,7 @@ class TestFullScanCycleMock:
         w = _make_worker()
         _capture_stdout(w.initialize)
 
-        out_path = str(tmp_path / "plate00.tif")
+        out_path = str(tmp_path / "plate00_st_20260301T120000_cy1_S1_00.tif")
         scan_cmd = json.dumps(
             {
                 "action": "scan",
@@ -458,7 +474,11 @@ class TestFullScanCycleMock:
         assert "scan-started" in types
         assert "scan-complete" in types
         assert "cycle-done" in types
-        assert os.path.exists(out_path)
+        # The actual file written is reported in the scan-complete event payload
+        # (final path includes _et_, composed at save time — not out_path itself).
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 1
+        assert os.path.exists(complete_paths[0])
 
 
 class TestFourGridRowMerge:
@@ -476,7 +496,9 @@ class TestFourGridRowMerge:
                     "plate_index": idx,
                     "grid_mode": "4grid",
                     "resolution": 300,
-                    "output_path": str(tmp_path / f"plate_{idx}.tif"),
+                    "output_path": str(
+                        tmp_path / f"plate_{idx}_st_20260301T120000_cy1_S1_00.tif"
+                    ),
                 }
             )
 
@@ -486,20 +508,13 @@ class TestFourGridRowMerge:
         with patch("sys.stdin", io.StringIO(f"{scan_cmd}\n{quit_cmd}\n")):
             out = _capture_stdout(w.run)
 
-        # All 4 TIFFs should exist
-        for idx in ("00", "01", "10", "11"):
-            path = tmp_path / f"plate_{idx}.tif"
-            assert path.exists(), f"Missing {path}"
+        # All 4 TIFFs should exist — paths reported in scan-complete events.
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 4
+        for path in complete_paths:
+            assert os.path.exists(path), f"Missing {path}"
             img = Image.open(path)
             assert img.size[0] > 0 and img.size[1] > 0
-
-        events = [
-            json.loads(line.removeprefix("EVENT:"))
-            for line in out.strip().split("\n")
-            if line.startswith("EVENT:")
-        ]
-        complete_events = [e for e in events if e["type"] == "scan-complete"]
-        assert len(complete_events) == 4
 
 
 class TestTwoGridIndividualScans:
@@ -515,13 +530,13 @@ class TestTwoGridIndividualScans:
                 "plate_index": "00",
                 "grid_mode": "2grid",
                 "resolution": 300,
-                "output_path": str(tmp_path / "p00.tif"),
+                "output_path": str(tmp_path / "p00_st_20260301T120000_cy1_S1_00.tif"),
             },
             {
                 "plate_index": "01",
                 "grid_mode": "2grid",
                 "resolution": 300,
-                "output_path": str(tmp_path / "p01.tif"),
+                "output_path": str(tmp_path / "p01_st_20260301T120000_cy1_S1_01.tif"),
             },
         ]
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
@@ -530,8 +545,10 @@ class TestTwoGridIndividualScans:
         with patch("sys.stdin", io.StringIO(f"{scan_cmd}\n{quit_cmd}\n")):
             out = _capture_stdout(w.run)
 
-        assert (tmp_path / "p00.tif").exists()
-        assert (tmp_path / "p01.tif").exists()
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 2
+        for path in complete_paths:
+            assert os.path.exists(path)
 
         events = [
             json.loads(line.removeprefix("EVENT:"))
@@ -556,23 +573,25 @@ class TestFourGridSinglePlateInRow:
                 "plate_index": "00",
                 "grid_mode": "4grid",
                 "resolution": 300,
-                "output_path": str(tmp_path / "p00.tif"),
+                "output_path": str(tmp_path / "p00_st_20260301T120000_cy1_S1_00.tif"),
             },
             {
                 "plate_index": "10",
                 "grid_mode": "4grid",
                 "resolution": 300,
-                "output_path": str(tmp_path / "p10.tif"),
+                "output_path": str(tmp_path / "p10_st_20260301T120000_cy1_S1_10.tif"),
             },
         ]
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
         quit_cmd = json.dumps({"action": "quit"})
 
         with patch("sys.stdin", io.StringIO(f"{scan_cmd}\n{quit_cmd}\n")):
-            _capture_stdout(w.run)
+            out = _capture_stdout(w.run)
 
-        assert (tmp_path / "p00.tif").exists()
-        assert (tmp_path / "p10.tif").exists()
+        complete_paths = _scan_complete_paths(out)
+        assert len(complete_paths) == 2
+        for path in complete_paths:
+            assert os.path.exists(path)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1051,3 +1070,62 @@ class TestBuildTiffMetadata:
         region = get_scan_region("2grid", "01")
         ifd = _build_tiff_metadata("s1", "2grid", "01", 300, region)
         assert ifd[296] == 2  # inches
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Section 11 — Real Hardware (excluded from default runs / CI)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.hardware
+class TestRealHardwarePathComposition:
+    """11.1 real (non-mock) scan writes directly to its final _et_-stamped
+    filename — no write-then-rename.
+
+    Requires the physical GraviScan rig (a real SANE scanner attached).
+    Excluded from default/CI runs via `-m "not hardware"` in pyproject.toml.
+
+    To run once the rig is back online:
+
+        GRAVISCAN_TEST_DEVICE=<device> uv run pytest python/tests/test_scan_worker.py -m hardware -v
+
+    where <device> is the SANE device name for the attached scanner, e.g.
+    "epkowa:interpreter:001:007".
+    """
+
+    def test_sane_scan_writes_final_path_directly(self, tmp_path):
+        device = os.environ.get("GRAVISCAN_TEST_DEVICE", "")
+        if not device:
+            pytest.skip(
+                "GRAVISCAN_TEST_DEVICE not set — skipping real-hardware test. "
+                "Set it to the SANE device name of the attached scanner to run "
+                "this test on the physical rig."
+            )
+
+        w = ScanWorker(scanner_id="hw-test-scanner", device_name=device, mock=False)
+        assert w.initialize(), "Failed to initialize real SANE device"
+
+        output_path = str(
+            tmp_path / "hwtest_st_20260301T120000_cy1_S1_00.tif"
+        )
+        final_path = None
+        try:
+            final_path = w._sane_scan("2grid", "00", 300, output_path)
+
+            # File was written once, directly, to its final name.
+            assert os.path.exists(final_path)
+
+            basename = os.path.basename(final_path)
+            st_match = re.search(r"_st_(\d{8}T\d{6})", basename)
+            et_match = re.search(r"_et_(\d{8}T\d{6})", basename)
+            assert st_match is not None, f"Missing _st_ segment in {basename}"
+            assert et_match is not None, f"Missing _et_ segment in {basename}"
+            # _et_ timestamp segment appears after _st_ in the filename.
+            assert st_match.start() < et_match.start()
+
+            # No write-then-rename: nothing exists at the original pre-_et_ path.
+            assert not os.path.exists(output_path)
+        finally:
+            if final_path and os.path.exists(final_path):
+                os.remove(final_path)
+            w._shutdown()

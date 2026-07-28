@@ -38,7 +38,10 @@ dev = []
 [tool.pytest.ini_options]
 testpaths = ["python"]
 python_files = ["test_*.py"]
-addopts = "--cov=python --cov-report=html --cov-report=term --cov-fail-under=80"
+markers = [
+    "hardware: requires the physical GraviScan rig with a real scanner attached (SANE hardware, not mock) — excluded from default runs and CI; run explicitly with `-m hardware`",
+]
+addopts = "--cov=python --cov-report=html --cov-report=term --cov-fail-under=80 -m \"not hardware\""
 
 [tool.coverage.run]
 omit = [

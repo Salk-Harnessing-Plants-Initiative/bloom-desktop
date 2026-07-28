@@ -172,7 +172,7 @@ describe('GraviScan wiring module', () => {
   });
 
   describe('coordinator event forwarding', () => {
-    it('forwards all 11 coordinator events to renderer', () => {
+    it('forwards all 10 coordinator events to renderer', () => {
       const coordinator = new EventEmitter();
       const send = vi.fn();
       const mockWindow = {
@@ -196,7 +196,6 @@ describe('GraviScan wiring module', () => {
         'overtime',
         'cancelled',
         'scan-error',
-        'rename-error',
       ];
 
       for (const eventName of events) {
@@ -233,32 +232,6 @@ describe('GraviScan wiring module', () => {
         coordinator.emit('scan-event', { test: true })
       ).not.toThrow();
       expect(mockWindow.webContents.send).not.toHaveBeenCalled();
-    });
-
-    it('forwards rename-error events to renderer', () => {
-      const coordinator = new EventEmitter();
-      const send = vi.fn();
-      const mockWindow = {
-        isDestroyed: () => false,
-        webContents: { send },
-      };
-
-      setupCoordinatorEventForwarding(
-        coordinator as any,
-        () => mockWindow as any
-      );
-
-      coordinator.emit('rename-error', {
-        scannerId: 'scanner-1',
-        filePath: '/tmp/scan.tif',
-        error: 'ENOSPC',
-      });
-
-      expect(send).toHaveBeenCalledWith('graviscan:rename-error', {
-        scannerId: 'scanner-1',
-        filePath: '/tmp/scan.tif',
-        error: 'ENOSPC',
-      });
     });
   });
 
