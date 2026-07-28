@@ -3,9 +3,7 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -1396,7 +1394,7 @@ The system SHALL provide image reading, export, and cloud backup as testable fun
 
 ### Requirement: ScanCoordinator Multi-Scanner Orchestration
 
-The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-coordinator.ts` that orchestrates multiple `ScannerSubprocess` instances for parallel scanning, with staggered initialization, grid-based scan sequencing, interval/continuous mode timing, and graceful shutdown. The USB stagger delay SHALL be defined as a named module-level constant `USB_STAGGER_DELAY_MS = 5000`. File verification and renaming in `handleScanComplete()` SHALL use asynchronous filesystem operations (`fs.promises`) instead of synchronous calls to avoid blocking the Electron main process event loop during scan completion. Critical events (`grid-complete` with file paths, successful renames) SHALL be logged via `scanLog()` for scientific traceability.
+The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-coordinator.ts` that orchestrates multiple `ScannerSubprocess` instances for parallel scanning, with staggered initialization, grid-based scan sequencing, interval/continuous mode timing, and graceful shutdown. The USB stagger delay SHALL be defined as a named module-level constant `USB_STAGGER_DELAY_MS = 5000`. File verification in `handleScanComplete()` SHALL use asynchronous filesystem operations (`fs.promises`) instead of synchronous calls to avoid blocking the Electron main process event loop during scan completion. Critical events (`grid-complete` with file paths) SHALL be logged via `scanLog()` for scientific traceability.
 
 #### Scenario: Staggered scanner initialization
 
@@ -1423,7 +1421,7 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 - **AND** within each grid, scanners SHALL be triggered with a `USB_STAGGER_DELAY_MS` (5-second) stagger delay
 - **AND** each stagger delay SHALL be logged via `scanLog()` with the scanner ID and delay duration
 - **AND** the coordinator SHALL wait for all scanners to complete a grid before proceeding to the next
-- **AND** output files SHALL be renamed to append `_et_YYYYMMDDTHHMMSS` end-timestamp after grid completion (regex applied to `path.basename` only, not the full path)
+- **AND** each plate's final output path (already including the `_et_YYYYMMDDTHHMMSS` end-timestamp, composed by the Python scan worker at save time) SHALL be learned from that plate's `scan-complete` event — the coordinator SHALL NOT assume the path it sent to the worker is the path that was saved
 - **AND** the coordinator SHALL emit `grid-start`, `grid-complete`, and `cycle-complete` events
 
 #### Scenario: File verification after scan-complete uses async FS
@@ -1433,23 +1431,6 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 - **THEN** the coordinator SHALL use `fs.promises.access()` to verify the output file exists
 - **AND** SHALL use `fs.promises.stat()` to verify the file has non-zero size
 - **AND** if the file is missing or zero-size, the coordinator SHALL emit a `scan-error` event for that scanner/plate
-
-#### Scenario: Rename uses async FS and is logged
-
-- **GIVEN** all scanners have completed a grid
-- **WHEN** the coordinator renames output files to include end timestamps
-- **THEN** the coordinator SHALL use `fs.promises.rename()` instead of `fs.renameSync()`
-- **AND** renames SHALL remain sequential within each result set (not parallelized via `Promise.all`)
-- **AND** row group N+1 SHALL NOT begin scanning until all renames for row group N have resolved or errored
-- **AND** successful renames SHALL be logged via `scanLog()` with old and new file paths
-
-#### Scenario: Rename failure surfaces as error event
-
-- **GIVEN** all scanners have completed a grid
-- **WHEN** the coordinator attempts to rename output files to include end timestamps
-- **AND** a rename operation fails (e.g., disk full, permissions)
-- **THEN** the coordinator SHALL emit a `rename-error` event with the failure details and affected file path
-- **AND** the `grid-complete` event SHALL include a `renameErrors` array (empty on success)
 
 #### Scenario: Partial scanner failure mid-grid
 
@@ -1506,7 +1487,7 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 - **GIVEN** the coordinator is actively awaiting `scanOnce()` completion
 - **WHEN** `cancelAll()` is called
 - **THEN** the coordinator SHALL check `this.cancelled` after each row completes
-- **AND** the coordinator SHALL skip file verification and renaming for unfinished rows
+- **AND** the coordinator SHALL skip file verification for unfinished rows
 - **AND** `isScanning` SHALL return `false` after `scanOnce()` returns
 
 #### Scenario: Graceful shutdown
@@ -1528,7 +1509,7 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 
 - **GIVEN** the coordinator completes a grid
 - **WHEN** the `grid-complete` event is emitted
-- **THEN** the event payload (including renamed file paths and timestamps) SHALL be logged via `scanLog()`
+- **THEN** the event payload (including scanned file paths and timestamps) SHALL be logged via `scanLog()`
 - **AND** the log entry SHALL survive renderer crashes
 
 ### Requirement: ScannerSubprocess Worker Management
@@ -1844,7 +1825,7 @@ The system SHALL forward `ScanCoordinator` events to the renderer process via IP
 #### Scenario: Scan events forwarded to renderer
 
 - **GIVEN** a `ScanCoordinator` is active and `mainWindow` exists
-- **WHEN** the coordinator emits `scan-event`, `grid-start`, `grid-complete`, `cycle-complete`, `interval-start`, `interval-waiting`, `interval-complete`, `overtime`, `cancelled`, `scan-error`, or `rename-error`
+- **WHEN** the coordinator emits `scan-event`, `grid-start`, `grid-complete`, `cycle-complete`, `interval-start`, `interval-waiting`, `interval-complete`, `overtime`, `cancelled`, or `scan-error`
 - **THEN** the event SHALL be forwarded to the renderer via `mainWindow.webContents.send('graviscan:<event-name>', payload)`
 
 #### Scenario: No crash when mainWindow is null
@@ -2050,3 +2031,23 @@ The system SHALL include integration tests verifying the full IPC round-trip for
 - **WHEN** renderer code calls `window.electron.gravi.onScanEvent(callback)`
 - **THEN** it SHALL return a function (cleanup)
 - **AND** the cleanup function SHALL be callable without error
+
+### Requirement: Scan File Saved with Final Filename
+
+The scan worker SHALL save scan output files with both `_st_TIMESTAMP` (start) and `_et_TIMESTAMP` (end) in the filename at write time, via `compose_output_path()`. No post-save rename SHALL occur.
+
+#### Scenario: Plate scan completes with final filename on disk
+
+- **GIVEN** the worker receives `output_path = "..._st_20260413T120530_cy1_S1_00.tif"`
+- **WHEN** the plate scan completes
+- **THEN** the file SHALL be saved as `..._st_20260413T120530_et_20260413T120545_cy1_S1_00.tif`
+- **AND** no rename operation SHALL occur after save
+- **AND** the `scan-complete` event SHALL contain the final path (with `_et_`)
+
+#### Scenario: Coordinator learns the real path from scan-complete, not the path it sent
+
+- **GIVEN** a scan completes successfully
+- **WHEN** the coordinator verifies and reports the output file
+- **THEN** the path used SHALL be the one reported in the plate's `scan-complete` event
+- **AND** SHALL NOT be assumed from the path the coordinator originally sent to the worker
+
