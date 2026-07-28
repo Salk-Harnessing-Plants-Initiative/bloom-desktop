@@ -28,6 +28,14 @@ const config: ForgeConfig = {
       './node_modules/.prisma', // Generated Prisma Client + native binaries
       './node_modules/@prisma/client', // Prisma Client package
       './prisma/schema.prisma', // Schema for runtime introspection
+
+      // LD_PRELOAD USB filter for parallel scanner isolation (Linux only)
+      // — built by `scripts/build-libusb-filter.sh` (npm run build:native).
+      // Excluded from macOS/Windows builds so packaging doesn't error
+      // when the .so doesn't exist on those platforms.
+      ...(process.platform === 'linux'
+        ? ['./src/main/native/libusb-filter.so']
+        : []),
     ],
   },
   rebuildConfig: {},
