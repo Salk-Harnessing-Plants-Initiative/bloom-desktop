@@ -266,6 +266,7 @@ describe('image-handlers', () => {
         skipped: 0,
         failed: 0,
         errors: [],
+        metadataLinkingAvailable: false,
       });
     });
 
@@ -305,6 +306,7 @@ describe('image-handlers', () => {
         skipped: 0,
         failed: 0,
         errors: [],
+        metadataLinkingAvailable: false,
       });
       mockRunBoxBackup.mockResolvedValue({
         success: true,
@@ -321,6 +323,41 @@ describe('image-handlers', () => {
       expect(result.uploaded).toBe(6); // 3 Bloom + 3 Box
     });
 
+    it('should surface metadataLinkingAvailable from the Bloom result on the merged return value', async () => {
+      mockUploadAllPendingScans.mockResolvedValue({
+        success: true,
+        uploaded: 1,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+        metadataLinkingAvailable: true,
+      });
+      mockRunBoxBackup.mockResolvedValue({
+        success: true,
+        experiments: 1,
+        filesCopied: 1,
+        errors: [],
+      } as any);
+
+      const result = await uploadAllScans(db);
+
+      expect(result.metadataLinkingAvailable).toBe(true);
+    });
+
+    it('should report metadataLinkingAvailable=false when Bloom upload throws', async () => {
+      mockUploadAllPendingScans.mockRejectedValue(new Error('Bloom crash'));
+      mockRunBoxBackup.mockResolvedValue({
+        success: true,
+        experiments: 1,
+        filesCopied: 1,
+        errors: [],
+      } as any);
+
+      const result = await uploadAllScans(db);
+
+      expect(result.metadataLinkingAvailable).toBe(false);
+    });
+
     it('should let Box complete successfully when Bloom upload fails', async () => {
       mockUploadAllPendingScans.mockResolvedValue({
         success: false,
@@ -328,6 +365,7 @@ describe('image-handlers', () => {
         skipped: 0,
         failed: 2,
         errors: ['Bloom: authentication failed'],
+        metadataLinkingAvailable: false,
       });
       mockRunBoxBackup.mockResolvedValue({
         success: true,
@@ -353,6 +391,7 @@ describe('image-handlers', () => {
         skipped: 0,
         failed: 0,
         errors: [],
+        metadataLinkingAvailable: false,
       });
       mockRunBoxBackup.mockResolvedValue({
         success: false,
@@ -397,6 +436,7 @@ describe('image-handlers', () => {
         skipped: 0,
         failed: 0,
         errors: [],
+        metadataLinkingAvailable: false,
       });
       mockRunBoxBackup.mockRejectedValue(new Error('Unexpected Box crash'));
 

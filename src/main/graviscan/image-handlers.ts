@@ -189,6 +189,13 @@ export async function uploadAllScans(
   skipped: number;
   failed: number;
   errors: string[];
+  /**
+   * Whether the installed @salk-hpi/bloom-js supports Bloom session/plate-
+   * metadata linking (see graviscan-upload.ts's UploadResult). Surfaced here
+   * so a future renderer can show operators when metadata linking isn't
+   * active, rather than that only being visible in main-process logs.
+   */
+  metadataLinkingAvailable: boolean;
 }> {
   if (uploadInProgress) {
     console.log('[GraviScan:UPLOAD] Upload already in progress — skipping');
@@ -198,6 +205,7 @@ export async function uploadAllScans(
       skipped: 0,
       failed: 0,
       errors: ['Upload already in progress'],
+      metadataLinkingAvailable: false,
     };
   }
   uploadInProgress = true;
@@ -228,6 +236,7 @@ export async function uploadAllScans(
                   : String(bloomSettled.reason)
               }`,
             ],
+            metadataLinkingAvailable: false,
           };
 
     const boxResult =
@@ -255,6 +264,7 @@ export async function uploadAllScans(
       skipped: bloomResult.skipped,
       failed: bloomResult.failed + boxResult.errors.length,
       errors: [...bloomResult.errors, ...boxResult.errors],
+      metadataLinkingAvailable: bloomResult.metadataLinkingAvailable,
     };
   } catch (error) {
     console.error('[GraviScan:UPLOAD] Error:', error);
@@ -264,6 +274,7 @@ export async function uploadAllScans(
       skipped: 0,
       failed: 0,
       errors: [error instanceof Error ? error.message : 'Upload failed'],
+      metadataLinkingAvailable: false,
     };
   } finally {
     uploadInProgress = false;

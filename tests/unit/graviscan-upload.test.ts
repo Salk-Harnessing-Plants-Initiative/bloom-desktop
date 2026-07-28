@@ -163,6 +163,7 @@ describe('graviscan-upload', () => {
         skipped: 0,
         failed: 0,
         errors: [],
+        metadataLinkingAvailable: false,
       });
       expect(createClient).not.toHaveBeenCalled();
       expect(mockSupabaseClient.auth.signInWithPassword).not.toHaveBeenCalled();
@@ -338,6 +339,62 @@ describe('graviscan-upload', () => {
       expect(result.success).toBe(true);
       expect(result.uploaded).toBe(1);
       expect(result.errors).toHaveLength(0);
+      // Surfaced on the result (not just logged) so a future renderer can
+      // show operators that metadata linking isn't active — console.log is
+      // invisible in a packaged Electron app.
+      expect(result.metadataLinkingAvailable).toBe(false);
+    });
+
+    it('reports metadataLinkingAvailable=true when the store implements both session and metadata RPCs', async () => {
+      mockStore.insertGraviScanSession = vi
+        .fn()
+        .mockResolvedValue({ created: 10, error: null });
+      mockStore.insertGraviScanMetadata = vi
+        .fn()
+        .mockResolvedValue({ created: 20, error: null });
+
+      db.graviScan.findMany.mockResolvedValue([makeScan()]);
+
+      const result = await uploadAllPendingScans(db);
+
+      expect(result.success).toBe(true);
+      expect(result.metadataLinkingAvailable).toBe(true);
+      expect(mockStore.insertGraviScanSession).not.toHaveBeenCalled(); // no session on this scan
+      expect(mockStore.insertGraviScanMetadata).not.toHaveBeenCalled(); // no accession on this scan
+    });
+
+    it('reports metadataLinkingAvailable=false when only one of the two RPCs is implemented', async () => {
+      mockStore.insertGraviScanSession = vi
+        .fn()
+        .mockResolvedValue({ created: 10, error: null });
+      // insertGraviScanMetadata intentionally left unimplemented.
+
+      db.graviScan.findMany.mockResolvedValue([makeScan()]);
+
+      const result = await uploadAllPendingScans(db);
+
+      expect(result.metadataLinkingAvailable).toBe(false);
+    });
+  });
+
+  describe('uploadAllPendingScans — metadataLinkingAvailable on early-return paths', () => {
+    it('reports false when there is no pending work (never checked the store)', async () => {
+      db.graviScan.findMany.mockResolvedValue([]);
+
+      const result = await uploadAllPendingScans(db);
+
+      expect(result.metadataLinkingAvailable).toBe(false);
+    });
+
+    it('reports false when credentials are missing', async () => {
+      (loadEnvConfig as Mock).mockReturnValue({
+        ...mockCredentials,
+        bloom_scanner_username: '',
+      });
+
+      const result = await uploadAllPendingScans(db);
+
+      expect(result.metadataLinkingAvailable).toBe(false);
     });
   });
 });

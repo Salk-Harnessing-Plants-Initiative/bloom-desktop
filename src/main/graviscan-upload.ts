@@ -52,7 +52,26 @@ export interface UploadResult {
   skipped: number;
   failed: number;
   errors: string[];
+  /**
+   * Whether the installed @salk-hpi/bloom-js supports session/plate-metadata
+   * linking (both `insertGraviScanSession` and `insertGraviScanMetadata`
+   * present on SupabaseStore). `false` means the image upload still ran
+   * normally, but session/wave/transplant/note metadata was NOT linked —
+   * see uploadSessions()/uploadMetadata() below. This is surfaced on the
+   * result (rather than only logged) so a future renderer can show
+   * operators when metadata linking isn't active, since console.log is
+   * invisible in a packaged Electron app.
+   */
+  metadataLinkingAvailable: boolean;
 }
+
+/**
+ * UploadResult as returned by processImageJobs(), which has no way to know
+ * whether session/metadata linking was available (that's determined by
+ * uploadSessions()/uploadMetadata(), which run before it). Callers combine
+ * this with `metadataLinkingAvailable` to build the full UploadResult.
+ */
+type ImageUploadResult = Omit<UploadResult, 'metadataLinkingAvailable'>;
 
 /**
  * Locally validate that Bloom credentials are present in ~/.bloom/.env (via
@@ -207,7 +226,7 @@ async function processImageJobs(
   sessionIdMap: Map<string, number>,
   metadataIdMap: Map<string, number>,
   onProgress?: (progress: UploadProgress) => void
-): Promise<UploadResult> {
+): Promise<ImageUploadResult> {
   // Bounded concurrency for Bloom uploads. Each image is 3 round-trips
   // (insert RPC → file upload → update RPC); 4 workers keeps HTTPS pipes
   // saturated without overwhelming Bloom's API or the local network when
@@ -450,16 +469,21 @@ async function uploadSessions(
     };
     phenotyper: { name: string; email: string };
   }>
-): Promise<{ sessionIdMap: Map<string, number>; errors: string[] }> {
+): Promise<{
+  sessionIdMap: Map<string, number>;
+  errors: string[];
+  available: boolean;
+}> {
   const sessionIdMap = new Map<string, number>();
   const errors: string[] = [];
 
   const extendedStore = store as GraviScanStoreExtensions;
-  if (typeof extendedStore.insertGraviScanSession !== 'function') {
+  const available = typeof extendedStore.insertGraviScanSession === 'function';
+  if (!available) {
     console.log(
       '[GraviScan:UPLOAD] SupabaseStore.insertGraviScanSession not available in installed @salk-hpi/bloom-js — skipping session upload'
     );
-    return { sessionIdMap, errors };
+    return { sessionIdMap, errors, available };
   }
 
   const seenSessionIds = new Set<string>();
@@ -518,7 +542,7 @@ async function uploadSessions(
     }
   }
 
-  return { sessionIdMap, errors };
+  return { sessionIdMap, errors, available };
 }
 
 /**
@@ -550,16 +574,21 @@ async function uploadMetadata(
       } | null;
     };
   }>
-): Promise<{ metadataIdMap: Map<string, number>; errors: string[] }> {
+): Promise<{
+  metadataIdMap: Map<string, number>;
+  errors: string[];
+  available: boolean;
+}> {
   const metadataIdMap = new Map<string, number>();
   const errors: string[] = [];
 
   const extendedStore = store as GraviScanStoreExtensions;
-  if (typeof extendedStore.insertGraviScanMetadata !== 'function') {
+  const available = typeof extendedStore.insertGraviScanMetadata === 'function';
+  if (!available) {
     console.log(
       '[GraviScan:UPLOAD] SupabaseStore.insertGraviScanMetadata not available in installed @salk-hpi/bloom-js — skipping metadata upload'
     );
-    return { metadataIdMap, errors };
+    return { metadataIdMap, errors, available };
   }
 
   const seenPlateIds = new Set<string>();
@@ -607,7 +636,7 @@ async function uploadMetadata(
     }
   }
 
-  return { metadataIdMap, errors };
+  return { metadataIdMap, errors, available };
 }
 
 /**
@@ -634,6 +663,7 @@ export async function uploadAllPendingScans(
       skipped: 0,
       failed: 0,
       errors: [configError],
+      metadataLinkingAvailable: false,
     };
   }
 
@@ -665,7 +695,14 @@ export async function uploadAllPendingScans(
   });
 
   if (scans.length === 0) {
-    return { success: true, uploaded: 0, skipped: 0, failed: 0, errors: [] };
+    return {
+      success: true,
+      uploaded: 0,
+      skipped: 0,
+      failed: 0,
+      errors: [],
+      metadataLinkingAvailable: false,
+    };
   }
 
   const clients = await authenticateBloomClients(config);
@@ -676,20 +713,28 @@ export async function uploadAllPendingScans(
       skipped: 0,
       failed: 0,
       errors: [clients.error],
+      metadataLinkingAvailable: false,
     };
   }
 
   // Upload sessions first, then map local session IDs to Supabase session IDs
-  const { sessionIdMap, errors: sessionErrors } = await uploadSessions(
-    clients.store,
-    scans
-  );
+  const {
+    sessionIdMap,
+    errors: sessionErrors,
+    available: sessionUploadAvailable,
+  } = await uploadSessions(clients.store, scans);
 
   // Upload plate metadata, then map local GraviPlateAccession IDs to Supabase metadata IDs
-  const { metadataIdMap, errors: metadataErrors } = await uploadMetadata(
-    clients.store,
-    scans
-  );
+  const {
+    metadataIdMap,
+    errors: metadataErrors,
+    available: metadataUploadAvailable,
+  } = await uploadMetadata(clients.store, scans);
+
+  // Both must be available for metadata linking to actually happen end to
+  // end — session upload alone (or vice versa) still leaves images unlinked.
+  const metadataLinkingAvailable =
+    sessionUploadAvailable && metadataUploadAvailable;
 
   const imageJobs = scans.flatMap((scan) =>
     scan.images.map((img) => ({ scan, image: img }))
@@ -708,5 +753,5 @@ export async function uploadAllPendingScans(
   if (sessionErrors.length > 0 || metadataErrors.length > 0)
     result.success = false;
 
-  return result;
+  return { ...result, metadataLinkingAvailable };
 }
