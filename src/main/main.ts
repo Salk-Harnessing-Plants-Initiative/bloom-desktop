@@ -7,6 +7,11 @@
  * - IPC handlers for Python communication
  */
 
+// Suppress GLib-GObject warnings on Linux (harmless GTK threading noise in Electron)
+if (process.platform === 'linux') {
+  process.env.GDK_BACKEND = process.env.GDK_BACKEND || 'x11';
+}
+
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
