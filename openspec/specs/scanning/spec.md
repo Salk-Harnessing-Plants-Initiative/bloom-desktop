@@ -1381,12 +1381,15 @@ The system SHALL provide image reading, export, and cloud backup as testable fun
 - **WHEN** `downloadImages(db, params)` is called
 - **THEN** the system SHALL return `{ success: true, total: 0, copied: 0, errors: [] }`
 
-#### Scenario: Upload pending scans to Box backup
+#### Scenario: Upload pending scans to Bloom and Box in parallel
 
 - **GIVEN** scans exist with pending upload status
 - **WHEN** `uploadAllScans(db, onProgress)` is called
-- **THEN** the system SHALL trigger Box backup via `runBoxBackup()`
-- **AND** report progress via the injected `onProgress` callback
+- **THEN** the system SHALL trigger Bloom (Supabase) upload and Box backup (via `runBoxBackup()`) in parallel
+- **AND** Bloom upload SHALL upload each scan's session and plate metadata before its images, then upload images with bounded concurrency (4 workers)
+- **AND** if either upload target throws, the other SHALL still complete (failures isolated via `Promise.allSettled`, not a single combined `try` that aborts both)
+- **AND** the combined result SHALL report success only if both targets succeeded, with merged `uploaded`/`skipped`/`failed` counts and merged `errors`
+- **AND** report progress via the injected `onProgress` callback for each target independently
 
 #### Scenario: Reject concurrent upload
 
