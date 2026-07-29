@@ -25,6 +25,13 @@ export interface ScanCoordinatorLike {
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
+  // Task 7 (#234) — single-scanner spawn/stop, added for the
+  // save-scanners-db / disable-scanner handlers (stage 3) so they can
+  // bring a scanner online/offline without a full re-initialize().
+  // Matching the concrete ScanCoordinator class's public signatures.
+  hasWorker(scannerId: string): boolean;
+  addScanner(config: ScannerConfig): Promise<void>;
+  stopScanner(scannerId: string): Promise<void>;
 }
 
 export interface SessionFns {

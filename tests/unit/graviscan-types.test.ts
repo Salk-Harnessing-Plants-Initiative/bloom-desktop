@@ -200,6 +200,9 @@ describe('GraviScan TypeScript Types', () => {
         on: function () {
           return this;
         } as ScanCoordinatorLike['on'],
+        hasWorker: (_scannerId: string) => false,
+        addScanner: async (_config: ScannerConfig) => {},
+        stopScanner: async (_scannerId: string) => {},
       };
       /* eslint-enable @typescript-eslint/no-unused-vars */
       expect(mockCoordinator.isScanning).toBe(false);
