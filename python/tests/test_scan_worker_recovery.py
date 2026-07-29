@@ -10,9 +10,7 @@ makes V600 wedges worse (controller FLR detaches the scanner entirely).
 The _reset_usb_device method itself is preserved for testability.
 """
 
-import io
-import sys
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
