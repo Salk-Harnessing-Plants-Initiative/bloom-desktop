@@ -1071,6 +1071,34 @@ class TestBuildTiffMetadata:
         ifd = _build_tiff_metadata("s1", "2grid", "01", 300, region)
         assert ifd[296] == 2  # inches
 
+    def test_embeds_exp_wave_st_phenotyper_when_supplied(self):
+        region = get_scan_region("2grid", "00")
+        ifd = _build_tiff_metadata(
+            "scanner-1",
+            "2grid",
+            "00",
+            300,
+            region,
+            exp_name="myexp",
+            wave_number=3,
+            st_timestamp="20260502T101530",
+            phenotyper_name="Alice",
+        )
+        desc = json.loads(ifd[270])
+        assert desc["exp_name"] == "myexp"
+        assert desc["wave_number"] == 3
+        assert desc["st_timestamp"] == "20260502T101530"
+        assert desc["phenotyper_name"] == "Alice"
+
+    def test_new_fields_default_when_omitted(self):
+        region = get_scan_region("2grid", "00")
+        ifd = _build_tiff_metadata("scanner-1", "2grid", "00", 300, region)
+        desc = json.loads(ifd[270])
+        assert desc["exp_name"] == ""
+        assert desc["wave_number"] == 0
+        assert desc["st_timestamp"] == ""
+        assert desc["phenotyper_name"] == ""
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Section 11 — Real Hardware (excluded from default runs / CI)
@@ -1123,6 +1151,64 @@ class TestRealHardwarePathComposition:
 
             # No write-then-rename: nothing exists at the original pre-_et_ path.
             assert not os.path.exists(output_path)
+        finally:
+            if final_path and os.path.exists(final_path):
+                os.remove(final_path)
+            w._shutdown()
+
+
+@pytest.mark.hardware
+class TestRealHardwareMetadataFields:
+    """11.2 real (non-mock) scan embeds exp_name/wave_number/st_timestamp/
+    phenotyper_name identically to the mock path.
+
+    SANE and mock are separate code paths in this file (_sane_scan vs
+    _mock_scan) and could diverge on how these new fields are threaded
+    through to `_build_tiff_metadata()`.
+
+    Requires the physical GraviScan rig (a real SANE scanner attached).
+    Excluded from default/CI runs via `-m "not hardware"` in pyproject.toml.
+
+    To run once the rig is back online:
+
+        GRAVISCAN_TEST_DEVICE=<device> uv run pytest python/tests/test_scan_worker.py -m hardware -v
+
+    where <device> is the SANE device name for the attached scanner, e.g.
+    "epkowa:interpreter:001:007".
+    """
+
+    def test_sane_scan_embeds_new_fields(self, tmp_path):
+        device = os.environ.get("GRAVISCAN_TEST_DEVICE", "")
+        if not device:
+            pytest.skip(
+                "GRAVISCAN_TEST_DEVICE not set — skipping real-hardware test. "
+                "Set it to the SANE device name of the attached scanner to run "
+                "this test on the physical rig."
+            )
+
+        w = ScanWorker(scanner_id="hw-test-scanner", device_name=device, mock=False)
+        assert w.initialize(), "Failed to initialize real SANE device"
+
+        output_path = str(tmp_path / "hwtest_st_20260301T120000_cy1_S1_00.tif")
+        final_path = None
+        try:
+            final_path = w._sane_scan(
+                "2grid",
+                "00",
+                300,
+                output_path,
+                "hw-exp",
+                7,
+                "20260301T120000",
+                "Hardware Tester",
+            )
+
+            img = Image.open(final_path)
+            desc = json.loads(img.tag_v2[270])
+            assert desc["exp_name"] == "hw-exp"
+            assert desc["wave_number"] == 7
+            assert desc["st_timestamp"] == "20260301T120000"
+            assert desc["phenotyper_name"] == "Hardware Tester"
         finally:
             if final_path and os.path.exists(final_path):
                 os.remove(final_path)

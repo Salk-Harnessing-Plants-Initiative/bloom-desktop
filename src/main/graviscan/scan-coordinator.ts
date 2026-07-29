@@ -279,6 +279,7 @@ export class ScanCoordinator
           return {
             ...plate,
             output_path: path.join(dir, basename),
+            st_timestamp: stTimestamp,
           };
         });
 
