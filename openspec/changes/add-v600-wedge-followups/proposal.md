@@ -52,7 +52,7 @@ Seven independently-testable items, scoped to bug-fixes and small additions:
   `_reset_usb_device()` (which issues `USBDEVFS_RESET` to
   `/dev/bus/usb/<bus>/<dev>`) inside `_reopen_device()` after any scan
   failure. The investigation summary Section 1.2 and issue #228
-  explicitly documented this ioctl makes V600 wedges *worse* — it can
+  explicitly documented this ioctl makes V600 wedges _worse_ — it can
   trigger controller FLR (function-level reset) and detach the
   scanner entirely. The fix is to NOT call this from production code
   paths. The method itself stays (for tests, observability, and
@@ -66,7 +66,7 @@ Seven independently-testable items, scoped to bug-fixes and small additions:
   `{200, 400, 600, 800, 1200, 1600}`, the worker logs a warning and
   emits a `dpi-warning` event with a documented JSON shape
   (`{"type":"dpi-warning","scanner_id":"<id>","requested_dpi":N,
-  "validated_set":[...],"timestamp":"ISO8601"}`) but proceeds with the
+"validated_set":[...],"timestamp":"ISO8601"}`) but proceeds with the
   scan attempt. The production code uses `x_resolution`/`y_resolution`
   flags (per [#233](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/233))
   so 1200 dpi IS honored at the device today — this safety net is
@@ -110,9 +110,9 @@ Seven independently-testable items, scoped to bug-fixes and small additions:
   [#230](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/230).
 - **Add predictive cadence-won't-be-honored warning.** On the continuous-
   scan form, when the estimated per-cycle wall time (computed from
-  scanner count × grid_mode × per-plate time at the selected DPI)
+  scanner count × grid*mode × per-plate time at the selected DPI)
   exceeds the configured interval, show an amber warning banner BEFORE
-  the operator starts the session. The estimate is a *mean* prediction
+  the operator starts the session. The estimate is a \_mean* prediction
   with ~15% expected variance; the banner deliberately flags
   order-of-magnitude mismatches rather than precise deadlines. Reactive
   `overtime` banner remains unchanged. Closes
@@ -180,13 +180,13 @@ Seven independently-testable items, scoped to bug-fixes and small additions:
 ## Out of scope
 
 - **Database schema migration** (no FK changes; existing schema already
-  supports the new behavior). Note that the `enabled` column's *semantics*
+  supports the new behavior). Note that the `enabled` column's _semantics_
   do change (rows with `enabled=false` now mean "stale, not currently
   enumerating" rather than implicitly never-existing); this is documented
   in `design.md` and a Prisma schema comment, but no migration is needed.
 - **Deleting the `_reset_usb_device()` method itself.** The method
   stays in the codebase (tested, observable) — only the production
-  *call site* in `_reopen_device()` is removed. This preserves the
+  _call site_ in `_reopen_device()` is removed. This preserves the
   ability to re-enable via a single-line revert if a future scenario
   needs the kernel-level reset.
 - **#228 candidate fixes 2–5.** This proposal scopes only Fix 1 from

@@ -114,7 +114,7 @@ not duplicated.
   `enabled = true`
 - **AND** exactly ONE row SHALL exist for `usb_port='1-3'` after the
   operation (verified via `db.graviScanner.count({where: {usb_port:
-  '1-3'}})`)
+'1-3'}})`)
 - **AND** no new row SHALL be created (no duplicate)
 
 #### Scenario: Disabled rows are excluded from all UI-facing queries

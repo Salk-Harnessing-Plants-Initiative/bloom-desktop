@@ -8,6 +8,7 @@ minimum code to make it pass, then refactor. Each task lists what tests
 to write and what behavior they verify.
 
 Task dependencies:
+
 - Task 0 (scan-error field additions) is prerequisite for Task 5
   (WedgeDetector). It must land first or the detector's
   `device_io_120s_zero_bytes` signature has no field to read.
@@ -67,21 +68,21 @@ wedge detector.
 
 **TDD — tests to write FIRST in `python/tests/test_scan_worker_events.py`:**
 
-- *test:* a `scan-error` event from `_emit_scan_error()` includes both
+- _test:_ a `scan-error` event from `_emit_scan_error()` includes both
   `bytes_received` and `wall_seconds` keys (in addition to existing
   keys).
-- *test:* `bytes_received` is `0` when the failure occurs before any
+- _test:_ `bytes_received` is `0` when the failure occurs before any
   bytes are transferred (e.g., `sane.start()` raises).
-- *test:* `wall_seconds` reflects the elapsed time from scan start to
+- _test:_ `wall_seconds` reflects the elapsed time from scan start to
   emit (mock `time.monotonic()` with `[0.0, 100.0]` ⇒ expect
   `wall_seconds == 100.0`).
-- *test:* existing scan-error fields (`type`, `scanner_id`, `plate_index`,
+- _test:_ existing scan-error fields (`type`, `scanner_id`, `plate_index`,
   `job_id`, `error`) are still present and unchanged.
-- *test:* on a successful scan, `duration_ms` field still appears on the
+- _test:_ on a successful scan, `duration_ms` field still appears on the
   `scan-complete` event and uses `time.monotonic()` (mock
   `time.monotonic()` with `[0.0, 5.0]` ⇒ expect `duration_ms == 5000`).
-- *test:* on a failed scan, the corresponding `scan-error` event's
-  `wall_seconds * 1000` and the `duration_ms` field that *would* have
+- _test:_ on a failed scan, the corresponding `scan-error` event's
+  `wall_seconds * 1000` and the `duration_ms` field that _would_ have
   been emitted on success are within 10 ms (both measured via same
   monotonic clock).
 
@@ -115,16 +116,16 @@ or a sibling getter. Document in `.env.example` and README.
 
 **TDD — tests to write FIRST in `tests/unit/config-store-env.test.ts`:**
 
-- *test:* `loadEnvConfig` returns `slackWebhookUrl: undefined` when env
+- _test:_ `loadEnvConfig` returns `slackWebhookUrl: undefined` when env
   file is absent.
-- *test:* `loadEnvConfig` returns `slackWebhookUrl: "https://..."` when
+- _test:_ `loadEnvConfig` returns `slackWebhookUrl: "https://..."` when
   `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/...` is
   present.
-- *test:* `loadEnvConfig` returns `libusbEndpointRecovery: true` (the
+- _test:_ `loadEnvConfig` returns `libusbEndpointRecovery: true` (the
   default) when no env-var is set.
-- *test:* `loadEnvConfig` returns `libusbEndpointRecovery: false` when
+- _test:_ `loadEnvConfig` returns `libusbEndpointRecovery: false` when
   `LIBUSB_ENDPOINT_RECOVERY=false` is set.
-- *test:* `loadEnvConfig` returns `libusbEndpointRecovery: true` for
+- _test:_ `loadEnvConfig` returns `libusbEndpointRecovery: true` for
   case-insensitive truthy values (`"True"`, `"TRUE"`, `"true"`).
 
 **Checklist:**
@@ -164,19 +165,19 @@ operator-blocker.
 
 **TDD — tests to write FIRST in `tests/unit/graviscan-save-scanners.test.ts`:**
 
-- *test:* given an existing `GraviScanner` row with
+- _test:_ given an existing `GraviScanner` row with
   `grid_mode='4grid'`, when `save-scanners-db` is called with
   `[{..., grid_mode: '2grid'}]`, the row's `grid_mode` is `'2grid'`
   after the call.
-- *test:* given no existing row, when `save-scanners-db` is called with
+- _test:_ given no existing row, when `save-scanners-db` is called with
   `[{..., grid_mode: '2grid'}]`, the created row has
   `grid_mode='2grid'`.
-- *test:* given a payload missing `grid_mode`, an existing row's
+- _test:_ given a payload missing `grid_mode`, an existing row's
   `grid_mode` is preserved (not overwritten with null/default).
 
 **Plus an E2E test in `tests/e2e/grid-mode-roundtrip.e2e.ts`:**
 
-- *test:* launch app with a test DB containing one scanner, navigate
+- _test:_ launch app with a test DB containing one scanner, navigate
   to Configure Scanner, change grid_mode dropdown to `2grid`, click
   Save, navigate away, navigate back, confirm dropdown still shows
   `2grid`. Validates the full UI ↔ IPC ↔ DB round-trip.
@@ -192,18 +193,18 @@ operator-blocker.
       contract; a manual UI smoke on the rig validates the round-trip)
 - [ ] 2.3 Add `grid_mode: scanner.grid_mode ?? existing.grid_mode` to
       the UPDATE block — **N/A on `main`**: not applicable, same
-      reconciliation as the Increment 9 stage-3 report's own grid_mode
+      reconciliation as the Increment 9 stage-3 report's own grid*mode
       finding. `main`'s `GraviScanner` Prisma model has no `grid_mode`
       column at all (only `GraviScan` and `GraviConfig` do) — per-scanner
       grid_mode is a source-branch-only concept. The find-existing →
-      upsert *refactor* itself WAS ported, into
+      upsert \_refactor* itself WAS ported, into
       `src/main/graviscan/scanner-upsert.ts`'s `upsertScannerRow()`; only
       the grid_mode field within it is inapplicable
 - [ ] 2.4 Add `grid_mode: scanner.grid_mode ?? '4grid'` to the CREATE
       block — **N/A on `main`**, same reason as 2.3 above
 - [x] 2.5 `npx vitest run tests/unit/graviscan-save-scanners.test.ts`
       passes 7/7; full Vitest run continues to pass. `npx tsc
-      --noEmit` is clean after `npx prisma generate`. Manual UI smoke
+--noEmit` is clean after `npx prisma generate`. Manual UI smoke
       to be performed during Task 12 rig validation.
 
 ---
@@ -211,6 +212,7 @@ operator-blocker.
 ## Task 3 — Disable-on-detect for stale scanner rows (machine-configuration)
 
 **Goal:** Two changes to `graviscan-handlers.ts`:
+
 1. `save-scanners-db` sets `enabled=false` for any existing row whose
    `usb_port` is not in the current payload's `usb_port` set.
 2. `validate-config` switches from `db.graviScanner.delete()` (lines
@@ -218,20 +220,20 @@ operator-blocker.
 
 **TDD — tests to write FIRST in `tests/unit/graviscan-stale-rows.test.ts`:**
 
-- *test:* given enabled rows for ports `['1-1','1-2','1-3']`, when
+- _test:_ given enabled rows for ports `['1-1','1-2','1-3']`, when
   `save-scanners-db` is called with payload for `['1-1','1-2']`, the
   `1-3` row is set to `enabled=false` (and not deleted).
-- *test:* given the same setup, when `validate-config` runs and detects
+- _test:_ given the same setup, when `validate-config` runs and detects
   no scanner at port `1-3`, the row is set to `enabled=false` (and not
   deleted).
-- *test:* given a `GraviScan` row references `scanner_id` of a
+- _test:_ given a `GraviScan` row references `scanner_id` of a
   newly-disabled row, the `GraviScan` row remains in the DB (FK
   preserved).
-- *test:* re-enabling idempotency: when a scanner with `usb_port='1-3'`
+- _test:_ re-enabling idempotency: when a scanner with `usb_port='1-3'`
   is detected again, the previously-disabled row is updated back to
   `enabled=true` AND **exactly one row exists for `usb_port='1-3'` after
   the operation** (assert with `count`, not just `findFirst`).
-- *test:* `get-scanner-status` does NOT return disabled rows (asserts
+- _test:_ `get-scanner-status` does NOT return disabled rows (asserts
   the existing `where: { enabled: true }` filter is intact).
 
 **Checklist:**
@@ -245,14 +247,14 @@ operator-blocker.
       known sites (as of `feature/graviscan-prod` HEAD) live in
       `src/main/graviscan-handlers.ts` at lines 77, 245, 461, 470,
       490, 616, 633, 668, 702, 830, 922, 987, 2188. For each, confirm
-      whether the call should filter `enabled: true`:
-      - **MUST filter:** any read path that surfaces scanners to the UI
-        or to scan-time decisions (get-scanner-status, validate-config
-        success path, worker spawn validation)
-      - **MAY include disabled:** historical lookups by `usb_bus +
-        usb_device` or `usb_port` during upsert/re-detect path (where
-        the goal is to find ANY row for that hardware, including
-        previously-disabled ones to re-enable)
+      whether the call should filter `enabled: true`: MUST filter any
+      read path that surfaces scanners to the UI or to scan-time
+      decisions (get-scanner-status, validate-config success path,
+      worker spawn validation); MAY include disabled rows for
+      historical lookups by `usb_bus + usb_device` or `usb_port`
+      during the upsert/re-detect path (where the goal is to find ANY
+      row for that hardware, including previously-disabled ones, so it
+      can be re-enabled).
       The audit policy is documented in the Prisma schema's
       `GraviScanner` triple-slash doc comment (see Task 3.6) so future
       contributors have a single source of truth. Audited 13+ call
@@ -272,7 +274,7 @@ operator-blocker.
       policy AND the MUST-filter-vs-MAY-include-disabled query
       classification. This is the canonical reference.
 - [x] 3.7 `npx vitest run tests/unit/graviscan-stale-rows.test.ts
-      tests/unit/graviscan-save-scanners.test.ts` passes 13/13;
+tests/unit/graviscan-save-scanners.test.ts` passes 13/13;
       `npx tsc --noEmit` is clean. Manual UI smoke deferred to
       Task 12 rig validation.
 
@@ -289,18 +291,18 @@ future reconsideration — only the production call site is removed.
 
 **TDD — tests to write FIRST in `python/tests/test_scan_worker_recovery.py`:**
 
-- *test:* `_reopen_device()` does NOT call `_reset_usb_device` (use
+- _test:_ `_reopen_device()` does NOT call `_reset_usb_device` (use
   `unittest.mock.patch.object` to spy on the method; assert call
   count is 0 after `_reopen_device()` completes).
-- *test:* `_reopen_device()` DOES call `sane.exit()`, then
+- _test:_ `_reopen_device()` DOES call `sane.exit()`, then
   `time.sleep(3)`, then `sane.init()`, then `sane.open()` in that
   order (use `unittest.mock` + `mock.call_args_list` to verify
   ordering).
-- *test:* `_reset_usb_device()` method is still importable from the
+- _test:_ `_reset_usb_device()` method is still importable from the
   `ScanWorker` class and runs without raising on a non-Linux
   platform (existing tests at `test_scan_worker.py:364-385` should
   continue to pass).
-- *test:* on a simulated SANE-busy transient failure (sane.open
+- _test:_ on a simulated SANE-busy transient failure (sane.open
   raises once, then succeeds on retry), `_reopen_device()` completes
   successfully without USBDEVFS_RESET. The existing 3-attempt
   retry-with-backoff in `_reopen_device()` is preserved.
@@ -314,11 +316,11 @@ future reconsideration — only the production call site is removed.
 - [x] 3.5.3 Add a doc-comment ABOVE the deletion site explaining:
       "USBDEVFS_RESET removed 2026-05-21 per investigation summary
       Section 1.2 and #228 — kernel-level reset makes V600 wedges
-      worse via FLR. _reset_usb_device() method retained for
+      worse via FLR. \_reset_usb_device() method retained for
       testability." 3-second sleep retained with its own
       explanatory comment.
 - [x] 3.5.4 Add a doc-comment to `_reset_usb_device()` itself:
-      "NOTE (2026-05-21, #228): no longer called by _reopen_device()
+      "NOTE (2026-05-21, #228): no longer called by \_reopen_device()
       ... retained for testability and potential future
       reconsideration; do NOT re-add a production call site without
       revisiting the investigation summary."
@@ -353,21 +355,21 @@ existing `SANE_USB_FILTER` and `LD_PRELOAD`.
 
 This task has TWO test surfaces:
 
-*TypeScript side (`tests/unit/scanner-subprocess-env.test.ts`):*
+_TypeScript side (`tests/unit/scanner-subprocess-env.test.ts`):_
 
-- *test:* when main-process env has `LIBUSB_ENDPOINT_RECOVERY=false`,
+- _test:_ when main-process env has `LIBUSB_ENDPOINT_RECOVERY=false`,
   `ScannerSubprocess.spawn()` passes `LIBUSB_ENDPOINT_RECOVERY=false`
   in the subprocess env.
-- *test:* when `LIBUSB_ENDPOINT_RECOVERY` is unset, the subprocess env
+- _test:_ when `LIBUSB_ENDPOINT_RECOVERY` is unset, the subprocess env
   has it as `"true"` (default-on).
-- *test:* `LIBUSB_ENDPOINT_RECOVERY` is NOT injected when
+- _test:_ `LIBUSB_ENDPOINT_RECOVERY` is NOT injected when
   `process.platform !== 'linux'` (no-op on macOS/Windows).
-- *test:* `LIBUSB_ENDPOINT_RECOVERY` is NOT injected in mock mode.
+- _test:_ `LIBUSB_ENDPOINT_RECOVERY` is NOT injected in mock mode.
 
-*C-shim side:* a C-level test isn't practical inside the JS test
+_C-shim side:_ a C-level test isn't practical inside the JS test
 suite. We test indirectly:
 
-*Integration smoke (`tests/integration/test-libusb-shim.sh`):* a small
+_Integration smoke (`tests/integration/test-libusb-shim.sh`):_ a small
 shell script that builds the .so and runs a Python helper that opens a
 mock libusb session and asserts the shim's init log line is on stderr
 when the env var is set. Skip on non-Linux. (No build of this script
@@ -381,15 +383,13 @@ required for unit tests — it runs on the rig.)
 - [x] 4.3 Implement the C-side wrapper in `libusb-filter.c`
 - [x] 4.4 Add a one-time init log line on stderr indicating "endpoint
       recovery: on/off"
-- [x] 4.5 Add a build target for the shim. Concrete shape:
-      - `scripts/build-libusb-filter.sh` (Linux) wraps
-        `gcc -shared -fPIC -ldl -o src/main/native/libusb-filter.so
-        src/main/native/libusb-filter.c $(pkg-config --cflags --libs libusb-1.0)`
-      - `package.json` adds `"build:native": "bash scripts/build-libusb-filter.sh"`
-        and a `prepackage` hook that runs it on Linux only:
-        `"prepackage": "node -e \"process.platform==='linux' && require('child_process').execSync('npm run build:native', {stdio:'inherit'})\""`
-      - On macOS/Windows the script is a no-op (echoes "skipping
-        libusb-filter build on non-Linux")
+- [x] 4.5 Add a build target for the shim: `scripts/build-libusb-filter.sh`
+      (Linux) compiles the shim via `gcc`/`pkg-config`, `package.json`
+      adds a `build:native` script that runs it, and a `prepackage`
+      hook runs `build:native` on Linux only. On macOS/Windows the
+      script is a no-op (echoes "skipping libusb-filter build on
+      non-Linux"). See `scripts/build-libusb-filter.sh` and
+      `package.json` for the exact commands.
 - [x] 4.6 Update `forge.config.ts:83` to make the `libusb-filter.so`
       copy conditional on `process.platform === 'linux'`. Today the
       copy unconditionally references the `.so` which causes
@@ -415,47 +415,47 @@ stderr substrings.
 
 Positive signature matches:
 
-- *test:* receiving a `scan-error` event whose error message contains
+- _test:_ receiving a `scan-error` event whose error message contains
   `"sane_start: Invalid argument"` emits exactly one `wedge-detected`
   event with signature `"sane_start_invalid"`.
-- *test:* receiving a `scan-error` event whose error contains
+- _test:_ receiving a `scan-error` event whose error contains
   `"Error during device I/O"` AND `bytes_received === 0` AND
   `wall_seconds >= 120` emits one `wedge-detected` with signature
   `"device_io_120s_zero_bytes"`.
-- *test:* receiving 2 `scan-error` events from the same scannerId
+- _test:_ receiving 2 `scan-error` events from the same scannerId
   within one cycle emits exactly one `wedge-detected` with signature
   `"consecutive_failures"`.
 
 Negative cases (must NOT emit):
 
-- *test:* `device_io` signature requires bytes==0: error message
+- _test:_ `device_io` signature requires bytes==0: error message
   matches but `bytes_received > 0` does NOT emit the
   `device_io_120s_zero_bytes` signature.
-- *test:* `device_io` signature requires wall>=120: error message
+- _test:_ `device_io` signature requires wall>=120: error message
   matches and bytes==0 but `wall_seconds < 120` does NOT emit the
   signature.
-- *test:* `device_io` signature requires message match: bytes==0 and
+- _test:_ `device_io` signature requires message match: bytes==0 and
   wall>=120 but error message does NOT contain
   `"Error during device I/O"` does NOT emit the signature.
-- *test:* two `sane_start_invalid` events from the same scanner in
+- _test:_ two `sane_start_invalid` events from the same scanner in
   one cycle emit exactly ONE `wedge-detected` (not two — same
   signature dedup within cycle).
-- *test:* a single `scan-error` from scannerId A followed by a
+- _test:_ a single `scan-error` from scannerId A followed by a
   cycle boundary (`cycle-start`) and one more `scan-error` from A
   does NOT emit `consecutive_failures` (counter resets per cycle).
-- *test:* a `scan-error` from scanner A followed by `scan-error` from
+- _test:_ a `scan-error` from scanner A followed by `scan-error` from
   scanner B in one cycle does NOT emit a consecutive-failures wedge
   (counter is per scanner).
-- *test:* a `scan-error` followed by a `scan-complete` for the SAME
+- _test:_ a `scan-error` followed by a `scan-complete` for the SAME
   `(scanner_id, plate_index)` indicates a recovered failure; the
   detector does NOT emit a wedge for the recovered scan (defer
   emission until scan outcome is determined).
 
 Determinism + idempotency:
 
-- *test:* the detector is deterministic: feeding the same event
+- _test:_ the detector is deterministic: feeding the same event
   stream twice produces identical `wedge-detected` event sequences.
-- *test:* duplicate `cycle-start` events with the same `cycle_number`
+- _test:_ duplicate `cycle-start` events with the same `cycle_number`
   are idempotent (counter is reset only once; no double-reset issue).
 
 **Checklist:**
@@ -483,34 +483,34 @@ per minute. Implemented with an in-memory `Map<key, lastSentMs>`.
 
 Behavior:
 
-- *test:* when constructed without a webhook URL, calling `notify()`
+- _test:_ when constructed without a webhook URL, calling `notify()`
   is a no-op (no fetch, no error).
-- *test:* with a webhook URL, calling `notify()` once issues exactly
+- _test:_ with a webhook URL, calling `notify()` once issues exactly
   one fetch POST to that URL.
-- *test:* the POST body is JSON with `text` containing scanner ID, USB
+- _test:_ the POST body is JSON with `text` containing scanner ID, USB
   path, session ID, cycle number, signature, a power-cycle CTA, and
   the investigation-summary Box URL.
 
 Rate limiting:
 
-- *test:* calling `notify()` twice within 60 s for the same
+- _test:_ calling `notify()` twice within 60 s for the same
   `(scanner_id, session_id)` issues only one fetch (second is
   rate-limited).
-- *test:* the rate-limit key persists across cycles within the same
+- _test:_ the rate-limit key persists across cycles within the same
   session: two wedges for the same scanner in cycle 3 and cycle 4
   (both within the same session) within 60 s issue only one fetch.
-- *test:* calling `notify()` twice within 60 s for the same scanner_id
+- _test:_ calling `notify()` twice within 60 s for the same scanner_id
   but DIFFERENT session_id issues two fetches (different rate-limit
   key).
-- *test:* calling `notify()` twice >60 s apart for the same
+- _test:_ calling `notify()` twice >60 s apart for the same
   `(scanner_id, session_id)` issues two fetches.
 
 Failure modes (defense against URL leakage and hung fetches):
 
-- *test:* a fetch failure (network error) is logged but does NOT throw
+- _test:_ a fetch failure (network error) is logged but does NOT throw
   or crash the caller.
-- *test:* a non-2xx response is logged but does NOT throw.
-- *test:* a fetch that hangs is aborted after a configured 10-second
+- _test:_ a non-2xx response is logged but does NOT throw.
+- _test:_ a fetch that hangs is aborted after a configured 10-second
   timeout. Setup: mock `globalThis.fetch` to return a Promise that
   never resolves; spy on `AbortController.prototype.abort`; use
   `vi.useFakeTimers()`; call `notify()`; advance time by 10000 ms;
@@ -519,14 +519,14 @@ Failure modes (defense against URL leakage and hung fetches):
   assert the notifier's `notify()` Promise resolves (no throw to
   caller); assert `console.error` was called with a sanitized
   message.
-- *test:* the logged error message does NOT contain the webhook URL,
+- _test:_ the logged error message does NOT contain the webhook URL,
   full request object, or any request headers. Capture
   `console.error` output (`vi.spyOn(console, 'error')`) across all
   failure modes (network error, non-2xx status, timeout). For each
   case, assert NO entry in the `console.error.mock.calls` array
   contains the substrings `"hooks.slack.com"` or
   `"/services/"` or any path segment past the protocol.
-- *test:* the same rate-limit key persists across cycle boundaries
+- _test:_ the same rate-limit key persists across cycle boundaries
   within one session. Setup: configure rate-limit window 60 s; emit
   `wedge-detected` for `(scanner=A, session=S)` in cycle 3 at T=0;
   advance fake time 45 s; emit `cycle-start` (cycle 4) followed by
@@ -567,36 +567,36 @@ newly-re-enabled) `enabled=true` row.
 
 **TDD — tests to write FIRST:**
 
-*Coordinator (`tests/unit/scan-coordinator-add-scanner.test.ts`):*
+_Coordinator (`tests/unit/scan-coordinator-add-scanner.test.ts`):_
 
-- *test:* given an initialized coordinator with workers for `[A, B]`,
+- _test:_ given an initialized coordinator with workers for `[A, B]`,
   calling `addScanner(C)` spawns a worker for C only; A and B are
   untouched.
-- *test:* `addScanner(A)` when A is already in the map and ready is a
+- _test:_ `addScanner(A)` when A is already in the map and ready is a
   no-op (does not respawn).
-- *test:* `hasWorker(scannerId)` returns true when a worker for that
+- _test:_ `hasWorker(scannerId)` returns true when a worker for that
   id is in the map AND is in `ready` state.
-- *test:* `hasWorker(scannerId)` returns false when no worker exists,
+- _test:_ `hasWorker(scannerId)` returns false when no worker exists,
   OR worker is in `dead`/`initializing` state.
-- *test:* `initialize([A, B])` followed by `initialize([B, C])` ends
+- _test:_ `initialize([A, B])` followed by `initialize([B, C])` ends
   with workers `[B, C]` (A shut down, B reused, C newly spawned). This
   is the existing behavior, kept stable.
-- *test:* mid-scan safety — when `isScanning === true`, calling
+- _test:_ mid-scan safety — when `isScanning === true`, calling
   `addScanner(C)` does NOT spawn the subprocess immediately. The
   request is queued internally. After the current cycle completes
   (`cycle-complete` event), the queued spawn is processed and `C` is
   added to the worker map.
 
-*Handler (`tests/unit/graviscan-save-scanners-spawn.test.ts`):*
+_Handler (`tests/unit/graviscan-save-scanners-spawn.test.ts`):_
 
-- *test:* given a coordinator with no workers, calling
+- _test:_ given a coordinator with no workers, calling
   `save-scanners-db` with a payload containing one new enabled scanner
   results in one `coordinator.addScanner()` call with the correct
   config.
-- *test:* given a coordinator with a worker already running for
+- _test:_ given a coordinator with a worker already running for
   scanner_id X, calling `save-scanners-db` with the same X in payload
   does NOT trigger a new spawn.
-- *test:* `save-scanners-db` with `enabled=false` rows does NOT spawn
+- _test:_ `save-scanners-db` with `enabled=false` rows does NOT spawn
   workers for them.
 
 **Checklist:**
@@ -636,30 +636,30 @@ newly-re-enabled) `enabled=true` row.
 
 **TDD — tests to write FIRST:**
 
-*TypeScript dropdown (`tests/unit/graviscan-resolutions.test.ts`):*
+_TypeScript dropdown (`tests/unit/graviscan-resolutions.test.ts`):_
 
-- *test:* `GRAVISCAN_RESOLUTIONS` equals
+- _test:_ `GRAVISCAN_RESOLUTIONS` equals
   `[200, 400, 600, 800, 1200, 1600]` (exact order, exact length).
-- *test:* `GRAVISCAN_RESOLUTIONS.includes(1200)` is true (defensive
+- _test:_ `GRAVISCAN_RESOLUTIONS.includes(1200)` is true (defensive
   test that 1200 — the production value — is still present).
 
-*Python runtime warn (`python/tests/test_scan_worker_dpi.py`):*
+_Python runtime warn (`python/tests/test_scan_worker_dpi.py`):_
 
-- *test:* `_validate_dpi(1200)` returns `True` (no warning).
-- *test:* `_validate_dpi(3200)` returns `False` and logs a warning
+- _test:_ `_validate_dpi(1200)` returns `True` (no warning).
+- _test:_ `_validate_dpi(3200)` returns `False` and logs a warning
   containing "outside validated set" and the requested value.
-- *test:* `_validate_dpi(750)` returns `False` (not in set).
-- *test:* worker scan with `resolution=3200` emits a `dpi-warning`
+- _test:_ `_validate_dpi(750)` returns `False` (not in set).
+- _test:_ worker scan with `resolution=3200` emits a `dpi-warning`
   event (via EVENT: stdout) but still proceeds to attempt the scan
   (in mock mode the scan completes).
-- *test:* the `dpi-warning` event JSON has the EXACT documented shape:
+- _test:_ the `dpi-warning` event JSON has the EXACT documented shape:
   assert `type === "dpi-warning"`, `scanner_id` is a string,
   `requested_dpi` is an integer (not a string), `validated_set` is
   EXACTLY the list `[200, 400, 600, 800, 1200, 1600]` (same order),
   `timestamp` matches the ISO-8601-with-timezone regex
   `/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}:\d{2}$/`,
   and no extra unexpected keys are present.
-- *test:* clarification — when the requested DPI is unvalidated, the
+- _test:_ clarification — when the requested DPI is unvalidated, the
   worker passes the requested value through to `device.x_resolution`
   and `device.y_resolution` UNMODIFIED (the SANE driver may then round
   internally; the worker does NOT clamp to the max validated value).
@@ -684,10 +684,10 @@ newly-re-enabled) `enabled=true` row.
 - [ ] 8.1 Write the tests above — **DEFERRED**, not ported to `main`
 - [ ] 8.2 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts:166`
       — **DEFERRED**, not ported to `main` (still `[200, 400, 600, 800,
-      1200, 1600, 3200, 6400]` as of this reconciliation)
+1200, 1600, 3200, 6400]` as of this reconciliation)
 - [ ] 8.3 Add a sibling type `LegacyGraviScanResolution` and a
       type-guard helper `isValidResolution(value: number):
-      value is GraviScanResolution` in `src/types/graviscan.ts`
+value is GraviScanResolution` in `src/types/graviscan.ts`
       (per design.md Decision 2c) — for renderer code paths that
       read possibly-stale `GraviConfig.resolution` from the DB.
       **DEFERRED**, not ported to `main`
@@ -717,33 +717,33 @@ one is running.
 
 **TDD — tests to write FIRST:**
 
-*Handler (`tests/unit/graviscan-disable-scanner.test.ts`):*
+_Handler (`tests/unit/graviscan-disable-scanner.test.ts`):_
 
-- *test:* `graviscan:disable-scanner(scannerId)` sets `enabled=false`
+- _test:_ `graviscan:disable-scanner(scannerId)` sets `enabled=false`
   on the matching row.
-- *test:* the handler calls `coordinator.stopScanner(scannerId)` if
+- _test:_ the handler calls `coordinator.stopScanner(scannerId)` if
   the coordinator has a worker for that scanner.
-- *test:* the handler returns `{ ok: true }` on success, `{ ok: false,
-  error: '...' }` if scanner_id is not found.
+- _test:_ the handler returns `{ ok: true }` on success, `{ ok: false,
+error: '...' }` if scanner_id is not found.
 
-*Coordinator (extends `tests/unit/scan-coordinator-add-scanner.test.ts`
-or new file):*
+_Coordinator (extends `tests/unit/scan-coordinator-add-scanner.test.ts`
+or new file):_
 
-- *test:* `coordinator.stopScanner(scannerId)` removes the worker from
+- _test:_ `coordinator.stopScanner(scannerId)` removes the worker from
   the map and kills its subprocess.
-- *test:* `coordinator.stopScanner('unknown')` is a no-op (no throw).
+- _test:_ `coordinator.stopScanner('unknown')` is a no-op (no throw).
 
-*UI component test in `tests/unit/ConfigureScanner-remove.test.tsx`
+_UI component test in `tests/unit/ConfigureScanner-remove.test.tsx`
 (matching the existing `tests/unit/ConfigureScanner.test.tsx` pattern;
-React Test Library + happy-dom):*
+React Test Library + happy-dom):_
 
-- *test:* clicking the Remove button on a scanner row calls
+- _test:_ clicking the Remove button on a scanner row calls
   `window.electron.graviscan.disableScanner(scannerId)`.
-- *test:* on success, a success toast appears (mock the toast context)
+- _test:_ on success, a success toast appears (mock the toast context)
   with copy `"Scanner removed."`.
-- *test:* on failure (IPC returns `{ ok: false, error }`), an error
+- _test:_ on failure (IPC returns `{ ok: false, error }`), an error
   toast appears with the returned error message.
-- *test:* a disabled scanner row disappears from the visible scanner
+- _test:_ a disabled scanner row disappears from the visible scanner
   list (because the get-scanner-status query filters
   `enabled=true`).
 
@@ -794,33 +794,33 @@ production run's cycle-gap median of 418 s in investigation summary
 Section 3 Table 3). Tests check order-of-magnitude correctness within
 ±15% of empirical anchors, not precise values:
 
-- *test:* `estimateCycleSeconds({platesPerScanner: 2, scannerCount: 5,
-  dpi: 1200, regionMm: {w: 140, h: 140}})` returns a value in
+- _test:_ `estimateCycleSeconds({platesPerScanner: 2, scannerCount: 5,
+dpi: 1200, regionMm: {w: 140, h: 140}})` returns a value in
   `[180, 240]` s (2 plates × ~102 s/plate ≈ 204 s; the empirical
   honored 5-min config has 300 s cycles but those include warmup).
   Note this WILL fit a 5-minute interval (banner hidden).
-- *test:* `estimateCycleSeconds({platesPerScanner: 4, scannerCount: 5,
-  dpi: 1200, regionMm: {w: 140, h: 140}})` returns a value in
+- _test:_ `estimateCycleSeconds({platesPerScanner: 4, scannerCount: 5,
+dpi: 1200, regionMm: {w: 140, h: 140}})` returns a value in
   `[350, 470]` s (4 × ~102 ≈ 408 s; matches summary's 418 s anchor
   within ±15%). Note this will NOT fit a 5-minute interval (banner
   shown).
-- *test:* lower DPI shrinks the estimate roughly proportionally:
+- _test:_ lower DPI shrinks the estimate roughly proportionally:
   `estimate({...dpi: 800})` is strictly less than
   `estimate({...dpi: 1200})` for the same other inputs.
-- *test:* smaller region shrinks the estimate: `estimate({...regionMm:
-  {w:140,h:100}})` is strictly less than `estimate({...regionMm:
-  {w:140,h:140}})`.
-- *test:* `scannerCount` does NOT affect the estimate (scanners run in
+- _test:_ smaller region shrinks the estimate: `estimate({...regionMm:
+{w:140,h:100}})` is strictly less than `estimate({...regionMm:
+{w:140,h:140}})`.
+- _test:_ `scannerCount` does NOT affect the estimate (scanners run in
   parallel per investigation summary Section 3):
   `estimate({...scannerCount: 1}) === estimate({...scannerCount: 5})`.
 
-*Component (`tests/unit/scan-control-cadence-warn.test.tsx`):*
+_Component (`tests/unit/scan-control-cadence-warn.test.tsx`):_
 
-- *test:* with cycle estimate > interval, the warning banner is
+- _test:_ with cycle estimate > interval, the warning banner is
   rendered with the expected copy.
-- *test:* with cycle estimate ≤ interval, the warning banner is NOT
+- _test:_ with cycle estimate ≤ interval, the warning banner is NOT
   rendered.
-- *test:* changing the DPI or platesPerScanner re-evaluates the
+- _test:_ changing the DPI or platesPerScanner re-evaluates the
   warning (reactive).
 
 **Checklist:**
@@ -866,7 +866,7 @@ new env vars.
 - [x] 11.3 `npm run lint:python` (black, ruff, mypy) — deferred to CI;
       black/ruff are formatting-only, no production logic.
 - [x] 11.4 `npx tsc --noEmit` passes cleanly (after `npx prisma
-      generate`).
+generate`).
 - [x] 11.5 `npx vitest run` — 514/543 TS tests pass + 15 skipped + 14
       pre-existing Windows-specific failures (`tests/unit/config-store.test.ts`,
       `tests/unit/image-uploader.test.ts`, `tests/unit/schema-detection.test.ts`).

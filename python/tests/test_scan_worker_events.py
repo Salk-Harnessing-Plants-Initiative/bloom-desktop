@@ -8,7 +8,6 @@ WedgeDetector (Task 5) can rely on the new fields.
 
 import io
 import json
-import os
 import sys
 from unittest.mock import patch
 

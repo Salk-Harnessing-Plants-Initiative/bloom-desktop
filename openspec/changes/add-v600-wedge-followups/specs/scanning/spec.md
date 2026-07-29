@@ -289,7 +289,7 @@ The 3-second `time.sleep()` at line 522 SHALL be preserved as a conservative bus
 - **AND** the 3-second sleep SHALL be preserved as a bus-settle interval (allows USB bus to quiesce before `sane.init()`)
 - **AND** the existing 3-attempt retry-with-backoff loop around `sane.open()` (lines 530–550) SHALL be preserved
 
-#### Scenario: _reset_usb_device method preserved for testability
+#### Scenario: \_reset_usb_device method preserved for testability
 
 - **GIVEN** the codebase after this change
 - **WHEN** a test or maintenance script imports `_reset_usb_device` from `scan_worker`

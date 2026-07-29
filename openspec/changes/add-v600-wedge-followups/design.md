@@ -66,10 +66,10 @@ and cover all three operational signatures.
 
 **Alternatives considered:**
 
-- *Add new exit codes (e.g., `4 = wedge`).* Cleaner long-term but
+- _Add new exit codes (e.g., `4 = wedge`)._ Cleaner long-term but
   forces the Python worker to classify error types — out of scope and
   unvalidated against real wedge events.
-- *Detect only consecutive failures, skip stderr signature matching.*
+- _Detect only consecutive failures, skip stderr signature matching._
   Simpler, but would not fire on cycle 1 (one of the recoverable cases
   mentioned in the investigation).
 
@@ -90,12 +90,12 @@ established conservative pattern.
 
 **Alternatives considered:**
 
-- *Add ON DELETE SET NULL and keep delete-on-stale.* Requires a Prisma
+- _Add ON DELETE SET NULL and keep delete-on-stale._ Requires a Prisma
   migration and a one-time data backfill — too invasive for this PR
   and unnecessary given the disable-only fix achieves the same operator
   outcome.
-- *Keep validate-config's delete behavior, only add disable-on-detect to
-  save-scanners-db.* Inconsistent semantics: one code path destroys
+- _Keep validate-config's delete behavior, only add disable-on-detect to
+  save-scanners-db._ Inconsistent semantics: one code path destroys
   history, another preserves it. Operator behavior unpredictable.
 
 ### Decision 2b: loadEnvConfig return shape is widened, not replaced
@@ -161,10 +161,10 @@ the simplest deployable answer.
 
 **Alternatives considered:**
 
-- *UI toggle in Machine Configuration page.* More discoverable, but
+- _UI toggle in Machine Configuration page._ More discoverable, but
   puts the secret in the DB and requires more UI surface. Not worth it
   for two rarely-changed values.
-- *A new bloom-config.yaml file in `~/.bloom/`.* Adds a third config
+- _A new bloom-config.yaml file in `~/.bloom/`._ Adds a third config
   source; doesn't match existing patterns.
 
 ### Decision 4: Wedge detector + Slack notifier live in the main process
@@ -187,9 +187,9 @@ in main.ts is small and stays out of test scope.
 
 **Alternatives considered:**
 
-- *Put detection inside the coordinator class.* Couples the coordinator
+- _Put detection inside the coordinator class._ Couples the coordinator
   to notification logic. Harder to test.
-- *Do detection in the Python worker.* Same coupling concern, plus
+- _Do detection in the Python worker._ Same coupling concern, plus
   cross-language IPC adds complexity for a feature that's
   TS-process-local anyway.
 
@@ -199,8 +199,7 @@ in main.ts is small and stays out of test scope.
 
 - The UI dropdown (`GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts`)
   is trimmed from `[200, 400, 600, 800, 1200, 1600, 3200, 6400]` to
-  `[200, 400, 600, 800, 1200, 1600]`. Users can no longer pick 3200 or
-  6400.
+  `[200, 400, 600, 800, 1200, 1600]`. Users can no longer pick 3200 or 6400.
 - At scan time, `scan_worker.py` checks whether the requested
   x_resolution/y_resolution is in the validated set. If not, it logs
   a warning and emits a `dpi-warning` event but proceeds with the scan
@@ -214,11 +213,11 @@ configuration-import IPC, a programmatic test harness, a stale
 
 **Alternatives considered:**
 
-- *Refuse unsupported DPI at scan time (abort the scan).* Too strict
+- _Refuse unsupported DPI at scan time (abort the scan)._ Too strict
   given the existing dropdown still has 3200/6400 in older client
   builds before the user updates. Warn-then-proceed is gentler.
-- *Add a DB migration that backfills old `GraviConfig.resolution`
-  values.* Out of scope; current dropdown's set covers the production
+- _Add a DB migration that backfills old `GraviConfig.resolution`
+  values._ Out of scope; current dropdown's set covers the production
   configurations.
 
 ### Decision 6: Coordinator gains `addScanner(config)` and `hasWorker(id)`
@@ -241,10 +240,10 @@ method avoids two implementations of spawn.
 
 **Alternatives considered:**
 
-- *Just call `initialize(allEnabledScanners)` from save-scanners-db on
-  every save.* Would tear down and re-spawn already-running workers —
+- _Just call `initialize(allEnabledScanners)` from save-scanners-db on
+  every save._ Would tear down and re-spawn already-running workers —
   unnecessary work and possibly disruptive mid-session.
-- *Surface a "restart scanners" button instead of auto-spawn.*
+- _Surface a "restart scanners" button instead of auto-spawn._
   Operator-visible but adds a click; the auto-spawn is the right cure.
 
 ### Decision 7: Predictive cadence warning lives on the continuous-scan form
@@ -307,29 +306,29 @@ section so future re-calibration is grounded.
 
 **Alternatives considered:**
 
-- *Block the Start button when cadence won't be honored.* Too
+- _Block the Start button when cadence won't be honored._ Too
   paternalistic — running back-to-back at ~7 min is a valid choice
   (see Section 3 of the summary), just one the operator should make
   consciously.
-- *Just extend the existing overtime banner copy.* Doesn't address the
+- _Just extend the existing overtime banner copy._ Doesn't address the
   before-start need; operators wouldn't see it until 30+ min in.
 
 ## Risks / Trade-offs
 
-| Risk | Mitigation |
-|---|---|
-| The wedge-detection signatures false-positive on a recovered transient error | The detector defers final emission until scan-end (success/failure determined). If the scan ultimately succeeds, no `wedge-detected` event is emitted. Operators are not paged for transient hiccups. |
-| The wedge-detection consecutive-failures signature misses wedges that straddle a cycle boundary | Acknowledged. The cycle-boundary reset is intentional (each cycle is a fresh observation window). Boundary-straddling wedges are caught on the next cycle's first failure pair. |
-| The Slack webhook URL leaks into stderr/log via fetch error messages | The notifier's error-logging path SHALL log only a sanitized message (`"POST failed (status: <code>, network error)"`). It SHALL NOT log the full error object, the request URL, or any request headers. Unit test verifies. |
-| The libusb endpoint-recovery wrapper silently no-ops if epkowa is statically linked | The shim logs `[libusb-filter] endpoint recovery: on/unavailable` at init. `scanner-subprocess.ts` reads this stderr line and surfaces a one-time warning in the bloom log if `unavailable`. |
-| Disable-only stale-row fix leaves the DB cluttered over years | Cluttered ≠ broken. The `enabled` column gets a `@@index` (or schema comment) so common `enabled=true` queries stay fast. A future maintenance action ("Forget all disabled scanners ≥90 days old") is filed as future work, NOT scope here. |
-| Disabled rows accumulate and bias analytics that count `DISTINCT scanner_id` | The Prisma schema's `GraviScanner` model SHALL carry a comment annotation explicitly stating: "Rows with `enabled=false` represent scanners detected previously but no longer enumerating. Queries counting active scanners MUST filter `enabled=true`. Queries counting historical deployments MUST filter by date range, not by row presence." |
-| `addScanner` called mid-scan disrupts the event loop | `addScanner` checks `isScanning` on entry. If true, the spawn is queued via an internal `pendingAdditions` array; the coordinator drains the queue at the start of the next cycle (after `cycle-complete`). Tests cover both paths. |
-| Predictive cadence formula gets stale as hardware or DPI sets change | The formula is module-local with named constants and a doc-comment pointing to investigation summary Section 3 Table 3. Future tunings are one-line edits. Test thresholds are loose (`> 300 s and ≤ 450 s` for the 4-plate case) so the formula can vary within ±15% without breaking. |
-| Rate-limited Slack notification under-notifies cascading multi-scanner failures | Acceptable: a flood of identical "physical AC power-cycle required" messages doesn't add information. Each scanner has its own rate-limit key, so distinct scanner failures DO each generate a message — only repeats for the same scanner within 60 s are suppressed. |
-| Two new env vars increase deployment-config surface area | Documented in README + `.env.example` (appended, not replaced). Both default to safe values (URL absent ⇒ disabled, RECOVERY=true ⇒ on by default — both no-ops if epkowa doesn't dynamically link libusb). |
-| Persisted `GraviConfig.resolution` rows may hold stale values (3200/6400) from before the dropdown trim | The dropdown won't render the stale value as selectable. Operators must re-select a valid value on next open. The Python runtime warn (Task 8) covers the case where a stale value reaches the worker via a non-UI code path. |
-| Merge conflict risk with PR #227 (the long-running feature/graviscan-prod → main PR) | This PR lands INTO `feature/graviscan-prod`, not into `main`. PR #227's merge to `main` will pick up our changes as part of its rebase/merge. If PR #227 is in active conflict-resolution at the time this PR is reviewed, coordinate with PR #227's owner before merging. |
+| Risk                                                                                                    | Mitigation                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The wedge-detection signatures false-positive on a recovered transient error                            | The detector defers final emission until scan-end (success/failure determined). If the scan ultimately succeeds, no `wedge-detected` event is emitted. Operators are not paged for transient hiccups.                                                                                                                                            |
+| The wedge-detection consecutive-failures signature misses wedges that straddle a cycle boundary         | Acknowledged. The cycle-boundary reset is intentional (each cycle is a fresh observation window). Boundary-straddling wedges are caught on the next cycle's first failure pair.                                                                                                                                                                  |
+| The Slack webhook URL leaks into stderr/log via fetch error messages                                    | The notifier's error-logging path SHALL log only a sanitized message (`"POST failed (status: <code>, network error)"`). It SHALL NOT log the full error object, the request URL, or any request headers. Unit test verifies.                                                                                                                     |
+| The libusb endpoint-recovery wrapper silently no-ops if epkowa is statically linked                     | The shim logs `[libusb-filter] endpoint recovery: on/unavailable` at init. `scanner-subprocess.ts` reads this stderr line and surfaces a one-time warning in the bloom log if `unavailable`.                                                                                                                                                     |
+| Disable-only stale-row fix leaves the DB cluttered over years                                           | Cluttered ≠ broken. The `enabled` column gets a `@@index` (or schema comment) so common `enabled=true` queries stay fast. A future maintenance action ("Forget all disabled scanners ≥90 days old") is filed as future work, NOT scope here.                                                                                                     |
+| Disabled rows accumulate and bias analytics that count `DISTINCT scanner_id`                            | The Prisma schema's `GraviScanner` model SHALL carry a comment annotation explicitly stating: "Rows with `enabled=false` represent scanners detected previously but no longer enumerating. Queries counting active scanners MUST filter `enabled=true`. Queries counting historical deployments MUST filter by date range, not by row presence." |
+| `addScanner` called mid-scan disrupts the event loop                                                    | `addScanner` checks `isScanning` on entry. If true, the spawn is queued via an internal `pendingAdditions` array; the coordinator drains the queue at the start of the next cycle (after `cycle-complete`). Tests cover both paths.                                                                                                              |
+| Predictive cadence formula gets stale as hardware or DPI sets change                                    | The formula is module-local with named constants and a doc-comment pointing to investigation summary Section 3 Table 3. Future tunings are one-line edits. Test thresholds are loose (`> 300 s and ≤ 450 s` for the 4-plate case) so the formula can vary within ±15% without breaking.                                                          |
+| Rate-limited Slack notification under-notifies cascading multi-scanner failures                         | Acceptable: a flood of identical "physical AC power-cycle required" messages doesn't add information. Each scanner has its own rate-limit key, so distinct scanner failures DO each generate a message — only repeats for the same scanner within 60 s are suppressed.                                                                           |
+| Two new env vars increase deployment-config surface area                                                | Documented in README + `.env.example` (appended, not replaced). Both default to safe values (URL absent ⇒ disabled, RECOVERY=true ⇒ on by default — both no-ops if epkowa doesn't dynamically link libusb).                                                                                                                                      |
+| Persisted `GraviConfig.resolution` rows may hold stale values (3200/6400) from before the dropdown trim | The dropdown won't render the stale value as selectable. Operators must re-select a valid value on next open. The Python runtime warn (Task 8) covers the case where a stale value reaches the worker via a non-UI code path.                                                                                                                    |
+| Merge conflict risk with PR #227 (the long-running feature/graviscan-prod → main PR)                    | This PR lands INTO `feature/graviscan-prod`, not into `main`. PR #227's merge to `main` will pick up our changes as part of its rebase/merge. If PR #227 is in active conflict-resolution at the time this PR is reviewed, coordinate with PR #227's owner before merging.                                                                       |
 
 ## Migration Plan
 
@@ -351,17 +350,17 @@ section so future re-calibration is grounded.
 ## Discovery flow coverage
 
 Issues #230, #231, #232, and #234 share a systemic theme (per #234's
-body): the scanner-discovery flow does *some* but not *all* of what
+body): the scanner-discovery flow does _some_ but not _all_ of what
 operators expect, with the gaps invisible. This PR addresses all four
 manifestations together because they cluster around the same code path
 (`graviscan:save-scanners-db`):
 
-| Issue | Gap | Task |
-|---|---|---|
-| #231 | UPDATE/CREATE silently drop `grid_mode` | Task 2 |
-| #230 | No disable-on-detect for stale `usb_port` rows | Task 3 |
-| #234 | No worker spawn for newly-created rows | Task 7 |
-| #232 | DPI dropdown offers unvalidated values; runtime doesn't validate | Task 8 |
+| Issue | Gap                                                              | Task   |
+| ----- | ---------------------------------------------------------------- | ------ |
+| #231  | UPDATE/CREATE silently drop `grid_mode`                          | Task 2 |
+| #230  | No disable-on-detect for stale `usb_port` rows                   | Task 3 |
+| #234  | No worker spawn for newly-created rows                           | Task 7 |
+| #232  | DPI dropdown offers unvalidated values; runtime doesn't validate | Task 8 |
 
 After this PR, the contract for `graviscan:save-scanners-db` is:
 "After this IPC returns, the DB rows for enabled scanners and the
@@ -371,26 +370,26 @@ systemic fix to the gap, not just the individual bugs.
 
 ## Open Questions
 
-- *Where should the predictive cadence warning's per-plate-time
-  estimates live so they're easy to update?* Default: a small named
+- _Where should the predictive cadence warning's per-plate-time
+  estimates live so they're easy to update?_ Default: a small named
   constant in `src/renderer/lib/cadenceEstimator.ts` with a doc-comment
   pointing to investigation summary Section 3, Table 3. If we later
   want operator tunability, could move to GraviConfig (out of scope).
-- *Should the Slack message include a snippet of the failing stderr?*
+- _Should the Slack message include a snippet of the failing stderr?_
   Default: no, keep messages short. Operators can find detail in the
   log file (path mentioned in message).
-- *Should we also emit a Bloom-API webhook (not just Slack) on wedge
-  detection?* Out of scope; the Slack hook is the operator-paging
+- _Should we also emit a Bloom-API webhook (not just Slack) on wedge
+  detection?_ Out of scope; the Slack hook is the operator-paging
   mechanism. A Bloom-API hook would be a separate analytics concern.
-- *Should the DPI safety net also flag the scan metadata
+- _Should the DPI safety net also flag the scan metadata
   (`GraviScan.dpi_mismatch` or similar) so downstream pipelines can
-  detect resolution-rounding events?* Deferred. The runtime warn
+  detect resolution-rounding events?_ Deferred. The runtime warn
   already emits a `dpi-warning` event that scan-coordinator can choose
   to persist later. No schema change in this PR.
-- *Should a "Forget all disabled scanners ≥N days old" maintenance UI
-  action be added?* Deferred. Disable-only is the conservative default;
+- _Should a "Forget all disabled scanners ≥N days old" maintenance UI
+  action be added?_ Deferred. Disable-only is the conservative default;
   cleanup tooling is a future concern.
-- *C-shim CI coverage gap.* The libusb wrapper is exercised only on
+- _C-shim CI coverage gap._ The libusb wrapper is exercised only on
   Linux + real hardware (rig validation in Task 12). Vitest CI on
   Linux runs the `npm`-side tests but does not build the `.so`.
   Acceptable for this PR (the shim is small and the rig validation is

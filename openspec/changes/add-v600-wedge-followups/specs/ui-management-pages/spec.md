@@ -6,9 +6,7 @@ The `GRAVISCAN_RESOLUTIONS` constant in `src/types/graviscan.ts` SHALL
 be restricted to the V600-validated DPI set:
 
 ```typescript
-export const GRAVISCAN_RESOLUTIONS = [
-  200, 400, 600, 800, 1200, 1600,
-] as const;
+export const GRAVISCAN_RESOLUTIONS = [200, 400, 600, 800, 1200, 1600] as const;
 ```
 
 This removes `3200` and `6400` from operator-selectable values, which
