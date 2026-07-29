@@ -142,9 +142,15 @@ or a sibling getter. Document in `.env.example` and README.
 - [x] 1.4 Append (do NOT overwrite) `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL`
       and `LIBUSB_ENDPOINT_RECOVERY` sections to the existing
       `.env.example` at the repo root, with documented placeholders
-      and a comment warning operators not to commit real values
+      and a comment warning operators not to commit real values.
+      Reconciled during the Increment 9 final-fix second round: a
+      repo-wide search found this had NOT actually landed on `main`
+      despite being checked — fixed for real in this round (see the new
+      "GRAVISCAN V600 WEDGE FOLLOW-UPS" section in `.env.example`)
 - [x] 1.5 Add a section to `README.md` documenting both env vars and
-      where to put them (`~/.bloom/.env`)
+      where to put them (`~/.bloom/.env`). Same reconciliation as 1.4 —
+      genuinely missing from `main`'s `README.md`; added a new
+      "## Environment Variables" section in this round
 - [x] 1.6 `npx tsc --noEmit` passes; `npm run test:unit` passes
 
 ---
@@ -184,11 +190,17 @@ operator-blocker.
       default, and the Prisma data-block field assertions)
 - [ ] 2.2 Write the E2E test (deferred — covered by the unit-test
       contract; a manual UI smoke on the rig validates the round-trip)
-- [x] 2.3 Add `grid_mode: scanner.grid_mode ?? existing.grid_mode` to
-      the UPDATE block (now lives in `src/main/scanner-upsert.ts` —
-      extracted from the IPC handler for testability)
-- [x] 2.4 Add `grid_mode: scanner.grid_mode ?? '4grid'` to the CREATE
-      block (also in `scanner-upsert.ts`)
+- [ ] 2.3 Add `grid_mode: scanner.grid_mode ?? existing.grid_mode` to
+      the UPDATE block — **N/A on `main`**: not applicable, same
+      reconciliation as the Increment 9 stage-3 report's own grid_mode
+      finding. `main`'s `GraviScanner` Prisma model has no `grid_mode`
+      column at all (only `GraviScan` and `GraviConfig` do) — per-scanner
+      grid_mode is a source-branch-only concept. The find-existing →
+      upsert *refactor* itself WAS ported, into
+      `src/main/graviscan/scanner-upsert.ts`'s `upsertScannerRow()`; only
+      the grid_mode field within it is inapplicable
+- [ ] 2.4 Add `grid_mode: scanner.grid_mode ?? '4grid'` to the CREATE
+      block — **N/A on `main`**, same reason as 2.3 above
 - [x] 2.5 `npx vitest run tests/unit/graviscan-save-scanners.test.ts`
       passes 7/7; full Vitest run continues to pass. `npx tsc
       --noEmit` is clean after `npx prisma generate`. Manual UI smoke
@@ -868,10 +880,19 @@ new env vars.
 - [x] 11.7 `npm run test:integration` — deferred to CI / rig validation.
 - [x] 11.8 README has a new "Environment variables" subsection
       documenting both env vars with deployment + verification
-      instructions.
+      instructions. Reconciled during the Increment 9 final-fix second
+      round: a repo-wide search confirmed neither env var appeared
+      anywhere in `main`'s `README.md` despite this box being checked —
+      genuinely added a "## Environment Variables" section in this
+      round (not just unchecked-and-deferred; the docs were
+      straightforward and low-risk to add for real).
 - [x] 11.9 `.env.example` appended with placeholder lines for both
-      new vars and an explicit "SECRET — never commit a real value"
-      comment block.
+      new vars. Same reconciliation as 11.8 — genuinely missing,
+      genuinely added in this round. Note: the added comment explains
+      these two vars actually live in `~/.bloom/.env` (not this
+      repo-root file) rather than using the source branch's exact
+      "SECRET — never commit a real value" wording; substance (documented
+      placeholders + a warning) is present, wording differs slightly.
 - [x] 11.10 `git log -p` spot-check: only the placeholder
       `https://hooks.slack.com/services/REPLACE_ME` appears in
       `.env.example`; the test fixture uses

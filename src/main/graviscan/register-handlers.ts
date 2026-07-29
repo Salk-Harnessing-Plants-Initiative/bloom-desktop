@@ -87,15 +87,23 @@ export function registerGraviScanHandlers(
         // doesn't already have one running. Lets a newly-detected (or
         // re-enabled) scanner come online without an app restart.
         //
-        // Final-review fix #5: do NOT await each addScanner() call
-        // before moving to the next scanner (and do not await the loop
-        // before returning the IPC response). When a scan is active,
-        // coordinator.addScanner() doesn't resolve until the NEXT
-        // 'cycle-complete' event — sequentially awaiting it here would
-        // hold this IPC response open for a full scan interval per new
-        // scanner (potentially hours for a continuous session). Firing
-        // all the spawn calls without awaiting keeps save-scanners-db
-        // responsive; failures are still caught/logged per scanner.
+        // Final-review fix #5: do NOT await this chain before returning
+        // the IPC response. When a scan is active, coordinator.addScanner()
+        // doesn't resolve until the NEXT 'cycle-complete' event — awaiting
+        // it here would hold this IPC response open for a full scan
+        // interval per new scanner (potentially hours for a continuous
+        // session).
+        //
+        // Second-round fix: the spawns themselves must still be
+        // serialized among each other (NOT fired concurrently) — per
+        // scan-coordinator.ts's own "Staggered initialization" doc
+        // comment, spawning subprocesses one at a time prevents SANE
+        // init contention, and parallel init is explicitly deferred to
+        // a future increment. Build a promise chain so each addScanner()
+        // call only starts after the previous one has settled, but
+        // `void` only the tail of the chain — the handler's own return
+        // never waits on it.
+        let spawnChain: Promise<void> = Promise.resolve();
         for (const saved of result.scanners) {
           if (!saved.enabled || coordinator.hasWorker(saved.id)) continue;
 
@@ -112,23 +120,26 @@ export function registerGraviScanHandlers(
             continue;
           }
 
-          console.log(
-            `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${saved.id} (port ${saved.usb_port})`
-          );
           const saneName = `epkowa:interpreter:${String(saved.usb_bus).padStart(3, '0')}:${String(saved.usb_device).padStart(3, '0')}`;
-          void coordinator
-            .addScanner({
-              scannerId: saved.id,
-              saneName,
-              plates: [],
-            })
-            .catch((err: unknown) => {
-              console.error(
-                `[GraviScan:SAVE] Failed to spawn worker for ${saved.id}:`,
-                err
-              );
-            });
+          spawnChain = spawnChain.then(() => {
+            console.log(
+              `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${saved.id} (port ${saved.usb_port})`
+            );
+            return coordinator
+              .addScanner({
+                scannerId: saved.id,
+                saneName,
+                plates: [],
+              })
+              .catch((err: unknown) => {
+                console.error(
+                  `[GraviScan:SAVE] Failed to spawn worker for ${saved.id}:`,
+                  err
+                );
+              });
+          });
         }
+        void spawnChain;
       }
 
       return result;

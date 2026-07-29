@@ -385,6 +385,77 @@ describe('registerGraviScanHandlers', () => {
       expect(coordinator.addScanner).toHaveBeenCalledTimes(1);
     });
 
+    it('serializes concurrent spawn-on-discovery calls instead of firing them in parallel (second-round fix)', async () => {
+      // scan-coordinator.ts's own "Staggered initialization" doc comment
+      // requires spawning subprocesses one at a time to avoid SANE init
+      // contention. save-scanners-db discovering 2+ new scanners at once
+      // must not violate that — each addScanner() call must wait for the
+      // previous one to settle before starting, even though none of them
+      // block the IPC response itself.
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [
+          {
+            id: 's1',
+            enabled: true,
+            usb_bus: 1,
+            usb_device: 2,
+            usb_port: '1-2',
+          },
+          {
+            id: 's2',
+            enabled: true,
+            usb_bus: 1,
+            usb_device: 3,
+            usb_port: '1-3',
+          },
+        ],
+        count: 2,
+        disabled: [],
+      } as any);
+
+      const callOrder: string[] = [];
+      let resolveFirst: (() => void) | undefined;
+      const firstDeferred = new Promise<void>((resolve) => {
+        resolveFirst = resolve;
+      });
+
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi
+          .fn()
+          .mockImplementationOnce(async (cfg: { scannerId: string }) => {
+            callOrder.push(`start:${cfg.scannerId}`);
+            await firstDeferred; // s1 does not resolve until we say so
+            callOrder.push(`end:${cfg.scannerId}`);
+          })
+          .mockImplementationOnce(async (cfg: { scannerId: string }) => {
+            callOrder.push(`start:${cfg.scannerId}`);
+          }),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+      // Flush a microtask tick so the first spawn's synchronous prefix
+      // (up to its internal `await`) has had a chance to run.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Only s1 should have started — s2 must not fire until s1 settles.
+      expect(coordinator.addScanner).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(['start:s1']);
+
+      // Now let s1 resolve and flush again.
+      resolveFirst!();
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+
+      // s2 should now have started, strictly after s1 ended.
+      expect(coordinator.addScanner).toHaveBeenCalledTimes(2);
+      expect(callOrder).toEqual(['start:s1', 'end:s1', 'start:s2']);
+    });
+
     it('skips spawning (and logs) when usb_bus/usb_device are null instead of synthesizing a fake saneName (final-review #8)', async () => {
       vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
         success: true,

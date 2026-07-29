@@ -29,6 +29,23 @@ See [Issue #1](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-deskto
 - **Basler Pylon SDK**: Required for camera interface
 - **NI-DAQmx Runtime**: Required for data acquisition
 
+## Environment Variables
+
+See `.env.example` for the full, authoritative list with inline
+comments. Highlights for GraviScan operators (V600 wedge follow-ups,
+#228 + #236):
+
+- **`BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL`** — Slack Incoming Webhook URL
+  used to alert operators when the wedge detector matches a known V600
+  USB failure signature. Absent or empty ⇒ the Slack notifier is
+  disabled (no-op); this is the default. Configured via `~/.bloom/.env`
+  (loaded by `config-store.ts`'s `loadEnvConfig`/`saveEnvConfig`), not
+  the repo-root `.env`.
+- **`LIBUSB_ENDPOINT_RECOVERY`** — toggles the `libusb_clear_halt`-on-
+  bulk-timeout wrapper that works around the V600 USB wedge at the
+  driver level. Default ON (wrapper active); set to the case-insensitive
+  string `"false"` to disable it. Also configured via `~/.bloom/.env`.
+
 ## Project Structure
 
 ```
