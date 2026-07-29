@@ -78,6 +78,10 @@ export function registerGraviScanHandlers(
     wrapHandler(() => scannerHandlers.validateConfig(db))()
   );
 
+  ipcMain.handle('graviscan:reset-usb', () =>
+    wrapHandler(() => scannerHandlers.resetUsb(getCoordinator(), db))()
+  );
+
   // --- Session handlers ---
   ipcMain.handle('graviscan:start-scan', async (_event, params) => {
     // Reject if scan already in progress

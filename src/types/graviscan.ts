@@ -205,6 +205,15 @@ export interface ScannerConfig {
 }
 
 /**
+ * Result of a full USB reset (shutdown → re-detect → re-initialize).
+ */
+export interface ResetUsbResult {
+  success: boolean;
+  scanners?: Array<{ id: string; status: 'ready' | 'disconnected' }>;
+  error?: string;
+}
+
+/**
  * Scanner state during scan operations.
  */
 export type ScannerState =
