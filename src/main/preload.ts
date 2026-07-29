@@ -299,6 +299,12 @@ const graviAPI = {
     ipcRenderer.invoke('graviscan:save-config', config),
   saveScannersToDB: (scanners: any) =>
     ipcRenderer.invoke('graviscan:save-scanners-db', scanners),
+  /** Disable a single scanner (per-row "Remove"). Sets enabled=false on
+   * the row and stops the worker. */
+  disableScanner: (scannerId: string) =>
+    ipcRenderer.invoke('graviscan:disable-scanner', scannerId) as Promise<
+      { ok: true } | { ok: false; error: string }
+    >,
   getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
   validateScanners: (ids: string[]) =>
     ipcRenderer.invoke('graviscan:validate-scanners', ids),

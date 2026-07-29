@@ -15,6 +15,11 @@ vi.mock('../../../src/main/graviscan/scanner-handlers', () => ({
   validateConfig: vi.fn().mockResolvedValue({ status: 'valid' }),
 }));
 
+vi.mock('../../../src/main/graviscan/scanner-upsert', () => ({
+  disableScannerById: vi.fn().mockResolvedValue({ ok: true }),
+  stopWorkersForDisabledScanners: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../../src/main/graviscan/session-handlers', () => ({
   startScan: vi.fn().mockResolvedValue({ success: true }),
   getScanStatus: vi.fn().mockReturnValue(null),
@@ -40,6 +45,7 @@ import * as fs from 'fs';
 import * as scannerHandlers from '../../../src/main/graviscan/scanner-handlers';
 import * as sessionHandlers from '../../../src/main/graviscan/session-handlers';
 import * as imageHandlers from '../../../src/main/graviscan/image-handlers';
+import * as scannerUpsert from '../../../src/main/graviscan/scanner-upsert';
 import {
   registerGraviScanHandlers,
   _resetRegistration,
@@ -51,6 +57,7 @@ const CHANNELS = [
   'graviscan:get-config',
   'graviscan:save-config',
   'graviscan:save-scanners-db',
+  'graviscan:disable-scanner',
   'graviscan:platform-info',
   'graviscan:validate-scanners',
   'graviscan:validate-config',
@@ -117,7 +124,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 16 IPC channels', () => {
+  it('registers all 17 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -126,7 +133,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(16);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(17);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }
@@ -197,6 +204,242 @@ describe('registerGraviScanHandlers', () => {
     it('graviscan:cancel-scan delegates to cancelScan', async () => {
       await mockIpcMain._invoke('graviscan:cancel-scan');
       expect(sessionHandlers.cancelScan).toHaveBeenCalled();
+    });
+  });
+
+  describe('graviscan:disable-scanner', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('delegates to disableScannerById with db, coordinator, scannerId', async () => {
+      const coordinator = { hasWorker: vi.fn(), stopScanner: vi.fn() };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:disable-scanner',
+        'scanner-1'
+      );
+
+      expect(scannerUpsert.disableScannerById).toHaveBeenCalledWith(
+        mockDb,
+        coordinator,
+        'scanner-1'
+      );
+      expect(result).toEqual({ ok: true });
+    });
+
+    it('passes a null coordinator through when none is initialized', async () => {
+      mockGetCoordinator.mockReturnValue(null);
+
+      await mockIpcMain._invoke('graviscan:disable-scanner', 'scanner-1');
+
+      expect(scannerUpsert.disableScannerById).toHaveBeenCalledWith(
+        mockDb,
+        null,
+        'scanner-1'
+      );
+    });
+
+    it('returns { ok: false, error } surfaced from the helper', async () => {
+      vi.mocked(scannerUpsert.disableScannerById).mockResolvedValueOnce({
+        ok: false,
+        error: 'Scanner unknown-id not found',
+      });
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:disable-scanner',
+        'unknown-id'
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'Scanner unknown-id not found',
+      });
+    });
+
+    it('returns { ok: false, error } when the helper throws', async () => {
+      vi.mocked(scannerUpsert.disableScannerById).mockRejectedValueOnce(
+        new Error('DB unavailable')
+      );
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:disable-scanner',
+        'scanner-1'
+      );
+
+      expect(result).toEqual({ ok: false, error: 'DB unavailable' });
+    });
+  });
+
+  describe('graviscan:save-scanners-db coordinator orchestration', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('does nothing coordinator-related when no coordinator is initialized', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [{ id: 's1', enabled: true, usb_bus: 1, usb_device: 2 }],
+        count: 1,
+        disabled: [],
+      } as any);
+      mockGetCoordinator.mockReturnValue(null);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:save-scanners-db',
+        []
+      );
+
+      expect(result.success).toBe(true);
+      expect(
+        scannerUpsert.stopWorkersForDisabledScanners
+      ).not.toHaveBeenCalled();
+    });
+
+    it('spawns a worker for a saved, enabled scanner with no running worker (#234)', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [
+          {
+            id: 's1',
+            enabled: true,
+            usb_bus: 1,
+            usb_device: 2,
+            usb_port: '1-2',
+          },
+        ],
+        count: 1,
+        disabled: [],
+      } as any);
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn().mockResolvedValue(undefined),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(coordinator.addScanner).toHaveBeenCalledWith({
+        scannerId: 's1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+    });
+
+    it('does not spawn a worker for a scanner that already has one', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [{ id: 's1', enabled: true, usb_bus: 1, usb_device: 2 }],
+        count: 1,
+        disabled: [],
+      } as any);
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(true),
+        addScanner: vi.fn().mockResolvedValue(undefined),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('does not spawn a worker for a disabled scanner', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [{ id: 's1', enabled: false, usb_bus: 1, usb_device: 2 }],
+        count: 1,
+        disabled: [],
+      } as any);
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn().mockResolvedValue(undefined),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('stops orphan workers for stale-disabled scanner ids (#20)', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [],
+        count: 0,
+        disabled: ['stale-1', 'stale-2'],
+      } as any);
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn().mockResolvedValue(undefined),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(scannerUpsert.stopWorkersForDisabledScanners).toHaveBeenCalledWith(
+        coordinator,
+        ['stale-1', 'stale-2']
+      );
+    });
+
+    it('does not call stopWorkersForDisabledScanners when nothing was disabled', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [],
+        count: 0,
+        disabled: [],
+      } as any);
+      mockGetCoordinator.mockReturnValue({
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn(),
+        stopScanner: vi.fn(),
+      });
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(
+        scannerUpsert.stopWorkersForDisabledScanners
+      ).not.toHaveBeenCalled();
+    });
+
+    it('does not attempt coordinator orchestration when saveScannersToDB fails', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: false,
+        error: 'DB error',
+        scanners: [],
+        disabled: [],
+      } as any);
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn(),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+      expect(
+        scannerUpsert.stopWorkersForDisabledScanners
+      ).not.toHaveBeenCalled();
     });
   });
 

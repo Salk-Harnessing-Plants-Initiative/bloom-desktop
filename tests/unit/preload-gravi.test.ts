@@ -42,6 +42,7 @@ describe('preload gravi namespace', () => {
       'getConfig',
       'saveConfig',
       'saveScannersToDB',
+      'disableScanner',
       'getPlatformInfo',
       'validateScanners',
       'validateConfig',
@@ -55,7 +56,7 @@ describe('preload gravi namespace', () => {
       'downloadImages',
     ];
 
-    it('has all 15 invoke methods', () => {
+    it('has all 16 invoke methods', () => {
       for (const method of invokeMethods) {
         expect(typeof exposedAPI.gravi[method]).toBe('function');
       }
@@ -71,6 +72,14 @@ describe('preload gravi namespace', () => {
       expect(mockInvoke).toHaveBeenCalledWith('graviscan:save-config', {
         grid_mode: '2grid',
       });
+    });
+
+    it('disableScanner passes scannerId to the correct channel', async () => {
+      await exposedAPI.gravi.disableScanner('scanner-1');
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'graviscan:disable-scanner',
+        'scanner-1'
+      );
     });
 
     it('readScanImage passes path and opts', async () => {

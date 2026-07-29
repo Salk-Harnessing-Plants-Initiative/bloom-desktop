@@ -10,6 +10,7 @@
 import { PrismaClient } from '@prisma/client';
 import { detectEpsonScanners } from '../lsusb-detection';
 import type { ScanCoordinatorLike } from './session-handlers';
+import { upsertScannerRow, disableStaleScannerRows } from './scanner-upsert';
 import type {
   DetectedScanner,
   GraviConfig,
@@ -368,64 +369,42 @@ export async function saveScannersToDB(
     const savedScanners: GraviScanner[] = [];
 
     for (const scanner of scanners) {
-      // Look up existing scanner by USB bus + device (unique physical identifier)
-      let existing: GraviScanner | null = null;
-      if (scanner.usb_bus != null && scanner.usb_device != null) {
-        existing = (await (db as any).graviScanner.findFirst({
-          where: {
-            usb_bus: scanner.usb_bus,
-            usb_device: scanner.usb_device,
-          },
-        })) as GraviScanner | null;
-      }
-      // Fallback: match by usb_port (stable across replug, unlike usb_device)
-      if (!existing && scanner.usb_port) {
-        existing = (await (db as any).graviScanner.findFirst({
-          where: { usb_port: scanner.usb_port },
-        })) as GraviScanner | null;
-      }
+      // Delegate the find-existing-and-upsert logic to the testable
+      // helper (scanner-upsert.ts), shared with graviscan:disable-scanner.
+      const saved = await upsertScannerRow(db, scanner);
+      savedScanners.push(saved as GraviScanner);
+    }
 
-      if (existing) {
-        const updated = await (db as any).graviScanner.update({
-          where: { id: existing.id },
-          data: {
-            name: scanner.name,
-            display_name: scanner.display_name ?? existing.display_name ?? null,
-            vendor_id: scanner.vendor_id,
-            product_id: scanner.product_id,
-            usb_port: scanner.usb_port || null,
-            usb_bus: scanner.usb_bus || null,
-            usb_device: scanner.usb_device || null,
-          },
-        });
-        savedScanners.push(updated as GraviScanner);
-      } else {
-        const created = await (db as any).graviScanner.create({
-          data: {
-            name: scanner.name,
-            display_name: scanner.display_name || null,
-            vendor_id: scanner.vendor_id,
-            product_id: scanner.product_id,
-            usb_port: scanner.usb_port || null,
-            usb_bus: scanner.usb_bus || null,
-            usb_device: scanner.usb_device || null,
-            enabled: true,
-          },
-        });
-        savedScanners.push(created as GraviScanner);
-      }
+    // #230: disable (don't delete) any previously-enabled row whose
+    // usb_port is NOT in the current payload. Preserves the FK chain to
+    // historical GraviScan / GraviScanPlateAssignment rows (no
+    // ON DELETE CASCADE on those references).
+    const currentUsbPorts = scanners
+      .map((s) => s.usb_port)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    const staleResult = await disableStaleScannerRows(db, currentUsbPorts);
+    if (staleResult.disabled.length > 0) {
+      console.log(
+        `[GraviScan:SAVE] Disabled ${staleResult.disabled.length} stale scanner(s) not in current detection set:`,
+        staleResult.disabled
+      );
     }
 
     return {
       success: true,
       scanners: savedScanners,
       count: savedScanners.length,
+      /** scanner_ids disabled as stale by this call (#230); consumed by
+       * the coordinator-aware caller (register-handlers.ts) to stop any
+       * orphaned worker subprocesses (#20). */
+      disabled: staleResult.disabled,
     };
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to save scanners',
       scanners: [] as GraviScanner[],
+      disabled: [] as string[],
     };
   }
 }
@@ -561,6 +540,25 @@ export async function validateConfig(db: PrismaClient) {
 
     // Remaining detected scanners are "new" (not in saved config)
     const newScanners = Array.from(detectedByPort.values());
+
+    // #230: auto-DISABLE (don't delete) stale scanners that are no
+    // longer physically connected. Preserves the FK chain from
+    // historical GraviScan / GraviScanPlateAssignment rows (the Prisma
+    // schema has no ON DELETE CASCADE on those references).
+    if (missing.length > 0) {
+      for (const stale of missing) {
+        console.log(
+          `[GraviScan:VALIDATE] Auto-disabling stale scanner ${stale.display_name || stale.name} (port ${stale.usb_port}, id ${stale.id})`
+        );
+        await (db as any).graviScanner.update({
+          where: { id: stale.id },
+          data: { enabled: false },
+        });
+      }
+      console.log(
+        `[GraviScan:VALIDATE] Disabled ${missing.length} stale scanner(s)`
+      );
+    }
 
     // Determine status
     const isValid =
