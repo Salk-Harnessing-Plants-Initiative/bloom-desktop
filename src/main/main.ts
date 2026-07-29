@@ -1151,6 +1151,30 @@ app.on('ready', async () => {
   // Initialize scanner identity from config
   try {
     const config = loadEnvConfig(ENV_PATH);
+
+    if (config.slack_webhook_url) {
+      process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL = config.slack_webhook_url;
+      // Confirm to the rig admin that the URL was loaded WITHOUT logging the
+      // URL itself (it's a secret).
+      console.log('[GraviScan] Slack webhook URL loaded from ~/.bloom/.env');
+    } else {
+      console.log(
+        '[GraviScan] BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL not set — Slack notifications disabled'
+      );
+    }
+    if (config.libusb_endpoint_recovery !== undefined) {
+      process.env.LIBUSB_ENDPOINT_RECOVERY = String(
+        config.libusb_endpoint_recovery
+      );
+      console.log(
+        `[GraviScan] LIBUSB_ENDPOINT_RECOVERY explicitly set to: ${config.libusb_endpoint_recovery}`
+      );
+    } else {
+      console.log(
+        '[GraviScan] LIBUSB_ENDPOINT_RECOVERY not set in env — wrapper defaults to ON'
+      );
+    }
+
     scannerIdentity.name = config.scanner_name || '';
     console.log(
       '[Scanner Identity] Initialized:',

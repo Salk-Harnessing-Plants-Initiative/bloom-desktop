@@ -121,6 +121,12 @@ export interface ScanWorkerEvent {
   duration_ms?: number;
   error?: string;
   cycle?: number;
+  // Emitted by the Python worker on scan-error (see
+  // python/graviscan/scan_worker.py) — raw RGB bytes received and wall-
+  // clock seconds elapsed for the failed scan attempt. Feeds the
+  // WedgeDetector's device_io_120s_zero_bytes signature (#236).
+  bytes_received?: number;
+  wall_seconds?: number;
   // Injected by ScanCoordinator for per-grid timestamp tracking
   cycle_number?: number;
   scan_started_at?: string | null;

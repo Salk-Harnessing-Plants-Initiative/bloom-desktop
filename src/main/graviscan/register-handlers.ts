@@ -1,8 +1,14 @@
 /**
  * GraviScan IPC Handler Registration
  *
- * Wraps pure handler functions with ipcMain.handle() for 15 IPC channels.
+ * Wraps pure handler functions with ipcMain.handle() for 17 IPC channels.
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
+ *
+ * This is also where coordinator-aware orchestration around the DB-only
+ * `scanner-handlers.ts` functions lives (e.g. spawn-on-discovery and
+ * orphan-worker cleanup around `save-scanners-db`): `scanner-handlers.ts`
+ * is documented as "Pure async exports with db injection — no ipcMain
+ * wrappers", and `getCoordinator()` is only available here.
  */
 
 import * as fs from 'fs';
@@ -12,6 +18,7 @@ import type { PrismaClient } from '@prisma/client';
 import * as scannerHandlers from './scanner-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as imageHandlers from './image-handlers';
+import * as scannerUpsert from './scanner-upsert';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 
 let registered = false;
@@ -61,7 +68,118 @@ export function registerGraviScanHandlers(
   );
 
   ipcMain.handle('graviscan:save-scanners-db', (_event, scanners) =>
-    wrapHandler(() => scannerHandlers.saveScannersToDB(db, scanners))()
+    wrapHandler(async () => {
+      const result = await scannerHandlers.saveScannersToDB(db, scanners);
+
+      const coordinator = getCoordinator();
+      if (coordinator && result.success) {
+        // #20 (Copilot PR #237 review): stop worker subprocesses for any
+        // scanner rows that were just disabled as stale, so they don't
+        // keep holding USB / SANE resources after disable.
+        if (result.disabled && result.disabled.length > 0) {
+          await scannerUpsert.stopWorkersForDisabledScanners(
+            coordinator,
+            result.disabled
+          );
+        }
+
+        // #234: spawn a worker for any saved, enabled scanner that
+        // doesn't already have one running. Lets a newly-detected (or
+        // re-enabled) scanner come online without an app restart.
+        //
+        // Final-review fix #5: do NOT await this chain before returning
+        // the IPC response. When a scan is active, coordinator.addScanner()
+        // doesn't resolve until the NEXT 'cycle-complete' event — awaiting
+        // it here would hold this IPC response open for a full scan
+        // interval per new scanner (potentially hours for a continuous
+        // session).
+        //
+        // Second-round fix: the spawns themselves must still be
+        // serialized among each other (NOT fired concurrently) — per
+        // scan-coordinator.ts's own "Staggered initialization" doc
+        // comment, spawning subprocesses one at a time prevents SANE
+        // init contention, and parallel init is explicitly deferred to
+        // a future increment. Build a promise chain so each addScanner()
+        // call only starts after the previous one has settled, but
+        // `void` only the tail of the chain — the handler's own return
+        // never waits on it.
+        let spawnChain: Promise<void> = Promise.resolve();
+        for (const saved of result.scanners) {
+          if (!saved.enabled || coordinator.hasWorker(saved.id)) continue;
+
+          // Final-review fix #8: usb_bus/usb_device can be null right
+          // after a reset-usb (which clears them pending re-detection).
+          // Synthesizing a fake "000:000" saneName would pass
+          // buildSubprocessEnv's /^\d{3}$/ validation and reach the
+          // libusb shim as a bogus filter value instead of failing
+          // loudly — skip spawning instead and log why.
+          if (saved.usb_bus == null || saved.usb_device == null) {
+            console.log(
+              `[GraviScan:SAVE] Skipping spawn for ${saved.id}: missing usb_bus/usb_device (likely mid reset-usb)`
+            );
+            continue;
+          }
+
+          const saneName = `epkowa:interpreter:${String(saved.usb_bus).padStart(3, '0')}:${String(saved.usb_device).padStart(3, '0')}`;
+          spawnChain = spawnChain.then(() => {
+            console.log(
+              `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${saved.id} (port ${saved.usb_port})`
+            );
+            return coordinator
+              .addScanner({
+                scannerId: saved.id,
+                saneName,
+                plates: [],
+              })
+              .catch((err: unknown) => {
+                console.error(
+                  `[GraviScan:SAVE] Failed to spawn worker for ${saved.id}:`,
+                  err
+                );
+              });
+          });
+        }
+        void spawnChain;
+      }
+
+      return result;
+    })()
+  );
+
+  /**
+   * Disable a single scanner row (per-row "Remove" action).
+   * Sets enabled=false on the matching GraviScanner row and asks the
+   * coordinator to stop the worker (if any). Returns { ok: true } /
+   * { ok: false, error } rather than the generic wrapHandler shape, to
+   * match the renderer contract for surfacing a success/failure toast.
+   */
+  ipcMain.handle(
+    'graviscan:disable-scanner',
+    async (_event, scannerId: string) => {
+      try {
+        const coordinator = getCoordinator();
+        const result = await scannerUpsert.disableScannerById(
+          db,
+          coordinator,
+          scannerId
+        );
+        if (result.ok) {
+          console.log(`[GraviScan:DISABLE] Scanner ${scannerId} disabled`);
+        } else {
+          // Manual cast: this repo's tsconfig doesn't set strictNullChecks,
+          // so control-flow narrowing on the `ok` discriminant doesn't
+          // apply here (matches the reference implementation's workaround).
+          const err = (result as { ok: false; error: string }).error;
+          console.warn('[GraviScan:DISABLE]', err);
+        }
+        return result;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to disable scanner';
+        console.error('[GraviScan:DISABLE] Error:', error);
+        return { ok: false as const, error: message };
+      }
+    }
   );
 
   ipcMain.handle('graviscan:platform-info', () =>

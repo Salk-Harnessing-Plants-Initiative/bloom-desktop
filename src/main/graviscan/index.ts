@@ -11,6 +11,9 @@
  *   graviscan:get-config         → scannerHandlers.getConfig(db)
  *   graviscan:save-config        → scannerHandlers.saveConfig(db, config)
  *   graviscan:save-scanners-db   → scannerHandlers.saveScannersToDB(db, scanners)
+ *                                  (+ coordinator spawn-on-discovery / orphan-worker
+ *                                  cleanup in register-handlers.ts via scanner-upsert.ts)
+ *   graviscan:disable-scanner    → scannerUpsert.disableScannerById(db, coordinator, id)
  *   graviscan:platform-info      → scannerHandlers.getPlatformInfo()
  *   graviscan:validate-scanners  → scannerHandlers.runStartupScannerValidation(db, ids)
  *   graviscan:validate-config    → scannerHandlers.validateConfig(db)
@@ -30,6 +33,7 @@
  */
 
 export * from './scanner-handlers';
+export * from './scanner-upsert';
 export * from './session-handlers';
 export * from './image-handlers';
 export { registerGraviScanHandlers } from './register-handlers';

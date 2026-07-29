@@ -1647,4 +1647,283 @@ OTHER_VAR=ignored`;
       expect(config.seconds_per_rot).toBe(7.0);
     });
   });
+
+  // ========================================
+  // V600 WEDGE FOLLOW-UPS (#228, #236)
+  // ========================================
+
+  describe('BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL', () => {
+    it('is undefined when .env file does not exist', () => {
+      const config = loadEnvConfig(envPath);
+      expect(config.slack_webhook_url).toBeUndefined();
+    });
+
+    it('is undefined when .env exists but the variable is not set', () => {
+      fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.slack_webhook_url).toBeUndefined();
+    });
+
+    it('is set to the configured URL when present', () => {
+      fs.writeFileSync(
+        envPath,
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T/B/X\n'
+      );
+      const config = loadEnvConfig(envPath);
+      expect(config.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/T/B/X'
+      );
+    });
+
+    it('is undefined when the variable is present but empty', () => {
+      fs.writeFileSync(envPath, 'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.slack_webhook_url).toBeUndefined();
+    });
+  });
+
+  describe('LIBUSB_ENDPOINT_RECOVERY', () => {
+    // Note: loadEnvConfig() returns undefined when the variable is not
+    // in the .env file. The runtime default of "on" is enforced at the
+    // consumer (main.ts startup + C-shim init), not here — otherwise
+    // load→save would pollute ~/.bloom/.env with the defaulted value.
+    it('returns undefined when .env file does not exist', () => {
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBeUndefined();
+    });
+
+    it('returns undefined when .env exists but the variable is not set', () => {
+      fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBeUndefined();
+    });
+
+    it('is false when set to "false"', () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=false\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBe(false);
+    });
+
+    it('is false when set to "False" (case-insensitive)', () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=False\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBe(false);
+    });
+
+    it('is false when set to "FALSE" (case-insensitive)', () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=FALSE\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBe(false);
+    });
+
+    it('is true when set to "true"', () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=true\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBe(true);
+    });
+
+    it('is true when set to "True" (case-insensitive truthy)', () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=True\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBe(true);
+    });
+
+    it('is true when set to an arbitrary non-"false" string (default-on)', () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=banana\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.libusb_endpoint_recovery).toBe(true);
+    });
+  });
+
+  describe('V600 wedge follow-ups: saveEnvConfig round-trip', () => {
+    it('persists slack_webhook_url across load -> save -> load', () => {
+      fs.writeFileSync(
+        envPath,
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z\n'
+      );
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const c2 = loadEnvConfig(envPath);
+      expect(c2.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/X/Y/Z'
+      );
+    });
+
+    it('persists libusb_endpoint_recovery=false across save', () => {
+      fs.writeFileSync(envPath, 'LIBUSB_ENDPOINT_RECOVERY=false\n');
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const c2 = loadEnvConfig(envPath);
+      expect(c2.libusb_endpoint_recovery).toBe(false);
+    });
+
+    it('load->save does NOT add LIBUSB_ENDPOINT_RECOVERY when it was absent from the file', () => {
+      // Pre-condition: .env file has unrelated lines, NOTHING about
+      // libusb_endpoint_recovery.
+      fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const written = fs.readFileSync(envPath, 'utf-8');
+      // The saved file SHALL not contain the line — load→save must not
+      // pollute ~/.bloom/.env with values the operator never set.
+      expect(written).not.toMatch(/LIBUSB_ENDPOINT_RECOVERY/);
+    });
+
+    it('omits both vars from the saved file when undefined', () => {
+      const cfg = {
+        ...getDefaultConfig(),
+        slack_webhook_url: undefined,
+        libusb_endpoint_recovery: undefined,
+      };
+      saveEnvConfig(cfg, envPath);
+      const written = fs.readFileSync(envPath, 'utf-8');
+      expect(written).not.toMatch(/BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL/);
+      expect(written).not.toMatch(/LIBUSB_ENDPOINT_RECOVERY/);
+    });
+  });
+
+  describe('final-review fix #2: saveEnvConfig read-merge-write preserves fields the caller omits', () => {
+    it('load -> edit an unrelated field -> save -> reload preserves slack_webhook_url and libusb_endpoint_recovery', () => {
+      // Seed the .env file exactly as a real machine would have it,
+      // including the two V600 fields config:get's current whitelist
+      // does NOT return to the renderer.
+      fs.writeFileSync(
+        envPath,
+        [
+          'SCANNER_MODE=graviscan',
+          'SCANNER_NAME=Bench1',
+          'CAMERA_IP_ADDRESS=mock',
+          'SCANS_DIR=/original/scans',
+          'BLOOM_API_URL=https://api.bloom.salk.edu/proxy',
+          '',
+          'NUM_FRAMES=72',
+          'SECONDS_PER_ROT=7',
+          '',
+          'BLOOM_SCANNER_USERNAME=user@test.com',
+          'BLOOM_SCANNER_PASSWORD=pass',
+          'BLOOM_ANON_KEY=anon',
+          '',
+          'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z',
+          'LIBUSB_ENDPOINT_RECOVERY=false',
+        ].join('\n')
+      );
+
+      // 1. Load — as config:get would.
+      const loaded = loadEnvConfig(envPath);
+      expect(loaded.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/X/Y/Z'
+      );
+      expect(loaded.libusb_endpoint_recovery).toBe(false);
+
+      // 2. Simulate the renderer round-trip: config:get's current
+      //    whitelist only returns these fields (see main.ts) — the two
+      //    V600 fields never make it into the object the renderer holds.
+      const roundTripped: MachineConfig = {
+        scanner_mode: loaded.scanner_mode,
+        scanner_name: loaded.scanner_name,
+        camera_ip_address: loaded.camera_ip_address,
+        scans_dir: loaded.scans_dir,
+        bloom_api_url: loaded.bloom_api_url,
+        bloom_scanner_username: loaded.bloom_scanner_username,
+        bloom_scanner_password: loaded.bloom_scanner_password,
+        bloom_anon_key: loaded.bloom_anon_key,
+        num_frames: loaded.num_frames,
+        seconds_per_rot: loaded.seconds_per_rot,
+        // slack_webhook_url / libusb_endpoint_recovery intentionally
+        // absent — this is the bug's exact trigger condition.
+      };
+
+      // 3. Edit something else entirely (what a real user would do).
+      roundTripped.scans_dir = '/new/scans';
+
+      // 4. Save.
+      saveEnvConfig(roundTripped, envPath);
+
+      // 5. Reload — the edited field must have changed, and the two
+      //    fields the round-trip never carried must NOT have been wiped.
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.scans_dir).toBe('/new/scans');
+      expect(reloaded.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/X/Y/Z'
+      );
+      expect(reloaded.libusb_endpoint_recovery).toBe(false);
+      // Sanity: fields that WERE present on the round-tripped object are
+      // unaffected by the merge.
+      expect(reloaded.scanner_name).toBe('Bench1');
+    });
+
+    it('preserves scanner_mode when the incoming config omits it (pre-existing identical defect, also fixed by #2)', () => {
+      fs.writeFileSync(
+        envPath,
+        'SCANNER_MODE=graviscan\nSCANNER_NAME=Bench1\n'
+      );
+      const loaded = loadEnvConfig(envPath);
+      expect(loaded.scanner_mode).toBe('graviscan');
+
+      const withoutMode = { ...loaded, scanner_mode: undefined } as never;
+      saveEnvConfig(withoutMode, envPath);
+
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.scanner_mode).toBe('graviscan');
+      const written = fs.readFileSync(envPath, 'utf-8');
+      expect(written).not.toContain('SCANNER_MODE=undefined');
+    });
+
+    it('an explicitly-provided value still overwrites the on-disk value (merge does not just always keep old data)', () => {
+      fs.writeFileSync(
+        envPath,
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/OLD\n'
+      );
+      const loaded = loadEnvConfig(envPath);
+      const updated: MachineConfig = {
+        ...loaded,
+        slack_webhook_url: 'https://hooks.slack.com/services/NEW',
+      };
+
+      saveEnvConfig(updated, envPath);
+
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/NEW'
+      );
+    });
+  });
+
+  describe('V600 wedge follow-ups: both vars together', () => {
+    it('reads both vars from the same .env file', () => {
+      fs.writeFileSync(
+        envPath,
+        [
+          'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/A/B/C',
+          'LIBUSB_ENDPOINT_RECOVERY=false',
+          '',
+        ].join('\n')
+      );
+      const config = loadEnvConfig(envPath);
+      expect(config.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/A/B/C'
+      );
+      expect(config.libusb_endpoint_recovery).toBe(false);
+    });
+
+    it('does not interfere with existing config fields', () => {
+      fs.writeFileSync(
+        envPath,
+        [
+          'SCANNER_NAME=Sc1',
+          'BLOOM_API_URL=https://api.example.com',
+          'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z',
+          'LIBUSB_ENDPOINT_RECOVERY=true',
+          '',
+        ].join('\n')
+      );
+      const config = loadEnvConfig(envPath);
+      expect(config.scanner_name).toBe('Sc1');
+      expect(config.bloom_api_url).toBe('https://api.example.com');
+      expect(config.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/X/Y/Z'
+      );
+      expect(config.libusb_endpoint_recovery).toBe(true);
+    });
+  });
 });

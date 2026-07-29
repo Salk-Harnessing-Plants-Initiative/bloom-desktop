@@ -230,6 +230,81 @@ describe('scanner-handlers', () => {
       expect(result.scanners[0].id).toBe('existing-1');
       expect(result.scanners[0].name).toBe('Scanner 1');
     });
+
+    it('disables (not deletes) previously-enabled rows whose usb_port is no longer in the payload (#230)', async () => {
+      // One row matches the incoming payload (usb_port '1-2'); a second,
+      // previously-enabled row ('1-9') is no longer in the detection set
+      // and should be disabled, not deleted.
+      db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
+        if (where?.usb_port === '1-2') {
+          return {
+            id: 'existing-1',
+            name: 'Old Name',
+            usb_port: '1-2',
+            display_name: null,
+          };
+        }
+        return null;
+      });
+      db.graviScanner.update.mockResolvedValue({
+        id: 'existing-1',
+        name: 'Scanner 1',
+        vendor_id: '04b8',
+        product_id: '013a',
+        usb_bus: 1,
+        usb_device: 2,
+        usb_port: '1-2',
+        enabled: true,
+      });
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 'existing-1',
+          usb_port: '1-2',
+          enabled: true,
+        },
+        {
+          id: 'stale-1',
+          usb_port: '1-9',
+          enabled: true,
+        },
+      ]);
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Scanner 1',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.disabled).toEqual(['stale-1']);
+      expect(db.graviScanner.update).toHaveBeenCalledWith({
+        where: { id: 'stale-1' },
+        data: { enabled: false },
+      });
+    });
+
+    it('does not disable the whole fleet when called with an empty payload (final-review #6)', async () => {
+      // Regression guard: an empty scanners array must NOT be treated as
+      // "confirmed zero scanners are connected" — that would disable
+      // every currently-enabled row via disableStaleScannerRows.
+      db.graviScanner.findMany.mockResolvedValue([
+        { id: 'a', usb_port: '1-1', enabled: true },
+        { id: 'b', usb_port: '1-2', enabled: true },
+      ]);
+
+      const result = await saveScannersToDB(db, []);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners).toEqual([]);
+      expect(result.disabled).toEqual([]);
+      expect(db.graviScanner.findMany).not.toHaveBeenCalled();
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('getConfig', () => {
@@ -389,6 +464,53 @@ describe('scanner-handlers', () => {
 
       expect(result.status).toBe('mismatch');
       expect(result.missing).toHaveLength(1);
+    });
+
+    it('disables (not deletes) missing scanners (#230)', async () => {
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          usb_port: '1-2',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+      ]);
+      mockDetect.mockReturnValue({ success: true, scanners: [], count: 0 });
+
+      const result = await validateConfig(db);
+
+      expect(result.status).toBe('mismatch');
+      expect(db.graviScanner.update).toHaveBeenCalledWith({
+        where: { id: 's1' },
+        data: { enabled: false },
+      });
+      // No delete call was ever registered on the mock; asserting the
+      // update call above is sufficient proof this uses disable-not-delete.
+    });
+
+    it('does not call update when there are no missing scanners', async () => {
+      db.graviScanner.findMany.mockResolvedValue([
+        {
+          id: 's1',
+          name: 'Scanner 1',
+          usb_port: '1-2',
+          vendor_id: '04b8',
+          product_id: '013a',
+          enabled: true,
+        },
+      ]);
+      mockDetect.mockReturnValue({
+        success: true,
+        scanners: [{ ...MOCK_SCANNER, usb_port: '1-2' }],
+        count: 1,
+      });
+
+      const result = await validateConfig(db);
+
+      expect(result.status).toBe('valid');
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
     });
   });
 

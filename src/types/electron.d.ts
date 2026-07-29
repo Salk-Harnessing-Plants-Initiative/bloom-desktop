@@ -506,6 +506,15 @@ export interface GraviAPI {
   getConfig: () => Promise<any>;
   saveConfig: (config: any) => Promise<any>;
   saveScannersToDB: (scanners: any) => Promise<any>;
+  /**
+   * Disable a single scanner (per-row "Remove" action).
+   * Sets enabled=false on the matching row and stops the worker.
+   * Returns { ok: true } on success or { ok: false, error } on failure
+   * (e.g., scanner_id not found).
+   */
+  disableScanner: (
+    scannerId: string
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   getPlatformInfo: () => Promise<any>;
   validateScanners: (ids: string[]) => Promise<any>;
   validateConfig: () => Promise<any>;

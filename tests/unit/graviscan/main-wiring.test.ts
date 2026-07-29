@@ -37,6 +37,7 @@ vi.mock('../../../src/main/graviscan/scan-logger', () => ({
 import {
   graviSessionFns,
   setupCoordinatorEventForwarding,
+  setupWedgeDetection,
   getOrCreateCoordinator,
   initGraviScan,
   shutdownGraviScan,
@@ -46,6 +47,7 @@ import { registerGraviScanHandlers } from '../../../src/main/graviscan/register-
 import {
   cleanupOldLogs,
   closeScanLog,
+  scanLog,
 } from '../../../src/main/graviscan/scan-logger';
 import { ScanCoordinator } from '../../../src/main/graviscan/scan-coordinator';
 
@@ -53,6 +55,21 @@ describe('GraviScan wiring module', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await _resetWiringState();
+    // Re-establish the base ScanCoordinator mock implementation every
+    // test. `afterEach`'s `vi.restoreAllMocks()` degrades a plain
+    // `vi.fn()` (the one built inside the `vi.mock()` factory above)
+    // back to a no-op returning `undefined` — so without this, only
+    // the FIRST test in this file would get a working EventEmitter-
+    // shaped coordinator from `new ScanCoordinator(...)`; every test
+    // after it would silently get `{}` (no `.on`), which stayed latent
+    // until `setupWedgeDetection()` started unconditionally calling
+    // `coordinator.on(...)` on every construction.
+    vi.mocked(ScanCoordinator).mockImplementation(() => {
+      const emitter = new EventEmitter();
+      return Object.assign(emitter, {
+        shutdown: vi.fn().mockResolvedValue(undefined),
+      }) as unknown as InstanceType<typeof ScanCoordinator>;
+    });
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -172,7 +189,7 @@ describe('GraviScan wiring module', () => {
   });
 
   describe('coordinator event forwarding', () => {
-    it('forwards all 10 coordinator events to renderer', () => {
+    it('forwards all 11 coordinator events to renderer', () => {
       const coordinator = new EventEmitter();
       const send = vi.fn();
       const mockWindow = {
@@ -196,6 +213,7 @@ describe('GraviScan wiring module', () => {
         'overtime',
         'cancelled',
         'scan-error',
+        'scanner-init-status',
       ];
 
       for (const eventName of events) {
@@ -235,6 +253,264 @@ describe('GraviScan wiring module', () => {
     });
   });
 
+  describe('setupWedgeDetection', () => {
+    // Exercises the REAL setupWedgeDetection() production code path
+    // directly — not a hand-rolled reimplementation (see
+    // tests/unit/wedge-pipeline-integration.test.ts, which tests
+    // WedgeDetector/SlackNotifier in isolation via its own inline
+    // buildPipeline() helper, not this function). WedgeDetector and
+    // SlackNotifier are real (unmocked) here — both are pure/side-
+    // effect-free aside from SlackNotifier's fetch() call, which we
+    // stub globally.
+    const WEBHOOK = 'https://hooks.slack.com/services/TEST/FAKE/URL';
+    let fetchMock: ReturnType<typeof vi.fn>;
+    const originalWebhookEnv = process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL;
+
+    beforeEach(() => {
+      process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL = WEBHOOK;
+      fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response('ok', { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      if (originalWebhookEnv === undefined) {
+        delete process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL;
+      } else {
+        process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL = originalWebhookEnv;
+      }
+    });
+
+    function emitScanError(
+      coordinator: EventEmitter,
+      overrides: Record<string, unknown> = {}
+    ) {
+      coordinator.emit('scan-event', {
+        type: 'scan-error',
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        job_id: 'job-1',
+        error: 'epkowa: sane_start: Invalid argument',
+        bytes_received: 0,
+        wall_seconds: 5,
+        cycle_number: 1,
+        ...overrides,
+      });
+    }
+
+    it('interval-start → scan-error (sane_start_invalid) → Slack POST + scanLog fire end-to-end, using the active session id', async () => {
+      graviSessionFns.setScanSession({
+        sessionId: 'sess-real-42',
+        isActive: true,
+        jobs: {},
+      } as any);
+
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+
+      coordinator.emit('interval-start', {
+        totalCycles: 3,
+        intervalMs: 1000,
+        durationMs: 3000,
+        startedAt: 1000,
+      });
+
+      emitScanError(coordinator);
+
+      // slackNotifier.notify() is fire-and-forget (`void`) — flush
+      // any pending microtasks before asserting on the fetch call.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe(WEBHOOK);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('sc-1');
+      expect(body.text).toContain('sane_start_invalid');
+      expect(body.text).toContain('sess-real-42');
+
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '[WedgeDetector] wedge-detected scanner=sc-1 signature=sane_start_invalid cycle=1'
+        )
+      );
+    });
+
+    it('falls back to a startedAt-based session id when no active scan session exists', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+
+      coordinator.emit('interval-start', { startedAt: 999999 });
+      emitScanError(coordinator);
+      await new Promise((r) => setTimeout(r, 0));
+
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('session-999999');
+    });
+
+    it('routes two same-cycle scan-error events for one scanner to a single consecutive_failures wedge', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+
+      emitScanError(coordinator, {
+        plate_index: '00',
+        job_id: 'j1',
+        error: 'transient error',
+      });
+      emitScanError(coordinator, {
+        plate_index: '01',
+        job_id: 'j2',
+        error: 'another transient error',
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('consecutive_failures');
+    });
+
+    it('scan-complete resolves a scanner without triggering a wedge (recovered path)', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+
+      coordinator.emit('scan-event', {
+        type: 'scan-complete',
+        scanner_id: 'sc-9',
+        plate_index: '00',
+        job_id: 'j1',
+        cycle_number: 1,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('tears down the detector on interval-complete — a later scan-error no longer triggers a wedge', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+      coordinator.emit('interval-complete', {
+        cyclesCompleted: 1,
+        totalCycles: 1,
+        cancelled: false,
+        overtimeMs: 0,
+      });
+
+      emitScanError(coordinator, { scanner_id: 'sc-torn-down' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('does not POST to Slack when scan-event fires before any interval-start (no detector yet)', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+
+      emitScanError(coordinator, { scanner_id: 'sc-too-early' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('does not POST to Slack when the webhook env var is unset (feature disabled)', async () => {
+      delete process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL;
+
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+      emitScanError(coordinator, { scanner_id: 'sc-disabled' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('enriches the Slack message with display_name/usb_port looked up from the db (final-review #4)', async () => {
+      const coordinator = new EventEmitter();
+      const mockDb = {
+        graviScanner: {
+          findUnique: vi.fn().mockResolvedValue({
+            display_name: 'Bench 3',
+            usb_port: '1-4',
+          }),
+        },
+      };
+
+      setupWedgeDetection(coordinator as any, mockDb as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+      emitScanError(coordinator, { scanner_id: 'sc-enriched' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockDb.graviScanner.findUnique).toHaveBeenCalledWith({
+        where: { id: 'sc-enriched' },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('Bench 3');
+      expect(body.text).toContain('1-4');
+    });
+
+    it('falls back to the unenriched event when no db is passed', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any); // no db arg — matches every other test in this block
+
+      coordinator.emit('interval-start', { startedAt: 1 });
+      emitScanError(coordinator, { scanner_id: 'sc-no-db' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('sc-no-db');
+      expect(body.text).not.toContain('USB path');
+    });
+
+    it('falls back to the unenriched event when the scanner_id is not found in the db', async () => {
+      const coordinator = new EventEmitter();
+      const mockDb = {
+        graviScanner: { findUnique: vi.fn().mockResolvedValue(null) },
+      };
+
+      setupWedgeDetection(coordinator as any, mockDb as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+      emitScanError(coordinator, { scanner_id: 'sc-unknown' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('sc-unknown');
+    });
+
+    it('falls back to the unenriched event when the db lookup throws', async () => {
+      const coordinator = new EventEmitter();
+      const mockDb = {
+        graviScanner: {
+          findUnique: vi.fn().mockRejectedValue(new Error('DB unavailable')),
+        },
+      };
+
+      setupWedgeDetection(coordinator as any, mockDb as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+      emitScanError(coordinator, { scanner_id: 'sc-db-error' });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('coordinator lazy instantiation', () => {
     it('first call creates coordinator', async () => {
       const coordinator = await getOrCreateCoordinator();
@@ -257,6 +533,58 @@ describe('GraviScan wiring module', () => {
 
       expect(c1).toBe(c2);
       expect(ScanCoordinator).toHaveBeenCalledTimes(1);
+    });
+
+    it('threads the db passed to initGraviScan through to setupWedgeDetection for wedge-event enrichment (final-review #4)', async () => {
+      const originalWebhookEnv = process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL;
+      process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL =
+        'https://hooks.slack.com/services/TEST/FAKE/URL';
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response('ok', { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const mockDb = {
+        graviScanner: {
+          findUnique: vi
+            .fn()
+            .mockResolvedValue({ display_name: 'Bench 9', usb_port: '2-1' }),
+        },
+      };
+
+      await initGraviScan('graviscan', {} as any, mockDb, () => null);
+      const coordinator = await getOrCreateCoordinator();
+
+      (coordinator as unknown as EventEmitter).emit('interval-start', {
+        startedAt: 1,
+      });
+      (coordinator as unknown as EventEmitter).emit('scan-event', {
+        type: 'scan-error',
+        scanner_id: 'sc-wired',
+        plate_index: '00',
+        job_id: 'job-1',
+        error: 'epkowa: sane_start: Invalid argument',
+        bytes_received: 0,
+        wall_seconds: 5,
+        cycle_number: 1,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockDb.graviScanner.findUnique).toHaveBeenCalledWith({
+        where: { id: 'sc-wired' },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('Bench 9');
+
+      vi.unstubAllGlobals();
+      if (originalWebhookEnv === undefined) {
+        delete process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL;
+      } else {
+        process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL = originalWebhookEnv;
+      }
     });
   });
 

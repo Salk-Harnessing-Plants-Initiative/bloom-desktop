@@ -236,7 +236,7 @@ describe('ScanCoordinator', () => {
       expect(sub2.shutdown).toHaveBeenCalled();
     });
 
-    it('resets state to idle when spawn fails', async () => {
+    it('resets state to idle when spawn fails (does not throw — error isolated via initErrors/scanner-init-status, task 7.3)', async () => {
       const coordinator = await createCoordinator();
 
       // Make the first subprocess spawn fail
@@ -250,12 +250,46 @@ describe('ScanCoordinator', () => {
         }
       );
 
-      await expect(coordinator.initialize(failScanner)).rejects.toThrow(
-        'SANE device not found'
-      );
+      const initStatus = vi.fn();
+      coordinator.on('scanner-init-status', initStatus);
+
+      // initialize() now isolates a single scanner's spawn failure
+      // (via the shared spawnSingleScanner() helper) instead of
+      // letting it propagate out of the whole method — see
+      // ScanCoordinator.spawnSingleScanner()'s docstring.
+      await expect(
+        coordinator.initialize(failScanner)
+      ).resolves.toBeUndefined();
 
       // State should be reset to idle, not stuck in 'initializing'
       expect(coordinator.isScanning).toBe(false);
+      // The failure is surfaced via scanner-init-status instead
+      expect(initStatus).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'error',
+          error: expect.stringContaining('SANE device not found'),
+        })
+      );
+      expect(coordinator.hasWorker(failScanner[0].scannerId)).toBe(false);
+    });
+
+    it('continues spawning remaining scanners after one fails (task 7.3 — closes the parallel-duplicate-loop gap)', async () => {
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(2);
+
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(
+        (_pythonPath, _isPackaged, scannerId) => {
+          const mock = createMockSubprocess(scannerId as string);
+          mock.spawn.mockRejectedValue(new Error('boom'));
+          createdSubprocesses.push(mock);
+          return mock as unknown as ScannerSubprocess;
+        }
+      );
+
+      await coordinator.initialize(scanners);
+
+      expect(coordinator.hasWorker(scanners[0].scannerId)).toBe(false);
+      expect(coordinator.hasWorker(scanners[1].scannerId)).toBe(true);
     });
   });
 
