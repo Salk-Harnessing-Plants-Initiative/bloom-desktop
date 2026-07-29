@@ -53,6 +53,21 @@ describe('GraviScan wiring module', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     await _resetWiringState();
+    // Re-establish the base ScanCoordinator mock implementation every
+    // test. `afterEach`'s `vi.restoreAllMocks()` degrades a plain
+    // `vi.fn()` (the one built inside the `vi.mock()` factory above)
+    // back to a no-op returning `undefined` — so without this, only
+    // the FIRST test in this file would get a working EventEmitter-
+    // shaped coordinator from `new ScanCoordinator(...)`; every test
+    // after it would silently get `{}` (no `.on`), which stayed latent
+    // until `setupWedgeDetection()` started unconditionally calling
+    // `coordinator.on(...)` on every construction.
+    vi.mocked(ScanCoordinator).mockImplementation(() => {
+      const emitter = new EventEmitter();
+      return Object.assign(emitter, {
+        shutdown: vi.fn().mockResolvedValue(undefined),
+      }) as unknown as InstanceType<typeof ScanCoordinator>;
+    });
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });

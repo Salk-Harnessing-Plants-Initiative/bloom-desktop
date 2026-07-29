@@ -75,6 +75,11 @@ export class ScanCoordinator
   // Per-grid timestamps (set during scanOnce, injected into scan events)
   private currentGridStartedAt: string | null = null;
   private currentGridEndedAt: string | null = null;
+  // Per-scanner spawn error, keyed by scannerId. Populated by
+  // spawnSingleScanner() on spawn failure; cleared by stopScanner().
+  // Not yet consumed by anything on `main` (no getScannerStatuses()
+  // or IPC wiring) — infra for a future consumer.
+  private initErrors: Map<string, string> = new Map();
 
   constructor(pythonPath: string, isPackaged: boolean, mock = false) {
     super();
@@ -116,60 +121,7 @@ export class ScanCoordinator
     try {
       for (const scanner of scanners) {
         if (this.cancelled) break;
-
-        // Reuse existing subprocess if it's still alive and ready
-        const existing = this.subprocesses.get(scanner.scannerId);
-        if (existing && existing.isReady) {
-          console.log(
-            `[ScanCoordinator] Scanner ${scanner.scannerId} already ready, reusing`
-          );
-          continue;
-        }
-
-        // Shut down dead/stuck subprocess before respawning
-        if (existing) {
-          console.log(
-            `[ScanCoordinator] Scanner ${scanner.scannerId} subprocess not ready, respawning`
-          );
-          existing.removeAllListeners();
-          await existing.shutdown(5000);
-          this.subprocesses.delete(scanner.scannerId);
-        }
-
-        const sub = new ScannerSubprocess(
-          this.pythonPath,
-          this.isPackaged,
-          scanner.scannerId,
-          scanner.saneName,
-          this.mock
-        );
-
-        // Forward all events, injecting cycle number and grid start time.
-        // scan_ended_at is NOT included here — it is unknown until the row
-        // completes. It is available in the grid-complete event instead.
-        sub.on('event', (event: ScanWorkerEvent) => {
-          const forwarded: Record<string, unknown> = {
-            ...event,
-            cycle_number: this.currentCycle,
-            scan_started_at: this.currentGridStartedAt,
-          };
-          this.emit('scan-event', forwarded);
-        });
-
-        sub.on('exit', (info: { scannerId: string; code: number | null }) => {
-          console.log(
-            `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
-          );
-          this.subprocesses.delete(info.scannerId);
-        });
-
-        this.subprocesses.set(scanner.scannerId, sub);
-
-        console.log(
-          `[ScanCoordinator] Spawning subprocess for scanner ${scanner.scannerId}...`
-        );
-        await sub.spawn();
-        console.log(`[ScanCoordinator] Scanner ${scanner.scannerId} ready`);
+        await this.spawnSingleScanner(scanner);
       }
     } finally {
       this.state = 'idle';
@@ -178,6 +130,170 @@ export class ScanCoordinator
     console.log(
       `[ScanCoordinator] All ${scanners.length} scanner(s) initialized`
     );
+  }
+
+  /**
+   * Returns true iff a subprocess for `scannerId` is in the map AND
+   * in the ready state. Lets callers (e.g. a future save-scanners-db
+   * handler) skip already-running scanners before calling
+   * `addScanner`.
+   */
+  hasWorker(scannerId: string): boolean {
+    const sub = this.subprocesses.get(scannerId);
+    return !!sub && sub.isReady;
+  }
+
+  /**
+   * Spawn a single new scanner subprocess and add it to the map.
+   * Idempotent — no-op if a ready worker for `scannerId` already
+   * exists (checked here as an optimization so a mid-scan call
+   * doesn't queue a spawn it won't need; `spawnSingleScanner()` below
+   * also carries its own reuse check for the `initialize()` call site).
+   *
+   * Mid-scan safety: if `isScanning === true` this method queues the
+   * spawn until the next `cycle-complete` event fires. The returned
+   * Promise resolves once the queued spawn actually runs — this
+   * avoids disrupting the active cycle's event loop with a fresh
+   * subprocess spawn.
+   *
+   * Does not throw on spawn failure — errors surface via the
+   * `scanner-init-status` event and are recorded in `initErrors`,
+   * matching `spawnSingleScanner()`'s error-isolation behavior.
+   */
+  async addScanner(config: ScannerConfig): Promise<void> {
+    if (this.hasWorker(config.scannerId)) {
+      return; // idempotent — already ready
+    }
+
+    // If a scan is in flight, queue the spawn until after the cycle
+    // completes (do NOT disturb the event loop mid-cycle).
+    if (this.isScanning) {
+      return new Promise<void>((resolve) => {
+        const handler = () => {
+          this.off('cycle-complete', handler);
+          void this.spawnSingleScanner(config).finally(() => resolve());
+        };
+        this.on('cycle-complete', handler);
+      });
+    }
+
+    await this.spawnSingleScanner(config);
+  }
+
+  /**
+   * Stop a single scanner subprocess and remove it from the map.
+   * No-op if no worker exists for `scannerId`.
+   */
+  async stopScanner(scannerId: string): Promise<void> {
+    const sub = this.subprocesses.get(scannerId);
+    if (!sub) return;
+    sub.removeAllListeners();
+    await sub.shutdown(5000);
+    this.subprocesses.delete(scannerId);
+    this.initErrors.delete(scannerId);
+  }
+
+  /**
+   * Internal: spawn one ScannerSubprocess and wire its events.
+   * Shared by both `initialize()`'s per-scanner loop and
+   * `addScanner()` (closes task 7.3 — these used to be two parallel,
+   * duplicated implementations).
+   *
+   * Carries the same reuse-existing-ready / shut-down-dead-before-
+   * respawn checks `initialize()` used to run inline, so both call
+   * sites get identical semantics from one place.
+   *
+   * Does not throw on spawn failure — the entry is removed from the
+   * map, the error recorded in `initErrors`, and a `scanner-init-status`
+   * event emitted. This isolates one scanner's spawn failure from the
+   * others (fixes a latent bug: previously an exception from
+   * `sub.spawn()` inside `initialize()`'s loop propagated out of the
+   * whole method uncaught, so remaining scanners in the list never
+   * got spawned).
+   */
+  private async spawnSingleScanner(config: ScannerConfig): Promise<void> {
+    // Reuse existing subprocess if it's still alive and ready
+    const existing = this.subprocesses.get(config.scannerId);
+    if (existing && existing.isReady) {
+      console.log(
+        `[ScanCoordinator] Scanner ${config.scannerId} already ready, reusing`
+      );
+      return;
+    }
+
+    // Shut down dead/stuck subprocess before respawning
+    if (existing) {
+      console.log(
+        `[ScanCoordinator] Scanner ${config.scannerId} subprocess not ready, respawning`
+      );
+      existing.removeAllListeners();
+      await existing.shutdown(5000);
+      this.subprocesses.delete(config.scannerId);
+    }
+
+    const sub = new ScannerSubprocess(
+      this.pythonPath,
+      this.isPackaged,
+      config.scannerId,
+      config.saneName,
+      this.mock
+    );
+
+    // Forward all events, injecting cycle number and grid start time.
+    // scan_ended_at is NOT included here — it is unknown until the row
+    // completes. currentGridEndedAt is null for the entire duration of
+    // a row's actual scanning (it's only assigned right after
+    // Promise.all(rowDonePromises) resolves in scanOnce()) — by the
+    // time that happens, any per-plate scan-event this listener
+    // forwards for that row has already fired. It IS available in the
+    // grid-complete event instead.
+    sub.on('event', (event: ScanWorkerEvent) => {
+      const forwarded: Record<string, unknown> = {
+        ...event,
+        cycle_number: this.currentCycle,
+        scan_started_at: this.currentGridStartedAt,
+      };
+      this.emit('scan-event', forwarded);
+    });
+
+    sub.on('exit', (info: { scannerId: string; code: number | null }) => {
+      console.log(
+        `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
+      );
+      this.subprocesses.delete(info.scannerId);
+    });
+
+    this.subprocesses.set(config.scannerId, sub);
+
+    this.emit('scanner-init-status', {
+      scannerId: config.scannerId,
+      status: 'starting',
+    });
+
+    console.log(
+      `[ScanCoordinator] Spawning subprocess for scanner ${config.scannerId}...`
+    );
+
+    try {
+      await sub.spawn();
+      console.log(`[ScanCoordinator] Scanner ${config.scannerId} ready`);
+      this.emit('scanner-init-status', {
+        scannerId: config.scannerId,
+        status: 'ready',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[ScanCoordinator] Scanner ${config.scannerId} init failed: ${message}`
+      );
+      this.subprocesses.delete(config.scannerId);
+      this.initErrors.set(config.scannerId, message);
+      this.emit('scanner-init-status', {
+        scannerId: config.scannerId,
+        status: 'error',
+        error: message,
+      });
+    }
   }
 
   /**
