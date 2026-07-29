@@ -49,6 +49,22 @@ export interface MachineConfig {
 
   /** Seconds per rotation (2.0-120.0) */
   seconds_per_rot: number;
+
+  /**
+   * Slack webhook URL for V600 wedge notifications (#236).
+   * Loaded from BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL in ~/.bloom/.env.
+   * Absent or empty ⇒ Slack notifier is disabled.
+   * SECRET — never log or expose.
+   */
+  slack_webhook_url?: string;
+
+  /**
+   * libusb endpoint-recovery shim toggle (#228).
+   * Loaded from LIBUSB_ENDPOINT_RECOVERY in ~/.bloom/.env.
+   * Default true (wrapper active). Set "false" (case-insensitive) to
+   * disable the libusb_clear_halt-on-bulk-timeout wrapper.
+   */
+  libusb_endpoint_recovery?: boolean;
 }
 
 /**
@@ -529,6 +545,17 @@ export function loadEnvConfig(envPath: string): MachineConfig {
             }
             break;
           }
+          case 'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL':
+            // Empty string ⇒ feature disabled (treat as undefined).
+            if (value !== '') {
+              envConfig.slack_webhook_url = value;
+            }
+            break;
+          case 'LIBUSB_ENDPOINT_RECOVERY':
+            // Default ON. Only the case-insensitive string "false" disables.
+            envConfig.libusb_endpoint_recovery =
+              value.toLowerCase() !== 'false';
+            break;
         }
       }
     }
@@ -591,8 +618,11 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     }
   }
 
-  // Write KEY=value format with sections
-  const content = [
+  // Write KEY=value format with sections. The V600 wedge-followups
+  // section is appended only when the values are actually configured —
+  // otherwise an empty assignment (e.g., `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=`)
+  // would semantically mean "feature disabled" but also clutter the file.
+  const lines: string[] = [
     '# Machine Configuration',
     `SCANNER_MODE=${config.scanner_mode}`,
     `SCANNER_NAME=${config.scanner_name}`,
@@ -608,9 +638,26 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     `BLOOM_SCANNER_USERNAME=${config.bloom_scanner_username}`,
     `BLOOM_SCANNER_PASSWORD=${config.bloom_scanner_password}`,
     `BLOOM_ANON_KEY=${config.bloom_anon_key}`,
-  ].join('\n');
+  ];
 
-  fs.writeFileSync(envPath, content, 'utf-8');
+  // V600 wedge-followups section (#228 + #236). Only write the lines
+  // for values that are explicitly configured.
+  if (
+    config.slack_webhook_url !== undefined ||
+    config.libusb_endpoint_recovery !== undefined
+  ) {
+    lines.push('', '# GraviScan V600 wedge follow-ups (#228 + #236)');
+    if (config.slack_webhook_url !== undefined) {
+      lines.push(
+        `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=${config.slack_webhook_url}`
+      );
+    }
+    if (config.libusb_endpoint_recovery !== undefined) {
+      lines.push(`LIBUSB_ENDPOINT_RECOVERY=${config.libusb_endpoint_recovery}`);
+    }
+  }
+
+  fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
 }
 
 // ========================================

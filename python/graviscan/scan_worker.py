@@ -19,7 +19,7 @@ Protocol:
         EVENT:{"type":"ready","scanner_id":"<id>"}
         EVENT:{"type":"scan-started","scanner_id":"<id>","plate_index":"00","job_id":"<uuid>"}
         EVENT:{"type":"scan-complete","scanner_id":"<id>","plate_index":"00","job_id":"<uuid>","path":"...","duration_ms":8500}
-        EVENT:{"type":"scan-error","scanner_id":"<id>","plate_index":"00","job_id":"<uuid>","error":"..."}
+        EVENT:{"type":"scan-error","scanner_id":"<id>","plate_index":"00","job_id":"<uuid>","error":"...","duration_ms":8500,"bytes_received":0,"wall_seconds":8.5}
         EVENT:{"type":"scan-cancelled","scanner_id":"<id>","plate_index":"00","job_id":"<uuid>"}
         EVENT:{"type":"cycle-done","scanner_id":"<id>","cycle":1}
 """
@@ -128,6 +128,11 @@ class ScanWorker:
         self._cancel_requested = False
         self._cancel_lock = threading.Lock()
         self._cycle = 0
+        # Raw RGB bytes received during the most recent scan attempt.
+        # Reset to 0 at the start of each plate; set by _sane_scan or
+        # _mock_scan on successful image acquisition. Exposed via the
+        # scan-error event for wedge detection (#236).
+        self._last_scan_bytes_received = 0
 
     def initialize(self) -> bool:
         """Initialize SANE and open the device. Returns True on success."""
@@ -288,7 +293,18 @@ class ScanWorker:
         log(self.scanner_id, "Cancel requested — will stop after current plate")
 
     def _scan_plate(self, plate: dict) -> None:
-        """Scan a single plate."""
+        """Scan a single plate.
+
+        Emits scan-started, then either scan-complete (with duration_ms) or
+        scan-error (with duration_ms, bytes_received, wall_seconds).
+
+        Timing uses time.monotonic() so it is immune to wall-clock
+        adjustments. The bytes_received field reflects raw RGB bytes of
+        any image data received before failure (0 for the common
+        sane.start-failed case; image_width * image_height * 3 if snap()
+        returned). See #236 for the wedge-detection use case that
+        motivates these fields.
+        """
         plate_index = plate.get("plate_index", "00")
         grid_mode = plate.get("grid_mode", "2grid")
         resolution = plate.get("resolution", 300)
@@ -308,7 +324,9 @@ class ScanWorker:
             }
         )
 
-        start_time = time.time()
+        start_time = time.monotonic()
+        # Reset bytes accumulator; inner scan methods set it on success.
+        self._last_scan_bytes_received = 0
 
         try:
             if self.mock:
@@ -334,7 +352,7 @@ class ScanWorker:
                     phenotyper_name,
                 )
 
-            duration_ms = int((time.time() - start_time) * 1000)
+            duration_ms = int((time.monotonic() - start_time) * 1000)
 
             emit_event(
                 {
@@ -348,7 +366,8 @@ class ScanWorker:
             )
 
         except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
+            elapsed_s = time.monotonic() - start_time
+            duration_ms = int(elapsed_s * 1000)
             log(self.scanner_id, f"Scan error (plate {plate_index}): {e}")
 
             emit_event(
@@ -359,6 +378,8 @@ class ScanWorker:
                     "job_id": job_id,
                     "error": str(e),
                     "duration_ms": duration_ms,
+                    "bytes_received": self._last_scan_bytes_received,
+                    "wall_seconds": elapsed_s,
                 }
             )
 
@@ -430,6 +451,11 @@ class ScanWorker:
 
                 if image is None:
                     raise RuntimeError("snap() returned None")
+
+                # Record raw RGB bytes received over USB. Used by the
+                # WedgeDetector (#236) to distinguish "0 bytes after 120 s"
+                # from "partial bytes received then failed."
+                self._last_scan_bytes_received = image.width * image.height * 3
 
                 # Save as TIFF with LZW compression and metadata
                 et = datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -630,6 +656,11 @@ class ScanWorker:
         )
 
         image = Image.fromarray(img_array, mode="RGB")
+
+        # Record raw RGB bytes (mirrors _sane_scan's behavior so the
+        # scan-error/scan-complete payloads remain consistent between
+        # mock and real scanners).
+        self._last_scan_bytes_received = image.width * image.height * 3
 
         et = datetime.now().strftime("%Y%m%dT%H%M%S")
         final_path = compose_output_path(output_path, et)
