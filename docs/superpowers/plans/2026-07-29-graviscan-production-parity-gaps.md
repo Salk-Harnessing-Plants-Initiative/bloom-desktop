@@ -32,6 +32,7 @@ on the production branch yourself before treating any of this as still-accurate,
 since `main` may have moved since 2026-07-29.
 
 Key branch/commit references:
+
 - `main` (this plan's starting point): `ea6fb6a`
 - Production (`origin/fix/v600-wedge-followups-metadata_propogation_followup`): `18657bc`
 - Original 9-increment plan (for cross-reference / established conventions):
@@ -89,7 +90,7 @@ them exactly.)
 - Squash-merge convention: `gh pr merge <N> --squash --delete-branch=false`, then
   manually delete local branch (`git branch -D`), remote branch
   (`git push origin --delete`), and the worktree (`ExitWorktree action:"remove"
-  discard_changes:true` if using the native tool, or `git worktree remove` +
+discard_changes:true` if using the native tool, or `git worktree remove` +
   `git worktree prune` as fallback).
 - Auto-merge policy: the user previously approved auto-merging each clean increment
   without pausing for confirmation, reserving pauses for load-bearing ambiguity or
@@ -132,13 +133,14 @@ them exactly.)
 **This is the most important item in this entire plan.** `python/graviscan/scan_worker.py`
 on `main` still has `_reopen_device()` calling `self._reset_usb_device()` (line ~573
 as of `ea6fb6a`) on every device-reopen during error recovery. Production explicitly
-**removed** this call on 2026-05-21 (issue #228) because kernel-level USBDEVFS_RESET
-makes V600 wedges *worse* — it can trigger a controller FLR (function-level reset) that
+**removed** this call on 2026-05-21 (issue #228) because kernel-level USBDEVFS*RESET
+makes V600 wedges \_worse* — it can trigger a controller FLR (function-level reset) that
 fully detaches the scanner, requiring a physical AC power-cycle to recover. This is
 exactly the failure mode the entire `add-v600-wedge-followups` initiative exists to
 prevent.
 
 Confirm directly before starting:
+
 ```bash
 git show main:python/graviscan/scan_worker.py | grep -n "_reset_usb_device\|_reopen_device"
 git show origin/fix/v600-wedge-followups-metadata_propogation_followup:python/graviscan/scan_worker.py | sed -n '/def _reopen_device/,/def /p'
@@ -157,6 +159,7 @@ likely reflecting work that existed only on a stranded branch and was never actu
 ported.
 
 **Task**:
+
 1. Remove the `self._reset_usb_device()` call from `_reopen_device()`, matching
    production's fix exactly (delete the call, keep `_reset_usb_device()` itself
    defined and retained — production's own comment says it's "retained for
@@ -186,7 +189,7 @@ ported.
    `openspec/AGENTS.md`'s Directory Structure section) — the PR description is where
    this discrepancy gets recorded, not the archive.
 5. Check whether the same "checked but not actually implemented" pattern applies to
-   any *other* checkbox in that same archived tasks.md — task 3.5 has sibling items
+   any _other_ checkbox in that same archived tasks.md — task 3.5 has sibling items
    (3.5.1, 3.5.3, 3.5.4 per the file's numbering) worth a quick audit while you're in
    there, since if one was falsely checked, siblings might be too.
 
@@ -246,6 +249,7 @@ each small and independent of each other:
   idempotent `fs.promises.mkdir(dirPath, {recursive:true})`.
 
 Confirm via:
+
 ```bash
 git show origin/fix/v600-wedge-followups-metadata_propogation_followup:src/main/graviscan-handlers.ts | sed -n '1033,1070p;1770,1875p'
 ```
@@ -324,7 +328,7 @@ vs. production's equivalent in `graviscan-handlers.ts` (~line 2047-2247):
 
 1. **Wave-aware accession lookup** — production falls back to
    `db.graviExperimentWaveMetadata.findMany(...)` keyed by `(experiment_id,
-   wave_number)` when `experiment.accession_id` is null; `main` always uses the single
+wave_number)` when `experiment.accession_id` is null; `main` always uses the single
    legacy accession for every wave. **This is the same, already-known,
    already-deferred gap flagged during Increment 6 of the prior plan** — `main`'s
    Prisma schema has no `GraviExperimentWaveMetadata` model at all, and `main`'s
@@ -339,7 +343,7 @@ vs. production's equivalent in `graviscan-handlers.ts` (~line 2047-2247):
    is NOT tied to the wave-metadata schema gap — port it independently.
 3. **Different target-directory contract** — production auto-resolves
    `app.getPath('downloads')` and only needs `{experimentId, experimentName,
-   waveNumber?}`; `main`'s signature requires an explicit `targetDir: string` with no
+waveNumber?}`; `main`'s signature requires an explicit `targetDir: string` with no
    default. Since `main` has no renderer yet to supply a directory picker, decide
    whether to add the Downloads-folder default now (so a future renderer can omit
    `targetDir` entirely, matching production's simpler contract) or leave it explicit.
@@ -350,8 +354,8 @@ vs. production's equivalent in `graviscan-handlers.ts` (~line 2047-2247):
 Bundle if worth doing at all, otherwise explicitly defer each with a one-line reason
 in this plan's ledger:
 
-- `graviscan:cancel-scan` — production clears the session *before* awaiting
-  `coordinator.shutdown()`; `main` clears it *after*. A caller polling
+- `graviscan:cancel-scan` — production clears the session _before_ awaiting
+  `coordinator.shutdown()`; `main` clears it _after_. A caller polling
   `graviscan:get-scan-status` during that window sees different `isActive` values.
   Decide which ordering is actually correct (main's own comment on a different
   function suggests deferring session-clear until work is truly done is the
@@ -394,16 +398,16 @@ in this plan's ledger:
 Per Global Constraints ("formal proposal warranted = non-trivial new behavior, not a
 narrow bug fix" — the same test the prior plan applied throughout):
 
-| Increment | OpenSpec proposal? | Why |
-|---|---|---|
-| 1 — USBDEVFS_RESET | **No** | Live spec already correct; pure bug fix bringing code into compliance (verified directly, see Increment 1's own notes). |
-| 2 — verify-plates | **Yes** | New capability with no main counterpart at all — real new behavior. |
-| 3 — get-scanner-status / list-scan-files / ensure-dir | **Yes** | New IPC surface, new behavior. |
-| 4 — coordinator correctness | **Likely no**, but check `getScannerStatuses()` specifically — if bundled into Increment 3's proposal (per the suggested merge), it inherits that one; the `initErrors`-clear and `addScanner` race-guard fixes are narrow bug fixes on their own. |
-| 5 — `\|\|` vs `??` | **No** | One-line correctness fix, no behavior change from what was ever intended. |
-| 6 — `graviscan_system_name` | **Yes** | New config field, new persisted behavior — same shape as the prior plan's `slack_webhook_url`/`libusb_endpoint_recovery` work, which did get a proposal (folded into `add-v600-wedge-followups`). |
-| 7 — download-images gaps | **Yes**, for the `plates.csv`/`sections.csv` + target-dir-contract parts (new/changed behavior). The wave-metadata part is explicitly deferred, not implemented — no proposal needed for something not being done. |
-| 8 — minor items | **No**, or fold into whichever of 6/7's proposal is doing the adjacent work if actually implemented rather than deferred. |
+| Increment                                             | OpenSpec proposal?                                                                                                                                                                                                                                 | Why                                                                                                                                                                                               |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 — USBDEVFS_RESET                                    | **No**                                                                                                                                                                                                                                             | Live spec already correct; pure bug fix bringing code into compliance (verified directly, see Increment 1's own notes).                                                                           |
+| 2 — verify-plates                                     | **Yes**                                                                                                                                                                                                                                            | New capability with no main counterpart at all — real new behavior.                                                                                                                               |
+| 3 — get-scanner-status / list-scan-files / ensure-dir | **Yes**                                                                                                                                                                                                                                            | New IPC surface, new behavior.                                                                                                                                                                    |
+| 4 — coordinator correctness                           | **Likely no**, but check `getScannerStatuses()` specifically — if bundled into Increment 3's proposal (per the suggested merge), it inherits that one; the `initErrors`-clear and `addScanner` race-guard fixes are narrow bug fixes on their own. |
+| 5 — `\|\|` vs `??`                                    | **No**                                                                                                                                                                                                                                             | One-line correctness fix, no behavior change from what was ever intended.                                                                                                                         |
+| 6 — `graviscan_system_name`                           | **Yes**                                                                                                                                                                                                                                            | New config field, new persisted behavior — same shape as the prior plan's `slack_webhook_url`/`libusb_endpoint_recovery` work, which did get a proposal (folded into `add-v600-wedge-followups`). |
+| 7 — download-images gaps                              | **Yes**, for the `plates.csv`/`sections.csv` + target-dir-contract parts (new/changed behavior). The wave-metadata part is explicitly deferred, not implemented — no proposal needed for something not being done.                                 |
+| 8 — minor items                                       | **No**, or fold into whichever of 6/7's proposal is doing the adjacent work if actually implemented rather than deferred.                                                                                                                          |
 
 Don't treat this table as gospel over your own judgment once you're actually looking
 at the code — it's a starting point, re-derive if something doesn't fit once you're in
