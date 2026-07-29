@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import sharp from 'sharp';
 import { resolveGraviScanPath } from '../graviscan-path-utils';
 import { runBoxBackup } from '../box-backup';
+import { uploadAllPendingScans } from '../graviscan-upload';
 import { getGraviscanOutputDir } from '../graviscan-output-dir';
 
 // ---------------------------------------------------------------------------
@@ -170,9 +171,14 @@ export async function readScanImage(
 // ---------------------------------------------------------------------------
 
 /**
- * Upload all pending/failed scans to Box backup.
- * Bloom (Supabase) upload is temporarily disabled due to proxy size limit.
- * Progress events delivered via onProgress callback.
+ * Upload all pending/failed scans to Bloom (Supabase) and Box (rclone).
+ * Both run in parallel via Promise.allSettled; their results are merged.
+ * A thrown/rejected branch becomes a synthesized failed result rather than
+ * aborting the other branch or the whole function — Bloom failing doesn't
+ * prevent Box from completing, and vice versa.
+ * Progress events from both targets are delivered via the single onProgress
+ * callback (the IPC layer forwards it to the 'graviscan:upload-progress'
+ * channel; it does not distinguish source, matching the existing wiring).
  */
 export async function uploadAllScans(
   db: PrismaClient,
@@ -183,6 +189,13 @@ export async function uploadAllScans(
   skipped: number;
   failed: number;
   errors: string[];
+  /**
+   * Whether the installed @salk-hpi/bloom-js supports Bloom session/plate-
+   * metadata linking (see graviscan-upload.ts's UploadResult). Surfaced here
+   * so a future renderer can show operators when metadata linking isn't
+   * active, rather than that only being visible in main-process logs.
+   */
+  metadataLinkingAvailable: boolean;
 }> {
   if (uploadInProgress) {
     console.log('[GraviScan:UPLOAD] Upload already in progress — skipping');
@@ -192,26 +205,66 @@ export async function uploadAllScans(
       skipped: 0,
       failed: 0,
       errors: ['Upload already in progress'],
+      metadataLinkingAvailable: false,
     };
   }
   uploadInProgress = true;
   try {
-    console.log(
-      '[GraviScan:UPLOAD] Bloom upload disabled (proxy size limit) — Box backup only'
-    );
+    console.log('[GraviScan:UPLOAD] Starting Bloom + Box upload in parallel');
 
-    const boxResult = await runBoxBackup(db, (progress) => {
-      onProgress?.(progress);
-    });
+    const [bloomSettled, boxSettled] = await Promise.allSettled([
+      uploadAllPendingScans(db, (progress) => {
+        onProgress?.(progress);
+      }),
+      runBoxBackup(db, (progress) => {
+        onProgress?.(progress);
+      }),
+    ]);
 
-    console.log('[GraviScan:UPLOAD] Box backup result:', boxResult);
+    const bloomResult =
+      bloomSettled.status === 'fulfilled'
+        ? bloomSettled.value
+        : {
+            success: false,
+            uploaded: 0,
+            skipped: 0,
+            failed: 0,
+            errors: [
+              `Bloom upload threw: ${
+                bloomSettled.reason instanceof Error
+                  ? bloomSettled.reason.message
+                  : String(bloomSettled.reason)
+              }`,
+            ],
+            metadataLinkingAvailable: false,
+          };
+
+    const boxResult =
+      boxSettled.status === 'fulfilled'
+        ? boxSettled.value
+        : {
+            success: false,
+            experiments: 0,
+            filesCopied: 0,
+            errors: [
+              `Box backup threw: ${
+                boxSettled.reason instanceof Error
+                  ? boxSettled.reason.message
+                  : String(boxSettled.reason)
+              }`,
+            ],
+          };
+
+    console.log('[GraviScan:UPLOAD] Bloom result:', bloomResult);
+    console.log('[GraviScan:UPLOAD] Box result:', boxResult);
 
     return {
-      success: boxResult.success,
-      uploaded: boxResult.filesCopied,
-      skipped: 0,
-      failed: boxResult.errors.length,
-      errors: boxResult.errors,
+      success: bloomResult.success && boxResult.success,
+      uploaded: bloomResult.uploaded + boxResult.filesCopied,
+      skipped: bloomResult.skipped,
+      failed: bloomResult.failed + boxResult.errors.length,
+      errors: [...bloomResult.errors, ...boxResult.errors],
+      metadataLinkingAvailable: bloomResult.metadataLinkingAvailable,
     };
   } catch (error) {
     console.error('[GraviScan:UPLOAD] Error:', error);
@@ -221,6 +274,7 @@ export async function uploadAllScans(
       skipped: 0,
       failed: 0,
       errors: [error instanceof Error ? error.message : 'Upload failed'],
+      metadataLinkingAvailable: false,
     };
   } finally {
     uploadInProgress = false;
