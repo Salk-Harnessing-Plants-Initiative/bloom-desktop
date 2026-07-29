@@ -188,6 +188,10 @@ export interface PlateConfig {
   grid_mode: GridMode;
   resolution: number;
   output_path: string;
+  exp_name?: string;
+  wave_number?: number;
+  phenotyper_name?: string;
+  st_timestamp?: string;
 }
 
 /**

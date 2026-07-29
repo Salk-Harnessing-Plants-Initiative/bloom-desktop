@@ -31,6 +31,12 @@ class TestBuildTiffMetadata:
         assert "capture_timestamp" in desc
         assert "bloom_version" in desc
 
+        # New embedded fields default when omitted
+        assert desc["exp_name"] == ""
+        assert desc["wave_number"] == 0
+        assert desc["st_timestamp"] == ""
+        assert desc["phenotyper_name"] == ""
+
         # Software (305)
         assert ifd[305] == "Bloom Desktop / GraviScan"
 
@@ -41,6 +47,25 @@ class TestBuildTiffMetadata:
 
         # DateTime (306)
         assert len(ifd[306]) == 19  # "YYYY:MM:DD HH:MM:SS"
+
+    def test_embeds_new_fields_when_supplied(self):
+        region = get_scan_region("2grid", "00")
+        ifd = _build_tiff_metadata(
+            "scanner-001",
+            "2grid",
+            "00",
+            300,
+            region,
+            exp_name="exp",
+            wave_number=1,
+            st_timestamp="20260301T120000",
+            phenotyper_name="Alice",
+        )
+        desc = json.loads(ifd[270])
+        assert desc["exp_name"] == "exp"
+        assert desc["wave_number"] == 1
+        assert desc["st_timestamp"] == "20260301T120000"
+        assert desc["phenotyper_name"] == "Alice"
 
 
 class TestMockScanTiffMetadata:
@@ -79,6 +104,52 @@ class TestMockScanTiffMetadata:
 
             # DateTime
             assert 306 in tag_data
+
+    def test_mock_scan_embeds_new_fields(self):
+        """Round-trip: write a TIFF via _mock_scan, read it back, and
+        confirm exp_name/wave_number/st_timestamp/phenotyper_name are
+        embedded correctly when supplied."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif")
+
+            worker = ScanWorker(
+                scanner_id="test-scanner", device_name="mock", mock=True
+            )
+            final_path = worker._mock_scan(
+                "2grid",
+                "00",
+                300,
+                output_path,
+                "myexp",
+                4,
+                "20260301T120000",
+                "Alice",
+            )
+
+            img = Image.open(final_path)
+            desc = json.loads(img.tag_v2[270])
+            assert desc["exp_name"] == "myexp"
+            assert desc["wave_number"] == 4
+            assert desc["st_timestamp"] == "20260301T120000"
+            assert desc["phenotyper_name"] == "Alice"
+
+    def test_mock_scan_new_fields_default_when_omitted(self):
+        """Round-trip: when the caller omits the new fields, they default
+        to empty/zero in the decoded ImageDescription JSON."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif")
+
+            worker = ScanWorker(
+                scanner_id="test-scanner", device_name="mock", mock=True
+            )
+            final_path = worker._mock_scan("2grid", "00", 300, output_path)
+
+            img = Image.open(final_path)
+            desc = json.loads(img.tag_v2[270])
+            assert desc["exp_name"] == ""
+            assert desc["wave_number"] == 0
+            assert desc["st_timestamp"] == ""
+            assert desc["phenotyper_name"] == ""
 
     def test_mock_scan_different_grid_modes(self):
         """Verify metadata reflects the actual grid mode and plate index."""

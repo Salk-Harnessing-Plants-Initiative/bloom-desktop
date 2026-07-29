@@ -51,11 +51,17 @@ def _build_tiff_metadata(
     plate_index: str,
     resolution: int,
     region,
+    exp_name: str = "",
+    wave_number: int = 0,
+    st_timestamp: str = "",
+    phenotyper_name: str = "",
 ) -> ImageFileDirectory_v2:
     """Build TIFF metadata tags for a scan image.
 
     Embeds scan provenance into standard TIFF tags so files are self-describing.
-    Structured metadata goes into ImageDescription as JSON.
+    Structured metadata (incl. experiment + phenotyper attribution) goes into
+    ImageDescription as JSON so the .tif is portable to Box, downstream
+    pipelines, or scientists' laptops without the local DB.
     """
     ifd = ImageFileDirectory_v2()
     ifd[270] = json.dumps(
@@ -70,6 +76,10 @@ def _build_tiff_metadata(
                 "width": region.width,
                 "height": region.height,
             },
+            "exp_name": exp_name,
+            "wave_number": wave_number,
+            "st_timestamp": st_timestamp,
+            "phenotyper_name": phenotyper_name,
             "capture_timestamp": datetime.now(timezone.utc).isoformat(),
             "bloom_version": _BLOOM_VERSION,
         }
@@ -283,6 +293,10 @@ class ScanWorker:
         grid_mode = plate.get("grid_mode", "2grid")
         resolution = plate.get("resolution", 300)
         output_path = plate.get("output_path", "/tmp/scan.jpg")
+        exp_name = plate.get("exp_name", "")
+        wave_number = plate.get("wave_number", 0)
+        st_timestamp = plate.get("st_timestamp", "")
+        phenotyper_name = plate.get("phenotyper_name", "")
         job_id = str(uuid.uuid4())
 
         emit_event(
@@ -299,11 +313,25 @@ class ScanWorker:
         try:
             if self.mock:
                 final_path = self._mock_scan(
-                    grid_mode, plate_index, resolution, output_path
+                    grid_mode,
+                    plate_index,
+                    resolution,
+                    output_path,
+                    exp_name,
+                    wave_number,
+                    st_timestamp,
+                    phenotyper_name,
                 )
             else:
                 final_path = self._sane_scan(
-                    grid_mode, plate_index, resolution, output_path
+                    grid_mode,
+                    plate_index,
+                    resolution,
+                    output_path,
+                    exp_name,
+                    wave_number,
+                    st_timestamp,
+                    phenotyper_name,
                 )
 
             duration_ms = int((time.time() - start_time) * 1000)
@@ -340,6 +368,10 @@ class ScanWorker:
         plate_index: str,
         resolution: int,
         output_path: str,
+        exp_name: str = "",
+        wave_number: int = 0,
+        st_timestamp: str = "",
+        phenotyper_name: str = "",
     ) -> str:
         """Perform a scan using python-sane directly.
 
@@ -404,7 +436,15 @@ class ScanWorker:
                 final_path = compose_output_path(output_path, et)
                 os.makedirs(os.path.dirname(final_path), exist_ok=True)
                 tiff_meta = _build_tiff_metadata(
-                    self.scanner_id, grid_mode, plate_index, resolution, region
+                    self.scanner_id,
+                    grid_mode,
+                    plate_index,
+                    resolution,
+                    region,
+                    exp_name,
+                    wave_number,
+                    st_timestamp,
+                    phenotyper_name,
                 )
                 image.save(
                     final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
@@ -553,7 +593,15 @@ class ScanWorker:
         self._device.cancel()
 
     def _mock_scan(
-        self, grid_mode: str, plate_index: str, resolution: int, output_path: str
+        self,
+        grid_mode: str,
+        plate_index: str,
+        resolution: int,
+        output_path: str,
+        exp_name: str = "",
+        wave_number: int = 0,
+        st_timestamp: str = "",
+        phenotyper_name: str = "",
     ) -> str:
         """Generate a mock scan image (checkerboard pattern).
 
@@ -587,7 +635,15 @@ class ScanWorker:
         final_path = compose_output_path(output_path, et)
         os.makedirs(os.path.dirname(final_path), exist_ok=True)
         tiff_meta = _build_tiff_metadata(
-            self.scanner_id, grid_mode, plate_index, resolution, region
+            self.scanner_id,
+            grid_mode,
+            plate_index,
+            resolution,
+            region,
+            exp_name,
+            wave_number,
+            st_timestamp,
+            phenotyper_name,
         )
         image.save(final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
 
