@@ -1118,7 +1118,9 @@ The system SHALL embed scan provenance metadata into output TIFF images so files
 
 - **GIVEN** a scan is performed by the scan worker (real or mock mode)
 - **WHEN** the output TIFF image is written
-- **THEN** TIFF tag 270 (ImageDescription) SHALL contain JSON with `scanner_id`, `grid_mode`, `plate_index`, `resolution_dpi`, `scan_region_mm`, `capture_timestamp`, and `bloom_version`
+- **THEN** TIFF tag 270 (ImageDescription) SHALL contain JSON with `scanner_id`, `grid_mode`, `plate_index`, `resolution_dpi`, `scan_region_mm`, `exp_name`, `wave_number`, `st_timestamp`, `phenotyper_name`, `capture_timestamp`, and `bloom_version`
+- **AND** `exp_name`, `wave_number`, and `phenotyper_name` SHALL default to an empty string / zero when not supplied by the caller (no renderer populates them yet)
+- **AND** `st_timestamp` SHALL reflect the actual row-start timestamp used to build the scan's output filename
 
 #### Scenario: TIFF resolution tags match scan DPI
 
