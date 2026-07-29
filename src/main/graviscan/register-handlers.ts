@@ -19,7 +19,9 @@ import * as scannerHandlers from './scanner-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as imageHandlers from './image-handlers';
 import * as scannerUpsert from './scanner-upsert';
+import * as verifyPlatesHandlers from './verify-plates';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
+import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
 
 let registered = false;
 
@@ -321,6 +323,42 @@ export function registerGraviScanHandlers(
       imageHandlers.downloadImages(db, params, onProgress)
     )();
   });
+
+  // --- Post-scan QR verification ---
+  ipcMain.handle(
+    'graviscan:verify-plates',
+    (_event, plates: VerifyPlateInput[], experimentId?: string) => {
+      // Check window at send-time, not registration-time (window may close mid-verify)
+      const send = (channel: string, payload?: unknown) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send(channel, payload);
+        }
+      };
+      const onProgress = (event: VerifyProgressEvent) => {
+        switch (event.type) {
+          case 'verify-started':
+            send('graviscan:verify-started');
+            break;
+          case 'verify-result':
+            send('graviscan:verify-result', event.result);
+            break;
+          case 'verify-complete':
+            send('graviscan:verify-complete', {
+              results: event.results,
+              swaps: event.swaps,
+            });
+            break;
+        }
+      };
+      return verifyPlatesHandlers.verifyPlates(
+        db,
+        plates,
+        experimentId,
+        onProgress
+      );
+    }
+  );
 }
 
 /**
