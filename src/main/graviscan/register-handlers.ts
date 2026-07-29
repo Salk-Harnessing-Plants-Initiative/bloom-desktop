@@ -86,25 +86,48 @@ export function registerGraviScanHandlers(
         // #234: spawn a worker for any saved, enabled scanner that
         // doesn't already have one running. Lets a newly-detected (or
         // re-enabled) scanner come online without an app restart.
+        //
+        // Final-review fix #5: do NOT await each addScanner() call
+        // before moving to the next scanner (and do not await the loop
+        // before returning the IPC response). When a scan is active,
+        // coordinator.addScanner() doesn't resolve until the NEXT
+        // 'cycle-complete' event — sequentially awaiting it here would
+        // hold this IPC response open for a full scan interval per new
+        // scanner (potentially hours for a continuous session). Firing
+        // all the spawn calls without awaiting keeps save-scanners-db
+        // responsive; failures are still caught/logged per scanner.
         for (const saved of result.scanners) {
-          if (saved.enabled && !coordinator.hasWorker(saved.id)) {
+          if (!saved.enabled || coordinator.hasWorker(saved.id)) continue;
+
+          // Final-review fix #8: usb_bus/usb_device can be null right
+          // after a reset-usb (which clears them pending re-detection).
+          // Synthesizing a fake "000:000" saneName would pass
+          // buildSubprocessEnv's /^\d{3}$/ validation and reach the
+          // libusb shim as a bogus filter value instead of failing
+          // loudly — skip spawning instead and log why.
+          if (saved.usb_bus == null || saved.usb_device == null) {
             console.log(
-              `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${saved.id} (port ${saved.usb_port})`
+              `[GraviScan:SAVE] Skipping spawn for ${saved.id}: missing usb_bus/usb_device (likely mid reset-usb)`
             );
-            const saneName = `epkowa:interpreter:${String(saved.usb_bus ?? 0).padStart(3, '0')}:${String(saved.usb_device ?? 0).padStart(3, '0')}`;
-            await coordinator
-              .addScanner({
-                scannerId: saved.id,
-                saneName,
-                plates: [],
-              })
-              .catch((err: unknown) => {
-                console.error(
-                  `[GraviScan:SAVE] Failed to spawn worker for ${saved.id}:`,
-                  err
-                );
-              });
+            continue;
           }
+
+          console.log(
+            `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${saved.id} (port ${saved.usb_port})`
+          );
+          const saneName = `epkowa:interpreter:${String(saved.usb_bus).padStart(3, '0')}:${String(saved.usb_device).padStart(3, '0')}`;
+          void coordinator
+            .addScanner({
+              scannerId: saved.id,
+              saneName,
+              plates: [],
+            })
+            .catch((err: unknown) => {
+              console.error(
+                `[GraviScan:SAVE] Failed to spawn worker for ${saved.id}:`,
+                err
+              );
+            });
         }
       }
 

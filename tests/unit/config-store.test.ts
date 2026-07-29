@@ -1782,6 +1782,113 @@ OTHER_VAR=ignored`;
     });
   });
 
+  describe('final-review fix #2: saveEnvConfig read-merge-write preserves fields the caller omits', () => {
+    it('load -> edit an unrelated field -> save -> reload preserves slack_webhook_url and libusb_endpoint_recovery', () => {
+      // Seed the .env file exactly as a real machine would have it,
+      // including the two V600 fields config:get's current whitelist
+      // does NOT return to the renderer.
+      fs.writeFileSync(
+        envPath,
+        [
+          'SCANNER_MODE=graviscan',
+          'SCANNER_NAME=Bench1',
+          'CAMERA_IP_ADDRESS=mock',
+          'SCANS_DIR=/original/scans',
+          'BLOOM_API_URL=https://api.bloom.salk.edu/proxy',
+          '',
+          'NUM_FRAMES=72',
+          'SECONDS_PER_ROT=7',
+          '',
+          'BLOOM_SCANNER_USERNAME=user@test.com',
+          'BLOOM_SCANNER_PASSWORD=pass',
+          'BLOOM_ANON_KEY=anon',
+          '',
+          'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z',
+          'LIBUSB_ENDPOINT_RECOVERY=false',
+        ].join('\n')
+      );
+
+      // 1. Load — as config:get would.
+      const loaded = loadEnvConfig(envPath);
+      expect(loaded.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/X/Y/Z'
+      );
+      expect(loaded.libusb_endpoint_recovery).toBe(false);
+
+      // 2. Simulate the renderer round-trip: config:get's current
+      //    whitelist only returns these fields (see main.ts) — the two
+      //    V600 fields never make it into the object the renderer holds.
+      const roundTripped: MachineConfig = {
+        scanner_mode: loaded.scanner_mode,
+        scanner_name: loaded.scanner_name,
+        camera_ip_address: loaded.camera_ip_address,
+        scans_dir: loaded.scans_dir,
+        bloom_api_url: loaded.bloom_api_url,
+        bloom_scanner_username: loaded.bloom_scanner_username,
+        bloom_scanner_password: loaded.bloom_scanner_password,
+        bloom_anon_key: loaded.bloom_anon_key,
+        num_frames: loaded.num_frames,
+        seconds_per_rot: loaded.seconds_per_rot,
+        // slack_webhook_url / libusb_endpoint_recovery intentionally
+        // absent — this is the bug's exact trigger condition.
+      };
+
+      // 3. Edit something else entirely (what a real user would do).
+      roundTripped.scans_dir = '/new/scans';
+
+      // 4. Save.
+      saveEnvConfig(roundTripped, envPath);
+
+      // 5. Reload — the edited field must have changed, and the two
+      //    fields the round-trip never carried must NOT have been wiped.
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.scans_dir).toBe('/new/scans');
+      expect(reloaded.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/X/Y/Z'
+      );
+      expect(reloaded.libusb_endpoint_recovery).toBe(false);
+      // Sanity: fields that WERE present on the round-tripped object are
+      // unaffected by the merge.
+      expect(reloaded.scanner_name).toBe('Bench1');
+    });
+
+    it('preserves scanner_mode when the incoming config omits it (pre-existing identical defect, also fixed by #2)', () => {
+      fs.writeFileSync(
+        envPath,
+        'SCANNER_MODE=graviscan\nSCANNER_NAME=Bench1\n'
+      );
+      const loaded = loadEnvConfig(envPath);
+      expect(loaded.scanner_mode).toBe('graviscan');
+
+      const withoutMode = { ...loaded, scanner_mode: undefined } as never;
+      saveEnvConfig(withoutMode, envPath);
+
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.scanner_mode).toBe('graviscan');
+      const written = fs.readFileSync(envPath, 'utf-8');
+      expect(written).not.toContain('SCANNER_MODE=undefined');
+    });
+
+    it('an explicitly-provided value still overwrites the on-disk value (merge does not just always keep old data)', () => {
+      fs.writeFileSync(
+        envPath,
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/OLD\n'
+      );
+      const loaded = loadEnvConfig(envPath);
+      const updated: MachineConfig = {
+        ...loaded,
+        slack_webhook_url: 'https://hooks.slack.com/services/NEW',
+      };
+
+      saveEnvConfig(updated, envPath);
+
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.slack_webhook_url).toBe(
+        'https://hooks.slack.com/services/NEW'
+      );
+    });
+  });
+
   describe('V600 wedge follow-ups: both vars together', () => {
     it('reads both vars from the same .env file', () => {
       fs.writeFileSync(

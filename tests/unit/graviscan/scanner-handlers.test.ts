@@ -287,6 +287,24 @@ describe('scanner-handlers', () => {
         data: { enabled: false },
       });
     });
+
+    it('does not disable the whole fleet when called with an empty payload (final-review #6)', async () => {
+      // Regression guard: an empty scanners array must NOT be treated as
+      // "confirmed zero scanners are connected" — that would disable
+      // every currently-enabled row via disableStaleScannerRows.
+      db.graviScanner.findMany.mockResolvedValue([
+        { id: 'a', usb_port: '1-1', enabled: true },
+        { id: 'b', usb_port: '1-2', enabled: true },
+      ]);
+
+      const result = await saveScannersToDB(db, []);
+
+      expect(result.success).toBe(true);
+      expect(result.scanners).toEqual([]);
+      expect(result.disabled).toEqual([]);
+      expect(db.graviScanner.findMany).not.toHaveBeenCalled();
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('getConfig', () => {

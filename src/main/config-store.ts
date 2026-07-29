@@ -455,34 +455,20 @@ export function validateConfig(config: MachineConfig): ValidationResult {
 // ========================================
 
 /**
- * Load unified configuration from .env file
- * Includes automatic migration from legacy config.json + .env format
+ * Parse the KEY=value lines of a `.env` file into a partial
+ * `MachineConfig`. Pure/side-effect-free — no legacy-config migration,
+ * no writes, no `SCANNER_MODE` backward-compat fallback (that's
+ * `loadEnvConfig`'s job). Shared by `loadEnvConfig()` and
+ * `saveEnvConfig()`'s read-merge-write step (final-review fix #2) so
+ * the latter can't recurse into `loadEnvConfig()`'s migration side
+ * effect (which itself calls `saveEnvConfig()` when migrating a legacy
+ * `config.json`).
  *
- * @param envPath - Path to .env file (e.g., ~/.bloom/.env)
- * @returns Unified configuration with all fields
+ * @param envPath - Path to `.env` file
+ * @returns Whatever fields were present in the file; missing/invalid
+ *   fields are simply absent from the returned object.
  */
-export function loadEnvConfig(envPath: string): MachineConfig {
-  const defaults = getDefaultConfig();
-  const emptyCredentials = {
-    bloom_scanner_username: '',
-    bloom_scanner_password: '',
-    bloom_anon_key: '',
-  };
-
-  // Check for legacy config.json file
-  const legacyConfigPath = envPath.replace('.env', 'config.json');
-  let legacyConfig: Partial<MachineConfig> | null = null;
-
-  if (fs.existsSync(legacyConfigPath)) {
-    try {
-      const content = fs.readFileSync(legacyConfigPath, 'utf-8');
-      legacyConfig = JSON.parse(content);
-    } catch {
-      // Ignore errors reading legacy config
-    }
-  }
-
-  // Load from .env file
+function parseEnvFile(envPath: string): Partial<MachineConfig> {
   const envConfig: Partial<MachineConfig> = {};
 
   try {
@@ -563,6 +549,40 @@ export function loadEnvConfig(envPath: string): MachineConfig {
     // Ignore errors reading .env
   }
 
+  return envConfig;
+}
+
+/**
+ * Load unified configuration from .env file
+ * Includes automatic migration from legacy config.json + .env format
+ *
+ * @param envPath - Path to .env file (e.g., ~/.bloom/.env)
+ * @returns Unified configuration with all fields
+ */
+export function loadEnvConfig(envPath: string): MachineConfig {
+  const defaults = getDefaultConfig();
+  const emptyCredentials = {
+    bloom_scanner_username: '',
+    bloom_scanner_password: '',
+    bloom_anon_key: '',
+  };
+
+  // Check for legacy config.json file
+  const legacyConfigPath = envPath.replace('.env', 'config.json');
+  let legacyConfig: Partial<MachineConfig> | null = null;
+
+  if (fs.existsSync(legacyConfigPath)) {
+    try {
+      const content = fs.readFileSync(legacyConfigPath, 'utf-8');
+      legacyConfig = JSON.parse(content);
+    } catch {
+      // Ignore errors reading legacy config
+    }
+  }
+
+  // Load from .env file
+  const envConfig = parseEnvFile(envPath);
+
   // Merge: defaults < legacyConfig < envConfig
   const merged: MachineConfig = {
     ...defaults,
@@ -592,9 +612,28 @@ export function loadEnvConfig(envPath: string): MachineConfig {
 }
 
 /**
- * Save unified configuration to .env file
+ * Save unified configuration to .env file.
  *
- * @param config - Unified configuration to save
+ * Final-review fix #2: read-merge-write. Any field that is `undefined`
+ * on the incoming `config` object falls back to whatever is currently
+ * persisted in `envPath` (or the schema default if the file doesn't
+ * exist / doesn't have that field either). Without this, a caller that
+ * round-trips a partial config object — e.g. `config:get`'s IPC handler
+ * returns a hand-picked whitelist of fields that does NOT include
+ * `slack_webhook_url`/`libusb_endpoint_recovery` (or, pre-existing,
+ * `scanner_mode`), and the renderer saves that exact object straight
+ * back — would otherwise silently ERASE whichever fields it doesn't
+ * carry on every save. The running process still has the old values in
+ * `process.env` (hydrated at startup), so this was invisible until the
+ * next launch.
+ *
+ * This makes `undefined` mean "leave unchanged" rather than "clear it",
+ * for every field. A field explicitly set to `''`/`0`/`false` (not
+ * `undefined`) still overwrites normally — only a genuinely missing key
+ * is treated as "no opinion".
+ *
+ * @param config - Unified configuration to save (fields may be
+ *   `undefined` to mean "preserve whatever is currently on disk")
  * @param envPath - Path to .env file (e.g., ~/.bloom/.env)
  */
 export function saveEnvConfig(config: MachineConfig, envPath: string): void {
@@ -604,12 +643,27 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     fs.mkdirSync(dir, { recursive: true });
   }
 
+  // Read-merge-write: existing file's values < schema defaults <
+  // incoming config's explicitly-set (non-undefined) fields. Uses the
+  // side-effect-free `parseEnvFile()` rather than `loadEnvConfig()` to
+  // avoid recursing into the latter's legacy config.json migration
+  // (which itself calls `saveEnvConfig()`).
+  const existing = parseEnvFile(envPath);
+  const incoming = Object.fromEntries(
+    Object.entries(config).filter(([, value]) => value !== undefined)
+  ) as Partial<MachineConfig>;
+  const merged: MachineConfig = {
+    ...getDefaultConfig(),
+    ...existing,
+    ...incoming,
+  };
+
   // Auto-create scans directory if it doesn't exist
   // This eliminates the UX issue where users must manually create the directory
-  if (config.scans_dir && !fs.existsSync(config.scans_dir)) {
+  if (merged.scans_dir && !fs.existsSync(merged.scans_dir)) {
     try {
-      console.log('[Config] Creating scans directory:', config.scans_dir);
-      fs.mkdirSync(config.scans_dir, { recursive: true });
+      console.log('[Config] Creating scans directory:', merged.scans_dir);
+      fs.mkdirSync(merged.scans_dir, { recursive: true });
       console.log('[Config] Scans directory created successfully');
     } catch (error) {
       const errorMessage =
@@ -624,36 +678,36 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
   // would semantically mean "feature disabled" but also clutter the file.
   const lines: string[] = [
     '# Machine Configuration',
-    `SCANNER_MODE=${config.scanner_mode}`,
-    `SCANNER_NAME=${config.scanner_name}`,
-    `CAMERA_IP_ADDRESS=${config.camera_ip_address}`,
-    `SCANS_DIR=${config.scans_dir}`,
-    `BLOOM_API_URL=${config.bloom_api_url}`,
+    `SCANNER_MODE=${merged.scanner_mode}`,
+    `SCANNER_NAME=${merged.scanner_name}`,
+    `CAMERA_IP_ADDRESS=${merged.camera_ip_address}`,
+    `SCANS_DIR=${merged.scans_dir}`,
+    `BLOOM_API_URL=${merged.bloom_api_url}`,
     '',
     '# Scan Parameters',
-    `NUM_FRAMES=${config.num_frames}`,
-    `SECONDS_PER_ROT=${config.seconds_per_rot}`,
+    `NUM_FRAMES=${merged.num_frames}`,
+    `SECONDS_PER_ROT=${merged.seconds_per_rot}`,
     '',
     '# Bloom API Credentials (Supabase service account)',
-    `BLOOM_SCANNER_USERNAME=${config.bloom_scanner_username}`,
-    `BLOOM_SCANNER_PASSWORD=${config.bloom_scanner_password}`,
-    `BLOOM_ANON_KEY=${config.bloom_anon_key}`,
+    `BLOOM_SCANNER_USERNAME=${merged.bloom_scanner_username}`,
+    `BLOOM_SCANNER_PASSWORD=${merged.bloom_scanner_password}`,
+    `BLOOM_ANON_KEY=${merged.bloom_anon_key}`,
   ];
 
   // V600 wedge-followups section (#228 + #236). Only write the lines
   // for values that are explicitly configured.
   if (
-    config.slack_webhook_url !== undefined ||
-    config.libusb_endpoint_recovery !== undefined
+    merged.slack_webhook_url !== undefined ||
+    merged.libusb_endpoint_recovery !== undefined
   ) {
     lines.push('', '# GraviScan V600 wedge follow-ups (#228 + #236)');
-    if (config.slack_webhook_url !== undefined) {
+    if (merged.slack_webhook_url !== undefined) {
       lines.push(
-        `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=${config.slack_webhook_url}`
+        `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=${merged.slack_webhook_url}`
       );
     }
-    if (config.libusb_endpoint_recovery !== undefined) {
-      lines.push(`LIBUSB_ENDPOINT_RECOVERY=${config.libusb_endpoint_recovery}`);
+    if (merged.libusb_endpoint_recovery !== undefined) {
+      lines.push(`LIBUSB_ENDPOINT_RECOVERY=${merged.libusb_endpoint_recovery}`);
     }
   }
 

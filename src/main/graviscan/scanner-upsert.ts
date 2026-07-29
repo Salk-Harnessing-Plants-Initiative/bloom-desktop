@@ -91,6 +91,14 @@ export async function upsertScannerRow(
         usb_port: payload.usb_port || null,
         usb_bus: payload.usb_bus || null,
         usb_device: payload.usb_device || null,
+        // Critical fix (final-review #1): re-detecting a scanner MUST
+        // re-enable it. Without this, a row disabled by
+        // disableStaleScannerRows()/validateConfig()/disableScannerById()
+        // can never come back — every read path filters `enabled: true`,
+        // so it becomes invisible and un-spawnable forever, requiring
+        // manual SQL to recover. This is the "re-enabled on re-detect"
+        // behavior documented at the top of this file.
+        enabled: true,
       },
     });
     console.log('[GraviScan:SAVE] Updated scanner:', {

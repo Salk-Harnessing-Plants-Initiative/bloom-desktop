@@ -15,6 +15,9 @@ interface ScanCoordinatorLike {
   cancelAll(): void;
   shutdown(): Promise<void>;
   on(event: string, listener: (...args: any[]) => void): this;
+  hasWorker(scannerId: string): boolean;
+  addScanner(config: any): Promise<void>;
+  stopScanner(scannerId: string): Promise<void>;
 }
 
 function createMockCoordinator(
@@ -28,6 +31,12 @@ function createMockCoordinator(
     cancelAll: vi.fn(),
     shutdown: vi.fn().mockResolvedValue(undefined),
     on: vi.fn().mockReturnThis(),
+    // Default: every scanner comes online — matches the pre-existing
+    // "happy path" test expectations. Tests for the final-review #3 fix
+    // (zero/partial scanners ready) override this per-test.
+    hasWorker: vi.fn().mockReturnValue(true),
+    addScanner: vi.fn().mockResolvedValue(undefined),
+    stopScanner: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -192,6 +201,61 @@ describe('session-handlers', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('positive');
+    });
+
+    it('fails and does not set session state when no scanner comes online after initialize() (final-review #3)', async () => {
+      // initialize() no longer rejects on a per-scanner spawn failure
+      // (stage 2 isolates those) — simulate that case: initialize()
+      // resolves, but hasWorker() is false for every configured scanner.
+      coordinator = createMockCoordinator({
+        hasWorker: vi.fn().mockReturnValue(false),
+      } as any);
+
+      const result = await startScan(
+        coordinator,
+        baseParams,
+        sessionFns,
+        onError
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No scanners came online');
+      expect(sessionFns.setScanSession).not.toHaveBeenCalled();
+      expect(coordinator.scanOnce).not.toHaveBeenCalled();
+    });
+
+    it('succeeds when at least one of several scanners comes online after initialize()', async () => {
+      const multiParams = {
+        ...baseParams,
+        scanners: [
+          baseParams.scanners[0],
+          {
+            scannerId: 's2',
+            saneName: 'epkowa:interpreter:001:003',
+            plates: [
+              {
+                plate_index: '00',
+                grid_mode: '2grid',
+                resolution: 600,
+                output_path: '/tmp/scan2',
+              },
+            ],
+          },
+        ],
+      };
+      coordinator = createMockCoordinator({
+        hasWorker: vi.fn((id: string) => id === 's1'), // s2 failed to spawn
+      } as any);
+
+      const result = await startScan(
+        coordinator,
+        multiParams,
+        sessionFns,
+        onError
+      );
+
+      expect(result.success).toBe(true);
+      expect(sessionFns.setScanSession).toHaveBeenCalled();
     });
 
     it('should not set session state if coordinator.initialize throws', async () => {

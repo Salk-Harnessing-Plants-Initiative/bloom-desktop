@@ -186,11 +186,37 @@ describe('upsertScannerRow', () => {
       usb_device: 7,
     });
 
-    // upsertScannerRow itself doesn't flip `enabled` — that isn't part of
-    // its data block — but it must match the disabled row rather than
-    // creating a duplicate.
+    // Final-review fix #1: upsertScannerRow MUST flip `enabled` back to
+    // true on UPDATE, or a disabled row can never be re-enabled by
+    // re-detection — it stays permanently invisible/un-spawnable.
     expect(saved.id).toBe('row-1');
+    expect(saved.enabled).toBe(true);
+    expect(db._rows[0].enabled).toBe(true);
     expect(db.graviScanner.create).not.toHaveBeenCalled();
+  });
+
+  it('full lockout-and-recovery cycle: disableStaleScannerRows then a re-detect upsert brings the row back (final-review #1)', async () => {
+    const db = makeMockDb([makeRow({ id: 'a', usb_port: '1-1' })]);
+
+    // Scanner unplugged / not in the current detection set — disabled.
+    const staleResult = await disableStaleScannerRows(db as never, []);
+    expect(staleResult.disabled).toEqual(['a']);
+    expect(db._rows[0].enabled).toBe(false);
+
+    // Scanner replugged and re-detected — upsert matches by usb_port and
+    // must bring it back online, not leave it permanently disabled.
+    const saved = await upsertScannerRow(db as never, {
+      name: 'Scanner 1',
+      vendor_id: '04b8',
+      product_id: '013c',
+      usb_port: '1-1',
+      usb_bus: 1,
+      usb_device: 7,
+    });
+
+    expect(saved.id).toBe('a');
+    expect(saved.enabled).toBe(true);
+    expect(db._rows[0].enabled).toBe(true);
   });
 
   it('preserves existing display_name when payload omits it', async () => {

@@ -592,12 +592,21 @@ newly-re-enabled) `enabled=true` row.
 - [x] 7.1 Write the tests above
 - [x] 7.2 Add `addScanner(config)` and `hasWorker(id)` to
       `ScanCoordinator`
-- [ ] 7.3 Refactor `initialize()` to use `addScanner()` per scanner
+- [x] 7.3 Refactor `initialize()` to use `addScanner()` per scanner.
+      DONE on `main` (Increment 9 stage 2, backend-hardening plan):
+      `spawnSingleScanner()` in `src/main/graviscan/scan-coordinator.ts`
+      is now the single shared implementation used by both
+      `initialize()`'s per-scanner loop and `addScanner()`, isolating
+      one scanner's spawn failure from the others. (Reconciled by the
+      final-review fix round — this box was incorrectly left unchecked
+      even though the work had landed.)
 - [x] 7.4 Update `graviscan:save-scanners-db` to call
       `coordinator.addScanner()` post-upsert for new/re-enabled rows
 - [x] 7.5 `npm run test:unit` passes; manual UI smoke (plug in a
       scanner on a previously-unseen USB path, click Detect, confirm
-      it goes from "discovered" → "connected" without app restart)
+      it goes from "discovered" → "connected" without app restart) —
+      automated coverage only on `main` (no renderer/UI to smoke-test
+      here); physical smoke test deferred to rig validation (Task 12).
 
 ---
 
@@ -647,23 +656,42 @@ newly-re-enabled) `enabled=true` row.
 
 **Checklist:**
 
-- [x] 8.1 Write the tests above
-- [x] 8.2 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts:166`
-- [x] 8.3 Add a sibling type `LegacyGraviScanResolution` and a
+> **Reconciliation note (final-review fix round, Increment 9 stage 3):**
+> NONE of Task 8 was ported to `main` by the `add-v600-wedge-followups`
+> → backend-hardening port. Verified directly: `main`'s
+> `src/types/graviscan.ts` `GRAVISCAN_RESOLUTIONS` still includes
+> `3200`/`6400` (never trimmed), there is no `LegacyGraviScanResolution`
+> or `isValidResolution` anywhere in `src/`, and
+> `python/graviscan/scan_worker.py` has no `_validate_dpi` helper or
+> `dpi-warning` event. The checkboxes below were inherited as-checked
+> from the stranded source branch's tasks.md and do not reflect `main`'s
+> state. Unchecked below and deferred to Phase 1b / a future increment
+> — not part of this port's scope (`main` has no renderer, and the
+> Python/type-level halves were simply never picked up either).
+
+- [ ] 8.1 Write the tests above — **DEFERRED**, not ported to `main`
+- [ ] 8.2 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts:166`
+      — **DEFERRED**, not ported to `main` (still `[200, 400, 600, 800,
+      1200, 1600, 3200, 6400]` as of this reconciliation)
+- [ ] 8.3 Add a sibling type `LegacyGraviScanResolution` and a
       type-guard helper `isValidResolution(value: number):
       value is GraviScanResolution` in `src/types/graviscan.ts`
       (per design.md Decision 2c) — for renderer code paths that
-      read possibly-stale `GraviConfig.resolution` from the DB
+      read possibly-stale `GraviConfig.resolution` from the DB.
+      **DEFERRED**, not ported to `main`
 - [ ] 8.4 Verify "(recommended)" tag still attaches to 1200 in
       `ConfigureScanner.tsx:366-377` and
-      `ScannerConfigSection.tsx:580-591`
-- [x] 8.5 Find DB-read callers of `config.resolution` in the renderer
+      `ScannerConfigSection.tsx:580-591` — N/A on `main` (no renderer
+      in this repo's `src/renderer/`); tracked for Phase 1b
+- [ ] 8.5 Find DB-read callers of `config.resolution` in the renderer
       via Grep; update them to use `LegacyGraviScanResolution`
       with the new type-guard helper so a stale 3200 from DB
-      doesn't break compilation
-- [x] 8.6 Add `_validate_dpi` helper and `dpi-warning` event emission
-      in `scan_worker.py`
-- [x] 8.7 `npm run test:unit` passes; `pytest python/tests/` passes
+      doesn't break compilation. **DEFERRED**, not ported to `main`
+      (no renderer)
+- [ ] 8.6 Add `_validate_dpi` helper and `dpi-warning` event emission
+      in `scan_worker.py` — **DEFERRED**, not ported to `main`
+- [ ] 8.7 `npm run test:unit` passes; `pytest python/tests/` passes
+      — N/A, nothing in this task was implemented to test
 
 ---
 
@@ -709,14 +737,28 @@ React Test Library + happy-dom):*
 
 **Checklist:**
 
-- [x] 9.1 Write the tests above
-- [x] 9.2 Add `graviscan:disable-scanner` IPC handler
-- [x] 9.3 Add `coordinator.stopScanner(id)` method
-- [x] 9.4 Add Remove button to scanner row in `ConfigureScanner.tsx`
-      (and/or `ScannerConfigSection.tsx`)
-- [x] 9.5 Update TS types in `src/renderer/types/electron.d.ts`
-- [x] 9.6 `npm run test:unit` passes; manual smoke (open Configure
-      Scanner with a stale row, click Remove, confirm it disappears)
+- [x] 9.1 Write the tests above — done on `main` as
+      `tests/unit/graviscan/scanner-upsert.test.ts` +
+      `tests/unit/graviscan/register-handlers.test.ts` (adapted to
+      `main`'s modular file layout; see Increment 9 stage 3 report)
+- [x] 9.2 Add `graviscan:disable-scanner` IPC handler — done on `main`
+      in `src/main/graviscan/register-handlers.ts`
+- [x] 9.3 Add `coordinator.stopScanner(id)` method — done on `main` in
+      `src/main/graviscan/scan-coordinator.ts` (stage 2)
+- [ ] 9.4 Add Remove button to scanner row in `ConfigureScanner.tsx`
+      (and/or `ScannerConfigSection.tsx`) — **DEFERRED to Phase 1b**:
+      `main` has no renderer implementation of the Configure Scanner
+      page (no `ConfigureScanner.tsx`/`ScannerConfigSection.tsx` exist
+      in `src/renderer/`). The backend `disable-scanner` IPC this button
+      would call (9.2/9.3) is fully implemented and tested; only the
+      button itself is out of scope here.
+- [x] 9.5 Update TS types — done on `main` at `src/types/electron.d.ts`
+      (this repo's actual path; the source branch's task description's
+      `src/renderer/types/electron.d.ts` path doesn't exist here)
+- [ ] 9.6 `npm run test:unit` passes (true — see stage 3 report); manual
+      smoke (open Configure Scanner with a stale row, click Remove,
+      confirm it disappears) — **N/A on `main`**, no Configure Scanner UI
+      to smoke-test; deferred to Phase 1b alongside 9.4
 
 ---
 
@@ -771,16 +813,28 @@ Section 3 Table 3). Tests check order-of-magnitude correctness within
 
 **Checklist:**
 
-- [x] 10.1 Write the tests above
-- [x] 10.2 Implement `estimateCycleSeconds()` in
-      `src/renderer/lib/cadenceEstimator.ts` (or similar)
-- [x] 10.3 Wire the estimate + banner into `ScanControlSection.tsx`
-- [x] 10.4 Reuse the amber `bg-amber-50 border-amber-300` Tailwind
+> **Reconciliation note (final-review fix round, Increment 9 stage 3):**
+> All of Task 10 is renderer-only work (`cadenceEstimator.ts`,
+> `ScanControlSection.tsx`, `ConfigStatusBanner.tsx`) and none of it was
+> ported to `main` — `main` has no renderer implementation of these
+> components at all. The checkboxes below were inherited as-checked
+> from the stranded source branch and do not reflect `main`'s state.
+> Unchecked and deferred to Phase 1b / a future increment.
+
+- [ ] 10.1 Write the tests above — **DEFERRED**, not ported to `main`
+- [ ] 10.2 Implement `estimateCycleSeconds()` in
+      `src/renderer/lib/cadenceEstimator.ts` (or similar) —
+      **DEFERRED**, no renderer on `main`
+- [ ] 10.3 Wire the estimate + banner into `ScanControlSection.tsx` —
+      **DEFERRED**, file does not exist on `main`
+- [ ] 10.4 Reuse the amber `bg-amber-50 border-amber-300` Tailwind
       classes from existing warning patterns
-      (`ConfigStatusBanner.tsx:82-123`)
-- [x] 10.5 `npm run test:unit` passes; manual smoke (set 4-plate +
+      (`ConfigStatusBanner.tsx:82-123`) — **DEFERRED**, no renderer on
+      `main`
+- [ ] 10.5 `npm run test:unit` passes; manual smoke (set 4-plate +
       5-min interval, confirm banner appears; switch to 2-plate,
-      confirm banner disappears)
+      confirm banner disappears) — **N/A**, nothing in this task was
+      implemented to test
 
 ---
 

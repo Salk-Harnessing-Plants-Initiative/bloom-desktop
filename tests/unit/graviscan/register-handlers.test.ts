@@ -340,6 +340,82 @@ describe('registerGraviScanHandlers', () => {
       });
     });
 
+    it('does not block the IPC response on addScanner() resolving (final-review #5)', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [
+          {
+            id: 's1',
+            enabled: true,
+            usb_bus: 1,
+            usb_device: 2,
+            usb_port: '1-2',
+          },
+        ],
+        count: 1,
+        disabled: [],
+      } as any);
+      // Simulate addScanner() being queued behind an active scan cycle —
+      // its promise never resolves within this test's lifetime.
+      let addScannerResolved = false;
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn().mockImplementation(
+          () =>
+            new Promise<void>((resolve) => {
+              setTimeout(() => {
+                addScannerResolved = true;
+                resolve();
+              }, 60_000); // effectively "never" for this test
+            })
+        ),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:save-scanners-db',
+        []
+      );
+
+      // The IPC response must have resolved WITHOUT waiting for
+      // addScanner() to settle.
+      expect(result.success).toBe(true);
+      expect(addScannerResolved).toBe(false);
+      expect(coordinator.addScanner).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips spawning (and logs) when usb_bus/usb_device are null instead of synthesizing a fake saneName (final-review #8)', async () => {
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [
+          {
+            id: 's1',
+            enabled: true,
+            usb_bus: null,
+            usb_device: null,
+            usb_port: '1-2',
+          },
+        ],
+        count: 1,
+        disabled: [],
+      } as any);
+      const coordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn().mockResolvedValue(undefined),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(coordinator);
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping spawn for s1')
+      );
+    });
+
     it('does not spawn a worker for a scanner that already has one', async () => {
       vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
         success: true,

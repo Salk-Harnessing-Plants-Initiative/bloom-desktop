@@ -379,15 +379,29 @@ export async function saveScannersToDB(
     // usb_port is NOT in the current payload. Preserves the FK chain to
     // historical GraviScan / GraviScanPlateAssignment rows (no
     // ON DELETE CASCADE on those references).
-    const currentUsbPorts = scanners
-      .map((s) => s.usb_port)
-      .filter((p): p is string => typeof p === 'string' && p.length > 0);
-    const staleResult = await disableStaleScannerRows(db, currentUsbPorts);
-    if (staleResult.disabled.length > 0) {
-      console.log(
-        `[GraviScan:SAVE] Disabled ${staleResult.disabled.length} stale scanner(s) not in current detection set:`,
-        staleResult.disabled
-      );
+    //
+    // Final-review fix #6: an EMPTY payload is treated as "nothing to
+    // report" rather than "confirmed zero scanners are connected" —
+    // skip the stale-disable step entirely in that case. Without this
+    // guard, saveScannersToDB([]) would disable the entire fleet, since
+    // an empty payload trivially yields an empty currentUsbPorts set
+    // that no enabled row can match. A caller that genuinely wants to
+    // report "everything just vanished" should still pass the (now
+    // empty) list of currently-detected ports explicitly rather than
+    // omitting scanners altogether.
+    let disabled: string[] = [];
+    if (scanners.length > 0) {
+      const currentUsbPorts = scanners
+        .map((s) => s.usb_port)
+        .filter((p): p is string => typeof p === 'string' && p.length > 0);
+      const staleResult = await disableStaleScannerRows(db, currentUsbPorts);
+      disabled = staleResult.disabled;
+      if (disabled.length > 0) {
+        console.log(
+          `[GraviScan:SAVE] Disabled ${disabled.length} stale scanner(s) not in current detection set:`,
+          disabled
+        );
+      }
     }
 
     return {
@@ -396,8 +410,9 @@ export async function saveScannersToDB(
       count: savedScanners.length,
       /** scanner_ids disabled as stale by this call (#230); consumed by
        * the coordinator-aware caller (register-handlers.ts) to stop any
-       * orphaned worker subprocesses (#20). */
-      disabled: staleResult.disabled,
+       * orphaned worker subprocesses (#20). Always [] for an empty
+       * payload — see final-review fix #6 above. */
+      disabled,
     };
   } catch (error) {
     return {

@@ -19,7 +19,7 @@ import type { ScanSessionState } from '../../types/graviscan';
 import type { ScanCoordinator } from './scan-coordinator';
 import type { ScanWorkerEvent } from './scanner-subprocess';
 import type { BrowserWindow } from 'electron';
-import { WedgeDetector } from '../wedge-detector';
+import { WedgeDetector, type WedgeDetectedEvent } from '../wedge-detector';
 import { SlackNotifier } from '../slack-notifier';
 import { scanLog } from './scan-logger';
 
@@ -27,12 +27,66 @@ import { scanLog } from './scan-logger';
 // Module-level state (not exported — accessed via functions)
 // =============================================================================
 
+/**
+ * Minimal shape `setupWedgeDetection()` needs to enrich a wedge event
+ * with the scanner's operator-friendly display name / USB path (final-
+ * review fix #4). Deliberately narrower than `PrismaClient` so this
+ * module doesn't take on a hard dependency on `@prisma/client`'s types —
+ * matches the loose `db: any` shape `initGraviScan()` already accepts.
+ */
+interface ScannerLookupDb {
+  graviScanner: {
+    findUnique: (args: { where: { id: string } }) => Promise<{
+      display_name: string | null;
+      usb_port: string | null;
+    } | null>;
+  };
+}
+
 let scanSession: ScanSessionState | null = null;
 let scanCoordinator: ScanCoordinator | null = null;
 let _getMainWindow: (() => BrowserWindow | null) | null = null;
 let _coordinatorCreating: Promise<ScanCoordinator> | null = null;
 let wedgeDetector: WedgeDetector | null = null;
 let lastSeenCycleNumber = -1;
+/** Set by `initGraviScan()`; used by `setupWedgeDetection()` to look up
+ * a scanner's display_name/usb_port for Slack alert enrichment (#4). */
+let _db: ScannerLookupDb | null = null;
+
+/**
+ * Look up the `GraviScanner` row for `evt.scanner_id` and merge its
+ * `display_name`/`usb_port` into the wedge event before it reaches
+ * Slack. Per Copilot PR #237 review: operators need to be able to
+ * locate the physical scanner from the alert alone, without cross-
+ * referencing logs or the DB.
+ *
+ * Best-effort: a missing `db` (not yet wired), an unknown scanner_id,
+ * or a DB error all fall back to the original, unenriched event rather
+ * than blocking or dropping the Slack notification.
+ */
+async function enrichWedgeEvent(
+  evt: WedgeDetectedEvent,
+  db: ScannerLookupDb | null
+): Promise<WedgeDetectedEvent> {
+  if (!db) return evt;
+  try {
+    const row = await db.graviScanner.findUnique({
+      where: { id: evt.scanner_id },
+    });
+    if (!row) return evt;
+    return {
+      ...evt,
+      display_name: row.display_name ?? undefined,
+      usb_port: row.usb_port ?? undefined,
+    };
+  } catch (err) {
+    console.error(
+      '[WedgeDetector] Failed to look up scanner for Slack enrichment:',
+      err
+    );
+    return evt;
+  }
+}
 
 // =============================================================================
 // Session state management
@@ -73,6 +127,13 @@ export function setupCoordinatorEventForwarding(
     'overtime',
     'cancelled',
     'scan-error',
+    // Final-review fix #3: per-scanner init/spawn failures are recorded
+    // in ScanCoordinator's initErrors and emitted on this event, but
+    // were never forwarded to the renderer — silently dropped. Without
+    // this, an operator has no way to learn which specific scanner
+    // failed to come online (e.g. after the #3 startScan fix reports
+    // "no scanners came online" but doesn't say why).
+    'scanner-init-status',
   ];
 
   for (const eventName of events) {
@@ -115,8 +176,20 @@ export function setupCoordinatorEventForwarding(
  *   `scan-error`/`scan-complete` to `onScanError`/`onScanEnd`, with
  *   defensive type-guard defaults for `bytes_received`/`wall_seconds`
  *   (a worker could in theory emit a legacy event without them).
+ * - `onWedge` enriches the event with the scanner's `display_name`/
+ *   `usb_port` (looked up via `db`, final-review fix #4) before handing
+ *   it to the `SlackNotifier` — see `enrichWedgeEvent()` above.
+ *
+ * @param db Optional DB handle used to enrich wedge events with the
+ *   scanner's display_name/usb_port. Passed by `getOrCreateCoordinator()`
+ *   from the module-level `_db` set in `initGraviScan()`. Omit (or pass
+ *   `null`) to skip enrichment — used by tests that exercise this
+ *   function directly without a DB.
  */
-export function setupWedgeDetection(coordinator: ScanCoordinator): void {
+export function setupWedgeDetection(
+  coordinator: ScanCoordinator,
+  db: ScannerLookupDb | null = null
+): void {
   const slackNotifier = new SlackNotifier({
     webhookUrl: process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL,
   });
@@ -128,7 +201,10 @@ export function setupWedgeDetection(coordinator: ScanCoordinator): void {
     wedgeDetector = new WedgeDetector({
       sessionId,
       onWedge: (evt) => {
-        void slackNotifier.notify(evt);
+        void (async () => {
+          const enriched = await enrichWedgeEvent(evt, db);
+          void slackNotifier.notify(enriched);
+        })();
         scanLog(
           `[WedgeDetector] wedge-detected scanner=${evt.scanner_id} signature=${evt.signature} cycle=${evt.cycle_number}`
         );
@@ -220,8 +296,9 @@ export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
       setupCoordinatorEventForwarding(scanCoordinator, _getMainWindow);
     }
 
-    // Wire wedge detection + Slack notification (#236)
-    setupWedgeDetection(scanCoordinator);
+    // Wire wedge detection + Slack notification (#236), enriched with
+    // scanner display_name/usb_port when a db handle is available (#4)
+    setupWedgeDetection(scanCoordinator, _db);
 
     return scanCoordinator;
   })();
@@ -253,6 +330,8 @@ export async function initGraviScan(
 
   // Cache for coordinator event forwarding
   _getMainWindow = getMainWindow;
+  // Cache for wedge-event Slack enrichment (display_name/usb_port, #4)
+  _db = db;
 
   // Lazy import to avoid loading sharp/native modules in cylinderscan mode
   const { registerGraviScanHandlers } = await import('./register-handlers');
@@ -329,6 +408,7 @@ export async function _resetWiringState(): Promise<void> {
   _coordinatorCreating = null;
   wedgeDetector = null;
   lastSeenCycleNumber = -1;
+  _db = null;
   // Dynamic import to avoid pulling in register-handlers (and its transitive
   // sharp/native dependencies) at module load time.
   const { _resetRegistration } = await import('./register-handlers');

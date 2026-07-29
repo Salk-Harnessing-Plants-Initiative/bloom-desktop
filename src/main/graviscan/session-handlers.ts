@@ -142,6 +142,25 @@ export async function startScan(
 
     await coordinator.initialize(scannerConfigs);
 
+    // Final-review fix #3: initialize() no longer rejects on a
+    // per-scanner spawn failure — stage 2 isolated those failures inside
+    // spawnSingleScanner() so one bad USB port doesn't block the others
+    // (they're recorded in initErrors and surfaced via a
+    // 'scanner-init-status' event instead). That means a session could
+    // otherwise start "active" with zero — or only some — scanners
+    // actually working, with nothing telling the operator. Verify at
+    // least one scanner came online before reporting success.
+    const anyScannerReady = scannerConfigs.some((c) =>
+      coordinator.hasWorker(c.scannerId)
+    );
+    if (!anyScannerReady) {
+      return {
+        success: false,
+        error:
+          'No scanners came online — check scanner-init-status events for per-scanner failures',
+      };
+    }
+
     // Only set session state AFTER initialize succeeds — avoids briefly
     // reporting an active scan while the coordinator is still starting up.
     sessionFns.setScanSession({
