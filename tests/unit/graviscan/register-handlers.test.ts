@@ -62,6 +62,7 @@ const CHANNELS = [
   'graviscan:read-scan-image',
   'graviscan:upload-all-scans',
   'graviscan:download-images',
+  'graviscan:reset-usb',
 ];
 
 function createMockIpcMain() {
@@ -116,7 +117,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 15 IPC channels', () => {
+  it('registers all 16 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -125,7 +126,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(15);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(16);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }

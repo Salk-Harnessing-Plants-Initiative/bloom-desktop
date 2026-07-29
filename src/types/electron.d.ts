@@ -38,6 +38,7 @@ import {
   PaginatedScansResponse,
 } from './database';
 import { UploadResult } from '../main/image-uploader';
+import { ResetUsbResult } from './graviscan';
 
 /**
  * Python backend API
@@ -508,6 +509,7 @@ export interface GraviAPI {
   getPlatformInfo: () => Promise<any>;
   validateScanners: (ids: string[]) => Promise<any>;
   validateConfig: () => Promise<any>;
+  resetUsb: () => Promise<ResetUsbResult>;
 
   // Session operations
   startScan: (params: any) => Promise<any>;
