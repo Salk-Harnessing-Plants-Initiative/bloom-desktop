@@ -1,63 +1,99 @@
-## 1. Schema
+## 1. Python QR decode module
 
-- [x] 1.1 Add `verification_status String @default("pending")` to
-      `GraviScanPlateAssignment` in `prisma/schema.prisma`
-- [x] 1.2 Generate migration via `prisma migrate dev` (do not hand-write SQL)
-- [x] 1.3 Regenerate Prisma Client
+- [ ] 1.1 Write `python/tests/test_qr_reader.py` first (fixture-gated, skip
+      without real TIFF images — same convention as the existing Node
+      fixture tests): asserts `decode_qr_codes()` returns the expected codes
+      for the known multi-QR fixture, returns `[]` for a missing file,
+      returns `[]` (not an exception) on a decode error. Confirm RED (no
+      `qr_reader.py` module exists yet).
+- [ ] 1.2 Add `opencv-python-headless` to `pyproject.toml`
+- [ ] 1.3 Implement `python/graviscan/qr_reader.py`:
+      `decode_qr_codes(image_path: str) -> list[str]` using
+      `cv2.QRCodeDetector().detectAndDecodeMulti()`, full resolution, no
+      resize. Confirm GREEN.
+- [ ] 1.4 Write a failing test for `python/main.py`'s new
+      `--decode-qr-batch` mode (stdin JSON array of paths in, stdout JSON
+      `[{"path":...,"codes":[...]}]` out) before adding the argparse branch.
+      Confirm RED, then implement, confirm GREEN.
 
-## 2. Dependency
+## 2. Node-side subprocess wrapper (replaces WASM)
 
-- [x] 2.1 Add `@undecaf/zbar-wasm@^0.11.0` to `package.json` dependencies and
-      install (commit updated lockfile)
+- [ ] 2.1 Write a failing test for the new `src/main/qr-reader.ts` mocking
+      `child_process.spawn` (matching `scanner-subprocess.test.ts`'s
+      existing convention) — asserts it spawns
+      `getPythonExecutablePath()` with `--decode-qr-batch`, writes the batch
+      to stdin, parses stdout JSON, and returns `[]` for a path missing from
+      the response or on a non-zero exit. Confirm RED.
+- [ ] 2.2 Rewrite `src/main/qr-reader.ts` to spawn the Python subprocess
+      instead of calling `@undecaf/zbar-wasm`. Confirm GREEN.
+- [ ] 2.3 Remove `@undecaf/zbar-wasm` from `package.json`
+      dependencies/lockfile entirely.
+- [ ] 2.4 Delete the old WASM-based `tests/unit/qr-reader.test.ts` fixture
+      tests that exercised zbar-wasm directly; the new subprocess-mocking
+      test from 2.1 replaces them (real-image decoding is now covered by
+      the Python-side fixture tests in 1.1).
 
-## 3. QR Reader Module
+## 3. Verify-plates handler: correctness fixes
 
-- [x] 3.1 Port `src/main/qr-reader.ts` verbatim from production
-      (`readQrCodes()`, sequential decode queue)
-- [x] 3.2 Port `tests/unit/qr-reader.test.ts` fixture-based tests for the real
-      exported `readQrCodes()` function (the production file's separate
-      "Verification Logic" describe block, a logic-mirror reimplementation
-      with no call into real code, was intentionally not ported — see
-      `verify-plates.test.ts` for equivalent real-function coverage)
+- [ ] 3.1 Write a failing test: `experimentId` scoping applies to every
+      write/lookup site, not just the read-side lookup — two experiments
+      sharing the same `scanner_id`/`plate_index`, assert the
+      non-target experiment's `GraviScanPlateAssignment`/`GraviScan` rows
+      are untouched after a swap correction on the target experiment.
+      Confirm RED against the current (lookup-only-scoped) code.
+- [ ] 3.2 Thread `experimentId` into all five call sites (both swap
+      `updateMany`s, both `graviScan.findFirst` lookups, the status
+      `updateMany`). Confirm GREEN.
+- [ ] 3.3 Write a failing test: a plate with a mixed-case `plate_id`
+      (e.g. `"Plate_13"`) that matches its assignment SHALL classify as
+      `verified` — confirm this fails against the current code (which only
+      lowercases the DB-side value).
+- [ ] 3.4 Lowercase `plate.assignedPlateId` at the comparison site. Confirm
+      GREEN.
+- [ ] 3.5 Write a failing test: a lone `incorrect` result (no swap partner)
+      persists `verification_status: 'incorrect'`, not `'unreadable'`.
+      Confirm RED against the current remap.
+- [ ] 3.6 Remove the `incorrect` → `unreadable` remap; persist `incorrect`
+      directly. Confirm GREEN.
+- [ ] 3.7 Write a failing test: an `imagePath` outside the scan output
+      directory (path traversal) is rejected before being handed to the QR
+      decoder, mirroring `read-scan-image`'s existing containment test.
+      Confirm RED.
+- [ ] 3.8 Reuse the existing realpath-containment helper from
+      `register-handlers.ts`'s `read-scan-image` handler. Confirm GREEN.
 
-## 4. Verify-Plates Handler Module
+## 4. Minor cleanups
 
-- [x] 4.1 Create `src/main/graviscan/verify-plates.ts` exporting
-      `verifyPlates(db, plates, experimentId?, onProgress?)`
-- [x] 4.2 Port QR-read step, duplicate-QR detection, per-plate DB lookup +
-      classification (`verified`/`incorrect`/`unreadable`/`needs_review`/`duplicate_qr`)
-- [x] 4.3 Port swap detection + auto-correction (`GraviScanPlateAssignment`
-      and `GraviScan` updates), each DB write wrapped in its own try/catch
-- [x] 4.4 Port final `verification_status` persistence per result
-- [x] 4.5 Wire progress callback (`verify-started`/`verify-result`/`verify-complete`
-      equivalents) via callback injection, matching `image-handlers.ts`'s
-      pattern of keeping the module decoupled from Electron IPC
+- [ ] 4.1 Fix the stale "17 IPC channels" comment in `register-handlers.ts`
+      (now 18)
+- [ ] 4.2 Run `npx prisma format` on `prisma/schema.prisma`
+- [ ] 4.3 Make swap dedup position-keyed (`scannerId` + `plateIndex`)
+      instead of `assignedPlateId`-alone-keyed
+- [ ] 4.4 Drop the unused `'skipped'` status variant from the
+      `VerifyStatus` union (never produced)
+- [ ] 4.5 Add an inline comment on the intentionally-unwrapped IPC envelope
+      (`{success, results, swaps}` vs. `wrapHandler`'s `{success, data}`)
+      explaining why, so a future reader doesn't "fix" it
 
-## 5. IPC Registration
+## 5. Spec
 
-- [x] 5.1 Register `graviscan:verify-plates` in `register-handlers.ts`,
-      forwarding progress callback events to
-      `graviscan:verify-started`/`graviscan:verify-result`/`graviscan:verify-complete`
-      via `getMainWindow()?.webContents.send(...)`
+- [ ] 5.1 Update `scanning` spec delta: case-insensitive comparison on both
+      sides, `experimentId` scoping applies to writes (not just the
+      lookup), `incorrect` persisted as its own distinct status (documented
+      as a deliberate improvement over production), path-containment
+      requirement, Python-backed `readQrCodes` description (replacing the
+      WASM description), and the verify-before-upload ordering note as a
+      documented (not-yet-implemented) requirement.
+- [ ] 5.2 `openspec validate add-verify-plates-handler --strict`
 
-## 6. Tests
+## 6. Verification
 
-- [x] 6.1 Handler-level tests for `verifyPlates()`: verified, incorrect,
-      unreadable, needs_review (inconsistent QR mappings), duplicate_qr
-- [x] 6.2 Handler-level test: swap detection + DB auto-correction
-      (`GraviScanPlateAssignment.plate_barcode`, `GraviScan.plate_barcode`)
-- [x] 6.3 Handler-level test: per-record DB write failure doesn't abort the
-      rest of the batch
-- [x] 6.4 Handler-level test: `experimentId` scoping narrows the
-      `GraviPlateSectionMapping` lookup
-- [x] 6.5 Run full test suite + lint + typecheck (lint blocked by a
-      pre-existing worktree-local eslint-plugin-import duplicate-resolution
-      error, reproduced identically on unmodified `main` in this same
-      worktree — not introduced by this change; `tsc --noEmit` shows the same
-      pre-existing Prisma-client-typing errors on both branches with none
-      attributable to the new files)
-
-## 7. Spec
-
-- [x] 7.1 Add `scanning` spec delta describing the verify-plates capability
-- [x] 7.2 `openspec validate add-verify-plates-handler --strict`
+- [ ] 6.1 Run full affected test suites (Node vitest, Python pytest), `tsc
+      --noEmit`, `prettier --check`. Note: `npm run lint` may fail in this
+      worktree specifically due to a pre-existing duplicate
+      `eslint-plugin-import` resolution conflict between this worktree's
+      `node_modules` and the parent checkout's — not this change's fault;
+      verify separately from the parent checkout if needed.
+- [ ] 6.2 Confirm no regressions against the pre-existing (already
+      identified) noise: same 5 unrelated test-file failures as unmodified
+      `main` in this worktree.
