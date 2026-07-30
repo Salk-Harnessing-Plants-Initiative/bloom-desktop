@@ -99,6 +99,78 @@ function positionKey(position: {
   return `${position.scannerId}::${position.plateIndex}`;
 }
 
+/**
+ * Every value that reaches a Prisma `where` clause from this module must pass
+ * this check first.
+ *
+ * A truthiness test is NOT sufficient. Prisma silently DROPS a `where` key
+ * whose value is `undefined` — `{ experiment_id: undefined, scanner_id: 's1' }`
+ * is the query "every experiment's s1 row" — and it accepts a *filter object*
+ * (`{ not: 'zzz' }`, `{ startsWith: '' }`) wherever a scalar was intended,
+ * which matches essentially everything. Either shape turns a correctly-written
+ * scoped `updateMany` into an experiment-wide overwrite of `plate_barcode`,
+ * `previous_plate_barcode`, and `verification_status`. The IPC payload is
+ * untyped at the boundary, so the type annotations on this module's exported
+ * signature are documentation, not enforcement — this is the enforcement.
+ */
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/** Fields of `VerifyPlateInput` that end up in a `where` clause or a write. */
+const REQUIRED_PLATE_FIELDS = [
+  'scannerId',
+  'plateIndex',
+  'assignedPlateId',
+  'imagePath',
+] as const;
+
+/**
+ * Drop plate entries that are not fully typed, keeping the rest of the batch.
+ *
+ * A malformed row is skipped with a warning rather than failing the whole run:
+ * that matches this module's per-record error isolation everywhere else (a
+ * failed DB write for one plate does not abort the batch either), and one
+ * garbled row out of a 40-plate session should not cost the operator the other
+ * 39 verifications. An invalid `experimentId`, by contrast, IS fatal — it
+ * scopes every write in the run, so there is no safe subset to proceed with.
+ */
+function filterWellFormedPlates(
+  plates: VerifyPlateInput[]
+): VerifyPlateInput[] {
+  if (!Array.isArray(plates)) {
+    console.warn(
+      '[GraviScan:VERIFY] Expected an array of plates, got:',
+      typeof plates
+    );
+    return [];
+  }
+
+  const wellFormed: VerifyPlateInput[] = [];
+  for (const plate of plates) {
+    if (!plate || typeof plate !== 'object') {
+      console.warn(
+        '[GraviScan:VERIFY] Skipping malformed plate entry, not an object:',
+        plate
+      );
+      continue;
+    }
+    const badFields = REQUIRED_PLATE_FIELDS.filter(
+      (field) => !isNonEmptyString((plate as Record<string, unknown>)[field])
+    );
+    if (badFields.length > 0) {
+      console.warn(
+        `[GraviScan:VERIFY] Skipping malformed plate entry, ` +
+          `expected non-empty strings for: ${badFields.join(', ')} —`,
+        plate
+      );
+      continue;
+    }
+    wellFormed.push(plate);
+  }
+  return wellFormed;
+}
+
 // ---------------------------------------------------------------------------
 // verifyPlates
 // ---------------------------------------------------------------------------
@@ -138,24 +210,31 @@ export async function verifyPlates(
   try {
     // Runtime guard as well as the required type: an untyped IPC payload or
     // a JS caller can still hand us undefined, and proceeding unscoped is
-    // exactly the data-corruption path this parameter exists to close.
-    if (!experimentId) {
+    // exactly the data-corruption path this parameter exists to close. The
+    // check is `typeof === 'string'`, not truthiness — see isNonEmptyString().
+    if (!isNonEmptyString(experimentId)) {
       const error =
-        'experimentId is required — refusing to verify plates without an ' +
-        'experiment scope (writes would be able to hit another experiment)';
+        'experimentId must be a non-empty string — refusing to verify plates ' +
+        'without an experiment scope (writes would be able to hit another ' +
+        'experiment)';
       console.error(`[GraviScan:VERIFY] ${error}`);
       return { success: false, error, results: [], swaps: [] };
     }
 
-    if (!scanOutputDir) {
+    if (!isNonEmptyString(scanOutputDir)) {
       const error =
-        'scanOutputDir is required — refusing to decode plate images ' +
-        'without a directory to validate them against';
+        'scanOutputDir must be a non-empty string — refusing to decode plate ' +
+        'images without a directory to validate them against';
       console.error(`[GraviScan:VERIFY] ${error}`);
       return { success: false, error, results: [], swaps: [] };
     }
 
-    console.log(`[GraviScan:VERIFY] Verifying ${plates.length} plate(s)...`);
+    // Malformed rows are dropped here, before anything can reach a `where`.
+    const wellFormedPlates = filterWellFormedPlates(plates);
+
+    console.log(
+      `[GraviScan:VERIFY] Verifying ${wellFormedPlates.length} plate(s)...`
+    );
 
     onProgress?.({ type: 'verify-started' });
 
@@ -169,7 +248,7 @@ export async function verifyPlates(
     const resolvedByPlate = new Map<VerifyPlateInput, string>();
     const pathsToDecode: string[] = [];
 
-    for (const plate of plates) {
+    for (const plate of wellFormedPlates) {
       const contained = resolveContainedPath(scanOutputDir, plate.imagePath);
       if (!contained.ok) {
         // Manual cast: this repo's tsconfig doesn't set strictNullChecks, so
@@ -219,7 +298,7 @@ export async function verifyPlates(
     const plateReadResults: Array<{
       plate: VerifyPlateInput;
       detectedCodes: string[];
-    }> = plates.map((plate) => {
+    }> = wellFormedPlates.map((plate) => {
       const resolved = resolvedByPlate.get(plate);
       const detectedCodes: string[] = resolved
         ? (codesByPath.get(resolved) ?? [])

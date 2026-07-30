@@ -944,6 +944,42 @@ describe('registerGraviScanHandlers', () => {
       });
       expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
     });
+
+    it.each([
+      ['a number', 123],
+      ['a filter object', { not: 'zzz' }],
+      ['an array', ['exp-1']],
+      ['an empty string', ''],
+      ['null', null],
+    ])(
+      'rejects the invocation when experimentId is %s',
+      async (_label, badId) => {
+        // The IPC payload is untyped, so a renderer bug (or a hostile one) can
+        // put anything here. Prisma drops an `undefined` `where` key and
+        // accepts a filter object in place of a scalar — either one widens
+        // every write in verifyPlates() to the whole experiment table.
+        const result = await mockIpcMain._invoke(
+          'graviscan:verify-plates',
+          [
+            {
+              scannerId: 's1',
+              plateIndex: '00',
+              imagePath: '/scan.tif',
+              assignedPlateId: 'Plate_13',
+            },
+          ],
+          badId
+        );
+
+        expect(result).toEqual({
+          success: false,
+          error: expect.stringContaining('experimentId'),
+          results: [],
+          swaps: [],
+        });
+        expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
+      }
+    );
   });
 
   describe('concurrent start-scan', () => {

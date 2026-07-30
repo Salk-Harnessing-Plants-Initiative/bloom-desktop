@@ -1073,6 +1073,147 @@ describe('verifyPlates', () => {
     expect(mockReadQrCodesBatch).not.toHaveBeenCalled();
   });
 
+  // -------------------------------------------------------------------------
+  // Input typing. Prisma silently DROPS a `where` key whose value is
+  // `undefined`, and happily accepts a filter OBJECT (`{ not: 'zzz' }`) where
+  // a scalar was intended. Either one turns a scoped `updateMany` into an
+  // experiment-wide overwrite of plate_barcode/verification_status. Truthiness
+  // alone does not close that hole — the values must be strings.
+  // -------------------------------------------------------------------------
+
+  it.each([
+    ['a number', 123],
+    ['a filter object', { not: 'zzz' }],
+    ['an array', ['exp-1']],
+    ['null', null],
+    ['undefined', undefined],
+  ])('refuses to run when experimentId is %s', async (_label, badId) => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      badId as any,
+      OUTPUT_DIR
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/experimentId/);
+    expect(result.results).toEqual([]);
+    expect(db.graviPlateSectionMapping.findMany).not.toHaveBeenCalled();
+    expect(db.graviScanPlateAssignment.updateMany).not.toHaveBeenCalled();
+    expect(mockReadQrCodesBatch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['scannerId', { scannerId: undefined }],
+    ['scannerId', { scannerId: { not: 'zzz' } }],
+    ['scannerId', { scannerId: '' }],
+    ['plateIndex', { plateIndex: undefined }],
+    ['plateIndex', { plateIndex: { not: '00' } }],
+    ['plateIndex', { plateIndex: 0 }],
+    ['assignedPlateId', { assignedPlateId: undefined }],
+    ['assignedPlateId', { assignedPlateId: { contains: 'plate' } }],
+    ['imagePath', { imagePath: undefined }],
+    ['imagePath', { imagePath: { startsWith: '/scans' } }],
+  ])(
+    'skips a plate whose %s is not a non-empty string, without aborting the batch',
+    async (_field, override) => {
+      setCodes({ '/scans/good.tif': ['qr-1'] });
+      db.graviPlateSectionMapping.findMany.mockResolvedValue([
+        mapping('plate_13', 'qr-1'),
+      ]);
+
+      const result = await verifyPlates(
+        db,
+        [
+          {
+            scannerId: 's9',
+            plateIndex: '99',
+            imagePath: '/scans/bad.tif',
+            assignedPlateId: 'plate_99',
+            ...override,
+          } as any,
+          {
+            scannerId: 's1',
+            plateIndex: '00',
+            imagePath: '/scans/good.tif',
+            assignedPlateId: 'plate_13',
+          },
+        ],
+        'exp-1',
+        OUTPUT_DIR
+      );
+
+      // Per-record isolation: the malformed row is dropped, the rest of the
+      // batch is verified normally.
+      expect(result.success).toBe(true);
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0].scannerId).toBe('s1');
+      expect(result.results[0].status).toBe('verified');
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping malformed plate entry'),
+        expect.anything()
+      );
+
+      // Crucially: no write may be issued for the malformed row, and no write
+      // may carry a non-string scanner_id/plate_index into a `where`.
+      for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
+        expect(typeof call[0].where.experiment_id).toBe('string');
+        expect(typeof call[0].where.scanner_id).toBe('string');
+        expect(typeof call[0].where.plate_index).toBe('string');
+        expect(call[0].where.scanner_id).toBe('s1');
+      }
+    }
+  );
+
+  it('skips a plate entry that is not an object at all', async () => {
+    setCodes({ '/scans/good.tif': ['qr-1'] });
+    db.graviPlateSectionMapping.findMany.mockResolvedValue([
+      mapping('plate_13', 'qr-1'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        null as any,
+        'not-a-plate' as any,
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/good.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].scannerId).toBe('s1');
+  });
+
+  it('tolerates a non-array plates payload without throwing', async () => {
+    const result = await verifyPlates(
+      db,
+      undefined as any,
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results).toEqual([]);
+    expect(db.graviScanPlateAssignment.updateMany).not.toHaveBeenCalled();
+  });
+
   it('scopes the verification_status write to the experimentId', async () => {
     setCodes({ '/scans/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([

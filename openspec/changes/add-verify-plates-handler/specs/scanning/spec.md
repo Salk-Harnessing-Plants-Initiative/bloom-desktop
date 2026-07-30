@@ -101,6 +101,31 @@ the final `verification_status` SHALL be persisted onto
   verification run overwrite a different experiment's historical data
   sharing the same scanner and plate position
 
+#### Scenario: Every value that reaches a query scope is validated as a string
+
+- **GIVEN** the `graviscan:verify-plates` IPC payload is untyped at the
+  boundary, so `experimentId` and each plate's `scannerId`, `plateIndex`,
+  `assignedPlateId`, and `imagePath` can be any JavaScript value at runtime
+- **WHEN** verification runs
+- **THEN** each of those values SHALL be validated with an explicit
+  `typeof value === 'string' && value.length > 0` check — a truthiness check
+  SHALL NOT be treated as sufficient
+- **AND** a non-string `experimentId` (a number, an array, `null`, or a
+  Prisma filter object such as `{ not: 'zzz' }`) SHALL fail the whole run
+  before any decode or DB access, at **both** the IPC handler and the top of
+  `verifyPlates()`
+- **AND** a plate whose own fields are not all non-empty strings SHALL be
+  skipped with a logged warning while the rest of the batch is verified
+  normally, matching this module's per-record error isolation
+- **AND** a `plates` payload that is not an array at all SHALL yield an empty
+  result rather than throwing
+- **NOTE**: Prisma silently DROPS a `where` key whose value is `undefined`
+  and accepts a filter _object_ where a scalar was intended. Either shape
+  turns the scoped `updateMany` calls described above into an
+  experiment-wide overwrite of `plate_barcode`, `previous_plate_barcode`, and
+  `verification_status`. The required-`experimentId` guarantee is only real
+  if the _type_ is checked, not just the truthiness.
+
 #### Scenario: A DB write failure for one plate does not abort the batch
 
 - **GIVEN** a batch of multiple plates being verified
@@ -414,11 +439,12 @@ The system SHALL provide a `registerGraviScanHandlers` function in `src/main/gra
 - **THEN** the function SHALL throw an error indicating handlers are already registered
 - **AND** the existing handlers SHALL remain intact
 
-#### Scenario: graviscan:verify-plates is rejected without an experimentId
+#### Scenario: graviscan:verify-plates is rejected without a string experimentId
 
 - **GIVEN** `registerGraviScanHandlers` has been called
 - **WHEN** the renderer invokes `graviscan:verify-plates` without an
-  `experimentId`
+  `experimentId`, or with one that is not a non-empty string (a number, an
+  array, `null`, or a Prisma filter object such as `{ not: 'zzz' }`)
 - **THEN** the handler SHALL return a failure result naming `experimentId`
 - **AND** SHALL NOT invoke `verifyPlates()`
 

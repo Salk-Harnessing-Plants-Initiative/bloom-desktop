@@ -321,17 +321,24 @@ export function registerGraviScanHandlers(
   // --- Post-scan QR verification ---
   ipcMain.handle(
     'graviscan:verify-plates',
-    (_event, plates: VerifyPlateInput[], experimentId?: string) => {
+    (_event, plates: VerifyPlateInput[], experimentId?: unknown) => {
       // Every DB write verifyPlates() performs is keyed on
       // (experiment_id, scanner_id, plate_index). Without an experimentId
       // those writes could hit a *different* experiment's row for the same
       // long-lived scanner and position, so reject rather than proceed
-      // unscoped. `experimentId` is optional in this signature only because
-      // the IPC payload is untyped at the boundary.
-      if (!experimentId) {
+      // unscoped. `experimentId` is untyped in this signature because the IPC
+      // payload genuinely is: a renderer can send anything.
+      //
+      // The check is on the TYPE, not truthiness. Prisma drops a `where` key
+      // whose value is `undefined` and accepts a filter object
+      // (`{ not: 'zzz' }`) in place of a scalar, so a non-string experimentId
+      // that happens to be truthy would widen every downstream write to the
+      // whole table. verifyPlates() re-checks this itself — this is a second
+      // gate at the boundary, not a substitute for that one.
+      if (typeof experimentId !== 'string' || !experimentId) {
         const error =
-          'graviscan:verify-plates requires an experimentId — refusing to ' +
-          'run verification without an experiment scope';
+          'graviscan:verify-plates requires an experimentId (a non-empty ' +
+          'string) — refusing to run verification without an experiment scope';
         console.error('[GraviScan IPC]', error);
         return Promise.resolve({
           success: false,
