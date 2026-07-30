@@ -55,8 +55,19 @@ def decode_qr_codes(image_path: str) -> list[str]:
         return []
 
     try:
+        import numpy as np
+
+        # Read the bytes with Python rather than letting cv2.imread open the
+        # file itself. imread takes a const char* and on Windows hands it to
+        # the ANSI file API, so a path containing any non-ASCII character
+        # simply fails to open — the plate then comes back with no QR codes
+        # and is misclassified `unreadable`, with only a cv2 warning on stderr
+        # to show for it. Python's open() handles Unicode paths everywhere.
+        with open(image_path, "rb") as handle:
+            payload = np.frombuffer(handle.read(), dtype=np.uint8)
+
         # Full resolution, no resize — see module docstring.
-        image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        image = cv2.imdecode(payload, cv2.IMREAD_GRAYSCALE)
         if image is None:
             _warn(f"could not decode image data: {image_path}")
             return []

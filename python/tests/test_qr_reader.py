@@ -59,7 +59,12 @@ def _write_qr_image(path, payloads, scale=8, border=40):
         padded.append(tile)
 
     canvas = np.hstack(padded)
-    assert cv2.imwrite(str(path), canvas), f"failed to write {path}"
+    # Encode in memory and write with Python, for the same reason
+    # decode_qr_codes reads with Python: cv2.imwrite cannot open a non-ASCII
+    # path on Windows either, and would silently produce no file.
+    ok, encoded = cv2.imencode(Path(path).suffix, canvas)
+    assert ok, f"failed to encode {path}"
+    Path(path).write_bytes(encoded.tobytes())
     return str(path)
 
 
@@ -107,6 +112,22 @@ def test_decode_image_without_qr_codes(tmp_path):
     assert decode_qr_codes(str(path)) == []
 
 
+def test_decode_image_with_non_ascii_filename(tmp_path):
+    """A scan path containing non-ASCII characters must still decode.
+
+    ``cv2.imread`` takes a ``const char*`` and, on Windows, hands it to the
+    ANSI file API — a path with a non-ASCII character simply fails to open and
+    the plate silently comes back with no QR codes, i.e. misclassified
+    ``unreadable``. Caught against an actual PyInstaller build. The file is
+    therefore opened by Python (which handles Unicode paths on every platform)
+    and handed to ``cv2.imdecode`` as bytes.
+    """
+    payload = "COL-0_Wave_4_Plate_13_S1"
+    image = _write_qr_image(tmp_path / "pläte_13_©.png", [payload])
+
+    assert decode_qr_codes(image) == [payload]
+
+
 def test_decode_missing_file_returns_empty_list(tmp_path):
     """A missing image must not raise — the batch continues past it."""
     assert decode_qr_codes(str(tmp_path / "does-not-exist.tif")) == []
@@ -135,7 +156,7 @@ def test_decode_handles_unexpected_cv2_error(tmp_path, monkeypatch):
     def explode(*_args, **_kwargs):
         raise RuntimeError("cv2 exploded")
 
-    monkeypatch.setattr(cv2, "imread", explode)
+    monkeypatch.setattr(cv2, "imdecode", explode)
 
     assert decode_qr_codes(image) == []
 

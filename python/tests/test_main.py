@@ -338,16 +338,18 @@ def test_main_decode_qr_batch_import_fallback_executes(capsys, monkeypatch):
     fake_module.decode_qr_codes.assert_called_once_with("/scans/x.tif")
 
 
-def test_main_decode_qr_batch_forces_utf8_on_both_streams(monkeypatch):
+def test_main_decode_qr_batch_forces_utf8_on_all_three_streams(monkeypatch):
     """Non-ASCII image paths must survive the pipe on Windows.
 
-    Python decodes stdin (and encodes stdout) using the locale codepage
+    Python decodes stdin (and encodes stdout/stderr) using the locale codepage
     unless told otherwise. On a Windows rig whose codepage is not UTF-8, any
-    non-ASCII character in a scan path would be mangled in the request or in
-    the echoed-back response. The mode reconfigures both streams to UTF-8
-    explicitly rather than relying on the ambient locale (src/main/qr-reader.ts
-    additionally sets PYTHONIOENCODING/PYTHONUTF8 on the subprocess env, but
-    this must not depend on the caller getting that right).
+    non-ASCII character in a scan path would be mangled in the request, in the
+    echoed-back response, and in the diagnostics — qr_reader logs image
+    basenames to stderr, and against an actual PyInstaller build that produced
+    bytes the Node side could not decode. The mode reconfigures all three
+    streams explicitly rather than relying on the ambient locale
+    (src/main/qr-reader.ts additionally sets PYTHONIOENCODING/PYTHONUTF8 on the
+    subprocess env, but this must not depend on the caller getting that right).
     """
     import io
     import json
@@ -363,8 +365,10 @@ def test_main_decode_qr_batch_forces_utf8_on_both_streams(monkeypatch):
     path = "/scans/pläte_13_©.tif"
     stdin = RecordingStream(json.dumps([path]))
     stdout = RecordingStream()
+    stderr = RecordingStream()
     monkeypatch.setattr(sys, "stdin", stdin)
     monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
 
     with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
         with patch("python.graviscan.qr_reader.decode_qr_codes", lambda p: []):
@@ -372,6 +376,7 @@ def test_main_decode_qr_batch_forces_utf8_on_both_streams(monkeypatch):
 
     assert stdin.encodings == ["utf-8"]
     assert stdout.encodings == ["utf-8"]
+    assert stderr.encodings == ["utf-8"]
     assert json.loads(stdout.getvalue()) == [{"path": path, "codes": []}]
 
 
