@@ -14,7 +14,7 @@
 - [x] 2.6 Implement `graviscans.getMaxWaveNumber` to pass 2.4–2.5.
 - [x] 2.7 Write failing test: `checkBarcodeUniqueInWave` returns `isDuplicate: true` when the exact barcode already exists in the same `(experiment_id, wave_number)` with `deleted: false`.
 - [x] 2.8 Write failing test: `checkBarcodeUniqueInWave` treats `"ABC123"` and `"abc123"` as the same barcode within the same wave (case-insensitivity — see `design.md` Decision 4). Also assert leading/trailing whitespace variance (`" ABC123 "` vs `"ABC123"`) is treated as duplicate.
-- [x] 2.9 Write failing test: `checkBarcodeUniqueInWave` does NOT flag a duplicate when the matching barcode exists in a *different* experiment or a *different* wave_number of the same experiment (cross-experiment / cross-wave scoping probe).
+- [x] 2.9 Write failing test: `checkBarcodeUniqueInWave` does NOT flag a duplicate when the matching barcode exists in a _different_ experiment or a _different_ wave_number of the same experiment (cross-experiment / cross-wave scoping probe).
 - [x] 2.10 Write failing test: `checkBarcodeUniqueInWave` ignores rows where `deleted: true`.
 - [x] 2.11 Implement `checkBarcodeUniqueInWave` (case-insensitive comparison in application code, not a SQLite `mode: 'insensitive'` filter — unsupported on this datasource) to pass 2.7–2.10.
 - [x] 2.12 Write failing test: `updateGridTimestamps` updates `scan_started_at`/`scan_ended_at` on every id in `ids` that belongs to the given `experiment_id`.
@@ -140,8 +140,8 @@
 
 ## 13. Spec, validation, full suite
 
-- [ ] 13.1 Write the spec delta at `openspec/changes/add-graviscan-data-layer-and-events/specs/scanning/spec.md` (ADDED requirements for the 4 new `database.*` handler groups; MODIFIED for `ScanCoordinator Multi-Scanner Orchestration`'s forwarded-events scenario, `GraviScan Coordinator Event Forwarding`, and `GraviScan Preload Context Bridge`).
-- [ ] 13.2 Run `npx openspec validate add-graviscan-data-layer-and-events --strict` and fix all reported issues.
+- [x] 13.1 Write the spec delta at `openspec/changes/add-graviscan-data-layer-and-events/specs/scanning/spec.md` (ADDED requirements for the 4 new `database.*` handler groups; MODIFIED for `ScanCoordinator Multi-Scanner Orchestration`'s forwarded-events scenario, `GraviScan Coordinator Event Forwarding`, and `GraviScan Preload Context Bridge`).
+- [x] 13.2 Run `npx openspec validate add-graviscan-data-layer-and-events --strict` and fix all reported issues.
 - [ ] 13.3 Run the full suite: `npm run test:unit`, `uv run pytest python/tests/test_scan_worker.py`, `npx tsc --noEmit`, `npm run lint`, `npm run format:check`, `npx playwright test tests/e2e/graviscan-ipc.e2e.ts` (added explicitly — task 12.6 retargets this file's one broken test, and it must be run, not just assumed fixed by inspection) — all green, with only the documented pre-existing/unrelated failures (Windows path-separator assertions, the `graviscan-upload.ts:278` type error, etc.). Use the following concrete method to re-verify these are still the same known set, not new failures wearing the same description — "re-verify" is not itself a method:
   1. **Before starting implementation**, run the full suite on `main` and capture the exact list of failing test names/IDs (not prose descriptions) into a baseline snapshot file (e.g. saved to a scratch file, not committed).
   2. **After implementation is complete**, run the full suite again and capture the new failure list the same way.
