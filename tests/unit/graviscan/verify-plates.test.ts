@@ -15,6 +15,7 @@ vi.mock('fs', () => ({
 }));
 
 import * as path from 'path';
+import * as fs from 'fs';
 import { readQrCodesBatch } from '../../../src/main/qr-reader';
 import { verifyPlates } from '../../../src/main/graviscan/verify-plates';
 
@@ -68,6 +69,11 @@ describe('verifyPlates', () => {
     db = createMockDb();
     mockReadQrCodesBatch.mockReset();
     setCodes({});
+    // Default: symlink resolution is identity, so containment is decided by
+    // the real path math against these POSIX-style fixture paths.
+    vi.mocked(fs.realpathSync).mockImplementation(
+      ((p: string) => p) as unknown as typeof fs.realpathSync
+    );
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -275,6 +281,43 @@ describe('verifyPlates', () => {
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining('outside the scan output directory'),
       '/etc/passwd'
+    );
+  });
+
+  it('logs a missing image as a skip, not as a security rejection', async () => {
+    // A capture that has not landed yet (or was moved) is the ordinary case.
+    // realpathSync throws for it, so containment cannot be proven and the
+    // plate is still skipped — but logging that at error level as "outside
+    // the scan output directory" would cry wolf on a benign condition.
+    vi.mocked(fs.realpathSync).mockImplementation(((p: string) => {
+      if (String(p).includes('not-yet-written')) {
+        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      }
+      return p;
+    }) as unknown as typeof fs.realpathSync);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/not-yet-written.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.results[0].status).toBe('unreadable');
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('could not be resolved'),
+      '/scans/not-yet-written.tif'
+    );
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.stringContaining('outside the scan output directory'),
+      expect.anything()
     );
   });
 
@@ -599,6 +642,117 @@ describe('verifyPlates', () => {
         },
         data: { verification_status: 'swapped' },
       });
+    }
+  });
+
+  it('detects a genuine cross-scanner swap when no same-scanner partner exists', async () => {
+    // Plates physically swapped BETWEEN two scanners. Neither position has a
+    // same-scanner reciprocal candidate, so this exercises the cross-scanner
+    // fallback in the pairing search — the branch the same-scanner preference
+    // would otherwise hide.
+    setCodes({ '/scans/s1-00.tif': ['qr-16'], '/scans/s2-11.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+    db.graviScan.findFirst
+      .mockResolvedValueOnce({ id: 'scan-1' })
+      .mockResolvedValueOnce({ id: 'scan-2' });
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/s1-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '11',
+          imagePath: '/scans/s2-11.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.swaps).toEqual([
+      {
+        position1: {
+          scannerId: 's1',
+          plateIndex: '00',
+          assignedPlateId: 'plate_13',
+        },
+        position2: {
+          scannerId: 's2',
+          plateIndex: '11',
+          assignedPlateId: 'plate_16',
+        },
+      },
+    ]);
+
+    // Both positions corrected across the scanner boundary.
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '00' },
+      data: {
+        plate_barcode: 'plate_16',
+        previous_plate_barcode: 'plate_13',
+      },
+    });
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's2', plate_index: '11' },
+      data: {
+        plate_barcode: 'plate_13',
+        previous_plate_barcode: 'plate_16',
+      },
+    });
+    expect(db.graviScan.update).toHaveBeenCalledWith({
+      where: { id: 'scan-1' },
+      data: { plate_barcode: 'plate_16' },
+    });
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's2', plate_index: '11' },
+      data: { verification_status: 'swapped' },
+    });
+  });
+
+  it('does not pair a position with itself when two rows share one position', async () => {
+    // The DB's @@unique([experiment_id, scanner_id, plate_index]) forbids
+    // this, but nothing stops a caller from passing two rows for the same
+    // slot. Distinguishing candidates by object identity alone would let the
+    // two rows "swap" a position with itself and emit a bogus correction.
+    setCodes({ '/scans/s1-00.tif': ['qr-16'], '/scans/s1-11.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/s1-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/s1-11.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.swaps).toEqual([]);
+    expect(db.graviScan.update).not.toHaveBeenCalled();
+    // No plate_barcode rewrite at all — only status persistence.
+    for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
+      expect(call[0].data).not.toHaveProperty('plate_barcode');
     }
   });
 

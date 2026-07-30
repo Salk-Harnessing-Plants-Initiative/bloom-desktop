@@ -273,11 +273,16 @@ export function registerGraviScanHandlers(
       }
       // Resolve symlinks on both sides before comparing (prevents symlink
       // escapes). Shared with verify-plates.ts via path-containment.ts.
-      const realFile = resolveContainedPath(outputDirResult.path, filePath);
-      if (!realFile) {
+      // Both failure reasons return the SAME message on purpose: telling the
+      // renderer apart "outside the directory" from "does not exist" would
+      // leak whether an arbitrary path exists on disk.
+      const contained = resolveContainedPath(outputDirResult.path, filePath);
+      if (!contained.ok) {
         return { success: false, error: 'Path outside scan directory' };
       }
-      return wrapHandler(() => imageHandlers.readScanImage(realFile, opts))();
+      return wrapHandler(() =>
+        imageHandlers.readScanImage(contained.path, opts)
+      )();
     }
   );
 

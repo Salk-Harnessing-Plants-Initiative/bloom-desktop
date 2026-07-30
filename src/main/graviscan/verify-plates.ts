@@ -170,16 +170,34 @@ export async function verifyPlates(
     const pathsToDecode: string[] = [];
 
     for (const plate of plates) {
-      const resolved = resolveContainedPath(scanOutputDir, plate.imagePath);
-      if (!resolved) {
-        console.error(
-          '[GraviScan:VERIFY] Rejected imagePath outside the scan output directory:',
-          plate.imagePath
-        );
+      const contained = resolveContainedPath(scanOutputDir, plate.imagePath);
+      if (!contained.ok) {
+        // Manual cast: this repo's tsconfig doesn't set strictNullChecks, so
+        // control-flow narrowing on the `ok` discriminant doesn't apply here
+        // (same workaround as the disable-scanner handler).
+        const reason = (contained as { ok: false; reason: string }).reason;
+        if (reason === 'outside') {
+          // Resolved cleanly and landed outside the tree — a real containment
+          // violation, worth an error-level line.
+          console.error(
+            '[GraviScan:VERIFY] Rejected imagePath outside the scan output directory:',
+            plate.imagePath
+          );
+        } else {
+          // Could not be resolved at all: the capture may not have been
+          // written yet, or was moved/removed. Still skipped, but this is the
+          // ordinary case — do not log it as a security rejection.
+          console.warn(
+            '[GraviScan:VERIFY] Skipping plate, image path could not be resolved:',
+            plate.imagePath
+          );
+        }
         continue;
       }
-      resolvedByPlate.set(plate, resolved);
-      if (!pathsToDecode.includes(resolved)) pathsToDecode.push(resolved);
+      resolvedByPlate.set(plate, contained.path);
+      if (!pathsToDecode.includes(contained.path)) {
+        pathsToDecode.push(contained.path);
+      }
     }
 
     // Step 1: Read QR codes from ALL plates in ONE subprocess spawn.
@@ -401,8 +419,12 @@ export async function verifyPlates(
       // Same case-insensitivity applies here: detectedPlateId is lowercased,
       // assignedPlateId keeps its original casing (which is what gets written
       // back to the DB, so it must not be lowercased in place).
+      // Distinctness is by POSITION, not object identity: two input rows that
+      // both claim the same (scannerId, plateIndex) — which the DB's unique
+      // constraint forbids but nothing stops a caller from passing — would
+      // otherwise "swap" a position with itself and emit a bogus correction.
       const isReciprocal = (other: VerifyPlateResult) =>
-        other !== result &&
+        positionKey(other) !== positionKey(result) &&
         !pairedPositions.has(positionKey(other)) &&
         other.detectedPlateId === result.assignedPlateId.toLowerCase() &&
         result.detectedPlateId === other.assignedPlateId.toLowerCase();
@@ -410,8 +432,11 @@ export async function verifyPlates(
       // Prefer a partner on the same scanner: plates are physically loaded
       // per-scanner, so a same-scanner mix-up is by far the likelier
       // explanation, and it keeps pairing deterministic when several
-      // candidates match. Cross-scanner swaps are still detected as a
-      // fallback.
+      // candidates match. This tie-break also decides which position stays
+      // `incorrect` in an ambiguous batch: a cross-scanner candidate loses to
+      // a same-scanner one and, if it has no other partner, is left
+      // uncorrected rather than mis-paired. Genuine cross-scanner swaps are
+      // still detected by the fallback below.
       const swapMatch =
         incorrectResults.find(
           (other) => other.scannerId === result.scannerId && isReciprocal(other)

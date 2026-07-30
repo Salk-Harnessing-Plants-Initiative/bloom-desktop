@@ -18,24 +18,38 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
+ * Outcome of a containment check.
+ *
+ * The two failure reasons are deliberately distinguished for *logging*, not
+ * for the caller's decision: both are rejections. `unresolvable` means the
+ * path could not be resolved at all (it does not exist yet, was removed, or
+ * is not readable) — usually benign. `outside` means it resolved cleanly and
+ * lands outside the base directory — that is a real containment violation and
+ * deserves a louder log line.
+ *
+ * Callers that answer an untrusted caller (e.g. an IPC handler) SHALL still
+ * return the same generic error for both, so the response does not leak
+ * whether a path exists.
+ */
+export type ContainmentResult =
+  | { ok: true; path: string }
+  | { ok: false; reason: 'unresolvable' | 'outside' };
+
+/**
  * Resolve `candidatePath` and confirm it is `baseDir` itself or lives beneath
  * it, following symlinks on both sides.
  *
  * @param baseDir - Directory the path must be contained in (e.g. the scan
  *                  output directory).
  * @param candidatePath - Untrusted path to check.
- * @returns The resolved real path when contained, otherwise `null`. Callers
- *          should use the returned path rather than the original, so the
- *          value that was checked is the value that gets used.
- *
- * A path that does not exist on disk resolves to `null` — `realpathSync`
- * throws for a missing file, and a path that cannot be resolved cannot be
- * proven contained.
+ * @returns `{ ok: true, path }` with the resolved real path when contained.
+ *          Callers should use the returned path rather than the original, so
+ *          the value that was checked is the value that gets used.
  */
 export function resolveContainedPath(
   baseDir: string,
   candidatePath: string
-): string | null {
+): ContainmentResult {
   let realBase: string;
   let realCandidate: string;
 
@@ -43,12 +57,17 @@ export function resolveContainedPath(
     realBase = fs.realpathSync(path.resolve(baseDir));
     realCandidate = fs.realpathSync(path.resolve(candidatePath));
   } catch {
-    // File or directory doesn't exist — reject rather than guess.
-    return null;
+    // Missing, removed, or unreadable — cannot be proven contained, so it is
+    // still rejected, but this is not evidence of a traversal attempt.
+    return { ok: false, reason: 'unresolvable' };
   }
 
-  if (realCandidate === realBase) return realCandidate;
-  if (realCandidate.startsWith(realBase + path.sep)) return realCandidate;
+  if (
+    realCandidate === realBase ||
+    realCandidate.startsWith(realBase + path.sep)
+  ) {
+    return { ok: true, path: realCandidate };
+  }
 
-  return null;
+  return { ok: false, reason: 'outside' };
 }
