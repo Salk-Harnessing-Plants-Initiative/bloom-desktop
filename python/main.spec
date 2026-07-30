@@ -56,6 +56,13 @@ a = Analysis(
         'python.graviscan',
         'python.graviscan.scan_regions',
         'python.graviscan.scan_worker',
+        # QR decoding for graviscan:verify-plates (--decode-qr-batch mode).
+        # cv2 itself is picked up by PyInstaller's opencv hook, but the
+        # qr_reader module is imported lazily inside decode_qr_batch_mode()
+        # under both import paths, so it must be declared explicitly.
+        'cv2',
+        'graviscan.qr_reader',
+        'python.graviscan.qr_reader',
     ],
     hookspath=[],
     hooksconfig={},

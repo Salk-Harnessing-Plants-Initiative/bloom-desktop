@@ -9,6 +9,10 @@ dependencies = [
     "imageio>=2.34.0",
     "nidaqmx>=0.9.0",
     "pillow>=10.0.0",
+    # QR/barcode decoding for GraviScan post-scan plate verification
+    # (cv2.QRCodeDetector). Headless build: no GUI/Qt dependencies, which
+    # keeps the PyInstaller bundle small and avoids X11 requirements on the rig.
+    "opencv-python-headless>=4.9.0",
 ]
 
 [project.optional-dependencies]

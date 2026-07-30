@@ -3,12 +3,17 @@
 Bloom Hardware Interface
 Entry point for the Python hardware control backend.
 
-Can run in two modes:
+Can run in several modes:
   1. IPC mode (--ipc): JSON-based stdin/stdout communication for Electron
-  2. Interactive mode (default): Human-friendly CLI for testing
+  2. Scan-worker mode (--scan-worker): one long-lived subprocess per scanner
+  3. QR batch mode (--decode-qr-batch): one-shot QR decode of a batch of
+     scan images, used by the graviscan:verify-plates handler
+  4. Interactive mode (default): Human-friendly CLI for testing
 """
 
+import json
 import platform
+import sys
 import argparse
 
 
@@ -83,8 +88,53 @@ def scan_worker_mode(scanner_id: str, device: str, mock: bool = False):
     run_worker(scanner_id, device, mock)
 
 
+def decode_qr_batch_mode():
+    """Decode QR codes for a batch of scan images, then exit.
+
+    Wire protocol (consumed by src/main/qr-reader.ts):
+      stdin  <- JSON array of absolute image paths. Paths arrive on stdin
+                rather than argv so a large batch cannot hit the Windows
+                command-line length limit.
+      stdout -> JSON array of {"path": str, "codes": [str, ...]}, one entry
+                per input path, in input order. Diagnostics go to stderr so
+                stdout stays parseable.
+
+    A single unreadable image yields an empty "codes" list for that path; only
+    a malformed request (not a JSON array) is a hard, non-zero-exit failure.
+    """
+    try:
+        from python.graviscan.qr_reader import decode_qr_codes
+    except ModuleNotFoundError:
+        # When running as PyInstaller bundle, try direct import
+        from graviscan.qr_reader import (  # type: ignore[import-not-found,no-redef]
+            decode_qr_codes,
+        )
+
+    raw = sys.stdin.read().strip()
+    if not raw:
+        image_paths = []
+    else:
+        try:
+            image_paths = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            print(f"[decode-qr-batch] invalid JSON on stdin: {exc}", file=sys.stderr)
+            sys.exit(1)
+        if not isinstance(image_paths, list):
+            print(
+                "[decode-qr-batch] expected a JSON array of image paths on stdin, "
+                f"got {type(image_paths).__name__}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    results = [{"path": p, "codes": decode_qr_codes(p)} for p in image_paths]
+    json.dump(results, sys.stdout)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
 def main():
-    """Main entry point - routes to interactive, IPC, or scan-worker mode."""
+    """Route to interactive, IPC, scan-worker, or QR-batch mode."""
     parser = argparse.ArgumentParser(description="Bloom Hardware Interface")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
@@ -92,6 +142,11 @@ def main():
     )
     mode_group.add_argument(
         "--scan-worker", action="store_true", help="Run as scan worker subprocess"
+    )
+    mode_group.add_argument(
+        "--decode-qr-batch",
+        action="store_true",
+        help="Decode QR codes for a batch of images (JSON paths on stdin)",
     )
     parser.add_argument(
         "--scanner-id", type=str, help="Scanner UUID (scan-worker mode)"
@@ -110,6 +165,8 @@ def main():
         if not args.mock and not args.device:
             parser.error("--scan-worker requires --device unless --mock is specified")
         scan_worker_mode(args.scanner_id, args.device or "mock-device", args.mock)
+    elif args.decode_qr_batch:
+        decode_qr_batch_mode()
     elif args.ipc:
         ipc_mode()
     else:
