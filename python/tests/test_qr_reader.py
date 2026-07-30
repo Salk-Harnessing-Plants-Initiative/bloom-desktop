@@ -27,6 +27,22 @@ FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "graviscan-qr-images"
 HAS_FIXTURES = FIXTURES_DIR.is_dir() and any(FIXTURES_DIR.glob("*.tif"))
 
 
+def _write_image(path, array):
+    """Write an image the same way _write_qr_image does.
+
+    cv2.imwrite cannot open a non-ASCII path on Windows and silently writes
+    nothing, so every test image goes through cv2.imencode + write_bytes even
+    when the path happens to be ASCII — one pattern, no trap for the next
+    test that uses a non-ASCII name.
+    """
+    import cv2
+
+    ok, encoded = cv2.imencode(Path(path).suffix, array)
+    assert ok, f"failed to encode {path}"
+    Path(path).write_bytes(encoded.tobytes())
+    return str(path)
+
+
 def _write_qr_image(path, payloads, scale=8, border=40):
     """Render one or more QR codes onto a single image file.
 
@@ -62,10 +78,7 @@ def _write_qr_image(path, payloads, scale=8, border=40):
     # Encode in memory and write with Python, for the same reason
     # decode_qr_codes reads with Python: cv2.imwrite cannot open a non-ASCII
     # path on Windows either, and would silently produce no file.
-    ok, encoded = cv2.imencode(Path(path).suffix, canvas)
-    assert ok, f"failed to encode {path}"
-    Path(path).write_bytes(encoded.tobytes())
-    return str(path)
+    return _write_image(path, canvas)
 
 
 # --- Synthetic-image tests (always run) -------------------------------------
@@ -102,14 +115,12 @@ def test_decode_from_tiff(tmp_path):
 
 def test_decode_image_without_qr_codes(tmp_path):
     """A valid image containing no QR codes yields an empty list, not an error."""
-    import cv2
     import numpy as np
 
     blank = np.full((400, 400), 255, dtype=np.uint8)
-    path = tmp_path / "blank.png"
-    assert cv2.imwrite(str(path), blank)
+    path = _write_image(tmp_path / "blank.png", blank)
 
-    assert decode_qr_codes(str(path)) == []
+    assert decode_qr_codes(path) == []
 
 
 def test_decode_image_with_non_ascii_filename(tmp_path):
