@@ -71,3 +71,54 @@ export function resolveContainedPath(
 
   return { ok: false, reason: 'outside' };
 }
+
+/**
+ * Same containment guarantee as `resolveContainedPath()`, but tolerates a
+ * candidate that does not exist on disk yet — needed by `ensure-dir` (whose
+ * entire purpose is creating a missing directory) and by `list-scan-files`
+ * (whose contract answers a not-yet-created session directory with an empty
+ * list, not an error).
+ *
+ * Walks up to the deepest ancestor that DOES exist, proves containment for
+ * that ancestor with symlinks resolved, then re-appends the missing tail.
+ * `path.resolve()` runs first, so no `..` segment survives into the
+ * re-appended tail, and a symlink anywhere in the *existing* prefix is still
+ * caught, since containment is judged on that prefix's realpath.
+ *
+ * A dangling symlink (a tail segment that itself exists as a symlink but
+ * points at a missing target) is treated as a missing tail segment, not a
+ * traversal attempt — `fs.existsSync` follows symlinks, so it reads as
+ * "missing" here. This is not exploitable for `ensure-dir`/`list-scan-files`:
+ * `mkdir` does not follow a dangling final symlink and fails its own stat,
+ * and `list-scan-files` only ever reads, never writes, through the resolved
+ * path.
+ */
+export function resolveContainedPathAllowingMissing(
+  baseDir: string,
+  candidatePath: string
+): ContainmentResult {
+  const resolved = path.resolve(candidatePath);
+
+  let existingAncestor = resolved;
+  const missingSegments: string[] = [];
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    // Reached the filesystem root without finding anything that exists.
+    if (parent === existingAncestor) {
+      return { ok: false, reason: 'unresolvable' };
+    }
+    missingSegments.unshift(path.basename(existingAncestor));
+    existingAncestor = parent;
+  }
+
+  const contained = resolveContainedPath(baseDir, existingAncestor);
+  if (!contained.ok) return contained;
+
+  return {
+    ok: true,
+    path:
+      missingSegments.length > 0
+        ? path.join(contained.path, ...missingSegments)
+        : contained.path,
+  };
+}

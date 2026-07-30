@@ -1,7 +1,7 @@
 /**
  * GraviScan IPC Handler Registration
  *
- * Wraps pure handler functions with ipcMain.handle() for 18 IPC channels.
+ * Wraps pure handler functions with ipcMain.handle() for 23 IPC channels.
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
  *
  * This is also where coordinator-aware orchestration around the DB-only
@@ -13,7 +13,10 @@
 
 import type { IpcMain, BrowserWindow } from 'electron';
 import type { PrismaClient } from '@prisma/client';
-import { resolveContainedPath } from './path-containment';
+import {
+  resolveContainedPath,
+  resolveContainedPathAllowingMissing,
+} from './path-containment';
 import * as scannerHandlers from './scanner-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as imageHandlers from './image-handlers';
@@ -23,6 +26,13 @@ import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
 
 let registered = false;
+
+/**
+ * Error returned to the renderer for any path that fails containment.
+ * Deliberately uniform — it must not leak whether the rejected path
+ * exists, nor where it actually resolved to.
+ */
+const OUTSIDE_SCAN_DIR = 'Path outside scan directory';
 
 export function registerGraviScanHandlers(
   ipcMain: IpcMain,
@@ -201,6 +211,18 @@ export function registerGraviScanHandlers(
     wrapHandler(() => scannerHandlers.resetUsb(getCoordinator(), db))()
   );
 
+  /**
+   * Merge live coordinator subprocess status with saved DB scanner rows.
+   * Called by the renderer on page mount to show which scanners are
+   * ready/starting/error/disconnected. Returns the getScannerStatus()
+   * result shape directly (not wrapped via wrapHandler) — matching
+   * production's `{ success, scanners, error? }` contract, same as
+   * `graviscan:disable-scanner` above.
+   */
+  ipcMain.handle('graviscan:get-scanner-status', () =>
+    scannerHandlers.getScannerStatus(getCoordinator(), db)
+  );
+
   // --- Session handlers ---
   ipcMain.handle('graviscan:start-scan', async (_event, params) => {
     // Reject if scan already in progress
@@ -278,7 +300,7 @@ export function registerGraviScanHandlers(
       // leak whether an arbitrary path exists on disk.
       const contained = resolveContainedPath(outputDirResult.path, filePath);
       if (!contained.ok) {
-        return { success: false, error: 'Path outside scan directory' };
+        return { success: false, error: OUTSIDE_SCAN_DIR };
       }
       return wrapHandler(() =>
         imageHandlers.readScanImage(contained.path, opts)
@@ -303,6 +325,89 @@ export function registerGraviScanHandlers(
       }
     };
     return wrapHandler(() => imageHandlers.uploadAllScans(db, onProgress))();
+  });
+
+  /**
+   * Create a directory recursively (idempotent). Used by the renderer to
+   * create the per-session scan folder upfront, before any cycle begins.
+   * Returns imageHandlers.ensureDir()'s result shape directly, matching
+   * production's `{ success, path?, error? }` contract.
+   *
+   * The caller-supplied path is confined to the scan output directory, the
+   * same guarantee `read-scan-image` above enforces — this handler calls
+   * `fs.promises.mkdir(..., { recursive: true })`, so without the check any
+   * renderer reaching this channel could create directory trees anywhere the
+   * app user can write.
+   */
+  ipcMain.handle('graviscan:ensure-dir', (_event, dirPath: string) => {
+    // Missing/non-string input goes straight through so image-handlers keeps
+    // ownership of the 'dirPath is required' error (path.resolve would throw
+    // on it here).
+    if (!dirPath || typeof dirPath !== 'string') {
+      return imageHandlers.ensureDir(dirPath);
+    }
+
+    const outputDirResult = imageHandlers.getOutputDir();
+    if (!outputDirResult.success || !outputDirResult.path) {
+      return Promise.resolve({
+        success: false,
+        error: 'Cannot determine scan directory for path validation',
+      });
+    }
+
+    const contained = resolveContainedPathAllowingMissing(
+      outputDirResult.path,
+      dirPath
+    );
+    if (!contained.ok) {
+      return Promise.resolve({ success: false, error: OUTSIDE_SCAN_DIR });
+    }
+
+    return imageHandlers.ensureDir(contained.path);
+  });
+
+  /**
+   * List image files in the scan output directory (or a given session
+   * directory), sorted newest-first. Returns
+   * imageHandlers.listScanFiles()'s result shape directly, matching
+   * production's `{ success, files, error? }` contract.
+   *
+   * A caller-supplied `dirPath` is confined to the scan output directory
+   * (`readdirSync`/`statSync` on an arbitrary path would otherwise let a
+   * renderer enumerate the filesystem). No `dirPath` means base-dir mode,
+   * where `listScanFiles()` resolves the output directory itself — nothing
+   * untrusted to validate.
+   */
+  ipcMain.handle('graviscan:list-scan-files', (_event, dirPath?: string) => {
+    if (dirPath === undefined || dirPath === null) {
+      return Promise.resolve(imageHandlers.listScanFiles(undefined));
+    }
+
+    const outputDirResult = imageHandlers.getOutputDir();
+    if (!outputDirResult.success || !outputDirResult.path) {
+      return Promise.resolve({
+        success: false,
+        files: [],
+        error: 'Cannot determine scan directory for path validation',
+      });
+    }
+
+    // Allow a not-yet-created directory: listScanFiles() answers that with
+    // `{ success: true, files: [] }`, and turning it into a containment
+    // error would change the documented contract.
+    const contained = resolveContainedPathAllowingMissing(
+      outputDirResult.path,
+      dirPath
+    );
+    if (!contained.ok) {
+      return Promise.resolve({
+        success: false,
+        files: [],
+        error: OUTSIDE_SCAN_DIR,
+      });
+    }
+
+    return Promise.resolve(imageHandlers.listScanFiles(contained.path));
   });
 
   ipcMain.handle('graviscan:download-images', (_event, params) => {

@@ -32,6 +32,14 @@ export interface ScanCoordinatorLike {
   hasWorker(scannerId: string): boolean;
   addScanner(config: ScannerConfig): Promise<void>;
   stopScanner(scannerId: string): Promise<void>;
+  // Increment 4 — live subprocess status for the `graviscan:get-scanner-status`
+  // handler (scanner-handlers.ts's getScannerStatus()). Matching the
+  // concrete ScanCoordinator class's public signature.
+  getScannerStatuses(): Array<{
+    scannerId: string;
+    status: 'ready' | 'starting' | 'error' | 'dead';
+    error?: string;
+  }>;
 }
 
 export interface SessionFns {
