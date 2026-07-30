@@ -856,7 +856,7 @@ describe('registerGraviScanHandlers', () => {
         }
       );
 
-      await mockIpcMain._invoke('graviscan:verify-plates', [], undefined);
+      await mockIpcMain._invoke('graviscan:verify-plates', [], 'exp-1');
 
       expect(send).toHaveBeenCalledWith('graviscan:verify-started', undefined);
       expect(send).toHaveBeenCalledWith('graviscan:verify-result', {
@@ -887,10 +887,35 @@ describe('registerGraviScanHandlers', () => {
       const result = await mockIpcMain._invoke(
         'graviscan:verify-plates',
         [],
-        undefined
+        'exp-1'
       );
 
       expect(result).toEqual({ success: true, results: [], swaps: [] });
+    });
+
+    it('rejects the invocation when no experimentId is supplied', async () => {
+      // Proceeding unscoped would let a write hit a different experiment's
+      // row for the same long-lived scanner and plate position.
+      const result = await mockIpcMain._invoke(
+        'graviscan:verify-plates',
+        [
+          {
+            scannerId: 's1',
+            plateIndex: '00',
+            imagePath: '/scan.tif',
+            assignedPlateId: 'Plate_13',
+          },
+        ],
+        undefined
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining('experimentId'),
+        results: [],
+        swaps: [],
+      });
+      expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
     });
   });
 

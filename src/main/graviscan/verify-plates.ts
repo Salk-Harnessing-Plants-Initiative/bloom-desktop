@@ -89,14 +89,34 @@ export type VerifyProgressEvent =
  *
  * Each DB write is wrapped in its own try/catch so one bad record can't
  * abort the rest of the batch.
+ *
+ * `experimentId` is REQUIRED and is threaded into every lookup and every
+ * write. `GraviScanPlateAssignment` is unique on
+ * `(experiment_id, scanner_id, plate_index)` and a scanner is a long-lived
+ * physical device reused across experiments, so a write keyed only on
+ * `(scanner_id, plate_index)` can silently overwrite a *different*
+ * experiment's historical `plate_barcode`/`verification_status`. There is
+ * deliberately no unscoped fallback: a missing `experimentId` fails the run
+ * rather than widening the blast radius of every write.
  */
 export async function verifyPlates(
   db: PrismaClient,
   plates: VerifyPlateInput[],
-  experimentId?: string,
+  experimentId: string,
   onProgress?: (event: VerifyProgressEvent) => void
 ): Promise<VerifyPlatesResult> {
   try {
+    // Runtime guard as well as the required type: an untyped IPC payload or
+    // a JS caller can still hand us undefined, and proceeding unscoped is
+    // exactly the data-corruption path this parameter exists to close.
+    if (!experimentId) {
+      const error =
+        'experimentId is required — refusing to verify plates without an ' +
+        'experiment scope (writes would be able to hit another experiment)';
+      console.error(`[GraviScan:VERIFY] ${error}`);
+      return { success: false, error, results: [], swaps: [] };
+    }
+
     console.log(`[GraviScan:VERIFY] Verifying ${plates.length} plate(s)...`);
 
     onProgress?.({ type: 'verify-started' });
@@ -194,16 +214,16 @@ export async function verifyPlates(
       let isInconsistent = false;
 
       try {
-        // Scope query to experiment's accession to avoid cross-experiment matches
-        const accessionFilter = experimentId
-          ? {
-              plate: {
-                metadata_file: {
-                  experiments: { some: { id: experimentId } },
-                },
-              },
-            }
-          : {};
+        // Scope query to experiment's accession to avoid cross-experiment
+        // matches. `experimentId` is guaranteed non-empty by the guard at the
+        // top of this function, so there is no unscoped branch here.
+        const accessionFilter = {
+          plate: {
+            metadata_file: {
+              experiments: { some: { id: experimentId } },
+            },
+          },
+        };
 
         const mappings = await db.graviPlateSectionMapping.findMany({
           where: {
@@ -332,9 +352,12 @@ export async function verifyPlates(
       );
 
       try {
-        // 1. Swap plate_barcode in GraviScanPlateAssignment
+        // 1. Swap plate_barcode in GraviScanPlateAssignment.
+        //    Every `where` below carries experiment_id, matching the real
+        //    @@unique([experiment_id, scanner_id, plate_index]) constraint.
         await db.graviScanPlateAssignment.updateMany({
           where: {
+            experiment_id: experimentId,
             scanner_id: position1.scannerId,
             plate_index: position1.plateIndex,
           },
@@ -344,6 +367,7 @@ export async function verifyPlates(
         });
         await db.graviScanPlateAssignment.updateMany({
           where: {
+            experiment_id: experimentId,
             scanner_id: position2.scannerId,
             plate_index: position2.plateIndex,
           },
@@ -356,6 +380,7 @@ export async function verifyPlates(
         // Find the most recent scan records for each position
         const scan1 = await db.graviScan.findFirst({
           where: {
+            experiment_id: experimentId,
             scanner_id: position1.scannerId,
             plate_index: position1.plateIndex,
             plate_barcode: position1.assignedPlateId,
@@ -366,6 +391,7 @@ export async function verifyPlates(
 
         const scan2 = await db.graviScan.findFirst({
           where: {
+            experiment_id: experimentId,
             scanner_id: position2.scannerId,
             plate_index: position2.plateIndex,
             plate_barcode: position2.assignedPlateId,
@@ -418,6 +444,7 @@ export async function verifyPlates(
       try {
         await db.graviScanPlateAssignment.updateMany({
           where: {
+            experiment_id: experimentId,
             scanner_id: result.scannerId,
             plate_index: result.plateIndex,
           },

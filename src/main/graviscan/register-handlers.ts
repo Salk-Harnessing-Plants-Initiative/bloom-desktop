@@ -328,6 +328,25 @@ export function registerGraviScanHandlers(
   ipcMain.handle(
     'graviscan:verify-plates',
     (_event, plates: VerifyPlateInput[], experimentId?: string) => {
+      // Every DB write verifyPlates() performs is keyed on
+      // (experiment_id, scanner_id, plate_index). Without an experimentId
+      // those writes could hit a *different* experiment's row for the same
+      // long-lived scanner and position, so reject rather than proceed
+      // unscoped. `experimentId` is optional in this signature only because
+      // the IPC payload is untyped at the boundary.
+      if (!experimentId) {
+        const error =
+          'graviscan:verify-plates requires an experimentId — refusing to ' +
+          'run verification without an experiment scope';
+        console.error('[GraviScan IPC]', error);
+        return Promise.resolve({
+          success: false,
+          error,
+          results: [],
+          swaps: [],
+        });
+      }
+
       // Check window at send-time, not registration-time (window may close mid-verify)
       const send = (channel: string, payload?: unknown) => {
         const win = getMainWindow();
