@@ -242,6 +242,56 @@ const databaseAPI: DatabaseAPI = {
     create: (data: ImageCreateData[]) =>
       ipcRenderer.invoke('db:images:create', data),
   },
+  // GraviScan data layer (add-graviscan-data-layer-and-events).
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  graviscans: {
+    create: (data: any) => ipcRenderer.invoke('db:graviscans:create', data),
+    getMaxWaveNumber: (experimentId: string) =>
+      ipcRenderer.invoke('db:graviscans:getMaxWaveNumber', experimentId),
+    checkBarcodeUniqueInWave: (args: any) =>
+      ipcRenderer.invoke('db:graviscans:checkBarcodeUniqueInWave', args),
+    updateGridTimestamps: (args: any) =>
+      ipcRenderer.invoke('db:graviscans:updateGridTimestamps', args),
+    browseByExperiment: (args: any) =>
+      ipcRenderer.invoke('db:graviscans:browseByExperiment', args),
+    experimentDetail: (experimentId: string) =>
+      ipcRenderer.invoke('db:graviscans:experimentDetail', experimentId),
+  },
+  graviscanSessions: {
+    create: (data: any) =>
+      ipcRenderer.invoke('db:graviscanSessions:create', data),
+    complete: (args: any) =>
+      ipcRenderer.invoke('db:graviscanSessions:complete', args),
+  },
+  graviscanPlateAssignments: {
+    list: (experimentId: string, scannerId: string) =>
+      ipcRenderer.invoke(
+        'db:graviscanPlateAssignments:list',
+        experimentId,
+        scannerId
+      ),
+    upsertMany: (experimentId: string, scannerId: string, assignments: any) =>
+      ipcRenderer.invoke(
+        'db:graviscanPlateAssignments:upsertMany',
+        experimentId,
+        scannerId,
+        assignments
+      ),
+  },
+  graviPlateAccessions: {
+    createWithSections: (accessionData: any, plates: any) =>
+      ipcRenderer.invoke(
+        'db:graviPlateAccessions:createWithSections',
+        accessionData,
+        plates
+      ),
+    list: (metadataFileId: string) =>
+      ipcRenderer.invoke('db:graviPlateAccessions:list', metadataFileId),
+    listFiles: () => ipcRenderer.invoke('db:graviPlateAccessions:listFiles'),
+    delete: (metadataFileId: string) =>
+      ipcRenderer.invoke('db:graviPlateAccessions:delete', metadataFileId),
+  },
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 };
 
 /**
@@ -328,10 +378,16 @@ const graviAPI = {
     ipcRenderer.invoke('graviscan:download-images', params),
 
   // Event listeners with cleanup functions
-  onScanEvent: (callback: (event: any) => void) => {
+  onScanStarted: (callback: (event: any) => void) => {
     const listener = (_event: unknown, data: any) => callback(data);
-    ipcRenderer.on('graviscan:scan-event', listener);
-    return () => ipcRenderer.removeListener('graviscan:scan-event', listener);
+    ipcRenderer.on('graviscan:scan-started', listener);
+    return () => ipcRenderer.removeListener('graviscan:scan-started', listener);
+  },
+  onScanComplete: (callback: (event: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:scan-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:scan-complete', listener);
   },
   onGridStart: (callback: (data: any) => void) => {
     const listener = (_event: unknown, data: any) => callback(data);

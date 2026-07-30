@@ -375,6 +375,46 @@ export interface DatabaseAPI {
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
   };
+  /**
+   * GraviScan data layer (add-graviscan-data-layer-and-events).
+   * Loosely typed (`any` payloads/results) to match the exploratory
+   * shape of these new handlers — see src/main/database-handlers.ts
+   * for the authoritative input/output shapes each method accepts.
+   */
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  graviscans: {
+    create: (data: any) => Promise<DatabaseResponse>;
+    getMaxWaveNumber: (experimentId: string) => Promise<DatabaseResponse>;
+    checkBarcodeUniqueInWave: (args: any) => Promise<DatabaseResponse>;
+    updateGridTimestamps: (args: any) => Promise<DatabaseResponse>;
+    browseByExperiment: (args: any) => Promise<DatabaseResponse>;
+    experimentDetail: (experimentId: string) => Promise<DatabaseResponse>;
+  };
+  graviscanSessions: {
+    create: (data: any) => Promise<DatabaseResponse>;
+    complete: (args: any) => Promise<DatabaseResponse>;
+  };
+  graviscanPlateAssignments: {
+    list: (
+      experimentId: string,
+      scannerId: string
+    ) => Promise<DatabaseResponse>;
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      assignments: any
+    ) => Promise<DatabaseResponse>;
+  };
+  graviPlateAccessions: {
+    createWithSections: (
+      accessionData: any,
+      plates: any
+    ) => Promise<DatabaseResponse>;
+    list: (metadataFileId: string) => Promise<DatabaseResponse>;
+    listFiles: () => Promise<DatabaseResponse>;
+    delete: (metadataFileId: string) => Promise<DatabaseResponse>;
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 /**
@@ -533,7 +573,8 @@ export interface GraviAPI {
   downloadImages: (params: any) => Promise<any>;
 
   // Event listeners (return cleanup functions)
-  onScanEvent: (callback: (event: any) => void) => () => void;
+  onScanStarted: (callback: (event: any) => void) => () => void;
+  onScanComplete: (callback: (event: any) => void) => () => void;
   onGridStart: (callback: (data: any) => void) => () => void;
   onGridComplete: (callback: (data: any) => void) => () => void;
   onCycleComplete: (callback: (data: any) => void) => () => void;
