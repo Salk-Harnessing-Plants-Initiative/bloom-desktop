@@ -247,8 +247,14 @@
 
 ## 7. Spec & Validation
 
-- [ ] 7.1 Run `npx openspec validate add-graviscan-configure-scanner-ui --strict`
+- [x] 7.1 Run `npx openspec validate add-graviscan-configure-scanner-ui --strict`
       and resolve any reported issues.
-- [ ] 7.2 Run the full existing suite (`npm run test:unit`, relevant
+- [x] 7.2 Run the full existing suite (`npm run test:unit`, relevant
       `tests/unit/graviscan/*`, and the new/changed E2E tests) to confirm
       no regressions, per the roadmap's "No regressions" validation target.
+      Confirmed: unit suite shows exactly the same 7 pre-existing failing
+      tests (by name) as this session's baseline before any implementation
+      work began — zero regressions. The new/changed E2E tests could not
+      be run in this session (see Section 6's verification-status note);
+      this remains open until they're run somewhere that can launch a
+      real Electron window.
