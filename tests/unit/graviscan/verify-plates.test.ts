@@ -340,6 +340,220 @@ describe('verifyPlates', () => {
     expect(db.graviPlateSectionMapping.findMany).not.toHaveBeenCalled();
   });
 
+  it('does not flag an innocent plate that merely shares a plate index with a duplicate', async () => {
+    // Duplicate detection keyed on plateIndex alone: s1:00 and s2:11 share
+    // 'qr-A', which marks index '00' as duplicated — dragging in s2:00, an
+    // unrelated plate on a different scanner whose own QR is unique.
+    setCodes({
+      '/s1-00.tif': ['qr-A'],
+      '/s2-11.tif': ['qr-A'],
+      '/s2-00.tif': ['qr-unique'],
+    });
+    db.graviPlateSectionMapping.findMany.mockResolvedValue([
+      mapping('plate_77', 'qr-unique'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/s1-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '11',
+          imagePath: '/s2-11.tif',
+          assignedPlateId: 'plate_16',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '00',
+          imagePath: '/s2-00.tif',
+          assignedPlateId: 'plate_77',
+        },
+      ],
+      'exp-1'
+    );
+
+    expect(result.results[0].status).toBe('duplicate_qr');
+    expect(result.results[1].status).toBe('duplicate_qr');
+    expect(result.results[2].status).toBe('verified');
+  });
+
+  it('flags a duplicate QR shared by two scanners at the same plate index', async () => {
+    // The mirror image of the above: keyed on plateIndex alone, both plates
+    // collapse to the single grid '00' and the duplicate goes undetected.
+    setCodes({ '/s1-00.tif': ['qr-dup'], '/s2-00.tif': ['qr-dup'] });
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/s1-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '00',
+          imagePath: '/s2-00.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1'
+    );
+
+    expect(result.results[0].status).toBe('duplicate_qr');
+    expect(result.results[1].status).toBe('duplicate_qr');
+  });
+
+  it('records two independent swap pairs that share the same assigned plate ids', async () => {
+    // Both scanners carry the same two plate ids at positions 00/11 (a
+    // duplicated assignment, or duplicated plant_qr -> plate_id metadata) and
+    // both got physically swapped. Every QR string is distinct, so this is
+    // not a duplicate-QR case — the collision is purely in assignedPlateId,
+    // which is exactly what swap dedup used to key on: the two independent
+    // pairs collapsed into one and the second scanner stayed uncorrected.
+    setCodes({
+      '/s1-00.tif': ['qr-16a'],
+      '/s1-11.tif': ['qr-13a'],
+      '/s2-00.tif': ['qr-16b'],
+      '/s2-11.tif': ['qr-13b'],
+    });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16a')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13a')])
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16b')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13b')]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/s1-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/s1-11.tif',
+          assignedPlateId: 'plate_16',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '00',
+          imagePath: '/s2-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '11',
+          imagePath: '/s2-11.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1'
+    );
+
+    expect(result.swaps).toEqual([
+      {
+        position1: {
+          scannerId: 's1',
+          plateIndex: '00',
+          assignedPlateId: 'plate_13',
+        },
+        position2: {
+          scannerId: 's1',
+          plateIndex: '11',
+          assignedPlateId: 'plate_16',
+        },
+      },
+      {
+        position1: {
+          scannerId: 's2',
+          plateIndex: '00',
+          assignedPlateId: 'plate_13',
+        },
+        position2: {
+          scannerId: 's2',
+          plateIndex: '11',
+          assignedPlateId: 'plate_16',
+        },
+      },
+    ]);
+
+    // All four positions were corrected and marked swapped.
+    for (const [scannerId, plateIndex] of [
+      ['s1', '00'],
+      ['s1', '11'],
+      ['s2', '00'],
+      ['s2', '11'],
+    ]) {
+      expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+        where: {
+          experiment_id: 'exp-1',
+          scanner_id: scannerId,
+          plate_index: plateIndex,
+        },
+        data: { verification_status: 'swapped' },
+      });
+    }
+  });
+
+  it('never pairs one position into two different swaps', async () => {
+    // s1:11 is a valid reciprocal partner for both s1:00 and s2:00. Once it
+    // has been consumed by the first pair it must not be reused.
+    setCodes({
+      '/s1-00.tif': ['qr-16a'],
+      '/s1-11.tif': ['qr-13a'],
+      '/s2-00.tif': ['qr-16b'],
+    });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16a')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13a')])
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16b')]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/s1-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/s1-11.tif',
+          assignedPlateId: 'plate_16',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '00',
+          imagePath: '/s2-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1'
+    );
+
+    expect(result.swaps).toHaveLength(1);
+    expect(result.swaps[0].position1.scannerId).toBe('s1');
+    expect(result.swaps[0].position2.scannerId).toBe('s1');
+    // The unpaired plate stays `incorrect`, not `swapped`.
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's2', plate_index: '00' },
+      data: { verification_status: 'incorrect' },
+    });
+  });
+
   it('detects a swap between two plates and auto-corrects DB records', async () => {
     // Plate at position 00 (assigned plate_13) actually reads plate_16's QR
     // Plate at position 11 (assigned plate_16) actually reads plate_13's QR

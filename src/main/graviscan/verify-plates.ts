@@ -77,6 +77,26 @@ export type VerifyProgressEvent =
     };
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Identity of a physical scanner position within a batch.
+ *
+ * A batch can span multiple scanners and plate indices repeat across them
+ * ("00" exists on every scanner), so `plateIndex` alone is NOT a key. Nor is
+ * `assignedPlateId` — the same plate id can legitimately appear on more than
+ * one scanner in a batch (e.g. a duplicated assignment). Everything that
+ * needs to identify "which plate slot are we talking about" uses this.
+ */
+function positionKey(position: {
+  scannerId: string;
+  plateIndex: string;
+}): string {
+  return `${position.scannerId}::${position.plateIndex}`;
+}
+
+// ---------------------------------------------------------------------------
 // verifyPlates
 // ---------------------------------------------------------------------------
 
@@ -147,33 +167,42 @@ export async function verifyPlates(
       return { plate, detectedCodes };
     });
 
-    // Step 2: Detect duplicate QR codes across plates
-    const qrToGrids: Record<string, string[]> = {};
+    // Step 2: Detect duplicate QR codes across plates.
+    //
+    // A batch can span multiple scanners, and plate indices repeat across
+    // them ("00" exists on every scanner). Keying on plateIndex alone
+    // conflated unrelated positions in both directions: the same code on two
+    // scanners' "00" collapsed to one entry and went undetected, while a
+    // genuine duplicate elsewhere on index "00" dragged in every other
+    // scanner's "00" plate. The key is the physical position:
+    // (scannerId, plateIndex).
+    const qrToPositions: Record<string, string[]> = {};
     for (const { plate, detectedCodes } of plateReadResults) {
+      const position = positionKey(plate);
       for (const code of detectedCodes) {
-        if (!qrToGrids[code]) qrToGrids[code] = [];
-        if (!qrToGrids[code].includes(plate.plateIndex)) {
-          qrToGrids[code].push(plate.plateIndex);
+        if (!qrToPositions[code]) qrToPositions[code] = [];
+        if (!qrToPositions[code].includes(position)) {
+          qrToPositions[code].push(position);
         }
       }
     }
-    const duplicateQrs = Object.entries(qrToGrids)
-      .filter(([, grids]) => grids.length > 1)
+    const duplicateQrs = Object.entries(qrToPositions)
+      .filter(([, positions]) => positions.length > 1)
       .map(([code]) => code);
 
     if (duplicateQrs.length > 0) {
       console.warn(
         `[GraviScan:VERIFY] Duplicate QR codes across plates: ${duplicateQrs
-          .map((q) => `${q} on grids ${qrToGrids[q].join(',')}`)
+          .map((q) => `${q} at ${qrToPositions[q].join(', ')}`)
           .join('; ')}`
       );
     }
 
-    // Grids that have any duplicate QR code
-    const duplicateGrids = new Set<string>();
+    // Positions that carry any duplicate QR code
+    const duplicatePositions = new Set<string>();
     for (const code of duplicateQrs) {
-      for (const grid of qrToGrids[code]) {
-        duplicateGrids.add(grid);
+      for (const position of qrToPositions[code]) {
+        duplicatePositions.add(position);
       }
     }
 
@@ -192,7 +221,7 @@ export async function verifyPlates(
       }
 
       // Flag plates with duplicate QR codes — skip normal verification
-      if (duplicateGrids.has(plate.plateIndex)) {
+      if (duplicatePositions.has(positionKey(plate))) {
         const dupsOnThisPlate = duplicateQrs.filter((q) =>
           detectedCodes.includes(q)
         );
@@ -307,47 +336,60 @@ export async function verifyPlates(
       });
     }
 
-    // Detect swaps — two incorrect results where each detected the other's assigned plate_id
+    // Detect swaps — two incorrect results where each detected the other's
+    // assigned plate_id.
+    //
+    // Pairing and dedup are keyed on the physical position
+    // (scannerId, plateIndex), NOT on assignedPlateId. The same plate id can
+    // appear on more than one scanner in a batch; keying on it collapsed two
+    // genuinely independent swap pairs into one and left the second pair
+    // uncorrected. `pairedPositions` also guarantees a position is consumed
+    // by at most one swap, so a shared reciprocal partner cannot be
+    // double-booked.
     const swaps: PlateSwap[] = [];
+    const pairedPositions = new Set<string>();
 
     const incorrectResults = results.filter(
       (r) => r.status === 'incorrect' && r.detectedPlateId
     );
 
     for (const result of incorrectResults) {
+      if (pairedPositions.has(positionKey(result))) continue;
+
       // Same case-insensitivity applies here: detectedPlateId is lowercased,
       // assignedPlateId keeps its original casing (which is what gets written
       // back to the DB, so it must not be lowercased in place).
-      const swapMatch = incorrectResults.find(
-        (other) =>
-          other !== result &&
-          other.detectedPlateId === result.assignedPlateId.toLowerCase() &&
-          result.detectedPlateId === other.assignedPlateId.toLowerCase()
-      );
+      const isReciprocal = (other: VerifyPlateResult) =>
+        other !== result &&
+        !pairedPositions.has(positionKey(other)) &&
+        other.detectedPlateId === result.assignedPlateId.toLowerCase() &&
+        result.detectedPlateId === other.assignedPlateId.toLowerCase();
+
+      // Prefer a partner on the same scanner: plates are physically loaded
+      // per-scanner, so a same-scanner mix-up is by far the likelier
+      // explanation, and it keeps pairing deterministic when several
+      // candidates match. Cross-scanner swaps are still detected as a
+      // fallback.
+      const swapMatch =
+        incorrectResults.find(
+          (other) => other.scannerId === result.scannerId && isReciprocal(other)
+        ) ?? incorrectResults.find(isReciprocal);
 
       if (swapMatch) {
-        const alreadyRecorded = swaps.some(
-          (s) =>
-            (s.position1.assignedPlateId === result.assignedPlateId &&
-              s.position2.assignedPlateId === swapMatch.assignedPlateId) ||
-            (s.position1.assignedPlateId === swapMatch.assignedPlateId &&
-              s.position2.assignedPlateId === result.assignedPlateId)
-        );
-
-        if (!alreadyRecorded) {
-          swaps.push({
-            position1: {
-              scannerId: result.scannerId,
-              plateIndex: result.plateIndex,
-              assignedPlateId: result.assignedPlateId,
-            },
-            position2: {
-              scannerId: swapMatch.scannerId,
-              plateIndex: swapMatch.plateIndex,
-              assignedPlateId: swapMatch.assignedPlateId,
-            },
-          });
-        }
+        pairedPositions.add(positionKey(result));
+        pairedPositions.add(positionKey(swapMatch));
+        swaps.push({
+          position1: {
+            scannerId: result.scannerId,
+            plateIndex: result.plateIndex,
+            assignedPlateId: result.assignedPlateId,
+          },
+          position2: {
+            scannerId: swapMatch.scannerId,
+            plateIndex: swapMatch.plateIndex,
+            assignedPlateId: swapMatch.assignedPlateId,
+          },
+        });
       }
     }
 
@@ -441,13 +483,13 @@ export async function verifyPlates(
       // collapsed into `unreadable` the way production does. "QR read fine,
       // wrong plate" and "QR could not be read at all" need different
       // operator responses and must stay distinguishable in the data.
+      //
+      // Membership is tested by position, not by assignedPlateId: an
+      // uncorrected plate sharing a plate id with a swapped one elsewhere in
+      // the batch must not inherit `swapped`.
       if (
         finalStatus === 'incorrect' &&
-        swaps.some(
-          (s) =>
-            s.position1.assignedPlateId === result.assignedPlateId ||
-            s.position2.assignedPlateId === result.assignedPlateId
-        )
+        pairedPositions.has(positionKey(result))
       ) {
         finalStatus = 'swapped';
       }
@@ -474,13 +516,7 @@ export async function verifyPlates(
     const verified = results.filter((r) => r.status === 'verified').length;
     const unreadable = results.filter((r) => r.status === 'unreadable').length;
     const incorrect = results.filter(
-      (r) =>
-        r.status === 'incorrect' &&
-        !swaps.some(
-          (s) =>
-            s.position1.assignedPlateId === r.assignedPlateId ||
-            s.position2.assignedPlateId === r.assignedPlateId
-        )
+      (r) => r.status === 'incorrect' && !pairedPositions.has(positionKey(r))
     ).length;
     const needsReview = results.filter(
       (r) => r.status === 'needs_review'
