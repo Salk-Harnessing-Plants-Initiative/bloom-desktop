@@ -338,6 +338,62 @@ def test_main_decode_qr_batch_import_fallback_executes(capsys, monkeypatch):
     fake_module.decode_qr_codes.assert_called_once_with("/scans/x.tif")
 
 
+def test_main_decode_qr_batch_forces_utf8_on_both_streams(monkeypatch):
+    """Non-ASCII image paths must survive the pipe on Windows.
+
+    Python decodes stdin (and encodes stdout) using the locale codepage
+    unless told otherwise. On a Windows rig whose codepage is not UTF-8, any
+    non-ASCII character in a scan path would be mangled in the request or in
+    the echoed-back response. The mode reconfigures both streams to UTF-8
+    explicitly rather than relying on the ambient locale (src/main/qr-reader.ts
+    additionally sets PYTHONIOENCODING/PYTHONUTF8 on the subprocess env, but
+    this must not depend on the caller getting that right).
+    """
+    import io
+    import json
+
+    class RecordingStream(io.StringIO):
+        def __init__(self, initial=""):
+            super().__init__(initial)
+            self.encodings = []
+
+        def reconfigure(self, *, encoding=None, **kwargs):
+            self.encodings.append(encoding)
+
+    path = "/scans/pläte_13_©.tif"
+    stdin = RecordingStream(json.dumps([path]))
+    stdout = RecordingStream()
+    monkeypatch.setattr(sys, "stdin", stdin)
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with patch("python.graviscan.qr_reader.decode_qr_codes", lambda p: []):
+            main()
+
+    assert stdin.encodings == ["utf-8"]
+    assert stdout.encodings == ["utf-8"]
+    assert json.loads(stdout.getvalue()) == [{"path": path, "codes": []}]
+
+
+def test_main_decode_qr_batch_tolerates_streams_without_reconfigure(
+    capsys, monkeypatch
+):
+    """A stream lacking .reconfigure() (a redirected pipe, a test double) must
+    not crash the mode."""
+    import io
+    import json
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(["/scans/a.tif"])))
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with patch("python.graviscan.qr_reader.decode_qr_codes", lambda p: []):
+            main()
+
+    assert json.loads(capsys.readouterr().out) == [
+        {"path": "/scans/a.tif", "codes": []}
+    ]
+
+
 def test_main_decode_qr_batch_and_ipc_mutually_exclusive():
     """--decode-qr-batch belongs to the same mutually exclusive mode group."""
     with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch", "--ipc"]):

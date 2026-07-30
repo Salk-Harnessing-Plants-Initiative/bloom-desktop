@@ -101,7 +101,18 @@ def decode_qr_batch_mode():
 
     A single unreadable image yields an empty "codes" list for that path; only
     a malformed request (not a JSON array) is a hard, non-zero-exit failure.
+
+    Both streams are forced to UTF-8. Python otherwise decodes stdin and
+    encodes stdout with the locale codepage, which on a Windows rig would
+    mangle any non-ASCII character in a scan path. src/main/qr-reader.ts also
+    sets PYTHONIOENCODING/PYTHONUTF8 on the subprocess env, but this must not
+    depend on the caller having done so.
     """
+    for stream in (sys.stdin, sys.stdout):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
+
     try:
         from python.graviscan.qr_reader import decode_qr_codes
     except ModuleNotFoundError:
