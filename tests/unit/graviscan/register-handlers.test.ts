@@ -148,7 +148,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 23 IPC channels', () => {
+  it('registers all 21 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -157,7 +157,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(23);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(21);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }
