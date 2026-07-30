@@ -73,14 +73,14 @@
 
 ## 7. Issue #234 — verify already fixed, no code change
 
-- [ ] 7.1 Re-read `src/main/graviscan/register-handlers.ts`'s `graviscan:save-scanners-db` handler at implementation time (code may have moved since this proposal was written) and confirm the `#234` fix (spawn-worker-for-newly-saved-enabled-scanner loop) is still present and unchanged.
-- [ ] 7.2 Add (if not already present) a unit test in `tests/unit/graviscan/register-handlers.test.ts` asserting: given a `save-scanners-db` payload containing one brand-new scanner with `usb_bus`/`usb_device` set, the coordinator's `addScanner()` is called exactly once for that scanner's id after the DB upsert succeeds (regression-lock the existing fix rather than merely reading the code).
-- [ ] 7.3 No handler code changes. Note in the PR description that #234 was investigated and found already fixed, with the exact file/line evidence, so it can be closed on GitHub.
+- [x] 7.1 Re-read `src/main/graviscan/register-handlers.ts`'s `graviscan:save-scanners-db` handler at implementation time (code may have moved since this proposal was written) and confirm the `#234` fix (spawn-worker-for-newly-saved-enabled-scanner loop) is still present and unchanged.
+- [x] 7.2 Add (if not already present) a unit test in `tests/unit/graviscan/register-handlers.test.ts` asserting: given a `save-scanners-db` payload containing one brand-new scanner with `usb_bus`/`usb_device` set, the coordinator's `addScanner()` is called exactly once for that scanner's id after the DB upsert succeeds (regression-lock the existing fix rather than merely reading the code).
+- [x] 7.3 No handler code changes. Note in the PR description that #234 was investigated and found already fixed, with the exact file/line evidence, so it can be closed on GitHub.
 
 ## 8. Issue #231 — not applicable to `main`'s architecture
 
-- [ ] 8.1 Re-confirm at implementation time that `src/main/graviscan/scanner-upsert.ts`'s `UpsertScannerPayload` and both the UPDATE/CREATE Prisma calls still have no `grid_mode` field, and that `prisma/schema.prisma`'s `GraviScanner` model still has no `grid_mode` column.
-- [ ] 8.2 No handler code changes. Note in the PR description that #231's reported bug class (per-scanner `grid_mode` silently dropped on UPDATE) cannot reproduce on `main` because there is no per-scanner `grid_mode` field for an UPDATE to omit — `main` deliberately sources `grid_mode` from the `GraviConfig` singleton (already documented in `scanner-handlers.ts`'s `getScannerStatus()` docstring) — so it can be annotated as not-applicable on GitHub.
+- [x] 8.1 Re-confirm at implementation time that `src/main/graviscan/scanner-upsert.ts`'s `UpsertScannerPayload` and both the UPDATE/CREATE Prisma calls still have no `grid_mode` field, and that `prisma/schema.prisma`'s `GraviScanner` model still has no `grid_mode` column.
+- [x] 8.2 No handler code changes. Note in the PR description that #231's reported bug class (per-scanner `grid_mode` silently dropped on UPDATE) cannot reproduce on `main` because there is no per-scanner `grid_mode` field for an UPDATE to omit — `main` deliberately sources `grid_mode` from the `GraviConfig` singleton (already documented in `scanner-handlers.ts`'s `getScannerStatus()` docstring) — so it can be annotated as not-applicable on GitHub.
 
 ## 9. Issue #232 — backend correctness half (achieved-resolution readback)
 
