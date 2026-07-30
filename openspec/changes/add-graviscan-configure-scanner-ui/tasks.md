@@ -205,6 +205,19 @@
 
 ## 6. E2E Coverage
 
+> **Verification status note:** all three E2E tests below were written,
+> pass `npx tsc --noEmit` and `npm run lint` cleanly, and follow this
+> file's established selector/assertion conventions — but could NOT be
+> executed in this implementation session. `npm run start` (the Electron
+> Forge dev server these tests require) launches and exits silently
+> (code 0, no error) in this sandboxed environment, the same
+> unresolved Electron-launch limitation found during this session's
+> earlier packaging sanity-check (see
+> `docs/superpowers/plans/2026-07-30-graviscan-renderer-roadmap.md`'s
+> originating recon). These 3 tasks are left unchecked pending a real
+> run (CI, or a local machine that can actually open an Electron
+> window) — do not treat them as verified until that happens.
+
 - [ ] 6.1 Extend `tests/e2e/graviscan-ipc.e2e.ts` directly (do not create a
       new E2E file for this): `createGraviScanTestConfig()` and
       `launchElectronApp()` are module-local, unexported functions in that
@@ -229,7 +242,7 @@
       then assert the page settles back into a populated scanner list
       after the mock `resetUsb()`/re-detect cycle resolves (using
       `GRAVISCAN_MOCK=true`'s mock scanner data).
-- [ ] 6.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
+- [x] 6.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
       any fallout before moving on.
 
 ## 7. Spec & Validation

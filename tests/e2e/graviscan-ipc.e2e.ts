@@ -258,3 +258,61 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(result.data).toBeDefined();
   });
 });
+
+test.describe('Configure Scanner page', () => {
+  test('renders, detects mock scanners, and lists the validated resolution options', async () => {
+    await window.click('text=Configure Scanner');
+    await window.waitForSelector('h1:has-text("Configure Scanner")');
+
+    await window.click('button:has-text("Detect Scanners")');
+    await window.waitForSelector('table tbody tr');
+    const rowCount = await window.locator('table tbody tr').count();
+    expect(rowCount).toBeGreaterThan(0);
+
+    const resolutionOptions = await window
+      .locator('#graviscan-resolution option')
+      .allTextContents();
+    expect(resolutionOptions.map((o) => o.trim().split(' ')[0])).toEqual([
+      '200',
+      '400',
+      '600',
+      '800',
+      '1200',
+      '1600',
+    ]);
+  });
+
+  test('Remove hides a scanner row after the next status refresh', async () => {
+    await window.click('text=Configure Scanner');
+    await window.waitForSelector('h1:has-text("Configure Scanner")');
+
+    await window.click('button:has-text("Detect Scanners")');
+    await window.waitForSelector('table tbody tr');
+    const before = await window.locator('table tbody tr').count();
+    expect(before).toBeGreaterThan(0);
+
+    await window.click('table tbody tr:first-child button:has-text("Remove")');
+    await expect
+      .poll(async () => window.locator('table tbody tr').count())
+      .toBeLessThan(before);
+  });
+
+  test('Reset All USB Connections marks rows starting, then settles back to a populated list', async () => {
+    await window.click('text=Configure Scanner');
+    await window.waitForSelector('h1:has-text("Configure Scanner")');
+
+    await window.click('button:has-text("Detect Scanners")');
+    await window.waitForSelector('table tbody tr');
+
+    await window.click('button:has-text("Reset All USB Connections")');
+    await window.waitForSelector('table tbody tr:has-text("starting")');
+
+    await expect
+      .poll(
+        async () =>
+          window.locator('table tbody tr:has-text("ready")').count(),
+        { timeout: 15000 }
+      )
+      .toBeGreaterThan(0);
+  });
+});
