@@ -17,6 +17,7 @@ import {
   loadEnvConfig,
   validateConfig,
   getDefaultConfig,
+  getGraviScanEnvStatus,
   MachineConfig,
   MachineCredentials,
 } from '../../src/main/config-store';
@@ -470,6 +471,31 @@ describe('Config IPC Handler Logic', () => {
 
       expect(result.config.num_frames).toBe(36);
       expect(result.config.seconds_per_rot).toBe(5.0);
+    });
+  });
+
+  describe('config:get-graviscan-env-status handler logic (#245)', () => {
+    it('reads BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL and LIBUSB_ENDPOINT_RECOVERY from .env', () => {
+      const envContent = [
+        'SCANNER_NAME=TestScanner',
+        'CAMERA_IP_ADDRESS=mock',
+        'SCANS_DIR=/tmp/scans',
+        'BLOOM_API_URL=https://api.bloom.salk.edu/proxy',
+        'BLOOM_SCANNER_USERNAME=',
+        'BLOOM_SCANNER_PASSWORD=',
+        'BLOOM_ANON_KEY=',
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T0/B0/xyz',
+        'LIBUSB_ENDPOINT_RECOVERY=false',
+      ].join('\n');
+      fs.writeFileSync(ENV_PATH, envContent);
+
+      // Simulate the config:get-graviscan-env-status handler
+      const result = getGraviScanEnvStatus(loadEnvConfig(ENV_PATH));
+
+      expect(result).toEqual({
+        slackConfigured: true,
+        libusbRecoveryEnabled: false,
+      });
     });
   });
 });

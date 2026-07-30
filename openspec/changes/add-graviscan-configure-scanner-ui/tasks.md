@@ -44,7 +44,7 @@
 
 ## 3. Main-Process Env-Status Read (#245)
 
-- [ ] 3.1 In `tests/unit/config-store.test.ts` (or a new
+- [x] 3.1 In `tests/unit/config-store.test.ts` (or a new
       `tests/unit/config-store-graviscan-env-status.test.ts` if keeping the
       existing file focused), write failing tests for a new
       `getGraviScanEnvStatus(config: MachineConfig)` export:
@@ -59,28 +59,28 @@
         `libusb_endpoint_recovery === undefined` (default-on, per the
         existing `LIBUSB_ENDPOINT_RECOVERY` parsing convention in
         `config-store.ts`)
-- [ ] 3.2 Implement `getGraviScanEnvStatus()` in `src/main/config-store.ts`
+- [x] 3.2 Implement `getGraviScanEnvStatus()` in `src/main/config-store.ts`
       as a small pure function (no fs access — takes an already-loaded
       `MachineConfig`) and export it. Confirm 3.1 passes.
-- [ ] 3.3 Write a failing test (extend `tests/unit/config-ipc.test.ts`,
+- [x] 3.3 Write a failing test (extend `tests/unit/config-ipc.test.ts`,
       following its existing "simulate handler logic" pattern) asserting
       that calling `getGraviScanEnvStatus(loadEnvConfig(ENV_PATH))` against
       a fixture `.env` containing `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=...`
       and `LIBUSB_ENDPOINT_RECOVERY=false` returns
       `{ slackConfigured: true, libusbRecoveryEnabled: false }`.
-- [ ] 3.4 Register `ipcMain.handle('config:get-graviscan-env-status', ...)`
+- [x] 3.4 Register `ipcMain.handle('config:get-graviscan-env-status', ...)`
       in `src/main/main.ts` next to the other `config:*` handlers, calling
       `getGraviScanEnvStatus(loadEnvConfig(ENV_PATH))`. Confirm 3.3 passes
       (via the direct function-level test) and manually smoke-check the
       handler registers without throwing.
-- [ ] 3.5 Add `getGraviScanEnvStatus: () => Promise<{ slackConfigured: boolean; libusbRecoveryEnabled: boolean }>`
+- [x] 3.5 Add `getGraviScanEnvStatus: () => Promise<{ slackConfigured: boolean; libusbRecoveryEnabled: boolean }>`
       to the `ConfigAPI` interface in `src/types/electron.d.ts`, and
       `getGraviScanEnvStatus: () => ipcRenderer.invoke('config:get-graviscan-env-status')`
       to the `configAPI` object in `src/main/preload.ts`. Add a test to
       whichever preload test file already covers `configAPI` (or create
       `tests/unit/preload-config.test.ts` if none exists) asserting the
       correct channel is invoked.
-- [ ] 3.6 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
+- [x] 3.6 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
       any fallout before moving on.
 
 ## 4. `ConfigureScanner.tsx` Renderer Component

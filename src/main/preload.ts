@@ -255,6 +255,8 @@ const configAPI: ConfigAPI = {
   browseDirectory: () => ipcRenderer.invoke('config:browse-directory'),
   exists: () => ipcRenderer.invoke('config:exists'),
   getMode: () => ipcRenderer.invoke('config:get-mode'),
+  getGraviScanEnvStatus: () =>
+    ipcRenderer.invoke('config:get-graviscan-env-status'),
   fetchScanners: (
     apiUrl: string,
     credentials: {

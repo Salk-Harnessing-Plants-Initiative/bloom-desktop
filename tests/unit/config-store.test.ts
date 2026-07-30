@@ -21,6 +21,7 @@ import {
   validateConfig,
   getDefaultConfig,
   fetchScannersFromBloom,
+  getGraviScanEnvStatus,
   MachineConfig,
   MachineCredentials,
 } from '../../src/main/config-store';
@@ -307,6 +308,39 @@ BLOOM_ANON_KEY=legacykey`;
       expect(defaults.camera_ip_address).toBe('mock');
       expect(defaults.scans_dir).toContain('.bloom/scans');
       expect(defaults.bloom_api_url).toBe('https://api.bloom.salk.edu/proxy');
+    });
+  });
+
+  describe('getGraviScanEnvStatus', () => {
+    it('reports both configured when webhook is set and libusb recovery is not disabled', () => {
+      const config: MachineConfig = {
+        ...getDefaultConfig(),
+        slack_webhook_url: 'https://hooks.slack.com/services/T0/B0/xyz',
+      };
+      expect(getGraviScanEnvStatus(config)).toEqual({
+        slackConfigured: true,
+        libusbRecoveryEnabled: true,
+      });
+    });
+
+    it('reports slack not configured when slack_webhook_url is undefined', () => {
+      const config: MachineConfig = { ...getDefaultConfig() };
+      delete config.slack_webhook_url;
+      expect(getGraviScanEnvStatus(config).slackConfigured).toBe(false);
+    });
+
+    it('reports libusb recovery disabled when libusb_endpoint_recovery is false', () => {
+      const config: MachineConfig = {
+        ...getDefaultConfig(),
+        libusb_endpoint_recovery: false,
+      };
+      expect(getGraviScanEnvStatus(config).libusbRecoveryEnabled).toBe(false);
+    });
+
+    it('reports libusb recovery enabled (default-on) when libusb_endpoint_recovery is undefined', () => {
+      const config: MachineConfig = { ...getDefaultConfig() };
+      delete config.libusb_endpoint_recovery;
+      expect(getGraviScanEnvStatus(config).libusbRecoveryEnabled).toBe(true);
     });
   });
 

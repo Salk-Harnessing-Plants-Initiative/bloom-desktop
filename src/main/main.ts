@@ -39,6 +39,7 @@ import {
   saveEnvConfig,
   validateConfig,
   fetchScannersFromBloom,
+  getGraviScanEnvStatus,
   MachineConfig,
 } from './config-store';
 import {
@@ -982,6 +983,21 @@ ipcMain.handle('config:get-mode', async () => {
   } catch (error) {
     console.error('config:get-mode error:', error);
     return { mode: '' };
+  }
+});
+
+/**
+ * Handle config:get-graviscan-env-status - Boolean-only summary of the
+ * GraviScan Slack webhook / libusb-recovery env vars (#245), for the
+ * Configure Scanner page's status banner. Never returns the webhook URL.
+ */
+ipcMain.handle('config:get-graviscan-env-status', async () => {
+  try {
+    const config = loadEnvConfig(ENV_PATH);
+    return getGraviScanEnvStatus(config);
+  } catch (error) {
+    console.error('config:get-graviscan-env-status error:', error);
+    return { slackConfigured: false, libusbRecoveryEnabled: true };
   }
 });
 

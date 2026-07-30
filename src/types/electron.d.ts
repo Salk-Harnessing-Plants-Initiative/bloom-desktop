@@ -477,6 +477,15 @@ export interface ConfigAPI {
   getMode: () => Promise<{ mode: string }>;
 
   /**
+   * Boolean-only status of the GraviScan Slack webhook / libusb-recovery
+   * env vars (#245). Never returns the webhook URL itself.
+   */
+  getGraviScanEnvStatus: () => Promise<{
+    slackConfigured: boolean;
+    libusbRecoveryEnabled: boolean;
+  }>;
+
+  /**
    * Fetch list of valid scanners from Bloom API
    * @param apiUrl - Bloom API URL
    * @param credentials - Bloom API credentials from form
