@@ -28,15 +28,15 @@ model Scientist {
 }
 
 model Experiment {
-  id                        String                     @id @default(uuid())
-  name                      String
-  species                   String
-  scientist_id              String?
-  accession_id              String?
-  experiment_type           String                     @default("cylinderscan")
-  accession                 Accessions?                @relation("AccessionToExperiment", fields: [accession_id], references: [id])
-  scientist                 Scientist?                 @relation(fields: [scientist_id], references: [id])
-  scans                     Scan[]
+  id                    String                     @id @default(uuid())
+  name                  String
+  species               String
+  scientist_id          String?
+  accession_id          String?
+  experiment_type       String                     @default("cylinderscan")
+  accession             Accessions?                @relation("AccessionToExperiment", fields: [accession_id], references: [id])
+  scientist             Scientist?                 @relation(fields: [scientist_id], references: [id])
+  scans                 Scan[]
   graviScans            GraviScan[]
   graviSessions         GraviScanSession[]
   graviPlateAssignments GraviScanPlateAssignment[]
@@ -105,13 +105,13 @@ model Image {
 // =============================================================================
 
 model GraviScan {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   experiment_id String
   phenotyper_id String
   scanner_id    String
   session_id    String?
   cycle_number  Int?
-  wave_number   Int      @default(0)
+  wave_number   Int     @default(0)
 
   plate_barcode   String?
   transplant_date DateTime?
@@ -126,7 +126,7 @@ model GraviScan {
   grid_mode   String
   plate_index String
   resolution  Int
-  format      String  @default("tiff")
+  format      String @default("tiff")
 
   deleted Boolean @default(false)
 
@@ -165,17 +165,21 @@ model GraviScanSession {
 }
 
 model GraviScanPlateAssignment {
-  id              String   @id @default(uuid())
-  experiment_id   String
-  scanner_id      String
-  plate_index     String
-  plate_barcode   String?
-  transplant_date DateTime?
-  custom_note     String?
-  selected        Boolean  @default(true)
-  verification_status String @default("pending")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                     String    @id @default(uuid())
+  experiment_id          String
+  scanner_id             String
+  plate_index            String
+  plate_barcode          String?
+  // Set alongside plate_barcode whenever verify-plates auto-corrects a
+  // detected swap, so "what was this corrected from" is a queryable fact
+  // rather than something only recoverable from application logs.
+  previous_plate_barcode String?
+  transplant_date        DateTime?
+  custom_note            String?
+  selected               Boolean   @default(true)
+  verification_status    String    @default("pending")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   experiment Experiment   @relation(fields: [experiment_id], references: [id])
   scanner    GraviScanner @relation(fields: [scanner_id], references: [id])
@@ -244,7 +248,7 @@ model GraviPlateAccession {
   custom_note      String?
   createdAt        DateTime  @default(now())
 
-  metadata_file Accessions                @relation(fields: [metadata_file_id], references: [id], onDelete: Cascade)
+  metadata_file Accessions                 @relation(fields: [metadata_file_id], references: [id], onDelete: Cascade)
   sections      GraviPlateSectionMapping[]
 
   @@unique([metadata_file_id, plate_id])

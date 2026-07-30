@@ -702,11 +702,17 @@ describe('verifyPlates', () => {
     // GraviScanPlateAssignment.plate_barcode swapped for both positions
     expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
       where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '00' },
-      data: { plate_barcode: 'plate_16' },
+      data: {
+        plate_barcode: 'plate_16',
+        previous_plate_barcode: 'plate_13',
+      },
     });
     expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
       where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '11' },
-      data: { plate_barcode: 'plate_13' },
+      data: {
+        plate_barcode: 'plate_13',
+        previous_plate_barcode: 'plate_16',
+      },
     });
 
     // GraviScan records updated to match
@@ -727,6 +733,50 @@ describe('verifyPlates', () => {
     expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
       where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '11' },
       data: { verification_status: 'swapped' },
+    });
+  });
+
+  it('records the pre-correction plate_barcode when auto-correcting a swap', async () => {
+    // "What was this corrected from" must be a queryable DB fact, not
+    // something only inferable from application logs.
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '00' },
+      data: {
+        plate_barcode: 'plate_16',
+        previous_plate_barcode: 'plate_13',
+      },
+    });
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '11' },
+      data: {
+        plate_barcode: 'plate_13',
+        previous_plate_barcode: 'plate_16',
+      },
     });
   });
 

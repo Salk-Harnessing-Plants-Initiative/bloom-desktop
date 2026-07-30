@@ -452,6 +452,11 @@ export async function verifyPlates(
           },
           data: {
             plate_barcode: position2.assignedPlateId,
+            // Audit trail: record what this position was corrected FROM, in
+            // the same write. Without it, "this row used to say Plate_13"
+            // only exists in application logs, which are not queryable and
+            // do not survive a log rotation.
+            previous_plate_barcode: position1.assignedPlateId,
           },
         });
         await db.graviScanPlateAssignment.updateMany({
@@ -462,6 +467,7 @@ export async function verifyPlates(
           },
           data: {
             plate_barcode: position1.assignedPlateId,
+            previous_plate_barcode: position2.assignedPlateId,
           },
         });
 
