@@ -91,7 +91,7 @@
 > tree in a state where `npx tsc --noEmit` fails on an unresolved import,
 > not just a red test. Do not split 4.1 and 4.2 across separate commits.
 
-- [ ] 4.1 Create `tests/unit/pages/ConfigureScanner.test.tsx` and write
+- [x] 4.1 Create `tests/unit/pages/ConfigureScanner.test.tsx` and write
       failing tests (mocking `window.electron.gravi.*` and
       `window.electron.config.getGraviScanEnvStatus`, following the mocking
       conventions in `tests/unit/pages/App.test.tsx` and
@@ -160,7 +160,7 @@
         not just that some text renders — and never renders a webhook URL
         string anywhere in the DOM
       Confirm all fail (component doesn't exist yet).
-- [ ] 4.2 Implement `src/renderer/ConfigureScanner.tsx` to satisfy 4.1,
+- [x] 4.2 Implement `src/renderer/ConfigureScanner.tsx` to satisfy 4.1,
       following `MachineConfiguration.tsx`'s Tailwind conventions
       (`bg-white rounded-lg shadow` cards, `bg-blue-600 text-white
       rounded-md` primary buttons, `border-red-500`/`bg-red-50` error
@@ -169,7 +169,7 @@
       this codebase's pages. Do NOT port `ScannerConfigSection.tsx`/
       `useScannerConfig.ts` (1,508 lines of dead code on the production
       branch) or any `/tmp`-hardcoded path. Confirm all 4.1 tests pass.
-- [ ] 4.3 Run `npx tsc --noEmit` and the full `npx vitest run` unit suite;
+- [x] 4.3 Run `npx tsc --noEmit` and the full `npx vitest run` unit suite;
       fix any fallout.
 
 ## 5. Routing & Navigation Wiring

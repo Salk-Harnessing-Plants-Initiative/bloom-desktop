@@ -527,7 +527,9 @@ export interface GraviAPI {
   getPlatformInfo: () => Promise<any>;
   validateScanners: (ids: string[]) => Promise<any>;
   validateConfig: () => Promise<any>;
-  resetUsb: () => Promise<ResetUsbResult>;
+  resetUsb: () => Promise<
+    { success: true; data: ResetUsbResult } | { success: false; error: string }
+  >;
   getScannerStatus: () => Promise<{
     success: boolean;
     scanners: Array<{
