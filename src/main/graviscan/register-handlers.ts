@@ -1,7 +1,7 @@
 /**
  * GraviScan IPC Handler Registration
  *
- * Wraps pure handler functions with ipcMain.handle() for 17 IPC channels.
+ * Wraps pure handler functions with ipcMain.handle() for 20 IPC channels.
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
  *
  * This is also where coordinator-aware orchestration around the DB-only
@@ -200,6 +200,18 @@ export function registerGraviScanHandlers(
     wrapHandler(() => scannerHandlers.resetUsb(getCoordinator(), db))()
   );
 
+  /**
+   * Merge live coordinator subprocess status with saved DB scanner rows.
+   * Called by the renderer on page mount to show which scanners are
+   * ready/starting/error/disconnected. Returns the getScannerStatus()
+   * result shape directly (not wrapped via wrapHandler) — matching
+   * production's `{ success, scanners, error? }` contract, same as
+   * `graviscan:disable-scanner` above.
+   */
+  ipcMain.handle('graviscan:get-scanner-status', () =>
+    scannerHandlers.getScannerStatus(getCoordinator(), db)
+  );
+
   // --- Session handlers ---
   ipcMain.handle('graviscan:start-scan', async (_event, params) => {
     // Reject if scan already in progress
@@ -308,6 +320,26 @@ export function registerGraviScanHandlers(
     };
     return wrapHandler(() => imageHandlers.uploadAllScans(db, onProgress))();
   });
+
+  /**
+   * Create a directory recursively (idempotent). Used by the renderer to
+   * create the per-session scan folder upfront, before any cycle begins.
+   * Returns imageHandlers.ensureDir()'s result shape directly, matching
+   * production's `{ success, path?, error? }` contract.
+   */
+  ipcMain.handle('graviscan:ensure-dir', (_event, dirPath: string) =>
+    imageHandlers.ensureDir(dirPath)
+  );
+
+  /**
+   * List image files in the scan output directory (or a given session
+   * directory), sorted newest-first. Returns
+   * imageHandlers.listScanFiles()'s result shape directly, matching
+   * production's `{ success, files, error? }` contract.
+   */
+  ipcMain.handle('graviscan:list-scan-files', (_event, dirPath?: string) =>
+    Promise.resolve(imageHandlers.listScanFiles(dirPath))
+  );
 
   ipcMain.handle('graviscan:download-images', (_event, params) => {
     // Check window at send-time, not registration-time

@@ -41,12 +41,16 @@ vi.mock('fs', async () => {
     mkdirSync: vi.fn(),
     writeFileSync: vi.fn(),
     readFileSync: vi.fn(),
+    readdirSync: vi.fn(),
+    statSync: vi.fn(),
     promises: {
       copyFile: vi.fn().mockResolvedValue(undefined),
+      mkdir: vi.fn().mockResolvedValue(undefined),
     },
   };
 });
 
+import * as path from 'path';
 import { app } from 'electron';
 import { resolveGraviScanPath } from '../../../src/main/graviscan-path-utils';
 import { runBoxBackup } from '../../../src/main/box-backup';
@@ -71,6 +75,8 @@ import {
   uploadAllScans,
   downloadImages,
   resetUploadState,
+  ensureDir,
+  listScanFiles,
 } from '../../../src/main/graviscan/image-handlers';
 
 describe('image-handlers', () => {
@@ -82,6 +88,9 @@ describe('image-handlers', () => {
     vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
     // Default: no GRAVISCAN_OUTPUT_DIR override — falls back to hardcoded path.
     vi.mocked(fs.readFileSync).mockReturnValue('');
+    vi.mocked(fs.promises.mkdir).mockReset().mockResolvedValue(undefined);
+    vi.mocked(fs.readdirSync).mockReset();
+    vi.mocked(fs.statSync).mockReset();
     mockResolvePath.mockReset();
     mockRunBoxBackup.mockReset();
     mockUploadAllPendingScans.mockReset();
@@ -528,6 +537,156 @@ describe('image-handlers', () => {
       expect(fs.writeFileSync).toHaveBeenCalled(); // metadata CSV
       expect(fs.promises.copyFile).toHaveBeenCalled();
       expect(onProgress).toHaveBeenCalled();
+    });
+  });
+
+  describe('ensureDir', () => {
+    it('creates the directory recursively and returns the path', async () => {
+      const result = await ensureDir('/scans/session-1');
+
+      expect(fs.promises.mkdir).toHaveBeenCalledWith('/scans/session-1', {
+        recursive: true,
+      });
+      expect(result).toEqual({ success: true, path: '/scans/session-1' });
+    });
+
+    it('is idempotent — succeeds even when mkdir resolves for an already-existing dir', async () => {
+      vi.mocked(fs.promises.mkdir).mockResolvedValueOnce(undefined);
+
+      const result = await ensureDir('/scans/existing');
+
+      expect(result.success).toBe(true);
+    });
+
+    it('returns an error when dirPath is missing', async () => {
+      const result = await ensureDir(undefined as unknown as string);
+
+      expect(result).toEqual({
+        success: false,
+        error: 'dirPath is required',
+      });
+      expect(fs.promises.mkdir).not.toHaveBeenCalled();
+    });
+
+    it('returns an error when dirPath is not a string', async () => {
+      const result = await ensureDir(123 as unknown as string);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('dirPath is required');
+    });
+
+    it('returns an error when mkdir rejects', async () => {
+      vi.mocked(fs.promises.mkdir).mockRejectedValueOnce(
+        new Error('EACCES: permission denied')
+      );
+
+      const result = await ensureDir('/no-permission');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('EACCES');
+    });
+  });
+
+  describe('listScanFiles', () => {
+    it('returns an empty file list when the directory does not exist', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      const result = listScanFiles('/scans/does-not-exist');
+
+      expect(result).toEqual({ success: true, files: [] });
+    });
+
+    it('lists direct image files in a given session directory (flat mode)', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        { name: 'scan_00.tif', isDirectory: () => false },
+        { name: 'scan_01.png', isDirectory: () => false },
+        { name: 'notes.txt', isDirectory: () => false },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ] as any);
+      vi.mocked(fs.statSync).mockReturnValue({
+        size: 1024,
+        mtime: new Date('2026-07-01T00:00:00.000Z'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = listScanFiles('/scans/session-1');
+
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(2); // notes.txt filtered out
+      expect(result.files.map((f) => f.name).sort()).toEqual([
+        'scan_00.tif',
+        'scan_01.png',
+      ]);
+      expect(result.files[0].folder).toBe('session-1');
+      expect(result.files[0].size).toBe(1024);
+    });
+
+    it('recurses into subfolders when no dirPath is given (base-dir mode)', () => {
+      vi.mocked(app.getAppPath).mockReturnValue('/project/root');
+      vi.mocked(app.getPath).mockReturnValue('/home/user');
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      vi.mocked(fs.readdirSync).mockImplementation(((dir: string) => {
+        if (path.basename(dir) === 'graviscan') {
+          return [{ name: 'exp1', isDirectory: () => true }] as unknown[];
+        }
+        // subfolder listing (no withFileTypes) — plain string names
+        return ['plate_00.tif', 'ignore.csv'] as unknown[];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any);
+      vi.mocked(fs.statSync).mockReturnValue({
+        size: 2048,
+        mtime: new Date('2026-07-02T00:00:00.000Z'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = listScanFiles();
+
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0].name).toBe('plate_00.tif');
+      expect(result.files[0].folder).toBe('exp1');
+    });
+
+    it('sorts files newest-first by modification time', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        { name: 'older.tif', isDirectory: () => false },
+        { name: 'newer.tif', isDirectory: () => false },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ] as any);
+      vi.mocked(fs.statSync).mockImplementation(((filePath: string) => {
+        const isNewer = filePath.includes('newer');
+        return {
+          size: 100,
+          mtime: new Date(
+            isNewer ? '2026-07-10T00:00:00.000Z' : '2026-07-01T00:00:00.000Z'
+          ),
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any);
+
+      const result = listScanFiles('/scans/session-1');
+
+      expect(result.files.map((f) => f.name)).toEqual([
+        'newer.tif',
+        'older.tif',
+      ]);
+    });
+
+    it('returns a failure result when readdirSync throws', () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockImplementation(() => {
+        throw new Error('EACCES: permission denied');
+      });
+
+      const result = listScanFiles('/scans/session-1');
+
+      expect(result.success).toBe(false);
+      expect(result.files).toEqual([]);
+      expect(result.error).toContain('EACCES');
     });
   });
 });

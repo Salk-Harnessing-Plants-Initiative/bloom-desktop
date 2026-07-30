@@ -13,6 +13,8 @@ vi.mock('../../../src/main/graviscan/scanner-handlers', () => ({
     .mockResolvedValue({ platform: 'linux', backend: 'sane' }),
   runStartupScannerValidation: vi.fn().mockResolvedValue({ valid: true }),
   validateConfig: vi.fn().mockResolvedValue({ status: 'valid' }),
+  resetUsb: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
+  getScannerStatus: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
 }));
 
 vi.mock('../../../src/main/graviscan/scanner-upsert', () => ({
@@ -34,6 +36,8 @@ vi.mock('../../../src/main/graviscan/image-handlers', () => ({
   readScanImage: vi.fn().mockResolvedValue({ data: 'base64...' }),
   uploadAllScans: vi.fn().mockResolvedValue({ uploaded: 0 }),
   downloadImages: vi.fn().mockResolvedValue({ exported: 0 }),
+  ensureDir: vi.fn().mockResolvedValue({ success: true, path: '/scans/s1' }),
+  listScanFiles: vi.fn().mockReturnValue({ success: true, files: [] }),
 }));
 
 // Mock fs for realpath validation
@@ -70,6 +74,9 @@ const CHANNELS = [
   'graviscan:upload-all-scans',
   'graviscan:download-images',
   'graviscan:reset-usb',
+  'graviscan:get-scanner-status',
+  'graviscan:ensure-dir',
+  'graviscan:list-scan-files',
 ];
 
 function createMockIpcMain() {
@@ -124,7 +131,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 17 IPC channels', () => {
+  it('registers all 20 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -133,7 +140,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(17);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(20);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }
@@ -700,6 +707,139 @@ describe('registerGraviScanHandlers', () => {
 
       const result = await mockIpcMain._invoke('graviscan:upload-all-scans');
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('graviscan:get-scanner-status', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('delegates to scannerHandlers.getScannerStatus with the coordinator and db', async () => {
+      const coordinator = { getScannerStatuses: vi.fn().mockReturnValue([]) };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      await mockIpcMain._invoke('graviscan:get-scanner-status');
+
+      expect(scannerHandlers.getScannerStatus).toHaveBeenCalledWith(
+        coordinator,
+        mockDb
+      );
+    });
+
+    it('returns the result shape directly (not double-wrapped via wrapHandler)', async () => {
+      vi.mocked(scannerHandlers.getScannerStatus).mockResolvedValueOnce({
+        success: true,
+        scanners: [
+          {
+            scannerId: 's1',
+            displayName: 'Scanner 1',
+            usbPort: '1-2',
+            gridMode: '2grid',
+            status: 'ready',
+          },
+        ],
+      } as any);
+
+      const result = await mockIpcMain._invoke('graviscan:get-scanner-status');
+
+      expect(result).toEqual({
+        success: true,
+        scanners: [
+          {
+            scannerId: 's1',
+            displayName: 'Scanner 1',
+            usbPort: '1-2',
+            gridMode: '2grid',
+            status: 'ready',
+          },
+        ],
+      });
+    });
+  });
+
+  describe('graviscan:ensure-dir', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('delegates to imageHandlers.ensureDir with the given dirPath', async () => {
+      await mockIpcMain._invoke('graviscan:ensure-dir', '/scans/session-1');
+
+      expect(imageHandlers.ensureDir).toHaveBeenCalledWith('/scans/session-1');
+    });
+
+    it('returns the result shape directly', async () => {
+      vi.mocked(imageHandlers.ensureDir).mockResolvedValueOnce({
+        success: true,
+        path: '/scans/session-1',
+      });
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:ensure-dir',
+        '/scans/session-1'
+      );
+
+      expect(result).toEqual({ success: true, path: '/scans/session-1' });
+    });
+  });
+
+  describe('graviscan:list-scan-files', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('delegates to imageHandlers.listScanFiles with the given dirPath', async () => {
+      await mockIpcMain._invoke('graviscan:list-scan-files', '/scans/exp1');
+
+      expect(imageHandlers.listScanFiles).toHaveBeenCalledWith('/scans/exp1');
+    });
+
+    it('delegates with undefined dirPath when none is passed (base-dir mode)', async () => {
+      await mockIpcMain._invoke('graviscan:list-scan-files');
+
+      expect(imageHandlers.listScanFiles).toHaveBeenCalledWith(undefined);
+    });
+
+    it('returns the result shape directly', async () => {
+      vi.mocked(imageHandlers.listScanFiles).mockReturnValueOnce({
+        success: true,
+        files: [
+          {
+            name: 'scan_00.tif',
+            path: '/scans/exp1/scan_00.tif',
+            size: 1024,
+            modifiedAt: '2026-07-01T00:00:00.000Z',
+            folder: 'exp1',
+          },
+        ],
+      });
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:list-scan-files',
+        '/scans/exp1'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(1);
     });
   });
 
