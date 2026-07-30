@@ -88,9 +88,9 @@ export async function upsertScannerRow(
         display_name: payload.display_name ?? existing.display_name ?? null,
         vendor_id: payload.vendor_id,
         product_id: payload.product_id,
-        usb_port: payload.usb_port || null,
-        usb_bus: payload.usb_bus || null,
-        usb_device: payload.usb_device || null,
+        usb_port: payload.usb_port ?? null,
+        usb_bus: payload.usb_bus ?? null,
+        usb_device: payload.usb_device ?? null,
         // Critical fix (final-review #1): re-detecting a scanner MUST
         // re-enable it. Without this, a row disabled by
         // disableStaleScannerRows()/validateConfig()/disableScannerById()
@@ -113,12 +113,12 @@ export async function upsertScannerRow(
   const created = await (db as any).graviScanner.create({
     data: {
       name: payload.name,
-      display_name: payload.display_name || null,
+      display_name: payload.display_name ?? null,
       vendor_id: payload.vendor_id,
       product_id: payload.product_id,
-      usb_port: payload.usb_port || null,
-      usb_bus: payload.usb_bus || null,
-      usb_device: payload.usb_device || null,
+      usb_port: payload.usb_port ?? null,
+      usb_bus: payload.usb_bus ?? null,
+      usb_device: payload.usb_device ?? null,
       enabled: true,
     },
   });
