@@ -1137,7 +1137,8 @@ The system SHALL bundle GraviScan Python modules into the PyInstaller executable
 
 - **GIVEN** the PyInstaller spec file (`python/main.spec`) is used to build the Python executable
 - **WHEN** the build completes
-- **THEN** `graviscan`, `graviscan.scan_regions`, and `graviscan.scan_worker` modules SHALL be importable at runtime
+- **THEN** `graviscan`, `graviscan.scan_regions`, `graviscan.scan_worker`, and `graviscan.qr_reader` modules SHALL be importable at runtime
+- **AND** `cv2` SHALL be importable at runtime (required by `graviscan.qr_reader`)
 - **AND** the `sane` module SHALL be included as a hidden import (fails gracefully if unavailable)
 - **AND** no references to non-existent modules (e.g., `graviscan.models`, `graviscan.functions`) SHALL be present
 
@@ -1150,6 +1151,23 @@ The system SHALL declare GraviScan-specific Python dependencies as optional depe
 - **GIVEN** the Python environment is set up via `uv sync`
 - **WHEN** the scan worker imports `PIL`
 - **THEN** Pillow SHALL be available (declared as core dependency `pillow>=10.0.0`; already a transitive dep via `imageio`, this makes it explicit)
+
+#### Scenario: OpenCV available as core dependency
+
+- **GIVEN** the Python environment is set up via `uv sync`
+- **WHEN** `graviscan.qr_reader` imports `cv2`
+- **THEN** OpenCV SHALL be available (declared as core dependency
+  `opencv-python-headless>=4.9.0,<5`)
+- **AND** the headless build SHALL be used, so no GUI/Qt or X11 dependency is introduced on the rig or in the PyInstaller bundle
+- **AND** the declaration SHALL carry an upper major-version bound, so
+  resolution cannot silently jump past the major version
+  `pyinstaller-hooks-contrib`'s bundled `cv2` hook was written against
+- **NOTE**: an unbounded `>=4.9.0` resolved to `5.0.0.93`, a major version
+  newer than what `pyinstaller-hooks-contrib@2025.9` supports. The frozen
+  build was only ever verified on Windows, never macOS or Linux, so the bound
+  stays at the major version the hooks are known good for. Raising it
+  requires rebuilding and running the frozen executable on all three
+  platforms first.
 
 #### Scenario: SANE dependencies optional on Linux
 
@@ -1368,14 +1386,37 @@ The system SHALL provide image reading, export, and cloud backup as testable fun
 - **WHEN** `getOutputDir()` is called
 - **THEN** the system SHALL return `{ success: false, error: '...' }` with the filesystem error
 
-#### Scenario: Download experiment images with metadata CSV
+#### Scenario: Download experiment images with metadata, plates, and sections CSVs
 
-- **GIVEN** an experiment has GraviScan images across multiple waves
-- **WHEN** `downloadImages(db, { experimentId, experimentName, targetDir })` is called with an already-resolved target directory (dialog handling deferred to IPC wiring in Increment 3c)
+- **GIVEN** an experiment has GraviScan images across multiple waves, with plate accessions and section mappings linked via the experiment's legacy accession
+- **WHEN** `downloadImages(db, { experimentId, experimentName, targetDir?, waveNumber? })` is called
 - **THEN** the system SHALL group images by wave number into subdirectories
-- **AND** write a `metadata.csv` per wave with experiment, plate, accession, and image columns
+- **AND** write a `metadata.csv` per wave with experiment, plate, accession, and image columns (header: `experiment,wave_number,plate_barcode,plate_index,grid_mode,capture_date,accession,transplant_date,custom_note,image_filename`)
+- **AND** write a `plates.csv` per wave with one row per plate accession linked to the wave (header: `experiment,wave_number,plate_id,accession,transplant_date,custom_note`), only when there is at least one plate accession
+- **AND** write a `sections.csv` per wave with one row per section mapping under each plate (header: `experiment,wave_number,plate_id,section_id,plant_qr,medium`), only when there is at least one section mapping
 - **AND** copy image files with concurrent file copy operations
 - **AND** report progress via the injected `onProgress` callback
+
+#### Scenario: Omit plates.csv and sections.csv when there is no plate/section data
+
+- **GIVEN** an experiment's accession has no linked `GraviPlateAccession` records
+- **WHEN** `downloadImages(db, params)` is called
+- **THEN** the system SHALL still write `metadata.csv` per wave
+- **AND** SHALL NOT write `plates.csv` or `sections.csv` for that wave
+
+#### Scenario: Omit sections.csv when a plate has no section mappings
+
+- **GIVEN** a wave's plate accessions exist but none has any linked `GraviPlateSectionMapping` records
+- **WHEN** `downloadImages(db, params)` is called
+- **THEN** the system SHALL write `plates.csv` for that wave
+- **AND** SHALL NOT write `sections.csv` for that wave
+
+#### Scenario: Default target directory to the Downloads folder
+
+- **GIVEN** `downloadImages()` is called without a `targetDir`
+- **WHEN** the function resolves where to write the experiment's export folder
+- **THEN** the system SHALL default to `app.getPath('downloads')`
+- **AND** an explicitly-provided `targetDir` SHALL be used instead, without consulting `app.getPath('downloads')`
 
 #### Scenario: Download with no images found
 
@@ -1670,14 +1711,17 @@ The system SHALL provide a `registerGraviScanHandlers` function in `src/main/gra
 
 - **GIVEN** `registerGraviScanHandlers(ipcMain, db, getMainWindow, sessionFns, getCoordinator)` is called
 - **WHEN** the function completes
-- **THEN** the following 15 IPC channels SHALL be registered:
+- **THEN** the following 20 IPC channels SHALL be registered:
   - `graviscan:detect-scanners`
   - `graviscan:get-config`
   - `graviscan:save-config`
   - `graviscan:save-scanners-db`
+  - `graviscan:disable-scanner`
   - `graviscan:platform-info`
   - `graviscan:validate-scanners`
   - `graviscan:validate-config`
+  - `graviscan:reset-usb`
+  - `graviscan:get-scanner-status`
   - `graviscan:start-scan`
   - `graviscan:get-scan-status`
   - `graviscan:mark-job-recorded`
@@ -1685,14 +1729,22 @@ The system SHALL provide a `registerGraviScanHandlers` function in `src/main/gra
   - `graviscan:get-output-dir`
   - `graviscan:read-scan-image`
   - `graviscan:upload-all-scans`
+  - `graviscan:ensure-dir`
+  - `graviscan:list-scan-files`
   - `graviscan:download-images`
 
 #### Scenario: Handler delegates to correct module function
 
 - **GIVEN** `registerGraviScanHandlers` has been called
-- **WHEN** the renderer invokes any of the 15 registered `graviscan:*` IPC channels
-- **THEN** the handler SHALL delegate to the corresponding handler module function (see design.md channel mapping table) with the correct arguments
+- **WHEN** the renderer invokes any of the 20 registered `graviscan:*` IPC channels
+- **THEN** the handler SHALL delegate to the corresponding handler module function with the correct arguments
 - **AND** return the result to the renderer
+- **AND** `graviscan:get-scanner-status`, `graviscan:ensure-dir`, and
+  `graviscan:list-scan-files` SHALL return their handler function's result
+  shape directly (matching production's un-nested `{ success, ... }`
+  contract), the same convention already used for `graviscan:disable-scanner`
+  — not wrapped in the generic `wrapHandler`'s `{ success: true, data }`
+  envelope used by most other channels
 
 #### Scenario: Handler returns error on exception
 
@@ -1718,7 +1770,7 @@ The system SHALL register GraviScan IPC handlers only when the configured scanne
 - **GIVEN** `SCANNER_MODE=graviscan` in the `.env` config
 - **WHEN** the app starts and `initGraviScan()` is called
 - **THEN** `registerGraviScanHandlers` SHALL be called
-- **AND** all 15 `graviscan:*` IPC channels SHALL be available
+- **AND** all 18 `graviscan:*` IPC channels SHALL be available
 
 #### Scenario: GraviScan handlers not registered in cylinderscan mode
 
@@ -2560,9 +2612,23 @@ The `ScanCoordinator` class SHALL expose `addScanner(config)` and
   the map and in `ready` state, this is a no-op. The `ScannerConfig`
   type is the existing shared type at `src/types/graviscan.ts`. When
   `isScanning === true`, the spawn request SHALL be queued internally
-  and processed at the start of the next cycle (after
-  `cycle-complete`) so that mid-scan event-loop traffic is not
-  disrupted.
+  and executed on the next `cycle-complete` event so that mid-scan
+  event-loop traffic is not disrupted. Queued requests SHALL be
+  deduplicated per `scannerId`: a mid-scan call for a `scannerId` that
+  already has a queued spawn SHALL return that pending request's own
+  `Promise` instead of queueing a second spawn. This prevents two
+  concurrent `addScanner()` calls for the same `scannerId` from each
+  constructing a subprocess within the same `cycle-complete` tick and
+  racing to shut one another down mid-spawn, while still guaranteeing
+  that a queued spawn actually executes. The queued request's record
+  SHALL be cleared once its spawn settles, so a later call for the same
+  `scannerId` is not handed an already-settled `Promise`.
+  - Deduplication SHALL NOT be implemented by having the queued handler
+    re-invoke the public `addScanner(config)` method: `scanOnce()` emits
+    `cycle-complete` before it resets its state to `'idle'`, so
+    `isScanning` is still `true` at the synchronous instant every
+    listener runs, and a re-entrant call would re-queue itself
+    indefinitely instead of ever spawning (see `design.md`).
 - `hasWorker(scannerId: string): boolean` — returns `true` if the
   subprocess map contains a worker for that scanner_id AND the
   worker is in `ready` state. Returns `false` otherwise (missing,
@@ -2606,14 +2672,26 @@ place.
 - **WHEN** `addScanner({scannerId: 'C', ...})` is called
 - **THEN** the coordinator SHALL NOT immediately spawn a new
   subprocess
-- **AND** the request SHALL be appended to an internal
-  `pendingAdditions` queue
-- **AND** the method's returned `Promise` SHALL resolve once the
-  spawn completes (i.e., on the next cycle boundary)
+- **AND** the request SHALL be recorded in an internal per-`scannerId`
+  pending-add map
 - **AND** after the next `cycle-complete` event, the queued spawn
   SHALL execute and `hasWorker('C')` SHALL return `true`
+- **AND** the method's returned `Promise` SHALL resolve once that spawn
+  has settled
 
----
+#### Scenario: Two concurrent addScanner calls for the same id spawn exactly one subprocess
+
+- **GIVEN** a `ScanCoordinator` with `isScanning === true` (a cycle is in
+  flight) and no worker yet for `scannerId` `'NEW'`
+- **WHEN** `addScanner({scannerId: 'NEW', ...})` is called twice,
+  concurrently, before the cycle completes
+- **AND** the in-flight cycle's `cycle-complete` event then fires
+- **THEN** the coordinator SHALL construct exactly one
+  `ScannerSubprocess` for `'NEW'` — neither zero (a never-executed
+  queued spawn) nor two
+- **AND** SHALL NOT call `shutdown()` on a subprocess that is still
+  mid-spawn as a side effect of the second call
+- **AND** both returned `Promise`s SHALL resolve
 
 ### Requirement: Coordinator Stop-Scanner API
 
@@ -2639,3 +2717,698 @@ entry from the subprocess map, and resolve. If no worker exists for
 - **GIVEN** a `ScanCoordinator` with no workers
 - **WHEN** `stopScanner('does-not-exist')` is called
 - **THEN** the method SHALL resolve without error
+
+### Requirement: GraviScan Post-Scan Plate Position Verification
+
+The system SHALL provide a `graviscan:verify-plates` capability that reads
+the QR code embedded in each plate's scan image, looks up which plate that QR
+code belongs to via `GraviPlateSectionMapping`, and compares it against the
+plate the operator assigned to that scanner/position
+(`GraviScanPlateAssignment`). Each plate SHALL be classified as one of
+`verified`, `incorrect`, `swapped`, `unreadable`, `needs_review`,
+`duplicate_qr`, or `lookup_failed`, and the final `verification_status` SHALL
+be persisted onto `GraviScanPlateAssignment` for every plate submitted in the
+batch.
+
+#### Scenario: Detected plate matches assigned plate
+
+- **GIVEN** a plate's scan image contains a QR code that maps (via
+  `GraviPlateSectionMapping`) to the same plate ID as its
+  `assignedPlateId`
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** the plate's status SHALL be `verified`
+- **AND** `GraviScanPlateAssignment.verification_status` SHALL be set to
+  `verified` for that scanner/plate-index
+
+#### Scenario: Detected plate matches assigned plate with different letter casing
+
+- **GIVEN** a plate's `assignedPlateId` is `"Plate_13"` and the detected QR
+  code maps to a `plate_id` of `"Plate_13"` in the DB (or any differing
+  casing of the same identifier)
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** the comparison SHALL be case-insensitive on **both** sides
+- **AND** the plate's status SHALL be `verified`
+
+#### Scenario: No QR code detected on a plate's image
+
+- **GIVEN** a plate's scan image yields zero decoded QR codes
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** the plate's status SHALL be `unreadable`
+- **AND** `GraviScanPlateAssignment.verification_status` SHALL be set to
+  `unreadable`
+
+#### Scenario: Detected plate does not match assigned plate and no swap partner is found
+
+- **GIVEN** a plate's detected QR code maps to a different plate ID than its
+  `assignedPlateId`
+- **AND** no other plate in the same batch forms a reciprocal swap with it
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** the plate's status SHALL be `incorrect`
+- **AND** `GraviScanPlateAssignment.verification_status` SHALL be set to
+  `incorrect` — **not** remapped to `unreadable`
+- **NOTE**: production's own implementation remaps this case to
+  `unreadable` and its renderer shows an identical label for both cases.
+  This is a deliberate departure from production: `incorrect` (QR read
+  successfully, wrong plate) and `unreadable` (QR could not be read at all)
+  are distinct, actionable-differently outcomes for an operator and SHALL
+  remain distinguishable in persisted data. A future renderer consuming this
+  status SHALL give `incorrect` its own label, not reuse "QR Unreadable".
+
+#### Scenario: The plate-id lookup itself fails for a plate
+
+- **GIVEN** a plate's image decoded one or more QR codes successfully
+- **AND** the `GraviPlateSectionMapping` lookup for those codes throws (a
+  locked, unavailable, or otherwise transiently failing database)
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** the plate's status SHALL be `lookup_failed` — **not** collapsed
+  into `unreadable`
+- **AND** `GraviScanPlateAssignment.verification_status` SHALL be set to
+  `lookup_failed`
+- **AND** the decoded QR codes SHALL still be reported in the result
+- **AND** the plate SHALL NOT be paired into any swap, since nothing is known
+  about which plate it actually holds
+- **AND** the rest of the batch SHALL be verified normally
+- **NOTE**: this is the same status-collapse this capability already refuses
+  to make for `incorrect`. `unreadable` tells an operator to go re-image the
+  plate; the image was fine and the correct response is to retry the run.
+  Persisting the wrong reason sends them to the wrong remedy.
+
+#### Scenario: QR codes on one plate disagree about which plate they belong to
+
+- **GIVEN** a plate's image yields multiple QR codes that map to more than
+  one distinct plate ID via `GraviPlateSectionMapping`
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** the plate's status SHALL be `needs_review`
+- **AND** the result SHALL include the conflicting `plate_id -> qr codes`
+  breakdown
+- **AND** no automatic swap correction SHALL be attempted for that plate
+
+#### Scenario: Same QR code detected on two different plates in one batch
+
+- **GIVEN** two plates in the same verification batch each yield a detected
+  QR code that is identical
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** both plates' status SHALL be `duplicate_qr`
+- **AND** normal verified/incorrect classification SHALL be skipped for both
+
+#### Scenario: Two plates were swapped during loading
+
+- **GIVEN** plate A (assigned `Plate_13`) has a scan image whose detected QR
+  code maps to `Plate_16`, and plate B (assigned `Plate_16`) has a scan image
+  whose detected QR code maps to `Plate_13`
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** a swap SHALL be detected between plate A's position and plate B's
+  position
+- **AND** `GraviScanPlateAssignment.plate_barcode` SHALL be updated for both
+  positions so each now holds the other's original assigned plate ID
+- **AND** **every** non-deleted `GraviScan` record for each position within
+  that experiment that still carries the pre-correction `plate_barcode` SHALL
+  have its `plate_barcode` updated to match — not only the most recent one
+- **AND** both positions' final `verification_status` SHALL be `swapped`
+- **AND** both positions' `status` in the **returned results** SHALL also be
+  `swapped`, not left at `incorrect` — the returned payload and the row the
+  same run just wrote SHALL NOT disagree about the same plate
+- **NOTE**: a swap can only be recognised once the whole batch has been
+  classified, so the per-plate `verify-result` progress event for those two
+  plates has already been emitted as `incorrect`. `verify-complete` carries
+  the upgraded results.
+- **NOTE**: a time-lapse session writes one `GraviScan` row per cycle for the
+  same scanner/position, and `graviscan-upload.ts` reads `plate_barcode`
+  **per row**. Correcting only the newest row left every earlier cycle
+  uploading to Bloom and Box under the wrong plate. A mis-loaded plate is
+  wrong for every cycle it was scanned in. Filtering on the pre-correction
+  `plate_barcode` is what keeps this safe and idempotent: only rows that are
+  actually wrong are touched, so a re-run cannot swap anything back.
+
+#### Scenario: A write that matched no rows is reported, not silently ignored
+
+- **GIVEN** a swap correction or `verification_status` write whose `where`
+  clause matches no rows (for example, no `GraviScanPlateAssignment` row
+  exists for the submitted `(experimentId, scannerId, plateIndex)`)
+- **WHEN** that `updateMany` completes
+- **THEN** its returned `count` SHALL be checked, and a count of zero where a
+  match was expected SHALL be logged as a clear warning naming the
+  experiment, scanner, and plate index
+- **AND** the returned result SHALL carry those mismatches in a `warnings`
+  field, so a swap SHALL NOT be reported in `swaps[]` alongside
+  `success: true` with no indication that nothing was persisted
+- **AND** `warnings` SHALL be absent when every write matched a row
+- **NOTE**: Prisma does not treat an `updateMany` that matches nothing as an
+  error — it returns `{ count: 0 }`. Discarding that count made "corrected
+  three cycles' worth of scan records" and "wrote nothing at all"
+  indistinguishable in both the return value and the logs.
+
+#### Scenario: A swap correction is atomic per swap pair
+
+- **GIVEN** a detected swap whose correction comprises four writes (two
+  `GraviScanPlateAssignment` updates and two `GraviScan` updates)
+- **WHEN** one of those writes fails part-way through
+- **THEN** all four SHALL be rolled back — no partially-corrected pair SHALL
+  be left in the database
+- **AND** the transactional boundary SHALL be per **swap pair**, not per
+  batch, so a failing pair still SHALL NOT abort the corrections for the
+  other pairs in the same run
+- **AND** the failure SHALL be caught and logged, and the batch SHALL
+  continue
+- **AND** the "swap corrected" audit log line SHALL be emitted only after the
+  transaction commits
+- **NOTE**: without this, a mid-sequence failure left the plate assignment
+  and the scan history disagreeing about which plate sat in that position,
+  with nothing in the data to indicate which one is right.
+
+#### Scenario: experimentId scopes both the plate lookup and every DB write
+
+- **GIVEN** an `experimentId` is passed to `graviscan:verify-plates`
+- **WHEN** looking up which plate a detected QR code belongs to, **and** when
+  persisting swap corrections or the final `verification_status`
+- **THEN** the `GraviPlateSectionMapping` lookup SHALL be scoped to plates
+  whose accession's metadata file is linked to that experiment
+- **AND** every `GraviScanPlateAssignment`/`GraviScan` write SHALL be scoped
+  to `(experimentId, scanner_id, plate_index)` — matching the actual
+  `@@unique([experiment_id, scanner_id, plate_index])` constraint — so a
+  scanner reused across experiments can never have one experiment's
+  verification run overwrite a different experiment's historical data
+  sharing the same scanner and plate position
+
+#### Scenario: Every value that reaches a query scope is validated as a string
+
+- **GIVEN** the `graviscan:verify-plates` IPC payload is untyped at the
+  boundary, so `experimentId` and each plate's `scannerId`, `plateIndex`,
+  `assignedPlateId`, and `imagePath` can be any JavaScript value at runtime
+- **WHEN** verification runs
+- **THEN** each of those values SHALL be validated with an explicit
+  `typeof value === 'string' && value.length > 0` check — a truthiness check
+  SHALL NOT be treated as sufficient
+- **AND** a non-string `experimentId` (a number, an array, `null`, or a
+  Prisma filter object such as `{ not: 'zzz' }`) SHALL fail the whole run
+  before any decode or DB access, at **both** the IPC handler and the top of
+  `verifyPlates()`
+- **AND** a plate whose own fields are not all non-empty strings SHALL be
+  skipped with a logged warning while the rest of the batch is verified
+  normally, matching this module's per-record error isolation
+- **AND** a `plates` payload that is not an array at all SHALL yield an empty
+  result rather than throwing
+- **NOTE**: Prisma silently DROPS a `where` key whose value is `undefined`
+  and accepts a filter _object_ where a scalar was intended. Either shape
+  turns the scoped `updateMany` calls described above into an
+  experiment-wide overwrite of `plate_barcode`, `previous_plate_barcode`, and
+  `verification_status`. The required-`experimentId` guarantee is only real
+  if the _type_ is checked, not just the truthiness.
+
+#### Scenario: A DB write failure for one plate does not abort the batch
+
+- **GIVEN** a batch of multiple plates being verified
+- **WHEN** the DB write for one plate's swap correction or
+  `verification_status` update throws
+- **THEN** that failure SHALL be caught and logged without throwing
+- **AND** processing SHALL continue for the remaining plates in the batch
+
+#### Scenario: imagePath is validated before decoding
+
+- **GIVEN** a plate's `imagePath` resolves (via symlink or `..` traversal)
+  outside the configured scan output directory
+- **WHEN** `graviscan:verify-plates` processes that plate
+- **THEN** the path SHALL be rejected before being passed to the QR decoder,
+  using the same realpath-containment check this repo's `read-scan-image`
+  handler already applies
+- **AND** the rejected plate SHALL be excluded from the decode batch entirely
+  and reported as `unreadable`
+- **AND** the containment check SHALL be a shared, importable helper used by
+  both `read-scan-image` and `graviscan:verify-plates`, not logic duplicated
+  or inlined in a handler closure
+- **AND** a path that merely could not be resolved (the capture has not been
+  written yet, or was moved) SHALL be distinguished from a path that resolved
+  outside the directory: the former is logged as an ordinary skip, only the
+  latter as a containment rejection
+- **AND** an IPC response SHALL nevertheless return the same generic error
+  for both, so it cannot be used to probe whether an arbitrary path exists
+- **AND** the directory to validate against SHALL be supplied to
+  `verifyPlates()` as a parameter by its caller, so the verification module
+  itself acquires no Electron dependency
+
+#### Scenario: Duplicate QR detection is keyed on scanner and plate index together
+
+- **GIVEN** a verification batch spanning more than one scanner
+- **AND** plate indices repeat across scanners (index `00` exists on every
+  scanner)
+- **WHEN** duplicate QR codes are detected
+- **THEN** a QR code SHALL be treated as duplicated only when it appears at
+  two distinct `(scannerId, plateIndex)` positions
+- **AND** a plate whose own QR codes are unique SHALL NOT be flagged
+  `duplicate_qr` merely because a different scanner's plate at the same
+  index was
+- **AND** the same code appearing on two scanners at the same plate index
+  SHALL be detected as a duplicate rather than collapsing into one position
+
+#### Scenario: Swap pairing is keyed on position, and a position joins at most one swap
+
+- **GIVEN** two reciprocal swap pairs in one batch that happen to share the
+  same `assignedPlateId` values (a duplicated assignment, or duplicated
+  `plant_qr -> plate_id` metadata)
+- **WHEN** swaps are detected
+- **THEN** both pairs SHALL be recorded and corrected independently — swap
+  deduplication SHALL be keyed on `(scannerId, plateIndex)`, not on
+  `assignedPlateId`
+- **AND** a position already consumed by one recorded swap SHALL NOT be
+  paired into a second swap
+- **AND** a plate that was not itself part of a recorded swap SHALL NOT be
+  persisted as `swapped` merely because it shares an `assignedPlateId` with
+  one that was
+- **AND** two rows claiming the same `(scannerId, plateIndex)` SHALL NOT be
+  paired with each other — distinctness is by position, not object identity,
+  so a position can never be "swapped" with itself
+
+#### Scenario: An ambiguous swap prefers a same-scanner partner
+
+- **GIVEN** an `incorrect` plate with more than one reciprocal swap candidate
+  in the batch
+- **AND** at least one of those candidates is on the same scanner
+- **WHEN** swaps are detected
+- **THEN** the same-scanner candidate SHALL be paired in preference to a
+  cross-scanner one
+- **AND** a cross-scanner candidate left with no other partner SHALL remain
+  `incorrect` rather than be mis-paired
+- **NOTE**: this tie-break decides which position stays `incorrect` in an
+  ambiguous multi-swap batch. Plates are physically loaded per scanner, so a
+  same-scanner mix-up is by far the likelier explanation. It narrows — but
+  does not eliminate — the influence of input order: pairing is still
+  greedy and first-come, so where three or more positions are mutually
+  reciprocal on the same scanner, which pair forms can still depend on the
+  order the caller submitted them in. The rule guarantees only that a
+  same-scanner candidate is never passed over in favour of a cross-scanner
+  one, not that the batch as a whole resolves order-independently.
+
+#### Scenario: A genuine cross-scanner swap is still detected
+
+- **GIVEN** two plates on **different** scanners that each hold the other's
+  assigned plate
+- **AND** neither has a reciprocal candidate on its own scanner
+- **WHEN** swaps are detected
+- **THEN** the swap SHALL be detected and corrected across the scanner
+  boundary
+- **NOTE**: the same-scanner preference above is a preference, not a
+  restriction — an operator can move a plate between scanners.
+
+#### Scenario: A swap correction records what it corrected from
+
+- **GIVEN** a detected swap is auto-corrected
+- **WHEN** `GraviScanPlateAssignment.plate_barcode` is rewritten for a
+  position
+- **THEN** `previous_plate_barcode` SHALL be set to the pre-correction value
+  in the same write
+- **AND** the provenance of a corrected plate assignment SHALL therefore be a
+  queryable database fact, not something recoverable only from application
+  logs
+
+#### Scenario: Re-running verification on an already-corrected batch is a no-op
+
+- **GIVEN** `graviscan:verify-plates` has already detected and corrected a
+  swap for a session
+- **WHEN** it is invoked again for the same session, with assignments read
+  back from the now-corrected `GraviScanPlateAssignment` rows
+- **THEN** the affected plates SHALL classify as `verified`
+- **AND** no further swap SHALL be detected
+- **AND** no additional `plate_barcode` or `GraviScan` correction write SHALL
+  be issued
+
+#### Scenario: Every per-plate result has the same declared shape
+
+- **GIVEN** any plate in a verification batch, whatever its outcome
+- **WHEN** its result is returned and its `verify-result` progress event is
+  emitted
+- **THEN** the result SHALL declare and carry the `imagePath` it came from,
+  rather than acquiring one only as an undeclared runtime spread
+- **AND** `detectedPlateId` (and the `inconsistentMappings` breakdown) SHALL
+  be reported in the plate id's original database casing — lower-casing SHALL
+  be applied only to the internal comparison, never to the reported value
+- **AND** the plate-id comparison SHALL remain case-insensitive on both sides
+- **AND** the `verify-result` payload SHALL be the complete result object on
+  **every** branch, not a hand-built partial on some of them, so a renderer
+  can rely on the same fields being present regardless of outcome
+
+#### Scenario: Progress events are emitted for a future renderer
+
+- **GIVEN** a main window is available
+- **WHEN** `graviscan:verify-plates` starts, produces a per-plate result, and
+  completes
+- **THEN** `graviscan:verify-started`, `graviscan:verify-result`, and
+  `graviscan:verify-complete` events SHALL be sent to the renderer via
+  `webContents.send`
+- **AND** the handler SHALL function correctly even when no renderer listens
+  for these events
+
+#### Scenario: Verification must complete before upload reads plate_barcode (documented, NOT enforced by this change)
+
+- **GIVEN** a scan session has completed and `graviscan:verify-plates` has
+  been invoked for it
+- **WHEN** a future renderer/orchestration layer sequences post-session work
+- **THEN** `graviscan:verify-plates` results SHALL be fully persisted before
+  `graviscan:upload-all-scans` reads `plate_barcode` for the same session,
+  so swap corrections are reflected in both the Bloom (Supabase) and Box
+  uploads
+- **NOTE**: **Nothing in this change enforces this ordering, and no code in
+  this change implements it.** `main` has no renderer, and
+  `graviscan:upload-all-scans` neither knows nor asks whether verification
+  has run. This scenario exists so the ordering constraint is not silently
+  lost between now and whenever that orchestration is built; it is a
+  requirement on that future work, not a claim about current behavior.
+
+#### Scenario: verification_status does not gate uploads (documented, deferred to a separate proposal)
+
+- **GIVEN** a plate whose persisted `verification_status` is `incorrect`,
+  `unreadable`, `needs_review`, or `duplicate_qr`
+- **WHEN** `graviscan:upload-all-scans` runs for that session
+- **THEN** the scan SHALL currently be uploaded to Bloom (Supabase) and Box
+  regardless of its verification outcome — **this change adds no gating**
+- **AND** a future change SHALL decide, as an explicit product decision,
+  which statuses block an upload, which merely warn, and whether an operator
+  can override
+- **NOTE**: deferred deliberately. Choosing severity thresholds and
+  warn-vs-block behavior is a product decision with operator-workflow
+  consequences (a blocked upload on a rig mid-experiment is disruptive), and
+  it needs the renderer surface that does not exist on `main` yet. Recording
+  it here so the gap is a known, tracked one rather than an oversight: today
+  a misidentified plate's data reaches both destinations with no barrier.
+
+### Requirement: QR Code Reading from Scan Images
+
+The system SHALL provide a `readQrCodesBatch(imagePaths)` function that
+decodes QR codes for a whole batch of scan images in a **single** Python
+subprocess invocation (`python/graviscan/qr_reader.py`, using OpenCV's
+`QRCodeDetector.detectAndDecodeMulti()`), rather than decoding in-process via
+a Node WebAssembly dependency. A `readQrCodes(imagePath)` single-image
+convenience wrapper SHALL also be provided. Both SHALL support multiple QR
+codes detected within a single image.
+
+#### Scenario: A whole verification batch costs one subprocess spawn
+
+- **GIVEN** a verification batch of N plate images
+- **WHEN** the QR codes for that batch are read
+- **THEN** exactly ONE decode subprocess SHALL be spawned, not one per image
+- **AND** the result SHALL contain exactly one entry per requested path, in
+  the requested order
+- **AND** results SHALL be attributed back to plates by path, never by array
+  position
+- **NOTE**: the one-shot-subprocess design is only justified because the
+  spawn cost is paid once per completed scan session. Spawning per image
+  would invalidate that rationale.
+
+#### Scenario: Image file does not exist
+
+- **GIVEN** `imagePath` does not exist on disk
+- **WHEN** `readQrCodes(imagePath)` is called
+- **THEN** it SHALL return an empty array without throwing
+
+#### Scenario: Multiple QR codes in one image are all detected
+
+- **GIVEN** a single scan image contains more than one QR code (e.g. from
+  adjacent plates bleeding into frame)
+- **WHEN** `readQrCodes(imagePath)` is called
+- **THEN** it SHALL return all detected codes, not just the first
+
+#### Scenario: Subprocess failure is handled gracefully
+
+- **GIVEN** the Python subprocess fails to spawn, exits non-zero, or returns
+  malformed output
+- **WHEN** `readQrCodes(imagePath)` is called
+- **THEN** the error SHALL be caught and logged
+- **AND** the function SHALL return an empty array rather than rejecting
+
+#### Scenario: A native decoder crash is isolated to the image that caused it
+
+- **GIVEN** a batch of more than one image
+- **AND** the decode subprocess exits non-zero (the signature of a native
+  crash inside OpenCV's decoder on a corrupt or hostile image)
+- **WHEN** `readQrCodesBatch(imagePaths)` handles that failure
+- **THEN** each image SHALL be retried in its own subprocess
+- **AND** images that decode successfully on retry SHALL return their codes
+- **AND** only the image that keeps failing SHALL return empty codes
+- **NOTE**: without this, one bad image blanks the codes for every plate in
+  the session and `graviscan:verify-plates` reports them all `unreadable`,
+  indistinguishable from genuinely blank QR codes.
+
+#### Scenario: Non-ASCII image paths survive the subprocess pipe
+
+- **GIVEN** an image path containing non-ASCII characters
+- **WHEN** it is sent to the decode subprocess and echoed back in the
+  response
+- **THEN** UTF-8 SHALL be set explicitly on both the Node side (subprocess
+  environment) and the Python side (stdin/stdout/stderr reconfiguration),
+  rather than relying on the platform's locale codepage
+
+#### Scenario: A non-ASCII image path is still decodable
+
+- **GIVEN** a scan image whose filesystem path contains non-ASCII characters
+- **WHEN** the decoder opens it
+- **THEN** the file SHALL be read by Python and handed to OpenCV as an
+  in-memory buffer (`cv2.imdecode`), not opened by OpenCV itself
+  (`cv2.imread`)
+- **AND** the QR codes SHALL be decoded normally
+- **NOTE**: `cv2.imread` takes a `const char*` and on Windows passes it to
+  the ANSI file API, so a non-ASCII path silently fails to open and the plate
+  is misclassified `unreadable`. Found by running the actual PyInstaller
+  build against a non-ASCII path, not by unit tests.
+
+### Requirement: GraviScanPlateAssignment Verification Status Field
+
+The `GraviScanPlateAssignment` Prisma model SHALL include a
+`verification_status` string field, defaulting to `"pending"`, to record the
+outcome of the most recent `graviscan:verify-plates` run for that
+scanner/plate-index assignment. Valid values SHALL include `pending`,
+`verified`, `incorrect`, `unreadable`, `needs_review`, `duplicate_qr`,
+`swapped`, and `lookup_failed`.
+
+The model SHALL also include a nullable `previous_plate_barcode` string
+field, recording the `plate_barcode` value a swap auto-correction replaced.
+
+#### Scenario: New plate assignment defaults to pending
+
+- **GIVEN** a new `GraviScanPlateAssignment` row is created without an
+  explicit `verification_status`
+- **WHEN** the row is read back
+- **THEN** `verification_status` SHALL be `"pending"`
+
+#### Scenario: previous_plate_barcode is null until a correction happens
+
+- **GIVEN** a `GraviScanPlateAssignment` row that has never been
+  swap-corrected
+- **WHEN** the row is read back
+- **THEN** `previous_plate_barcode` SHALL be null
+
+### Requirement: Coordinator Scanner Status Query API
+
+The `ScanCoordinator` class SHALL expose a `getScannerStatuses()` method
+that returns the current status of every managed scanner subprocess,
+merging live subprocess state with recorded initialization failures.
+
+- `getScannerStatuses(): Array<{ scannerId: string; status: 'ready' |
+'starting' | 'error' | 'dead'; error?: string }>`
+- For each entry currently in the subprocess map: `status` SHALL be
+  `'ready'` if the subprocess is in the ready state, `'starting'` if it is
+  alive but not yet ready, or `'dead'` otherwise.
+- For each `scannerId` recorded in the internal `initErrors` map that is
+  NOT currently in the subprocess map (i.e. the spawn failed and the entry
+  was removed), an entry with `status: 'error'` and the recorded failure
+  message SHALL be included.
+- A `scannerId` present in the subprocess map SHALL NOT also produce a
+  duplicate `'error'` entry from `initErrors`, even if a stale entry exists
+  for that id.
+
+`initialize()` SHALL clear the `initErrors` map at the start of the
+method, before repopulating it, so a scanner that failed to initialize
+once and later succeeds does not keep reporting a stale `'error'` status
+forever.
+
+#### Scenario: Reports ready and error statuses together
+
+- **GIVEN** a `ScanCoordinator` has one scanner (`A`) that spawned
+  successfully and one scanner (`B`) whose spawn failed with message
+  `"SANE device not found"`
+- **WHEN** `getScannerStatuses()` is called
+- **THEN** the result SHALL include `{ scannerId: 'A', status: 'ready' }`
+- **AND** SHALL include `{ scannerId: 'B', status: 'error', error: 'SANE
+device not found' }`
+
+#### Scenario: Stale error clears after a later successful initialize()
+
+- **GIVEN** `initialize([A])` was called once and `A`'s spawn failed,
+  so `getScannerStatuses()` reports `{ scannerId: 'A', status: 'error' }`
+- **WHEN** `initialize([A])` is called again and this time `A` spawns
+  successfully
+- **THEN** `getScannerStatuses()` SHALL report only
+  `{ scannerId: 'A', status: 'ready' }`, with no lingering `'error'` entry
+
+#### Scenario: No subprocesses and no init errors
+
+- **GIVEN** a freshly-constructed `ScanCoordinator` that has never been
+  initialized
+- **WHEN** `getScannerStatuses()` is called
+- **THEN** the result SHALL be an empty array
+
+### Requirement: GraviScan Scanner Status IPC
+
+The system SHALL provide a `graviscan:get-scanner-status` IPC handler,
+backed by `getScannerStatus(coordinator, db)` in
+`src/main/graviscan/scanner-handlers.ts`, that merges live coordinator
+subprocess status with saved, enabled `GraviScanner` database rows so the
+renderer can show per-scanner status on page mount — including scanners
+that are configured but currently disconnected.
+
+- For each enabled `GraviScanner` row (ordered by `createdAt` ascending),
+  the response SHALL include `scannerId`, `displayName` (the row's
+  `display_name`, falling back to `name` when not set), `usbPort`,
+  `gridMode`, `status`, and `error` (when applicable).
+- `status` SHALL be the matching entry from
+  `coordinator.getScannerStatuses()` when one exists for that
+  `scannerId`, or `'disconnected'` when no live subprocess status exists
+  for it (including when `coordinator` is `null`, e.g. before any scan has
+  ever started).
+- **Deviation from production**: production's equivalent handler reads
+  `grid_mode` directly off the per-scanner `GraviScanner` database row.
+  `main`'s `GraviScanner` Prisma model has no `grid_mode` column (it exists
+  only on `GraviScan`, a per-scan record, and `GraviConfig`, a global
+  singleton config row) — see `design.md` for the rationale. This handler
+  SHALL instead query the `GraviConfig` singleton once per call and apply
+  its `grid_mode` value uniformly to every scanner in the response,
+  defaulting to `'2grid'` when no `GraviConfig` row exists yet.
+- On a database error, the handler SHALL return
+  `{ success: false, scanners: [], error: <message> }` rather than
+  throwing.
+
+#### Scenario: Merges live status onto saved scanner rows
+
+- **GIVEN** an enabled `GraviScanner` row with id `s1`
+- **AND** `coordinator.getScannerStatuses()` returns
+  `[{ scannerId: 's1', status: 'ready' }]`
+- **WHEN** `graviscan:get-scanner-status` is invoked
+- **THEN** the response SHALL include a scanner entry for `s1` with
+  `status: 'ready'`
+
+#### Scenario: Reports disconnected for a saved scanner with no live subprocess
+
+- **GIVEN** an enabled `GraviScanner` row with id `s1`
+- **AND** the coordinator (or a `null` coordinator) reports no status for
+  `s1`
+- **WHEN** `graviscan:get-scanner-status` is invoked
+- **THEN** the response SHALL include a scanner entry for `s1` with
+  `status: 'disconnected'`
+
+#### Scenario: gridMode is sourced from the GraviConfig singleton, not per-row
+
+- **GIVEN** two enabled `GraviScanner` rows and a `GraviConfig` singleton
+  row with `grid_mode: '4grid'`
+- **WHEN** `graviscan:get-scanner-status` is invoked
+- **THEN** every scanner entry in the response SHALL have
+  `gridMode: '4grid'`
+- **AND** the `GraviConfig` table SHALL be queried exactly once regardless
+  of scanner count
+
+### Requirement: GraviScan Scan File Listing and Directory Creation
+
+The system SHALL provide `graviscan:list-scan-files` and
+`graviscan:ensure-dir` IPC handlers, backed by pure functions in
+`src/main/graviscan/image-handlers.ts`, so the renderer can browse
+previously-captured scan images and pre-create a session's output
+directory before a scan cycle begins.
+
+- `listScanFiles(dirPath?: string): { success: boolean; files:
+Array<{ name, path, size, modifiedAt, folder }>; error?: string }`
+  - When `dirPath` is omitted, the system SHALL resolve the default scan
+    output directory and recurse one level into each of its subfolders
+    (each subfolder treated as an experiment/session folder).
+  - When `dirPath` is given, the system SHALL list image files directly
+    inside that directory only (no recursion).
+  - Only files with extension `.tif`, `.tiff`, `.png`, `.jpg`, or `.jpeg`
+    SHALL be included.
+  - Results SHALL be sorted by modification time, newest first.
+  - If the resolved directory does not exist, the system SHALL return
+    `{ success: true, files: [] }` rather than an error.
+- `ensureDir(dirPath: string): Promise<{ success: boolean; path?: string;
+error?: string }>`
+  - SHALL create the directory recursively (`fs.promises.mkdir(dirPath,
+{ recursive: true })`) and SHALL be idempotent — a call for an
+    already-existing directory SHALL still report success.
+  - SHALL return `{ success: false, error: 'dirPath is required' }` when
+    `dirPath` is missing or not a string, without attempting to create
+    anything.
+
+Both IPC handlers SHALL confine a caller-supplied path to the scan output
+directory before touching the filesystem, applying the same
+`fs.realpathSync`-based containment check the existing
+`graviscan:read-scan-image` handler uses — symlinks resolved on both
+sides, so a symlink inside the output directory cannot be used to escape
+it. `ensure-dir` calls `mkdir` recursively and `list-scan-files` calls
+`readdirSync`/`statSync`, so an unvalidated path would let a caller create
+directory trees, or enumerate files, anywhere the app user can reach.
+
+- A path that resolves outside the scan output directory SHALL be rejected
+  with error `Path outside scan directory`, and the underlying
+  `image-handlers.ts` function SHALL NOT be called.
+- Because both handlers legitimately act on a directory that does not exist
+  yet (`ensure-dir` creates it; `list-scan-files` reports an empty list for
+  it), containment SHALL be judged against the deepest ancestor of the path
+  that does exist, with the not-yet-existing tail re-appended to the
+  resolved ancestor. A contained-but-missing path SHALL therefore still be
+  accepted, preserving both documented contracts.
+- The validated, resolved path SHALL be the one passed downstream, not the
+  caller's original string.
+- When the scan output directory cannot be resolved at all, the handler
+  SHALL reject with error
+  `Cannot determine scan directory for path validation`.
+- `graviscan:list-scan-files` invoked with no `dirPath` (base-dir mode) has
+  no untrusted path to validate and SHALL delegate directly.
+
+#### Scenario: Lists image files in a given session directory
+
+- **GIVEN** a directory containing `scan_00.tif`, `scan_01.png`, and
+  `notes.txt`
+- **WHEN** `listScanFiles(dirPath)` is called with that directory
+- **THEN** the result SHALL include `scan_00.tif` and `scan_01.png`
+- **AND** SHALL NOT include `notes.txt`
+
+#### Scenario: Recurses into subfolders when no dirPath is given
+
+- **GIVEN** the default output directory contains a subfolder `exp1` with
+  an image file inside it
+- **WHEN** `listScanFiles()` is called with no arguments
+- **THEN** the result SHALL include that image file with `folder: 'exp1'`
+
+#### Scenario: Creates a directory recursively and is idempotent
+
+- **GIVEN** a session directory path that does not yet exist
+- **WHEN** `ensureDir(dirPath)` is called
+- **THEN** the directory (and any missing parent directories) SHALL be
+  created
+- **AND** a second call with the same `dirPath` SHALL still return
+  `{ success: true, path: dirPath }`
+
+#### Scenario: Rejects an ensure-dir path outside the scan output directory
+
+- **GIVEN** a resolvable scan output directory
+- **WHEN** `graviscan:ensure-dir` is invoked with a path that resolves
+  outside it — whether directly, via `..` traversal, or via a symlink
+  inside the output directory pointing elsewhere
+- **THEN** the handler SHALL return
+  `{ success: false, error: 'Path outside scan directory' }`
+- **AND** SHALL NOT call `ensureDir()` / `mkdir`
+
+#### Scenario: Rejects a list-scan-files path outside the scan output directory
+
+- **GIVEN** a resolvable scan output directory
+- **WHEN** `graviscan:list-scan-files` is invoked with a `dirPath` that
+  resolves outside it — whether directly, via `..` traversal, or via a
+  symlink inside the output directory pointing elsewhere
+- **THEN** the handler SHALL return
+  `{ success: false, files: [], error: 'Path outside scan directory' }`
+- **AND** SHALL NOT call `listScanFiles()` / `readdirSync`
+
+#### Scenario: Accepts a contained path that does not exist yet
+
+- **GIVEN** a path inside the scan output directory whose final segment does
+  not exist on disk
+- **WHEN** `graviscan:ensure-dir` or `graviscan:list-scan-files` is invoked
+  with it
+- **THEN** containment SHALL be judged against its deepest existing
+  ancestor and the path SHALL be accepted
+- **AND** the resolved path SHALL be passed to the underlying
+  `image-handlers.ts` function
