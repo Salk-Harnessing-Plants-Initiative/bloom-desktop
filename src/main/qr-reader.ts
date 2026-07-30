@@ -1,74 +1,239 @@
 /**
  * QR Code Reader
  *
- * Reads QR/barcodes from scan images using sharp + @undecaf/zbar-wasm.
- * Runs in the main process (Node.js), no Python dependency needed.
+ * Decodes QR/barcodes from scan images by shelling out to the bundled Python
+ * executable's `--decode-qr-batch` mode (OpenCV `cv2.QRCodeDetector`), rather
+ * than decoding in-process with a Node/WASM zbar binding. See
+ * docs/superpowers/specs/2026-07-29-verify-plates-qr-decode-design.md for the
+ * rationale (WASM asset was never copied into the webpack build, and the
+ * binding is LGPL in an otherwise BSD-2-Clause app).
  *
- * Uses a sequential queue to avoid memory spikes from concurrent
- * sharp decodes (same pattern as the image preview handler).
+ * The whole point of the one-shot-subprocess design is that a verification
+ * batch costs ONE spawn, not one per image — callers should prefer
+ * `readQrCodesBatch()` and only reach for `readQrCodes()` for genuinely
+ * single-image cases.
+ *
+ * Wire protocol (mirrored by `python/main.py::decode_qr_batch_mode`):
+ *   stdin  <- JSON array of image paths (avoids Windows argv length limits)
+ *   stdout -> JSON array of `{ path, codes }`, one entry per input path
+ *   stderr -> diagnostics only
  *
  * Usage:
+ *   const results = await readQrCodesBatch(['/path/a.tif', '/path/b.tif']);
  *   const codes = await readQrCodes('/path/to/scan.tif');
- *   // ['COL-0_Wave_4_Plate_13_S1_PC22_0.1uM', ...]
  */
 
-import sharp from 'sharp';
-import * as fs from 'fs';
+import { spawn } from 'child_process';
 import * as path from 'path';
+import { getPythonExecutablePath } from './python-paths';
 
-// Sequential queue — prevents concurrent sharp decodes from crashing on Linux
-let qrReadQueue: Promise<unknown> = Promise.resolve();
+/** One decode result, always present for every requested path. */
+export type QrCodeResult = {
+  path: string;
+  codes: string[];
+};
 
 /**
- * Read QR codes from a scan image file.
- *
- * Resizes to 2000px max dimension for faster/reliable QR detection.
- * The original scan image on disk is not modified.
- *
- * @param imagePath - Path to TIFF/PNG/JPEG scan image
- * @returns Array of decoded QR code strings, or empty array if none found/error
+ * Sequential queue — only one decode subprocess runs at a time. Decoding a
+ * full-resolution TIFF is memory-hungry; concurrent batches from overlapping
+ * callers would multiply that.
  */
-export async function readQrCodes(imagePath: string): Promise<string[]> {
-  const result = await (qrReadQueue = qrReadQueue.then(async () => {
+let qrReadQueue: Promise<unknown> = Promise.resolve();
+
+type SpawnOutcome =
+  /** Subprocess exited 0 and produced parseable JSON. */
+  | { kind: 'ok'; results: unknown[] }
+  /**
+   * Subprocess exited non-zero. This is the signature of a native crash
+   * inside the OpenCV decoder (a corrupt or hostile image can take the whole
+   * interpreter down), so it is distinguished from a plain protocol failure:
+   * the caller retries the images individually to isolate the bad one.
+   */
+  | { kind: 'crashed' }
+  /** Could not spawn, or exited 0 with unparseable output. Not retryable. */
+  | { kind: 'failed' };
+
+/**
+ * Run one `--decode-qr-batch` subprocess. Never rejects.
+ */
+function runDecodeSubprocess(imagePaths: string[]): Promise<SpawnOutcome> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (outcome: SpawnOutcome) => {
+      if (settled) return;
+      settled = true;
+      resolve(outcome);
+    };
+
+    const executable = getPythonExecutablePath();
+
+    let proc;
     try {
-      if (!fs.existsSync(imagePath)) {
-        console.warn(`[QR Reader] Image not found: ${imagePath}`);
-        return [];
-      }
-
-      // Load image at full resolution for reliable QR detection
-      const { data, info } = await sharp(imagePath)
-        .ensureAlpha()
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-
-      // Import zbar-wasm dynamically (ESM module)
-      const { scanImageData } = await import('@undecaf/zbar-wasm');
-
-      // Create ImageData-like object for zbar
-      const imageData = {
-        data: new Uint8ClampedArray(data),
-        width: info.width,
-        height: info.height,
-        colorSpace: 'srgb' as PredefinedColorSpace,
-      };
-
-      const symbols = await scanImageData(imageData as ImageData);
-      const codes = symbols.map((s) => s.decode());
-
-      console.log(
-        `[QR Reader] ${codes.length} code(s) from ${path.basename(imagePath)}`
-      );
-
-      return codes;
+      proc = spawn(executable, ['--decode-qr-batch'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        // Force UTF-8 on the Python side of the pipe. Without this, Windows
+        // Python decodes stdin (and encodes stdout) using the locale codepage
+        // — a non-ASCII character anywhere in an image path would corrupt the
+        // request or the response.
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+      });
     } catch (error) {
       console.error(
-        `[QR Reader] Error reading ${path.basename(imagePath)}:`,
+        '[QR Reader] Failed to spawn QR decode subprocess:',
         error instanceof Error ? error.message : error
       );
-      return [];
+      settle({ kind: 'failed' });
+      return;
     }
-  }));
 
-  return result as string[];
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout?.on('data', (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+    proc.stderr?.on('data', (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on('error', (error: Error) => {
+      console.error(
+        '[QR Reader] QR decode subprocess error:',
+        error instanceof Error ? error.message : error
+      );
+      settle({ kind: 'failed' });
+    });
+
+    proc.on('close', (code: number | null) => {
+      if (code !== 0) {
+        console.error(
+          `[QR Reader] QR decode subprocess exited with code ${code}` +
+            (stderr.trim() ? `: ${stderr.trim()}` : '')
+        );
+        settle({ kind: 'crashed' });
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(stdout);
+        if (!Array.isArray(parsed)) {
+          throw new Error(
+            `expected a JSON array, got ${typeof parsed} from --decode-qr-batch`
+          );
+        }
+        settle({ kind: 'ok', results: parsed });
+      } catch (error) {
+        console.error(
+          '[QR Reader] Could not parse QR decode subprocess output:',
+          error instanceof Error ? error.message : error
+        );
+        settle({ kind: 'failed' });
+      }
+    });
+
+    try {
+      // Node writes strings to a pipe as UTF-8 by default; the subprocess env
+      // above makes Python read them the same way.
+      proc.stdin?.write(JSON.stringify(imagePaths));
+      proc.stdin?.end();
+    } catch (error) {
+      console.error(
+        '[QR Reader] Failed to write image paths to subprocess stdin:',
+        error instanceof Error ? error.message : error
+      );
+      settle({ kind: 'failed' });
+    }
+  });
+}
+
+/**
+ * Project the subprocess response back onto the requested paths, so callers
+ * always get exactly one entry per input, in input order. A path the
+ * subprocess omitted (or reported malformed) yields empty codes.
+ */
+function alignResults(
+  imagePaths: string[],
+  rawResults: unknown[]
+): QrCodeResult[] {
+  const byPath = new Map<string, string[]>();
+
+  for (const entry of rawResults) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as { path?: unknown; codes?: unknown };
+    if (typeof record.path !== 'string' || !Array.isArray(record.codes)) {
+      continue;
+    }
+    byPath.set(
+      record.path,
+      record.codes.filter((code): code is string => typeof code === 'string')
+    );
+  }
+
+  return imagePaths.map((imagePath) => {
+    const codes: string[] = byPath.get(imagePath) ?? [];
+    return { path: imagePath, codes };
+  });
+}
+
+/**
+ * Decode one batch, isolating a native decoder crash to the image that caused
+ * it instead of blanking the whole batch.
+ */
+async function decodeBatch(imagePaths: string[]): Promise<QrCodeResult[]> {
+  const outcome = await runDecodeSubprocess(imagePaths);
+
+  if (outcome.kind === 'ok') {
+    const aligned = alignResults(imagePaths, outcome.results);
+    const total = aligned.reduce((sum, r) => sum + r.codes.length, 0);
+    console.log(
+      `[QR Reader] ${total} code(s) across ${aligned.length} image(s): ` +
+        aligned
+          .map((r) => `${path.basename(r.path)}=${r.codes.length}`)
+          .join(', ')
+    );
+    return aligned;
+  }
+
+  return emptyResults(imagePaths);
+}
+
+/** One `{ path, codes: [] }` entry per requested path. */
+function emptyResults(imagePaths: string[]): QrCodeResult[] {
+  return imagePaths.map((imagePath) => {
+    const codes: string[] = [];
+    return { path: imagePath, codes };
+  });
+}
+
+/**
+ * Read QR codes from a batch of scan images in a single subprocess spawn.
+ *
+ * @param imagePaths - Paths to TIFF/PNG/JPEG scan images
+ * @returns One `{ path, codes }` entry per input path, in input order. Never
+ *          rejects: any failure yields empty `codes` for the affected paths.
+ */
+export async function readQrCodesBatch(
+  imagePaths: string[]
+): Promise<QrCodeResult[]> {
+  if (imagePaths.length === 0) return [];
+
+  const result = await (qrReadQueue = qrReadQueue.then(() =>
+    decodeBatch(imagePaths)
+  ));
+
+  return result as QrCodeResult[];
+}
+
+/**
+ * Read QR codes from a single scan image.
+ *
+ * Convenience wrapper over `readQrCodesBatch()`. Prefer the batch form when
+ * decoding more than one image — each call here costs its own subprocess.
+ *
+ * @param imagePath - Path to a TIFF/PNG/JPEG scan image
+ * @returns Decoded QR code strings, or an empty array if none found/on error
+ */
+export async function readQrCodes(imagePath: string): Promise<string[]> {
+  const [result] = await readQrCodesBatch([imagePath]);
+  return result ? result.codes : [];
 }

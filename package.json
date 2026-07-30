@@ -110,7 +110,6 @@
     "@salk-hpi/bloom-js": "^0.2.0",
     "@supabase/supabase-js": "^2.93.1",
     "@types/node": "^20.11.20",
-    "@undecaf/zbar-wasm": "^0.11.0",
     "electron-squirrel-startup": "^1.0.0",
     "prisma": "^6.18.0",
     "react": "^18.3.1",
