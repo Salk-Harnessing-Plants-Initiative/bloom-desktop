@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: GraviScan Database Handlers — graviscans.*
+### Requirement: GraviScan Database Handlers — graviscans.\*
 
 The system SHALL provide `database.graviscans.*` IPC handlers in `src/main/database-handlers.ts` (`create`, `getMaxWaveNumber`, `checkBarcodeUniqueInWave`, `updateGridTimestamps`, `browseByExperiment`, `experimentDetail`), following the existing `db:{model}:{action}` naming convention and `DatabaseResponse` return shape used by every other handler in that file. Every handler that accepts an `experiment_id` (directly or via an id that resolves to one) SHALL scope its query or write to that `experiment_id` — no handler SHALL read or write `GraviScan` rows belonging to a different experiment than the one identified in its arguments, except `browseByExperiment`, which is deliberately cross-experiment by design (a listing view). A future caller (Tier 4/5) writing `GraviScan.resolution` from a completed scan MUST source it from that scan's `achieved_resolution` (the field added by the "GraviScan Scan-Worker Achieved-Resolution Readback" requirement below, threaded through the `scan-complete` event payload) rather than the pre-scan requested value `create` persisted — otherwise the #232 fix never reaches the queryable database record.
 
@@ -51,7 +51,7 @@ The system SHALL provide `database.graviscans.*` IPC handlers in `src/main/datab
 - **THEN** the returned `scans` and `verificationStatusMap` SHALL include only rows belonging to the requested experiment
 - **AND** SHALL return an error result (not throw) when `experimentId` does not exist
 
-### Requirement: GraviScan Database Handlers — graviscanSessions.*
+### Requirement: GraviScan Database Handlers — graviscanSessions.\*
 
 The system SHALL provide `database.graviscanSessions.*` IPC handlers (`create`, `complete`) in `src/main/database-handlers.ts`, following the existing convention.
 
@@ -75,7 +75,7 @@ The system SHALL provide `database.graviscanSessions.*` IPC handlers (`create`, 
 - **THEN** the handler SHALL return `{success: false, error: <message>}`
 - **AND** SHALL NOT throw an unhandled error across the IPC boundary
 
-### Requirement: GraviScan Database Handlers — graviscanPlateAssignments.*
+### Requirement: GraviScan Database Handlers — graviscanPlateAssignments.\*
 
 The system SHALL provide `database.graviscanPlateAssignments.*` IPC handlers (`list`, `upsertMany`) in `src/main/database-handlers.ts`, following the existing convention. `upsertMany` SHALL perform all writes inside a single `db.$transaction` so a partial failure leaves no partial state.
 
@@ -98,7 +98,7 @@ The system SHALL provide `database.graviscanPlateAssignments.*` IPC handlers (`l
 - **THEN** none of the batch's rows SHALL be persisted (the whole transaction rolls back)
 - **AND** the handler SHALL return `{success: false, error: <message>}`
 
-### Requirement: GraviScan Database Handlers — graviPlateAccessions.*
+### Requirement: GraviScan Database Handlers — graviPlateAccessions.\*
 
 The system SHALL provide `database.graviPlateAccessions.*` IPC handlers (`createWithSections`, `list`, `listFiles`, `delete`) in `src/main/database-handlers.ts`, following the existing convention. `createWithSections` and `delete` SHALL perform all writes inside a single `db.$transaction`. `listFiles` accepts no filesystem path argument — it queries `Accessions` rows with linked `GraviPlateAccession` children, not a directory listing.
 

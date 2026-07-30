@@ -47,7 +47,7 @@ Two tracked issues motivate the specific scope:
 - Add `getScannerStatus` to the `graviAPI` object in `src/main/preload.ts`
   and to the `GraviAPI` interface in `src/types/electron.d.ts` — the one
   preload-wiring gap left from the backend port (the `graviscan:get-scanner-
-  status` `ipcMain.handle` already exists and is already tested).
+status` `ipcMain.handle` already exists and is already tested).
 - Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts` from
   `[200,400,600,800,1200,1600,3200,6400]` to `[200,400,600,800,1200,1600]`,
   implementing the already-accepted "DPI Dropdown Restricted to Validated

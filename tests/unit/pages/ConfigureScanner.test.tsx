@@ -117,7 +117,9 @@ describe('ConfigureScanner page', () => {
     await waitFor(() => {
       expect(screen.getByText('Scanner 1')).toBeInTheDocument();
     });
-    expect(screen.getByRole('button', { name: /detect scanners/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /detect scanners/i })
+    ).toBeInTheDocument();
   });
 
   it('round-trips a valid persisted GraviConfig into the resolution and grid-mode selects on mount', async () => {
@@ -128,9 +130,9 @@ describe('ConfigureScanner page', () => {
         screen.getByLabelText(/resolution/i) as HTMLSelectElement
       ).toHaveValue('600');
     });
-    expect(screen.getByLabelText(/grid mode/i) as HTMLSelectElement).toHaveValue(
-      '4grid'
-    );
+    expect(
+      screen.getByLabelText(/grid mode/i) as HTMLSelectElement
+    ).toHaveValue('4grid');
   });
 
   it('clicking "Detect Scanners" calls detectScanners() then saveScannersToDB() then re-calls getScannerStatus()', async () => {
@@ -182,7 +184,12 @@ describe('ConfigureScanner page', () => {
   it('surfaces a saveScannersToDB() failure inline', async () => {
     mockGraviAPI.saveScannersToDB.mockResolvedValue({
       success: true,
-      data: { success: false, error: 'db write failed', scanners: [], disabled: [] },
+      data: {
+        success: false,
+        error: 'db write failed',
+        scanners: [],
+        disabled: [],
+      },
     });
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
@@ -197,7 +204,12 @@ describe('ConfigureScanner page', () => {
   it('leaves the previously-displayed scanner list unchanged on a saveScannersToDB() failure', async () => {
     mockGraviAPI.saveScannersToDB.mockResolvedValue({
       success: true,
-      data: { success: false, error: 'db write failed', scanners: [], disabled: [] },
+      data: {
+        success: false,
+        error: 'db write failed',
+        scanners: [],
+        disabled: [],
+      },
     });
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
@@ -236,9 +248,9 @@ describe('ConfigureScanner page', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
-    expect(
-      mockGraviAPI.getScannerStatus.mock.calls.length
-    ).toBeGreaterThan(callsAfterMount);
+    expect(mockGraviAPI.getScannerStatus.mock.calls.length).toBeGreaterThan(
+      callsAfterMount
+    );
 
     // Now report no rows starting — polling should stop.
     mockGraviAPI.getScannerStatus.mockResolvedValue({
@@ -425,7 +437,11 @@ describe('ConfigureScanner page', () => {
       success: true,
       scanners: [
         makeScannerRow({ scannerId: 's-err', status: 'error' }),
-        makeScannerRow({ scannerId: 's-dead', displayName: 'Scanner 2', status: 'dead' }),
+        makeScannerRow({
+          scannerId: 's-dead',
+          displayName: 'Scanner 2',
+          status: 'dead',
+        }),
         makeScannerRow({
           scannerId: 's-disc',
           displayName: 'Scanner 3',
@@ -489,9 +505,9 @@ describe('ConfigureScanner page', () => {
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
     const banner = screen.getByTestId('graviscan-env-banner');
-    expect(
-      within(banner).getAllByText(/not configured|disabled/i).length
-    ).toBe(2);
+    expect(within(banner).getAllByText(/not configured|disabled/i).length).toBe(
+      2
+    );
   });
 
   it('visually distinguishes the mixed env-banner state (slack missing, libusb enabled)', async () => {
@@ -502,9 +518,9 @@ describe('ConfigureScanner page', () => {
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
     const banner = screen.getByTestId('graviscan-env-banner');
-    expect(
-      within(banner).getAllByText(/not configured|disabled/i).length
-    ).toBe(1);
+    expect(within(banner).getAllByText(/not configured|disabled/i).length).toBe(
+      1
+    );
   });
 
   it('visually distinguishes the inverse mixed env-banner state (slack configured, libusb disabled)', async () => {
@@ -515,8 +531,8 @@ describe('ConfigureScanner page', () => {
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
     const banner = screen.getByTestId('graviscan-env-banner');
-    expect(
-      within(banner).getAllByText(/not configured|disabled/i).length
-    ).toBe(1);
+    expect(within(banner).getAllByText(/not configured|disabled/i).length).toBe(
+      1
+    );
   });
 });

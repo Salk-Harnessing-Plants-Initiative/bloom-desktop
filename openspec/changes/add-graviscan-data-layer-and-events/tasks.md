@@ -14,7 +14,7 @@
 - [ ] 2.6 Implement `graviscans.getMaxWaveNumber` to pass 2.4–2.5.
 - [ ] 2.7 Write failing test: `checkBarcodeUniqueInWave` returns `isDuplicate: true` when the exact barcode already exists in the same `(experiment_id, wave_number)` with `deleted: false`.
 - [ ] 2.8 Write failing test: `checkBarcodeUniqueInWave` treats `"ABC123"` and `"abc123"` as the same barcode within the same wave (case-insensitivity — see `design.md` Decision 4). Also assert leading/trailing whitespace variance (`" ABC123 "` vs `"ABC123"`) is treated as duplicate.
-- [ ] 2.9 Write failing test: `checkBarcodeUniqueInWave` does NOT flag a duplicate when the matching barcode exists in a *different* experiment or a *different* wave_number of the same experiment (cross-experiment / cross-wave scoping probe).
+- [ ] 2.9 Write failing test: `checkBarcodeUniqueInWave` does NOT flag a duplicate when the matching barcode exists in a _different_ experiment or a _different_ wave_number of the same experiment (cross-experiment / cross-wave scoping probe).
 - [ ] 2.10 Write failing test: `checkBarcodeUniqueInWave` ignores rows where `deleted: true`.
 - [ ] 2.11 Implement `checkBarcodeUniqueInWave` (case-insensitive comparison in application code, not a SQLite `mode: 'insensitive'` filter — unsupported on this datasource) to pass 2.7–2.10.
 - [ ] 2.12 Write failing test: `updateGridTimestamps` updates `scan_started_at`/`scan_ended_at` on every id in `ids` that belongs to the given `experiment_id`.

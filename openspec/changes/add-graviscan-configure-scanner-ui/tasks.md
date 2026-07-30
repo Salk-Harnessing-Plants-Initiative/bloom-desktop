@@ -47,18 +47,14 @@
 - [x] 3.1 In `tests/unit/config-store.test.ts` (or a new
       `tests/unit/config-store-graviscan-env-status.test.ts` if keeping the
       existing file focused), write failing tests for a new
-      `getGraviScanEnvStatus(config: MachineConfig)` export:
-      - returns `{ slackConfigured: true, libusbRecoveryEnabled: true }`
-        when `config.slack_webhook_url` is a non-empty string and
-        `config.libusb_endpoint_recovery !== false`
-      - returns `{ slackConfigured: false, ... }` when
-        `slack_webhook_url` is `undefined`
-      - returns `{ ..., libusbRecoveryEnabled: false }` when
-        `libusb_endpoint_recovery === false`
-      - returns `{ ..., libusbRecoveryEnabled: true }` when
-        `libusb_endpoint_recovery === undefined` (default-on, per the
-        existing `LIBUSB_ENDPOINT_RECOVERY` parsing convention in
-        `config-store.ts`)
+      `getGraviScanEnvStatus(config: MachineConfig)` export: - returns `{ slackConfigured: true, libusbRecoveryEnabled: true }`
+      when `config.slack_webhook_url` is a non-empty string and
+      `config.libusb_endpoint_recovery !== false` - returns `{ slackConfigured: false, ... }` when
+      `slack_webhook_url` is `undefined` - returns `{ ..., libusbRecoveryEnabled: false }` when
+      `libusb_endpoint_recovery === false` - returns `{ ..., libusbRecoveryEnabled: true }` when
+      `libusb_endpoint_recovery === undefined` (default-on, per the
+      existing `LIBUSB_ENDPOINT_RECOVERY` parsing convention in
+      `config-store.ts`)
 - [x] 3.2 Implement `getGraviScanEnvStatus()` in `src/main/config-store.ts`
       as a small pure function (no fs access — takes an already-loaded
       `MachineConfig`) and export it. Confirm 3.1 passes.
@@ -95,75 +91,55 @@
       failing tests (mocking `window.electron.gravi.*` and
       `window.electron.config.getGraviScanEnvStatus`, following the mocking
       conventions in `tests/unit/pages/App.test.tsx` and
-      `tests/unit/pages/MachineConfiguration.test.tsx`) for, at minimum:
-      - renders a loading state, then the detect/save/list UI once
-        `getScannerStatus()` and `getConfig()` resolve
-      - a valid persisted `GraviConfig` (`resolution: 600,
-        grid_mode: '4grid'`) round-trips correctly into the resolution and
-        grid-mode `<select>` elements on mount (the plain success path,
-        distinct from the legacy-fallback test below)
-      - clicking "Detect Scanners" calls `detectScanners()` then
-        `saveScannersToDB()` then re-calls `getScannerStatus()`
-      - zero-scanner detection shows the "No scanners detected" inline error
-        and does not call `saveScannersToDB()`
-      - detect/save failures each surface their returned `error` string
-        inline (two separate tests)
-      - a `saveScannersToDB()` failure leaves the previously-displayed
-        scanner list unchanged (assert the list content, not just that an
-        error message appears)
-      - while at least one row has status `starting`, the page
-        periodically re-calls `getScannerStatus()` on an interval; once no
-        row is `starting`, polling stops (assert the interval is cleared,
-        e.g. via fake timers and a call-count check); polling is also
-        torn down on unmount (no re-call after unmount)
-      - the resolution `<select>` options are exactly
-        `[200, 400, 600, 800, 1200, 1600]` in that order, sourced from
-        `GRAVISCAN_RESOLUTIONS` (no hardcoded option list)
-      - the `1200` option is labeled with the production-validated suffix
-      - a legacy `resolution: 3200` from `getConfig()` falls back the
-        selector to `1200` and shows the stale-value warning, without
-        calling `saveConfig()`
-      - while the legacy-value warning is showing and the operator has not
-        yet touched the resolution selector, the "Save" button is disabled
-        and a click does not call `saveConfig()`; after the operator
-        interacts with the resolution selector, "Save" becomes enabled
-      - saving resolution/grid mode calls
-        `saveConfig({ resolution, grid_mode })` with the selected values
-      - clicking "Reset All USB Connections" while `getScanStatus()`
-        indicates `isActive: true` shows the inline "Cannot reset USB
-        while a scan is in progress" message and does not call
-        `resetUsb()`
-      - clicking "Reset All USB Connections" while `getScanStatus()`
-        indicates `isActive: false` immediately flips every row to
-        `starting`, then (after `resetUsb()` resolves) re-runs the detect
-        flow
-      - a `resetUsb()` failure surfaces its error inline without throwing
-      - each scanner row renders a Remove button; clicking it calls
-        `window.electron.gravi.disableScanner(scannerId)` with **no**
-        `window.confirm` gate (per this proposal's design decision)
-      - all Remove buttons are disabled while `getScanStatus()` indicates
-        `isActive: true` (global gate, not a per-row status check — see
-        design.md's "Global scan-active gate" decision), and clicking one
-        does not call the disable-scanner IPC; they re-enable once
-        `getScanStatus()` next reports `isActive: false`
-      - Remove remains enabled per-row for `error`, `dead`, and
-        `disconnected` rows when `getScanStatus()` indicates
-        `isActive: false` (the global gate is the only thing that disables
-        Remove — an individual row's own status does not)
-      - a `disableScanner` failure surfaces via the inline `saveError`
-        banner and leaves the row visible; success removes the row locally
-      - the env-status banner renders distinguishable configured/
-        not-configured states from `getGraviScanEnvStatus()` for the
-        all-true and all-false cases, **and** explicitly for the mixed
-        case (`{ slackConfigured: false, libusbRecoveryEnabled: true }`,
-        and its inverse) — assert both states are visually distinguished,
-        not just that some text renders — and never renders a webhook URL
-        string anywhere in the DOM
+      `tests/unit/pages/MachineConfiguration.test.tsx`) for, at minimum: - renders a loading state, then the detect/save/list UI once
+      `getScannerStatus()` and `getConfig()` resolve - a valid persisted `GraviConfig` (`resolution: 600,
+grid_mode: '4grid'`) round-trips correctly into the resolution and
+      grid-mode `<select>` elements on mount (the plain success path,
+      distinct from the legacy-fallback test below) - clicking "Detect Scanners" calls `detectScanners()` then
+      `saveScannersToDB()` then re-calls `getScannerStatus()` - zero-scanner detection shows the "No scanners detected" inline error
+      and does not call `saveScannersToDB()` - detect/save failures each surface their returned `error` string
+      inline (two separate tests) - a `saveScannersToDB()` failure leaves the previously-displayed
+      scanner list unchanged (assert the list content, not just that an
+      error message appears) - while at least one row has status `starting`, the page
+      periodically re-calls `getScannerStatus()` on an interval; once no
+      row is `starting`, polling stops (assert the interval is cleared,
+      e.g. via fake timers and a call-count check); polling is also
+      torn down on unmount (no re-call after unmount) - the resolution `<select>` options are exactly
+      `[200, 400, 600, 800, 1200, 1600]` in that order, sourced from
+      `GRAVISCAN_RESOLUTIONS` (no hardcoded option list) - the `1200` option is labeled with the production-validated suffix - a legacy `resolution: 3200` from `getConfig()` falls back the
+      selector to `1200` and shows the stale-value warning, without
+      calling `saveConfig()` - while the legacy-value warning is showing and the operator has not
+      yet touched the resolution selector, the "Save" button is disabled
+      and a click does not call `saveConfig()`; after the operator
+      interacts with the resolution selector, "Save" becomes enabled - saving resolution/grid mode calls
+      `saveConfig({ resolution, grid_mode })` with the selected values - clicking "Reset All USB Connections" while `getScanStatus()`
+      indicates `isActive: true` shows the inline "Cannot reset USB
+      while a scan is in progress" message and does not call
+      `resetUsb()` - clicking "Reset All USB Connections" while `getScanStatus()`
+      indicates `isActive: false` immediately flips every row to
+      `starting`, then (after `resetUsb()` resolves) re-runs the detect
+      flow - a `resetUsb()` failure surfaces its error inline without throwing - each scanner row renders a Remove button; clicking it calls
+      `window.electron.gravi.disableScanner(scannerId)` with **no**
+      `window.confirm` gate (per this proposal's design decision) - all Remove buttons are disabled while `getScanStatus()` indicates
+      `isActive: true` (global gate, not a per-row status check — see
+      design.md's "Global scan-active gate" decision), and clicking one
+      does not call the disable-scanner IPC; they re-enable once
+      `getScanStatus()` next reports `isActive: false` - Remove remains enabled per-row for `error`, `dead`, and
+      `disconnected` rows when `getScanStatus()` indicates
+      `isActive: false` (the global gate is the only thing that disables
+      Remove — an individual row's own status does not) - a `disableScanner` failure surfaces via the inline `saveError`
+      banner and leaves the row visible; success removes the row locally - the env-status banner renders distinguishable configured/
+      not-configured states from `getGraviScanEnvStatus()` for the
+      all-true and all-false cases, **and** explicitly for the mixed
+      case (`{ slackConfigured: false, libusbRecoveryEnabled: true }`,
+      and its inverse) — assert both states are visually distinguished,
+      not just that some text renders — and never renders a webhook URL
+      string anywhere in the DOM
       Confirm all fail (component doesn't exist yet).
 - [x] 4.2 Implement `src/renderer/ConfigureScanner.tsx` to satisfy 4.1,
       following `MachineConfiguration.tsx`'s Tailwind conventions
       (`bg-white rounded-lg shadow` cards, `bg-blue-600 text-white
-      rounded-md` primary buttons, `border-red-500`/`bg-red-50` error
+rounded-md` primary buttons, `border-red-500`/`bg-red-50` error
       styling) rather than the production reference's `rounded-xl`/
       `border-gray-200` variant, for internal consistency with the rest of
       this codebase's pages. Do NOT port `ScannerConfigSection.tsx`/

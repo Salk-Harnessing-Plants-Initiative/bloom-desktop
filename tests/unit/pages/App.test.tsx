@@ -42,12 +42,10 @@ const mockConfigAPI = {
 
 const mockGraviAPI = {
   getScannerStatus: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
-  getConfig: vi
-    .fn()
-    .mockResolvedValue({
-      success: true,
-      data: { success: true, config: null },
-    }),
+  getConfig: vi.fn().mockResolvedValue({
+    success: true,
+    data: { success: true, config: null },
+  }),
   getScanStatus: vi
     .fn()
     .mockResolvedValue({ success: true, data: { isActive: false } }),

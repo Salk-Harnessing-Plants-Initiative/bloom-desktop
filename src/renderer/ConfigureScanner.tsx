@@ -30,9 +30,7 @@ export function ConfigureScanner() {
 
   const [resolution, setResolution] = useState<number>(1200);
   const [gridMode, setGridMode] = useState<GridMode>('2grid');
-  const [legacyResolution, setLegacyResolution] = useState<number | null>(
-    null
-  );
+  const [legacyResolution, setLegacyResolution] = useState<number | null>(null);
   const [resolutionTouched, setResolutionTouched] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -174,9 +172,7 @@ export function ConfigureScanner() {
         })
       );
 
-      const saveResult = await window.electron.gravi.saveScannersToDB(
-        payload
-      );
+      const saveResult = await window.electron.gravi.saveScannersToDB(payload);
       if (!saveResult.success || !saveResult.data.success) {
         setDetectError(
           (!saveResult.success ? 'Save failed' : saveResult.data.error) ||
@@ -244,8 +240,7 @@ export function ConfigureScanner() {
       setTimeout(() => setSaveSuccess(false), 3000);
     } else {
       setSaveError(
-        (!result.success ? 'Save failed' : result.data.error) ||
-          'Save failed'
+        (!result.success ? 'Save failed' : result.data.error) || 'Save failed'
       );
     }
   }, [resolution, gridMode, legacyResolution, resolutionTouched]);
@@ -266,8 +261,7 @@ export function ConfigureScanner() {
         Configure Scanner
       </h1>
       <p className="text-gray-600 mb-8">
-        Detect connected GraviScan scanners and configure resolution/grid
-        mode.
+        Detect connected GraviScan scanners and configure resolution/grid mode.
       </p>
 
       {envStatus && (
@@ -376,8 +370,8 @@ export function ConfigureScanner() {
 
           {legacyResolution !== null && (
             <p className="text-amber-700 text-sm mb-4">
-              Saved resolution ({legacyResolution} dpi) is no longer a
-              supported option. Select a new value and Save to update it.
+              Saved resolution ({legacyResolution} dpi) is no longer a supported
+              option. Select a new value and Save to update it.
             </p>
           )}
 

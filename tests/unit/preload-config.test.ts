@@ -34,8 +34,6 @@ describe('preload config namespace', () => {
 
   it('getGraviScanEnvStatus calls ipcRenderer.invoke with correct channel', async () => {
     await exposedAPI.config.getGraviScanEnvStatus();
-    expect(mockInvoke).toHaveBeenCalledWith(
-      'config:get-graviscan-env-status'
-    );
+    expect(mockInvoke).toHaveBeenCalledWith('config:get-graviscan-env-status');
   });
 });

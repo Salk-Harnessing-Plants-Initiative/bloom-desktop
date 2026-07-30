@@ -100,6 +100,7 @@ shared pages as unfulfilled placeholders. Rather than one tier speculatively
 rewiring `Home.tsx`/`WorkflowSteps.tsx`/`Layout.tsx` for screens that don't
 exist yet, **each tier updates the one workflow-step/nav-link entry its own
 new route makes real**, as part of that tier's own proposal:
+
 - Tier 1 adds a `/configure-scanner` route + nav link (not one of the six
   named workflow steps, so no `WorkflowSteps.tsx` change — just `Layout.tsx`).
 - Tier 4 fixes the "Capture Scan" step and nav link to point at the new
@@ -118,7 +119,7 @@ restructuring.
 
 `ToastContext.tsx` (production branch) is likewise **not** being ported:
 `openspec/specs/ui-management-pages/spec.md`'s "Per-Scanner Remove Button"
-requirement already documents that this codebase deliberately moved *away*
+requirement already documents that this codebase deliberately moved _away_
 from a toast-based design back to inline banners ("Per Cluster D... the
 implementation uses the existing inline `saveError` banner pattern...
 re-introducing toasts is a future-redo concern"). Every tier below follows
@@ -129,13 +130,13 @@ the upload screen) can be scoped concretely.
 
 ## Tiers
 
-| # | Tier | Depends on | New backend? | Related issues |
-|---|------|-----------|---------------|-----------------|
-| 1 | Configure Scanner UI | — | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245 |
-| 2 | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note) | Yes — full increment | #133 (backend half), #234, #231, #232 |
-| 3 | Wedge-response UI (fast-tracked) | 2 | No — consumes Tier 2's granular events | #244, #240 |
-| 4 | Core scan-operation screen | 1, 2, 3 | Preload wiring only (`verify-plates` + its events) | #133 |
-| 5 | Browse / Experiment Detail / Metadata UI | 2 | Preload wiring only (`ensure-dir`, `list-scan-files`) | #133, #207 |
+| #   | Tier                                              | Depends on                               | New backend?                                                                               | Related issues                        |
+| --- | ------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- |
+| 1   | Configure Scanner UI                              | —                                        | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                |
+| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note) | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 |
+| 3   | Wedge-response UI (fast-tracked)                  | 2                                        | No — consumes Tier 2's granular events                                                     | #244, #240                            |
+| 4   | Core scan-operation screen                        | 1, 2, 3                                  | Preload wiring only (`verify-plates` + its events)                                         | #133                                  |
+| 5   | Browse / Experiment Detail / Metadata UI          | 2                                        | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207                            |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
 `src/main/preload.ts`'s `graviAPI` object — Tier 1 adds one method near the

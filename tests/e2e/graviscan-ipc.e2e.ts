@@ -309,8 +309,7 @@ test.describe('Configure Scanner page', () => {
 
     await expect
       .poll(
-        async () =>
-          window.locator('table tbody tr:has-text("ready")').count(),
+        async () => window.locator('table tbody tr:has-text("ready")').count(),
         { timeout: 15000 }
       )
       .toBeGreaterThan(0);

@@ -312,8 +312,7 @@ const graviAPI = {
     ipcRenderer.invoke('graviscan:validate-scanners', ids),
   validateConfig: () => ipcRenderer.invoke('graviscan:validate-config'),
   resetUsb: () => ipcRenderer.invoke('graviscan:reset-usb'),
-  getScannerStatus: () =>
-    ipcRenderer.invoke('graviscan:get-scanner-status'),
+  getScannerStatus: () => ipcRenderer.invoke('graviscan:get-scanner-status'),
 
   // Session operations
   startScan: (params: any) =>

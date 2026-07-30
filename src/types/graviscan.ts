@@ -162,18 +162,14 @@ export interface GraviScanPlatformInfo {
  * Restricted to the V600-validated set (issue #232) — 3200/6400 are not
  * reliably achievable on the production scanner hardware.
  */
-export const GRAVISCAN_RESOLUTIONS = [
-  200, 400, 600, 800, 1200, 1600,
-] as const;
+export const GRAVISCAN_RESOLUTIONS = [200, 400, 600, 800, 1200, 1600] as const;
 
 export type GraviScanResolution = (typeof GRAVISCAN_RESOLUTIONS)[number];
 
 /**
  * Type guard for the validated GraviScan resolution set.
  */
-export function isValidResolution(
-  value: number
-): value is GraviScanResolution {
+export function isValidResolution(value: number): value is GraviScanResolution {
   return (GRAVISCAN_RESOLUTIONS as readonly number[]).includes(value);
 }
 
