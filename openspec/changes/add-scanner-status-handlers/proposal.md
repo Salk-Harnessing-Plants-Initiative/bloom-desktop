@@ -20,15 +20,19 @@ that must be fixed in the same pass or the new handler reports wrong data:
 1. `initialize()` never clears `initErrors`, so a scanner that failed once and
    later reconnects successfully keeps reporting a stale `error` status
    forever.
-2. `addScanner()`'s mid-scan queue path calls the private `spawnSingleScanner()`
-   directly instead of re-entering the public `addScanner()`, so the
-   `hasWorker()` idempotency guard never re-runs for a queued spawn. Two
-   concurrent `addScanner()` calls for the same `scannerId` (e.g. an operator
-   double-clicking "Detect" mid-scan) each spawn a subprocess in the same
-   `cycle-complete` tick — the second call finds the first's not-yet-ready
-   subprocess already in the map and shuts it down mid-spawn before spawning
-   a replacement. This was fixed upstream in production (Copilot PR #237
-   review) and never carried over to `main`'s port.
+2. `addScanner()`'s mid-scan queue path has no per-scanner deduplication, so
+   two concurrent `addScanner()` calls for the same `scannerId` (e.g. an
+   operator double-clicking "Detect" mid-scan) each spawn a subprocess in the
+   same `cycle-complete` tick — the second call finds the first's
+   not-yet-ready subprocess already in the map and shuts it down mid-spawn
+   before spawning a replacement. Production's fix for this (Copilot PR #237
+   review) has the queued handler re-enter the public `addScanner()` so the
+   `hasWorker()` guard re-runs; that fix does not work, because
+   `addScanner()`'s own `isScanning` check is still `true` at the synchronous
+   instant a `cycle-complete` listener runs, so the re-entrant call re-queues
+   itself forever and the spawn never happens at all. This change dedupes
+   queued spawns with a per-`scannerId` pending-add map instead — see
+   `design.md`, Decision 2.
 
 All three fixes are narrow, self-contained bug fixes to
 `src/main/graviscan/scan-coordinator.ts` that wouldn't warrant a proposal on
@@ -44,10 +48,11 @@ handlers and directly determine what `get-scanner-status` reports.
 - **`initialize()` clears `initErrors` at the top**, before repopulating,
   so a previously-failed scanner that later initializes successfully does
   not keep reporting a stale error.
-- **`addScanner()`'s mid-scan queue re-enters `addScanner()`** (not
-  `spawnSingleScanner()`) from its `cycle-complete` handler, restoring the
-  `hasWorker()` idempotency re-check for queued spawns and closing the
-  double-spawn-with-premature-shutdown race.
+- **`addScanner()` dedupes mid-scan spawns with a per-`scannerId`
+  pending-add map**, so concurrent requests for the same scanner share one
+  queued spawn — closing the double-spawn-with-premature-shutdown race
+  without the never-spawns livelock that re-entering `addScanner()` from the
+  `cycle-complete` handler causes (`design.md`, Decision 2).
 - **`graviscan:get-scanner-status`** (new IPC handler +
   `scannerHandlers.getScannerStatus()`): merges `coordinator.getScannerStatuses()`
   with saved, enabled `GraviScanner` DB rows, reporting `disconnected` for
@@ -78,7 +83,8 @@ handlers and directly determine what `get-scanner-status` reports.
 - Affected specs: `scanning`
 - Affected code:
   - `src/main/graviscan/scan-coordinator.ts` — `getScannerStatuses()`,
-    `initErrors.clear()` in `initialize()`, `addScanner()` race-guard fix
+    `initErrors.clear()` in `initialize()`, `addScanner()` mid-scan spawn
+    dedupe (`pendingAdds`)
   - `src/main/graviscan/session-handlers.ts` — `ScanCoordinatorLike`
     interface gains `getScannerStatuses()`
   - `src/main/graviscan/scanner-handlers.ts` — new `getScannerStatus()`

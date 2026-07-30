@@ -174,15 +174,23 @@ The `ScanCoordinator` class SHALL expose `addScanner(config)` and
   the map and in `ready` state, this is a no-op. The `ScannerConfig`
   type is the existing shared type at `src/types/graviscan.ts`. When
   `isScanning === true`, the spawn request SHALL be queued internally
-  and processed at the start of the next cycle (after
-  `cycle-complete`) so that mid-scan event-loop traffic is not
-  disrupted. The queued handler SHALL re-invoke the public
-  `addScanner(config)` method itself (not the private
-  `spawnSingleScanner()` helper directly), so that the `hasWorker()`
-  idempotency guard re-runs before a queued spawn actually executes —
-  this prevents two concurrent `addScanner()` calls queued for the same
-  `scannerId` from each spawning a subprocess within the same
-  `cycle-complete` tick and racing to shut one another down mid-spawn.
+  and executed on the next `cycle-complete` event so that mid-scan
+  event-loop traffic is not disrupted. Queued requests SHALL be
+  deduplicated per `scannerId`: a mid-scan call for a `scannerId` that
+  already has a queued spawn SHALL return that pending request's own
+  `Promise` instead of queueing a second spawn. This prevents two
+  concurrent `addScanner()` calls for the same `scannerId` from each
+  constructing a subprocess within the same `cycle-complete` tick and
+  racing to shut one another down mid-spawn, while still guaranteeing
+  that a queued spawn actually executes. The queued request's record
+  SHALL be cleared once its spawn settles, so a later call for the same
+  `scannerId` is not handed an already-settled `Promise`.
+  - Deduplication SHALL NOT be implemented by having the queued handler
+    re-invoke the public `addScanner(config)` method: `scanOnce()` emits
+    `cycle-complete` before it resets its state to `'idle'`, so
+    `isScanning` is still `true` at the synchronous instant every
+    listener runs, and a re-entrant call would re-queue itself
+    indefinitely instead of ever spawning (see `design.md`).
 - `hasWorker(scannerId: string): boolean` — returns `true` if the
   subprocess map contains a worker for that scanner_id AND the
   worker is in `ready` state. Returns `false` otherwise (missing,
@@ -226,24 +234,26 @@ place.
 - **WHEN** `addScanner({scannerId: 'C', ...})` is called
 - **THEN** the coordinator SHALL NOT immediately spawn a new
   subprocess
-- **AND** the request SHALL be appended to an internal
-  `pendingAdditions` queue
-- **AND** the method's returned `Promise` SHALL resolve once the
-  spawn completes (i.e., on the next cycle boundary)
+- **AND** the request SHALL be recorded in an internal per-`scannerId`
+  pending-add map
 - **AND** after the next `cycle-complete` event, the queued spawn
   SHALL execute and `hasWorker('C')` SHALL return `true`
+- **AND** the method's returned `Promise` SHALL resolve once that spawn
+  has settled
 
-#### Scenario: Two concurrent addScanner calls for the same id do not race-spawn duplicates
+#### Scenario: Two concurrent addScanner calls for the same id spawn exactly one subprocess
 
 - **GIVEN** a `ScanCoordinator` with `isScanning === true` (a cycle is in
   flight) and no worker yet for `scannerId` `'NEW'`
 - **WHEN** `addScanner({scannerId: 'NEW', ...})` is called twice,
   concurrently, before the cycle completes
 - **AND** the in-flight cycle's `cycle-complete` event then fires
-- **THEN** the coordinator SHALL NOT construct two `ScannerSubprocess`
-  instances for `'NEW'` within that single `cycle-complete` emission
+- **THEN** the coordinator SHALL construct exactly one
+  `ScannerSubprocess` for `'NEW'` — neither zero (a never-executed
+  queued spawn) nor two
 - **AND** SHALL NOT call `shutdown()` on a subprocess that is still
-  mid-spawn as a side effect of the second queued call
+  mid-spawn as a side effect of the second call
+- **AND** both returned `Promise`s SHALL resolve
 
 ### Requirement: GraviScan IPC Handler Registration
 
