@@ -159,17 +159,86 @@ describe('qr-reader (Python --decode-qr-batch subprocess)', () => {
       ]);
     });
 
-    it('returns empty codes for every path when the subprocess exits non-zero', async () => {
+    it('returns empty codes for every path when the batch and all individual retries exit non-zero', async () => {
       const promise = readQrCodesBatch(['/scans/a.tif', '/scans/b.tif']);
       const proc = await waitForSpawn();
+      mockProc = null;
       proc.stderr.emit('data', Buffer.from('boom'));
       proc.emit('close', 3);
+
+      // Crash isolation retries each image on its own; here both fail too.
+      for (let i = 0; i < 2; i++) {
+        const retry = await waitForSpawn();
+        mockProc = null;
+        retry.emit('close', 3);
+      }
 
       expect(await promise).toEqual([
         { path: '/scans/a.tif', codes: [] },
         { path: '/scans/b.tif', codes: [] },
       ]);
       expect(console.error).toHaveBeenCalled();
+    });
+
+    it('isolates a native decoder crash by retrying each image individually', async () => {
+      // A corrupt/hostile image can segfault OpenCV and take the whole
+      // subprocess with it. Without isolation every plate in the session
+      // would be silently reported as having no QR codes.
+      const promise = readQrCodesBatch([
+        '/scans/good.tif',
+        '/scans/hostile.tif',
+      ]);
+
+      const batchProc = await waitForSpawn();
+      mockProc = null;
+      batchProc.stderr.emit('data', Buffer.from('Segmentation fault'));
+      batchProc.emit('close', 139);
+
+      // Retry #1: the healthy image still decodes on its own.
+      const retry1 = await waitForSpawn();
+      mockProc = null;
+      retry1.stdout.emit(
+        'data',
+        Buffer.from(
+          JSON.stringify([{ path: '/scans/good.tif', codes: ['Plate_13_S1'] }])
+        )
+      );
+      retry1.emit('close', 0);
+
+      // Retry #2: the hostile image crashes again, alone this time.
+      const retry2 = await waitForSpawn();
+      mockProc = null;
+      retry2.emit('close', 139);
+
+      expect(await promise).toEqual([
+        { path: '/scans/good.tif', codes: ['Plate_13_S1'] },
+        { path: '/scans/hostile.tif', codes: [] },
+      ]);
+      // One batch attempt + one retry per image.
+      expect(spawn).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not retry a single-image batch that exits non-zero', async () => {
+      const promise = readQrCodesBatch(['/scans/a.tif']);
+      const proc = await waitForSpawn();
+      mockProc = null;
+      proc.emit('close', 139);
+
+      expect(await promise).toEqual([{ path: '/scans/a.tif', codes: [] }]);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry individually when the subprocess exits 0 with malformed output', async () => {
+      // Exit 0 + unparseable stdout is a protocol bug, not a native crash —
+      // re-running each image would just fail the same way N more times.
+      const promise = readQrCodesBatch(['/scans/a.tif', '/scans/b.tif']);
+      await respond('Traceback (most recent call last): ...');
+
+      expect(await promise).toEqual([
+        { path: '/scans/a.tif', codes: [] },
+        { path: '/scans/b.tif', codes: [] },
+      ]);
+      expect(spawn).toHaveBeenCalledTimes(1);
     });
 
     it('returns empty codes for every path when stdout is not valid JSON', async () => {

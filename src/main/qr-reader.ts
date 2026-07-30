@@ -13,6 +13,11 @@
  * `readQrCodesBatch()` and only reach for `readQrCodes()` for genuinely
  * single-image cases.
  *
+ * If the batch subprocess dies (native crash inside OpenCV's decoder on a
+ * corrupt or hostile image), each image is retried in its own subprocess so
+ * the failure is isolated to the offending image instead of blanking the
+ * whole session's codes.
+ *
  * Wire protocol (mirrored by `python/main.py::decode_qr_batch_mode`):
  *   stdin  <- JSON array of image paths (avoids Windows argv length limits)
  *   stdout -> JSON array of `{ path, codes }`, one entry per input path
@@ -192,6 +197,36 @@ async function decodeBatch(imagePaths: string[]): Promise<QrCodeResult[]> {
           .join(', ')
     );
     return aligned;
+  }
+
+  // A non-zero exit kills every path in the batch at once. Left alone, a
+  // single corrupt or hostile image that segfaults OpenCV would blank the
+  // whole session's codes, and verify-plates.ts would misclassify every plate
+  // as `unreadable` with no way to tell "the decoder crashed" from "the QR is
+  // genuinely blank". Re-run each image in its own subprocess so only the
+  // offending image loses its codes.
+  //
+  // Deliberately scoped to `crashed` (non-zero exit): a spawn failure or an
+  // exit-0-with-garbage response is a protocol/environment problem that would
+  // simply repeat N more times, and a single-image batch has nothing to
+  // isolate it from.
+  if (outcome.kind === 'crashed' && imagePaths.length > 1) {
+    console.warn(
+      `[QR Reader] Batch decode crashed — retrying ${imagePaths.length} image(s) individually to isolate the failure`
+    );
+    const isolated: QrCodeResult[] = [];
+    for (const imagePath of imagePaths) {
+      const single = await runDecodeSubprocess([imagePath]);
+      if (single.kind === 'ok') {
+        isolated.push(alignResults([imagePath], single.results)[0]);
+      } else {
+        console.error(
+          `[QR Reader] Individual retry failed for ${path.basename(imagePath)} — no codes for this image`
+        );
+        isolated.push(emptyResults([imagePath])[0]);
+      }
+    }
+    return isolated;
   }
 
   return emptyResults(imagePaths);
