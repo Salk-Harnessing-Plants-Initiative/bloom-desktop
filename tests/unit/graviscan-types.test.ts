@@ -3,6 +3,7 @@ import {
   MIN_SCAN_INTERVAL_MINUTES,
   PLATE_INDICES,
   GRAVISCAN_RESOLUTIONS,
+  isValidResolution,
   DEFAULT_SCANNER_SLOTS,
   MAX_SCANNER_SLOTS,
   createPlateAssignments,
@@ -31,11 +32,9 @@ describe('GraviScan TypeScript Types', () => {
       expect(PLATE_INDICES['4grid']).toHaveLength(4);
     });
 
-    it('GRAVISCAN_RESOLUTIONS has 8 entries', () => {
-      expect(GRAVISCAN_RESOLUTIONS).toHaveLength(8);
-      expect(GRAVISCAN_RESOLUTIONS).toEqual([
-        200, 400, 600, 800, 1200, 1600, 3200, 6400,
-      ]);
+    it('GRAVISCAN_RESOLUTIONS has 6 entries', () => {
+      expect(GRAVISCAN_RESOLUTIONS).toHaveLength(6);
+      expect(GRAVISCAN_RESOLUTIONS).toEqual([200, 400, 600, 800, 1200, 1600]);
     });
 
     it('DEFAULT_SCANNER_SLOTS is 1', () => {
@@ -44,6 +43,24 @@ describe('GraviScan TypeScript Types', () => {
 
     it('MAX_SCANNER_SLOTS is 10', () => {
       expect(MAX_SCANNER_SLOTS).toBe(10);
+    });
+  });
+
+  describe('isValidResolution', () => {
+    it('returns true for each validated resolution', () => {
+      for (const value of [200, 400, 600, 800, 1200, 1600]) {
+        expect(isValidResolution(value)).toBe(true);
+      }
+    });
+
+    it('returns false for legacy out-of-range values', () => {
+      expect(isValidResolution(3200)).toBe(false);
+      expect(isValidResolution(6400)).toBe(false);
+    });
+
+    it('returns false for zero and non-member values', () => {
+      expect(isValidResolution(0)).toBe(false);
+      expect(isValidResolution(1201)).toBe(false);
     });
   });
 

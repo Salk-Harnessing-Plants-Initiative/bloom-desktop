@@ -1,18 +1,18 @@
 ## 1. Types & Constants (`src/types/graviscan.ts`)
 
-- [ ] 1.1 Update the existing `GRAVISCAN_RESOLUTIONS has 8 entries` test in
+- [x] 1.1 Update the existing `GRAVISCAN_RESOLUTIONS has 8 entries` test in
       `tests/unit/graviscan-types.test.ts` to assert the trimmed 6-value set
       `[200, 400, 600, 800, 1200, 1600]` (rename the `it` block accordingly)
       and confirm it now **fails** against current code (still 8 entries).
-- [ ] 1.2 Add a new `isValidResolution()` describe block to the same file
+- [x] 1.2 Add a new `isValidResolution()` describe block to the same file
       asserting: returns `true` for each of `200, 400, 600, 800, 1200, 1600`;
       returns `false` for `3200`, `6400`, `0`, and a non-numeric-looking
       value like `1201`. Confirm it fails (the export doesn't exist yet).
-- [ ] 1.3 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts` to
+- [x] 1.3 Trim `GRAVISCAN_RESOLUTIONS` in `src/types/graviscan.ts` to
       `[200, 400, 600, 800, 1200, 1600] as const` and add
       `export function isValidResolution(value: number): value is GraviScanResolution`.
       Confirm 1.1 and 1.2 now pass.
-- [ ] 1.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
+- [x] 1.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
       any fallout before moving on.
 
 ## 2. Preload & Type Wiring — `getScannerStatus`
