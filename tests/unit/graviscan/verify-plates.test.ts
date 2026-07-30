@@ -780,6 +780,82 @@ describe('verifyPlates', () => {
     });
   });
 
+  it('is idempotent — a second run over an already-corrected batch does not re-swap', async () => {
+    // Verification can legitimately be re-run for a session (operator retry,
+    // renderer resubmit). The second run reads the corrected assignments back
+    // out of the DB, so it must see two verified plates, not swap them back.
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+    db.graviScan.findFirst
+      .mockResolvedValueOnce({ id: 'scan-1' })
+      .mockResolvedValueOnce({ id: 'scan-2' });
+
+    const first = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+    expect(first.swaps).toHaveLength(1);
+
+    db.graviScanPlateAssignment.updateMany.mockClear();
+    db.graviScan.update.mockClear();
+    db.graviScan.findFirst.mockClear();
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    // Second run — assignedPlateId now carries the corrected plate_barcode
+    // the first run wrote.
+    const second = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_16',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(second.swaps).toEqual([]);
+    expect(second.results.map((r) => r.status)).toEqual([
+      'verified',
+      'verified',
+    ]);
+    // No second correction: no GraviScan rewrite, and every assignment write
+    // is a plain status update with no plate_barcode in it.
+    expect(db.graviScan.update).not.toHaveBeenCalled();
+    expect(db.graviScan.findFirst).not.toHaveBeenCalled();
+    for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
+      expect(call[0].data).toEqual({ verification_status: 'verified' });
+    }
+  });
+
   it('scopes the GraviPlateSectionMapping lookup to the given experimentId', async () => {
     setCodes({ '/scans/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
