@@ -4,12 +4,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../../src/main/qr-reader', () => ({
   readQrCodes: vi.fn(),
+  readQrCodesBatch: vi.fn(),
 }));
 
-import { readQrCodes } from '../../../src/main/qr-reader';
+import { readQrCodesBatch } from '../../../src/main/qr-reader';
 import { verifyPlates } from '../../../src/main/graviscan/verify-plates';
 
-const mockReadQrCodes = vi.mocked(readQrCodes);
+const mockReadQrCodesBatch = vi.mocked(readQrCodesBatch);
+
+/**
+ * Stub the batched decoder with a path -> codes lookup.
+ *
+ * The handler decodes the whole batch in ONE subprocess call, so tests
+ * describe what each image contains rather than relying on call ordering.
+ */
+function setCodes(codesByPath: Record<string, string[]>) {
+  mockReadQrCodesBatch.mockImplementation(async (paths: string[]) =>
+    paths.map((p) => ({ path: p, codes: codesByPath[p] ?? [] }))
+  );
+}
 
 function createMockDb() {
   return {
@@ -35,14 +48,77 @@ describe('verifyPlates', () => {
 
   beforeEach(() => {
     db = createMockDb();
-    mockReadQrCodes.mockReset();
+    mockReadQrCodesBatch.mockReset();
+    setCodes({});
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
+  it('decodes every plate image in a single batched subprocess call', async () => {
+    // The one-shot-subprocess design only pays off if a verification batch
+    // costs ONE spawn. Decoding per-plate in a loop would spawn N times.
+    setCodes({ '/scan1.tif': ['qr-13'], '/scan2.tif': ['qr-16'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')])
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')]);
+
+    await verifyPlates(db, [
+      {
+        scannerId: 's1',
+        plateIndex: '00',
+        imagePath: '/scan1.tif',
+        assignedPlateId: 'plate_13',
+      },
+      {
+        scannerId: 's1',
+        plateIndex: '11',
+        imagePath: '/scan2.tif',
+        assignedPlateId: 'plate_16',
+      },
+    ]);
+
+    expect(mockReadQrCodesBatch).toHaveBeenCalledTimes(1);
+    expect(mockReadQrCodesBatch).toHaveBeenCalledWith([
+      '/scan1.tif',
+      '/scan2.tif',
+    ]);
+  });
+
+  it('maps batch results back to each plate by image path, not by position', async () => {
+    // A decoder that returns results in a different order than requested must
+    // not shift codes onto the wrong plate.
+    mockReadQrCodesBatch.mockResolvedValueOnce([
+      { path: '/scan2.tif', codes: ['qr-16'] },
+      { path: '/scan1.tif', codes: ['qr-13'] },
+    ]);
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')])
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')]);
+
+    const result = await verifyPlates(db, [
+      {
+        scannerId: 's1',
+        plateIndex: '00',
+        imagePath: '/scan1.tif',
+        assignedPlateId: 'plate_13',
+      },
+      {
+        scannerId: 's1',
+        plateIndex: '11',
+        imagePath: '/scan2.tif',
+        assignedPlateId: 'plate_16',
+      },
+    ]);
+
+    expect(result.results[0].detectedCodes).toEqual(['qr-13']);
+    expect(result.results[1].detectedCodes).toEqual(['qr-16']);
+    expect(result.results[0].status).toBe('verified');
+    expect(result.results[1].status).toBe('verified');
+  });
+
   it('classifies a plate as verified when the detected plate matches the assignment', async () => {
-    mockReadQrCodes.mockResolvedValueOnce(['qr-1']);
+    setCodes({ '/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_13', 'qr-1'),
     ]);
@@ -70,7 +146,7 @@ describe('verifyPlates', () => {
   });
 
   it('classifies a plate as unreadable when no QR codes are detected', async () => {
-    mockReadQrCodes.mockResolvedValueOnce([]);
+    setCodes({ '/scan1.tif': [] });
 
     const result = await verifyPlates(db, [
       {
@@ -92,7 +168,7 @@ describe('verifyPlates', () => {
   });
 
   it('classifies a lone incorrect plate (no swap partner) and persists unreadable', async () => {
-    mockReadQrCodes.mockResolvedValueOnce(['qr-99']);
+    setCodes({ '/scan1.tif': ['qr-99'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_99', 'qr-99'),
     ]);
@@ -118,7 +194,7 @@ describe('verifyPlates', () => {
   });
 
   it('flags needs_review when QR codes on one plate disagree about the plate id', async () => {
-    mockReadQrCodes.mockResolvedValueOnce(['qr-a', 'qr-b', 'qr-c']);
+    setCodes({ '/scan1.tif': ['qr-a', 'qr-b', 'qr-c'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_13', 'qr-a'),
       mapping('plate_13', 'qr-b'),
@@ -145,9 +221,7 @@ describe('verifyPlates', () => {
   });
 
   it('flags duplicate_qr when the same code is detected on two plates in the batch', async () => {
-    mockReadQrCodes
-      .mockResolvedValueOnce(['qr-dup'])
-      .mockResolvedValueOnce(['qr-dup']);
+    setCodes({ '/scan1.tif': ['qr-dup'], '/scan2.tif': ['qr-dup'] });
 
     const result = await verifyPlates(db, [
       {
@@ -174,9 +248,7 @@ describe('verifyPlates', () => {
   it('detects a swap between two plates and auto-corrects DB records', async () => {
     // Plate at position 00 (assigned plate_13) actually reads plate_16's QR
     // Plate at position 11 (assigned plate_16) actually reads plate_13's QR
-    mockReadQrCodes
-      .mockResolvedValueOnce(['qr-16'])
-      .mockResolvedValueOnce(['qr-13']);
+    setCodes({ '/scan1.tif': ['qr-16'], '/scan2.tif': ['qr-13'] });
     db.graviPlateSectionMapping.findMany
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
@@ -248,7 +320,7 @@ describe('verifyPlates', () => {
   });
 
   it('scopes the GraviPlateSectionMapping lookup to the given experimentId', async () => {
-    mockReadQrCodes.mockResolvedValueOnce(['qr-1']);
+    setCodes({ '/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_13', 'qr-1'),
     ]);
@@ -280,7 +352,7 @@ describe('verifyPlates', () => {
   });
 
   it('does not scope the lookup when experimentId is omitted', async () => {
-    mockReadQrCodes.mockResolvedValueOnce(['qr-1']);
+    setCodes({ '/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_13', 'qr-1'),
     ]);
@@ -301,9 +373,7 @@ describe('verifyPlates', () => {
   });
 
   it('continues processing the batch when one verification_status write throws', async () => {
-    mockReadQrCodes
-      .mockResolvedValueOnce(['qr-13'])
-      .mockResolvedValueOnce(['qr-16']);
+    setCodes({ '/scan1.tif': ['qr-13'], '/scan2.tif': ['qr-16'] });
     db.graviPlateSectionMapping.findMany
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')])
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')]);
@@ -347,9 +417,7 @@ describe('verifyPlates', () => {
   });
 
   it('continues processing when a swap correction DB write throws', async () => {
-    mockReadQrCodes
-      .mockResolvedValueOnce(['qr-16'])
-      .mockResolvedValueOnce(['qr-13']);
+    setCodes({ '/scan1.tif': ['qr-16'], '/scan2.tif': ['qr-13'] });
     db.graviPlateSectionMapping.findMany
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
@@ -389,7 +457,7 @@ describe('verifyPlates', () => {
   });
 
   it('emits verify-started, verify-result (per plate), and verify-complete progress events', async () => {
-    mockReadQrCodes.mockResolvedValueOnce(['qr-1']);
+    setCodes({ '/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_13', 'qr-1'),
     ]);
@@ -420,7 +488,7 @@ describe('verifyPlates', () => {
   });
 
   it('works without a progress callback (renderer-less)', async () => {
-    mockReadQrCodes.mockResolvedValueOnce(['qr-1']);
+    setCodes({ '/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_13', 'qr-1'),
     ]);
@@ -438,7 +506,7 @@ describe('verifyPlates', () => {
   });
 
   it('returns a failure result if the top-level pipeline throws unexpectedly', async () => {
-    mockReadQrCodes.mockRejectedValueOnce(new Error('sharp decode exploded'));
+    mockReadQrCodesBatch.mockRejectedValueOnce(new Error('decoder exploded'));
 
     const result = await verifyPlates(db, [
       {
@@ -450,7 +518,7 @@ describe('verifyPlates', () => {
     ]);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('sharp decode exploded');
+    expect(result.error).toBe('decoder exploded');
     expect(result.results).toEqual([]);
     expect(result.swaps).toEqual([]);
   });

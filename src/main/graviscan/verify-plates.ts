@@ -15,7 +15,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { readQrCodes } from '../qr-reader';
+import { readQrCodesBatch } from '../qr-reader';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,16 +103,29 @@ export async function verifyPlates(
 
     const results: VerifyPlateResult[] = [];
 
-    // Step 1: Read QR codes from ALL plates first
+    // Step 1: Read QR codes from ALL plates in ONE subprocess spawn.
+    //
+    // Decoding per-plate in a loop would spawn the Python decoder N times per
+    // verification, which is exactly what the one-shot-subprocess design
+    // (docs/superpowers/specs/2026-07-29-verify-plates-qr-decode-design.md)
+    // exists to avoid — the spawn cost is only negligible if it is paid once
+    // per session, not once per plate.
+    const decoded = await readQrCodesBatch(plates.map((p) => p.imagePath));
+
+    const codesByPath = new Map<string, string[]>();
+    for (const entry of decoded) {
+      codesByPath.set(entry.path, entry.codes);
+    }
+
+    // Map results back to plates BY PATH, never by array position — the
+    // decoder is free to reorder, and two plates could share an image path.
     const plateReadResults: Array<{
       plate: VerifyPlateInput;
       detectedCodes: string[];
-    }> = [];
-
-    for (const plate of plates) {
-      const detectedCodes = await readQrCodes(plate.imagePath);
-      plateReadResults.push({ plate, detectedCodes });
-    }
+    }> = plates.map((plate) => {
+      const detectedCodes: string[] = codesByPath.get(plate.imagePath) ?? [];
+      return { plate, detectedCodes };
+    });
 
     // Step 2: Detect duplicate QR codes across plates
     const qrToGrids: Record<string, string[]> = {};
