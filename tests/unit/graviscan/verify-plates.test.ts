@@ -1168,6 +1168,106 @@ describe('verifyPlates', () => {
     );
   });
 
+  // -------------------------------------------------------------------------
+  // updateMany().count. A swap can be reported corrected while the write it
+  // depended on matched nothing at all — a missing or differently-keyed
+  // assignment row. Discarding `count` made that indistinguishable from a
+  // real correction in both the return value and the logs.
+  // -------------------------------------------------------------------------
+
+  const swapBatch = [
+    {
+      scannerId: 's1',
+      plateIndex: '00',
+      imagePath: '/scans/scan1.tif',
+      assignedPlateId: 'plate_13',
+    },
+    {
+      scannerId: 's1',
+      plateIndex: '11',
+      imagePath: '/scans/scan2.tif',
+      assignedPlateId: 'plate_16',
+    },
+  ];
+
+  function stageSwap() {
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+  }
+
+  it('reports a swap correction whose assignment row does not exist', async () => {
+    // No GraviScanPlateAssignment row for (exp-1, s1, 00): updateMany matches
+    // 0 rows and Prisma reports success. Reporting `success: true` with a
+    // populated swaps[] here would tell the operator the mix-up was fixed
+    // when nothing was written.
+    stageSwap();
+    db.graviScanPlateAssignment.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await verifyPlates(db, swapBatch, 'exp-1', OUTPUT_DIR);
+
+    expect(result.swaps).toHaveLength(1);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('matched 0 GraviScanPlateAssignment row(s)'),
+      ])
+    );
+    expect(result.warnings.join('\n')).toContain('s1/00');
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('matched 0 GraviScanPlateAssignment row(s)')
+    );
+  });
+
+  it('reports a swap correction that matched no GraviScan records', async () => {
+    stageSwap();
+    db.graviScan.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await verifyPlates(db, swapBatch, 'exp-1', OUTPUT_DIR);
+
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('matched 0 GraviScan record(s)'),
+      ])
+    );
+  });
+
+  it('reports a verification_status write that matched no rows', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviPlateSectionMapping.findMany.mockResolvedValue([
+      mapping('plate_13', 'qr-1'),
+    ]);
+    db.graviScanPlateAssignment.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('verification_status')])
+    );
+    expect(result.warnings.join('\n')).toContain('s1/00');
+  });
+
+  it('reports no warnings when every write matched a row', async () => {
+    stageSwap();
+
+    const result = await verifyPlates(db, swapBatch, 'exp-1', OUTPUT_DIR);
+
+    expect(result.swaps).toHaveLength(1);
+    expect(result.warnings).toBeUndefined();
+  });
+
   it('records the pre-correction plate_barcode when auto-correcting a swap', async () => {
     // "What was this corrected from" must be a queryable DB fact, not
     // something only inferable from application logs.

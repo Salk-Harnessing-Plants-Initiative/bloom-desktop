@@ -72,6 +72,18 @@ export type VerifyPlatesResult = {
   results: VerifyPlateResult[];
   swaps: PlateSwap[];
   error?: string;
+  /**
+   * Writes that succeeded but matched zero rows — the run's own state and the
+   * database's disagree. Present only when non-empty.
+   *
+   * `updateMany` on a `where` that matches nothing is not an error in Prisma:
+   * it reports success with `count: 0`. Discarding that count let a swap be
+   * returned in `swaps[]` with `success: true` when the assignment row it
+   * was supposed to rewrite did not exist, which is indistinguishable from a
+   * real correction. These are surfaced rather than thrown because the rest
+   * of the batch is still valid.
+   */
+  warnings?: string[];
 };
 
 export type VerifyProgressEvent =
@@ -243,6 +255,20 @@ export async function verifyPlates(
     onProgress?.({ type: 'verify-started' });
 
     const results: VerifyPlateResult[] = [];
+
+    /**
+     * Record a write that reported success but matched no rows.
+     *
+     * Prisma's `updateMany` does not throw when its `where` matches nothing —
+     * it returns `{ count: 0 }`. That is a real discrepancy between what this
+     * run believes it corrected and what the database holds, and it must not
+     * be silently folded into a `success: true` result.
+     */
+    const warnings: string[] = [];
+    const noteWriteMismatch = (message: string) => {
+      console.warn(`[GraviScan:VERIFY] ${message}`);
+      warnings.push(message);
+    };
 
     // Step 0: validate every imagePath BEFORE it reaches the decoder, using
     // the same realpath-containment check the sibling `read-scan-image`
@@ -649,7 +675,37 @@ export async function verifyPlates(
           return { assignment1, assignment2, scan1, scan2 };
         });
 
-        // 3. Log swap for audit trail. Only reached once the transaction has
+        // 3. Reconcile what the writes actually matched against what this run
+        //    expected. A swap pair implies four rows exist; a zero count means
+        //    the DB does not hold what the caller's assignments claimed.
+        for (const [position, assignmentCount] of [
+          [position1, counts.assignment1.count],
+          [position2, counts.assignment2.count],
+        ] as const) {
+          if (assignmentCount === 0) {
+            noteWriteMismatch(
+              `Swap correction matched 0 GraviScanPlateAssignment row(s) for ` +
+                `${experimentId}/${position.scannerId}/${position.plateIndex} — ` +
+                `the corrected plate_barcode was NOT persisted`
+            );
+          }
+        }
+        for (const [position, scanCount] of [
+          [position1, counts.scan1.count],
+          [position2, counts.scan2.count],
+        ] as const) {
+          if (scanCount === 0) {
+            noteWriteMismatch(
+              `Swap correction matched 0 GraviScan record(s) for ` +
+                `${experimentId}/${position.scannerId}/${position.plateIndex} ` +
+                `carrying plate_barcode "${position.assignedPlateId}" — ` +
+                `scan records were NOT corrected and will upload under the ` +
+                `pre-correction plate`
+            );
+          }
+        }
+
+        // 4. Log swap for audit trail. Only reached once the transaction has
         //    actually committed — a rolled-back pair must not be logged as
         //    corrected.
         console.log(
@@ -685,7 +741,7 @@ export async function verifyPlates(
       }
 
       try {
-        await db.graviScanPlateAssignment.updateMany({
+        const statusWrite = await db.graviScanPlateAssignment.updateMany({
           where: {
             experiment_id: experimentId,
             scanner_id: result.scannerId,
@@ -695,6 +751,14 @@ export async function verifyPlates(
             verification_status: finalStatus,
           },
         });
+        if (statusWrite.count === 0) {
+          noteWriteMismatch(
+            `verification_status "${finalStatus}" matched 0 ` +
+              `GraviScanPlateAssignment row(s) for ` +
+              `${experimentId}/${result.scannerId}/${result.plateIndex} — ` +
+              `the outcome for this plate was NOT persisted`
+          );
+        }
       } catch (dbErr) {
         console.error(
           '[GraviScan:VERIFY] Failed to update verification_status:',
@@ -722,9 +786,21 @@ export async function verifyPlates(
       `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${incorrect} incorrect, ${unreadable} unreadable, ${needsReview} needs_review, ${duplicates} duplicate_qr, ${lookupFailures} lookup_failed`
     );
 
+    if (warnings.length > 0) {
+      console.warn(
+        `[GraviScan:VERIFY] ${warnings.length} write(s) matched no rows — ` +
+          `this run's view of the database is not what was persisted`
+      );
+    }
+
     onProgress?.({ type: 'verify-complete', results, swaps });
 
-    return { success: true, results, swaps };
+    return {
+      success: true,
+      results,
+      swaps,
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
   } catch (error) {
     console.error('[GraviScan:VERIFY] Error:', error);
     return {

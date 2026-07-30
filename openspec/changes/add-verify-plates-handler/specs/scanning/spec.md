@@ -115,6 +115,24 @@ batch.
   `plate_barcode` is what keeps this safe and idempotent: only rows that are
   actually wrong are touched, so a re-run cannot swap anything back.
 
+#### Scenario: A write that matched no rows is reported, not silently ignored
+
+- **GIVEN** a swap correction or `verification_status` write whose `where`
+  clause matches no rows (for example, no `GraviScanPlateAssignment` row
+  exists for the submitted `(experimentId, scannerId, plateIndex)`)
+- **WHEN** that `updateMany` completes
+- **THEN** its returned `count` SHALL be checked, and a count of zero where a
+  match was expected SHALL be logged as a clear warning naming the
+  experiment, scanner, and plate index
+- **AND** the returned result SHALL carry those mismatches in a `warnings`
+  field, so a swap SHALL NOT be reported in `swaps[]` alongside
+  `success: true` with no indication that nothing was persisted
+- **AND** `warnings` SHALL be absent when every write matched a row
+- **NOTE**: Prisma does not treat an `updateMany` that matches nothing as an
+  error — it returns `{ count: 0 }`. Discarding that count made "corrected
+  three cycles' worth of scan records" and "wrote nothing at all"
+  indistinguishable in both the return value and the logs.
+
 #### Scenario: A swap correction is atomic per swap pair
 
 - **GIVEN** a detected swap whose correction comprises four writes (two
