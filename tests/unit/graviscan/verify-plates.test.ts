@@ -44,7 +44,7 @@ function setCodes(codesByPath: Record<string, string[]>) {
 }
 
 function createMockDb() {
-  return {
+  const db: any = {
     graviPlateSectionMapping: {
       findMany: vi.fn().mockResolvedValue([]),
     },
@@ -58,7 +58,12 @@ function createMockDb() {
       findFirst: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({}),
     },
-  } as any;
+  };
+  // Default: a pass-through interactive transaction, so assertions on
+  // db.<model>.<op> see the writes issued inside it. Tests that care about
+  // rollback semantics replace this with a journalling stand-in.
+  db.$transaction = vi.fn(async (fn: any) => fn(db));
+  return db;
 }
 
 function mapping(plateId: string, plantQr: string) {
@@ -1036,6 +1041,131 @@ describe('verifyPlates', () => {
       expect(call[0]).not.toHaveProperty('orderBy');
       expect(call[0]).not.toHaveProperty('take');
     }
+  });
+
+  it('performs each swap-pair correction inside its own transaction', async () => {
+    // Two independent swap pairs. Each pair's four writes are one atomic
+    // unit; the transactional boundary is per-pair, NOT per-batch, so one
+    // failing pair still cannot abort the corrections for the other.
+    setCodes({
+      '/scans/s1-00.tif': ['qr-16'],
+      '/scans/s1-11.tif': ['qr-13'],
+      '/scans/s2-00.tif': ['qr-26'],
+      '/scans/s2-11.tif': ['qr-23'],
+    });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')])
+      .mockResolvedValueOnce([mapping('plate_26', 'qr-26')])
+      .mockResolvedValueOnce([mapping('plate_23', 'qr-23')]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/s1-00.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/s1-11.tif',
+          assignedPlateId: 'plate_16',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '00',
+          imagePath: '/scans/s2-00.tif',
+          assignedPlateId: 'plate_23',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '11',
+          imagePath: '/scans/s2-11.tif',
+          assignedPlateId: 'plate_26',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.swaps).toHaveLength(2);
+    expect(db.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('rolls back a swap-pair correction when a write mid-sequence fails', async () => {
+    // A swap correction is four writes. Bare, a failure between them left the
+    // assignment corrected but the scan records not (or vice versa) — the
+    // plate assignment and the scan history then disagree about which plate
+    // was in that position, with nothing to indicate which is right.
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    // A journalling stand-in for Prisma's interactive transaction: writes are
+    // recorded, and only "commit" if the whole callback resolves.
+    const committed: Array<Record<string, unknown>> = [];
+    db.$transaction = vi.fn(async (fn: any) => {
+      const journal: Array<Record<string, unknown>> = [];
+      const model = (table: string) => ({
+        updateMany: vi.fn(async (args: any) => {
+          journal.push({ table, ...args });
+          // Fail on the GraviScan half — after the assignment rows have
+          // already been written inside the transaction.
+          if (table === 'graviScan') {
+            throw new Error('scan record write failed');
+          }
+          return { count: 1 };
+        }),
+      });
+      const tx = {
+        graviScanPlateAssignment: model('graviScanPlateAssignment'),
+        graviScan: model('graviScan'),
+      };
+      const out = await fn(tx);
+      committed.push(...journal);
+      return out;
+    });
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    // Nothing committed: no half-corrected pair is left behind.
+    expect(committed).toEqual([]);
+    // Every correction write went through the transaction client, not the
+    // bare db — otherwise there would be nothing for Prisma to roll back.
+    for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
+      expect(call[0].data).not.toHaveProperty('plate_barcode');
+    }
+    expect(db.graviScan.updateMany).not.toHaveBeenCalled();
+    // The batch still completes and the failure is logged, per the existing
+    // per-swap-pair error isolation.
+    expect(result.success).toBe(true);
+    expect(console.error).toHaveBeenCalledWith(
+      '[GraviScan:VERIFY] Failed to correct swap:',
+      expect.any(Error)
+    );
   });
 
   it('records the pre-correction plate_barcode when auto-correcting a swap', async () => {

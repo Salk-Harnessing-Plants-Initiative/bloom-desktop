@@ -564,88 +564,99 @@ export async function verifyPlates(
       );
 
       try {
-        // 1. Swap plate_barcode in GraviScanPlateAssignment.
-        //    Every `where` below carries experiment_id, matching the real
-        //    @@unique([experiment_id, scanner_id, plate_index]) constraint.
-        await db.graviScanPlateAssignment.updateMany({
-          where: {
-            experiment_id: experimentId,
-            scanner_id: position1.scannerId,
-            plate_index: position1.plateIndex,
-          },
-          data: {
-            plate_barcode: position2.assignedPlateId,
-            // Audit trail: record what this position was corrected FROM, in
-            // the same write. Without it, "this row used to say Plate_13"
-            // only exists in application logs, which are not queryable and
-            // do not survive a log rotation.
-            previous_plate_barcode: position1.assignedPlateId,
-          },
-        });
-        await db.graviScanPlateAssignment.updateMany({
-          where: {
-            experiment_id: experimentId,
-            scanner_id: position2.scannerId,
-            plate_index: position2.plateIndex,
-          },
-          data: {
-            plate_barcode: position1.assignedPlateId,
-            previous_plate_barcode: position2.assignedPlateId,
-          },
-        });
-
-        // 2. Swap plate_barcode in the GraviScan records (scan image
-        //    records) for BOTH positions.
+        // All four writes for this pair are ONE atomic unit.
         //
-        //    This is a set-based updateMany, not `findFirst({ orderBy:
-        //    capture_date desc }) + update`. A time-lapse session writes one
-        //    GraviScan row per cycle for the same scanner/position, so
-        //    correcting only the newest row left every earlier cycle carrying
-        //    the wrong plate_barcode — and graviscan-upload.ts reads
-        //    plate_barcode PER ROW, so those cycles would have uploaded to
-        //    Bloom and Box under the wrong plate. A mis-loaded plate is wrong
-        //    for every cycle it was scanned in, not just the last one.
-        //
-        //    Scope is (experiment_id, scanner_id, plate_index) plus the
-        //    PRE-correction plate_barcode. That last filter is what makes this
-        //    safe and idempotent: only rows that still carry the wrong value
-        //    are touched, so a re-run (or a partially-applied earlier run)
-        //    cannot swap anything back. Scoping instead by session_id was the
-        //    alternative considered; it would need a new parameter threaded
-        //    through the whole call chain and would still leave the other
-        //    sessions of the same experiment wrong.
-        const scan1Update = await db.graviScan.updateMany({
-          where: {
-            experiment_id: experimentId,
-            scanner_id: position1.scannerId,
-            plate_index: position1.plateIndex,
-            plate_barcode: position1.assignedPlateId,
-            deleted: false,
-          },
-          data: { plate_barcode: position2.assignedPlateId },
+        // Bare, a failure between them left the assignment corrected but the
+        // scan records not (or vice versa): the plate assignment and the scan
+        // history would then disagree about which plate sat in that position,
+        // with nothing in the data to say which one is right. The
+        // transactional boundary is deliberately per-SWAP-PAIR rather than
+        // per-batch, so one bad pair still cannot abort the corrections for
+        // the others — the existing per-pair try/catch below stays.
+        const counts = await db.$transaction(async (tx) => {
+          // 1. Swap plate_barcode in GraviScanPlateAssignment.
+          //    Every `where` below carries experiment_id, matching the real
+          //    @@unique([experiment_id, scanner_id, plate_index]) constraint.
+          const assignment1 = await tx.graviScanPlateAssignment.updateMany({
+            where: {
+              experiment_id: experimentId,
+              scanner_id: position1.scannerId,
+              plate_index: position1.plateIndex,
+            },
+            data: {
+              plate_barcode: position2.assignedPlateId,
+              // Audit trail: record what this position was corrected FROM, in
+              // the same write. Without it, "this row used to say Plate_13"
+              // only exists in application logs, which are not queryable and
+              // do not survive a log rotation.
+              previous_plate_barcode: position1.assignedPlateId,
+            },
+          });
+          const assignment2 = await tx.graviScanPlateAssignment.updateMany({
+            where: {
+              experiment_id: experimentId,
+              scanner_id: position2.scannerId,
+              plate_index: position2.plateIndex,
+            },
+            data: {
+              plate_barcode: position1.assignedPlateId,
+              previous_plate_barcode: position2.assignedPlateId,
+            },
+          });
+
+          // 2. Swap plate_barcode in the GraviScan records (scan image
+          //    records) for BOTH positions.
+          //
+          //    This is a set-based updateMany, not `findFirst({ orderBy:
+          //    capture_date desc }) + update`. A time-lapse session writes one
+          //    GraviScan row per cycle for the same scanner/position, so
+          //    correcting only the newest row left every earlier cycle
+          //    carrying the wrong plate_barcode — and graviscan-upload.ts
+          //    reads plate_barcode PER ROW, so those cycles would have
+          //    uploaded to Bloom and Box under the wrong plate. A mis-loaded
+          //    plate is wrong for every cycle it was scanned in, not just the
+          //    last one.
+          //
+          //    Scope is (experiment_id, scanner_id, plate_index) plus the
+          //    PRE-correction plate_barcode. That last filter is what makes
+          //    this safe and idempotent: only rows that still carry the wrong
+          //    value are touched, so a re-run (or a partially-applied earlier
+          //    run) cannot swap anything back. Scoping instead by session_id
+          //    was the alternative considered; it would need a new parameter
+          //    threaded through the whole call chain and would still leave the
+          //    other sessions of the same experiment wrong.
+          const scan1 = await tx.graviScan.updateMany({
+            where: {
+              experiment_id: experimentId,
+              scanner_id: position1.scannerId,
+              plate_index: position1.plateIndex,
+              plate_barcode: position1.assignedPlateId,
+              deleted: false,
+            },
+            data: { plate_barcode: position2.assignedPlateId },
+          });
+          const scan2 = await tx.graviScan.updateMany({
+            where: {
+              experiment_id: experimentId,
+              scanner_id: position2.scannerId,
+              plate_index: position2.plateIndex,
+              plate_barcode: position2.assignedPlateId,
+              deleted: false,
+            },
+            data: { plate_barcode: position1.assignedPlateId },
+          });
+
+          return { assignment1, assignment2, scan1, scan2 };
         });
 
-        const scan2Update = await db.graviScan.updateMany({
-          where: {
-            experiment_id: experimentId,
-            scanner_id: position2.scannerId,
-            plate_index: position2.plateIndex,
-            plate_barcode: position2.assignedPlateId,
-            deleted: false,
-          },
-          data: { plate_barcode: position1.assignedPlateId },
-        });
-
-        console.log(
-          `[GraviScan:VERIFY] Corrected ${scan1Update.count} + ` +
-            `${scan2Update.count} GraviScan record(s) for the swapped pair`
-        );
-
-        // 3. Log swap for audit trail
+        // 3. Log swap for audit trail. Only reached once the transaction has
+        //    actually committed — a rolled-back pair must not be logged as
+        //    corrected.
         console.log(
           `[GraviScan:VERIFY] Swap corrected: ` +
             `${position1.assignedPlateId} (${position1.scannerId}:${position1.plateIndex}) <-> ` +
-            `${position2.assignedPlateId} (${position2.scannerId}:${position2.plateIndex})`
+            `${position2.assignedPlateId} (${position2.scannerId}:${position2.plateIndex}) ` +
+            `[${counts.scan1.count} + ${counts.scan2.count} GraviScan record(s)]`
         );
       } catch (swapErr) {
         console.error('[GraviScan:VERIFY] Failed to correct swap:', swapErr);

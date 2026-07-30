@@ -115,6 +115,24 @@ batch.
   `plate_barcode` is what keeps this safe and idempotent: only rows that are
   actually wrong are touched, so a re-run cannot swap anything back.
 
+#### Scenario: A swap correction is atomic per swap pair
+
+- **GIVEN** a detected swap whose correction comprises four writes (two
+  `GraviScanPlateAssignment` updates and two `GraviScan` updates)
+- **WHEN** one of those writes fails part-way through
+- **THEN** all four SHALL be rolled back — no partially-corrected pair SHALL
+  be left in the database
+- **AND** the transactional boundary SHALL be per **swap pair**, not per
+  batch, so a failing pair still SHALL NOT abort the corrections for the
+  other pairs in the same run
+- **AND** the failure SHALL be caught and logged, and the batch SHALL
+  continue
+- **AND** the "swap corrected" audit log line SHALL be emitted only after the
+  transaction commits
+- **NOTE**: without this, a mid-sequence failure left the plate assignment
+  and the scan history disagreeing about which plate sat in that position,
+  with nothing in the data to indicate which one is right.
+
 #### Scenario: experimentId scopes both the plate lookup and every DB write
 
 - **GIVEN** an `experimentId` is passed to `graviscan:verify-plates`
