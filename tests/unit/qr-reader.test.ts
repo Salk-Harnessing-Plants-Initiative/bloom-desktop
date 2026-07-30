@@ -98,6 +98,33 @@ describe('qr-reader (Python --decode-qr-batch subprocess)', () => {
       await promise;
     });
 
+    it('forces UTF-8 on the subprocess environment', async () => {
+      // Without this, Windows Python decodes stdin and encodes stdout/stderr
+      // with the locale codepage, mangling any non-ASCII character in a scan
+      // path. python/main.py reconfigures the streams itself too — these are
+      // belt and braces, and neither side may quietly drop its half.
+      const promise = readQrCodesBatch(['/scans/a.tif']);
+      const proc = await waitForSpawn();
+
+      expect(spawn).toHaveBeenCalledWith(
+        '/mock/dist/bloom-hardware',
+        ['--decode-qr-batch'],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            PYTHONIOENCODING: 'utf-8',
+            PYTHONUTF8: '1',
+          }),
+        })
+      );
+
+      proc.stdout.emit(
+        'data',
+        Buffer.from(JSON.stringify([{ path: '/scans/a.tif', codes: [] }]))
+      );
+      proc.emit('close', 0);
+      await promise;
+    });
+
     it('writes the image paths to stdin as a JSON array and closes stdin', async () => {
       const paths = ['/scans/a.tif', '/scans/b.tif'];
       const promise = readQrCodesBatch(paths);
@@ -291,6 +318,39 @@ describe('qr-reader (Python --decode-qr-batch subprocess)', () => {
       );
       proc2.emit('close', 0);
       expect(await second).toEqual([{ path: '/scans/b.tif', codes: ['B'] }]);
+    });
+
+    it('returns empty codes when the executable path cannot be resolved', async () => {
+      vi.mocked(getPythonExecutablePath).mockImplementationOnce(() => {
+        throw new Error('electron app is not ready');
+      });
+
+      expect(await readQrCodesBatch(['/scans/a.tif'])).toEqual([
+        { path: '/scans/a.tif', codes: [] },
+      ]);
+      expect(spawn).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalled();
+    });
+
+    it('does not poison the queue when a batch rejects unexpectedly', async () => {
+      // The queue tail is shared process-wide. If a rejected promise were ever
+      // chained onto it, EVERY later call would reject with it for the life of
+      // the process, not just the one bad batch. Simulated here with a
+      // subprocess handle that is missing the EventEmitter surface, which
+      // throws out of the promise executor rather than through any of the
+      // handled error paths.
+      vi.mocked(spawn).mockImplementationOnce((() => ({})) as never);
+
+      expect(await readQrCodesBatch(['/scans/bad.tif'])).toEqual([
+        { path: '/scans/bad.tif', codes: [] },
+      ]);
+      expect(console.error).toHaveBeenCalled();
+
+      // The next batch must still run normally.
+      const promise = readQrCodesBatch(['/scans/b.tif']);
+      await respond(JSON.stringify([{ path: '/scans/b.tif', codes: ['B'] }]));
+
+      expect(await promise).toEqual([{ path: '/scans/b.tif', codes: ['B'] }]);
     });
 
     it('runs a later batch even after an earlier one failed', async () => {

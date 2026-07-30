@@ -70,10 +70,12 @@ function runDecodeSubprocess(imagePaths: string[]): Promise<SpawnOutcome> {
       resolve(outcome);
     };
 
-    const executable = getPythonExecutablePath();
-
     let proc;
     try {
+      // Inside the try: getPythonExecutablePath() reads electron's `app`, and
+      // a throw here must become a clean 'failed' outcome rather than an
+      // unexpected rejection out of this promise.
+      const executable = getPythonExecutablePath();
       proc = spawn(executable, ['--decode-qr-batch'], {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Force UTF-8 on the Python side of the pipe. Without this, Windows
@@ -252,11 +254,24 @@ export async function readQrCodesBatch(
 ): Promise<QrCodeResult[]> {
   if (imagePaths.length === 0) return [];
 
-  const result = await (qrReadQueue = qrReadQueue.then(() =>
-    decodeBatch(imagePaths)
-  ));
+  const run = qrReadQueue.then(() => decodeBatch(imagePaths));
 
-  return result as QrCodeResult[];
+  // The queue tail must NEVER be a rejected promise. `decodeBatch` is written
+  // not to reject, but if it ever did, chaining the raw promise would leave
+  // `qrReadQueue` permanently rejected and every subsequent call would reject
+  // with it — breaking the documented "never rejects" contract for the rest
+  // of the process's life, not just for the one bad batch.
+  qrReadQueue = run.catch((): void => {});
+
+  try {
+    return await run;
+  } catch (error) {
+    console.error(
+      '[QR Reader] Unexpected failure decoding batch:',
+      error instanceof Error ? error.message : error
+    );
+    return emptyResults(imagePaths);
+  }
 }
 
 /**
