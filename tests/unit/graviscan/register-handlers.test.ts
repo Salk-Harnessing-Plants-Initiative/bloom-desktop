@@ -40,6 +40,12 @@ vi.mock('../../../src/main/graviscan/image-handlers', () => ({
   listScanFiles: vi.fn().mockReturnValue({ success: true, files: [] }),
 }));
 
+vi.mock('../../../src/main/graviscan/verify-plates', () => ({
+  verifyPlates: vi
+    .fn()
+    .mockResolvedValue({ success: true, results: [], swaps: [] }),
+}));
+
 // Mock fs for realpath validation
 vi.mock('fs', () => ({
   realpathSync: vi.fn((p: string) => p), // identity by default
@@ -55,6 +61,7 @@ import * as scannerHandlers from '../../../src/main/graviscan/scanner-handlers';
 import * as sessionHandlers from '../../../src/main/graviscan/session-handlers';
 import * as imageHandlers from '../../../src/main/graviscan/image-handlers';
 import * as scannerUpsert from '../../../src/main/graviscan/scanner-upsert';
+import * as verifyPlatesHandlers from '../../../src/main/graviscan/verify-plates';
 import {
   registerGraviScanHandlers,
   _resetRegistration,
@@ -79,6 +86,7 @@ const CHANNELS = [
   'graviscan:upload-all-scans',
   'graviscan:download-images',
   'graviscan:reset-usb',
+  'graviscan:verify-plates',
   'graviscan:get-scanner-status',
   'graviscan:ensure-dir',
   'graviscan:list-scan-files',
@@ -140,7 +148,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 20 IPC channels', () => {
+  it('registers all 21 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -149,7 +157,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(20);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(21);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }
@@ -1123,6 +1131,189 @@ describe('registerGraviScanHandlers', () => {
       // Progress should NOT have been sent (window was null at send-time)
       expect(send).not.toHaveBeenCalled();
     });
+  });
+
+  describe('graviscan:verify-plates', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('delegates to verifyPlates with db, plates, experimentId, and the scan output dir', async () => {
+      const plates = [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scan.tif',
+          assignedPlateId: 'Plate_13',
+        },
+      ];
+
+      await mockIpcMain._invoke('graviscan:verify-plates', plates, 'exp-1');
+
+      // The output directory is resolved here and passed in, so
+      // verify-plates.ts can do realpath containment without importing
+      // electron itself.
+      expect(verifyPlatesHandlers.verifyPlates).toHaveBeenCalledWith(
+        mockDb,
+        plates,
+        'exp-1',
+        '/home/user/.bloom/graviscan',
+        expect.any(Function)
+      );
+    });
+
+    it('rejects the invocation when the scan output directory cannot be resolved', async () => {
+      vi.mocked(imageHandlers.getOutputDir).mockReturnValueOnce({
+        success: false,
+        error: 'Permission denied',
+      } as any);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:verify-plates',
+        [],
+        'exp-1'
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining('scan directory'),
+        results: [],
+        swaps: [],
+      });
+      expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
+    });
+
+    it('forwards verify-started/verify-result/verify-complete to the renderer', async () => {
+      const send = vi.fn();
+      const mockWin = { isDestroyed: () => false, webContents: { send } };
+      mockGetMainWindow.mockReturnValue(mockWin);
+
+      vi.mocked(verifyPlatesHandlers.verifyPlates).mockImplementationOnce(
+        async (
+          _db: any,
+          _plates: any,
+          _experimentId: any,
+          _outputDir: any,
+          onProgress?: any
+        ) => {
+          onProgress?.({ type: 'verify-started' });
+          onProgress?.({
+            type: 'verify-result',
+            result: { scannerId: 's1', status: 'verified' },
+          });
+          onProgress?.({
+            type: 'verify-complete',
+            results: [{ scannerId: 's1', status: 'verified' }],
+            swaps: [],
+          });
+          return { success: true, results: [], swaps: [] };
+        }
+      );
+
+      await mockIpcMain._invoke('graviscan:verify-plates', [], 'exp-1');
+
+      expect(send).toHaveBeenCalledWith('graviscan:verify-started', undefined);
+      expect(send).toHaveBeenCalledWith('graviscan:verify-result', {
+        scannerId: 's1',
+        status: 'verified',
+      });
+      expect(send).toHaveBeenCalledWith('graviscan:verify-complete', {
+        results: [{ scannerId: 's1', status: 'verified' }],
+        swaps: [],
+      });
+    });
+
+    it('does not crash when no renderer window is available', async () => {
+      mockGetMainWindow.mockReturnValue(null);
+
+      vi.mocked(verifyPlatesHandlers.verifyPlates).mockImplementationOnce(
+        async (
+          _db: any,
+          _plates: any,
+          _experimentId: any,
+          _outputDir: any,
+          onProgress?: any
+        ) => {
+          onProgress?.({ type: 'verify-started' });
+          return { success: true, results: [], swaps: [] };
+        }
+      );
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:verify-plates',
+        [],
+        'exp-1'
+      );
+
+      expect(result).toEqual({ success: true, results: [], swaps: [] });
+    });
+
+    it('rejects the invocation when no experimentId is supplied', async () => {
+      // Proceeding unscoped would let a write hit a different experiment's
+      // row for the same long-lived scanner and plate position.
+      const result = await mockIpcMain._invoke(
+        'graviscan:verify-plates',
+        [
+          {
+            scannerId: 's1',
+            plateIndex: '00',
+            imagePath: '/scan.tif',
+            assignedPlateId: 'Plate_13',
+          },
+        ],
+        undefined
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining('experimentId'),
+        results: [],
+        swaps: [],
+      });
+      expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a number', 123],
+      ['a filter object', { not: 'zzz' }],
+      ['an array', ['exp-1']],
+      ['an empty string', ''],
+      ['null', null],
+    ])(
+      'rejects the invocation when experimentId is %s',
+      async (_label, badId) => {
+        // The IPC payload is untyped, so a renderer bug (or a hostile one) can
+        // put anything here. Prisma drops an `undefined` `where` key and
+        // accepts a filter object in place of a scalar — either one widens
+        // every write in verifyPlates() to the whole experiment table.
+        const result = await mockIpcMain._invoke(
+          'graviscan:verify-plates',
+          [
+            {
+              scannerId: 's1',
+              plateIndex: '00',
+              imagePath: '/scan.tif',
+              assignedPlateId: 'Plate_13',
+            },
+          ],
+          badId
+        );
+
+        expect(result).toEqual({
+          success: false,
+          error: expect.stringContaining('experimentId'),
+          results: [],
+          swaps: [],
+        });
+        expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
+      }
+    );
   });
 
   describe('concurrent start-scan', () => {

@@ -237,6 +237,175 @@ def test_main_scan_worker_mode_missing_device():
             main()
 
 
+def test_main_decode_qr_batch_reads_stdin_writes_stdout(capsys, monkeypatch):
+    """--decode-qr-batch consumes a JSON array of paths and emits JSON results.
+
+    This is the wire contract src/main/qr-reader.ts depends on: paths in on
+    stdin (avoids Windows argv-length limits for large batches), one
+    {"path", "codes"} object per input path out on stdout, in input order.
+    """
+    import io
+    import json
+
+    paths = ["/scans/a.tif", "/scans/b.tif"]
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(paths)))
+
+    def fake_decode(path):
+        return ["qr-a"] if path.endswith("a.tif") else []
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with patch("python.graviscan.qr_reader.decode_qr_codes", fake_decode):
+            main()
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == [
+        {"path": "/scans/a.tif", "codes": ["qr-a"]},
+        {"path": "/scans/b.tif", "codes": []},
+    ]
+
+
+def test_main_decode_qr_batch_empty_stdin_emits_empty_array(capsys, monkeypatch):
+    """Empty stdin is a valid empty batch, not a crash."""
+    import io
+    import json
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        main()
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == []
+
+
+def test_main_decode_qr_batch_rejects_non_array_payload(capsys, monkeypatch):
+    """A JSON object (not an array) is a protocol violation -> non-zero exit."""
+    import io
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO('{"path": "/scans/a.tif"}'))
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+    assert exc.value.code != 0
+    assert "array" in capsys.readouterr().err.lower()
+
+
+def test_main_decode_qr_batch_rejects_malformed_json(capsys, monkeypatch):
+    """Malformed stdin exits non-zero with a stderr diagnostic, never a traceback."""
+    import io
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not json at all"))
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with pytest.raises(SystemExit) as exc:
+            main()
+
+    assert exc.value.code != 0
+    assert capsys.readouterr().err.strip() != ""
+
+
+def test_main_decode_qr_batch_import_fallback_executes(capsys, monkeypatch):
+    """The PyInstaller-bundle import fallback branch genuinely runs.
+
+    Same technique as test_main_scan_worker_mode_import_fallback_executes:
+    force the dev-style `python.graviscan.qr_reader` import to raise
+    ModuleNotFoundError so the bundled-style `graviscan.qr_reader` import in
+    the except branch really executes.
+    """
+    import io
+    import json
+    import types
+
+    fake_module = types.ModuleType("graviscan.qr_reader")
+    fake_module.decode_qr_codes = MagicMock(return_value=["qr-x"])
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(["/scans/x.tif"])))
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with patch.dict(
+            sys.modules,
+            {
+                "python.graviscan.qr_reader": None,
+                "graviscan.qr_reader": fake_module,
+            },
+        ):
+            main()
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == [{"path": "/scans/x.tif", "codes": ["qr-x"]}]
+    fake_module.decode_qr_codes.assert_called_once_with("/scans/x.tif")
+
+
+def test_main_decode_qr_batch_forces_utf8_on_all_three_streams(monkeypatch):
+    """Non-ASCII image paths must survive the pipe on Windows.
+
+    Python decodes stdin (and encodes stdout/stderr) using the locale codepage
+    unless told otherwise. On a Windows rig whose codepage is not UTF-8, any
+    non-ASCII character in a scan path would be mangled in the request, in the
+    echoed-back response, and in the diagnostics — qr_reader logs image
+    basenames to stderr, and against an actual PyInstaller build that produced
+    bytes the Node side could not decode. The mode reconfigures all three
+    streams explicitly rather than relying on the ambient locale
+    (src/main/qr-reader.ts additionally sets PYTHONIOENCODING/PYTHONUTF8 on the
+    subprocess env, but this must not depend on the caller getting that right).
+    """
+    import io
+    import json
+
+    class RecordingStream(io.StringIO):
+        def __init__(self, initial=""):
+            super().__init__(initial)
+            self.encodings = []
+
+        def reconfigure(self, *, encoding=None, **kwargs):
+            self.encodings.append(encoding)
+
+    path = "/scans/pläte_13_©.tif"
+    stdin = RecordingStream(json.dumps([path]))
+    stdout = RecordingStream()
+    stderr = RecordingStream()
+    monkeypatch.setattr(sys, "stdin", stdin)
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with patch("python.graviscan.qr_reader.decode_qr_codes", lambda p: []):
+            main()
+
+    assert stdin.encodings == ["utf-8"]
+    assert stdout.encodings == ["utf-8"]
+    assert stderr.encodings == ["utf-8"]
+    assert json.loads(stdout.getvalue()) == [{"path": path, "codes": []}]
+
+
+def test_main_decode_qr_batch_tolerates_streams_without_reconfigure(
+    capsys, monkeypatch
+):
+    """A stream lacking .reconfigure() (a redirected pipe, a test double) must
+    not crash the mode."""
+    import io
+    import json
+
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(["/scans/a.tif"])))
+
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch"]):
+        with patch("python.graviscan.qr_reader.decode_qr_codes", lambda p: []):
+            main()
+
+    assert json.loads(capsys.readouterr().out) == [
+        {"path": "/scans/a.tif", "codes": []}
+    ]
+
+
+def test_main_decode_qr_batch_and_ipc_mutually_exclusive():
+    """--decode-qr-batch belongs to the same mutually exclusive mode group."""
+    with patch("sys.argv", ["bloom-hardware", "--decode-qr-batch", "--ipc"]):
+        with pytest.raises(SystemExit):
+            main()
+
+
 def test_main_scan_worker_and_ipc_mutually_exclusive():
     """Test that passing both --scan-worker and --ipc raises an argparse error.
 

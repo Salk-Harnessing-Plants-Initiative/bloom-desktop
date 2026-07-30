@@ -9,6 +9,17 @@ dependencies = [
     "imageio>=2.34.0",
     "nidaqmx>=0.9.0",
     "pillow>=10.0.0",
+    # QR/barcode decoding for GraviScan post-scan plate verification
+    # (cv2.QRCodeDetector). Headless build: no GUI/Qt dependencies, which
+    # keeps the PyInstaller bundle small and avoids X11 requirements on the rig.
+    #
+    # Upper-bounded at <5 deliberately. An unbounded ">=4.9.0" resolved to
+    # 5.0.0.93 — a major version newer than what pyinstaller-hooks-contrib
+    # 2025.9's bundled cv2 hook was written against. The frozen build was only
+    # ever verified on Windows, never on macOS or Linux, so the bound stays at
+    # the major version the hooks are known good for. Raising it requires
+    # rebuilding and running the frozen executable on all three platforms.
+    "opencv-python-headless>=4.9.0,<5",
 ]
 
 [project.optional-dependencies]

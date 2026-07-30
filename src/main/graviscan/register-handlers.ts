@@ -1,7 +1,7 @@
 /**
  * GraviScan IPC Handler Registration
  *
- * Wraps pure handler functions with ipcMain.handle() for 20 IPC channels.
+ * Wraps pure handler functions with ipcMain.handle() for 21 IPC channels.
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
  *
  * This is also where coordinator-aware orchestration around the DB-only
@@ -11,15 +11,19 @@
  * wrappers", and `getCoordinator()` is only available here.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import type { IpcMain, BrowserWindow } from 'electron';
 import type { PrismaClient } from '@prisma/client';
+import {
+  resolveContainedPath,
+  resolveContainedPathAllowingMissing,
+} from './path-containment';
 import * as scannerHandlers from './scanner-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as imageHandlers from './image-handlers';
 import * as scannerUpsert from './scanner-upsert';
+import * as verifyPlatesHandlers from './verify-plates';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
+import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
 
 let registered = false;
 
@@ -29,82 +33,6 @@ let registered = false;
  * exists, nor where it actually resolved to.
  */
 const OUTSIDE_SCAN_DIR = 'Path outside scan directory';
-
-/**
- * Resolve `candidatePath` and confirm it is `baseDir` itself or lives beneath
- * it, following symlinks on both sides.
- *
- * Comparing the strings alone is not enough: a symlink inside the output
- * directory can point anywhere, so both sides go through `fs.realpathSync`
- * first. Callers should use the returned path rather than the original, so
- * the value that was checked is the value that gets used.
- *
- * Returns `null` when the path is not contained — including when it does not
- * exist on disk, since `realpathSync` throws for a missing path and a path
- * that cannot be resolved cannot be proven contained. Use
- * `resolveContainedPathAllowingMissing()` for handlers whose whole job is to
- * act on a path that isn't there yet.
- *
- * NOTE: a sibling change adds this same helper as
- * `src/main/graviscan/path-containment.ts` (shared with `verify-plates.ts`).
- * When that lands, delete these two local copies and import from there.
- */
-function resolveContainedPath(
-  baseDir: string,
-  candidatePath: string
-): string | null {
-  let realBase: string;
-  let realCandidate: string;
-
-  try {
-    realBase = fs.realpathSync(path.resolve(baseDir));
-    realCandidate = fs.realpathSync(path.resolve(candidatePath));
-  } catch {
-    // File or directory doesn't exist — reject rather than guess.
-    return null;
-  }
-
-  if (realCandidate === realBase) return realCandidate;
-  if (realCandidate.startsWith(realBase + path.sep)) return realCandidate;
-
-  return null;
-}
-
-/**
- * Same containment guarantee as `resolveContainedPath()`, but tolerates a
- * candidate that does not exist on disk yet — needed by `ensure-dir` (whose
- * entire purpose is creating a missing directory) and by `list-scan-files`
- * (whose contract answers a not-yet-created session directory with an empty
- * list, not an error).
- *
- * Walks up to the deepest ancestor that DOES exist, proves containment for
- * that ancestor with symlinks resolved, then re-appends the missing tail. A
- * path segment that does not exist cannot be a symlink, so nothing in the
- * tail can escape the checked ancestor.
- */
-function resolveContainedPathAllowingMissing(
-  baseDir: string,
-  candidatePath: string
-): string | null {
-  const resolved = path.resolve(candidatePath);
-
-  let existingAncestor = resolved;
-  const missingSegments: string[] = [];
-  while (!fs.existsSync(existingAncestor)) {
-    const parent = path.dirname(existingAncestor);
-    // Reached the filesystem root without finding anything that exists.
-    if (parent === existingAncestor) return null;
-    missingSegments.unshift(path.basename(existingAncestor));
-    existingAncestor = parent;
-  }
-
-  const containedAncestor = resolveContainedPath(baseDir, existingAncestor);
-  if (containedAncestor === null) return null;
-
-  return missingSegments.length > 0
-    ? path.join(containedAncestor, ...missingSegments)
-    : containedAncestor;
-}
 
 export function registerGraviScanHandlers(
   ipcMain: IpcMain,
@@ -365,11 +293,18 @@ export function registerGraviScanHandlers(
           error: 'Cannot determine scan directory for path validation',
         };
       }
-      const realFile = resolveContainedPath(outputDirResult.path, filePath);
-      if (realFile === null) {
+      // Resolve symlinks on both sides before comparing (prevents symlink
+      // escapes). Shared with verify-plates.ts via path-containment.ts.
+      // Both failure reasons return the SAME message on purpose: telling the
+      // renderer apart "outside the directory" from "does not exist" would
+      // leak whether an arbitrary path exists on disk.
+      const contained = resolveContainedPath(outputDirResult.path, filePath);
+      if (!contained.ok) {
         return { success: false, error: OUTSIDE_SCAN_DIR };
       }
-      return wrapHandler(() => imageHandlers.readScanImage(realFile, opts))();
+      return wrapHandler(() =>
+        imageHandlers.readScanImage(contained.path, opts)
+      )();
     }
   );
 
@@ -420,15 +355,15 @@ export function registerGraviScanHandlers(
       });
     }
 
-    const realDir = resolveContainedPathAllowingMissing(
+    const contained = resolveContainedPathAllowingMissing(
       outputDirResult.path,
       dirPath
     );
-    if (realDir === null) {
+    if (!contained.ok) {
       return Promise.resolve({ success: false, error: OUTSIDE_SCAN_DIR });
     }
 
-    return imageHandlers.ensureDir(realDir);
+    return imageHandlers.ensureDir(contained.path);
   });
 
   /**
@@ -460,11 +395,11 @@ export function registerGraviScanHandlers(
     // Allow a not-yet-created directory: listScanFiles() answers that with
     // `{ success: true, files: [] }`, and turning it into a containment
     // error would change the documented contract.
-    const realDir = resolveContainedPathAllowingMissing(
+    const contained = resolveContainedPathAllowingMissing(
       outputDirResult.path,
       dirPath
     );
-    if (realDir === null) {
+    if (!contained.ok) {
       return Promise.resolve({
         success: false,
         files: [],
@@ -472,7 +407,7 @@ export function registerGraviScanHandlers(
       });
     }
 
-    return Promise.resolve(imageHandlers.listScanFiles(realDir));
+    return Promise.resolve(imageHandlers.listScanFiles(contained.path));
   });
 
   ipcMain.handle('graviscan:download-images', (_event, params) => {
@@ -487,6 +422,91 @@ export function registerGraviScanHandlers(
       imageHandlers.downloadImages(db, params, onProgress)
     )();
   });
+
+  // --- Post-scan QR verification ---
+  ipcMain.handle(
+    'graviscan:verify-plates',
+    (_event, plates: VerifyPlateInput[], experimentId?: unknown) => {
+      // Every DB write verifyPlates() performs is keyed on
+      // (experiment_id, scanner_id, plate_index). Without an experimentId
+      // those writes could hit a *different* experiment's row for the same
+      // long-lived scanner and position, so reject rather than proceed
+      // unscoped. `experimentId` is untyped in this signature because the IPC
+      // payload genuinely is: a renderer can send anything.
+      //
+      // The check is on the TYPE, not truthiness. Prisma drops a `where` key
+      // whose value is `undefined` and accepts a filter object
+      // (`{ not: 'zzz' }`) in place of a scalar, so a non-string experimentId
+      // that happens to be truthy would widen every downstream write to the
+      // whole table. verifyPlates() re-checks this itself — this is a second
+      // gate at the boundary, not a substitute for that one.
+      if (typeof experimentId !== 'string' || !experimentId) {
+        const error =
+          'graviscan:verify-plates requires an experimentId (a non-empty ' +
+          'string) — refusing to run verification without an experiment scope';
+        console.error('[GraviScan IPC]', error);
+        return Promise.resolve({
+          success: false,
+          error,
+          results: [],
+          swaps: [],
+        });
+      }
+
+      // verify-plates.ts validates every imagePath against this directory
+      // before decoding. It takes the directory as a parameter rather than
+      // reading it from `electron.app` itself, which keeps that module free
+      // of any Electron dependency (same reason its progress events are
+      // callback-injected rather than sent via webContents directly).
+      const outputDirResult = imageHandlers.getOutputDir();
+      if (!outputDirResult.success || !outputDirResult.path) {
+        const error = 'Cannot determine scan directory for path validation';
+        console.error('[GraviScan IPC]', error);
+        return Promise.resolve({
+          success: false,
+          error,
+          results: [],
+          swaps: [],
+        });
+      }
+
+      // Check window at send-time, not registration-time (window may close mid-verify)
+      const send = (channel: string, payload?: unknown) => {
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send(channel, payload);
+        }
+      };
+      const onProgress = (event: VerifyProgressEvent) => {
+        switch (event.type) {
+          case 'verify-started':
+            send('graviscan:verify-started');
+            break;
+          case 'verify-result':
+            send('graviscan:verify-result', event.result);
+            break;
+          case 'verify-complete':
+            send('graviscan:verify-complete', {
+              results: event.results,
+              swaps: event.swaps,
+            });
+            break;
+        }
+      };
+      // NOTE: this handler intentionally returns verifyPlates()'s own
+      // { success, results, swaps } envelope rather than wrapping it in
+      // wrapHandler's { success, data }. The renderer contract for the
+      // verify-* channels is the flat shape — don't "fix" this to match the
+      // other handlers.
+      return verifyPlatesHandlers.verifyPlates(
+        db,
+        plates,
+        experimentId,
+        outputDirResult.path,
+        onProgress
+      );
+    }
+  );
 }
 
 /**
