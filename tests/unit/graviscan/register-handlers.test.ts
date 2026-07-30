@@ -810,7 +810,7 @@ describe('registerGraviScanHandlers', () => {
       );
     });
 
-    it('delegates to verifyPlates with db, plates, and experimentId', async () => {
+    it('delegates to verifyPlates with db, plates, experimentId, and the scan output dir', async () => {
       const plates = [
         {
           scannerId: 's1',
@@ -822,12 +822,37 @@ describe('registerGraviScanHandlers', () => {
 
       await mockIpcMain._invoke('graviscan:verify-plates', plates, 'exp-1');
 
+      // The output directory is resolved here and passed in, so
+      // verify-plates.ts can do realpath containment without importing
+      // electron itself.
       expect(verifyPlatesHandlers.verifyPlates).toHaveBeenCalledWith(
         mockDb,
         plates,
         'exp-1',
+        '/home/user/.bloom/graviscan',
         expect.any(Function)
       );
+    });
+
+    it('rejects the invocation when the scan output directory cannot be resolved', async () => {
+      vi.mocked(imageHandlers.getOutputDir).mockReturnValueOnce({
+        success: false,
+        error: 'Permission denied',
+      } as any);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:verify-plates',
+        [],
+        'exp-1'
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining('scan directory'),
+        results: [],
+        swaps: [],
+      });
+      expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
     });
 
     it('forwards verify-started/verify-result/verify-complete to the renderer', async () => {
@@ -840,6 +865,7 @@ describe('registerGraviScanHandlers', () => {
           _db: any,
           _plates: any,
           _experimentId: any,
+          _outputDir: any,
           onProgress?: any
         ) => {
           onProgress?.({ type: 'verify-started' });
@@ -877,6 +903,7 @@ describe('registerGraviScanHandlers', () => {
           _db: any,
           _plates: any,
           _experimentId: any,
+          _outputDir: any,
           onProgress?: any
         ) => {
           onProgress?.({ type: 'verify-started' });

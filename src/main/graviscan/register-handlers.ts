@@ -11,10 +11,9 @@
  * wrappers", and `getCoordinator()` is only available here.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import type { IpcMain, BrowserWindow } from 'electron';
 import type { PrismaClient } from '@prisma/client';
+import { resolveContainedPath } from './path-containment';
 import * as scannerHandlers from './scanner-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as imageHandlers from './image-handlers';
@@ -272,20 +271,10 @@ export function registerGraviScanHandlers(
           error: 'Cannot determine scan directory for path validation',
         };
       }
-      // Use realpath to resolve symlinks before comparing (prevents symlink escapes)
-      let realOutput: string;
-      let realFile: string;
-      try {
-        realOutput = fs.realpathSync(outputDirResult.path);
-        realFile = fs.realpathSync(path.resolve(filePath));
-      } catch {
-        // File or directory doesn't exist — reject
-        return { success: false, error: 'Path outside scan directory' };
-      }
-      if (
-        !realFile.startsWith(realOutput + path.sep) &&
-        realFile !== realOutput
-      ) {
+      // Resolve symlinks on both sides before comparing (prevents symlink
+      // escapes). Shared with verify-plates.ts via path-containment.ts.
+      const realFile = resolveContainedPath(outputDirResult.path, filePath);
+      if (!realFile) {
         return { success: false, error: 'Path outside scan directory' };
       }
       return wrapHandler(() => imageHandlers.readScanImage(realFile, opts))();
@@ -347,6 +336,23 @@ export function registerGraviScanHandlers(
         });
       }
 
+      // verify-plates.ts validates every imagePath against this directory
+      // before decoding. It takes the directory as a parameter rather than
+      // reading it from `electron.app` itself, which keeps that module free
+      // of any Electron dependency (same reason its progress events are
+      // callback-injected rather than sent via webContents directly).
+      const outputDirResult = imageHandlers.getOutputDir();
+      if (!outputDirResult.success || !outputDirResult.path) {
+        const error = 'Cannot determine scan directory for path validation';
+        console.error('[GraviScan IPC]', error);
+        return Promise.resolve({
+          success: false,
+          error,
+          results: [],
+          swaps: [],
+        });
+      }
+
       // Check window at send-time, not registration-time (window may close mid-verify)
       const send = (channel: string, payload?: unknown) => {
         const win = getMainWindow();
@@ -370,10 +376,16 @@ export function registerGraviScanHandlers(
             break;
         }
       };
+      // NOTE: this handler intentionally returns verifyPlates()'s own
+      // { success, results, swaps } envelope rather than wrapping it in
+      // wrapHandler's { success, data }. The renderer contract for the
+      // verify-* channels is the flat shape — don't "fix" this to match the
+      // other handlers.
       return verifyPlatesHandlers.verifyPlates(
         db,
         plates,
         experimentId,
+        outputDirResult.path,
         onProgress
       );
     }

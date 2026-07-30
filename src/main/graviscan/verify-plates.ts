@@ -16,6 +16,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { readQrCodesBatch } from '../qr-reader';
+import { resolveContainedPath } from './path-containment';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,11 +119,18 @@ function positionKey(position: {
  * experiment's historical `plate_barcode`/`verification_status`. There is
  * deliberately no unscoped fallback: a missing `experimentId` fails the run
  * rather than widening the blast radius of every write.
+ *
+ * `scanOutputDir` is the directory every `imagePath` must resolve inside.
+ * It is passed in rather than read from `electron.app` here on purpose: this
+ * module depends only on `db` and a QR-reading function, with no Electron
+ * import, and the caller (`register-handlers.ts`) already knows the
+ * configured output directory.
  */
 export async function verifyPlates(
   db: PrismaClient,
   plates: VerifyPlateInput[],
   experimentId: string,
+  scanOutputDir: string,
   onProgress?: (event: VerifyProgressEvent) => void
 ): Promise<VerifyPlatesResult> {
   try {
@@ -137,11 +145,40 @@ export async function verifyPlates(
       return { success: false, error, results: [], swaps: [] };
     }
 
+    if (!scanOutputDir) {
+      const error =
+        'scanOutputDir is required — refusing to decode plate images ' +
+        'without a directory to validate them against';
+      console.error(`[GraviScan:VERIFY] ${error}`);
+      return { success: false, error, results: [], swaps: [] };
+    }
+
     console.log(`[GraviScan:VERIFY] Verifying ${plates.length} plate(s)...`);
 
     onProgress?.({ type: 'verify-started' });
 
     const results: VerifyPlateResult[] = [];
+
+    // Step 0: validate every imagePath BEFORE it reaches the decoder, using
+    // the same realpath-containment check the sibling `read-scan-image`
+    // handler applies. A path that escapes the scan output directory (via
+    // `..` or a symlink) is dropped from the batch entirely; the plate is
+    // reported `unreadable`, since no QR code was — or will be — read for it.
+    const resolvedByPlate = new Map<VerifyPlateInput, string>();
+    const pathsToDecode: string[] = [];
+
+    for (const plate of plates) {
+      const resolved = resolveContainedPath(scanOutputDir, plate.imagePath);
+      if (!resolved) {
+        console.error(
+          '[GraviScan:VERIFY] Rejected imagePath outside the scan output directory:',
+          plate.imagePath
+        );
+        continue;
+      }
+      resolvedByPlate.set(plate, resolved);
+      if (!pathsToDecode.includes(resolved)) pathsToDecode.push(resolved);
+    }
 
     // Step 1: Read QR codes from ALL plates in ONE subprocess spawn.
     //
@@ -150,7 +187,7 @@ export async function verifyPlates(
     // (docs/superpowers/specs/2026-07-29-verify-plates-qr-decode-design.md)
     // exists to avoid — the spawn cost is only negligible if it is paid once
     // per session, not once per plate.
-    const decoded = await readQrCodesBatch(plates.map((p) => p.imagePath));
+    const decoded = await readQrCodesBatch(pathsToDecode);
 
     const codesByPath = new Map<string, string[]>();
     for (const entry of decoded) {
@@ -163,7 +200,10 @@ export async function verifyPlates(
       plate: VerifyPlateInput;
       detectedCodes: string[];
     }> = plates.map((plate) => {
-      const detectedCodes: string[] = codesByPath.get(plate.imagePath) ?? [];
+      const resolved = resolvedByPlate.get(plate);
+      const detectedCodes: string[] = resolved
+        ? (codesByPath.get(resolved) ?? [])
+        : [];
       return { plate, detectedCodes };
     });
 
