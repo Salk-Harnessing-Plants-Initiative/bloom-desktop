@@ -1,7 +1,7 @@
 /**
  * GraviScan IPC Handler Registration
  *
- * Wraps pure handler functions with ipcMain.handle() for 17 IPC channels.
+ * Wraps pure handler functions with ipcMain.handle() for 18 IPC channels.
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
  *
  * This is also where coordinator-aware orchestration around the DB-only

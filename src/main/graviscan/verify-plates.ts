@@ -6,12 +6,15 @@
  * Image-first flow: read QR -> DB lookup plate_id -> compare with assigned.
  *
  * Input: plates with image paths + assigned plate_id (no expected QR codes needed)
- * Process: readQrCodes(image) -> lookup plant_qr in GraviPlateSectionMapping -> get plate_id -> compare
+ * Process: readQrCodesBatch(images) -> lookup plant_qr in GraviPlateSectionMapping -> get plate_id -> compare
  * Returns: verification results + detected swaps
  *
  * Progress events are delivered via callback injection rather than direct
  * mainWindow.webContents.send() calls, keeping this module decoupled from
- * Electron IPC plumbing (same pattern as image-handlers.ts).
+ * Electron IPC plumbing (same pattern as image-handlers.ts). For the same
+ * reason the scan output directory used for path validation is passed in as
+ * a parameter rather than read from `electron.app` here: this module depends
+ * only on `db`, a QR-reading function, and plain fs/path utilities.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -33,7 +36,6 @@ export type VerifyStatus =
   | 'verified'
   | 'incorrect'
   | 'unreadable'
-  | 'skipped'
   | 'needs_review'
   | 'duplicate_qr';
 
