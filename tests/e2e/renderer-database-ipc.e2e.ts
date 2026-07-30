@@ -2718,3 +2718,240 @@ test.describe('Renderer Session IPC - Zero Value Persistence', () => {
     expect(finalSession.plantAgeDays).toBeNull();
   });
 });
+
+/**
+ * GraviScan DB IPC handlers (add-graviscan-data-layer-and-events).
+ * Seeds via Prisma directly (matching this file's established convention),
+ * calls each handler through the real renderer -> preload -> IPC bridge.
+ */
+async function seedGraviScanFixture() {
+  const phenotyper = await prisma.phenotyper.create({
+    data: { name: 'E2E Phenotyper', email: `e2e-pheno-${Date.now()}@salk.edu` },
+  });
+  const experiment = await prisma.experiment.create({
+    data: { name: 'E2E GraviScan Experiment', species: 'Amaranthus' },
+  });
+  const scanner = await prisma.graviScanner.create({
+    data: { name: 'e2e-scanner', display_name: 'E2E Scanner' },
+  });
+  return { phenotyper, experiment, scanner };
+}
+
+test.describe('Renderer Database IPC - GraviScan graviscans.*', () => {
+  test('create, getMaxWaveNumber, checkBarcodeUniqueInWave, updateGridTimestamps, browseByExperiment, experimentDetail round-trip from renderer', async () => {
+    const fx = await seedGraviScanFixture();
+
+    const created = await window.evaluate(
+      ({ experimentId, phenotyperId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscans.create({
+          experiment_id: experimentId,
+          phenotyper_id: phenotyperId,
+          scanner_id: scannerId,
+          path: '/scans/e2e.tif',
+          grid_mode: '2grid',
+          plate_index: '00',
+          resolution: 600,
+          plate_barcode: 'E2E-BARCODE',
+        });
+      },
+      {
+        experimentId: fx.experiment.id,
+        phenotyperId: fx.phenotyper.id,
+        scannerId: fx.scanner.id,
+      }
+    );
+    expect(created.success).toBe(true);
+    expect(created.data.format).toBe('tiff');
+    expect(created.data.wave_number).toBe(0);
+
+    const maxWave = await window.evaluate((experimentId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscans.getMaxWaveNumber(experimentId);
+    }, fx.experiment.id);
+    expect(maxWave.success).toBe(true);
+    expect(maxWave.data).toBe(0);
+
+    const dup = await window.evaluate(
+      ({ experimentId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscans.checkBarcodeUniqueInWave({
+          experiment_id: experimentId,
+          wave_number: 0,
+          plate_barcode: 'e2e-barcode',
+        });
+      },
+      { experimentId: fx.experiment.id }
+    );
+    expect(dup.success).toBe(true);
+    expect(dup.data.isDuplicate).toBe(true);
+
+    const timestamps = await window.evaluate(
+      ({ experimentId, scanId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscans.updateGridTimestamps({
+          experiment_id: experimentId,
+          ids: [scanId],
+          scan_started_at: new Date().toISOString(),
+          scan_ended_at: new Date().toISOString(),
+        });
+      },
+      { experimentId: fx.experiment.id, scanId: created.data.id }
+    );
+    expect(timestamps.success).toBe(true);
+    expect(timestamps.data).toBe(1);
+
+    const browsed = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscans.browseByExperiment({
+        offset: 0,
+        limit: 10,
+      });
+    });
+    expect(browsed.success).toBe(true);
+    const ids = browsed.data.experiments.map((e: { id: string }) => e.id);
+    expect(ids).toContain(fx.experiment.id);
+
+    const detail = await window.evaluate((experimentId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscans.experimentDetail(experimentId);
+    }, fx.experiment.id);
+    expect(detail.success).toBe(true);
+    expect(detail.data.scans).toHaveLength(1);
+  });
+});
+
+test.describe('Renderer Database IPC - GraviScan graviscanSessions.*', () => {
+  test('create and complete round-trip from renderer', async () => {
+    const fx = await seedGraviScanFixture();
+
+    const created = await window.evaluate(
+      ({ experimentId, phenotyperId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanSessions.create({
+          experiment_id: experimentId,
+          phenotyper_id: phenotyperId,
+          scan_mode: 'interval',
+        });
+      },
+      { experimentId: fx.experiment.id, phenotyperId: fx.phenotyper.id }
+    );
+    expect(created.success).toBe(true);
+    expect(created.data.interval_seconds).toBeNull();
+
+    const completed = await window.evaluate((sessionId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviscanSessions.complete({
+        session_id: sessionId,
+      });
+    }, created.data.id);
+    expect(completed.success).toBe(true);
+
+    const row = await prisma.graviScanSession.findUnique({
+      where: { id: created.data.id },
+    });
+    expect(row?.completed_at).not.toBeNull();
+  });
+});
+
+test.describe('Renderer Database IPC - GraviScan graviscanPlateAssignments.*', () => {
+  test('upsertMany then list round-trip from renderer', async () => {
+    const fx = await seedGraviScanFixture();
+
+    const upserted = await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.upsertMany(
+          experimentId,
+          scannerId,
+          [
+            { plate_index: '00', plate_barcode: 'A' },
+            { plate_index: '01', plate_barcode: 'B' },
+          ]
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    expect(upserted.success).toBe(true);
+
+    const listed = await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.list(
+          experimentId,
+          scannerId
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    expect(listed.success).toBe(true);
+    expect(listed.data).toHaveLength(2);
+  });
+});
+
+test.describe('Renderer Database IPC - GraviScan graviPlateAccessions.*', () => {
+  test('createWithSections, list, listFiles, delete round-trip from renderer', async () => {
+    const created = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviPlateAccessions.createWithSections(
+        { name: 'E2E Metadata File' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'QR1' }],
+          },
+        ]
+      );
+    });
+    expect(created.success).toBe(true);
+    expect(created.data.totalPlates).toBe(1);
+    expect(created.data.totalSections).toBe(1);
+
+    const accession = await prisma.accessions.findFirst({
+      where: { name: 'E2E Metadata File' },
+    });
+    expect(accession).toBeDefined();
+
+    const listed = await window.evaluate((metadataFileId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviPlateAccessions.list(metadataFileId);
+    }, accession!.id);
+    expect(listed.success).toBe(true);
+    expect(listed.data).toHaveLength(1);
+
+    const files = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviPlateAccessions.listFiles();
+    });
+    expect(files.success).toBe(true);
+    expect(files.data.some((f: { id: string }) => f.id === accession!.id)).toBe(
+      true
+    );
+
+    const deleted = await window.evaluate((metadataFileId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.graviPlateAccessions.delete(metadataFileId);
+    }, accession!.id);
+    expect(deleted.success).toBe(true);
+
+    const remaining = await prisma.accessions.findUnique({
+      where: { id: accession!.id },
+    });
+    expect(remaining).toBeNull();
+  });
+});
