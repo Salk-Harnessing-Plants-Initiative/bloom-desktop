@@ -58,27 +58,48 @@ plan (`docs/superpowers/plans/2026-07-29-graviscan-production-parity-gaps.md`).
     avoid cross-experiment collisions in the _lookup_), and
     classifies each plate as `verified` / `incorrect` / `unreadable` /
     `needs_review` (QR codes on one plate disagree on which plate they
-    belong to) / `duplicate_qr`. The comparison is case-insensitive on
-    **both** sides (production/the first pass only lowercased one side,
-    making the match unreachable for this repo's real mixed-case plate IDs —
-    fixed here).
+    belong to) / `duplicate_qr` / `lookup_failed` (the image decoded but the
+    plate-id lookup itself errored — kept distinct from `unreadable`, which
+    would send an operator to re-image a plate whose scan was fine). The
+    comparison is case-insensitive on **both** sides (production/the first
+    pass only lowercased one side, making the match unreachable for this
+    repo's real mixed-case plate IDs — fixed here); the reported
+    `detectedPlateId` keeps the database's own casing.
   - Detects **swaps**: pairs of `incorrect` plates whose detected plate IDs
     are each other's assigned plate ID, and auto-corrects them by updating
-    `GraviScanPlateAssignment.plate_barcode` and the matching `GraviScan`
-    scan record's `plate_barcode` for both positions. **Every one of these
-    writes — both swap-correction updates, both `GraviScan` lookups, and the
-    final status-persistence update — is scoped to `experimentId` in
-    addition to `(scanner_id, plate_index)`**, matching the actual DB
-    uniqueness constraint (`@@unique([experiment_id, scanner_id,
-plate_index])`). Production/the first pass scoped only the read-side
-    lookup, leaving every write able to silently overwrite a _different_
-    experiment's historical data sharing the same scanner and plate
-    position — fixed here. `experimentId` is a **required** parameter, not
-    optional: the read-side `experimentId ? {scoped} : {}` shape is exactly
-    the silent-unscoped-fallback pattern that would reintroduce this bug for
-    any future caller that omitted it, so there is no unscoped code path at
-    all — a missing `experimentId` fails the run before any DB access, and
-    the IPC registration rejects the invocation outright.
+    `GraviScanPlateAssignment.plate_barcode` and **every** matching
+    `GraviScan` scan record's `plate_barcode` for both positions. All rows,
+    not just the newest: a multi-cycle time-lapse session writes one
+    `GraviScan` row per cycle for the same position and
+    `graviscan-upload.ts` reads `plate_barcode` per row, so correcting only
+    the most recent left every earlier cycle uploading under the wrong
+    plate. **Every one of these writes — both swap-correction updates, both
+    `GraviScan` updates, and the final status-persistence update — is scoped
+    to `experimentId` in addition to `(scanner_id, plate_index)`**, matching
+    the actual DB uniqueness constraint (`@@unique([experiment_id,
+scanner_id, plate_index])`). Production/the first pass scoped only the
+    read-side lookup, leaving every write able to silently overwrite a
+    _different_ experiment's historical data sharing the same scanner and
+    plate position — fixed here. `experimentId` is a **required** parameter,
+    not optional: the read-side `experimentId ? {scoped} : {}` shape is
+    exactly the silent-unscoped-fallback pattern that would reintroduce this
+    bug for any future caller that omitted it, so there is no unscoped code
+    path at all — a missing `experimentId` fails the run before any DB
+    access, and the IPC registration rejects the invocation outright. The
+    guard is a **type** check, not a truthiness check: Prisma drops an
+    `undefined` `where` key and accepts a filter object in place of a
+    scalar, so a truthy non-string would have widened every write. Each
+    plate's own `scannerId`/`plateIndex`/`assignedPlateId`/`imagePath` is
+    validated the same way; a malformed plate is skipped with a warning
+    rather than failing the batch.
+  - Each swap pair's four writes run inside one `db.$transaction`, so a
+    mid-sequence failure cannot leave the assignment corrected but the scan
+    records not. The transactional boundary is per swap pair, not per batch,
+    so one bad pair still cannot abort the others.
+  - Every `updateMany`'s returned `count` is checked. A write that matched
+    zero rows is logged and surfaced in an optional `warnings` field, so a
+    swap is never reported in `swaps[]` with `success: true` when nothing
+    was actually persisted.
   - Swap pairing and swap dedup are keyed on `(scannerId, plateIndex)`, not
     on `assignedPlateId`, and a position can be consumed by at most one swap.
     Keying on `assignedPlateId` collapsed two genuinely independent swap
@@ -114,8 +135,11 @@ plate_index])`). Production/the first pass scoped only the read-side
   resize — see `design.md`), and a new `--decode-qr-batch` mode on
   `python/main.py` (stdin JSON array of paths in, stdout JSON out), following
   the existing `--scan-worker` mode-routing convention.
-- **New Python dependency**: `opencv-python-headless` added to
-  `pyproject.toml` (Apache-2.0).
+- **New Python dependency**: `opencv-python-headless>=4.9.0,<5` added to
+  `pyproject.toml` (Apache-2.0). The upper bound is deliberate: unbounded,
+  it resolved to `5.0.0.93`, a major version past what
+  `pyinstaller-hooks-contrib@2025.9`'s bundled `cv2` hook targets, and the
+  frozen build has only been verified on Windows.
 - **New Prisma migration**: adds `verification_status String @default("pending")`
   to `GraviScanPlateAssignment`, generated via `prisma migrate dev` (not
   hand-edited), following this repo's existing migration-naming convention.

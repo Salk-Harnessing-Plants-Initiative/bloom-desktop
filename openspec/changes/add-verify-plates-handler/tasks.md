@@ -237,14 +237,60 @@ wave and is green. These items are **done**; re-verify rather than re-write.
       `cv2.imwrite` directly — harmless on today's ASCII tmp path, but
       inconsistent with the non-ASCII rationale and a trap for the next test.
 
-## 10. Verification
+## 10. Final whole-branch review follow-ups
 
-- [x] 10.1 Run the full test suites (Node vitest, Python pytest) plus
+- [x] 10.1 (C1) Enforce the "required experimentId, no unscoped write path"
+      guarantee with a real type check. Both the IPC handler and
+      `verifyPlates()` only tested truthiness, and Prisma drops an
+      `undefined` `where` key and accepts a filter object where a scalar was
+      intended — so a non-string `experimentId`, or a filter-object-shaped
+      `scannerId`/`plateIndex`, widened every write to the whole experiment.
+      Validate `typeof x === 'string' && x.length > 0` for `experimentId`
+      (fatal) and for each plate's
+      `scannerId`/`plateIndex`/`assignedPlateId`/`imagePath` (skip that plate
+      with a warning). Test each invalid-input vector.
+- [x] 10.2 (I1) Correct **every** `GraviScan` row for a swapped position, not
+      just the newest. `findFirst({ orderBy: capture_date desc })` left every
+      earlier cycle of a time-lapse session carrying the wrong
+      `plate_barcode`, and `graviscan-upload.ts` reads it per row. Replaced
+      with a set-based `updateMany` scoped by
+      `(experiment_id, scanner_id, plate_index, pre-correction plate_barcode,
+    deleted:false)` — no signature change, and idempotent because only rows
+      that are actually wrong match.
+- [x] 10.3 (I2) Add a `lookup_failed` status. A transient DB error in the
+      plate-id lookup silently collapsed into `unreadable`, the same
+      status-collapse this change already refuses to make for `incorrect`.
+- [x] 10.4 (I3) Wrap each swap-pair's four writes in `db.$transaction`. The
+      boundary is per swap pair, not per batch, so one bad pair still cannot
+      abort the others. Test a mid-sequence failure and confirm rollback.
+- [x] 10.5 (I4) Check `updateMany().count`. A swap matching zero rows was
+      reported as corrected; counts are now logged and collected into an
+      optional `warnings` field on the result.
+- [x] 10.6 (I5) Bound `opencv-python-headless` at `<5` and regenerate the
+      lockfile. The unbounded `>=4.9.0` resolved to `5.0.0.93`, newer than
+      what `pyinstaller-hooks-contrib@2025.9`'s `cv2` hook targets; the
+      frozen build was only verified on Windows.
+- [x] 10.7 (M1/M2/M3) Result-payload consistency: add `swapped` to
+      `VerifyStatus` and write it back onto `results[].status`; report
+      `detectedPlateId` and `inconsistentMappings` in original casing
+      (lower-case only for the comparison); declare `imagePath` on
+      `VerifyPlateResult`; emit the full result object on every
+      `verify-result` branch.
+- [x] 10.8 (M4) Delete the dead `qr_reader.decode_qr_batch()` —
+      `main.py` inlines the identical logic.
+- [x] 10.9 (M5) Soften the tie-break NOTE. The same-scanner preference
+      narrows but does not eliminate input-order dependence: pairing is
+      greedy, so a 3-way ambiguity can still resolve differently depending on
+      submission order.
+
+## 11. Verification
+
+- [x] 11.1 Run the full test suites (Node vitest, Python pytest) plus
       `tsc --noEmit` and `npm run format:check`. Note: `npm run lint` may
       fail in this worktree specifically due to a pre-existing duplicate
       `eslint-plugin-import` resolution conflict between this worktree's
       `node_modules` and the parent checkout's — not this change's fault;
       verify separately from the parent checkout if needed.
-- [x] 10.2 Confirm no regressions against the pre-existing (already
+- [x] 11.2 Confirm no regressions against the pre-existing (already
       identified) noise: run the same suites at the branch's base commit and
       diff the failure sets, rather than assuming a failure is unrelated.
