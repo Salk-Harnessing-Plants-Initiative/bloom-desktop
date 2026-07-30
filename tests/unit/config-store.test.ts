@@ -1926,4 +1926,136 @@ OTHER_VAR=ignored`;
       expect(config.libusb_endpoint_recovery).toBe(true);
     });
   });
+
+  // ========================================
+  // GRAVISCAN SYSTEM NAME (production parity gap #6)
+  // ========================================
+  //
+  // Ported from production's `graviscan_system_name` field. Modeled as
+  // a plain optional string, exactly mirroring
+  // BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL's precedent (not the boolean
+  // LIBUSB_ENDPOINT_RECOVERY pattern) — see
+  // openspec/changes/add-graviscan-system-name-config.
+  //
+  // 5 call sites on `main` already read
+  // process.env.GRAVISCAN_SYSTEM_NAME (box-backup.ts:354,
+  // scanner-handlers.ts:450/459, graviscan-upload.ts:313/530) but
+  // nothing ever populates it — these tests cover the config-store.ts
+  // half of the fix; main.ts's startup hydration is covered separately.
+
+  describe('GRAVISCAN_SYSTEM_NAME', () => {
+    it('is undefined when .env file does not exist', () => {
+      const config = loadEnvConfig(envPath);
+      expect(config.graviscan_system_name).toBeUndefined();
+    });
+
+    it('is undefined when .env exists but the variable is not set', () => {
+      fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.graviscan_system_name).toBeUndefined();
+    });
+
+    it('is set to the configured value when present', () => {
+      fs.writeFileSync(envPath, 'GRAVISCAN_SYSTEM_NAME=pbiob-gh-04\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.graviscan_system_name).toBe('pbiob-gh-04');
+    });
+
+    it('is undefined when the variable is present but empty', () => {
+      fs.writeFileSync(envPath, 'GRAVISCAN_SYSTEM_NAME=\n');
+      const config = loadEnvConfig(envPath);
+      expect(config.graviscan_system_name).toBeUndefined();
+    });
+  });
+
+  describe('GRAVISCAN_SYSTEM_NAME: saveEnvConfig round-trip', () => {
+    it('persists graviscan_system_name across load -> save -> load', () => {
+      fs.writeFileSync(envPath, 'GRAVISCAN_SYSTEM_NAME=graviscan-ms-7c56\n');
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const c2 = loadEnvConfig(envPath);
+      expect(c2.graviscan_system_name).toBe('graviscan-ms-7c56');
+    });
+
+    it('load->save does NOT add GRAVISCAN_SYSTEM_NAME when it was absent from the file', () => {
+      fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
+      const c1 = loadEnvConfig(envPath);
+      saveEnvConfig(c1, envPath);
+      const written = fs.readFileSync(envPath, 'utf-8');
+      expect(written).not.toMatch(/GRAVISCAN_SYSTEM_NAME/);
+    });
+
+    it('omits GRAVISCAN_SYSTEM_NAME from the saved file when undefined', () => {
+      const cfg = {
+        ...getDefaultConfig(),
+        graviscan_system_name: undefined,
+      };
+      saveEnvConfig(cfg, envPath);
+      const written = fs.readFileSync(envPath, 'utf-8');
+      expect(written).not.toMatch(/GRAVISCAN_SYSTEM_NAME/);
+    });
+
+    it('preserves graviscan_system_name when a save omits it entirely (read-merge-write)', () => {
+      // Seed the .env file as a real machine would have it.
+      fs.writeFileSync(
+        envPath,
+        [
+          'SCANNER_MODE=graviscan',
+          'SCANNER_NAME=Bench1',
+          'CAMERA_IP_ADDRESS=mock',
+          'SCANS_DIR=/original/scans',
+          'BLOOM_API_URL=https://api.bloom.salk.edu/proxy',
+          '',
+          'NUM_FRAMES=72',
+          'SECONDS_PER_ROT=7',
+          '',
+          'BLOOM_SCANNER_USERNAME=user@test.com',
+          'BLOOM_SCANNER_PASSWORD=pass',
+          'BLOOM_ANON_KEY=anon',
+          '',
+          'GRAVISCAN_SYSTEM_NAME=graviscan-ms-7c56',
+        ].join('\n')
+      );
+
+      const loaded = loadEnvConfig(envPath);
+      expect(loaded.graviscan_system_name).toBe('graviscan-ms-7c56');
+
+      // Simulate a renderer round-trip whose whitelist does not carry
+      // graviscan_system_name (the bug's exact trigger condition).
+      const roundTripped: MachineConfig = {
+        scanner_mode: loaded.scanner_mode,
+        scanner_name: loaded.scanner_name,
+        camera_ip_address: loaded.camera_ip_address,
+        scans_dir: loaded.scans_dir,
+        bloom_api_url: loaded.bloom_api_url,
+        bloom_scanner_username: loaded.bloom_scanner_username,
+        bloom_scanner_password: loaded.bloom_scanner_password,
+        bloom_anon_key: loaded.bloom_anon_key,
+        num_frames: loaded.num_frames,
+        seconds_per_rot: loaded.seconds_per_rot,
+        // graviscan_system_name intentionally absent.
+      };
+      roundTripped.scans_dir = '/new/scans';
+
+      saveEnvConfig(roundTripped, envPath);
+
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.scans_dir).toBe('/new/scans');
+      expect(reloaded.graviscan_system_name).toBe('graviscan-ms-7c56');
+    });
+
+    it('an explicitly-provided value still overwrites the on-disk value', () => {
+      fs.writeFileSync(envPath, 'GRAVISCAN_SYSTEM_NAME=old-name\n');
+      const loaded = loadEnvConfig(envPath);
+      const updated: MachineConfig = {
+        ...loaded,
+        graviscan_system_name: 'new-name',
+      };
+
+      saveEnvConfig(updated, envPath);
+
+      const reloaded = loadEnvConfig(envPath);
+      expect(reloaded.graviscan_system_name).toBe('new-name');
+    });
+  });
 });

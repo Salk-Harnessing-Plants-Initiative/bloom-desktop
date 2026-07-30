@@ -1174,6 +1174,16 @@ app.on('ready', async () => {
         '[GraviScan] LIBUSB_ENDPOINT_RECOVERY not set in env — wrapper defaults to ON'
       );
     }
+    if (config.graviscan_system_name) {
+      process.env.GRAVISCAN_SYSTEM_NAME = config.graviscan_system_name;
+      console.log(
+        `[GraviScan] GRAVISCAN_SYSTEM_NAME loaded from ~/.bloom/.env: ${config.graviscan_system_name}`
+      );
+    } else {
+      console.log(
+        '[GraviScan] GRAVISCAN_SYSTEM_NAME not set — uploads/Box backup will omit system-name attribution'
+      );
+    }
 
     scannerIdentity.name = config.scanner_name || '';
     console.log(
