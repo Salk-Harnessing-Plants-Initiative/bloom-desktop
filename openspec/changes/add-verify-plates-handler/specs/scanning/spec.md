@@ -7,9 +7,10 @@ the QR code embedded in each plate's scan image, looks up which plate that QR
 code belongs to via `GraviPlateSectionMapping`, and compares it against the
 plate the operator assigned to that scanner/position
 (`GraviScanPlateAssignment`). Each plate SHALL be classified as one of
-`verified`, `incorrect`, `unreadable`, `needs_review`, or `duplicate_qr`, and
-the final `verification_status` SHALL be persisted onto
-`GraviScanPlateAssignment` for every plate submitted in the batch.
+`verified`, `incorrect`, `swapped`, `unreadable`, `needs_review`,
+`duplicate_qr`, or `lookup_failed`, and the final `verification_status` SHALL
+be persisted onto `GraviScanPlateAssignment` for every plate submitted in the
+batch.
 
 #### Scenario: Detected plate matches assigned plate
 
@@ -54,6 +55,25 @@ the final `verification_status` SHALL be persisted onto
   are distinct, actionable-differently outcomes for an operator and SHALL
   remain distinguishable in persisted data. A future renderer consuming this
   status SHALL give `incorrect` its own label, not reuse "QR Unreadable".
+
+#### Scenario: The plate-id lookup itself fails for a plate
+
+- **GIVEN** a plate's image decoded one or more QR codes successfully
+- **AND** the `GraviPlateSectionMapping` lookup for those codes throws (a
+  locked, unavailable, or otherwise transiently failing database)
+- **WHEN** `graviscan:verify-plates` runs
+- **THEN** the plate's status SHALL be `lookup_failed` — **not** collapsed
+  into `unreadable`
+- **AND** `GraviScanPlateAssignment.verification_status` SHALL be set to
+  `lookup_failed`
+- **AND** the decoded QR codes SHALL still be reported in the result
+- **AND** the plate SHALL NOT be paired into any swap, since nothing is known
+  about which plate it actually holds
+- **AND** the rest of the batch SHALL be verified normally
+- **NOTE**: this is the same status-collapse this capability already refuses
+  to make for `incorrect`. `unreadable` tells an operator to go re-image the
+  plate; the image was fine and the correct response is to retry the run.
+  Persisting the wrong reason sends them to the wrong remedy.
 
 #### Scenario: QR codes on one plate disagree about which plate they belong to
 
@@ -367,8 +387,8 @@ The `GraviScanPlateAssignment` Prisma model SHALL include a
 `verification_status` string field, defaulting to `"pending"`, to record the
 outcome of the most recent `graviscan:verify-plates` run for that
 scanner/plate-index assignment. Valid values SHALL include `pending`,
-`verified`, `incorrect`, `unreadable`, `needs_review`, `duplicate_qr`, and
-`swapped`.
+`verified`, `incorrect`, `unreadable`, `needs_review`, `duplicate_qr`,
+`swapped`, and `lookup_failed`.
 
 The model SHALL also include a nullable `previous_plate_barcode` string
 field, recording the `plate_barcode` value a swap auto-correction replaced.

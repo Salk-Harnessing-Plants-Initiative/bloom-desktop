@@ -37,7 +37,11 @@ export type VerifyStatus =
   | 'incorrect'
   | 'unreadable'
   | 'needs_review'
-  | 'duplicate_qr';
+  | 'duplicate_qr'
+  // The image decoded fine but the plate-id lookup itself errored (a locked
+  // or unavailable database). Distinct from `unreadable` on purpose: the two
+  // call for completely different operator responses (retry vs re-image).
+  | 'lookup_failed';
 
 export type VerifyPlateResult = {
   scannerId: string;
@@ -380,6 +384,7 @@ export async function verifyPlates(
       const plateIdCounts: Record<string, string[]> = {};
       let detectedPlateId: string | null = null;
       let isInconsistent = false;
+      let lookupFailed = false;
 
       try {
         // Scope query to experiment's accession to avoid cross-experiment
@@ -432,12 +437,24 @@ export async function verifyPlates(
           );
         }
       } catch (lookupErr) {
+        // The lookup, NOT the image, is what failed. Falling through to
+        // `unreadable` here would be the same status-collapse this module
+        // deliberately refuses to make for `incorrect`: it would tell the
+        // operator to go re-image a plate whose scan was fine, and would
+        // persist a reason that is not the real one. A transient locked
+        // database on a rig is exactly the case that produces this.
+        lookupFailed = true;
         console.error('[GraviScan:VERIFY] DB lookup failed:', lookupErr);
       }
 
       // Determine status
       let status: VerifyStatus;
-      if (isInconsistent) {
+      if (lookupFailed) {
+        // Nothing is known about this plate — it is neither verified nor
+        // incorrect, and it must not be paired into a swap.
+        status = 'lookup_failed';
+        detectedPlateId = null;
+      } else if (isInconsistent) {
         // QR codes map to different plates — flag for manual review, don't auto-correct
         status = 'needs_review';
       } else if (!detectedPlateId) {
@@ -676,9 +693,12 @@ export async function verifyPlates(
     const duplicates = results.filter(
       (r) => r.status === 'duplicate_qr'
     ).length;
+    const lookupFailures = results.filter(
+      (r) => r.status === 'lookup_failed'
+    ).length;
 
     console.log(
-      `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${incorrect} incorrect, ${unreadable} unreadable, ${needsReview} needs_review, ${duplicates} duplicate_qr`
+      `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${incorrect} incorrect, ${unreadable} unreadable, ${needsReview} needs_review, ${duplicates} duplicate_qr, ${lookupFailures} lookup_failed`
     );
 
     onProgress?.({ type: 'verify-complete', results, swaps });

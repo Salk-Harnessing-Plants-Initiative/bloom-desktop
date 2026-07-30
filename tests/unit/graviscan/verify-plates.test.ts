@@ -408,6 +408,77 @@ describe('verifyPlates', () => {
     );
   });
 
+  it('reports a failed plate-id lookup as lookup_failed, not unreadable', async () => {
+    // A transient DB error is NOT "no QR code was readable". Collapsing it
+    // into `unreadable` is the same status-collapse bug this module already
+    // refuses to make for `incorrect`: the operator would be told to go
+    // re-image a plate whose image was fine all along, and the persisted
+    // record would misstate why verification did not conclude.
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviPlateSectionMapping.findMany.mockRejectedValueOnce(
+      new Error('database is locked')
+    );
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.results[0].status).toBe('lookup_failed');
+    expect(result.results[0].detectedPlateId).toBeNull();
+    // The codes that WERE decoded are still reported — the image was fine.
+    expect(result.results[0].detectedCodes).toEqual(['qr-1']);
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '00' },
+      data: { verification_status: 'lookup_failed' },
+    });
+    expect(db.graviScanPlateAssignment.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { verification_status: 'unreadable' } })
+    );
+  });
+
+  it('does not pair a lookup_failed plate into a swap', async () => {
+    // A plate whose lookup failed has no known detected plate id, so it is
+    // not evidence of anything and must not be auto-corrected against.
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockRejectedValueOnce(new Error('database is locked'))
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.results[0].status).toBe('lookup_failed');
+    expect(result.results[1].status).toBe('incorrect');
+    expect(result.swaps).toEqual([]);
+  });
+
   it('flags needs_review when QR codes on one plate disagree about the plate id', async () => {
     setCodes({ '/scans/scan1.tif': ['qr-a', 'qr-b', 'qr-c'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
