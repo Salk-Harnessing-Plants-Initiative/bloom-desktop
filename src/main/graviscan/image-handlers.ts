@@ -296,7 +296,7 @@ export async function downloadImages(
   params: {
     experimentId: string;
     experimentName: string;
-    targetDir: string;
+    targetDir?: string;
     waveNumber?: number;
   },
   onProgress?: (progress: {
@@ -311,6 +311,11 @@ export async function downloadImages(
   errors: string[];
 }> {
   try {
+    // No explicit targetDir ⇒ default to the user's Downloads folder, so a
+    // future renderer can omit it entirely (matching production's simpler
+    // one-click-download contract). An explicit targetDir always wins.
+    const targetDir = params.targetDir ?? app.getPath('downloads');
+
     const scans = await (db as any).graviScan.findMany({
       where: {
         experiment_id: params.experimentId,
@@ -324,7 +329,9 @@ export async function downloadImages(
         experiment: {
           include: {
             accession: {
-              include: { graviPlateAccessions: true },
+              include: {
+                graviPlateAccessions: { include: { sections: true } },
+              },
             },
           },
         },
@@ -338,7 +345,7 @@ export async function downloadImages(
 
     // Sanitize experiment name for safe use as directory name
     const safeName = params.experimentName.replace(/[/\\:*?"<>|.]/g, '_');
-    const expDir = path.join(params.targetDir, safeName);
+    const expDir = path.join(targetDir, safeName);
 
     // Group scans by wave number for subfolder organization
     const waveGroups = new Map<number, typeof scans>();
@@ -350,18 +357,58 @@ export async function downloadImages(
 
     const csvHeader =
       'experiment,wave_number,plate_barcode,plate_index,grid_mode,capture_date,accession,transplant_date,custom_note,image_filename';
+    const platesHeader =
+      'experiment,wave_number,plate_id,accession,transplant_date,custom_note';
+    const sectionsHeader =
+      'experiment,wave_number,plate_id,section_id,plant_qr,medium';
     const filesToCopy: { src: string; dest: string }[] = [];
 
     for (const [waveNum, waveScans] of waveGroups) {
       const waveDir = path.join(expDir, `wave_${waveNum}`);
       fs.mkdirSync(waveDir, { recursive: true });
 
+      // Same-experiment legacy accession link, shared by every scan in this
+      // wave (wave-aware GraviExperimentWaveMetadata lookup is deferred —
+      // see proposal's "Out of scope").
+      const wavePlates: any[] =
+        waveScans[0]?.experiment.accession?.graviPlateAccessions ?? [];
+
       const csvRows: string[] = [csvHeader];
+      const platesRows: string[] = [platesHeader];
+      const sectionsRows: string[] = [sectionsHeader];
+
+      for (const plate of wavePlates) {
+        platesRows.push(
+          [
+            csvEscape(params.experimentName),
+            csvEscape(String(waveNum)),
+            csvEscape(plate.plate_id),
+            csvEscape(plate.accession),
+            csvEscape(
+              plate.transplant_date
+                ? plate.transplant_date.toISOString().split('T')[0]
+                : ''
+            ),
+            csvEscape(plate.custom_note ?? ''),
+          ].join(',')
+        );
+
+        for (const section of plate.sections ?? []) {
+          sectionsRows.push(
+            [
+              csvEscape(params.experimentName),
+              csvEscape(String(waveNum)),
+              csvEscape(plate.plate_id),
+              csvEscape(section.plate_section_id),
+              csvEscape(section.plant_qr),
+              csvEscape(section.medium ?? ''),
+            ].join(',')
+          );
+        }
+      }
 
       for (const scan of waveScans) {
-        const plateAccessions =
-          scan.experiment.accession?.graviPlateAccessions ?? [];
-        const matchedPlate = plateAccessions.find(
+        const matchedPlate = wavePlates.find(
           (p: any) => p.plate_id === scan.plate_barcode
         );
         const accession = matchedPlate?.accession ?? '';
@@ -397,12 +444,28 @@ export async function downloadImages(
         }
       }
 
-      // Write metadata.csv per wave subfolder
+      // Write the three CSVs per wave subfolder. plates.csv/sections.csv are
+      // only emitted when there's data beyond the header row, so analysts
+      // don't get empty files (matches production's behavior).
       fs.writeFileSync(
         path.join(waveDir, 'metadata.csv'),
         '\uFEFF' + csvRows.join('\n') + '\n',
         'utf-8'
       );
+      if (platesRows.length > 1) {
+        fs.writeFileSync(
+          path.join(waveDir, 'plates.csv'),
+          '\uFEFF' + platesRows.join('\n') + '\n',
+          'utf-8'
+        );
+      }
+      if (sectionsRows.length > 1) {
+        fs.writeFileSync(
+          path.join(waveDir, 'sections.csv'),
+          '\uFEFF' + sectionsRows.join('\n') + '\n',
+          'utf-8'
+        );
+      }
     }
 
     // Copy files with progress (async, 4 concurrent copies)
