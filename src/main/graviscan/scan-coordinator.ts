@@ -76,9 +76,10 @@ export class ScanCoordinator
   private currentGridStartedAt: string | null = null;
   private currentGridEndedAt: string | null = null;
   // Per-scanner spawn error, keyed by scannerId. Populated by
-  // spawnSingleScanner() on spawn failure; cleared by stopScanner().
-  // Not yet consumed by anything on `main` (no getScannerStatuses()
-  // or IPC wiring) — infra for a future consumer.
+  // spawnSingleScanner() on spawn failure; cleared by stopScanner()
+  // and by initialize() (at the top, before repopulating) so a
+  // scanner that failed once and later succeeds doesn't keep a stale
+  // error entry forever. Consumed by getScannerStatuses().
   private initErrors: Map<string, string> = new Map();
 
   constructor(pythonPath: string, isPackaged: boolean, mock = false) {
@@ -90,6 +91,44 @@ export class ScanCoordinator
 
   get isScanning(): boolean {
     return this.state === 'scanning' || this.state === 'waiting';
+  }
+
+  /**
+   * Get the current status of all managed scanner subprocesses,
+   * including ones that failed during initialization.
+   *
+   * Consumed by `graviscan:get-scanner-status` (image-handlers /
+   * scanner-handlers) to merge live subprocess state with saved DB
+   * rows, reporting `disconnected` for scanners that are saved but
+   * have no running subprocess.
+   */
+  getScannerStatuses(): Array<{
+    scannerId: string;
+    status: 'ready' | 'starting' | 'error' | 'dead';
+    error?: string;
+  }> {
+    const statuses: Array<{
+      scannerId: string;
+      status: 'ready' | 'starting' | 'error' | 'dead';
+      error?: string;
+    }> = [];
+
+    // Active subprocesses
+    for (const [id, sub] of this.subprocesses) {
+      statuses.push({
+        scannerId: id,
+        status: sub.isReady ? 'ready' : sub.isAlive ? 'starting' : 'dead',
+      });
+    }
+
+    // Failed subprocesses (removed from map but tracked in initErrors)
+    for (const [id, error] of this.initErrors) {
+      if (!this.subprocesses.has(id)) {
+        statuses.push({ scannerId: id, status: 'error', error });
+      }
+    }
+
+    return statuses;
   }
 
   /**
@@ -117,6 +156,11 @@ export class ScanCoordinator
     console.log(
       `[ScanCoordinator] Initializing ${scanners.length} scanner(s)...`
     );
+
+    // Clear previous init errors — otherwise a scanner that failed once
+    // and later succeeds keeps a stale error entry forever, feeding wrong
+    // data into getScannerStatuses().
+    this.initErrors.clear();
 
     try {
       for (const scanner of scanners) {
@@ -171,7 +215,16 @@ export class ScanCoordinator
       return new Promise<void>((resolve) => {
         const handler = () => {
           this.off('cycle-complete', handler);
-          void this.spawnSingleScanner(config).finally(() => resolve());
+          // Re-enter addScanner so the hasWorker idempotency guard
+          // re-runs. Without this, two queued addScanner calls for
+          // the same scanner_id (e.g., operator clicks Detect twice
+          // mid-scan) would each spawn a duplicate subprocess and
+          // overwrite the map entry. Per Copilot PR #237 review.
+          this.addScanner(config)
+            .catch(() => {
+              // already logged inside spawnSingleScanner
+            })
+            .finally(() => resolve());
         };
         this.on('cycle-complete', handler);
       });
