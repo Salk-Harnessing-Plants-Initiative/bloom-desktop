@@ -731,3 +731,75 @@ export async function resetUsb(
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// getScannerStatus
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge live coordinator subprocess state with saved DB scanner rows.
+ * Called by the renderer on page mount to show which scanners are
+ * ready/starting/error/disconnected — includes saved scanners from the DB
+ * that weren't detected as live subprocesses (`disconnected`).
+ *
+ * Deviation from production: production's `get-scanner-status` reads
+ * `scanner.grid_mode` directly off the (production-only) per-scanner
+ * `GraviScanner.grid_mode` column. `main`'s `GraviScanner` Prisma model has
+ * no such column — `grid_mode` only exists on `GraviScan` (a per-scan
+ * record) and `GraviConfig` (a global singleton config row). This is a
+ * deliberate port deviation, not a bug: `gridMode` here is sourced from the
+ * `GraviConfig` singleton (one query) and applied uniformly to every
+ * scanner in the response, rather than per-scanner.
+ */
+export async function getScannerStatus(
+  coordinator: ScanCoordinatorLike | null,
+  db: PrismaClient
+): Promise<{
+  success: boolean;
+  scanners: Array<{
+    scannerId: string;
+    displayName: string;
+    usbPort: string | null;
+    gridMode: string;
+    status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected';
+    error?: string;
+  }>;
+  error?: string;
+}> {
+  try {
+    const subprocessStatuses = coordinator?.getScannerStatuses() ?? [];
+    const statusMap = new Map(subprocessStatuses.map((s) => [s.scannerId, s]));
+
+    const savedScanners = await (db as any).graviScanner.findMany({
+      where: { enabled: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // See deviation note in the docstring above: main has no per-scanner
+    // grid_mode column, so source it from the GraviConfig singleton once
+    // and apply the same value to every scanner in the response.
+    const config = await (db as any).graviConfig.findFirst();
+    const gridMode: string = config?.grid_mode ?? '2grid';
+
+    const scanners = savedScanners.map((saved: any) => {
+      const subprocess = statusMap.get(saved.id);
+      return {
+        scannerId: saved.id as string,
+        displayName: (saved.display_name || saved.name) as string,
+        usbPort: (saved.usb_port ?? null) as string | null,
+        gridMode,
+        status: subprocess?.status ?? 'disconnected',
+        error: subprocess?.error,
+      };
+    });
+
+    return { success: true, scanners };
+  } catch (error) {
+    console.error('[GraviScan:STATUS] Error:', error);
+    return {
+      success: false,
+      scanners: [],
+      error: error instanceof Error ? error.message : 'Status query failed',
+    };
+  }
+}
