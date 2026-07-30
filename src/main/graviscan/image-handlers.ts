@@ -282,6 +282,137 @@ export async function uploadAllScans(
 }
 
 // ---------------------------------------------------------------------------
+// ensureDir
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a directory recursively. Idempotent — succeeds if it already
+ * exists. Used by the renderer to create the per-session scan folder
+ * upfront, before any cycle begins.
+ */
+export async function ensureDir(
+  dirPath: string
+): Promise<{ success: boolean; path?: string; error?: string }> {
+  try {
+    if (!dirPath || typeof dirPath !== 'string') {
+      return { success: false, error: 'dirPath is required' };
+    }
+    await fs.promises.mkdir(dirPath, { recursive: true });
+    console.log(`[GraviScan:ENSURE-DIR] Ready: ${dirPath}`);
+    return { success: true, path: dirPath };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Failed to ensure directory';
+    console.error(`[GraviScan:ENSURE-DIR] ${message}`);
+    return { success: false, error: message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// listScanFiles
+// ---------------------------------------------------------------------------
+
+const IMAGE_EXTENSIONS = ['.tif', '.tiff', '.png', '.jpg', '.jpeg'];
+
+export interface ScanFileInfo {
+  name: string;
+  path: string;
+  size: number;
+  modifiedAt: string;
+  folder: string;
+}
+
+/**
+ * List image files in the scan output directory, sorted by modification
+ * time (newest first).
+ *
+ * Two modes:
+ * - No `dirPath`: base-dir mode — recurses one level into each
+ *   subfolder of the default scan output directory (each subfolder is an
+ *   experiment/session folder).
+ * - `dirPath` given: flat mode — lists image files directly inside that
+ *   session directory only.
+ */
+export function listScanFiles(dirPath?: string): {
+  success: boolean;
+  files: ScanFileInfo[];
+  error?: string;
+} {
+  try {
+    let outputDir = dirPath;
+    if (!outputDir) {
+      const homeDir = app.getPath('home');
+      outputDir = getGraviscanOutputDir({
+        envPath: path.join(homeDir, '.bloom', '.env'),
+        homeDir,
+        appPath: app.getAppPath(),
+        isDev: process.env.NODE_ENV === 'development',
+      });
+    }
+
+    if (!fs.existsSync(outputDir)) {
+      return { success: true, files: [] };
+    }
+
+    const files: ScanFileInfo[] = [];
+    const entries = fs.readdirSync(outputDir, { withFileTypes: true });
+    const folderName = path.basename(outputDir);
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        // Scan subfolders (base dir mode — no dirPath specified)
+        const folderPath = path.join(outputDir, entry.name);
+        try {
+          const subEntries = fs.readdirSync(folderPath);
+          for (const subName of subEntries) {
+            const ext = path.extname(subName).toLowerCase();
+            if (!IMAGE_EXTENSIONS.includes(ext)) continue;
+            const subPath = path.join(folderPath, subName);
+            const stat = fs.statSync(subPath);
+            files.push({
+              name: subName,
+              path: subPath,
+              size: stat.size,
+              modifiedAt: stat.mtime.toISOString(),
+              folder: entry.name,
+            });
+          }
+        } catch {
+          // ignore unreadable subdirectories
+        }
+      } else {
+        // Direct files in session folder (dirPath specified)
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!IMAGE_EXTENSIONS.includes(ext)) continue;
+        const filePath = path.join(outputDir, entry.name);
+        const stat = fs.statSync(filePath);
+        files.push({
+          name: entry.name,
+          path: filePath,
+          size: stat.size,
+          modifiedAt: stat.mtime.toISOString(),
+          folder: folderName,
+        });
+      }
+    }
+
+    files.sort(
+      (a, b) =>
+        new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime()
+    );
+
+    return { success: true, files };
+  } catch (error) {
+    console.error('[GraviScan] Error listing scan files:', error);
+    return {
+      success: false,
+      files: [],
+      error: error instanceof Error ? error.message : 'Failed to list files',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // downloadImages
 // ---------------------------------------------------------------------------
 

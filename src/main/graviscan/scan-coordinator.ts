@@ -76,10 +76,16 @@ export class ScanCoordinator
   private currentGridStartedAt: string | null = null;
   private currentGridEndedAt: string | null = null;
   // Per-scanner spawn error, keyed by scannerId. Populated by
-  // spawnSingleScanner() on spawn failure; cleared by stopScanner().
-  // Not yet consumed by anything on `main` (no getScannerStatuses()
-  // or IPC wiring) — infra for a future consumer.
+  // spawnSingleScanner() on spawn failure; cleared by stopScanner()
+  // and by initialize() (at the top, before repopulating) so a
+  // scanner that failed once and later succeeds doesn't keep a stale
+  // error entry forever. Consumed by getScannerStatuses().
   private initErrors: Map<string, string> = new Map();
+  // Spawns requested while a scan was in flight, keyed by scannerId and
+  // holding the promise the caller is awaiting. Used by addScanner() to
+  // collapse concurrent requests for the SAME scanner onto one queued
+  // spawn; the entry is removed once that spawn settles.
+  private pendingAdds: Map<string, Promise<void>> = new Map();
 
   constructor(pythonPath: string, isPackaged: boolean, mock = false) {
     super();
@@ -90,6 +96,44 @@ export class ScanCoordinator
 
   get isScanning(): boolean {
     return this.state === 'scanning' || this.state === 'waiting';
+  }
+
+  /**
+   * Get the current status of all managed scanner subprocesses,
+   * including ones that failed during initialization.
+   *
+   * Consumed by `graviscan:get-scanner-status` (image-handlers /
+   * scanner-handlers) to merge live subprocess state with saved DB
+   * rows, reporting `disconnected` for scanners that are saved but
+   * have no running subprocess.
+   */
+  getScannerStatuses(): Array<{
+    scannerId: string;
+    status: 'ready' | 'starting' | 'error' | 'dead';
+    error?: string;
+  }> {
+    const statuses: Array<{
+      scannerId: string;
+      status: 'ready' | 'starting' | 'error' | 'dead';
+      error?: string;
+    }> = [];
+
+    // Active subprocesses
+    for (const [id, sub] of this.subprocesses) {
+      statuses.push({
+        scannerId: id,
+        status: sub.isReady ? 'ready' : sub.isAlive ? 'starting' : 'dead',
+      });
+    }
+
+    // Failed subprocesses (removed from map but tracked in initErrors)
+    for (const [id, error] of this.initErrors) {
+      if (!this.subprocesses.has(id)) {
+        statuses.push({ scannerId: id, status: 'error', error });
+      }
+    }
+
+    return statuses;
   }
 
   /**
@@ -117,6 +161,11 @@ export class ScanCoordinator
     console.log(
       `[ScanCoordinator] Initializing ${scanners.length} scanner(s)...`
     );
+
+    // Clear previous init errors — otherwise a scanner that failed once
+    // and later succeeds keeps a stale error entry forever, feeding wrong
+    // data into getScannerStatuses().
+    this.initErrors.clear();
 
     try {
       for (const scanner of scanners) {
@@ -156,6 +205,22 @@ export class ScanCoordinator
    * avoids disrupting the active cycle's event loop with a fresh
    * subprocess spawn.
    *
+   * Concurrent requests for the same `scannerId` while a scan is in
+   * flight (e.g. an operator double-clicks "Detect") are collapsed onto
+   * the single already-queued spawn via `pendingAdds`, so only one
+   * subprocess is ever constructed for them.
+   *
+   * Deduping through `pendingAdds` — rather than having the queued
+   * handler re-enter `addScanner()` — is deliberate: `scanOnce()` emits
+   * `cycle-complete` on one line and sets `state = 'idle'` on the next,
+   * so `isScanning` is still `true` at the synchronous instant every
+   * listener runs. A re-entrant call would therefore hit this same
+   * `if (this.isScanning)` branch and queue *another* listener instead
+   * of ever spawning, repeating forever on each subsequent cycle: the
+   * spawn never happened and the returned Promise never resolved,
+   * which also wedged the serialized spawn chain in
+   * `register-handlers.ts` behind it for the rest of the session.
+   *
    * Does not throw on spawn failure — errors surface via the
    * `scanner-init-status` event and are recorded in `initErrors`,
    * matching `spawnSingleScanner()`'s error-isolation behavior.
@@ -168,13 +233,35 @@ export class ScanCoordinator
     // If a scan is in flight, queue the spawn until after the cycle
     // completes (do NOT disturb the event loop mid-cycle).
     if (this.isScanning) {
-      return new Promise<void>((resolve) => {
+      const pending = this.pendingAdds.get(config.scannerId);
+      if (pending) {
+        // Already queued for this scanner — hand back the same promise
+        // instead of registering a second listener that would spawn a
+        // duplicate subprocess (and shut the first down mid-spawn).
+        return pending;
+      }
+
+      const queued = new Promise<void>((resolve) => {
         const handler = () => {
           this.off('cycle-complete', handler);
-          void this.spawnSingleScanner(config).finally(() => resolve());
+          // Call spawnSingleScanner() directly: it carries its own
+          // reuse-if-ready / shut-down-dead-before-respawn checks, so
+          // idempotency is preserved without re-entering addScanner()
+          // (which would re-queue forever — see the doc comment above).
+          void this.spawnSingleScanner(config)
+            .catch(() => {
+              // already logged inside spawnSingleScanner
+            })
+            .finally(() => {
+              this.pendingAdds.delete(config.scannerId);
+              resolve();
+            });
         };
         this.on('cycle-complete', handler);
       });
+
+      this.pendingAdds.set(config.scannerId, queued);
+      return queued;
     }
 
     await this.spawnSingleScanner(config);
