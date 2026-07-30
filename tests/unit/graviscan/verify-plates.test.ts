@@ -243,7 +243,7 @@ describe('verifyPlates', () => {
     });
   });
 
-  it('classifies a lone incorrect plate (no swap partner) and persists unreadable', async () => {
+  it('persists a lone incorrect plate (no swap partner) as incorrect, not unreadable', async () => {
     setCodes({ '/scan1.tif': ['qr-99'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
       mapping('plate_99', 'qr-99'),
@@ -265,12 +265,19 @@ describe('verifyPlates', () => {
     expect(result.results[0].status).toBe('incorrect');
     expect(result.results[0].detectedPlateId).toBe('plate_99');
     expect(result.swaps).toEqual([]);
-    // Production semantics: an 'incorrect' result with no detected swap
-    // partner is persisted as 'unreadable' rather than 'incorrect'.
+    // Deliberate departure from production, which collapses this case into
+    // 'unreadable'. "QR read fine, wrong plate" and "QR could not be read at
+    // all" are differently actionable for an operator and must stay
+    // distinguishable in persisted data.
     expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
       where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '00' },
-      data: { verification_status: 'unreadable' },
+      data: { verification_status: 'incorrect' },
     });
+    expect(db.graviScanPlateAssignment.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { verification_status: 'unreadable' },
+      })
+    );
   });
 
   it('flags needs_review when QR codes on one plate disagree about the plate id', async () => {

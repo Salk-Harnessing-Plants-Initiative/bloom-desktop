@@ -435,6 +435,12 @@ export async function verifyPlates(
     for (const result of results) {
       let finalStatus: string = result.status;
 
+      // An `incorrect` plate that turned out to be half of a detected swap
+      // has been auto-corrected, so it records `swapped`. An `incorrect`
+      // plate with no swap partner records `incorrect` — deliberately NOT
+      // collapsed into `unreadable` the way production does. "QR read fine,
+      // wrong plate" and "QR could not be read at all" need different
+      // operator responses and must stay distinguishable in the data.
       if (
         finalStatus === 'incorrect' &&
         swaps.some(
@@ -444,8 +450,6 @@ export async function verifyPlates(
         )
       ) {
         finalStatus = 'swapped';
-      } else if (finalStatus === 'incorrect') {
-        finalStatus = 'unreadable';
       }
 
       try {
@@ -469,6 +473,15 @@ export async function verifyPlates(
 
     const verified = results.filter((r) => r.status === 'verified').length;
     const unreadable = results.filter((r) => r.status === 'unreadable').length;
+    const incorrect = results.filter(
+      (r) =>
+        r.status === 'incorrect' &&
+        !swaps.some(
+          (s) =>
+            s.position1.assignedPlateId === r.assignedPlateId ||
+            s.position2.assignedPlateId === r.assignedPlateId
+        )
+    ).length;
     const needsReview = results.filter(
       (r) => r.status === 'needs_review'
     ).length;
@@ -477,7 +490,7 @@ export async function verifyPlates(
     ).length;
 
     console.log(
-      `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${unreadable} unreadable, ${needsReview} needs_review, ${duplicates} duplicate_qr`
+      `[GraviScan:VERIFY] Complete: ${verified} verified, ${swaps.length} swaps, ${incorrect} incorrect, ${unreadable} unreadable, ${needsReview} needs_review, ${duplicates} duplicate_qr`
     );
 
     onProgress?.({ type: 'verify-complete', results, swaps });
