@@ -253,10 +253,10 @@ wave and is green. These items are **done**; re-verify rather than re-write.
       just the newest. `findFirst({ orderBy: capture_date desc })` left every
       earlier cycle of a time-lapse session carrying the wrong
       `plate_barcode`, and `graviscan-upload.ts` reads it per row. Replaced
-      with a set-based `updateMany` scoped by
-      `(experiment_id, scanner_id, plate_index, pre-correction plate_barcode,
-    deleted:false)` — no signature change, and idempotent because only rows
-      that are actually wrong match.
+      with a set-based `updateMany` scoped by experiment, scanner, plate
+      index, the pre-correction `plate_barcode`, and `deleted: false` — no
+      signature change, and idempotent because only rows that are actually
+      wrong match.
 - [x] 10.3 (I2) Add a `lookup_failed` status. A transient DB error in the
       plate-id lookup silently collapsed into `unreadable`, the same
       status-collapse this change already refuses to make for `incorrect`.
