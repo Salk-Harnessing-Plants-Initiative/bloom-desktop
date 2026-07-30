@@ -35,6 +35,10 @@ export type VerifyPlateInput = {
 export type VerifyStatus =
   | 'verified'
   | 'incorrect'
+  // Half of a reciprocal pair that was detected and auto-corrected. Set on
+  // the result as well as persisted, so the returned payload and the DB row
+  // never disagree about the same plate.
+  | 'swapped'
   | 'unreadable'
   | 'needs_review'
   | 'duplicate_qr'
@@ -47,9 +51,22 @@ export type VerifyPlateResult = {
   scannerId: string;
   plateIndex: string;
   assignedPlateId: string;
+  /**
+   * The submitted image this outcome came from. Every result carries one —
+   * each is built by spreading its `VerifyPlateInput` — so it is declared
+   * rather than left as an undeclared runtime extra.
+   */
+  imagePath: string;
+  /**
+   * The plate the QR codes resolved to, in the DB's own casing. Comparison
+   * against `assignedPlateId` is case-insensitive internally (plate metadata
+   * casing is inconsistent), but the value reported here is for display and
+   * keeps whatever casing `GraviPlate.plate_id` holds.
+   */
   detectedPlateId: string | null;
   detectedCodes: string[];
   status: VerifyStatus;
+  /** Conflicting `plate_id -> qr codes` breakdown, keyed in original casing. */
   inconsistentMappings?: Record<string, string[]>;
   duplicateQrCodes?: string[];
 };
@@ -88,7 +105,10 @@ export type VerifyPlatesResult = {
 
 export type VerifyProgressEvent =
   | { type: 'verify-started' }
-  | { type: 'verify-result'; result: Partial<VerifyPlateResult> }
+  // Always the complete result object — the same one that lands in
+  // `results[]`. Emitting a hand-built partial from some branches and the
+  // full object from others left a renderer unable to rely on any field.
+  | { type: 'verify-result'; result: VerifyPlateResult }
   | {
       type: 'verify-complete';
       results: VerifyPlateResult[];
@@ -131,6 +151,16 @@ function positionKey(position: {
  */
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * Fold a plate id for comparison. Plate metadata casing is inconsistent, so
+ * every plate-id comparison in this module is case-insensitive — but the
+ * stored values keep their original casing (`assignedPlateId` is written back
+ * to the DB, `detectedPlateId` is shown to an operator).
+ */
+function lowerOrNull(value: string | null): string | null {
+  return value ? value.toLowerCase() : null;
 }
 
 /** Fields of `VerifyPlateInput` that end up in a `where` clause or a write. */
@@ -406,8 +436,17 @@ export async function verifyPlates(
         continue;
       }
 
-      // DB lookup — find plate_id for ALL detected QR codes
-      const plateIdCounts: Record<string, string[]> = {};
+      // DB lookup — find plate_id for ALL detected QR codes.
+      //
+      // Grouping is keyed on the LOWERCASED plate_id, because plate metadata
+      // casing is inconsistent and "Plate_13" and "plate_13" are the same
+      // plate. The original casing is kept alongside and is what gets
+      // reported: lowercasing is a comparison detail, and a renderer showing
+      // "plate_13" for a plate physically labelled "Plate_13" makes an
+      // operator second-guess a correct read.
+      const codesByPlateKey: Record<string, string[]> = {};
+      const displayIdByPlateKey: Record<string, string> = {};
+      let detectedPlateKey: string | null = null;
       let detectedPlateId: string | null = null;
       let isInconsistent = false;
       let lookupFailed = false;
@@ -434,34 +473,42 @@ export async function verifyPlates(
           },
         });
 
-        // Group QR codes by their plate_id (case-insensitive to handle metadata inconsistencies)
+        // Group QR codes by their plate_id (case-insensitive to handle
+        // metadata inconsistencies), remembering the first casing seen.
         for (const mapping of mappings) {
           if (mapping.plate) {
-            const pid = mapping.plate.plate_id.toLowerCase();
-            if (!plateIdCounts[pid]) plateIdCounts[pid] = [];
-            plateIdCounts[pid].push(mapping.plant_qr);
+            const key = mapping.plate.plate_id.toLowerCase();
+            if (!codesByPlateKey[key]) {
+              codesByPlateKey[key] = [];
+              displayIdByPlateKey[key] = mapping.plate.plate_id;
+            }
+            codesByPlateKey[key].push(mapping.plant_qr);
           }
         }
 
-        const plateIds = Object.keys(plateIdCounts);
+        const plateKeys = Object.keys(codesByPlateKey);
 
-        if (plateIds.length === 1) {
+        if (plateKeys.length === 1) {
           // All codes agree — use that plate_id
-          detectedPlateId = plateIds[0];
-        } else if (plateIds.length > 1) {
+          detectedPlateKey = plateKeys[0];
+        } else if (plateKeys.length > 1) {
           // Codes disagree — find majority
           isInconsistent = true;
           let maxCount = 0;
-          for (const [pid, codes] of Object.entries(plateIdCounts)) {
+          for (const [key, codes] of Object.entries(codesByPlateKey)) {
             if (codes.length > maxCount) {
               maxCount = codes.length;
-              detectedPlateId = pid;
+              detectedPlateKey = key;
             }
           }
           console.warn(
-            `[GraviScan:VERIFY] Inconsistent QR mappings on ${plate.plateIndex}: ${JSON.stringify(plateIdCounts)}`
+            `[GraviScan:VERIFY] Inconsistent QR mappings on ${plate.plateIndex}: ${JSON.stringify(codesByPlateKey)}`
           );
         }
+
+        detectedPlateId = detectedPlateKey
+          ? displayIdByPlateKey[detectedPlateKey]
+          : null;
       } catch (lookupErr) {
         // The lookup, NOT the image, is what failed. Falling through to
         // `unreadable` here would be the same status-collapse this module
@@ -479,17 +526,18 @@ export async function verifyPlates(
         // Nothing is known about this plate — it is neither verified nor
         // incorrect, and it must not be paired into a swap.
         status = 'lookup_failed';
+        detectedPlateKey = null;
         detectedPlateId = null;
       } else if (isInconsistent) {
         // QR codes map to different plates — flag for manual review, don't auto-correct
         status = 'needs_review';
-      } else if (!detectedPlateId) {
+      } else if (!detectedPlateKey) {
         status = 'unreadable';
-        // `detectedPlateId` was lowercased when the DB-side plate_id was
-        // grouped above, so the assigned side has to be lowercased too. Real
-        // plate IDs here are mixed-case ("Plate_13"); comparing against the
-        // raw value never matched and every correct plate read `incorrect`.
-      } else if (detectedPlateId === plate.assignedPlateId.toLowerCase()) {
+        // Comparison is on the lowercased KEY, not on the display value. Real
+        // plate IDs here are mixed-case ("Plate_13"); comparing the lowercased
+        // DB value against a raw assignedPlateId never matched and every
+        // correct plate read `incorrect`.
+      } else if (detectedPlateKey === plate.assignedPlateId.toLowerCase()) {
         status = 'verified';
       } else {
         status = 'incorrect';
@@ -500,22 +548,25 @@ export async function verifyPlates(
         detectedPlateId,
         detectedCodes,
         status,
-        ...(isInconsistent ? { inconsistentMappings: plateIdCounts } : {}),
+        ...(isInconsistent
+          ? {
+              // Re-keyed to the original casing: this breakdown is shown to an
+              // operator, same as detectedPlateId.
+              inconsistentMappings: Object.fromEntries(
+                Object.entries(codesByPlateKey).map(([key, codes]) => [
+                  displayIdByPlateKey[key],
+                  codes,
+                ])
+              ),
+            }
+          : {}),
       };
 
       results.push(result);
 
-      onProgress?.({
-        type: 'verify-result',
-        result: {
-          scannerId: plate.scannerId,
-          plateIndex: plate.plateIndex,
-          assignedPlateId: plate.assignedPlateId,
-          detectedPlateId,
-          status,
-          ...(isInconsistent ? { inconsistentMappings: plateIdCounts } : {}),
-        },
-      });
+      // The full result object, same as every other branch — see
+      // VerifyProgressEvent.
+      onProgress?.({ type: 'verify-result', result });
     }
 
     // Detect swaps — two incorrect results where each detected the other's
@@ -538,9 +589,10 @@ export async function verifyPlates(
     for (const result of incorrectResults) {
       if (pairedPositions.has(positionKey(result))) continue;
 
-      // Same case-insensitivity applies here: detectedPlateId is lowercased,
-      // assignedPlateId keeps its original casing (which is what gets written
-      // back to the DB, so it must not be lowercased in place).
+      // Both sides are folded to lower case for the comparison only; neither
+      // stored value is mutated (assignedPlateId is what gets written back to
+      // the DB, so it must keep its original casing, and detectedPlateId is
+      // reported for display).
       // Distinctness is by POSITION, not object identity: two input rows that
       // both claim the same (scannerId, plateIndex) — which the DB's unique
       // constraint forbids but nothing stops a caller from passing — would
@@ -548,17 +600,24 @@ export async function verifyPlates(
       const isReciprocal = (other: VerifyPlateResult) =>
         positionKey(other) !== positionKey(result) &&
         !pairedPositions.has(positionKey(other)) &&
-        other.detectedPlateId === result.assignedPlateId.toLowerCase() &&
-        result.detectedPlateId === other.assignedPlateId.toLowerCase();
+        lowerOrNull(other.detectedPlateId) ===
+          result.assignedPlateId.toLowerCase() &&
+        lowerOrNull(result.detectedPlateId) ===
+          other.assignedPlateId.toLowerCase();
 
       // Prefer a partner on the same scanner: plates are physically loaded
       // per-scanner, so a same-scanner mix-up is by far the likelier
-      // explanation, and it keeps pairing deterministic when several
-      // candidates match. This tie-break also decides which position stays
+      // explanation. This tie-break also decides which position stays
       // `incorrect` in an ambiguous batch: a cross-scanner candidate loses to
       // a same-scanner one and, if it has no other partner, is left
       // uncorrected rather than mis-paired. Genuine cross-scanner swaps are
       // still detected by the fallback below.
+      //
+      // It narrows, but does NOT eliminate, the influence of input order:
+      // pairing is still greedy and first-come, so with three or more mutually
+      // reciprocal positions on one scanner, which pair forms depends on the
+      // order the caller submitted them in. The guarantee is only that a
+      // same-scanner candidate is never passed over for a cross-scanner one.
       const swapMatch =
         incorrectResults.find(
           (other) => other.scannerId === result.scannerId && isReciprocal(other)
@@ -721,8 +780,6 @@ export async function verifyPlates(
 
     // Update verification_status in DB
     for (const result of results) {
-      let finalStatus: string = result.status;
-
       // An `incorrect` plate that turned out to be half of a detected swap
       // has been auto-corrected, so it records `swapped`. An `incorrect`
       // plate with no swap partner records `incorrect` — deliberately NOT
@@ -730,15 +787,24 @@ export async function verifyPlates(
       // wrong plate" and "QR could not be read at all" need different
       // operator responses and must stay distinguishable in the data.
       //
+      // The upgrade is written back onto the result itself, not just into the
+      // DB write: leaving results[].status at `incorrect` while the row said
+      // `swapped` meant the returned payload and the row this run had just
+      // written disagreed about the same plate. Swap detection needs the whole
+      // batch, so this can only be known here — the per-plate `verify-result`
+      // event has already gone out with `incorrect`, and `verify-complete`
+      // carries these same (now upgraded) objects.
+      //
       // Membership is tested by position, not by assignedPlateId: an
       // uncorrected plate sharing a plate id with a swapped one elsewhere in
       // the batch must not inherit `swapped`.
       if (
-        finalStatus === 'incorrect' &&
+        result.status === 'incorrect' &&
         pairedPositions.has(positionKey(result))
       ) {
-        finalStatus = 'swapped';
+        result.status = 'swapped';
       }
+      const finalStatus: VerifyStatus = result.status;
 
       try {
         const statusWrite = await db.graviScanPlateAssignment.updateMany({
@@ -767,11 +833,11 @@ export async function verifyPlates(
       }
     }
 
+    // Every paired position has already had its status upgraded to `swapped`
+    // above, so `incorrect` here means exactly "wrong plate, no partner".
     const verified = results.filter((r) => r.status === 'verified').length;
     const unreadable = results.filter((r) => r.status === 'unreadable').length;
-    const incorrect = results.filter(
-      (r) => r.status === 'incorrect' && !pairedPositions.has(positionKey(r))
-    ).length;
+    const incorrect = results.filter((r) => r.status === 'incorrect').length;
     const needsReview = results.filter(
       (r) => r.status === 'needs_review'
     ).length;

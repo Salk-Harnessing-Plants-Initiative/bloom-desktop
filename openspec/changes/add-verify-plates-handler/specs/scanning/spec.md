@@ -107,6 +107,13 @@ batch.
   that experiment that still carries the pre-correction `plate_barcode` SHALL
   have its `plate_barcode` updated to match — not only the most recent one
 - **AND** both positions' final `verification_status` SHALL be `swapped`
+- **AND** both positions' `status` in the **returned results** SHALL also be
+  `swapped`, not left at `incorrect` — the returned payload and the row the
+  same run just wrote SHALL NOT disagree about the same plate
+- **NOTE**: a swap can only be recognised once the whole batch has been
+  classified, so the per-plate `verify-result` progress event for those two
+  plates has already been emitted as `incorrect`. `verify-complete` carries
+  the upgraded results.
 - **NOTE**: a time-lapse session writes one `GraviScan` row per cycle for the
   same scanner/position, and `graviscan-upload.ts` reads `plate_barcode`
   **per row**. Correcting only the newest row left every earlier cycle
@@ -265,9 +272,13 @@ batch.
   `incorrect` rather than be mis-paired
 - **NOTE**: this tie-break decides which position stays `incorrect` in an
   ambiguous multi-swap batch. Plates are physically loaded per scanner, so a
-  same-scanner mix-up is by far the likelier explanation; the rule also makes
-  pairing deterministic instead of dependent on the order the caller happened
-  to submit plates in.
+  same-scanner mix-up is by far the likelier explanation. It narrows — but
+  does not eliminate — the influence of input order: pairing is still
+  greedy and first-come, so where three or more positions are mutually
+  reciprocal on the same scanner, which pair forms can still depend on the
+  order the caller submitted them in. The rule guarantees only that a
+  same-scanner candidate is never passed over in favour of a cross-scanner
+  one, not that the batch as a whole resolves order-independently.
 
 #### Scenario: A genuine cross-scanner swap is still detected
 
@@ -301,6 +312,21 @@ batch.
 - **AND** no further swap SHALL be detected
 - **AND** no additional `plate_barcode` or `GraviScan` correction write SHALL
   be issued
+
+#### Scenario: Every per-plate result has the same declared shape
+
+- **GIVEN** any plate in a verification batch, whatever its outcome
+- **WHEN** its result is returned and its `verify-result` progress event is
+  emitted
+- **THEN** the result SHALL declare and carry the `imagePath` it came from,
+  rather than acquiring one only as an undeclared runtime spread
+- **AND** `detectedPlateId` (and the `inconsistentMappings` breakdown) SHALL
+  be reported in the plate id's original database casing — lower-casing SHALL
+  be applied only to the internal comparison, never to the reported value
+- **AND** the plate-id comparison SHALL remain case-insensitive on both sides
+- **AND** the `verify-result` payload SHALL be the complete result object on
+  **every** branch, not a hand-built partial on some of them, so a renderer
+  can rely on the same fields being present regardless of outcome
 
 #### Scenario: Progress events are emitted for a future renderer
 

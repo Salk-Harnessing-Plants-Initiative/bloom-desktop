@@ -1765,6 +1765,211 @@ describe('verifyPlates', () => {
     });
   });
 
+  it('reports an auto-corrected swap as `swapped` in the returned results too', async () => {
+    // The DB persists `swapped` for a corrected pair. Leaving results[].status
+    // at `incorrect` meant the returned payload and the row it just wrote
+    // disagreed, with nothing saying which the renderer should believe.
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    const result = await verifyPlates(db, swapBatch, 'exp-1', OUTPUT_DIR);
+
+    expect(result.results.map((r) => r.status)).toEqual(['swapped', 'swapped']);
+  });
+
+  it('leaves an unpaired incorrect plate as `incorrect` in the results', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-99'] });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('plate_99', 'qr-99'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.results[0].status).toBe('incorrect');
+  });
+
+  it('returns detectedPlateId in the plate id’s original casing', async () => {
+    // Lowercasing is an internal comparison detail (metadata casing is
+    // inconsistent). A renderer showing "plate_13" where the plate is
+    // labelled "Plate_13" makes the operator second-guess a correct read.
+    setCodes({ '/scans/scan1.tif': ['qr-a', 'qr-b', 'qr-c'] });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('Plate_13', 'qr-a'),
+      mapping('Plate_13', 'qr-b'),
+      mapping('Plate_16', 'qr-c'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'Plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.results[0].detectedPlateId).toBe('Plate_13');
+    // The conflict breakdown is for display too, so it keeps casing as well.
+    expect(result.results[0].inconsistentMappings).toEqual({
+      Plate_13: ['qr-a', 'qr-b'],
+      Plate_16: ['qr-c'],
+    });
+  });
+
+  it('still matches case-insensitively while reporting original casing', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('PLATE_13', 'qr-1'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.results[0].status).toBe('verified');
+    expect(result.results[0].detectedPlateId).toBe('PLATE_13');
+  });
+
+  it('includes imagePath on every result, whatever the outcome', async () => {
+    setCodes({
+      '/scans/verified.tif': ['qr-1'],
+      '/scans/blank.tif': [],
+      '/scans/dup-a.tif': ['qr-dup'],
+      '/scans/dup-b.tif': ['qr-dup'],
+    });
+    db.graviPlateSectionMapping.findMany.mockResolvedValue([
+      mapping('plate_13', 'qr-1'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/verified.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/blank.tif',
+          assignedPlateId: 'plate_14',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '00',
+          imagePath: '/scans/dup-a.tif',
+          assignedPlateId: 'plate_15',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '11',
+          imagePath: '/scans/dup-b.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(result.results.map((r) => r.imagePath)).toEqual([
+      '/scans/verified.tif',
+      '/scans/blank.tif',
+      '/scans/dup-a.tif',
+      '/scans/dup-b.tif',
+    ]);
+  });
+
+  it('emits the same full result object on every verify-result branch', async () => {
+    // Some branches emitted the complete result and others a hand-built
+    // partial, so a renderer could not rely on any field being present.
+    setCodes({
+      '/scans/verified.tif': ['qr-1'],
+      '/scans/blank.tif': [],
+      '/scans/dup-a.tif': ['qr-dup'],
+      '/scans/dup-b.tif': ['qr-dup'],
+    });
+    db.graviPlateSectionMapping.findMany.mockResolvedValue([
+      mapping('plate_13', 'qr-1'),
+    ]);
+    const onProgress = vi.fn();
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/verified.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/blank.tif',
+          assignedPlateId: 'plate_14',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '00',
+          imagePath: '/scans/dup-a.tif',
+          assignedPlateId: 'plate_15',
+        },
+        {
+          scannerId: 's2',
+          plateIndex: '11',
+          imagePath: '/scans/dup-b.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR,
+      onProgress
+    );
+
+    const emitted = onProgress.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.type === 'verify-result')
+      .map((event) => event.result);
+
+    expect(emitted).toHaveLength(4);
+    // Every branch emits the same object that lands in results[] — identity,
+    // not a look-alike partial.
+    emitted.forEach((payload, index) => {
+      expect(payload).toBe(result.results[index]);
+    });
+  });
+
   it('emits verify-started, verify-result (per plate), and verify-complete progress events', async () => {
     setCodes({ '/scans/scan1.tif': ['qr-1'] });
     db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
