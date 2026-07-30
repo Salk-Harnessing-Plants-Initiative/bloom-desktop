@@ -594,9 +594,27 @@ export async function verifyPlates(
           },
         });
 
-        // 2. Swap plate_barcode in GraviScan records (scan image records)
-        // Find the most recent scan records for each position
-        const scan1 = await db.graviScan.findFirst({
+        // 2. Swap plate_barcode in the GraviScan records (scan image
+        //    records) for BOTH positions.
+        //
+        //    This is a set-based updateMany, not `findFirst({ orderBy:
+        //    capture_date desc }) + update`. A time-lapse session writes one
+        //    GraviScan row per cycle for the same scanner/position, so
+        //    correcting only the newest row left every earlier cycle carrying
+        //    the wrong plate_barcode — and graviscan-upload.ts reads
+        //    plate_barcode PER ROW, so those cycles would have uploaded to
+        //    Bloom and Box under the wrong plate. A mis-loaded plate is wrong
+        //    for every cycle it was scanned in, not just the last one.
+        //
+        //    Scope is (experiment_id, scanner_id, plate_index) plus the
+        //    PRE-correction plate_barcode. That last filter is what makes this
+        //    safe and idempotent: only rows that still carry the wrong value
+        //    are touched, so a re-run (or a partially-applied earlier run)
+        //    cannot swap anything back. Scoping instead by session_id was the
+        //    alternative considered; it would need a new parameter threaded
+        //    through the whole call chain and would still leave the other
+        //    sessions of the same experiment wrong.
+        const scan1Update = await db.graviScan.updateMany({
           where: {
             experiment_id: experimentId,
             scanner_id: position1.scannerId,
@@ -604,10 +622,10 @@ export async function verifyPlates(
             plate_barcode: position1.assignedPlateId,
             deleted: false,
           },
-          orderBy: { capture_date: 'desc' },
+          data: { plate_barcode: position2.assignedPlateId },
         });
 
-        const scan2 = await db.graviScan.findFirst({
+        const scan2Update = await db.graviScan.updateMany({
           where: {
             experiment_id: experimentId,
             scanner_id: position2.scannerId,
@@ -615,21 +633,13 @@ export async function verifyPlates(
             plate_barcode: position2.assignedPlateId,
             deleted: false,
           },
-          orderBy: { capture_date: 'desc' },
+          data: { plate_barcode: position1.assignedPlateId },
         });
 
-        if (scan1) {
-          await db.graviScan.update({
-            where: { id: scan1.id },
-            data: { plate_barcode: position2.assignedPlateId },
-          });
-        }
-        if (scan2) {
-          await db.graviScan.update({
-            where: { id: scan2.id },
-            data: { plate_barcode: position1.assignedPlateId },
-          });
-        }
+        console.log(
+          `[GraviScan:VERIFY] Corrected ${scan1Update.count} + ` +
+            `${scan2Update.count} GraviScan record(s) for the swapped pair`
+        );
 
         // 3. Log swap for audit trail
         console.log(

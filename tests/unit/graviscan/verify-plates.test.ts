@@ -52,6 +52,9 @@ function createMockDb() {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     graviScan: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      // Kept on the mock deliberately so tests can assert the correction does
+      // NOT reach for a single newest row (findFirst + update).
       findFirst: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({}),
     },
@@ -725,9 +728,6 @@ describe('verifyPlates', () => {
     db.graviPlateSectionMapping.findMany
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
-    db.graviScan.findFirst
-      .mockResolvedValueOnce({ id: 'scan-1' })
-      .mockResolvedValueOnce({ id: 'scan-2' });
 
     const result = await verifyPlates(
       db,
@@ -779,8 +779,14 @@ describe('verifyPlates', () => {
         previous_plate_barcode: 'plate_16',
       },
     });
-    expect(db.graviScan.update).toHaveBeenCalledWith({
-      where: { id: 'scan-1' },
+    expect(db.graviScan.updateMany).toHaveBeenCalledWith({
+      where: {
+        experiment_id: 'exp-1',
+        scanner_id: 's1',
+        plate_index: '00',
+        plate_barcode: 'plate_13',
+        deleted: false,
+      },
       data: { plate_barcode: 'plate_16' },
     });
     expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
@@ -820,7 +826,7 @@ describe('verifyPlates', () => {
     );
 
     expect(result.swaps).toEqual([]);
-    expect(db.graviScan.update).not.toHaveBeenCalled();
+    expect(db.graviScan.updateMany).not.toHaveBeenCalled();
     // No plate_barcode rewrite at all — only status persistence.
     for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
       expect(call[0].data).not.toHaveProperty('plate_barcode');
@@ -884,12 +890,6 @@ describe('verifyPlates', () => {
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
 
-    const scan1 = { id: 'scan-1' };
-    const scan2 = { id: 'scan-2' };
-    db.graviScan.findFirst
-      .mockResolvedValueOnce(scan1)
-      .mockResolvedValueOnce(scan2);
-
     const result = await verifyPlates(
       db,
       [
@@ -940,13 +940,25 @@ describe('verifyPlates', () => {
       },
     });
 
-    // GraviScan records updated to match
-    expect(db.graviScan.update).toHaveBeenCalledWith({
-      where: { id: 'scan-1' },
+    // Every GraviScan record for each position updated to match
+    expect(db.graviScan.updateMany).toHaveBeenCalledWith({
+      where: {
+        experiment_id: 'exp-1',
+        scanner_id: 's1',
+        plate_index: '00',
+        plate_barcode: 'plate_13',
+        deleted: false,
+      },
       data: { plate_barcode: 'plate_16' },
     });
-    expect(db.graviScan.update).toHaveBeenCalledWith({
-      where: { id: 'scan-2' },
+    expect(db.graviScan.updateMany).toHaveBeenCalledWith({
+      where: {
+        experiment_id: 'exp-1',
+        scanner_id: 's1',
+        plate_index: '11',
+        plate_barcode: 'plate_16',
+        deleted: false,
+      },
       data: { plate_barcode: 'plate_13' },
     });
 
@@ -959,6 +971,71 @@ describe('verifyPlates', () => {
       where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '11' },
       data: { verification_status: 'swapped' },
     });
+  });
+
+  it('corrects every GraviScan row for a swapped position, not just the newest', async () => {
+    // A time-lapse session writes one GraviScan row per cycle for the same
+    // scanner/position. Correcting only `findFirst({orderBy: capture_date
+    // desc})` left every earlier cycle's row carrying the wrong
+    // plate_barcode — and graviscan-upload.ts reads plate_barcode PER ROW, so
+    // those cycles would upload to Bloom and Box under the wrong plate.
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+    // Three cycles' worth of rows matched for each position.
+    db.graviScan.updateMany.mockResolvedValue({ count: 3 });
+
+    await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    // One set-based write per position, scoped by the PRE-correction barcode
+    // so it can only touch rows that are actually wrong.
+    expect(db.graviScan.updateMany).toHaveBeenCalledWith({
+      where: {
+        experiment_id: 'exp-1',
+        scanner_id: 's1',
+        plate_index: '00',
+        plate_barcode: 'plate_13',
+        deleted: false,
+      },
+      data: { plate_barcode: 'plate_16' },
+    });
+    expect(db.graviScan.updateMany).toHaveBeenCalledWith({
+      where: {
+        experiment_id: 'exp-1',
+        scanner_id: 's1',
+        plate_index: '11',
+        plate_barcode: 'plate_16',
+        deleted: false,
+      },
+      data: { plate_barcode: 'plate_13' },
+    });
+
+    // No single-newest-row path may remain.
+    expect(db.graviScan.findFirst).not.toHaveBeenCalled();
+    expect(db.graviScan.update).not.toHaveBeenCalled();
+    for (const call of db.graviScan.updateMany.mock.calls) {
+      expect(call[0]).not.toHaveProperty('orderBy');
+      expect(call[0]).not.toHaveProperty('take');
+    }
   });
 
   it('records the pre-correction plate_barcode when auto-correcting a swap', async () => {
@@ -1013,9 +1090,6 @@ describe('verifyPlates', () => {
     db.graviPlateSectionMapping.findMany
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
-    db.graviScan.findFirst
-      .mockResolvedValueOnce({ id: 'scan-1' })
-      .mockResolvedValueOnce({ id: 'scan-2' });
 
     const first = await verifyPlates(
       db,
@@ -1039,8 +1113,7 @@ describe('verifyPlates', () => {
     expect(first.swaps).toHaveLength(1);
 
     db.graviScanPlateAssignment.updateMany.mockClear();
-    db.graviScan.update.mockClear();
-    db.graviScan.findFirst.mockClear();
+    db.graviScan.updateMany.mockClear();
     db.graviPlateSectionMapping.findMany
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
@@ -1074,8 +1147,7 @@ describe('verifyPlates', () => {
     ]);
     // No second correction: no GraviScan rewrite, and every assignment write
     // is a plain status update with no plate_barcode in it.
-    expect(db.graviScan.update).not.toHaveBeenCalled();
-    expect(db.graviScan.findFirst).not.toHaveBeenCalled();
+    expect(db.graviScan.updateMany).not.toHaveBeenCalled();
     for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
       expect(call[0].data).toEqual({ verification_status: 'verified' });
     }
@@ -1315,14 +1387,11 @@ describe('verifyPlates', () => {
     });
   });
 
-  it('scopes every swap-correction write and GraviScan lookup to the experimentId', async () => {
+  it('scopes every swap-correction write and GraviScan write to the experimentId', async () => {
     setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
     db.graviPlateSectionMapping.findMany
       .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
       .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
-    db.graviScan.findFirst
-      .mockResolvedValueOnce({ id: 'scan-1' })
-      .mockResolvedValueOnce({ id: 'scan-2' });
 
     await verifyPlates(
       db,
@@ -1349,7 +1418,7 @@ describe('verifyPlates', () => {
     for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
       expect(call[0].where.experiment_id).toBe('exp-1');
     }
-    for (const call of db.graviScan.findFirst.mock.calls) {
+    for (const call of db.graviScan.updateMany.mock.calls) {
       expect(call[0].where.experiment_id).toBe('exp-1');
     }
     expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
@@ -1360,7 +1429,7 @@ describe('verifyPlates', () => {
       },
       data: expect.objectContaining({ plate_barcode: 'plate_16' }),
     });
-    expect(db.graviScan.findFirst).toHaveBeenCalledWith({
+    expect(db.graviScan.updateMany).toHaveBeenCalledWith({
       where: {
         experiment_id: 'exp-1',
         scanner_id: 's1',
@@ -1368,7 +1437,7 @@ describe('verifyPlates', () => {
         plate_barcode: 'plate_13',
         deleted: false,
       },
-      orderBy: { capture_date: 'desc' },
+      data: { plate_barcode: 'plate_16' },
     });
   });
 

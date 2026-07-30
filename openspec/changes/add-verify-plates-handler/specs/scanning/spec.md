@@ -103,9 +103,17 @@ batch.
   position
 - **AND** `GraviScanPlateAssignment.plate_barcode` SHALL be updated for both
   positions so each now holds the other's original assigned plate ID
-- **AND** the most recent non-deleted `GraviScan` record for each position
-  SHALL have its `plate_barcode` updated to match
+- **AND** **every** non-deleted `GraviScan` record for each position within
+  that experiment that still carries the pre-correction `plate_barcode` SHALL
+  have its `plate_barcode` updated to match — not only the most recent one
 - **AND** both positions' final `verification_status` SHALL be `swapped`
+- **NOTE**: a time-lapse session writes one `GraviScan` row per cycle for the
+  same scanner/position, and `graviscan-upload.ts` reads `plate_barcode`
+  **per row**. Correcting only the newest row left every earlier cycle
+  uploading to Bloom and Box under the wrong plate. A mis-loaded plate is
+  wrong for every cycle it was scanned in. Filtering on the pre-correction
+  `plate_barcode` is what keeps this safe and idempotent: only rows that are
+  actually wrong are touched, so a re-run cannot swap anything back.
 
 #### Scenario: experimentId scopes both the plate lookup and every DB write
 
