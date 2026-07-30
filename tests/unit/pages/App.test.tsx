@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import App from '../../../src/renderer/App';
 
 // Mock useAppMode at the module level
@@ -35,11 +35,43 @@ const mockConfigAPI = {
   exists: vi.fn().mockResolvedValue(true),
   getMode: vi.fn().mockResolvedValue({ mode: 'cylinderscan' }),
   fetchScanners: vi.fn(),
+  getGraviScanEnvStatus: vi
+    .fn()
+    .mockResolvedValue({ slackConfigured: true, libusbRecoveryEnabled: true }),
+};
+
+const mockGraviAPI = {
+  getScannerStatus: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
+  getConfig: vi
+    .fn()
+    .mockResolvedValue({
+      success: true,
+      data: { success: true, config: null },
+    }),
+  getScanStatus: vi
+    .fn()
+    .mockResolvedValue({ success: true, data: { isActive: false } }),
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
+  mockConfigAPI.getGraviScanEnvStatus.mockResolvedValue({
+    slackConfigured: true,
+    libusbRecoveryEnabled: true,
+  });
+  mockGraviAPI.getScannerStatus.mockResolvedValue({
+    success: true,
+    scanners: [],
+  });
+  mockGraviAPI.getConfig.mockResolvedValue({
+    success: true,
+    data: { success: true, config: null },
+  });
+  mockGraviAPI.getScanStatus.mockResolvedValue({
+    success: true,
+    data: { isActive: false },
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
@@ -47,6 +79,7 @@ beforeEach(() => {
     win.electron = {
       ...win.electron,
       config: mockConfigAPI,
+      gravi: mockGraviAPI,
       scanner: { getScannerId: vi.fn().mockResolvedValue('TestScanner') },
     };
   }
@@ -100,6 +133,23 @@ describe('App routing', () => {
 
     await waitFor(() => {
       expect(screen.getByText('CylinderScan')).toBeInTheDocument();
+    });
+  });
+
+  it('navigates to the ConfigureScanner page via its nav link in graviscan mode', async () => {
+    mockUseAppMode.mockReturnValue({ mode: 'graviscan', isLoading: false });
+
+    render(<App />);
+
+    const navLink = await screen.findByRole('link', {
+      name: /configure scanner/i,
+    });
+    fireEvent.click(navLink);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /configure scanner/i })
+      ).toBeInTheDocument();
     });
   });
 });

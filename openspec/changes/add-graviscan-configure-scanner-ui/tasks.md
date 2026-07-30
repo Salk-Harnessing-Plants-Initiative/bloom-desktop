@@ -174,7 +174,7 @@
 
 ## 5. Routing & Navigation Wiring
 
-- [ ] 5.1 Add a failing case to `tests/unit/pages/App.test.tsx`, scoped to
+- [x] 5.1 Add a failing case to `tests/unit/pages/App.test.tsx`, scoped to
       what is actually testable given `App.tsx`'s current
       `<Router initialEntries={['/']}>` (hardcoded, no route-injection
       seam — no existing test navigates to a non-default starting route
@@ -186,21 +186,21 @@
       test; asserting it via a hardcoded starting route in `App.test.tsx`
       is not achievable without adding a route-injection seam, which is
       out of scope for this proposal.
-- [ ] 5.2 Add `{mode === 'graviscan' && (<Route path="configure-scanner" element={<ConfigureScanner />} />)}`
+- [x] 5.2 Add `{mode === 'graviscan' && (<Route path="configure-scanner" element={<ConfigureScanner />} />)}`
       to `src/renderer/App.tsx`, mirroring the existing
       `{mode === 'cylinderscan' && (...)}` block structure. Confirm 5.1
       passes.
-- [ ] 5.3 Add a failing test (new file `tests/unit/pages/Layout.test.tsx`,
+- [x] 5.3 Add a failing test (new file `tests/unit/pages/Layout.test.tsx`,
       or extend an existing Layout-covering test if one is found during
       implementation) asserting: mode `graviscan` renders a "Configure
       Scanner" nav link pointing to `/configure-scanner`; mode
       `cylinderscan` does not render that link.
-- [ ] 5.4 Add a `graviscanLinks` array (parallel to the existing
+- [x] 5.4 Add a `graviscanLinks` array (parallel to the existing
       `captureLinks`) to `src/renderer/Layout.tsx` containing the
       "Configure Scanner" entry, and gate it with
       `mode === 'graviscan' ? [...alwaysLinks, ...graviscanLinks] : ...`
       alongside the existing `showCaptureLinks` branch. Confirm 5.3 passes.
-- [ ] 5.5 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
+- [x] 5.5 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
       any fallout before moving on.
 
 ## 6. E2E Coverage
