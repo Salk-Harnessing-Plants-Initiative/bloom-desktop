@@ -170,16 +170,20 @@ model GraviScanPlateAssignment {
   scanner_id             String
   plate_index            String
   plate_barcode          String?
-  // Set alongside plate_barcode whenever verify-plates auto-corrects a
-  // detected swap, so "what was this corrected from" is a queryable fact
-  // rather than something only recoverable from application logs.
-  previous_plate_barcode String?
   transplant_date        DateTime?
   custom_note            String?
   selected               Boolean   @default(true)
   verification_status    String    @default("pending")
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
+  // Set alongside plate_barcode whenever verify-plates auto-corrects a
+  // detected swap, so "what was this corrected from" is a queryable fact
+  // rather than something only recoverable from application logs.
+  //
+  // Declared last (matching the migration's plain ALTER TABLE ADD COLUMN,
+  // which SQLite always appends at the end) so `prisma db push`'s column
+  // order matches `prisma migrate deploy`'s — see scripts/verify-migrations.sh.
+  previous_plate_barcode String?
 
   experiment Experiment   @relation(fields: [experiment_id], references: [id])
   scanner    GraviScanner @relation(fields: [scanner_id], references: [id])
