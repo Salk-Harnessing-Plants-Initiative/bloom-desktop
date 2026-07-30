@@ -34,17 +34,28 @@ plan (`docs/superpowers/plans/2026-07-29-graviscan-production-parity-gaps.md`).
 ## What Changes
 
 - **New module** `src/main/graviscan/verify-plates.ts` exporting
-  `verifyPlates(db, plates, experimentId?, onProgress?)` — a pure,
-  DB-injected async function (matches this repo's handler-module convention:
-  one exported function per logical concern, no direct `ipcMain` coupling).
-  - Reads QR codes from each plate's scan image via a Python-backed
-    `readQrCodes()` (see `design.md`).
+  `verifyPlates(db, plates, experimentId, scanOutputDir, onProgress?)` — a
+  pure, DB-injected async function (matches this repo's handler-module
+  convention: one exported function per logical concern, no direct `ipcMain`
+  coupling, and no Electron import at all — `scanOutputDir` is injected by
+  the caller for the same reason progress events are).
+  - Reads QR codes for **the whole batch in one** Python subprocess call via
+    `readQrCodesBatch()` (see `design.md`), mapping results back to plates by
+    path rather than by array position. The first implementation pass called
+    the single-image `readQrCodes()` once per plate in a loop, which spawned
+    N subprocesses per verification and invalidated the whole rationale for
+    the one-shot-subprocess design — fixed here.
   - Detects duplicate QR codes read across multiple plates in the same batch
     and flags those plates `duplicate_qr` instead of attempting a normal
-    compare.
+    compare. Detection is keyed on `(scannerId, plateIndex)`, not on
+    `plateIndex` alone: a batch spans multiple scanners and plate indices
+    repeat across them, so the original keying both missed real duplicates
+    (same code on two scanners' index `00`) and flagged innocent plates
+    (a duplicate elsewhere on index `00` dragged in every scanner's `00`) —
+    fixed here.
   - Looks up each detected QR code's owning plate via
-    `GraviPlateSectionMapping` (optionally scoped to `experimentId`'s
-    accession, to avoid cross-experiment collisions in the *lookup*), and
+    `GraviPlateSectionMapping` (scoped to `experimentId`'s accession, to
+    avoid cross-experiment collisions in the _lookup_), and
     classifies each plate as `verified` / `incorrect` / `unreadable` /
     `needs_review` (QR codes on one plate disagree on which plate they
     belong to) / `duplicate_qr`. The comparison is case-insensitive on
@@ -59,10 +70,24 @@ plan (`docs/superpowers/plans/2026-07-29-graviscan-production-parity-gaps.md`).
     final status-persistence update — is scoped to `experimentId` in
     addition to `(scanner_id, plate_index)`**, matching the actual DB
     uniqueness constraint (`@@unique([experiment_id, scanner_id,
-    plate_index])`). Production/the first pass scoped only the read-side
-    lookup, leaving every write able to silently overwrite a *different*
+plate_index])`). Production/the first pass scoped only the read-side
+    lookup, leaving every write able to silently overwrite a _different_
     experiment's historical data sharing the same scanner and plate
-    position — fixed here.
+    position — fixed here. `experimentId` is a **required** parameter, not
+    optional: the read-side `experimentId ? {scoped} : {}` shape is exactly
+    the silent-unscoped-fallback pattern that would reintroduce this bug for
+    any future caller that omitted it, so there is no unscoped code path at
+    all — a missing `experimentId` fails the run before any DB access, and
+    the IPC registration rejects the invocation outright.
+  - Swap pairing and swap dedup are keyed on `(scannerId, plateIndex)`, not
+    on `assignedPlateId`, and a position can be consumed by at most one swap.
+    Keying on `assignedPlateId` collapsed two genuinely independent swap
+    pairs that happened to share plate ids into one, leaving the second
+    uncorrected — fixed here.
+  - A swap correction records `previous_plate_barcode` alongside the new
+    `plate_barcode` in the same write, so "what was this corrected from" is a
+    queryable database fact rather than something recoverable only from
+    application logs.
   - A lone `incorrect` result with no swap partner is persisted as its own
     distinct `verification_status` (`incorrect`), not collapsed into
     `unreadable`. Production does collapse it, and its own renderer shows an
@@ -125,21 +150,57 @@ plan (`docs/superpowers/plans/2026-07-29-graviscan-production-parity-gaps.md`).
   classification/swap rules in test code.
 - TDD throughout: a failing test precedes each fix (see `tasks.md`).
 
+## Related issues
+
+This proposal's implementation PR should close:
+
+- **#149** — GraviScan: Post-scan QR verification to detect misplaced plates
+  (the core capability)
+- **#155** — GraviScan: Detect duplicate QR codes across plates during
+  post-scan verification (the `duplicate_qr` status and its detection)
+- **#162** — GraviScan: QR verification query not scoped to experiment and
+  wave (the experiment-scoping fix; see the caveat below on the wave half)
+
+Explicitly **out of scope**: **#164** (per-wave metadata uploads for QR
+verification). Wave-scoping needs schema-level work that has not been done —
+`GraviScanPlateAssignment` has no `wave_number` column, so there is nothing
+to scope a per-wave verification against yet. #162 is therefore addressed on
+its experiment axis only; its wave axis stays open with #164.
+
 ## Impact
 
-- Affected specs: `scanning` (new requirements — this is new capability, no
-  existing requirement changes)
+- Affected specs: `scanning`
+  - ADDED: the verification capability, the QR-reading capability, and the
+    `verification_status` / `previous_plate_barcode` schema fields.
+  - MODIFIED: `GraviScan IPC Handler Registration` (channel enumeration was a
+    closed list of 15 and is now 18 — this change adds
+    `graviscan:verify-plates`, and the enumeration had already drifted from
+    the code by omitting `graviscan:disable-scanner` and
+    `graviscan:reset-usb`, corrected here at the same time),
+    `GraviScan PyInstaller Bundling` (hidden-imports enumeration gains
+    `graviscan.qr_reader` and `cv2`), `GraviScan Python Dependencies`
+    (`opencv-python-headless` joins the core dependency list).
 - Affected code:
   - `src/main/graviscan/verify-plates.ts` (new)
-  - `src/main/qr-reader.ts` (new — subprocess-calling, not WASM)
+  - `src/main/graviscan/path-containment.ts` (new — shared realpath
+    containment helper, extracted from `read-scan-image`'s inline check so
+    verification can reuse it without duplicating it)
+  - `src/main/qr-reader.ts` (rewritten — subprocess-calling, not WASM)
   - `src/main/graviscan/register-handlers.ts` (add `graviscan:verify-plates`
-    IPC registration)
+    IPC registration; `read-scan-image` switched to the extracted helper)
   - `python/graviscan/qr_reader.py` (new)
   - `python/main.py` (new `--decode-qr-batch` mode)
+  - `python/main.spec` (hidden imports for `cv2` and `graviscan.qr_reader`)
   - `pyproject.toml` (add `opencv-python-headless`)
-  - `prisma/schema.prisma` + new `prisma/migrations/<timestamp>_add_verification_status_to_plate_assignment/`
+  - `prisma/schema.prisma` + new
+    `prisma/migrations/<timestamp>_add_verification_status_to_plate_assignment/`
+    and `prisma/migrations/<timestamp>_add_previous_plate_barcode_to_plate_assignment/`
+  - `package.json` / `package-lock.json` — **removal** of
+    `@undecaf/zbar-wasm` (added by the first implementation pass, never
+    reaching `main`). No Node dependency is added in its place.
   - `tests/unit/graviscan/verify-plates.test.ts` (new)
-  - `tests/unit/qr-reader.test.ts` (new — mocks subprocess, not WASM)
-  - `python/tests/test_qr_reader.py` (new)
-  - No `package.json` dependency change (the Node WASM dependency from the
-    first pass is removed, not replaced with another Node dependency)
+  - `tests/unit/graviscan/register-handlers.test.ts` (updated for the new
+    channel and its argument contract)
+  - `tests/unit/qr-reader.test.ts` (rewritten — mocks subprocess, not WASM)
+  - `python/tests/test_qr_reader.py` (new), `python/tests/test_main.py`
+    (updated for `--decode-qr-batch`)
