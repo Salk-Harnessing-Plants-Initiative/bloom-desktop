@@ -88,6 +88,7 @@ describe('image-handlers', () => {
     vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
     // Default: no GRAVISCAN_OUTPUT_DIR override — falls back to hardcoded path.
     vi.mocked(fs.readFileSync).mockReturnValue('');
+    vi.mocked(fs.writeFileSync).mockClear();
     vi.mocked(fs.promises.mkdir).mockReset().mockResolvedValue(undefined);
     vi.mocked(fs.readdirSync).mockReset();
     vi.mocked(fs.statSync).mockReset();
@@ -537,6 +538,172 @@ describe('image-handlers', () => {
       expect(fs.writeFileSync).toHaveBeenCalled(); // metadata CSV
       expect(fs.promises.copyFile).toHaveBeenCalled();
       expect(onProgress).toHaveBeenCalled();
+    });
+
+    it('should not write plates.csv or sections.csv when the experiment has no plate accessions', async () => {
+      db.graviScan.findMany.mockResolvedValue([
+        {
+          wave_number: 0,
+          plate_barcode: 'PLATE-001',
+          plate_index: '00',
+          grid_mode: '2grid',
+          capture_date: new Date('2026-04-01'),
+          experiment: { accession: { graviPlateAccessions: [] } },
+          images: [{ path: '/scan/image.tiff' }],
+        },
+      ]);
+      mockResolvePath.mockReturnValue('/scan/image.tiff');
+
+      await downloadImages(db, {
+        experimentId: 'exp-1',
+        experimentName: 'Test Exp',
+        targetDir: '/tmp/download',
+      });
+
+      const writtenPaths = vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.map((call) => String(call[0]));
+      expect(writtenPaths.some((p) => p.endsWith('metadata.csv'))).toBe(true);
+      expect(writtenPaths.some((p) => p.endsWith('plates.csv'))).toBe(false);
+      expect(writtenPaths.some((p) => p.endsWith('sections.csv'))).toBe(false);
+    });
+
+    it('should write plates.csv with one row per plate accession and sections.csv with one row per section mapping', async () => {
+      db.graviScan.findMany.mockResolvedValue([
+        {
+          wave_number: 2,
+          plate_barcode: 'PLATE-001',
+          plate_index: '00',
+          grid_mode: '2grid',
+          capture_date: new Date('2026-04-01'),
+          experiment: {
+            accession: {
+              graviPlateAccessions: [
+                {
+                  plate_id: 'PLATE-001',
+                  accession: 'ACC-1',
+                  transplant_date: new Date('2026-03-15'),
+                  custom_note: 'note, with comma',
+                  sections: [
+                    {
+                      plate_section_id: 'SEC-1',
+                      plant_qr: 'QR-1',
+                      medium: 'soil',
+                    },
+                    {
+                      plate_section_id: 'SEC-2',
+                      plant_qr: 'QR-2',
+                      medium: null,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          images: [{ path: '/scan/image.tiff' }],
+        },
+      ]);
+      mockResolvePath.mockReturnValue('/scan/image.tiff');
+
+      await downloadImages(db, {
+        experimentId: 'exp-1',
+        experimentName: 'Test Exp',
+        targetDir: '/tmp/download',
+      });
+
+      const calls = vi.mocked(fs.writeFileSync).mock.calls;
+      const platesCall = calls.find((call) =>
+        String(call[0]).endsWith('plates.csv')
+      );
+      const sectionsCall = calls.find((call) =>
+        String(call[0]).endsWith('sections.csv')
+      );
+      expect(platesCall).toBeDefined();
+      expect(sectionsCall).toBeDefined();
+
+      const platesContent = String(platesCall![1]);
+      const platesLines = platesContent.trim().split('\n');
+      expect(platesLines[0]).toBe(
+        'experiment,wave_number,plate_id,accession,transplant_date,custom_note'
+      );
+      expect(platesLines).toHaveLength(2);
+      expect(platesLines[1]).toBe(
+        'Test Exp,2,PLATE-001,ACC-1,2026-03-15,"note, with comma"'
+      );
+
+      const sectionsContent = String(sectionsCall![1]);
+      const sectionsLines = sectionsContent.trim().split('\n');
+      expect(sectionsLines[0]).toBe(
+        'experiment,wave_number,plate_id,section_id,plant_qr,medium'
+      );
+      expect(sectionsLines).toHaveLength(3);
+      expect(sectionsLines[1]).toBe('Test Exp,2,PLATE-001,SEC-1,QR-1,soil');
+      expect(sectionsLines[2]).toBe('Test Exp,2,PLATE-001,SEC-2,QR-2,');
+    });
+
+    it('should write plates.csv but not sections.csv when a plate has no sections', async () => {
+      db.graviScan.findMany.mockResolvedValue([
+        {
+          wave_number: 0,
+          plate_barcode: 'PLATE-001',
+          plate_index: '00',
+          grid_mode: '2grid',
+          capture_date: new Date('2026-04-01'),
+          experiment: {
+            accession: {
+              graviPlateAccessions: [
+                {
+                  plate_id: 'PLATE-001',
+                  accession: 'ACC-1',
+                  transplant_date: null,
+                  custom_note: null,
+                  sections: [],
+                },
+              ],
+            },
+          },
+          images: [{ path: '/scan/image.tiff' }],
+        },
+      ]);
+      mockResolvePath.mockReturnValue('/scan/image.tiff');
+
+      await downloadImages(db, {
+        experimentId: 'exp-1',
+        experimentName: 'Test Exp',
+        targetDir: '/tmp/download',
+      });
+
+      const writtenPaths = vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.map((call) => String(call[0]));
+      expect(writtenPaths.some((p) => p.endsWith('plates.csv'))).toBe(true);
+      expect(writtenPaths.some((p) => p.endsWith('sections.csv'))).toBe(false);
+    });
+
+    it('should default the target directory to the Downloads folder when targetDir is omitted', async () => {
+      vi.mocked(app.getPath).mockReturnValue('/mock/downloads');
+      db.graviScan.findMany.mockResolvedValue([]);
+
+      const result = await downloadImages(db, {
+        experimentId: 'exp-1',
+        experimentName: 'Test Exp',
+      } as any);
+
+      expect(app.getPath).toHaveBeenCalledWith('downloads');
+      expect(result.success).toBe(true);
+    });
+
+    it('should use the explicit targetDir when provided, without consulting Downloads', async () => {
+      vi.mocked(app.getPath).mockClear();
+      db.graviScan.findMany.mockResolvedValue([]);
+
+      await downloadImages(db, {
+        experimentId: 'exp-1',
+        experimentName: 'Test Exp',
+        targetDir: '/tmp/explicit-download',
+      });
+
+      expect(app.getPath).not.toHaveBeenCalledWith('downloads');
     });
   });
 
