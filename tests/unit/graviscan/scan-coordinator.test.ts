@@ -328,6 +328,110 @@ describe('ScanCoordinator', () => {
       expect(gridCompletePayload).not.toHaveProperty('renameErrors');
     });
 
+    it('emits scan-started (not scan-event) with jobId/scannerId/plateIndex/cycle_number/scan_started_at (task 10.1)', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        sub.emit('event', {
+          type: 'scan-started',
+          scanner_id: 'scanner-1',
+          plate_index: '00',
+        });
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const scanStarted = vi.fn();
+      const scanEvent = vi.fn();
+      coordinator.on('scan-started', scanStarted);
+      coordinator.on('scan-event', scanEvent);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanStarted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'scanner-1:00',
+          scannerId: 'scanner-1',
+          plateIndex: '00',
+          cycle_number: 1,
+          scan_started_at: expect.any(String),
+        })
+      );
+      // scan-event (the old generic bus) must never fire (design.md
+      // Decision 2 — replaced, not add-alongside).
+      expect(scanEvent).not.toHaveBeenCalled();
+    });
+
+    it('emits scan-complete with jobId/scannerId/plateIndex/path and achieved_resolution when present (task 10.2)', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        sub.emit('event', {
+          type: 'scan-complete',
+          scanner_id: 'scanner-1',
+          plate_index: '00',
+          path: '/tmp/out.tif',
+          achieved_resolution: 400,
+        });
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const scanComplete = vi.fn();
+      coordinator.on('scan-complete', scanComplete);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanComplete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'scanner-1:00',
+          scannerId: 'scanner-1',
+          plateIndex: '00',
+          path: '/tmp/out.tif',
+          achieved_resolution: 400,
+        })
+      );
+    });
+
+    it('emits scan-error (subprocess-originated) with jobId/scannerId/plateIndex/error/bytes_received/wall_seconds (task 10.3)', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        sub.emit('event', {
+          type: 'scan-error',
+          scanner_id: 'scanner-1',
+          plate_index: '00',
+          error: 'SANE IO error',
+          bytes_received: 0,
+          wall_seconds: 12,
+        });
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jobId: 'scanner-1:00',
+          scannerId: 'scanner-1',
+          plateIndex: '00',
+          error: 'SANE IO error',
+          bytes_received: 0,
+          wall_seconds: 12,
+        })
+      );
+    });
+
     it('regex path rewriting only affects filename, not directory', async () => {
       vi.useFakeTimers();
 
@@ -368,7 +472,7 @@ describe('ScanCoordinator', () => {
       vi.useRealTimers();
     });
 
-    it('forwarded scan-event does not include scan_ended_at before row completes', async () => {
+    it('forwarded scan-complete does not include scan_ended_at before row completes (task 10.2a — retargeted from scan-event)', async () => {
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
 
@@ -386,16 +490,17 @@ describe('ScanCoordinator', () => {
         process.nextTick(() => sub.emit('cycle-done', {}));
       });
 
-      const scanEvent = vi.fn();
-      coordinator.on('scan-event', scanEvent);
+      const scanComplete = vi.fn();
+      coordinator.on('scan-complete', scanComplete);
 
       const platesMap = makePlatesMap(['scanner-1']);
       await coordinator.scanOnce(platesMap);
 
-      // The forwarded scan-event should NOT have scan_ended_at
-      // (it's unknown until the row completes)
-      expect(scanEvent).toHaveBeenCalled();
-      const firstCall = scanEvent.mock.calls[0][0];
+      // The forwarded scan-complete should include scan_started_at but
+      // NOT scan_ended_at (it's unknown until the row completes).
+      expect(scanComplete).toHaveBeenCalled();
+      const firstCall = scanComplete.mock.calls[0][0];
+      expect(firstCall).toHaveProperty('scan_started_at');
       expect(firstCall).not.toHaveProperty('scan_ended_at');
     });
 
@@ -489,7 +594,7 @@ describe('ScanCoordinator', () => {
       expect(fs.promises.access).not.toHaveBeenCalledWith(sentPath);
     });
 
-    it('emits scan-error when stat rejects (filesystem race)', async () => {
+    it('emits scan-error when stat rejects (filesystem race) with a per-plate jobId (task 10.5a — the 4th direct emit site)', async () => {
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
 
@@ -513,6 +618,7 @@ describe('ScanCoordinator', () => {
       expect(scanError).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Cannot stat'),
+          jobId: 'scanner-1:00',
         })
       );
     });
@@ -581,7 +687,7 @@ describe('ScanCoordinator', () => {
       vi.useRealTimers();
     });
 
-    it('emits scan-error and proceeds when subprocess does not respond within row timeout', async () => {
+    it('emits scan-error and proceeds when subprocess does not respond within row timeout (jobId is the bare scannerId — task 10.4)', async () => {
       vi.useFakeTimers();
 
       const coordinator = await createCoordinator();
@@ -607,10 +713,13 @@ describe('ScanCoordinator', () => {
       await vi.advanceTimersByTimeAsync(100_000);
       await scanPromise;
 
-      // Should have emitted scan-error for the timed-out subprocess
+      // Should have emitted scan-error for the timed-out subprocess, with
+      // jobId equal to the bare scannerId — no single plateIndex applies
+      // to a whole-row timeout (task 10.4).
       expect(scanError).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('timeout'),
+          jobId: 'scanner-1',
         })
       );
       // Should still complete the cycle (not hang forever)
@@ -618,6 +727,76 @@ describe('ScanCoordinator', () => {
 
       vi.useRealTimers();
     }, 15000);
+
+    it('never emits scan-event across a run with a success, a subprocess-originated error, and a verification failure (task 10.6)', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      let rowCount = 0;
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        rowCount++;
+        if (rowCount === 1) {
+          // Row 1 (plates 00 + 01, 4grid top row): the worker succeeds
+          // for both. Plate 00 will verify cleanly (success); plate 01's
+          // file will fail verification below. The real ScannerSubprocess
+          // emits both the specific channel (for row-completion tracking)
+          // and the generic 'event' channel (for per-job forwarding) —
+          // mirrored here so this test exercises real forwarding, not a
+          // vacuous pass from never touching 'event' at all.
+          for (const plate of plates) {
+            const evt = {
+              type: 'scan-complete',
+              scanner_id: 'scanner-1',
+              plate_index: plate.plate_index,
+              path: plate.output_path,
+            };
+            sub.emit('scan-complete', evt);
+            sub.emit('event', evt);
+          }
+        } else {
+          // Row 2 (plates 10 + 11, 4grid bottom row): the worker itself
+          // reports a scan-error for 10 — no scan-complete at all for
+          // that plate. Plate 11 succeeds normally.
+          sub.emit('event', {
+            type: 'scan-error',
+            scanner_id: 'scanner-1',
+            plate_index: '10',
+            error: 'worker-originated failure',
+            bytes_received: 0,
+            wall_seconds: 1,
+          });
+          const okPlate = plates.find((p) => p.plate_index === '11');
+          if (okPlate) {
+            const evt = {
+              type: 'scan-complete',
+              scanner_id: 'scanner-1',
+              plate_index: okPlate.plate_index,
+              path: okPlate.output_path,
+            };
+            sub.emit('scan-complete', evt);
+            sub.emit('event', evt);
+          }
+        }
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      // Plate 01's output file fails verification (access rejects); all
+      // other plates verify cleanly — a real, non-vacuous success case.
+      vi.mocked(fs.promises.access).mockImplementation((p) =>
+        String(p).includes('_01.tif')
+          ? Promise.reject(new Error('ENOENT'))
+          : Promise.resolve(undefined)
+      );
+
+      const scanEvent = vi.fn();
+      coordinator.on('scan-event', scanEvent);
+
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      await coordinator.scanOnce(platesMap);
+
+      expect(scanEvent).not.toHaveBeenCalled();
+    });
   });
 
   describe('async FS operations', () => {
@@ -645,11 +824,12 @@ describe('ScanCoordinator', () => {
       expect(scanError).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('Output file missing'),
+          jobId: 'scanner-1:00',
         })
       );
     });
 
-    it('emits scan-error for zero-size file', async () => {
+    it('emits scan-error for zero-size file with a per-plate jobId (task 10.5)', async () => {
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
 
@@ -670,6 +850,7 @@ describe('ScanCoordinator', () => {
       expect(scanError).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.stringContaining('zero-size'),
+          jobId: 'scanner-1:00',
         })
       );
     });
