@@ -281,6 +281,185 @@ class TestSaneScanRetryLogic:
             )
 
 
+class _QuantizingDevice:
+    """Test double for python-sane's Device — quantizes any resolution set
+    to the nearest of a small fixed set, mimicking a SANE backend that
+    silently rounds the requested x_resolution/y_resolution (#232) rather
+    than applying it exactly. Used to prove the readback+mismatch-warning
+    logic actually captures a real discrepancy, not just echoes back
+    whatever was set (which a plain MagicMock attribute would do)."""
+
+    SUPPORTED = [400, 800, 1600, 3200]
+
+    def __init__(self, mock_image):
+        self.mode = None
+        self.tl_x = self.tl_y = self.br_x = self.br_y = 0
+        self._x_resolution = None
+        self._y_resolution = None
+        self.start = MagicMock()
+        self.snap = MagicMock(return_value=mock_image)
+        self.cancel = MagicMock()
+
+    @property
+    def x_resolution(self):
+        return self._x_resolution
+
+    @x_resolution.setter
+    def x_resolution(self, value):
+        self._x_resolution = min(self.SUPPORTED, key=lambda s: abs(s - value))
+
+    @property
+    def y_resolution(self):
+        return self._y_resolution
+
+    @y_resolution.setter
+    def y_resolution(self, value):
+        self._y_resolution = min(self.SUPPORTED, key=lambda s: abs(s - value))
+
+
+class _ExactDevice:
+    """Test double that reports back exactly whatever resolution was set
+    (the "device accepted the request exactly" case — 9.1a)."""
+
+    def __init__(self, mock_image):
+        self.mode = None
+        self.tl_x = self.tl_y = self.br_x = self.br_y = 0
+        self.x_resolution = None
+        self.y_resolution = None
+        self.start = MagicMock()
+        self.snap = MagicMock(return_value=mock_image)
+        self.cancel = MagicMock()
+
+
+class TestAchievedResolutionReadback:
+    """9.1/9.1a/9.2 (#232) — _sane_scan reads back the device's actual
+    x_resolution/y_resolution after setting them and before scanning,
+    capturing a mismatch rather than silently discarding it, and logging
+    a warning (with both the requested and achieved values) only when a
+    mismatch actually occurred."""
+
+    @patch("time.sleep")
+    def test_mismatch_is_captured_not_discarded(self, mock_sleep, tmp_path):
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+        w._device = _QuantizingDevice(Image.new("RGB", (50, 50)))
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+
+        # 300 is not in SUPPORTED — the device rounds it to 400. The
+        # worker must capture the ACHIEVED value, not silently keep 300.
+        assert w._last_achieved_resolution == 400
+
+    @patch("time.sleep")
+    def test_mismatch_logs_warning_with_requested_and_achieved_values(
+        self, mock_sleep, tmp_path
+    ):
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+        w._device = _QuantizingDevice(Image.new("RGB", (50, 50)))
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+
+        assert "300" in stderr
+        assert "400" in stderr
+
+    @patch("time.sleep")
+    def test_exact_match_reports_no_mismatch_and_logs_no_warning(
+        self, mock_sleep, tmp_path
+    ):
+        """9.1a — the positive/negative-space case: if a `!=` mismatch
+        check were accidentally written as `==`, this is the test that
+        would catch it (the mismatch tests above would still pass either
+        way, since a real mismatch is truthy under both operators)."""
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+        w._device = _ExactDevice(Image.new("RGB", (50, 50)))
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+
+        assert w._last_achieved_resolution == 300
+        assert "mismatch" not in stderr.lower()
+        assert "WARNING" not in stderr
+
+
+class TestAchievedResolutionInOutput:
+    """9.3 (#232) — the achieved (not requested) resolution reaches both
+    the TIFF's embedded metadata and the emitted scan-complete event
+    payload."""
+
+    @patch("time.sleep")
+    def test_tiff_embeds_achieved_resolution(self, mock_sleep, tmp_path):
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+        w._device = _QuantizingDevice(Image.new("RGB", (50, 50)))
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        final_path = w._sane_scan("2grid", "00", 300, out_path)
+
+        img = Image.open(final_path)
+        desc = json.loads(img.tag_v2[270])
+        assert desc["resolution_dpi"] == 400
+
+        x_res = img.tag_v2.get(282)
+        if hasattr(x_res, "numerator"):
+            assert x_res.numerator / x_res.denominator == 400
+        else:
+            assert float(x_res) == 400.0
+
+    @patch("time.sleep")
+    def test_scan_complete_event_includes_achieved_resolution(
+        self, mock_sleep, tmp_path
+    ):
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+        w._device = _QuantizingDevice(Image.new("RGB", (50, 50)))
+
+        out = _capture_stdout(
+            w._scan_plate,
+            {
+                "plate_index": "00",
+                "grid_mode": "2grid",
+                "resolution": 300,
+                "output_path": str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"),
+            },
+        )
+        events = [
+            json.loads(line.removeprefix("EVENT:"))
+            for line in out.strip().split("\n")
+            if line.startswith("EVENT:")
+        ]
+        complete = next(e for e in events if e["type"] == "scan-complete")
+        assert complete["achieved_resolution"] == 400
+
+    @patch("time.sleep")
+    def test_mock_scan_complete_event_achieved_resolution_matches_requested(
+        self, mock_sleep, tmp_path
+    ):
+        """Mock mode has no real device to diverge from the request — the
+        achieved value SHALL always equal the requested value."""
+        w = _make_worker(mock=True)
+
+        out = _capture_stdout(
+            w._scan_plate,
+            {
+                "plate_index": "00",
+                "grid_mode": "2grid",
+                "resolution": 300,
+                "output_path": str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"),
+            },
+        )
+        events = [
+            json.loads(line.removeprefix("EVENT:"))
+            for line in out.strip().split("\n")
+            if line.startswith("EVENT:")
+        ]
+        complete = next(e for e in events if e["type"] == "scan-complete")
+        assert complete["achieved_resolution"] == 300
+
+
 class TestReopenDevice:
     """3.5 mock sane exit/init/open sequence."""
 
