@@ -65,6 +65,19 @@ export interface MachineConfig {
    * disable the libusb_clear_halt-on-bulk-timeout wrapper.
    */
   libusb_endpoint_recovery?: boolean;
+
+  /**
+   * GraviScan system name for uploads and Box backup attribution
+   * (production parity gap #6 — see
+   * openspec/changes/add-graviscan-system-name-config).
+   * Loaded from GRAVISCAN_SYSTEM_NAME in ~/.bloom/.env.
+   * Absent or empty ⇒ undefined; hydrated into
+   * process.env.GRAVISCAN_SYSTEM_NAME at startup (main.ts), read by
+   * box-backup.ts, graviscan/scanner-handlers.ts, and
+   * graviscan-upload.ts to attribute uploads/backups to a physical
+   * rig in multi-rig fleets.
+   */
+  graviscan_system_name?: string;
 }
 
 /**
@@ -542,6 +555,13 @@ function parseEnvFile(envPath: string): Partial<MachineConfig> {
             envConfig.libusb_endpoint_recovery =
               value.toLowerCase() !== 'false';
             break;
+          case 'GRAVISCAN_SYSTEM_NAME':
+            // Empty string ⇒ not configured (treat as undefined),
+            // mirroring BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL's precedent.
+            if (value !== '') {
+              envConfig.graviscan_system_name = value;
+            }
+            break;
         }
       }
     }
@@ -709,6 +729,15 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     if (merged.libusb_endpoint_recovery !== undefined) {
       lines.push(`LIBUSB_ENDPOINT_RECOVERY=${merged.libusb_endpoint_recovery}`);
     }
+  }
+
+  // GraviScan system name (production parity gap #6). Optional — like
+  // slack_webhook_url, only written when explicitly configured, so an
+  // unconfigured field is omitted entirely rather than written as an
+  // empty assignment.
+  if (merged.graviscan_system_name !== undefined) {
+    lines.push('', '# GraviScan System');
+    lines.push(`GRAVISCAN_SYSTEM_NAME=${merged.graviscan_system_name}`);
   }
 
   fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');

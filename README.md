@@ -45,6 +45,12 @@ comments. Highlights for GraviScan operators (V600 wedge follow-ups,
   bulk-timeout wrapper that works around the V600 USB wedge at the
   driver level. Default ON (wrapper active); set to the case-insensitive
   string `"false"` to disable it. Also configured via `~/.bloom/.env`.
+- **`GRAVISCAN_SYSTEM_NAME`** — identifies which physical rig produced a
+  given GraviScan upload or Box backup, for multi-rig fleets. Absent or
+  empty ⇒ uploads and Box-backup paths omit system-name attribution;
+  this is the default. Configured via `~/.bloom/.env` (loaded by
+  `config-store.ts`'s `loadEnvConfig`/`saveEnvConfig`), not the
+  repo-root `.env`.
 
 ## Project Structure
 
