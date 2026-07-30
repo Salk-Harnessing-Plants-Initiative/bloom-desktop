@@ -199,12 +199,12 @@ wave and is green. These items are **done**; re-verify rather than re-write.
 
 ## 9. Verification
 
-- [x] 9.1 Run full affected test suites (Node vitest, Python pytest), `tsc
-    --noEmit`, `prettier --check`. Note: `npm run lint` may fail in this
-      worktree specifically due to a pre-existing duplicate
+- [x] 9.1 Run the full test suites (Node vitest, Python pytest) plus
+      `tsc --noEmit` and `npm run format:check`. Note: `npm run lint` may
+      fail in this worktree specifically due to a pre-existing duplicate
       `eslint-plugin-import` resolution conflict between this worktree's
       `node_modules` and the parent checkout's — not this change's fault;
       verify separately from the parent checkout if needed.
 - [x] 9.2 Confirm no regressions against the pre-existing (already
-      identified) noise: the same unrelated test failures as unmodified
-      `main` in this worktree.
+      identified) noise: run the same suites at the branch's base commit and
+      diff the failure sets, rather than assuming a failure is unrelated.
