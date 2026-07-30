@@ -233,6 +233,53 @@ describe('upsertScannerRow', () => {
 
     expect(saved.display_name).toBe('Bench 3');
   });
+
+  it('preserves usb_device: 0 and usb_bus: 0 on CREATE (regression: nullish coalescing)', async () => {
+    const db = makeMockDb([]);
+
+    const saved = await upsertScannerRow(db as never, {
+      name: 'Scanner Zero',
+      vendor_id: '04b8',
+      product_id: '013c',
+      usb_port: '1-1',
+      usb_bus: 0,
+      usb_device: 0,
+    });
+
+    // usb_device and usb_bus of 0 are valid USB hardware addresses and must
+    // round-trip correctly, not be coerced to null by || operator
+    expect(saved.usb_bus).toBe(0);
+    expect(saved.usb_device).toBe(0);
+    expect(db._rows[0].usb_bus).toBe(0);
+    expect(db._rows[0].usb_device).toBe(0);
+  });
+
+  it('preserves usb_device: 0 and usb_bus: 0 on UPDATE (regression: nullish coalescing)', async () => {
+    const db = makeMockDb([
+      makeRow({
+        id: 'row-zero',
+        usb_port: '1-1',
+        usb_bus: 1,
+        usb_device: 7,
+      }),
+    ]);
+
+    const saved = await upsertScannerRow(db as never, {
+      name: 'Scanner Zero',
+      vendor_id: '04b8',
+      product_id: '013c',
+      usb_port: '1-1',
+      usb_bus: 0,
+      usb_device: 0,
+    });
+
+    // usb_device and usb_bus of 0 are valid USB hardware addresses and must
+    // round-trip correctly on UPDATE, not be coerced to null by || operator
+    expect(saved.usb_bus).toBe(0);
+    expect(saved.usb_device).toBe(0);
+    expect(db._rows[0].usb_bus).toBe(0);
+    expect(db._rows[0].usb_device).toBe(0);
+  });
 });
 
 describe('disableStaleScannerRows (#230)', () => {
