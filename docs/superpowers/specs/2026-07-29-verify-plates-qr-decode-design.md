@@ -19,6 +19,7 @@ never assumed) — see conversation history for the exact commands run.
 
 **Problem:** production's `qr-reader.ts` uses `@undecaf/zbar-wasm`. Two
 independent issues:
+
 - **Bundling (Critical, C1):** `main`'s webpack config never copies
   `zbar.wasm` into the build output. Confirmed via an actual webpack build
   through this project's real `tsconfig.json`/loaders: `readQrCodes()`
@@ -56,6 +57,7 @@ no such state, so a persistent `PythonProcess`-style IPC process would be
 unjustified complexity.
 
 **Interface:**
+
 - `python/graviscan/qr_reader.py` (new): `decode_qr_codes(image_path: str) -> list[str]`.
   Full resolution, no resize (see Decision 3).
 - `python/main.py`: new `--decode-qr-batch` mode. Reads a JSON array of
@@ -82,7 +84,7 @@ separately decides to address that branch. Not this plan's scope.
    `updateMany` calls (swap correction ×2, status persistence) and both
    `graviScan.findFirst` lookups key only on `(scanner_id, plate_index)`.
    A scanner is a long-lived physical device reused across experiments —
-   an unscoped write can silently overwrite a *different* experiment's
+   an unscoped write can silently overwrite a _different_ experiment's
    historical `plate_barcode`/`verification_status`. Fix: thread the
    already-available `experimentId` parameter into all five call sites.
 2. **I3 (Important, confirmed by user as high-priority) — case-sensitivity.**
@@ -140,6 +142,7 @@ implemented now.
 
 TDD throughout: a failing test before each fix, matching this repo's
 established convention. Specifically:
+
 - A mixed-case plate ID test for I3 (the existing 13 tests all use
   pre-lowercased fixtures, which is exactly what hid this bug).
 - A cross-experiment isolation test for C2 (two experiments sharing a
