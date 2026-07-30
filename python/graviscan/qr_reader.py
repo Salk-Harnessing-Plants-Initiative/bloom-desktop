@@ -18,7 +18,9 @@ Design notes (see docs/superpowers/specs/2026-07-29-verify-plates-qr-decode-desi
   exception, so one unreadable image never aborts a whole batch.
 
 All diagnostics go to stderr — stdout is reserved for the JSON protocol used by
-``main.py --decode-qr-batch``.
+``main.py --decode-qr-batch``. The batching itself (one result entry per input
+path, in input order) lives in ``main.py``'s ``decode_qr_batch_mode`` together
+with the rest of that wire contract; this module's job is a single image.
 """
 
 from __future__ import annotations
@@ -83,18 +85,3 @@ def decode_qr_codes(image_path: str) -> list[str]:
     except Exception as exc:  # noqa: BLE001 - one bad image must not abort a batch
         _warn(f"error reading {os.path.basename(image_path)}: {exc}")
         return []
-
-
-def decode_qr_batch(image_paths: list[str]) -> list[dict]:
-    """Decode a list of images, one result entry per input path.
-
-    Args:
-        image_paths: Absolute paths to scan images.
-
-    Returns:
-        ``[{"path": <input path>, "codes": [<decoded strings>]}, ...]`` in the
-        same order as ``image_paths``. Paths that fail to decode appear with an
-        empty ``codes`` list rather than being omitted, so the caller can always
-        zip results back onto its inputs positionally.
-    """
-    return [{"path": p, "codes": decode_qr_codes(p)} for p in image_paths]

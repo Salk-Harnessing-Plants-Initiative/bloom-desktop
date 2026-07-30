@@ -599,8 +599,18 @@ The system SHALL declare GraviScan-specific Python dependencies as optional depe
 
 - **GIVEN** the Python environment is set up via `uv sync`
 - **WHEN** `graviscan.qr_reader` imports `cv2`
-- **THEN** OpenCV SHALL be available (declared as core dependency `opencv-python-headless>=4.9.0`)
+- **THEN** OpenCV SHALL be available (declared as core dependency
+  `opencv-python-headless>=4.9.0,<5`)
 - **AND** the headless build SHALL be used, so no GUI/Qt or X11 dependency is introduced on the rig or in the PyInstaller bundle
+- **AND** the declaration SHALL carry an upper major-version bound, so
+  resolution cannot silently jump past the major version
+  `pyinstaller-hooks-contrib`'s bundled `cv2` hook was written against
+- **NOTE**: an unbounded `>=4.9.0` resolved to `5.0.0.93`, a major version
+  newer than what `pyinstaller-hooks-contrib@2025.9` supports. The frozen
+  build was only ever verified on Windows, never macOS or Linux, so the bound
+  stays at the major version the hooks are known good for. Raising it
+  requires rebuilding and running the frozen executable on all three
+  platforms first.
 
 #### Scenario: SANE dependencies optional on Linux
 
