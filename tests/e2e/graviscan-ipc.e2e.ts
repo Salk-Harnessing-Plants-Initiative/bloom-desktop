@@ -209,6 +209,19 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(typeof result.data.path).toBe('string');
   });
 
+  test('getScannerStatus returns scanner list shape', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.gravi.getScannerStatus();
+    });
+
+    // getScannerStatus returns its shape directly ({success, scanners}),
+    // not wrapped via wrapHandler's {success, data} envelope.
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.scanners)).toBe(true);
+  });
+
   test('getScanStatus returns inactive when no scan active', async () => {
     const result = await window.evaluate(() => {
       return (

@@ -17,21 +17,21 @@
 
 ## 2. Preload & Type Wiring — `getScannerStatus`
 
-- [ ] 2.1 In `tests/unit/preload-gravi.test.ts`, add `'getScannerStatus'` to
+- [x] 2.1 In `tests/unit/preload-gravi.test.ts`, add `'getScannerStatus'` to
       the `invokeMethods` list (bumping the "has all N invoke methods" count
       by one) and add a dedicated test asserting
       `exposedAPI.gravi.getScannerStatus()` calls
       `ipcRenderer.invoke('graviscan:get-scanner-status')` with no
       arguments. Confirm both fail against current `preload.ts`.
-- [ ] 2.2 Add `getScannerStatus: () => ipcRenderer.invoke('graviscan:get-scanner-status')`
+- [x] 2.2 Add `getScannerStatus: () => ipcRenderer.invoke('graviscan:get-scanner-status')`
       to the `graviAPI` object in `src/main/preload.ts`. Confirm 2.1 passes.
-- [ ] 2.3 Add the matching method signature to the `GraviAPI` interface in
+- [x] 2.3 Add the matching method signature to the `GraviAPI` interface in
       `src/types/electron.d.ts`:
       `getScannerStatus: () => Promise<{ success: boolean; scanners: Array<{ scannerId: string; displayName: string; usbPort: string | null; gridMode: string; status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected'; error?: string }>; error?: string }>`
       (mirrors `getScannerStatus()`'s real return type in
       `src/main/graviscan/scanner-handlers.ts`). Run `npx tsc --noEmit` to
       confirm no new type errors.
-- [ ] 2.4 Extend `tests/e2e/graviscan-ipc.e2e.ts` with a
+- [x] 2.4 Extend `tests/e2e/graviscan-ipc.e2e.ts` with a
       `getScannerStatus returns scanner list shape` test (mirrors the
       existing `getConfig`/`getOutputDir` tests in that file): asserts
       `result.success === true` and `Array.isArray(result.scanners)`

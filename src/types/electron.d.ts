@@ -519,6 +519,18 @@ export interface GraviAPI {
   validateScanners: (ids: string[]) => Promise<any>;
   validateConfig: () => Promise<any>;
   resetUsb: () => Promise<ResetUsbResult>;
+  getScannerStatus: () => Promise<{
+    success: boolean;
+    scanners: Array<{
+      scannerId: string;
+      displayName: string;
+      usbPort: string | null;
+      gridMode: string;
+      status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected';
+      error?: string;
+    }>;
+    error?: string;
+  }>;
 
   // Session operations
   startScan: (params: any) => Promise<any>;
