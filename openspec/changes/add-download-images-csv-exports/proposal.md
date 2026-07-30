@@ -48,7 +48,7 @@ uses.
   `db.graviExperimentWaveMetadata.findMany(...)` fallback when
   `experiment.accession_id` is null). `main`'s Prisma schema has no
   `GraviExperimentWaveMetadata` model (`grep GraviExperimentWaveMetadata
-  prisma/schema.prisma` returns nothing), and `main`'s `ExperimentForm.tsx`
+prisma/schema.prisma` returns nothing), and `main`'s `ExperimentForm.tsx`
   zod schema still requires `accession_id` at experiment creation
   (`accession_id: z.string().min(1, 'Accession is required')`), so the
   null-accession case this fallback exists for cannot occur via `main`'s
