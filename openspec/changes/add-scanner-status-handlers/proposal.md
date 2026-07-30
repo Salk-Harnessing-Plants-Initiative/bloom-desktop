@@ -77,6 +77,13 @@ handlers and directly determine what `get-scanner-status` reports.
   idempotent `fs.promises.mkdir(dirPath, { recursive: true })`, for the
   renderer to pre-create a session's output folder before a scan cycle
   starts.
+- **Path containment on both new filesystem handlers**: `ensure-dir` and
+  `list-scan-files` take a caller-supplied path, so both apply the same
+  `fs.realpathSync`-based scan-output-directory containment check
+  `graviscan:read-scan-image` already uses (extracted into a local helper in
+  `register-handlers.ts`, which `read-scan-image` now shares). A variant
+  that resolves containment from the deepest existing ancestor keeps both
+  handlers working on a directory that doesn't exist yet.
 
 ## Impact
 

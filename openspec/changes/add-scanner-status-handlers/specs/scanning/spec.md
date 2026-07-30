@@ -137,6 +137,32 @@ error?: string }>`
     `dirPath` is missing or not a string, without attempting to create
     anything.
 
+Both IPC handlers SHALL confine a caller-supplied path to the scan output
+directory before touching the filesystem, applying the same
+`fs.realpathSync`-based containment check the existing
+`graviscan:read-scan-image` handler uses — symlinks resolved on both
+sides, so a symlink inside the output directory cannot be used to escape
+it. `ensure-dir` calls `mkdir` recursively and `list-scan-files` calls
+`readdirSync`/`statSync`, so an unvalidated path would let a caller create
+directory trees, or enumerate files, anywhere the app user can reach.
+
+- A path that resolves outside the scan output directory SHALL be rejected
+  with error `Path outside scan directory`, and the underlying
+  `image-handlers.ts` function SHALL NOT be called.
+- Because both handlers legitimately act on a directory that does not exist
+  yet (`ensure-dir` creates it; `list-scan-files` reports an empty list for
+  it), containment SHALL be judged against the deepest ancestor of the path
+  that does exist, with the not-yet-existing tail re-appended to the
+  resolved ancestor. A contained-but-missing path SHALL therefore still be
+  accepted, preserving both documented contracts.
+- The validated, resolved path SHALL be the one passed downstream, not the
+  caller's original string.
+- When the scan output directory cannot be resolved at all, the handler
+  SHALL reject with error
+  `Cannot determine scan directory for path validation`.
+- `graviscan:list-scan-files` invoked with no `dirPath` (base-dir mode) has
+  no untrusted path to validate and SHALL delegate directly.
+
 #### Scenario: Lists image files in a given session directory
 
 - **GIVEN** a directory containing `scan_00.tif`, `scan_01.png`, and
@@ -160,6 +186,37 @@ error?: string }>`
   created
 - **AND** a second call with the same `dirPath` SHALL still return
   `{ success: true, path: dirPath }`
+
+#### Scenario: Rejects an ensure-dir path outside the scan output directory
+
+- **GIVEN** a resolvable scan output directory
+- **WHEN** `graviscan:ensure-dir` is invoked with a path that resolves
+  outside it — whether directly, via `..` traversal, or via a symlink
+  inside the output directory pointing elsewhere
+- **THEN** the handler SHALL return
+  `{ success: false, error: 'Path outside scan directory' }`
+- **AND** SHALL NOT call `ensureDir()` / `mkdir`
+
+#### Scenario: Rejects a list-scan-files path outside the scan output directory
+
+- **GIVEN** a resolvable scan output directory
+- **WHEN** `graviscan:list-scan-files` is invoked with a `dirPath` that
+  resolves outside it — whether directly, via `..` traversal, or via a
+  symlink inside the output directory pointing elsewhere
+- **THEN** the handler SHALL return
+  `{ success: false, files: [], error: 'Path outside scan directory' }`
+- **AND** SHALL NOT call `listScanFiles()` / `readdirSync`
+
+#### Scenario: Accepts a contained path that does not exist yet
+
+- **GIVEN** a path inside the scan output directory whose final segment does
+  not exist on disk
+- **WHEN** `graviscan:ensure-dir` or `graviscan:list-scan-files` is invoked
+  with it
+- **THEN** containment SHALL be judged against its deepest existing
+  ancestor and the path SHALL be accepted
+- **AND** the resolved path SHALL be passed to the underlying
+  `image-handlers.ts` function
 
 ## MODIFIED Requirements
 

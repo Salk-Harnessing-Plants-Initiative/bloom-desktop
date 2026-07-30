@@ -23,6 +23,89 @@ import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 
 let registered = false;
 
+/**
+ * Error returned to the renderer for any path that fails containment.
+ * Deliberately uniform — it must not leak whether the rejected path
+ * exists, nor where it actually resolved to.
+ */
+const OUTSIDE_SCAN_DIR = 'Path outside scan directory';
+
+/**
+ * Resolve `candidatePath` and confirm it is `baseDir` itself or lives beneath
+ * it, following symlinks on both sides.
+ *
+ * Comparing the strings alone is not enough: a symlink inside the output
+ * directory can point anywhere, so both sides go through `fs.realpathSync`
+ * first. Callers should use the returned path rather than the original, so
+ * the value that was checked is the value that gets used.
+ *
+ * Returns `null` when the path is not contained — including when it does not
+ * exist on disk, since `realpathSync` throws for a missing path and a path
+ * that cannot be resolved cannot be proven contained. Use
+ * `resolveContainedPathAllowingMissing()` for handlers whose whole job is to
+ * act on a path that isn't there yet.
+ *
+ * NOTE: a sibling change adds this same helper as
+ * `src/main/graviscan/path-containment.ts` (shared with `verify-plates.ts`).
+ * When that lands, delete these two local copies and import from there.
+ */
+function resolveContainedPath(
+  baseDir: string,
+  candidatePath: string
+): string | null {
+  let realBase: string;
+  let realCandidate: string;
+
+  try {
+    realBase = fs.realpathSync(path.resolve(baseDir));
+    realCandidate = fs.realpathSync(path.resolve(candidatePath));
+  } catch {
+    // File or directory doesn't exist — reject rather than guess.
+    return null;
+  }
+
+  if (realCandidate === realBase) return realCandidate;
+  if (realCandidate.startsWith(realBase + path.sep)) return realCandidate;
+
+  return null;
+}
+
+/**
+ * Same containment guarantee as `resolveContainedPath()`, but tolerates a
+ * candidate that does not exist on disk yet — needed by `ensure-dir` (whose
+ * entire purpose is creating a missing directory) and by `list-scan-files`
+ * (whose contract answers a not-yet-created session directory with an empty
+ * list, not an error).
+ *
+ * Walks up to the deepest ancestor that DOES exist, proves containment for
+ * that ancestor with symlinks resolved, then re-appends the missing tail. A
+ * path segment that does not exist cannot be a symlink, so nothing in the
+ * tail can escape the checked ancestor.
+ */
+function resolveContainedPathAllowingMissing(
+  baseDir: string,
+  candidatePath: string
+): string | null {
+  const resolved = path.resolve(candidatePath);
+
+  let existingAncestor = resolved;
+  const missingSegments: string[] = [];
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    // Reached the filesystem root without finding anything that exists.
+    if (parent === existingAncestor) return null;
+    missingSegments.unshift(path.basename(existingAncestor));
+    existingAncestor = parent;
+  }
+
+  const containedAncestor = resolveContainedPath(baseDir, existingAncestor);
+  if (containedAncestor === null) return null;
+
+  return missingSegments.length > 0
+    ? path.join(containedAncestor, ...missingSegments)
+    : containedAncestor;
+}
+
 export function registerGraviScanHandlers(
   ipcMain: IpcMain,
   db: PrismaClient,
@@ -282,21 +365,9 @@ export function registerGraviScanHandlers(
           error: 'Cannot determine scan directory for path validation',
         };
       }
-      // Use realpath to resolve symlinks before comparing (prevents symlink escapes)
-      let realOutput: string;
-      let realFile: string;
-      try {
-        realOutput = fs.realpathSync(outputDirResult.path);
-        realFile = fs.realpathSync(path.resolve(filePath));
-      } catch {
-        // File or directory doesn't exist — reject
-        return { success: false, error: 'Path outside scan directory' };
-      }
-      if (
-        !realFile.startsWith(realOutput + path.sep) &&
-        realFile !== realOutput
-      ) {
-        return { success: false, error: 'Path outside scan directory' };
+      const realFile = resolveContainedPath(outputDirResult.path, filePath);
+      if (realFile === null) {
+        return { success: false, error: OUTSIDE_SCAN_DIR };
       }
       return wrapHandler(() => imageHandlers.readScanImage(realFile, opts))();
     }
@@ -326,20 +397,83 @@ export function registerGraviScanHandlers(
    * create the per-session scan folder upfront, before any cycle begins.
    * Returns imageHandlers.ensureDir()'s result shape directly, matching
    * production's `{ success, path?, error? }` contract.
+   *
+   * The caller-supplied path is confined to the scan output directory, the
+   * same guarantee `read-scan-image` above enforces — this handler calls
+   * `fs.promises.mkdir(..., { recursive: true })`, so without the check any
+   * renderer reaching this channel could create directory trees anywhere the
+   * app user can write.
    */
-  ipcMain.handle('graviscan:ensure-dir', (_event, dirPath: string) =>
-    imageHandlers.ensureDir(dirPath)
-  );
+  ipcMain.handle('graviscan:ensure-dir', (_event, dirPath: string) => {
+    // Missing/non-string input goes straight through so image-handlers keeps
+    // ownership of the 'dirPath is required' error (path.resolve would throw
+    // on it here).
+    if (!dirPath || typeof dirPath !== 'string') {
+      return imageHandlers.ensureDir(dirPath);
+    }
+
+    const outputDirResult = imageHandlers.getOutputDir();
+    if (!outputDirResult.success || !outputDirResult.path) {
+      return Promise.resolve({
+        success: false,
+        error: 'Cannot determine scan directory for path validation',
+      });
+    }
+
+    const realDir = resolveContainedPathAllowingMissing(
+      outputDirResult.path,
+      dirPath
+    );
+    if (realDir === null) {
+      return Promise.resolve({ success: false, error: OUTSIDE_SCAN_DIR });
+    }
+
+    return imageHandlers.ensureDir(realDir);
+  });
 
   /**
    * List image files in the scan output directory (or a given session
    * directory), sorted newest-first. Returns
    * imageHandlers.listScanFiles()'s result shape directly, matching
    * production's `{ success, files, error? }` contract.
+   *
+   * A caller-supplied `dirPath` is confined to the scan output directory
+   * (`readdirSync`/`statSync` on an arbitrary path would otherwise let a
+   * renderer enumerate the filesystem). No `dirPath` means base-dir mode,
+   * where `listScanFiles()` resolves the output directory itself — nothing
+   * untrusted to validate.
    */
-  ipcMain.handle('graviscan:list-scan-files', (_event, dirPath?: string) =>
-    Promise.resolve(imageHandlers.listScanFiles(dirPath))
-  );
+  ipcMain.handle('graviscan:list-scan-files', (_event, dirPath?: string) => {
+    if (dirPath === undefined || dirPath === null) {
+      return Promise.resolve(imageHandlers.listScanFiles(undefined));
+    }
+
+    const outputDirResult = imageHandlers.getOutputDir();
+    if (!outputDirResult.success || !outputDirResult.path) {
+      return Promise.resolve({
+        success: false,
+        files: [],
+        error: 'Cannot determine scan directory for path validation',
+      });
+    }
+
+    // Allow a not-yet-created directory: listScanFiles() answers that with
+    // `{ success: true, files: [] }`, and turning it into a containment
+    // error would change the documented contract.
+    const realDir = resolveContainedPathAllowingMissing(
+      outputDirResult.path,
+      dirPath
+    );
+    if (realDir === null) {
+      return Promise.resolve({
+        success: false,
+        files: [],
+        error: OUTSIDE_SCAN_DIR,
+      });
+    }
+
+    return Promise.resolve(imageHandlers.listScanFiles(realDir));
+  });
 
   ipcMain.handle('graviscan:download-images', (_event, params) => {
     // Check window at send-time, not registration-time

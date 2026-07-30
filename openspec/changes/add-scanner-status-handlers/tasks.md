@@ -14,9 +14,22 @@
       queue creates two subprocesses (with a premature shutdown of the
       first) when called twice for the same `scannerId` while a cycle is
       in flight — confirm RED against the current code before fixing
-- [x] 1.6 Restore the re-entrant `addScanner()` call inside the queued
-      `cycle-complete` handler (replacing the direct `spawnSingleScanner()`
-      call) — confirm the 1.5 test goes GREEN
+- [x] 1.6 ~~Restore the re-entrant `addScanner()` call inside the queued
+      `cycle-complete` handler~~ — superseded by 1.8/1.9: re-entering
+      `addScanner()` fixes the double-spawn but livelocks (its own
+      `isScanning` check is still true at that instant, so it re-queues
+      forever and never spawns)
+- [x] 1.8 Write failing tests proving the re-entrant queue never spawns:
+      a single mid-scan `addScanner()` call must resolve and make
+      `hasWorker()` true after the next `cycle-complete`; two concurrent
+      mid-scan calls for the same id must yield exactly **1** construction
+      (not 0, not 2), 0 premature shutdowns, and both promises resolved —
+      confirm RED (all time out) against the re-entrant code
+- [x] 1.9 Replace the re-entrant call with a per-scanner `pendingAdds`
+      promise map: concurrent mid-scan calls for the same `scannerId`
+      share one queued spawn, whose handler calls `spawnSingleScanner()`
+      directly and clears the map entry when it settles — confirm the 1.8
+      tests go GREEN
 - [x] 1.7 Add `getScannerStatuses()` to the `ScanCoordinatorLike` interface
       (`src/main/graviscan/session-handlers.ts`)
 
@@ -56,6 +69,16 @@
 - [x] 3.5 Register `graviscan:ensure-dir` and `graviscan:list-scan-files` in
       `register-handlers.ts`, delegating directly (same un-wrapped
       convention as 2.4)
+- [x] 3.6 Write failing tests proving both new handlers accept an
+      arbitrary caller-supplied path (outside-the-output-dir, `..`
+      traversal, and symlink escape) — the containment precedent
+      `graviscan:read-scan-image` sets in the same file
+- [x] 3.7 Extract `read-scan-image`'s realpath-containment logic into a
+      shared helper in `register-handlers.ts` (plus an
+      allow-a-missing-tail variant, since `ensure-dir` creates the
+      directory and `list-scan-files` reports an empty list for a
+      not-yet-created one) and apply it to both new handlers —
+      `read-scan-image` now uses the helper too
 
 ## 4. IPC registration coverage
 
