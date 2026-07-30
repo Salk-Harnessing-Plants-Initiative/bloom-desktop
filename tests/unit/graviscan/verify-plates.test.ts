@@ -157,6 +157,66 @@ describe('verifyPlates', () => {
     });
   });
 
+  it('matches a mixed-case plate id case-insensitively on both sides', async () => {
+    // The DB-side plate_id is lowercased before grouping. Real plate IDs in
+    // this codebase are mixed-case ("Plate_13"), so comparing the lowercased
+    // DB value against a raw assignedPlateId never matched and every
+    // correctly-scanned plate came back `incorrect`.
+    setCodes({ '/scan1.tif': ['qr-1'] });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('Plate_13', 'qr-1'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scan1.tif',
+          assignedPlateId: 'Plate_13',
+        },
+      ],
+      'exp-1'
+    );
+
+    expect(result.results[0].status).toBe('verified');
+  });
+
+  it('detects a swap between two mixed-case plate ids', async () => {
+    setCodes({ '/scan1.tif': ['qr-16'], '/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('Plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('Plate_13', 'qr-13')]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scan1.tif',
+          assignedPlateId: 'Plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scan2.tif',
+          assignedPlateId: 'Plate_16',
+        },
+      ],
+      'exp-1'
+    );
+
+    expect(result.swaps).toHaveLength(1);
+    // The correction writes the plate ids back in their ORIGINAL casing —
+    // only the comparison is case-insensitive.
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp-1', scanner_id: 's1', plate_index: '00' },
+      data: expect.objectContaining({ plate_barcode: 'Plate_16' }),
+    });
+  });
+
   it('classifies a plate as unreadable when no QR codes are detected', async () => {
     setCodes({ '/scan1.tif': [] });
 

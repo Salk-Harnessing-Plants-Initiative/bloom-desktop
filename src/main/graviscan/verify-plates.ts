@@ -274,7 +274,11 @@ export async function verifyPlates(
         status = 'needs_review';
       } else if (!detectedPlateId) {
         status = 'unreadable';
-      } else if (detectedPlateId === plate.assignedPlateId) {
+        // `detectedPlateId` was lowercased when the DB-side plate_id was
+        // grouped above, so the assigned side has to be lowercased too. Real
+        // plate IDs here are mixed-case ("Plate_13"); comparing against the
+        // raw value never matched and every correct plate read `incorrect`.
+      } else if (detectedPlateId === plate.assignedPlateId.toLowerCase()) {
         status = 'verified';
       } else {
         status = 'incorrect';
@@ -311,11 +315,14 @@ export async function verifyPlates(
     );
 
     for (const result of incorrectResults) {
+      // Same case-insensitivity applies here: detectedPlateId is lowercased,
+      // assignedPlateId keeps its original casing (which is what gets written
+      // back to the DB, so it must not be lowercased in place).
       const swapMatch = incorrectResults.find(
         (other) =>
           other !== result &&
-          other.detectedPlateId === result.assignedPlateId &&
-          result.detectedPlateId === other.assignedPlateId
+          other.detectedPlateId === result.assignedPlateId.toLowerCase() &&
+          result.detectedPlateId === other.assignedPlateId.toLowerCase()
       );
 
       if (swapMatch) {
