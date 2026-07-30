@@ -132,7 +132,9 @@ wave and is green. These items are **done**; re-verify rather than re-write.
       on BOTH sides — `PYTHONIOENCODING`/`PYTHONUTF8` on the subprocess env
       in `qr-reader.ts`, and `reconfigure(encoding="utf-8")` on all three
       streams in `decode_qr_batch_mode()` (guarded with `getattr`, so a
-      stream without `.reconfigure()` still works). Test both.
+      stream without `.reconfigure()` still works). Test BOTH sides: the
+      Python side in `test_main.py`, and the Node side by asserting on the
+      `env` passed to `spawn` (not just `stdio`) in `qr-reader.test.ts`.
 - [x] 6.2 Run an actual PyInstaller build (`node scripts/build-python.js`,
       which invokes `uv run pyinstaller python/main.spec`) and drive the
       packaged executable's `--decode-qr-batch` mode end to end, confirming
@@ -197,14 +199,52 @@ wave and is green. These items are **done**; re-verify rather than re-write.
       (`GraviScanPlateAssignment` has no `wave_number`) that is not done.
 - [x] 8.8 `openspec validate add-verify-plates-handler --strict`
 
-## 9. Verification
+## 9. Review follow-ups (post-fix-wave review round)
 
-- [x] 9.1 Run the full test suites (Node vitest, Python pytest) plus
+- [x] 9.1 Test the cross-scanner swap fallback. Every swap test had a
+      same-scanner partner available, so the cross-scanner branch of the
+      pairing search was unguarded by the suite even though it worked. Add a
+      genuine cross-scanner swap (no same-scanner candidate for either
+      position) and assert both positions are corrected.
+- [x] 9.2 Assert the Node-side UTF-8 env in `qr-reader.test.ts` — the spawn
+      assertion only inspected `stdio`, so `PYTHONIOENCODING`/`PYTHONUTF8`
+      were untested despite 6.1 claiming both sides were covered.
+- [x] 9.3 Add a `## MODIFIED Requirements` entry for
+      `GraviScan Conditional Mode Registration`, which asserts the same
+      channel count as `GraviScan IPC Handler Registration`. Updating only
+      the latter would have archived a spec saying 18 in one requirement and
+      15 in the other.
+- [x] 9.4 Document the same-scanner swap-preference tie-break in the spec
+      delta and in the pairing code comment — it decides which position stays
+      `incorrect` in an ambiguous multi-swap batch and was previously
+      undocumented behavior.
+- [x] 9.5 Never chain a rejected promise onto `qrReadQueue`. The queue tail
+      is process-wide; a single rejection would have made every subsequent
+      `readQrCodesBatch()` call reject forever, breaking the documented
+      "never rejects" contract. Also move `getPythonExecutablePath()` inside
+      the try so a throw there becomes a clean failure outcome. Test both.
+- [x] 9.6 Distinguish "path could not be resolved" (capture not written yet,
+      or removed — an ordinary skip) from "path resolved outside the scan
+      directory" (a real containment violation) so a benign case is not
+      logged as a security rejection. `resolveContainedPath` returns a
+      discriminated result; the IPC handler still returns one generic error
+      for both so it cannot be used to probe path existence.
+- [x] 9.7 Make `isReciprocal`'s distinctness check compare position keys
+      rather than object identity, so two rows sharing a
+      `(scannerId, plateIndex)` cannot pair a position with itself.
+- [x] 9.8 Route `test_decode_image_without_qr_codes`'s image write through
+      the shared `cv2.imencode` + `write_bytes` helper instead of calling
+      `cv2.imwrite` directly — harmless on today's ASCII tmp path, but
+      inconsistent with the non-ASCII rationale and a trap for the next test.
+
+## 10. Verification
+
+- [x] 10.1 Run the full test suites (Node vitest, Python pytest) plus
       `tsc --noEmit` and `npm run format:check`. Note: `npm run lint` may
       fail in this worktree specifically due to a pre-existing duplicate
       `eslint-plugin-import` resolution conflict between this worktree's
       `node_modules` and the parent checkout's — not this change's fault;
       verify separately from the parent checkout if needed.
-- [x] 9.2 Confirm no regressions against the pre-existing (already
+- [x] 10.2 Confirm no regressions against the pre-existing (already
       identified) noise: run the same suites at the branch's base commit and
       diff the failure sets, rather than assuming a failure is unrelated.

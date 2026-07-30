@@ -122,6 +122,12 @@ the final `verification_status` SHALL be persisted onto
 - **AND** the containment check SHALL be a shared, importable helper used by
   both `read-scan-image` and `graviscan:verify-plates`, not logic duplicated
   or inlined in a handler closure
+- **AND** a path that merely could not be resolved (the capture has not been
+  written yet, or was moved) SHALL be distinguished from a path that resolved
+  outside the directory: the former is logged as an ordinary skip, only the
+  latter as a containment rejection
+- **AND** an IPC response SHALL nevertheless return the same generic error
+  for both, so it cannot be used to probe whether an arbitrary path exists
 - **AND** the directory to validate against SHALL be supplied to
   `verifyPlates()` as a parameter by its caller, so the verification module
   itself acquires no Electron dependency
@@ -154,6 +160,36 @@ the final `verification_status` SHALL be persisted onto
 - **AND** a plate that was not itself part of a recorded swap SHALL NOT be
   persisted as `swapped` merely because it shares an `assignedPlateId` with
   one that was
+- **AND** two rows claiming the same `(scannerId, plateIndex)` SHALL NOT be
+  paired with each other — distinctness is by position, not object identity,
+  so a position can never be "swapped" with itself
+
+#### Scenario: An ambiguous swap prefers a same-scanner partner
+
+- **GIVEN** an `incorrect` plate with more than one reciprocal swap candidate
+  in the batch
+- **AND** at least one of those candidates is on the same scanner
+- **WHEN** swaps are detected
+- **THEN** the same-scanner candidate SHALL be paired in preference to a
+  cross-scanner one
+- **AND** a cross-scanner candidate left with no other partner SHALL remain
+  `incorrect` rather than be mis-paired
+- **NOTE**: this tie-break decides which position stays `incorrect` in an
+  ambiguous multi-swap batch. Plates are physically loaded per scanner, so a
+  same-scanner mix-up is by far the likelier explanation; the rule also makes
+  pairing deterministic instead of dependent on the order the caller happened
+  to submit plates in.
+
+#### Scenario: A genuine cross-scanner swap is still detected
+
+- **GIVEN** two plates on **different** scanners that each hold the other's
+  assigned plate
+- **AND** neither has a reciprocal candidate on its own scanner
+- **WHEN** swaps are detected
+- **THEN** the swap SHALL be detected and corrected across the scanner
+  boundary
+- **NOTE**: the same-scanner preference above is a preference, not a
+  restriction — an operator can move a plate between scanners.
 
 #### Scenario: A swap correction records what it corrected from
 
@@ -395,6 +431,30 @@ The system SHALL provide a `registerGraviScanHandlers` function in `src/main/gra
   containment validation
 - **AND** SHALL return a failure result without invoking `verifyPlates()` if
   that directory cannot be resolved
+
+### Requirement: GraviScan Conditional Mode Registration
+
+The system SHALL register GraviScan IPC handlers only when the configured scanner mode is `graviscan`. When mode is `cylinderscan` or empty, no GraviScan handlers SHALL be registered. The `initGraviScan()` function SHALL be exported from `src/main/graviscan/wiring.ts`.
+
+#### Scenario: GraviScan handlers registered in graviscan mode
+
+- **GIVEN** `SCANNER_MODE=graviscan` in the `.env` config
+- **WHEN** the app starts and `initGraviScan()` is called
+- **THEN** `registerGraviScanHandlers` SHALL be called
+- **AND** all 18 `graviscan:*` IPC channels SHALL be available
+
+#### Scenario: GraviScan handlers not registered in cylinderscan mode
+
+- **GIVEN** `SCANNER_MODE=cylinderscan` in the `.env` config
+- **WHEN** the app starts
+- **THEN** `registerGraviScanHandlers` SHALL NOT be called
+- **AND** invoking any `graviscan:*` IPC channel SHALL result in an unhandled channel error
+
+#### Scenario: GraviScan handlers not registered when mode is empty
+
+- **GIVEN** `SCANNER_MODE` is not set or is an empty string in the `.env` config
+- **WHEN** the app starts
+- **THEN** `registerGraviScanHandlers` SHALL NOT be called
 
 ### Requirement: GraviScan PyInstaller Bundling
 

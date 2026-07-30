@@ -172,14 +172,25 @@ its experiment axis only; its wave axis stays open with #164.
 - Affected specs: `scanning`
   - ADDED: the verification capability, the QR-reading capability, and the
     `verification_status` / `previous_plate_barcode` schema fields.
-  - MODIFIED: `GraviScan IPC Handler Registration` (channel enumeration was a
-    closed list of 15 and is now 18 — this change adds
-    `graviscan:verify-plates`, and the enumeration had already drifted from
-    the code by omitting `graviscan:disable-scanner` and
-    `graviscan:reset-usb`, corrected here at the same time),
+  - MODIFIED: `GraviScan IPC Handler Registration` and
+    `GraviScan Conditional Mode Registration` (both assert the registered
+    channel count — a closed list of 15, now 18. This change adds
+    `graviscan:verify-plates`, and the count had already drifted from the
+    code by omitting `graviscan:disable-scanner` and `graviscan:reset-usb`,
+    corrected here at the same time. Both requirements had to move together
+    or the archived spec would state 18 in one place and 15 in another),
     `GraviScan PyInstaller Bundling` (hidden-imports enumeration gains
     `graviscan.qr_reader` and `cv2`), `GraviScan Python Dependencies`
     (`opencv-python-headless` joins the core dependency list).
+  - **Deliberately NOT modified**: `GraviScan Preload API Surface` and the
+    renderer type-safety requirement (live `scanning` spec, the "15 invoke
+    methods" assertions) describe `window.electron.graviscan.*`, not the IPC
+    registration. This change adds no preload method — consistent with its
+    "no renderer UI" scope — so it does not invalidate them. Those two are
+    nevertheless **already stale by two** (`disableScanner` and `resetUsb`
+    exist in `preload.ts` but are not enumerated), drift introduced by
+    earlier PRs. Flagged here so it is tracked rather than lost; fixing it
+    belongs to whichever change next touches the preload surface.
 - Affected code:
   - `src/main/graviscan/verify-plates.ts` (new)
   - `src/main/graviscan/path-containment.ts` (new — shared realpath
