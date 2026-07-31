@@ -38,7 +38,17 @@ import {
   PaginatedScansResponse,
 } from './database';
 import { UploadResult } from '../main/image-uploader';
-import { ResetUsbResult } from './graviscan';
+import {
+  ResetUsbResult,
+  ScannerStatusRow,
+  SaveScannersInput,
+  DetectScannersResult,
+  GetConfigResult,
+  SaveConfigResult,
+  SaveScannersToDBResult,
+  GetScanStatusResult,
+  GraviConfigInput,
+} from './graviscan';
 
 /**
  * Python backend API
@@ -511,10 +521,25 @@ export interface ConfigAPI {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface GraviAPI {
   // Scanner operations
-  detectScanners: () => Promise<any>;
-  getConfig: () => Promise<any>;
-  saveConfig: (config: any) => Promise<any>;
-  saveScannersToDB: (scanners: any) => Promise<any>;
+  detectScanners: () => Promise<
+    | { success: true; data: DetectScannersResult }
+    | { success: false; error: string }
+  >;
+  getConfig: () => Promise<
+    { success: true; data: GetConfigResult } | { success: false; error: string }
+  >;
+  saveConfig: (
+    config: GraviConfigInput
+  ) => Promise<
+    | { success: true; data: SaveConfigResult }
+    | { success: false; error: string }
+  >;
+  saveScannersToDB: (
+    scanners: SaveScannersInput
+  ) => Promise<
+    | { success: true; data: SaveScannersToDBResult }
+    | { success: false; error: string }
+  >;
   /**
    * Disable a single scanner (per-row "Remove" action).
    * Sets enabled=false on the matching row and stops the worker.
@@ -532,20 +557,16 @@ export interface GraviAPI {
   >;
   getScannerStatus: () => Promise<{
     success: boolean;
-    scanners: Array<{
-      scannerId: string;
-      displayName: string;
-      usbPort: string | null;
-      gridMode: string;
-      status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected';
-      error?: string;
-    }>;
+    scanners: ScannerStatusRow[];
     error?: string;
   }>;
 
   // Session operations
   startScan: (params: any) => Promise<any>;
-  getScanStatus: () => Promise<any>;
+  getScanStatus: () => Promise<
+    | { success: true; data: GetScanStatusResult }
+    | { success: false; error: string }
+  >;
   markJobRecorded: (jobKey: string) => Promise<any>;
   cancelScan: () => Promise<any>;
 

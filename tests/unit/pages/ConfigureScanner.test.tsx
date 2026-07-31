@@ -25,6 +25,8 @@ const mockGraviAPI = {
   getScannerStatus: vi.fn(),
   getScanStatus: vi.fn(),
   resetUsb: vi.fn(),
+  onScanEvent: vi.fn(),
+  onScanError: vi.fn(),
 };
 
 const mockConfigAPI = {
@@ -103,6 +105,8 @@ beforeEach(() => {
     success: true,
     data: { success: true },
   });
+  mockGraviAPI.onScanEvent.mockReturnValue(vi.fn());
+  mockGraviAPI.onScanError.mockReturnValue(vi.fn());
 });
 
 afterEach(() => {
@@ -146,6 +150,68 @@ describe('ConfigureScanner page', () => {
       expect(mockGraviAPI.detectScanners).toHaveBeenCalled();
       expect(mockGraviAPI.saveScannersToDB).toHaveBeenCalled();
       expect(mockGraviAPI.getScannerStatus).toHaveBeenCalled();
+    });
+  });
+
+  it('does not call detectScanners twice for two synchronous clicks before the first resolves (reentrancy guard)', async () => {
+    let resolveDetect: (value: unknown) => void = () => {};
+    mockGraviAPI.detectScanners.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetect = resolve;
+        })
+    );
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    const button = screen.getByRole('button', { name: /detect scanners/i });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(mockGraviAPI.detectScanners).toHaveBeenCalledTimes(1);
+    resolveDetect({
+      success: true,
+      data: { success: true, scanners: [], count: 0 },
+    });
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  it('refreshes scanner status and the scan-active gate when a scan-event or scan-error IPC push fires', async () => {
+    let scanEventCallback: (() => void) | undefined;
+    mockGraviAPI.onScanEvent.mockImplementation((cb: () => void) => {
+      scanEventCallback = cb;
+      return vi.fn();
+    });
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    mockGraviAPI.getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: true },
+    });
+    mockGraviAPI.getScannerStatus.mockClear();
+
+    expect(scanEventCallback).toBeDefined();
+    await act(async () => {
+      scanEventCallback!();
+    });
+
+    await waitFor(() => {
+      expect(mockGraviAPI.getScannerStatus).toHaveBeenCalled();
+    });
+    // The freshly-pushed active status should now gate Remove, without
+    // this page having polled for it (no row was `starting`).
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /remove/i })).toBeDisabled();
+    });
+  });
+
+  it('surfaces a mount-time load failure instead of spinning forever', async () => {
+    mockGraviAPI.getScannerStatus.mockRejectedValue(new Error('IPC down'));
+    render(<ConfigureScanner />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to load/i)).toBeInTheDocument();
     });
   });
 
@@ -353,6 +419,17 @@ describe('ConfigureScanner page', () => {
     });
   });
 
+  it('discloses that a saved resolution/grid mode does not yet apply to scans', async () => {
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/does not yet apply/i)).toBeInTheDocument();
+    });
+  });
+
   it('blocks Reset All USB Connections and shows an inline message while a scan is active', async () => {
     mockGraviAPI.getScanStatus.mockResolvedValue({
       success: true,
@@ -392,6 +469,78 @@ describe('ConfigureScanner page', () => {
     // subprocess resetUsb() just spawned (see ConfigureScanner.tsx's
     // handleResetUsb comment), so this flow must NOT re-run detect.
     expect(mockGraviAPI.detectScanners).not.toHaveBeenCalled();
+  });
+
+  it('re-checks live scan status immediately before resetting, catching a scan that started after this page went stale', async () => {
+    mockGraviAPI.getScanStatus
+      .mockResolvedValueOnce({ success: true, data: { isActive: false } }) // initial mount
+      .mockResolvedValue({ success: true, data: { isActive: true } }); // fresh check at click time
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /reset all usb connections/i })
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/cannot reset usb while a scan is in progress/i)
+      ).toBeInTheDocument();
+    });
+    expect(mockGraviAPI.resetUsb).not.toHaveBeenCalled();
+  });
+
+  it('does not call resetUsb twice for two synchronous clicks before the first resolves (reentrancy guard)', async () => {
+    let resolveReset: (value: unknown) => void = () => {};
+    mockGraviAPI.resetUsb.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveReset = resolve;
+        })
+    );
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    const button = screen.getByRole('button', {
+      name: /reset all usb connections/i,
+    });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(mockGraviAPI.resetUsb).toHaveBeenCalled());
+    expect(mockGraviAPI.resetUsb).toHaveBeenCalledTimes(1);
+    resolveReset({ success: true, data: { success: true } });
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  it('disables Reset USB while Detect Scanners is in flight, and vice versa (mutual exclusion)', async () => {
+    let resolveDetect: (value: unknown) => void = () => {};
+    mockGraviAPI.detectScanners.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetect = resolve;
+        })
+    );
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    fireEvent.click(screen.getByRole('button', { name: /detect scanners/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /reset all usb connections/i })
+      ).toBeDisabled();
+    });
+
+    resolveDetect({
+      success: true,
+      data: { success: true, scanners: [], count: 0 },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /reset all usb connections/i })
+      ).not.toBeDisabled();
+    });
   });
 
   it('surfaces a resetUsb() failure inline without throwing', async () => {
@@ -462,6 +611,24 @@ describe('ConfigureScanner page', () => {
     for (const button of removeButtons) {
       expect(button).not.toBeDisabled();
     }
+  });
+
+  it('re-checks live scan status immediately before removing, catching a scan that started after this page went stale', async () => {
+    mockGraviAPI.getScanStatus
+      .mockResolvedValueOnce({ success: true, data: { isActive: false } }) // initial mount
+      .mockResolvedValue({ success: true, data: { isActive: true } }); // fresh check at click time
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    fireEvent.click(screen.getByRole('button', { name: /remove/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/cannot remove a scanner while a scan is in progress/i)
+      ).toBeInTheDocument();
+    });
+    expect(mockGraviAPI.disableScanner).not.toHaveBeenCalled();
+    expect(screen.getByText('Scanner 1')).toBeInTheDocument();
   });
 
   it('surfaces a disableScanner failure via the inline save-error banner and leaves the row visible', async () => {
