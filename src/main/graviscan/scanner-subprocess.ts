@@ -186,11 +186,19 @@ export class ScannerSubprocess extends EventEmitter {
 
     this.state = 'starting';
 
-    // In production (PyInstaller bundle): bloom-hardware --scan-worker --scanner-id ...
-    // In development (Python interpreter): python -m graviscan.scan_worker --scanner-id ...
-    const args = this.isPackaged
-      ? ['--scan-worker', '--scanner-id', this.scannerId]
-      : ['-m', 'graviscan.scan_worker', '--scanner-id', this.scannerId];
+    // `pythonPath` is always the PyInstaller-built `bloom-hardware`
+    // executable (see python-paths.ts#getPythonExecutablePath — it
+    // returns the built exe in BOTH packaged and dev/E2E mode, never a
+    // raw Python interpreter path), so the invocation style is the same
+    // regardless of `isPackaged`. Bug found via E2E reproduction: this
+    // used to branch on `isPackaged` and pass `-m graviscan.scan_worker`
+    // in dev mode — a real-interpreter invocation the frozen exe's own
+    // argparse rejects outright ("unrecognized arguments: -m
+    // graviscan.scan_worker"), so every dev/E2E-mode subprocess spawn
+    // failed immediately with exit code 2. `isPackaged` is still used
+    // below for resource paths (e.g. libusbFilterSoPath), which
+    // genuinely do differ between packaged and dev layouts.
+    const args = ['--scan-worker', '--scanner-id', this.scannerId];
     if (this.mock) {
       args.push('--mock');
     } else {
