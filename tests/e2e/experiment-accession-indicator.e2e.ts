@@ -23,6 +23,7 @@ import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
 import { closeElectronApp } from './helpers/electron-cleanup';
+import { waitForAppReady } from './helpers/app-ready';
 import {
   createTestBloomConfig,
   cleanupTestBloomConfig,
@@ -73,6 +74,7 @@ async function launchElectronApp() {
 
   // Wait for window to be ready
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
+  await waitForAppReady(window);
 }
 
 /**

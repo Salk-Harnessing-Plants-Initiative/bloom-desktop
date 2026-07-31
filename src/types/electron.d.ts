@@ -689,6 +689,14 @@ export interface ElectronAPI {
   config: ConfigAPI;
   session: SessionAPI;
   gravi: GraviAPI;
+  /**
+   * Resolves once main.ts's startup sequence (database + GraviScan
+   * handler registration) has reached a definitive outcome. E2E tests
+   * should await this before making any IPC call — see preload.ts's
+   * `waitUntilReady` doc comment for why `domcontentloaded` alone isn't
+   * sufficient.
+   */
+  waitUntilReady: () => Promise<{ success: boolean; error?: string }>;
 }
 
 /**

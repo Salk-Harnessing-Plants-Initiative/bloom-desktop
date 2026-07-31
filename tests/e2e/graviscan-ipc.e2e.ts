@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
+import { waitForAppReady } from './helpers/app-ready';
 import type { ElectronAPI } from '../../src/types/electron';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -106,6 +107,7 @@ async function launchElectronApp() {
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
+  await waitForAppReady(window);
 }
 
 /**
