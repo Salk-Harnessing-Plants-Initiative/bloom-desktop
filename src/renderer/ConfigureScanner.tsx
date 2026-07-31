@@ -203,11 +203,24 @@ export function ConfigureScanner() {
             'USB reset failed'
         );
       }
-      await handleDetect();
+      // Do NOT re-run the full detect-and-save flow here: resetUsb()
+      // already shuts down, re-detects, and re-initializes the
+      // coordinator internally. Calling handleDetect() (which itself
+      // triggers a second, independent coordinator.addScanner() spawn
+      // via saveScannersToDB's IPC handler) races the subprocess
+      // resetUsb() just spawned — since that subprocess is typically
+      // still `starting` (not yet ready) the instant resetUsb() resolves,
+      // handleDetect()'s hasWorker() check sees no ready worker and
+      // spawns a SECOND subprocess for the same scanner, orphaning the
+      // first mid-init. A single status refresh here, plus this page's
+      // own polling effect, is sufficient to reflect resetUsb()'s result
+      // as its subprocesses finish coming up.
+      await refreshScannerStatus();
+      await refreshScanActive();
     } finally {
       setIsResettingUsb(false);
     }
-  }, [scanActive, handleDetect]);
+  }, [scanActive, refreshScannerStatus, refreshScanActive]);
 
   const handleRemove = useCallback(
     async (scannerId: string) => {

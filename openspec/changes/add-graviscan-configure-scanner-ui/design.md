@@ -167,6 +167,34 @@ operator has agreed to the new one.
 
 ## Risks / Trade-offs
 
+- **Found via real CI, not caught during adversarial review or local
+  development: re-running the full detect-and-save flow after
+  `resetUsb()` races the coordinator and orphans subprocesses.** The
+  original design (and the accepted spec's original text, since
+  corrected) had `handleResetUsb()` call `handleDetect()` after
+  `resetUsb()` resolved, per the "re-run scanner detection" behavior
+  the spec used to describe. `resetUsb()`'s backend
+  (`src/main/graviscan/scanner-handlers.ts`) already performs its own
+  full shutdown → re-detect → match → `coordinator.initialize()` cycle
+  internally. Calling `handleDetect()` afterward independently triggers
+  a _second_ `coordinator.addScanner()` spawn (via
+  `saveScannersToDB()`'s IPC handler, per its #234 fix) for the same
+  scanner — and since the subprocess `resetUsb()` just spawned is
+  typically still `starting` (not yet `ready`) the instant `resetUsb()`
+  resolves, `addScanner()`'s `hasWorker()` check sees no ready worker
+  and spawns a second subprocess for the same scanner ID, orphaning the
+  first mid-initialization. Confirmed via a real E2E run in CI (both
+  scanners ended up stuck `disconnected` after Reset USB, never
+  transitioning through `starting` to `ready`) — a unit test with
+  mocked IPC calls cannot catch this class of bug, since the mock
+  resolves `resetUsb()`/`detectScanners()` instantly with no modeling
+  of real subprocess spawn timing. **Fixed**: `handleResetUsb()` now
+  only calls `refreshScannerStatus()`/`refreshScanActive()` after
+  `resetUsb()` resolves, relying on the page's own polling effect to
+  reflect the subprocess's `starting` → `ready` transition, instead of
+  re-running detect-and-save. The "Reset USB on Configure Scanner Page"
+  requirement and its "fresh detect-and-save cycle" scenario were
+  updated to match the corrected (and now-verified) behavior.
 - **Reset USB is the most consequential action on this page, and its
   backend has no active-scan guard of its own.** `resetUsb()`
   (`src/main/graviscan/scanner-handlers.ts`) calls

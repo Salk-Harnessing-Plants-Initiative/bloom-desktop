@@ -260,10 +260,26 @@ and SHALL NOT call `resetUsb()`.
 
 When no scan is active, clicking the action SHALL immediately mark
 every currently-listed scanner row as `starting` for immediate visual
-feedback, then re-run scanner detection (per "Scanner Detection and
-Persistence on Configure Scanner Page") once `resetUsb()` resolves,
-regardless of its result. A `resetUsb()` failure SHALL surface the
-returned error message inline and SHALL NOT crash the page.
+feedback, then refresh scanner status (`getScannerStatus()`) and the
+scan-active gate once `resetUsb()` resolves, regardless of its result.
+The page SHALL NOT re-run the full detect-and-save flow (`detectScanners()`
+
+- `saveScannersToDB()`) after `resetUsb()`: `resetUsb()`'s backend
+  implementation already shuts down, re-detects, and re-initializes the
+  coordinator internally (`src/main/graviscan/scanner-handlers.ts`), and
+  re-running detect independently races the subprocess `resetUsb()` just
+  spawned — the newly-spawned subprocess is typically still `starting`
+  (not yet `ready`) the instant `resetUsb()` resolves, so a second
+  `saveScannersToDB()` call's `!coordinator.hasWorker(id)` check sees no
+  ready worker and spawns a **second** subprocess for the same scanner,
+  orphaning the first mid-initialization and leaving the scanner stuck
+  `disconnected` (confirmed via a real multi-process E2E run, not merely
+  suspected — a unit test with mocked IPC calls cannot catch this class of
+  bug since it doesn't model subprocess timing). A status refresh plus the
+  page's own polling effect (see "Scanner Detection and Persistence...")
+  is sufficient to reflect `resetUsb()`'s outcome as its subprocesses come
+  up. A `resetUsb()` failure SHALL surface the returned error message
+  inline and SHALL NOT crash the page.
 
 #### Scenario: Reset USB is blocked while a scan is active
 
@@ -282,13 +298,15 @@ returned error message inline and SHALL NOT crash the page.
 - **THEN** every listed row SHALL immediately show status `starting`,
   before `resetUsb()` resolves
 
-#### Scenario: Reset USB success triggers a fresh detect-and-save cycle
+#### Scenario: Reset USB success refreshes status without re-running detect
 
 - **GIVEN** the operator has clicked "Reset All USB Connections"
   (no scan was active)
 - **WHEN** `resetUsb()` resolves with `{ success: true }`
-- **THEN** the page SHALL run the same detect-and-save flow as
-  clicking "Detect Scanners"
+- **THEN** the page SHALL call `getScannerStatus()` and `getScanStatus()`
+  to refresh the visible rows and the scan-active gate
+- **AND** the page SHALL NOT call `detectScanners()` or
+  `saveScannersToDB()` as part of this flow
 
 #### Scenario: Reset USB failure surfaces an inline error
 

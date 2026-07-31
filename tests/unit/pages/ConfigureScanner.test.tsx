@@ -371,9 +371,10 @@ describe('ConfigureScanner page', () => {
     expect(mockGraviAPI.resetUsb).not.toHaveBeenCalled();
   });
 
-  it('immediately marks every row starting on Reset All USB Connections when no scan is active, then re-runs detect', async () => {
+  it('immediately marks every row starting on Reset All USB Connections when no scan is active, then refreshes status without re-running detect', async () => {
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
+    mockGraviAPI.getScannerStatus.mockClear();
 
     fireEvent.click(
       screen.getByRole('button', { name: /reset all usb connections/i })
@@ -384,8 +385,13 @@ describe('ConfigureScanner page', () => {
 
     await waitFor(() => {
       expect(mockGraviAPI.resetUsb).toHaveBeenCalled();
-      expect(mockGraviAPI.detectScanners).toHaveBeenCalled();
+      expect(mockGraviAPI.getScannerStatus).toHaveBeenCalled();
     });
+    // resetUsb() already re-detects/re-initializes internally — calling
+    // detectScanners()/saveScannersToDB() again here would race the
+    // subprocess resetUsb() just spawned (see ConfigureScanner.tsx's
+    // handleResetUsb comment), so this flow must NOT re-run detect.
+    expect(mockGraviAPI.detectScanners).not.toHaveBeenCalled();
   });
 
   it('surfaces a resetUsb() failure inline without throwing', async () => {

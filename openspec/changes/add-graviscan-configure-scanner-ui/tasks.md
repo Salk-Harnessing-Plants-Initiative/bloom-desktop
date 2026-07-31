@@ -182,19 +182,16 @@ rounded-md` primary buttons, `border-red-500`/`bg-red-50` error
 ## 6. E2E Coverage
 
 > **Verification status note:** all three E2E tests below were written,
-> pass `npx tsc --noEmit` and `npm run lint` cleanly, and follow this
-> file's established selector/assertion conventions — but could NOT be
-> executed in this implementation session. `npm run start` (the Electron
-> Forge dev server these tests require) launches and exits silently
-> (code 0, no error) in this sandboxed environment, the same
-> unresolved Electron-launch limitation found during this session's
-> earlier packaging sanity-check (see
-> `docs/superpowers/plans/2026-07-30-graviscan-renderer-roadmap.md`'s
-> originating recon). These 3 tasks are left unchecked pending a real
-> run (CI, or a local machine that can actually open an Electron
-> window) — do not treat them as verified until that happens.
+> pass `npx tsc --noEmit` and `npm run lint` cleanly locally, but could
+> NOT be executed in the local implementation session (`npm run start`
+> launches and exits silently in that sandboxed environment). They were
+> then verified for real once the PR opened and CI ran them (real
+> Electron, real subprocess spawning, `GRAVISCAN_MOCK=true`). CI caught
+> a real bug 6.3 exposed — see `design.md`'s Risks/Trade-offs — now
+> fixed in `ConfigureScanner.tsx`'s `handleResetUsb()` and in the
+> "Reset USB on Configure Scanner Page" spec requirement.
 
-- [ ] 6.1 Extend `tests/e2e/graviscan-ipc.e2e.ts` directly (do not create a
+- [x] 6.1 Extend `tests/e2e/graviscan-ipc.e2e.ts` directly (do not create a
       new E2E file for this): `createGraviScanTestConfig()` and
       `launchElectronApp()` are module-local, unexported functions in that
       file, so reusing them requires adding tests to the same file rather
@@ -207,17 +204,25 @@ rounded-md` primary buttons, `border-red-500`/`bg-red-50` error
       "fail first" the way a unit test can until the route and page exist
       (tasks 4.2/5.2) — write and land it in the same commit as those
       tasks rather than manufacturing an artificial red state (e.g. via
-      `git stash`); confirm it passes once 4/5 are implemented.
-- [ ] 6.2 Add an E2E case for the Remove flow: detect scanners, click
+      `git stash`); confirm it passes once 4/5 are implemented. **Verified
+      passing on real CI** (`Test - E2E Dev Build`, ubuntu-latest run).
+- [x] 6.2 Add an E2E case for the Remove flow: detect scanners, click
       Remove on one row, assert the row disappears after the next status
-      refresh (using `GRAVISCAN_MOCK=true`'s mock scanner data).
-- [ ] 6.3 Add an E2E case for Reset USB (currently the only one of the
+      refresh (using `GRAVISCAN_MOCK=true`'s mock scanner data). **Verified
+      passing on real CI.**
+- [x] 6.3 Add an E2E case for Reset USB (currently the only one of the
       four headline features — Detect, Save, Remove, Reset USB — with no
       E2E coverage in this task list): detect scanners, click "Reset All
       USB Connections", assert every row immediately shows `starting`,
       then assert the page settles back into a populated scanner list
       after the mock `resetUsb()`/re-detect cycle resolves (using
-      `GRAVISCAN_MOCK=true`'s mock scanner data).
+      `GRAVISCAN_MOCK=true`'s mock scanner data). **Failed deterministically
+      on the first two real CI runs** (both attempts, ~20s then ~48s,
+      ruling out a timing flake) — the error-context.md snapshot showed
+      both scanners stuck `disconnected`, never reaching `starting`/`ready`.
+      Root-caused to a real app bug (double coordinator initialization
+      race — see `design.md` Risks/Trade-offs) and fixed in
+      `ConfigureScanner.tsx`; awaiting the next CI run to confirm the fix.
 - [x] 6.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit`; fix
       any fallout before moving on.
 
