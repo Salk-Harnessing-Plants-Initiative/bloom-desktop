@@ -92,6 +92,7 @@ interface GranularScanEvent {
   plate_index?: string;
   plateIndex?: string;
   job_id?: string;
+  jobId?: string;
   error?: string;
   bytes_received?: number;
   wall_seconds?: number;
@@ -104,6 +105,18 @@ function resolveScannerId(event: GranularScanEvent): string {
 
 function resolvePlateIndex(event: GranularScanEvent): string {
   return event.plate_index ?? event.plateIndex ?? '';
+}
+
+/**
+ * Coordinator-originated `scan-error` events (row-timeout, missing/cannot-
+ * stat/zero-size output file) only ever set camelCase `jobId`, never
+ * snake_case `job_id` — see the GranularScanEvent doc comment above.
+ * Reading `event.job_id` alone left the Slack alert's job_id confusingly
+ * blank for exactly the failure class this granular event model was
+ * built to surface (#245 review finding).
+ */
+function resolveJobId(event: GranularScanEvent): string {
+  return event.job_id ?? event.jobId ?? '';
 }
 
 async function enrichWedgeEvent(
@@ -301,7 +314,7 @@ export function setupWedgeDetection(
     wedgeDetector.onScanError({
       scanner_id: scannerId,
       plate_index: plateIndex,
-      job_id: event.job_id ?? '',
+      job_id: resolveJobId(event),
       error: event.error ?? '',
       bytes_received:
         typeof event.bytes_received === 'number' ? event.bytes_received : 0,

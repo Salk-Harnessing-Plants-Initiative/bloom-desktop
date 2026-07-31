@@ -467,6 +467,18 @@ class ScanWorker:
                         f"but device reports x_resolution={achieved_x} "
                         f"y_resolution={achieved_y}",
                     )
+                # A misbehaving (non-throwing) readback — e.g. 0, negative,
+                # or a non-numeric value — must not be trusted into the TIFF
+                # metadata / scan-complete event as-is: fall back to the
+                # requested value, same as the AttributeError case above.
+                if not isinstance(achieved_x, (int, float)) or achieved_x <= 0:
+                    log(
+                        self.scanner_id,
+                        f"WARNING: implausible x_resolution readback "
+                        f"({achieved_x!r}) — falling back to requested "
+                        f"{resolution}dpi",
+                    )
+                    achieved_x = resolution
                 achieved_resolution = achieved_x
                 self._last_achieved_resolution = achieved_resolution
 

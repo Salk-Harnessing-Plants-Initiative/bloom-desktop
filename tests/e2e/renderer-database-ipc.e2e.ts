@@ -2803,7 +2803,7 @@ test.describe('Renderer Database IPC - GraviScan graviscans.*', () => {
       { experimentId: fx.experiment.id, scanId: created.data.id }
     );
     expect(timestamps.success).toBe(true);
-    expect(timestamps.data).toBe(1);
+    expect(timestamps.data).toEqual({ updatedCount: 1 });
 
     const browsed = await window.evaluate(() => {
       return (

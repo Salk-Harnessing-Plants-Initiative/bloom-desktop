@@ -331,6 +331,36 @@ class _ExactDevice:
         self.cancel = MagicMock()
 
 
+class _ZeroReadbackDevice:
+    """Test double for a misbehaving (non-throwing) SANE backend that
+    always reports back an implausible x_resolution (0), regardless of
+    what was set — the case the AttributeError fallback in `_sane_scan`
+    does NOT cover, since this device never raises."""
+
+    def __init__(self, mock_image):
+        self.mode = None
+        self.tl_x = self.tl_y = self.br_x = self.br_y = 0
+        self.start = MagicMock()
+        self.snap = MagicMock(return_value=mock_image)
+        self.cancel = MagicMock()
+
+    @property
+    def x_resolution(self):
+        return 0
+
+    @x_resolution.setter
+    def x_resolution(self, value):
+        pass
+
+    @property
+    def y_resolution(self):
+        return 0
+
+    @y_resolution.setter
+    def y_resolution(self, value):
+        pass
+
+
 class TestAchievedResolutionReadback:
     """9.1/9.1a/9.2 (#232) — _sane_scan reads back the device's actual
     x_resolution/y_resolution after setting them and before scanning,
@@ -383,6 +413,23 @@ class TestAchievedResolutionReadback:
         assert w._last_achieved_resolution == 300
         assert "mismatch" not in stderr.lower()
         assert "WARNING" not in stderr
+
+    @patch("time.sleep")
+    def test_implausible_zero_readback_falls_back_to_requested_resolution(
+        self, mock_sleep, tmp_path
+    ):
+        """A misbehaving (non-throwing) backend reporting 0 must not be
+        trusted into the TIFF/event payload as-is — it should fall back
+        to the requested value, same as the AttributeError case."""
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+        w._device = _ZeroReadbackDevice(Image.new("RGB", (50, 50)))
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+
+        assert w._last_achieved_resolution == 300
+        assert "implausible" in stderr.lower()
 
 
 class TestAchievedResolutionInOutput:

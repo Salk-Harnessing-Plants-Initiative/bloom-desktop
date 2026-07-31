@@ -38,6 +38,30 @@ import {
   PaginatedScansResponse,
 } from './database';
 import { UploadResult } from '../main/image-uploader';
+import type {
+  GraviScanCreateInput,
+  graviscansCreate,
+  graviscansGetMaxWaveNumber,
+  CheckBarcodeUniqueInWaveInput,
+  graviscansCheckBarcodeUniqueInWave,
+  UpdateGridTimestampsInput,
+  graviscansUpdateGridTimestamps,
+  BrowseByExperimentArgs,
+  graviscansBrowseByExperiment,
+  graviscansExperimentDetail,
+  GraviScanSessionCreateInput,
+  graviscanSessionsCreate,
+  GraviScanSessionCompleteInput,
+  graviscanSessionsComplete,
+  graviscanPlateAssignmentsList,
+  PlateAssignmentUpsertInput,
+  graviscanPlateAssignmentsUpsertMany,
+  GraviPlateInput,
+  graviPlateAccessionsCreateWithSections,
+  graviPlateAccessionsList,
+  graviPlateAccessionsListFiles,
+  graviPlateAccessionsDelete,
+} from '../main/database-handlers';
 import { ResetUsbResult } from './graviscan';
 
 /**
@@ -377,44 +401,64 @@ export interface DatabaseAPI {
   };
   /**
    * GraviScan data layer (add-graviscan-data-layer-and-events).
-   * Loosely typed (`any` payloads/results) to match the exploratory
-   * shape of these new handlers — see src/main/database-handlers.ts
-   * for the authoritative input/output shapes each method accepts.
+   * Each method's payload/result type is pulled directly from its
+   * `src/main/database-handlers.ts` implementation via `ReturnType`/the
+   * exported input interfaces, rather than hand-duplicated — the same
+   * declared-vs-runtime-shape drift that shipped the original
+   * `resetUsb()` bug (see GraviAPI above) is exactly what this avoids.
    */
-  /* eslint-disable @typescript-eslint/no-explicit-any */
   graviscans: {
-    create: (data: any) => Promise<DatabaseResponse>;
-    getMaxWaveNumber: (experimentId: string) => Promise<DatabaseResponse>;
-    checkBarcodeUniqueInWave: (args: any) => Promise<DatabaseResponse>;
-    updateGridTimestamps: (args: any) => Promise<DatabaseResponse>;
-    browseByExperiment: (args: any) => Promise<DatabaseResponse>;
-    experimentDetail: (experimentId: string) => Promise<DatabaseResponse>;
+    create: (
+      data: Partial<GraviScanCreateInput> & Record<string, unknown>
+    ) => ReturnType<typeof graviscansCreate>;
+    getMaxWaveNumber: (
+      experimentId: string
+    ) => ReturnType<typeof graviscansGetMaxWaveNumber>;
+    checkBarcodeUniqueInWave: (
+      args: CheckBarcodeUniqueInWaveInput
+    ) => ReturnType<typeof graviscansCheckBarcodeUniqueInWave>;
+    updateGridTimestamps: (
+      args: UpdateGridTimestampsInput
+    ) => ReturnType<typeof graviscansUpdateGridTimestamps>;
+    browseByExperiment: (
+      args: BrowseByExperimentArgs
+    ) => ReturnType<typeof graviscansBrowseByExperiment>;
+    experimentDetail: (
+      experimentId: string
+    ) => ReturnType<typeof graviscansExperimentDetail>;
   };
   graviscanSessions: {
-    create: (data: any) => Promise<DatabaseResponse>;
-    complete: (args: any) => Promise<DatabaseResponse>;
+    create: (
+      data: GraviScanSessionCreateInput
+    ) => ReturnType<typeof graviscanSessionsCreate>;
+    complete: (
+      args: GraviScanSessionCompleteInput
+    ) => ReturnType<typeof graviscanSessionsComplete>;
   };
   graviscanPlateAssignments: {
     list: (
       experimentId: string,
       scannerId: string
-    ) => Promise<DatabaseResponse>;
+    ) => ReturnType<typeof graviscanPlateAssignmentsList>;
     upsertMany: (
       experimentId: string,
       scannerId: string,
-      assignments: any
-    ) => Promise<DatabaseResponse>;
+      assignments: PlateAssignmentUpsertInput[]
+    ) => ReturnType<typeof graviscanPlateAssignmentsUpsertMany>;
   };
   graviPlateAccessions: {
     createWithSections: (
-      accessionData: any,
-      plates: any
-    ) => Promise<DatabaseResponse>;
-    list: (metadataFileId: string) => Promise<DatabaseResponse>;
-    listFiles: () => Promise<DatabaseResponse>;
-    delete: (metadataFileId: string) => Promise<DatabaseResponse>;
+      accessionData: { name: string },
+      plates: GraviPlateInput[]
+    ) => ReturnType<typeof graviPlateAccessionsCreateWithSections>;
+    list: (
+      metadataFileId: string
+    ) => ReturnType<typeof graviPlateAccessionsList>;
+    listFiles: () => ReturnType<typeof graviPlateAccessionsListFiles>;
+    delete: (
+      metadataFileId: string
+    ) => ReturnType<typeof graviPlateAccessionsDelete>;
   };
-  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 /**

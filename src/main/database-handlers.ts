@@ -659,6 +659,45 @@ export async function graviPlateAccessionsCreateWithSections(
   }>
 > {
   try {
+    if (!isNonEmptyString(accessionData?.name)) {
+      return {
+        success: false,
+        error: 'accessionData.name must be a non-empty string',
+      };
+    }
+    if (!Array.isArray(plates)) {
+      return { success: false, error: 'plates must be an array' };
+    }
+    for (const plate of plates) {
+      if (
+        !isNonEmptyString(plate?.plate_id) ||
+        !isNonEmptyString(plate?.accession)
+      ) {
+        return {
+          success: false,
+          error: 'each plate requires a non-empty plate_id and accession',
+        };
+      }
+      if (!Array.isArray(plate.sections)) {
+        return {
+          success: false,
+          error: `plate ${plate.plate_id} sections must be an array`,
+        };
+      }
+      for (const section of plate.sections) {
+        if (
+          !isNonEmptyString(section?.plate_section_id) ||
+          !isNonEmptyString(section?.plant_qr)
+        ) {
+          return {
+            success: false,
+            error:
+              'each section requires a non-empty plate_section_id and plant_qr',
+          };
+        }
+      }
+    }
+
     const result = await db.$transaction(async (tx) => {
       const accessionRow = await tx.accessions.create({
         data: { name: accessionData.name },

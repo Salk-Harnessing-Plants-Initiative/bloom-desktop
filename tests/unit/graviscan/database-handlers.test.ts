@@ -922,6 +922,57 @@ describe('database.graviPlateAccessions.*', () => {
       expect(plateCount).toBe(0);
       expect(sectionCount).toBe(0);
     });
+
+    it('rejects a non-string accessionData.name without writing anything', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 123 as unknown as string },
+        [{ plate_id: 'P1', accession: 'Col-0', sections: [] }]
+      );
+
+      expect(result.success).toBe(false);
+      expect(await prisma.accessions.count()).toBe(0);
+    });
+
+    it('rejects a non-array plates argument without writing anything', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Bad Plates' },
+        'not-an-array' as unknown as never
+      );
+
+      expect(result.success).toBe(false);
+      expect(await prisma.accessions.count()).toBe(0);
+    });
+
+    it('rejects a plate missing plate_id/accession without writing anything', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Bad Plate' },
+        [{ plate_id: '', accession: 'Col-0', sections: [] }]
+      );
+
+      expect(result.success).toBe(false);
+      expect(await prisma.accessions.count()).toBe(0);
+    });
+
+    it('rejects a section missing plate_section_id/plant_qr without writing anything', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Bad Section' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: '', plant_qr: 'QR1' }],
+          },
+        ]
+      );
+
+      expect(result.success).toBe(false);
+      expect(await prisma.accessions.count()).toBe(0);
+      expect(await prisma.graviPlateAccession.count()).toBe(0);
+    });
   });
 
   describe('list', () => {
