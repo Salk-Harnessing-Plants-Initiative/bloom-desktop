@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -3566,4 +3568,3 @@ The `python/graviscan/scan_worker.py` worker SHALL read back the SANE device's a
 - **THEN** a warning SHALL be logged including both the requested and achieved values
 - **AND** the `scan-complete` event payload's `achieved_resolution` SHALL reflect the device-reported value, not the requested value
 - **AND** the TIFF's embedded resolution metadata SHALL reflect the achieved value
-
