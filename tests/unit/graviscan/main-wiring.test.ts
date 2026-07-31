@@ -189,7 +189,7 @@ describe('GraviScan wiring module', () => {
   });
 
   describe('coordinator event forwarding', () => {
-    it('forwards all 11 coordinator events to renderer', () => {
+    it('forwards all 12 coordinator events to renderer (task 11.1 — scan-event replaced by scan-started/scan-complete)', () => {
       const coordinator = new EventEmitter();
       const send = vi.fn();
       const mockWindow = {
@@ -203,7 +203,8 @@ describe('GraviScan wiring module', () => {
       );
 
       const events = [
-        'scan-event',
+        'scan-started',
+        'scan-complete',
         'grid-start',
         'grid-complete',
         'cycle-complete',
@@ -225,16 +226,16 @@ describe('GraviScan wiring module', () => {
       }
     });
 
-    it('does not crash when mainWindow is null', () => {
+    it('does not crash when mainWindow is null (task 11.1a — retargeted from scan-event)', () => {
       const coordinator = new EventEmitter();
       setupCoordinatorEventForwarding(coordinator as any, () => null);
 
       expect(() =>
-        coordinator.emit('scan-event', { test: true })
+        coordinator.emit('scan-error', { test: true })
       ).not.toThrow();
     });
 
-    it('does not crash when mainWindow is destroyed', () => {
+    it('does not crash when mainWindow is destroyed (task 11.1a — retargeted from scan-event)', () => {
       const coordinator = new EventEmitter();
       const mockWindow = {
         isDestroyed: () => true,
@@ -247,7 +248,7 @@ describe('GraviScan wiring module', () => {
       );
 
       expect(() =>
-        coordinator.emit('scan-event', { test: true })
+        coordinator.emit('scan-error', { test: true })
       ).not.toThrow();
       expect(mockWindow.webContents.send).not.toHaveBeenCalled();
     });
@@ -283,12 +284,14 @@ describe('GraviScan wiring module', () => {
       }
     });
 
+    // Retargeted (task 11.2) from the retired generic 'scan-event' bus
+    // (`{type: 'scan-error', ...}`) to the first-class 'scan-error'
+    // channel with no embedded `type` field.
     function emitScanError(
       coordinator: EventEmitter,
       overrides: Record<string, unknown> = {}
     ) {
-      coordinator.emit('scan-event', {
-        type: 'scan-error',
+      coordinator.emit('scan-error', {
         scanner_id: 'sc-1',
         plate_index: '00',
         job_id: 'job-1',
@@ -317,6 +320,14 @@ describe('GraviScan wiring module', () => {
         startedAt: 1000,
       });
 
+      // Cycle tracking is driven by scan-started (task 11.5) — in
+      // production this always precedes the scan-error/scan-complete
+      // for the same job, so establish cycle 1 here too.
+      coordinator.emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 1,
+      });
       emitScanError(coordinator);
 
       // slackNotifier.notify() is fire-and-forget (`void`) — flush
@@ -377,13 +388,12 @@ describe('GraviScan wiring module', () => {
       expect(body.text).toContain('consecutive_failures');
     });
 
-    it('scan-complete resolves a scanner without triggering a wedge (recovered path)', async () => {
+    it('scan-complete resolves a scanner without triggering a wedge (recovered path) (task 11.2 — retargeted from scan-event)', async () => {
       const coordinator = new EventEmitter();
       setupWedgeDetection(coordinator as any);
       coordinator.emit('interval-start', { startedAt: 1 });
 
-      coordinator.emit('scan-event', {
-        type: 'scan-complete',
+      coordinator.emit('scan-complete', {
         scanner_id: 'sc-9',
         plate_index: '00',
         job_id: 'j1',
@@ -411,7 +421,7 @@ describe('GraviScan wiring module', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('does not POST to Slack when scan-event fires before any interval-start (no detector yet)', async () => {
+    it('does not POST to Slack when scan-error fires before any interval-start (no detector yet) (task 11.2b — renamed from scan-event)', async () => {
       const coordinator = new EventEmitter();
       setupWedgeDetection(coordinator as any);
 
@@ -509,6 +519,61 @@ describe('GraviScan wiring module', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+
+    it('repeated scan-complete events for the same scanner never trigger a wedge (task 11.3 — onScanEnd success routing)', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+
+      // setupWedgeDetection() must route every scan-complete to
+      // wedgeDetector.onScanEnd({success: true}) (replacing the old
+      // event.type === 'scan-complete' branch) — proven here by firing
+      // several in a row across two plates and confirming none of them
+      // ever accumulates toward a wedge.
+      for (const plateIndex of ['00', '01', '00', '01']) {
+        coordinator.emit('scan-complete', {
+          scanner_id: 'sc-1',
+          plate_index: plateIndex,
+          job_id: `j-${plateIndex}`,
+          cycle_number: 1,
+        });
+      }
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('a coordinator-originated scan-error (camelCase scannerId/plateIndex, no snake_case fields) reaches wedge detection and can contribute to consecutive_failures (task 11.4 — design.md Decision 2 found-bug fix)', async () => {
+      const coordinator = new EventEmitter();
+      setupWedgeDetection(coordinator as any);
+      coordinator.emit('interval-start', { startedAt: 1 });
+
+      // Shape of ScanCoordinator's own direct scan-error emissions
+      // (scanOnce()'s row-timeout / file-verification-failure sites) —
+      // camelCase only, no `type` field, no snake_case scanner_id. Before
+      // this migration these were invisible to wedge detection because
+      // setupWedgeDetection() only listened on the generic scan-event bus,
+      // which the coordinator never emitted these on either.
+      coordinator.emit('scan-error', {
+        scannerId: 'sc-coord',
+        jobId: 'sc-coord',
+        error: 'Row scan timeout after 90000ms',
+      });
+      coordinator.emit('scan-error', {
+        scannerId: 'sc-coord',
+        plateIndex: '00',
+        jobId: 'sc-coord:00',
+        error: 'Output file missing after scan-complete: /tmp/x.tif',
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(body.text).toContain('sc-coord');
+      expect(body.text).toContain('consecutive_failures');
+    });
   });
 
   describe('coordinator lazy instantiation', () => {
@@ -535,7 +600,7 @@ describe('GraviScan wiring module', () => {
       expect(ScanCoordinator).toHaveBeenCalledTimes(1);
     });
 
-    it('threads the db passed to initGraviScan through to setupWedgeDetection for wedge-event enrichment (final-review #4)', async () => {
+    it('threads the db passed to initGraviScan through to setupWedgeDetection for wedge-event enrichment (final-review #4) (task 11.7 — retargeted from scan-event)', async () => {
       const originalWebhookEnv = process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL;
       process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL =
         'https://hooks.slack.com/services/TEST/FAKE/URL';
@@ -558,8 +623,7 @@ describe('GraviScan wiring module', () => {
       (coordinator as unknown as EventEmitter).emit('interval-start', {
         startedAt: 1,
       });
-      (coordinator as unknown as EventEmitter).emit('scan-event', {
-        type: 'scan-error',
+      (coordinator as unknown as EventEmitter).emit('scan-error', {
         scanner_id: 'sc-wired',
         plate_index: '00',
         job_id: 'job-1',

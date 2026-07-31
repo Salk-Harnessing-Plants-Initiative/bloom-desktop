@@ -326,21 +326,43 @@ export class ScanCoordinator
       this.mock
     );
 
-    // Forward all events, injecting cycle number and grid start time.
-    // scan_ended_at is NOT included here — it is unknown until the row
-    // completes. currentGridEndedAt is null for the entire duration of
-    // a row's actual scanning (it's only assigned right after
-    // Promise.all(rowDonePromises) resolves in scanOnce()) — by the
-    // time that happens, any per-plate scan-event this listener
-    // forwards for that row has already fired. It IS available in the
-    // grid-complete event instead.
+    // Forward per-job events on three granular channels — scan-started,
+    // scan-complete, scan-error — injecting cycle number and grid start
+    // time. The generic scan-event bus (an embedded `type` field) is
+    // retired: see design.md Decision 2. scan_ended_at is NOT included
+    // here — it is unknown until the row completes. currentGridEndedAt
+    // is null for the entire duration of a row's actual scanning (it's
+    // only assigned right after Promise.all(rowDonePromises) resolves in
+    // scanOnce()) — by the time that happens, any per-plate event this
+    // listener forwards for that row has already fired. It IS available
+    // in the grid-complete event instead.
     sub.on('event', (event: ScanWorkerEvent) => {
+      const jobId = `${event.scanner_id}:${event.plate_index ?? ''}`;
       const forwarded: Record<string, unknown> = {
         ...event,
+        jobId,
+        scannerId: event.scanner_id,
+        plateIndex: event.plate_index,
         cycle_number: this.currentCycle,
         scan_started_at: this.currentGridStartedAt,
       };
-      this.emit('scan-event', forwarded);
+      switch (event.type) {
+        case 'scan-started':
+          this.emit('scan-started', forwarded);
+          break;
+        case 'scan-complete':
+          this.emit('scan-complete', forwarded);
+          break;
+        case 'scan-error':
+          this.emit('scan-error', forwarded);
+          break;
+        default:
+          // ready / scan-cancelled / other worker-internal event types
+          // are not part of the granular per-job model and have no
+          // listener today — the old generic scan-event bus that used
+          // to relay them is intentionally retired, not replaced.
+          break;
+      }
     });
 
     sub.on('exit', (info: { scannerId: string; code: number | null }) => {
@@ -524,8 +546,12 @@ export class ScanCoordinator
             scanLog(
               `[${scannerId}] Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`
             );
+            // Bare scannerId jobId — no single plateIndex applies to a
+            // whole-row timeout (see the "ScanCoordinator Multi-Scanner
+            // Orchestration" spec requirement's note on this shape).
             this.emit('scan-error', {
               scannerId,
+              jobId: scannerId,
               error: `Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`,
             });
             resolve(null);
@@ -571,6 +597,7 @@ export class ScanCoordinator
             this.emit('scan-error', {
               scannerId: result.scannerId,
               plateIndex,
+              jobId: `${result.scannerId}:${plateIndex}`,
               error: msg,
             });
             continue;
@@ -585,6 +612,7 @@ export class ScanCoordinator
             this.emit('scan-error', {
               scannerId: result.scannerId,
               plateIndex,
+              jobId: `${result.scannerId}:${plateIndex}`,
               error: msg,
             });
             continue;
@@ -595,6 +623,7 @@ export class ScanCoordinator
             this.emit('scan-error', {
               scannerId: result.scannerId,
               plateIndex,
+              jobId: `${result.scannerId}:${plateIndex}`,
               error: msg,
             });
             continue;

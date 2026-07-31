@@ -25,7 +25,8 @@ const mockGraviAPI = {
   getScannerStatus: vi.fn(),
   getScanStatus: vi.fn(),
   resetUsb: vi.fn(),
-  onScanEvent: vi.fn(),
+  onScanStarted: vi.fn(),
+  onScanComplete: vi.fn(),
   onScanError: vi.fn(),
 };
 
@@ -105,7 +106,8 @@ beforeEach(() => {
     success: true,
     data: { success: true },
   });
-  mockGraviAPI.onScanEvent.mockReturnValue(vi.fn());
+  mockGraviAPI.onScanStarted.mockReturnValue(vi.fn());
+  mockGraviAPI.onScanComplete.mockReturnValue(vi.fn());
   mockGraviAPI.onScanError.mockReturnValue(vi.fn());
 });
 
@@ -176,9 +178,9 @@ describe('ConfigureScanner page', () => {
     await waitFor(() => expect(button).not.toBeDisabled());
   });
 
-  it('refreshes scanner status and the scan-active gate when a scan-event or scan-error IPC push fires', async () => {
+  it('refreshes scanner status and the scan-active gate when a scan-started, scan-complete, or scan-error IPC push fires', async () => {
     let scanEventCallback: (() => void) | undefined;
-    mockGraviAPI.onScanEvent.mockImplementation((cb: () => void) => {
+    mockGraviAPI.onScanStarted.mockImplementation((cb: () => void) => {
       scanEventCallback = cb;
       return vi.fn();
     });

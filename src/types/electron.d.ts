@@ -49,6 +49,30 @@ import {
   GetScanStatusResult,
   GraviConfigInput,
 } from './graviscan';
+import type {
+  GraviScanCreateInput,
+  graviscansCreate,
+  graviscansGetMaxWaveNumber,
+  CheckBarcodeUniqueInWaveInput,
+  graviscansCheckBarcodeUniqueInWave,
+  UpdateGridTimestampsInput,
+  graviscansUpdateGridTimestamps,
+  BrowseByExperimentArgs,
+  graviscansBrowseByExperiment,
+  graviscansExperimentDetail,
+  GraviScanSessionCreateInput,
+  graviscanSessionsCreate,
+  GraviScanSessionCompleteInput,
+  graviscanSessionsComplete,
+  graviscanPlateAssignmentsList,
+  PlateAssignmentUpsertInput,
+  graviscanPlateAssignmentsUpsertMany,
+  GraviPlateInput,
+  graviPlateAccessionsCreateWithSections,
+  graviPlateAccessionsList,
+  graviPlateAccessionsListFiles,
+  graviPlateAccessionsDelete,
+} from '../main/database-handlers';
 
 /**
  * Python backend API
@@ -385,6 +409,66 @@ export interface DatabaseAPI {
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;
   };
+  /**
+   * GraviScan data layer (add-graviscan-data-layer-and-events).
+   * Each method's payload/result type is pulled directly from its
+   * `src/main/database-handlers.ts` implementation via `ReturnType`/the
+   * exported input interfaces, rather than hand-duplicated — the same
+   * declared-vs-runtime-shape drift that shipped the original
+   * `resetUsb()` bug (see GraviAPI above) is exactly what this avoids.
+   */
+  graviscans: {
+    create: (
+      data: Partial<GraviScanCreateInput> & Record<string, unknown>
+    ) => ReturnType<typeof graviscansCreate>;
+    getMaxWaveNumber: (
+      experimentId: string
+    ) => ReturnType<typeof graviscansGetMaxWaveNumber>;
+    checkBarcodeUniqueInWave: (
+      args: CheckBarcodeUniqueInWaveInput
+    ) => ReturnType<typeof graviscansCheckBarcodeUniqueInWave>;
+    updateGridTimestamps: (
+      args: UpdateGridTimestampsInput
+    ) => ReturnType<typeof graviscansUpdateGridTimestamps>;
+    browseByExperiment: (
+      args: BrowseByExperimentArgs
+    ) => ReturnType<typeof graviscansBrowseByExperiment>;
+    experimentDetail: (
+      experimentId: string
+    ) => ReturnType<typeof graviscansExperimentDetail>;
+  };
+  graviscanSessions: {
+    create: (
+      data: GraviScanSessionCreateInput
+    ) => ReturnType<typeof graviscanSessionsCreate>;
+    complete: (
+      args: GraviScanSessionCompleteInput
+    ) => ReturnType<typeof graviscanSessionsComplete>;
+  };
+  graviscanPlateAssignments: {
+    list: (
+      experimentId: string,
+      scannerId: string
+    ) => ReturnType<typeof graviscanPlateAssignmentsList>;
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      assignments: PlateAssignmentUpsertInput[]
+    ) => ReturnType<typeof graviscanPlateAssignmentsUpsertMany>;
+  };
+  graviPlateAccessions: {
+    createWithSections: (
+      accessionData: { name: string },
+      plates: GraviPlateInput[]
+    ) => ReturnType<typeof graviPlateAccessionsCreateWithSections>;
+    list: (
+      metadataFileId: string
+    ) => ReturnType<typeof graviPlateAccessionsList>;
+    listFiles: () => ReturnType<typeof graviPlateAccessionsListFiles>;
+    delete: (
+      metadataFileId: string
+    ) => ReturnType<typeof graviPlateAccessionsDelete>;
+  };
 }
 
 /**
@@ -577,7 +661,8 @@ export interface GraviAPI {
   downloadImages: (params: any) => Promise<any>;
 
   // Event listeners (return cleanup functions)
-  onScanEvent: (callback: (event: any) => void) => () => void;
+  onScanStarted: (callback: (event: any) => void) => () => void;
+  onScanComplete: (callback: (event: any) => void) => () => void;
   onGridStart: (callback: (data: any) => void) => () => void;
   onGridComplete: (callback: (data: any) => void) => () => void;
   onCycleComplete: (callback: (data: any) => void) => () => void;

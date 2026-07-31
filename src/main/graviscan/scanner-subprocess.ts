@@ -127,6 +127,13 @@ export interface ScanWorkerEvent {
   // WedgeDetector's device_io_120s_zero_bytes signature (#236).
   bytes_received?: number;
   wall_seconds?: number;
+  // Emitted by the Python worker on scan-complete (#232) — the
+  // resolution the SANE device actually applied, read back after being
+  // set and before scanning. May differ from the resolution the
+  // coordinator originally requested (some backends silently round it).
+  // A future caller writing GraviScan.resolution from a completed scan
+  // MUST source it from this field, not the pre-scan requested value.
+  achieved_resolution?: number;
   // Injected by ScanCoordinator for per-grid timestamp tracking
   cycle_number?: number;
   scan_started_at?: string | null;

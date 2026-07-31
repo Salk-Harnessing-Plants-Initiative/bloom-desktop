@@ -165,18 +165,21 @@ export function ConfigureScanner() {
   // Invalidate the scan-active gate and scanner-status snapshot the moment
   // any scan event fires, rather than waiting for the row-status poll
   // above (which only runs once a row is already `starting`, so it can't
-  // notice a fresh idle→scanning transition on its own).
+  // notice a fresh idle→scanning transition on its own). Subscribes to
+  // all three granular per-job channels (the generic `onScanEvent` bus
+  // was retired in favor of these) so a scan starting, completing, or
+  // erroring anywhere is all noticed the same way.
   useEffect(() => {
-    const unsubscribeEvent = window.electron.gravi.onScanEvent(() => {
+    const refresh = () => {
       refreshScanActive();
       refreshScannerStatus();
-    });
-    const unsubscribeError = window.electron.gravi.onScanError(() => {
-      refreshScanActive();
-      refreshScannerStatus();
-    });
+    };
+    const unsubscribeStarted = window.electron.gravi.onScanStarted(refresh);
+    const unsubscribeComplete = window.electron.gravi.onScanComplete(refresh);
+    const unsubscribeError = window.electron.gravi.onScanError(refresh);
     return () => {
-      unsubscribeEvent();
+      unsubscribeStarted();
+      unsubscribeComplete();
       unsubscribeError();
     };
   }, [refreshScanActive, refreshScannerStatus]);

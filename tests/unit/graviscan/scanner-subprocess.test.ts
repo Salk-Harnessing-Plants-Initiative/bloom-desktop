@@ -260,6 +260,23 @@ describe('ScannerSubprocess', () => {
       );
     });
 
+    it('passes achieved_resolution through unchanged on scan-complete (#232, task 9.5)', () => {
+      const handler = vi.fn();
+      subprocess.on('scan-complete', handler);
+
+      emitLine(
+        'EVENT:{"type":"scan-complete","scanner_id":"scanner-1","path":"/tmp/out.tif","duration_ms":5000,"achieved_resolution":400}'
+      );
+
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'scan-complete',
+          path: '/tmp/out.tif',
+          achieved_resolution: 400,
+        })
+      );
+    });
+
     it('emits typed events for scan-error', () => {
       const handler = vi.fn();
       subprocess.on('scan-error', handler);

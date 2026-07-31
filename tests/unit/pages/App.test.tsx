@@ -49,7 +49,8 @@ const mockGraviAPI = {
   getScanStatus: vi
     .fn()
     .mockResolvedValue({ success: true, data: { isActive: false } }),
-  onScanEvent: vi.fn().mockReturnValue(vi.fn()),
+  onScanStarted: vi.fn().mockReturnValue(vi.fn()),
+  onScanComplete: vi.fn().mockReturnValue(vi.fn()),
   onScanError: vi.fn().mockReturnValue(vi.fn()),
 };
 

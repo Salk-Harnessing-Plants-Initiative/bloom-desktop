@@ -7,7 +7,7 @@
 
 import { ipcMain } from 'electron';
 import { getDatabase } from './database';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { ImageUploader, UploadResult } from './image-uploader';
 
 /**
@@ -30,6 +30,845 @@ function logDatabaseOperation(
 ) {
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[DB:${operation}] ${model}: ${details}`);
+  }
+}
+
+// =============================================================================
+// GraviScan data layer (add-graviscan-data-layer-and-events)
+//
+// Exported as standalone, db-injected functions (rather than inline inside
+// registerDatabaseHandlers()'s closure like the handlers above) so they can
+// be unit-tested directly against a real Prisma client — see
+// tests/unit/graviscan/database-handlers.test.ts, which follows the
+// real-SQLite-database convention established by
+// tests/integration/database.test.ts (no mocked Prisma client).
+// =============================================================================
+
+/** Minimal PrismaClient surface these functions need — kept as the full
+ * `PrismaClient` type (not a narrower interface) since these functions
+ * use `$transaction`, which a narrower structural type would need to
+ * duplicate the signature of. */
+type Db = PrismaClient;
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/**
+ * Natural-sort comparator: "P2" sorts before "P10". Ported fresh (not
+ * copied from the reference implementation) per tasks.md 5.5 — verified
+ * by test, not assumed correct.
+ */
+function naturalCompare(a: string, b: string): number {
+  const chunk = /(\d+)|(\D+)/g;
+  const aParts = a.match(chunk) ?? [a];
+  const bParts = b.match(chunk) ?? [b];
+  const len = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < len; i++) {
+    const ap = aParts[i] ?? '';
+    const bp = bParts[i] ?? '';
+    if (ap === bp) continue;
+    const an = Number(ap);
+    const bn = Number(bp);
+    if (!Number.isNaN(an) && !Number.isNaN(bn) && ap !== '' && bp !== '') {
+      return an - bn;
+    }
+    return ap < bp ? -1 : 1;
+  }
+  return 0;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+// -----------------------------------------------------------------------
+// database.graviscans.*
+// -----------------------------------------------------------------------
+
+export interface GraviScanCreateInput {
+  experiment_id: string;
+  phenotyper_id: string;
+  scanner_id: string;
+  session_id?: string | null;
+  cycle_number?: number | null;
+  wave_number?: number;
+  plate_barcode?: string | null;
+  transplant_date?: string | Date | null;
+  custom_note?: string | null;
+  path: string;
+  capture_date?: string | Date;
+  scan_started_at?: string | Date | null;
+  scan_ended_at?: string | Date | null;
+  grid_mode: string;
+  plate_index: string;
+  resolution: number;
+  format?: string;
+}
+
+/**
+ * Create a GraviScan row.
+ *
+ * NOTE for future callers (Tier 4/5, tasks.md 2.3a): a caller writing
+ * `GraviScan.resolution` from a COMPLETED scan MUST source it from that
+ * scan's `achieved_resolution` (the field the "GraviScan Scan-Worker
+ * Achieved-Resolution Readback" requirement threads through the
+ * `scan-complete` event payload), not the pre-scan requested value this
+ * `create` call persists — otherwise the #232 fix (see design.md) never
+ * reaches the queryable database record. This handler itself is a
+ * pre-scan create, not a post-scan write path, so its own signature is
+ * unaffected; this is a forward-looking note for the caller that adds
+ * the completion-time write.
+ */
+export async function graviscansCreate(
+  db: Db,
+  data: Partial<GraviScanCreateInput> & Record<string, unknown>
+): Promise<DatabaseResponse> {
+  try {
+    for (const field of [
+      'experiment_id',
+      'phenotyper_id',
+      'scanner_id',
+    ] as const) {
+      if (!isNonEmptyString(data[field])) {
+        return { success: false, error: `${field} must be a non-empty string` };
+      }
+    }
+    const created = await db.graviScan.create({
+      data: {
+        experiment_id: data.experiment_id as string,
+        phenotyper_id: data.phenotyper_id as string,
+        scanner_id: data.scanner_id as string,
+        session_id: (data.session_id as string | null) ?? null,
+        cycle_number: (data.cycle_number as number | null) ?? null,
+        wave_number:
+          typeof data.wave_number === 'number' ? data.wave_number : 0,
+        plate_barcode: (data.plate_barcode as string | null) ?? null,
+        transplant_date: data.transplant_date
+          ? new Date(data.transplant_date as string | Date)
+          : null,
+        custom_note: (data.custom_note as string | null) ?? null,
+        path: data.path as string,
+        capture_date: data.capture_date
+          ? new Date(data.capture_date as string | Date)
+          : undefined,
+        scan_started_at: data.scan_started_at
+          ? new Date(data.scan_started_at as string | Date)
+          : null,
+        scan_ended_at: data.scan_ended_at
+          ? new Date(data.scan_ended_at as string | Date)
+          : null,
+        grid_mode: data.grid_mode as string,
+        plate_index: data.plate_index as string,
+        resolution: data.resolution as number,
+        format: typeof data.format === 'string' ? data.format : 'tiff',
+      },
+    });
+    logDatabaseOperation('CREATE', 'GraviScan', `id=${created.id}`);
+    return { success: true, data: created };
+  } catch (error) {
+    console.error('[DB] Failed to create GraviScan:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Max `wave_number` across an experiment's non-deleted GraviScan rows.
+ * Returns -1 when the experiment has zero such rows.
+ */
+export async function graviscansGetMaxWaveNumber(
+  db: Db,
+  experimentId: string
+): Promise<DatabaseResponse<number>> {
+  try {
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    const result = await db.graviScan.aggregate({
+      where: { experiment_id: experimentId, deleted: false },
+      _max: { wave_number: true },
+    });
+    return { success: true, data: result._max.wave_number ?? -1 };
+  } catch (error) {
+    console.error('[DB] Failed to get max wave number:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+export interface CheckBarcodeUniqueInWaveInput {
+  experiment_id: string;
+  wave_number: number;
+  plate_barcode: string;
+}
+
+/**
+ * Case-insensitive (`.trim().toLowerCase()`, applied in application code —
+ * `mode: 'insensitive'` is Postgres-only, unavailable on this SQLite
+ * datasource) barcode-uniqueness check, scoped to (experiment_id,
+ * wave_number). See design.md Decision 4.
+ */
+export async function graviscansCheckBarcodeUniqueInWave(
+  db: Db,
+  args: CheckBarcodeUniqueInWaveInput
+): Promise<DatabaseResponse<{ isDuplicate: boolean }>> {
+  try {
+    if (!isNonEmptyString(args?.experiment_id)) {
+      return {
+        success: false,
+        error: 'experiment_id must be a non-empty string',
+      };
+    }
+    const normalized = (args.plate_barcode ?? '').trim().toLowerCase();
+    const rows = await db.graviScan.findMany({
+      where: {
+        experiment_id: args.experiment_id,
+        wave_number: args.wave_number,
+        deleted: false,
+        plate_barcode: { not: null },
+      },
+      select: { plate_barcode: true },
+    });
+    const isDuplicate = rows.some(
+      (r) => (r.plate_barcode ?? '').trim().toLowerCase() === normalized
+    );
+    return { success: true, data: { isDuplicate } };
+  } catch (error) {
+    console.error('[DB] Failed to check barcode uniqueness:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+export interface UpdateGridTimestampsInput {
+  experiment_id: string;
+  ids: string[];
+  scan_started_at?: string | Date;
+  scan_ended_at?: string | Date;
+}
+
+/**
+ * Update scan_started_at/scan_ended_at for `ids`, scoped to
+ * `experiment_id` (design.md Decision 3 — the reference implementation's
+ * `updateMany({ where: { id: { in: ids } } })` has no experiment scope at
+ * all, so any caller-supplied id list can write across experiments; this
+ * is the required fix, and a **breaking** signature change relative to
+ * the reference method it ports from).
+ */
+export async function graviscansUpdateGridTimestamps(
+  db: Db,
+  args: UpdateGridTimestampsInput
+): Promise<DatabaseResponse<{ updatedCount: number }>> {
+  try {
+    if (!isNonEmptyString(args?.experiment_id)) {
+      return {
+        success: false,
+        error: 'experiment_id must be a non-empty string',
+      };
+    }
+    if (!Array.isArray(args.ids)) {
+      return { success: false, error: 'ids must be an array' };
+    }
+    const data: Prisma.GraviScanUpdateManyMutationInput = {};
+    if (args.scan_started_at !== undefined) {
+      data.scan_started_at = new Date(args.scan_started_at);
+    }
+    if (args.scan_ended_at !== undefined) {
+      data.scan_ended_at = new Date(args.scan_ended_at);
+    }
+    const result = await db.graviScan.updateMany({
+      where: { id: { in: args.ids }, experiment_id: args.experiment_id },
+      data,
+    });
+    return { success: true, data: { updatedCount: result.count } };
+  } catch (error) {
+    console.error('[DB] Failed to update grid timestamps:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+export interface BrowseByExperimentFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  experimentName?: string;
+  accession?: string;
+  uploadStatus?: string;
+}
+
+export interface BrowseByExperimentArgs {
+  offset: number;
+  limit: number;
+  filters?: BrowseByExperimentFilters;
+}
+
+/**
+ * Cross-experiment browse/listing view (deliberately NOT scoped to a
+ * single experiment — see the "GraviScan Database Handlers —
+ * graviscans.*" spec requirement's explicit carve-out for this handler).
+ */
+export async function graviscansBrowseByExperiment(
+  db: Db,
+  args: BrowseByExperimentArgs
+): Promise<
+  DatabaseResponse<{
+    experiments: Array<
+      Prisma.ExperimentGetPayload<{
+        include: {
+          accession: true;
+          graviScans: { include: { images: true } };
+          graviPlateAssignments: true;
+        };
+      }> & { hasNeedsReview: boolean }
+    >;
+    total: number;
+  }>
+> {
+  try {
+    const filters = args.filters ?? {};
+    const where: Prisma.ExperimentWhereInput = {};
+    if (filters.experimentName) {
+      where.name = { contains: filters.experimentName };
+    }
+    if (filters.accession) {
+      where.accession = { name: { contains: filters.accession } };
+    }
+
+    let dateFilter: Prisma.DateTimeFilter | undefined;
+    if (filters.dateFrom || filters.dateTo) {
+      dateFilter = {};
+      // Anchor both bounds in LOCAL time (matching db:scans:list's existing
+      // dateFrom/dateTo convention in this same file) — parsing dateFrom as
+      // UTC-midnight (`new Date(dateStr)`) while mutating dateTo's hours in
+      // local time would silently shift the window by the local UTC offset.
+      if (filters.dateFrom) {
+        dateFilter.gte = new Date(filters.dateFrom + 'T00:00:00');
+      }
+      if (filters.dateTo) {
+        dateFilter.lte = new Date(filters.dateTo + 'T23:59:59.999');
+      }
+      where.graviScans = {
+        some: { deleted: false, capture_date: dateFilter },
+      };
+    }
+
+    const scansWhere: Prisma.GraviScanWhereInput = { deleted: false };
+    if (dateFilter) scansWhere.capture_date = dateFilter;
+
+    const [total, experiments] = await Promise.all([
+      db.experiment.count({ where }),
+      db.experiment.findMany({
+        where,
+        skip: args.offset,
+        take: args.limit,
+        orderBy: { name: 'asc' },
+        include: {
+          accession: true,
+          graviScans: { where: scansWhere, include: { images: true } },
+          graviPlateAssignments: true,
+        },
+      }),
+    ]);
+
+    let result = experiments.map((exp) => ({
+      ...exp,
+      hasNeedsReview: exp.graviPlateAssignments.some(
+        (a) => a.verification_status === 'needs_review'
+      ),
+    }));
+
+    if (filters.uploadStatus) {
+      const status = filters.uploadStatus;
+      result = result.filter((exp) => {
+        const statuses = exp.graviScans.flatMap((s) =>
+          s.images.map((img) => img.status)
+        );
+        switch (status) {
+          case 'pending':
+            return (
+              statuses.length === 0 || statuses.every((s) => s === 'pending')
+            );
+          case 'uploaded':
+            return (
+              statuses.length > 0 && statuses.every((s) => s === 'uploaded')
+            );
+          case 'failed':
+            return statuses.some((s) => s === 'failed');
+          default:
+            return true;
+        }
+      });
+    }
+
+    return { success: true, data: { experiments: result, total } };
+  } catch (error) {
+    console.error('[DB] Failed to browse GraviScan experiments:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Single-experiment detail view: non-deleted scans ordered by
+ * (cycle_number, scanner_id, plate_index), plus a verificationStatusMap
+ * keyed "scannerId:plateIndex". Never leaks another experiment's rows,
+ * even when it shares a scanner (the exact bug class the verify-plates
+ * port already found and fixed once).
+ */
+export async function graviscansExperimentDetail(
+  db: Db,
+  experimentId: string
+): Promise<
+  DatabaseResponse<{
+    scans: Prisma.GraviScanGetPayload<object>[];
+    verificationStatusMap: Record<string, string>;
+  }>
+> {
+  try {
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    const experiment = await db.experiment.findUnique({
+      where: { id: experimentId },
+    });
+    if (!experiment) {
+      return { success: false, error: `Experiment not found: ${experimentId}` };
+    }
+    const scans = await db.graviScan.findMany({
+      where: { experiment_id: experimentId, deleted: false },
+      orderBy: [
+        { cycle_number: 'asc' },
+        { scanner_id: 'asc' },
+        { plate_index: 'asc' },
+      ],
+    });
+    const assignments = await db.graviScanPlateAssignment.findMany({
+      where: { experiment_id: experimentId },
+    });
+    const verificationStatusMap: Record<string, string> = {};
+    for (const a of assignments) {
+      verificationStatusMap[`${a.scanner_id}:${a.plate_index}`] =
+        a.verification_status;
+    }
+    return { success: true, data: { scans, verificationStatusMap } };
+  } catch (error) {
+    console.error('[DB] Failed to get experiment detail:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+// -----------------------------------------------------------------------
+// database.graviscanSessions.*
+// -----------------------------------------------------------------------
+
+export interface GraviScanSessionCreateInput {
+  experiment_id: string;
+  phenotyper_id: string;
+  scan_mode: string;
+  interval_seconds?: number | null;
+  duration_seconds?: number | null;
+  total_cycles?: number | null;
+}
+
+export async function graviscanSessionsCreate(
+  db: Db,
+  data: GraviScanSessionCreateInput
+): Promise<DatabaseResponse> {
+  try {
+    if (!isNonEmptyString(data?.experiment_id)) {
+      return {
+        success: false,
+        error: 'experiment_id must be a non-empty string',
+      };
+    }
+    if (!isNonEmptyString(data?.phenotyper_id)) {
+      return {
+        success: false,
+        error: 'phenotyper_id must be a non-empty string',
+      };
+    }
+    const created = await db.graviScanSession.create({
+      data: {
+        experiment_id: data.experiment_id,
+        phenotyper_id: data.phenotyper_id,
+        scan_mode: data.scan_mode,
+        interval_seconds: data.interval_seconds ?? null,
+        duration_seconds: data.duration_seconds ?? null,
+        total_cycles: data.total_cycles ?? null,
+      },
+    });
+    logDatabaseOperation('CREATE', 'GraviScanSession', `id=${created.id}`);
+    return { success: true, data: created };
+  } catch (error) {
+    console.error('[DB] Failed to create GraviScanSession:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+export interface GraviScanSessionCompleteInput {
+  session_id: string;
+  cancelled?: boolean;
+}
+
+export async function graviscanSessionsComplete(
+  db: Db,
+  args: GraviScanSessionCompleteInput
+): Promise<DatabaseResponse> {
+  try {
+    if (!isNonEmptyString(args?.session_id)) {
+      return { success: false, error: 'session_id must be a non-empty string' };
+    }
+    const updated = await db.graviScanSession.update({
+      where: { id: args.session_id },
+      data: { completed_at: new Date(), cancelled: args.cancelled ?? false },
+    });
+    return { success: true, data: updated };
+  } catch (error) {
+    // Prisma throws (P2025) when the row doesn't exist — caught here so
+    // the IPC boundary never sees an unhandled rejection.
+    console.error('[DB] Failed to complete GraviScanSession:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+// -----------------------------------------------------------------------
+// database.graviscanPlateAssignments.*
+// -----------------------------------------------------------------------
+
+export async function graviscanPlateAssignmentsList(
+  db: Db,
+  experimentId: string,
+  scannerId: string
+): Promise<DatabaseResponse> {
+  try {
+    if (!isNonEmptyString(experimentId) || !isNonEmptyString(scannerId)) {
+      return {
+        success: false,
+        error: 'experimentId and scannerId must be non-empty strings',
+      };
+    }
+    const rows = await db.graviScanPlateAssignment.findMany({
+      where: { experiment_id: experimentId, scanner_id: scannerId },
+      orderBy: { plate_index: 'asc' },
+    });
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error('[DB] Failed to list plate assignments:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+export interface PlateAssignmentUpsertInput {
+  plate_index: string;
+  plate_barcode?: string | null;
+  transplant_date?: string | Date | null;
+  custom_note?: string | null;
+  selected?: boolean;
+  verification_status?: string;
+  previous_plate_barcode?: string | null;
+}
+
+export async function graviscanPlateAssignmentsUpsertMany(
+  db: Db,
+  experimentId: string,
+  scannerId: string,
+  assignments: PlateAssignmentUpsertInput[]
+): Promise<DatabaseResponse> {
+  try {
+    if (!isNonEmptyString(experimentId) || !isNonEmptyString(scannerId)) {
+      return {
+        success: false,
+        error: 'experimentId and scannerId must be non-empty strings',
+      };
+    }
+    const rows = await db.$transaction(async (tx) => {
+      const written = [];
+      for (const a of assignments) {
+        const row = await tx.graviScanPlateAssignment.upsert({
+          where: {
+            experiment_id_scanner_id_plate_index: {
+              experiment_id: experimentId,
+              scanner_id: scannerId,
+              plate_index: a.plate_index,
+            },
+          },
+          create: {
+            experiment_id: experimentId,
+            scanner_id: scannerId,
+            plate_index: a.plate_index,
+            plate_barcode: a.plate_barcode ?? null,
+            transplant_date: a.transplant_date
+              ? new Date(a.transplant_date)
+              : null,
+            custom_note: a.custom_note ?? null,
+            selected: a.selected ?? true,
+            verification_status: a.verification_status ?? 'pending',
+            previous_plate_barcode: a.previous_plate_barcode ?? null,
+          },
+          update: {
+            plate_barcode: a.plate_barcode ?? null,
+            transplant_date: a.transplant_date
+              ? new Date(a.transplant_date)
+              : null,
+            custom_note: a.custom_note ?? null,
+            selected: a.selected ?? true,
+            verification_status: a.verification_status ?? 'pending',
+            previous_plate_barcode: a.previous_plate_barcode ?? null,
+          },
+        });
+        written.push(row);
+      }
+      return written;
+    });
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error('[DB] Failed to upsert plate assignments:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+// -----------------------------------------------------------------------
+// database.graviPlateAccessions.*
+// -----------------------------------------------------------------------
+
+export interface GraviPlateSectionInput {
+  plate_section_id: string;
+  plant_qr: string;
+  medium?: string | null;
+}
+
+export interface GraviPlateInput {
+  plate_id: string;
+  accession: string;
+  transplant_date?: string | Date | null;
+  custom_note?: string | null;
+  sections: GraviPlateSectionInput[];
+}
+
+export async function graviPlateAccessionsCreateWithSections(
+  db: Db,
+  accessionData: { name: string },
+  plates: GraviPlateInput[]
+): Promise<
+  DatabaseResponse<{
+    metadataFileId: string;
+    totalPlates: number;
+    totalSections: number;
+  }>
+> {
+  try {
+    if (!isNonEmptyString(accessionData?.name)) {
+      return {
+        success: false,
+        error: 'accessionData.name must be a non-empty string',
+      };
+    }
+    if (!Array.isArray(plates)) {
+      return { success: false, error: 'plates must be an array' };
+    }
+    for (const plate of plates) {
+      if (
+        !isNonEmptyString(plate?.plate_id) ||
+        !isNonEmptyString(plate?.accession)
+      ) {
+        return {
+          success: false,
+          error: 'each plate requires a non-empty plate_id and accession',
+        };
+      }
+      if (!Array.isArray(plate.sections)) {
+        return {
+          success: false,
+          error: `plate ${plate.plate_id} sections must be an array`,
+        };
+      }
+      for (const section of plate.sections) {
+        if (
+          !isNonEmptyString(section?.plate_section_id) ||
+          !isNonEmptyString(section?.plant_qr)
+        ) {
+          return {
+            success: false,
+            error:
+              'each section requires a non-empty plate_section_id and plant_qr',
+          };
+        }
+      }
+    }
+
+    const result = await db.$transaction(async (tx) => {
+      const accessionRow = await tx.accessions.create({
+        data: { name: accessionData.name },
+      });
+      let totalSections = 0;
+      for (const plate of plates) {
+        const plateRow = await tx.graviPlateAccession.create({
+          data: {
+            metadata_file_id: accessionRow.id,
+            plate_id: plate.plate_id,
+            accession: plate.accession,
+            transplant_date: plate.transplant_date
+              ? new Date(plate.transplant_date)
+              : null,
+            custom_note: plate.custom_note ?? null,
+          },
+        });
+        for (const section of plate.sections) {
+          await tx.graviPlateSectionMapping.create({
+            data: {
+              gravi_plate_id: plateRow.id,
+              plate_section_id: section.plate_section_id,
+              plant_qr: section.plant_qr,
+              medium: section.medium ?? null,
+            },
+          });
+          totalSections++;
+        }
+      }
+      return {
+        metadataFileId: accessionRow.id,
+        totalPlates: plates.length,
+        totalSections,
+      };
+    });
+    logDatabaseOperation(
+      'CREATE',
+      'GraviPlateAccession',
+      `metadataFileId=${result.metadataFileId} plates=${result.totalPlates} sections=${result.totalSections}`
+    );
+    return { success: true, data: result };
+  } catch (error) {
+    console.error(
+      '[DB] Failed to create plate accessions with sections:',
+      error
+    );
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Naturally-sorted plates (and each plate's naturally-sorted sections)
+ * for a metadata file. Empty array (not an error) when the file has zero
+ * plates.
+ */
+export async function graviPlateAccessionsList(
+  db: Db,
+  metadataFileId: string
+): Promise<DatabaseResponse> {
+  try {
+    if (!isNonEmptyString(metadataFileId)) {
+      return {
+        success: false,
+        error: 'metadataFileId must be a non-empty string',
+      };
+    }
+    const plates = await db.graviPlateAccession.findMany({
+      where: { metadata_file_id: metadataFileId },
+      include: { sections: true },
+    });
+    const sorted = plates
+      .map((p) => ({
+        ...p,
+        sections: [...p.sections].sort((a, b) =>
+          naturalCompare(a.plate_section_id, b.plate_section_id)
+        ),
+      }))
+      .sort((a, b) => naturalCompare(a.plate_id, b.plate_id));
+    return { success: true, data: sorted };
+  } catch (error) {
+    console.error('[DB] Failed to list plate accessions:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Lists `Accessions` rows that have at least one linked
+ * `GraviPlateAccession` child. Takes NO filesystem path argument — see
+ * design.md Open Question 5: this queries rows with linked children, it
+ * does not list a directory.
+ */
+export async function graviPlateAccessionsListFiles(
+  db: Db
+): Promise<DatabaseResponse> {
+  try {
+    const rows = await db.accessions.findMany({
+      where: { graviPlateAccessions: { some: {} } },
+      include: {
+        graviPlateAccessions: true,
+        experiments: { select: { name: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+    const data = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      createdAt: r.createdAt,
+      plateCount: r.graviPlateAccessions.length,
+      experimentNames: r.experiments.map((e) => e.name),
+    }));
+    return { success: true, data };
+  } catch (error) {
+    console.error('[DB] Failed to list plate accession files:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Deletes an `Accessions` row (and, via schema-level `onDelete: Cascade`,
+ * its `GraviPlateAccession`/`GraviPlateSectionMapping` children) unless
+ * it is still referenced by `Experiment.accession_id` (mirrors the
+ * reference implementation's `countMetadataReferences` concept, scoped
+ * to what exists on `main` — no `graviExperimentWaveMetadata` count term,
+ * see design.md Decision 1).
+ */
+export async function graviPlateAccessionsDelete(
+  db: Db,
+  metadataFileId: string
+): Promise<DatabaseResponse> {
+  try {
+    if (!isNonEmptyString(metadataFileId)) {
+      return {
+        success: false,
+        error: 'metadataFileId must be a non-empty string',
+      };
+    }
+    const refCount = await db.experiment.count({
+      where: { accession_id: metadataFileId },
+    });
+    if (refCount > 0) {
+      return {
+        success: false,
+        error:
+          'Cannot delete: this metadata file is linked to one or more experiments',
+      };
+    }
+    await db.$transaction(async (tx) => {
+      const plates = await tx.graviPlateAccession.findMany({
+        where: { metadata_file_id: metadataFileId },
+        select: { id: true },
+      });
+      const plateIds = plates.map((p) => p.id);
+      if (plateIds.length > 0) {
+        await tx.graviPlateSectionMapping.deleteMany({
+          where: { gravi_plate_id: { in: plateIds } },
+        });
+        await tx.graviPlateAccession.deleteMany({
+          where: { metadata_file_id: metadataFileId },
+        });
+      }
+      await tx.accessions.delete({ where: { id: metadataFileId } });
+    });
+    logDatabaseOperation(
+      'DELETE',
+      'GraviPlateAccession',
+      `metadataFileId=${metadataFileId}`
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('[DB] Failed to delete plate accession file:', error);
+    return { success: false, error: errorMessage(error) };
   }
 }
 
@@ -969,6 +1808,89 @@ export function registerDatabaseHandlers() {
         };
       }
     }
+  );
+
+  // ============================================
+  // GraviScans (add-graviscan-data-layer-and-events)
+  //
+  // NOTE (tasks.md Section 6, design.md Decision 1): the reference
+  // implementation also exposes `experiments.listGraviMetadata`/
+  // `linkGraviMetadata`/`unlinkGraviMetadata`, backed by a
+  // `GraviExperimentWaveMetadata` Prisma model that does not exist on
+  // `main`. Adding that model is out of scope for this change (it would
+  // be a new schema migration deserving its own dedicated review, not a
+  // rider here) — these three handlers are deliberately NOT implemented.
+  // See design.md Open Question 1 for what a future Tier 5 proposal
+  // should do about this.
+  // ============================================
+
+  ipcMain.handle('db:graviscans:create', (_event, data) =>
+    graviscansCreate(db, data)
+  );
+  ipcMain.handle('db:graviscans:getMaxWaveNumber', (_event, experimentId) =>
+    graviscansGetMaxWaveNumber(db, experimentId)
+  );
+  ipcMain.handle('db:graviscans:checkBarcodeUniqueInWave', (_event, args) =>
+    graviscansCheckBarcodeUniqueInWave(db, args)
+  );
+  ipcMain.handle('db:graviscans:updateGridTimestamps', (_event, args) =>
+    graviscansUpdateGridTimestamps(db, args)
+  );
+  ipcMain.handle('db:graviscans:browseByExperiment', (_event, args) =>
+    graviscansBrowseByExperiment(db, args)
+  );
+  ipcMain.handle('db:graviscans:experimentDetail', (_event, experimentId) =>
+    graviscansExperimentDetail(db, experimentId)
+  );
+
+  // ============================================
+  // GraviScan Sessions
+  // ============================================
+
+  ipcMain.handle('db:graviscanSessions:create', (_event, data) =>
+    graviscanSessionsCreate(db, data)
+  );
+  ipcMain.handle('db:graviscanSessions:complete', (_event, args) =>
+    graviscanSessionsComplete(db, args)
+  );
+
+  // ============================================
+  // GraviScan Plate Assignments
+  // ============================================
+
+  ipcMain.handle(
+    'db:graviscanPlateAssignments:list',
+    (_event, experimentId, scannerId) =>
+      graviscanPlateAssignmentsList(db, experimentId, scannerId)
+  );
+  ipcMain.handle(
+    'db:graviscanPlateAssignments:upsertMany',
+    (_event, experimentId, scannerId, assignments) =>
+      graviscanPlateAssignmentsUpsertMany(
+        db,
+        experimentId,
+        scannerId,
+        assignments
+      )
+  );
+
+  // ============================================
+  // GraviScan Plate Accessions
+  // ============================================
+
+  ipcMain.handle(
+    'db:graviPlateAccessions:createWithSections',
+    (_event, accessionData, plates) =>
+      graviPlateAccessionsCreateWithSections(db, accessionData, plates)
+  );
+  ipcMain.handle('db:graviPlateAccessions:list', (_event, metadataFileId) =>
+    graviPlateAccessionsList(db, metadataFileId)
+  );
+  ipcMain.handle('db:graviPlateAccessions:listFiles', () =>
+    graviPlateAccessionsListFiles(db)
+  );
+  ipcMain.handle('db:graviPlateAccessions:delete', (_event, metadataFileId) =>
+    graviPlateAccessionsDelete(db, metadataFileId)
   );
 
   console.log('[DB] Registered all database IPC handlers');

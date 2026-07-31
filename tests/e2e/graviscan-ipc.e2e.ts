@@ -234,11 +234,11 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(result.data.isActive).toBe(false);
   });
 
-  test('event listener returns cleanup function', async () => {
+  test('event listener returns cleanup function (task 12.6 — retargeted from onScanEvent)', async () => {
     const result = await window.evaluate(() => {
       const cleanup = (
         window as unknown as WindowWithElectron
-      ).electron.gravi.onScanEvent(() => {});
+      ).electron.gravi.onScanStarted(() => {});
       const isFunction = typeof cleanup === 'function';
       cleanup(); // Clean up the listener
       return isFunction;
