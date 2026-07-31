@@ -133,6 +133,14 @@ class ScanWorker:
         # _mock_scan on successful image acquisition. Exposed via the
         # scan-error event for wedge detection (#236).
         self._last_scan_bytes_received = 0
+        # Resolution the device/worker actually achieved on the most
+        # recent successful scan attempt (#232). Set by _sane_scan (after
+        # reading back self._device.x_resolution/y_resolution — the SANE
+        # backend can silently round the requested value) or _mock_scan
+        # (which has no real device to diverge from the request, so it
+        # always echoes the requested value back). Threaded into the
+        # scan-complete event payload by _scan_plate.
+        self._last_achieved_resolution = 0
 
     def initialize(self) -> bool:
         """Initialize SANE and open the device. Returns True on success."""
@@ -362,6 +370,10 @@ class ScanWorker:
                     "job_id": job_id,
                     "path": final_path,
                     "duration_ms": duration_ms,
+                    # Actual resolution the device/worker achieved (#232) —
+                    # set by _sane_scan (read back from the device) or
+                    # _mock_scan (always equals the requested value).
+                    "achieved_resolution": self._last_achieved_resolution,
                 }
             )
 
@@ -439,6 +451,37 @@ class ScanWorker:
                 self._device.y_resolution = resolution
                 self._device.mode = "Color"
 
+                # Read back what the device actually applied, immediately
+                # after setting and before scanning (#232). Some SANE
+                # backends silently round/quantize the requested
+                # resolution rather than raising — trusting the requested
+                # value unconditionally would mean the TIFF and the
+                # scan-complete event both lie about what was actually
+                # captured.
+                achieved_x = getattr(self._device, "x_resolution", resolution)
+                achieved_y = getattr(self._device, "y_resolution", resolution)
+                if achieved_x != resolution or achieved_y != resolution:
+                    log(
+                        self.scanner_id,
+                        f"WARNING: resolution mismatch — requested {resolution}dpi "
+                        f"but device reports x_resolution={achieved_x} "
+                        f"y_resolution={achieved_y}",
+                    )
+                # A misbehaving (non-throwing) readback — e.g. 0, negative,
+                # or a non-numeric value — must not be trusted into the TIFF
+                # metadata / scan-complete event as-is: fall back to the
+                # requested value, same as the AttributeError case above.
+                if not isinstance(achieved_x, (int, float)) or achieved_x <= 0:
+                    log(
+                        self.scanner_id,
+                        f"WARNING: implausible x_resolution readback "
+                        f"({achieved_x!r}) — falling back to requested "
+                        f"{resolution}dpi",
+                    )
+                    achieved_x = resolution
+                achieved_resolution = achieved_x
+                self._last_achieved_resolution = achieved_resolution
+
                 # Set scan region geometry
                 self._device.tl_x = region.left
                 self._device.tl_y = region.top
@@ -465,7 +508,7 @@ class ScanWorker:
                     self.scanner_id,
                     grid_mode,
                     plate_index,
-                    resolution,
+                    achieved_resolution,
                     region,
                     exp_name,
                     wave_number,
@@ -674,6 +717,10 @@ class ScanWorker:
         # scan-error/scan-complete payloads remain consistent between
         # mock and real scanners).
         self._last_scan_bytes_received = image.width * image.height * 3
+
+        # No real device to diverge from the request in mock mode (#232)
+        # — the achieved value always equals the requested value.
+        self._last_achieved_resolution = resolution
 
         et = datetime.now().strftime("%Y%m%dT%H%M%S")
         final_path = compose_output_path(output_path, et)

@@ -95,8 +95,11 @@ describe('preload gravi namespace', () => {
   });
 
   describe('event listeners', () => {
+    // task 12.1a: onScanEvent removed, onScanStarted + onScanComplete
+    // added (12 - 1 + 2 = 13).
     const listenerMethods = [
-      'onScanEvent',
+      'onScanStarted',
+      'onScanComplete',
       'onGridStart',
       'onGridComplete',
       'onCycleComplete',
@@ -110,56 +113,80 @@ describe('preload gravi namespace', () => {
       'onDownloadProgress',
     ];
 
-    it('has all 12 event listener methods', () => {
+    it('has all 13 event listener methods', () => {
       for (const method of listenerMethods) {
         expect(typeof exposedAPI.gravi[method]).toBe('function');
       }
     });
 
-    it('onScanEvent registers listener on correct channel', () => {
+    it('does not expose onScanEvent', () => {
+      expect(exposedAPI.gravi.onScanEvent).toBeUndefined();
+    });
+
+    it('onScanStarted registers listener on correct channel (task 12.1b — retargeted from onScanEvent)', () => {
       const callback = vi.fn();
-      exposedAPI.gravi.onScanEvent(callback);
+      exposedAPI.gravi.onScanStarted(callback);
       expect(mockOn).toHaveBeenCalledWith(
-        'graviscan:scan-event',
+        'graviscan:scan-started',
         expect.any(Function)
       );
     });
 
-    it('onScanEvent returns cleanup function', () => {
+    it('onScanStarted returns cleanup function (task 12.1c — retargeted from onScanEvent)', () => {
       const callback = vi.fn();
-      const cleanup = exposedAPI.gravi.onScanEvent(callback);
+      const cleanup = exposedAPI.gravi.onScanStarted(callback);
       expect(typeof cleanup).toBe('function');
     });
 
-    it('cleanup function calls removeListener', () => {
+    it('cleanup function calls removeListener (task 12.1d — retargeted from onScanEvent)', () => {
       const callback = vi.fn();
-      const cleanup = exposedAPI.gravi.onScanEvent(callback);
+      const cleanup = exposedAPI.gravi.onScanStarted(callback);
       cleanup();
       expect(mockRemoveListener).toHaveBeenCalledWith(
-        'graviscan:scan-event',
+        'graviscan:scan-started',
         expect.any(Function)
       );
     });
 
-    it('listener invokes callback with event data', () => {
+    it('listener invokes callback with event data (task 12.1e — retargeted from onScanEvent)', () => {
       const callback = vi.fn();
-      exposedAPI.gravi.onScanEvent(callback);
+      exposedAPI.gravi.onScanStarted(callback);
 
       // Get the listener that was registered
       const registeredListener = mockOn.mock.calls.find(
-        (call: any[]) => call[0] === 'graviscan:scan-event'
+        (call: any[]) => call[0] === 'graviscan:scan-started'
       )?.[1];
       expect(registeredListener).toBeTruthy();
 
       // Simulate event
       registeredListener(
         {},
-        { type: 'scan-complete', scanner_id: 'scanner-1' }
+        { jobId: 'scanner-1:00', scannerId: 'scanner-1', plateIndex: '00' }
       );
       expect(callback).toHaveBeenCalledWith({
-        type: 'scan-complete',
-        scanner_id: 'scanner-1',
+        jobId: 'scanner-1:00',
+        scannerId: 'scanner-1',
+        plateIndex: '00',
       });
+    });
+
+    it('onScanComplete registers listener on correct channel', () => {
+      const callback = vi.fn();
+      exposedAPI.gravi.onScanComplete(callback);
+      expect(mockOn).toHaveBeenCalledWith(
+        'graviscan:scan-complete',
+        expect.any(Function)
+      );
+    });
+
+    it('onScanComplete cleanup function calls removeListener', () => {
+      const callback = vi.fn();
+      const cleanup = exposedAPI.gravi.onScanComplete(callback);
+      cleanup();
+      expect(mockRemoveListener).toHaveBeenCalledWith(
+        'graviscan:scan-complete',
+        expect.any(Function)
+      );
     });
   });
 });

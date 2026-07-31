@@ -17,7 +17,6 @@
 import type { SessionFns } from './session-handlers';
 import type { ScanSessionState } from '../../types/graviscan';
 import type { ScanCoordinator } from './scan-coordinator';
-import type { ScanWorkerEvent } from './scanner-subprocess';
 import type { BrowserWindow } from 'electron';
 import { WedgeDetector, type WedgeDetectedEvent } from '../wedge-detector';
 import { SlackNotifier } from '../slack-notifier';
@@ -64,6 +63,62 @@ let _db: ScannerLookupDb | null = null;
  * or a DB error all fall back to the original, unenriched event rather
  * than blocking or dropping the Slack notification.
  */
+/**
+ * Shape of the payloads arriving on the three granular per-job channels
+ * (`scan-started`/`scan-complete`/`scan-error`, design.md Decision 2).
+ *
+ * Two distinct origins feed these channels, with two distinct field
+ * casings:
+ *  - Subprocess-relayed events (`ScanCoordinator`'s `sub.on('event', ...)`
+ *    listener) spread the original worker payload (snake_case
+ *    `scanner_id`/`plate_index`, plus `job_id`/`error`/`bytes_received`/
+ *    `wall_seconds` on error) AND add camelCase `scannerId`/`plateIndex`/
+ *    `jobId` — both casings are present.
+ *  - Coordinator-originated `scan-error` events (row-timeout, missing-
+ *    output-file, cannot-stat-file, zero-size-file — `scanOnce()`'s 4
+ *    direct `this.emit('scan-error', ...)` call sites) use ONLY the
+ *    camelCase `scannerId`/`plateIndex`/`jobId` shape — they never went
+ *    through the subprocess relay, so they have no snake_case fields at
+ *    all. This is exactly the design.md Decision 2 "found bug": these
+ *    events were previously invisible to wedge detection because
+ *    `setupWedgeDetection()` only listened on the old generic
+ *    `scan-event` bus, which they were never emitted on either.
+ *
+ * `resolveScannerId()`/`resolvePlateIndex()` below accept either shape.
+ */
+interface GranularScanEvent {
+  scanner_id?: string;
+  scannerId?: string;
+  plate_index?: string;
+  plateIndex?: string;
+  job_id?: string;
+  jobId?: string;
+  error?: string;
+  bytes_received?: number;
+  wall_seconds?: number;
+  cycle_number?: number;
+}
+
+function resolveScannerId(event: GranularScanEvent): string {
+  return event.scanner_id ?? event.scannerId ?? '';
+}
+
+function resolvePlateIndex(event: GranularScanEvent): string {
+  return event.plate_index ?? event.plateIndex ?? '';
+}
+
+/**
+ * Coordinator-originated `scan-error` events (row-timeout, missing/cannot-
+ * stat/zero-size output file) only ever set camelCase `jobId`, never
+ * snake_case `job_id` — see the GranularScanEvent doc comment above.
+ * Reading `event.job_id` alone left the Slack alert's job_id confusingly
+ * blank for exactly the failure class this granular event model was
+ * built to surface (#245 review finding).
+ */
+function resolveJobId(event: GranularScanEvent): string {
+  return event.job_id ?? event.jobId ?? '';
+}
+
 async function enrichWedgeEvent(
   evt: WedgeDetectedEvent,
   db: ScannerLookupDb | null
@@ -117,7 +172,10 @@ export function setupCoordinatorEventForwarding(
   getMainWindow: () => BrowserWindow | null
 ): void {
   const events = [
-    'scan-event',
+    // Granular per-job channels (design.md Decision 2) — replace the
+    // retired generic 'scan-event' bus.
+    'scan-started',
+    'scan-complete',
     'grid-start',
     'grid-complete',
     'cycle-complete',
@@ -172,10 +230,16 @@ export function setupCoordinatorEventForwarding(
  *   available or a `startedAt`-based fallback, and torn down on
  *   `interval-complete` so a fresh detector starts each session with
  *   clean per-scanner-per-cycle counters.
- * - `scan-event` routes cycle_number changes to `onCycleStart`, and
+ * - `scan-started` routes cycle_number changes to `onCycleStart`, and
  *   `scan-error`/`scan-complete` to `onScanError`/`onScanEnd`, with
  *   defensive type-guard defaults for `bytes_received`/`wall_seconds`
- *   (a worker could in theory emit a legacy event without them).
+ *   (a worker could in theory emit a legacy event without them). The
+ *   old generic `scan-event` bus (an embedded `type` field) is retired
+ *   (design.md Decision 2) — `scan-error` now unifies BOTH subprocess-
+ *   originated errors and the coordinator's own directly-emitted ones
+ *   (row-timeout, file-verification failures), which were previously
+ *   invisible to wedge detection (the found-bug fix this migration
+ *   closes).
  * - `onWedge` enriches the event with the scanner's `display_name`/
  *   `usb_port` (looked up via `db`, final-review fix #4) before handing
  *   it to the `SlackNotifier` — see `enrichWedgeEvent()` above.
@@ -218,9 +282,13 @@ export function setupWedgeDetection(
     lastSeenCycleNumber = -1;
   });
 
-  coordinator.on('scan-event', (event: ScanWorkerEvent) => {
+  // Cycle tracking: driven by scan-started (subprocess-relayed, always
+  // carries cycle_number — see ScanCoordinator's sub.on('event', ...)
+  // listener). Coordinator-originated scan-error events don't carry
+  // cycle_number at all; they don't need to — they only fire mid-cycle,
+  // after a scan-started for that cycle has already updated it.
+  coordinator.on('scan-started', (event: GranularScanEvent) => {
     if (!wedgeDetector) return;
-
     if (
       typeof event.cycle_number === 'number' &&
       event.cycle_number !== lastSeenCycleNumber
@@ -228,32 +296,45 @@ export function setupWedgeDetection(
       wedgeDetector.onCycleStart(event.cycle_number);
       lastSeenCycleNumber = event.cycle_number;
     }
+  });
 
-    if (event.type === 'scan-error') {
-      // Worker emits scan-error with the new bytes_received and
-      // wall_seconds fields (Task 0). Defensive defaults if absent.
-      wedgeDetector.onScanError({
-        scanner_id: event.scanner_id,
-        plate_index: event.plate_index ?? '',
-        job_id: event.job_id ?? '',
-        error: event.error ?? '',
-        bytes_received:
-          typeof event.bytes_received === 'number' ? event.bytes_received : 0,
-        wall_seconds:
-          typeof event.wall_seconds === 'number' ? event.wall_seconds : 0,
-      });
-      wedgeDetector.onScanEnd({
-        scanner_id: event.scanner_id,
-        plate_index: event.plate_index ?? '',
-        success: false,
-      });
-    } else if (event.type === 'scan-complete') {
-      wedgeDetector.onScanEnd({
-        scanner_id: event.scanner_id,
-        plate_index: event.plate_index ?? '',
-        success: true,
-      });
-    }
+  // Unified scan-error channel — both subprocess-originated errors AND
+  // the coordinator's own directly-emitted ones (row-timeout, missing-
+  // output-file, cannot-stat-file, zero-size-file) now reach wedge
+  // detection (design.md Decision 2's found-bug fix).
+  coordinator.on('scan-error', (event: GranularScanEvent) => {
+    if (!wedgeDetector) return;
+
+    const scannerId = resolveScannerId(event);
+    const plateIndex = resolvePlateIndex(event);
+
+    // Worker emits scan-error with bytes_received/wall_seconds (Task 0).
+    // Coordinator-originated scan-error events never carry these —
+    // defensive defaults cover both cases.
+    wedgeDetector.onScanError({
+      scanner_id: scannerId,
+      plate_index: plateIndex,
+      job_id: resolveJobId(event),
+      error: event.error ?? '',
+      bytes_received:
+        typeof event.bytes_received === 'number' ? event.bytes_received : 0,
+      wall_seconds:
+        typeof event.wall_seconds === 'number' ? event.wall_seconds : 0,
+    });
+    wedgeDetector.onScanEnd({
+      scanner_id: scannerId,
+      plate_index: plateIndex,
+      success: false,
+    });
+  });
+
+  coordinator.on('scan-complete', (event: GranularScanEvent) => {
+    if (!wedgeDetector) return;
+    wedgeDetector.onScanEnd({
+      scanner_id: resolveScannerId(event),
+      plate_index: resolvePlateIndex(event),
+      success: true,
+    });
   });
 }
 
