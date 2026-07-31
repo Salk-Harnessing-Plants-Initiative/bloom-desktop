@@ -298,6 +298,14 @@ test.describe('Configure Scanner page', () => {
   });
 
   test('Reset All USB Connections marks rows starting, then settles back to a populated list', async () => {
+    // resetUsb() has real, intentional hardware-safety delays: a 5s USB
+    // bus-release wait plus a 5s stagger between each of the 2 mock
+    // scanners' re-initialization (USB_RELEASE_WAIT_MS/USB_STAGGER_DELAY_MS
+    // in scanner-handlers.ts/scan-coordinator.ts), plus per-subprocess
+    // startup time. A short poll timeout here is a test-timing bug, not a
+    // reason to shorten the app's deliberate reset delays.
+    test.setTimeout(90000);
+
     await window.click('text=Configure Scanner');
     await window.waitForSelector('h1:has-text("Configure Scanner")');
 
@@ -310,7 +318,7 @@ test.describe('Configure Scanner page', () => {
     await expect
       .poll(
         async () => window.locator('table tbody tr:has-text("ready")').count(),
-        { timeout: 15000 }
+        { timeout: 45000 }
       )
       .toBeGreaterThan(0);
   });
