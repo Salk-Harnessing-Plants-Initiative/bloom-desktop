@@ -30,6 +30,16 @@ const MOCK_SCANNER_COUNT = 2;
 /** Time to wait for USB bus to release after subprocess shutdown. */
 const USB_RELEASE_WAIT_MS = 5000;
 
+/**
+ * Build a SANE device name from a scanner's USB bus/device numbers,
+ * zero-padded to 3 digits each. Shared by the save-scanners-db spawn-on-
+ * discovery path and the wedge-response `retry-scanner` handler, so the
+ * format lives in exactly one place.
+ */
+export function buildSaneName(usbBus: number, usbDevice: number): string {
+  return `epkowa:interpreter:${String(usbBus).padStart(3, '0')}:${String(usbDevice).padStart(3, '0')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers — mock-scanner construction & DB matching
 // ---------------------------------------------------------------------------

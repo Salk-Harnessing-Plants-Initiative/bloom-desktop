@@ -371,6 +371,8 @@ const graviAPI = {
   markJobRecorded: (jobKey: string) =>
     ipcRenderer.invoke('graviscan:mark-job-recorded', jobKey),
   cancelScan: () => ipcRenderer.invoke('graviscan:cancel-scan'),
+  retryScanner: (scannerId: string) =>
+    ipcRenderer.invoke('graviscan:retry-scanner', scannerId),
 
   // Image operations
   getOutputDir: () => ipcRenderer.invoke('graviscan:get-output-dir'),
@@ -453,6 +455,12 @@ const graviAPI = {
     ipcRenderer.on('graviscan:download-progress', listener);
     return () =>
       ipcRenderer.removeListener('graviscan:download-progress', listener);
+  },
+  onWedgeDetected: (callback: (event: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:wedge-detected', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:wedge-detected', listener);
   },
 };
 /* eslint-enable @typescript-eslint/no-explicit-any */

@@ -14,6 +14,7 @@ vi.mock('../../../src/main/graviscan/scan-coordinator', () => {
     const emitter = new EventEmitter();
     return Object.assign(emitter, {
       shutdown: vi.fn().mockResolvedValue(undefined),
+      stopScanner: vi.fn().mockResolvedValue(undefined),
     });
   });
   return { ScanCoordinator: MockCoordinator };
@@ -68,6 +69,7 @@ describe('GraviScan wiring module', () => {
       const emitter = new EventEmitter();
       return Object.assign(emitter, {
         shutdown: vi.fn().mockResolvedValue(undefined),
+        stopScanner: vi.fn().mockResolvedValue(undefined),
       }) as unknown as InstanceType<typeof ScanCoordinator>;
     });
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -303,6 +305,19 @@ describe('GraviScan wiring module', () => {
       });
     }
 
+    // Shared mock coordinator for this block — an EventEmitter (the real
+    // setupWedgeDetection() only ever calls .on()/.emit() on its `coordinator`
+    // argument, so an EventEmitter models the surface it needs) with
+    // `stopScanner` attached, since auto-pause (design.md Decision 1) now
+    // calls `coordinator.stopScanner()` from inside `onWedge`.
+    function createMockWedgeCoordinator(): EventEmitter & {
+      stopScanner: ReturnType<typeof vi.fn>;
+    } {
+      return Object.assign(new EventEmitter(), {
+        stopScanner: vi.fn().mockResolvedValue(undefined),
+      });
+    }
+
     it('interval-start → scan-error (sane_start_invalid) → Slack POST + scanLog fire end-to-end, using the active session id', async () => {
       graviSessionFns.setScanSession({
         sessionId: 'sess-real-42',
@@ -310,7 +325,7 @@ describe('GraviScan wiring module', () => {
         jobs: {},
       } as any);
 
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
 
       coordinator.emit('interval-start', {
@@ -351,7 +366,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('falls back to a startedAt-based session id when no active scan session exists', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
 
       coordinator.emit('interval-start', { startedAt: 999999 });
@@ -365,7 +380,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('routes two same-cycle scan-error events for one scanner to a single consecutive_failures wedge', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
       coordinator.emit('interval-start', { startedAt: 1 });
 
@@ -389,7 +404,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('scan-complete resolves a scanner without triggering a wedge (recovered path) (task 11.2 — retargeted from scan-event)', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
       coordinator.emit('interval-start', { startedAt: 1 });
 
@@ -405,7 +420,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('tears down the detector on interval-complete — a later scan-error no longer triggers a wedge', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
       coordinator.emit('interval-start', { startedAt: 1 });
       coordinator.emit('interval-complete', {
@@ -422,7 +437,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('does not POST to Slack when scan-error fires before any interval-start (no detector yet) (task 11.2b — renamed from scan-event)', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
 
       emitScanError(coordinator, { scanner_id: 'sc-too-early' });
@@ -434,7 +449,7 @@ describe('GraviScan wiring module', () => {
     it('does not POST to Slack when the webhook env var is unset (feature disabled)', async () => {
       delete process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL;
 
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
       coordinator.emit('interval-start', { startedAt: 1 });
       emitScanError(coordinator, { scanner_id: 'sc-disabled' });
@@ -444,7 +459,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('enriches the Slack message with display_name/usb_port looked up from the db (final-review #4)', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       const mockDb = {
         graviScanner: {
           findUnique: vi.fn().mockResolvedValue({
@@ -471,7 +486,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('falls back to the unenriched event when no db is passed', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any); // no db arg — matches every other test in this block
 
       coordinator.emit('interval-start', { startedAt: 1 });
@@ -487,7 +502,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('falls back to the unenriched event when the scanner_id is not found in the db', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       const mockDb = {
         graviScanner: { findUnique: vi.fn().mockResolvedValue(null) },
       };
@@ -505,7 +520,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('falls back to the unenriched event when the db lookup throws', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       const mockDb = {
         graviScanner: {
           findUnique: vi.fn().mockRejectedValue(new Error('DB unavailable')),
@@ -521,7 +536,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('repeated scan-complete events for the same scanner never trigger a wedge (task 11.3 — onScanEnd success routing)', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
       coordinator.emit('interval-start', { startedAt: 1 });
 
@@ -544,7 +559,7 @@ describe('GraviScan wiring module', () => {
     });
 
     it('a coordinator-originated scan-error (camelCase scannerId/plateIndex, no snake_case fields) reaches wedge detection and can contribute to consecutive_failures (task 11.4 — design.md Decision 2 found-bug fix)', async () => {
-      const coordinator = new EventEmitter();
+      const coordinator = createMockWedgeCoordinator();
       setupWedgeDetection(coordinator as any);
       coordinator.emit('interval-start', { startedAt: 1 });
 
@@ -573,6 +588,184 @@ describe('GraviScan wiring module', () => {
       );
       expect(body.text).toContain('sc-coord');
       expect(body.text).toContain('consecutive_failures');
+    });
+
+    // --- Tier 3 additions: auto-pause + renderer forwarding (design.md
+    // Decisions 1 and 6) ---
+
+    it('calls coordinator.stopScanner() to auto-pause the wedged scanner (design.md Decision 1)', async () => {
+      const coordinator = createMockWedgeCoordinator();
+      setupWedgeDetection(coordinator as any);
+
+      coordinator.emit('interval-start', { startedAt: 1 });
+      coordinator.emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 1,
+      });
+      emitScanError(coordinator);
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(coordinator.stopScanner).toHaveBeenCalledTimes(1);
+      expect(coordinator.stopScanner).toHaveBeenCalledWith('sc-1');
+    });
+
+    it('calls stopScanner() immediately, without waiting for the async Slack/enrich pipeline to settle', () => {
+      const coordinator = createMockWedgeCoordinator();
+      // A db lookup that never resolves stands in for a slow/hanging
+      // enrich+Slack pipeline — if stopScanner() were nested inside that
+      // async chain rather than called synchronously first, it would not
+      // have fired yet at the point this test asserts (no await at all).
+      const mockDb = {
+        graviScanner: {
+          findUnique: vi.fn().mockImplementation(() => new Promise(() => {})),
+        },
+      };
+      setupWedgeDetection(coordinator as any, mockDb as any);
+
+      coordinator.emit('interval-start', { startedAt: 1 });
+      coordinator.emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 1,
+      });
+      emitScanError(coordinator);
+
+      expect(coordinator.stopScanner).toHaveBeenCalledTimes(1);
+      expect(coordinator.stopScanner).toHaveBeenCalledWith('sc-1');
+    });
+
+    it('forwards the enriched wedge event to the renderer via getMainWindow (design.md Decision 6)', async () => {
+      const coordinator = createMockWedgeCoordinator();
+      const send = vi.fn();
+      const mockWindow = {
+        isDestroyed: () => false,
+        webContents: { send },
+      };
+      setupWedgeDetection(coordinator as any, null, () => mockWindow as any);
+
+      coordinator.emit('interval-start', { startedAt: 1 });
+      coordinator.emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 1,
+      });
+      emitScanError(coordinator);
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(send).toHaveBeenCalledWith(
+        'graviscan:wedge-detected',
+        expect.objectContaining({
+          scanner_id: 'sc-1',
+          signature: 'sane_start_invalid',
+          session_id: 'session-1',
+          cycle_number: 1,
+          error_message: expect.stringContaining(
+            'sane_start: Invalid argument'
+          ),
+        })
+      );
+    });
+
+    it('omitting getMainWindow does not throw and preserves existing stopScanner/Slack behavior', async () => {
+      const coordinator = createMockWedgeCoordinator();
+      setupWedgeDetection(coordinator as any); // no db, no getMainWindow — existing call shape
+
+      expect(() => {
+        coordinator.emit('interval-start', { startedAt: 1 });
+        coordinator.emit('scan-started', {
+          scanner_id: 'sc-1',
+          plate_index: '00',
+          cycle_number: 1,
+        });
+        emitScanError(coordinator);
+      }).not.toThrow();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(coordinator.stopScanner).toHaveBeenCalledWith('sc-1');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not forward to a destroyed window, but still auto-pauses and notifies Slack', async () => {
+      const coordinator = createMockWedgeCoordinator();
+      const send = vi.fn();
+      const destroyedWindow = {
+        isDestroyed: () => true,
+        webContents: { send },
+      };
+      setupWedgeDetection(
+        coordinator as any,
+        null,
+        () => destroyedWindow as any
+      );
+
+      coordinator.emit('interval-start', { startedAt: 1 });
+      coordinator.emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 1,
+      });
+      expect(() => emitScanError(coordinator)).not.toThrow();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(send).not.toHaveBeenCalled();
+      expect(coordinator.stopScanner).toHaveBeenCalledWith('sc-1');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not forward when getMainWindow returns null, but still auto-pauses and notifies Slack', async () => {
+      const coordinator = createMockWedgeCoordinator();
+      setupWedgeDetection(coordinator as any, null, () => null);
+
+      coordinator.emit('interval-start', { startedAt: 1 });
+      coordinator.emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 1,
+      });
+      expect(() => emitScanError(coordinator)).not.toThrow();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(coordinator.stopScanner).toHaveBeenCalledWith('sc-1');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes a durable scanLog line for the auto-pause, in addition to the existing wedge-detected line (design.md Decision 3/6)', async () => {
+      graviSessionFns.setScanSession({
+        sessionId: 'sess-log-1',
+        isActive: true,
+        jobs: {},
+      } as any);
+
+      const coordinator = createMockWedgeCoordinator();
+      setupWedgeDetection(coordinator as any);
+
+      coordinator.emit('interval-start', {
+        totalCycles: 1,
+        intervalMs: 1000,
+        durationMs: 1000,
+        startedAt: 1,
+      });
+      coordinator.emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 1,
+      });
+      emitScanError(coordinator);
+      await new Promise((r) => setTimeout(r, 0));
+
+      // Pre-existing line — must still fire unchanged.
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '[WedgeDetector] wedge-detected scanner=sc-1 signature=sane_start_invalid cycle=1'
+        )
+      );
+      // New line this proposal adds.
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /auto-paused scanner=sc-1 signature=sane_start_invalid session=sess-log-1 cycle=1/
+        )
+      );
     });
   });
 

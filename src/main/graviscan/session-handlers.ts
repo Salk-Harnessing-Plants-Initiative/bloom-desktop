@@ -8,10 +8,29 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { PlateConfig, ScannerConfig } from '../../types/graviscan';
+import { buildSaneName } from './scanner-handlers';
+import { scanLog } from './scan-logger';
 
 // ---------------------------------------------------------------------------
 // Interface types
 // ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape `retryScanner()` needs to read a scanner's current USB
+ * identity and enabled state. Deliberately narrower than `PrismaClient`
+ * (design.md Decision 7) — `session-handlers.ts` otherwise has zero DB
+ * dependency, matching `wiring.ts`'s `ScannerLookupDb` convention for the
+ * same kind of "read one scanner row for a spawn-related decision" case.
+ */
+export interface ScannerRetryLookupDb {
+  graviScanner: {
+    findUnique: (args: { where: { id: string } }) => Promise<{
+      usb_bus: number | null;
+      usb_device: number | null;
+      enabled: boolean;
+    } | null>;
+  };
+}
 
 export interface ScanCoordinatorLike {
   readonly isScanning: boolean;
@@ -295,5 +314,65 @@ export async function cancelScan(
       success: false,
       error: error instanceof Error ? error.message : 'Cancel failed',
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// retryScanner
+// ---------------------------------------------------------------------------
+
+/**
+ * Respawn a scanner after an operator confirms it has been physically
+ * power-cycled following a wedge auto-pause (design.md Decisions 1, 2, 7).
+ *
+ * Stricter than `cancelScan`'s guard: requires an active session, not just
+ * a live coordinator — respawning a worker with no active `scanInterval()`/
+ * `scanOnce()` loop to schedule it into a cycle would just leak a
+ * subprocess with nothing driving it (design.md Decision 8).
+ *
+ * Reads `usb_bus`/`usb_device`/`enabled` fresh from the database rather
+ * than from any value cached at session start, since a `reset-usb`
+ * performed after auto-pause would otherwise make a stale value wrong.
+ */
+export async function retryScanner(
+  coordinator: ScanCoordinatorLike | null,
+  db: ScannerRetryLookupDb,
+  sessionFns: SessionFns,
+  scannerId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!sessionFns.getScanSession()?.isActive) {
+      return { success: false, error: 'No active scan session' };
+    }
+    if (!coordinator) {
+      return { success: false, error: 'ScanCoordinator not initialized' };
+    }
+
+    const row = await db.graviScanner.findUnique({ where: { id: scannerId } });
+    if (!row) {
+      return { success: false, error: `Scanner ${scannerId} not found` };
+    }
+    if (row.usb_bus == null || row.usb_device == null) {
+      return {
+        success: false,
+        error: `Scanner ${scannerId} is missing usb_bus/usb_device (likely mid reset-usb)`,
+      };
+    }
+    if (!row.enabled) {
+      return { success: false, error: `Scanner ${scannerId} is disabled` };
+    }
+
+    const saneName = buildSaneName(row.usb_bus, row.usb_device);
+    await coordinator.stopScanner(scannerId);
+    await coordinator.addScanner({ scannerId, saneName, plates: [] });
+
+    scanLog(`[WedgeResponse] retry succeeded scanner=${scannerId}`);
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Retry failed';
+    scanLog(
+      `[WedgeResponse] retry failed scanner=${scannerId} error=${message}`
+    );
+    return { success: false, error: message };
   }
 }
