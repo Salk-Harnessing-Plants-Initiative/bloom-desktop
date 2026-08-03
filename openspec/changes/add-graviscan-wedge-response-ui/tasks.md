@@ -335,3 +335,15 @@ test:unit`.
       6-8 (renderer) instead.
 - [x] 9.5 `openspec validate add-graviscan-wedge-response-ui --strict` —
       resolve every issue before requesting review.
+- [x] 9.6 Added post-implementation, during pre-merge review: real-
+      coordinator-level tests for `stopScanner()` + `addScanner()` — the
+      exact sequence `retryScanner()` calls — in
+      `tests/unit/graviscan/scan-coordinator.test.ts`. Every other test of
+      this sequence in the codebase (main-wiring, register-handlers,
+      session-handlers) exercised it against a fully mocked
+      `ScanCoordinator`; this was flagged as a real gap (the PR's original
+      "Integration Tests: N/A" claim was wrong) before this task was added.
+      Two new tests: (1) stop-then-respawn while idle, (2) a retried
+      scanner's `addScanner()` call queuing correctly until
+      `cycle-complete` while a _different_ scanner is mid-cycle — the
+      actual "Retry clicked while the session keeps running" scenario.
