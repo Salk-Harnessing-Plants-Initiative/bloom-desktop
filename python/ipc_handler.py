@@ -127,6 +127,17 @@ _streaming_thread: Optional[threading.Thread] = None
 _streaming_active = threading.Event()
 _streaming_lock = threading.Lock()
 
+# Request-id correlation (#47). Set by handle_command() at the top of each
+# dispatch and reset to None once that command completes (success or
+# exception) — safe because run_ipc_loop()'s command loop is strictly
+# sequential (see the #40 thread-safety decision). Read by send_data()/
+# send_error() to echo the id back so the TypeScript side can correlate a
+# response to the request that produced it. Only send_error() takes an
+# explicit tag_request flag: streaming_worker() (a genuine background
+# thread) must never tag its own async errors with whatever unrelated
+# command happens to be in flight on the main thread at that moment.
+_current_request_id: Optional[int] = None
+
 
 def send_status(message: str) -> None:
     """Send a status message to stdout.
@@ -137,13 +148,21 @@ def send_status(message: str) -> None:
     print(f"STATUS:{message}", flush=True)
 
 
-def send_error(message: str) -> None:
+def send_error(message: str, tag_request: bool = True) -> None:
     """Send an error message to stdout.
 
     Args:
         message: Error message to send
+        tag_request: When True (default), include the current request id
+            (if one is set) so the caller can correlate this error to the
+            command that produced it. Background-thread callers (e.g.
+            streaming_worker()) must pass False, since their errors are
+            async, out-of-band pushes with no attributable request.
     """
-    print(f"ERROR:{message}", flush=True)
+    payload: Dict[str, Any] = {"message": message}
+    if tag_request and _current_request_id is not None:
+        payload["id"] = _current_request_id
+    print(f"ERROR:{json.dumps(payload)}", flush=True)
 
 
 def send_data(data: Dict[str, Any]) -> None:
@@ -151,8 +170,15 @@ def send_data(data: Dict[str, Any]) -> None:
 
     Args:
         data: Dictionary to send as JSON
+
+    Includes the current request id (if one is set) so the response can
+    be correlated back to its request; omits the key entirely (never
+    sends "id": None) when no request is currently in flight.
     """
-    print(f"DATA:{json.dumps(data)}", flush=True)
+    payload = dict(data)
+    if _current_request_id is not None:
+        payload["id"] = _current_request_id
+    print(f"DATA:{json.dumps(payload)}", flush=True)
 
 
 def send_frame(frame_data: str) -> None:
@@ -411,7 +437,7 @@ def streaming_worker() -> None:
     while _streaming_active.is_set():
         try:
             if not is_camera_open():
-                send_error("Camera not available during streaming")
+                send_error("Camera not available during streaming", tag_request=False)
                 break
 
             # Capture frame using base64 method
@@ -427,7 +453,7 @@ def streaming_worker() -> None:
                 time.sleep(sleep_time)
 
         except Exception as e:
-            send_error(f"Streaming error: {e}")
+            send_error(f"Streaming error: {e}", tag_request=False)
             break
 
     send_status("Streaming worker stopped")
@@ -860,31 +886,40 @@ def handle_command(cmd: Dict[str, Any]) -> None:
     """Route and handle incoming commands.
 
     Args:
-        cmd: Command dictionary with 'command' key
+        cmd: Command dictionary with 'command' key, and optionally an
+            'id' key used to correlate this command's response(s) back to
+            the caller (#47). Reset to None once this command completes
+            (success or exception) so it never leaks into a later,
+            unrelated command.
     """
-    command = cmd.get("command")
+    global _current_request_id
+    _current_request_id = cmd.get("id")
+    try:
+        command = cmd.get("command")
 
-    if command == "ping":
-        send_data({"status": "ok", "message": "pong"})
+        if command == "ping":
+            send_data({"status": "ok", "message": "pong"})
 
-    elif command == "get_version":
-        send_data({"version": __version__})
+        elif command == "get_version":
+            send_data({"version": __version__})
 
-    elif command == "check_hardware":
-        hardware_status = check_hardware()
-        send_data(hardware_status)
+        elif command == "check_hardware":
+            hardware_status = check_hardware()
+            send_data(hardware_status)
 
-    elif command == "camera":
-        handle_camera_command(cmd)
+        elif command == "camera":
+            handle_camera_command(cmd)
 
-    elif command == "daq":
-        handle_daq_command(cmd)
+        elif command == "daq":
+            handle_daq_command(cmd)
 
-    elif command == "scanner":
-        handle_scanner_command(cmd)
+        elif command == "scanner":
+            handle_scanner_command(cmd)
 
-    else:
-        send_error(f"Unknown command: {command}")
+        else:
+            send_error(f"Unknown command: {command}")
+    finally:
+        _current_request_id = None
 
 
 def run_ipc_loop() -> None:

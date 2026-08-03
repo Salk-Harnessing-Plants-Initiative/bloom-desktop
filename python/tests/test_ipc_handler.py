@@ -2,6 +2,9 @@
 
 import json
 
+import pytest
+
+from python import ipc_handler
 from python.ipc_handler import (
     send_status,
     send_error,
@@ -9,6 +12,20 @@ from python.ipc_handler import (
     check_hardware,
     handle_command,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_current_request_id():
+    """Reset the module-level request-id state before/after every test.
+
+    Prevents cross-test leakage: send_data()/send_error() read this global
+    directly (not passed as a parameter), so a test that doesn't go
+    through handle_command() (which always resets it) could otherwise pick
+    up stale state left by an earlier test.
+    """
+    ipc_handler._current_request_id = None
+    yield
+    ipc_handler._current_request_id = None
 
 
 def test_send_status(capsys):
@@ -19,14 +36,44 @@ def test_send_status(capsys):
 
 
 def test_send_error(capsys):
-    """Test that send_error outputs correct format."""
+    """Test that send_error outputs a JSON envelope with no id when unset."""
     send_error("test error")
     captured = capsys.readouterr()
-    assert captured.out == "ERROR:test error\n"
+    assert captured.out.startswith("ERROR:")
+    payload = json.loads(captured.out[len("ERROR:") :].strip())
+    assert payload == {"message": "test error"}
+
+
+def test_send_error_includes_id_when_current_request_id_set(capsys):
+    """send_error(tag_request=True) (default) includes the current id."""
+    ipc_handler._current_request_id = 5
+    send_error("test error")
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out[len("ERROR:") :].strip())
+    assert payload == {"message": "test error", "id": 5}
+
+
+def test_send_error_tag_request_false_never_includes_id(capsys):
+    """send_error(tag_request=False) omits the id even if one is set.
+
+    This is the fix for the streaming-thread bug: streaming_worker() runs
+    on a background thread and must never attribute its own async errors
+    to whatever command happens to be in flight on the main thread.
+    """
+    ipc_handler._current_request_id = 5
+    send_error("streaming error", tag_request=False)
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out[len("ERROR:") :].strip())
+    assert payload == {"message": "streaming error"}
 
 
 def test_send_data(capsys):
-    """Test that send_data outputs correct JSON format."""
+    """Test that send_data outputs correct JSON format.
+
+    No id is added when _current_request_id is unset — confirmed by the
+    full dict-equality assertion below, which would fail if send_data
+    ever added an "id": None key instead of omitting it entirely.
+    """
     test_data = {"key": "value", "number": 42}
     send_data(test_data)
     captured = capsys.readouterr()
@@ -36,6 +83,15 @@ def test_send_data(capsys):
     json_str = captured.out[5:].strip()  # Remove "DATA:" prefix
     parsed = json.loads(json_str)
     assert parsed == test_data
+
+
+def test_send_data_includes_id_when_current_request_id_set(capsys):
+    """send_data() merges in the current request id when one is set."""
+    ipc_handler._current_request_id = 7
+    send_data({"key": "value"})
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out[5:].strip())
+    assert parsed == {"key": "value", "id": 7}
 
 
 def test_check_hardware():
@@ -116,4 +172,26 @@ def test_handle_command_missing_command_key(capsys):
     captured = capsys.readouterr()
 
     assert captured.out.startswith("ERROR:")
-    assert "Unknown command" in captured.out
+    payload = json.loads(captured.out[len("ERROR:") :].strip())
+    assert "Unknown command" in payload["message"]
+
+
+def test_handle_command_threads_id_into_response(capsys):
+    """handle_command() sets _current_request_id from cmd['id'] and the
+    response echoes it back, then resets to None once the command
+    completes — so it never leaks into a later, unrelated command."""
+    handle_command({"command": "ping", "id": 42})
+    captured = capsys.readouterr()
+
+    payload = json.loads(captured.out[len("DATA:") :].strip())
+    assert payload["id"] == 42
+    assert ipc_handler._current_request_id is None
+
+
+def test_handle_command_with_no_id_omits_id_from_response(capsys):
+    """A command sent with no 'id' key produces a response with no id."""
+    handle_command({"command": "ping"})
+    captured = capsys.readouterr()
+
+    payload = json.loads(captured.out[len("DATA:") :].strip())
+    assert "id" not in payload

@@ -55,11 +55,12 @@ describe('PythonProcess.sendCommand', () => {
 
     const commandPromise = process.sendCommand({ command: 'test' });
 
-    // Simulate response
-    process.emit('data', { success: true });
+    // Simulate response — id 1 since this is the first sendCommand() call
+    // on a freshly-constructed PythonProcess (correlation, #47).
+    process.emit('data', { success: true, id: 1 });
 
     const result = await commandPromise;
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, id: 1 });
     expect(clearTimeoutSpy).toHaveBeenCalled();
 
     clearTimeoutSpy.mockRestore();
@@ -70,7 +71,8 @@ describe('PythonProcess.sendCommand', () => {
 
     const commandPromise = process.sendCommand({ command: 'test' });
 
-    // Simulate error
+    // An error with no id is unattributable and rejects every pending
+    // request — including this sole in-flight one.
     process.emit('error', 'Something failed');
 
     await expect(commandPromise).rejects.toThrow('Something failed');
@@ -86,6 +88,64 @@ describe('PythonProcess.sendCommand', () => {
     vi.advanceTimersByTime(180001);
 
     await expect(commandPromise).rejects.toThrow('Command timeout');
+  });
+
+  it('correlates concurrent commands to their own response, even out of order', async () => {
+    const first = process.sendCommand({ command: 'first' });
+    const second = process.sendCommand({ command: 'second' });
+
+    // Respond to the second command first — it must resolve its own
+    // promise, not the first (cross-talk regression check, #47).
+    process.emit('data', { result: 'second-result', id: 2 });
+    process.emit('data', { result: 'first-result', id: 1 });
+
+    await expect(second).resolves.toEqual({ result: 'second-result', id: 2 });
+    await expect(first).resolves.toEqual({ result: 'first-result', id: 1 });
+  });
+
+  it('an attributable error rejects only its own request, leaving others pending', async () => {
+    const first = process.sendCommand({ command: 'first' });
+    const second = process.sendCommand({ command: 'second' });
+
+    process.emit('error', 'first failed', 1);
+
+    await expect(first).rejects.toThrow('first failed');
+
+    // Second is still pending — resolve it normally to confirm it wasn't
+    // affected by the first's rejection.
+    process.emit('data', { result: 'ok', id: 2 });
+    await expect(second).resolves.toEqual({ result: 'ok', id: 2 });
+  });
+
+  it('a response with an already-timed-out id is ignored, not a crash', async () => {
+    const commandPromise = process.sendCommand({ command: 'test' });
+
+    vi.advanceTimersByTime(180001);
+    await expect(commandPromise).rejects.toThrow('Command timeout');
+
+    // A late response for the now-stale id must not throw or resolve anything.
+    expect(() => process.emit('data', { success: true, id: 1 })).not.toThrow();
+  });
+
+  it('rejects every pending request when the underlying process exits', async () => {
+    const first = process.sendCommand({ command: 'first' });
+    const second = process.sendCommand({ command: 'second' });
+
+    // The mock child process's `on` is a spy, not a real event emitter —
+    // invoke the 'exit' callback PythonProcess registered on it directly,
+    // simulating the real child process exiting.
+    const mockChild = vi.mocked(spawn).mock.results[
+      vi.mocked(spawn).mock.results.length - 1
+    ].value as ReturnType<typeof createMockProcess>;
+    const exitCallback = mockChild.on.mock.calls.find(
+      ([event]) => event === 'exit'
+    )?.[1] as ((code: number | null) => void) | undefined;
+
+    expect(exitCallback).toBeDefined();
+    exitCallback!(1);
+
+    await expect(first).rejects.toThrow();
+    await expect(second).rejects.toThrow();
   });
 });
 
