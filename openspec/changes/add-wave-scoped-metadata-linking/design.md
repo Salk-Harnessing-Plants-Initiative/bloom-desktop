@@ -15,7 +15,17 @@ in `src/main/graviscan/verify-plates.ts`'s QR-lookup, which resolves an
 experiment's accession purely via the old single-accession
 `Experiment.accession_id` mechanism with no wave dimension anywhere in its
 call chain. This change does not fix #162 — see Non-Goals and Open Questions
-below for why, and what should happen instead.
+below for why, and what should happen instead. Note also: #164's own
+suggested implementation was to add a `wave_number` column directly on
+`Accessions` or `GraviPlateAccession`; this proposal instead adds a separate
+join table (`GraviExperimentWaveMetadata`) mapping `(experiment_id,
+wave_number)` to an `accession_id`. The join-table shape is deliberate, not
+an oversight of #164's suggestion: it lets one metadata file serve multiple
+waves (or experiments) without duplicating the file's rows, matches the
+reference implementation's own schema, and keeps `Accessions`/
+`GraviPlateAccession` themselves free of any experiment- or wave-specific
+column — consistent with Decision 3's design (the file and the "wave this
+file applies to" are independent concepts, linked, not merged).
 
 A reference implementation exists on
 `origin/fix/v600-wedge-followups-metadata_propogation_followup` and was read
@@ -210,20 +220,39 @@ operator to consciously clean up real captured data first. This model
 deliberately does the opposite: `onDelete: Cascade`.
 
 **Alternative considered**: `RESTRICT`, matching every other child table of
-`Experiment`. Rejected: those other tables hold actual captured data (scans,
-sessions, plate assignments) whose loss would be irreversible and easily
-unnoticed if silently cascaded — RESTRICT exists specifically to force a
-deliberate cleanup step before that data can be lost. A
-`GraviExperimentWaveMetadata` row is not data in that sense — it's a pure
-pointer ("file X applies to wave N of experiment Y"), and the metadata file
-itself (the `Accessions`/`GraviPlateAccession`/`GraviPlateSectionMapping`
-rows) is untouched by this cascade — only the link disappears. Once the
-`Experiment` itself is gone, "wave N of experiment Y" no longer refers to
-anything, so the pointer has no possible remaining use; retaining it (or
-blocking the `Experiment` deletion because of it) would add friction with no
-corresponding benefit. This matches the reference implementation's own
-choice (`onDelete: Cascade` on the same relation) — confirmed independently
-correct here, not just copied.
+`Experiment`. Rejected, for a reason stronger than "the pointer has no
+remaining use": SQLite (via Prisma) enforces FK constraints atomically per
+statement, so an `Experiment` delete that would violate *any* RESTRICT'd
+child table fails as a whole — nothing in that statement cascades, including
+`GraviExperimentWaveMetadata`. Concretely: if any `GraviScan`,
+`GraviScanSession`, or `GraviScanPlateAssignment` row exists for the
+experiment (i.e. it's ever been scanned at all), the delete is blocked by
+those tables' existing `RESTRICT` FKs before the new model's `Cascade` can
+ever fire — so this model's cascade is only reachable in the one case
+Decision 3 designs for: an experiment with wave-metadata pre-linked but never
+scanned, where there is no captured data for the cascade to put at risk. The
+"pointer has no remaining use" framing is true but incomplete on its own —
+by itself it would just as easily argue for cascading `GraviScan` too, which
+the schema deliberately does not do; the real safety argument is that
+RESTRICT elsewhere makes this model's `Cascade` unreachable in every case
+that would actually lose captured data. This matches the reference
+implementation's own choice (`onDelete: Cascade` on the same relation) —
+confirmed independently correct here, not just copied.
+
+One residual gap this cascade does introduce, not present in the RESTRICT'd
+tables: `database.experiments.delete` (`database-handlers.ts:996-1023`,
+already implemented, already preload-exposed — not part of this change, but
+live on `main` today, even though no renderer caller invokes it yet) has no
+application-level guard at all. For an experiment with zero scan/session/
+plate-assignment rows but one or more wave-metadata links pre-linked ahead of
+scanning, a single call to that existing handler silently deletes *all* of
+that experiment's `GraviExperimentWaveMetadata` rows in one shot — with no
+Prisma error to catch (unlike the RESTRICT'd tables, which force the caller
+to notice and handle a blocked delete) and no confirmation step specific to
+the metadata links being lost. This is a sharper, more immediate version of
+the no-audit-trail gap below (one ungated call destroys the whole current
+link set, vs. one relink losing history for a single wave) — flagged
+explicitly here and cross-referenced from Risks, rather than left implicit.
 
 The `Accessions` FK, by contrast, is `onDelete: Restrict` — deleting a
 metadata file that's still wave-linked must be blocked (this is exactly what
@@ -260,6 +289,15 @@ direct-SQL script).
   decision than this proposal's scope and isn't precedented elsewhere in
   this schema either (`GraviScanPlateAssignment` tracks `updatedAt` but not
   "updated by"). Deliberately deferred — see Open Questions.
+- **`experiments.delete` can silently erase an experiment's entire current
+  link set**: see Decision 8's residual-gap paragraph. Unlike the relink case
+  above (two deliberate, individually-validated calls, one wave at a time),
+  this is one call to an already-existing, ungated handler that removes
+  every current wave-metadata link for an experiment at once, with zero
+  confirmation specific to that loss. Also deliberately deferred — same
+  Open Questions entry — but worth keeping distinct from the relink case
+  when that entry is eventually revisited, since it's a materially larger
+  and easier-to-trigger blast radius.
 
 ## Migration Plan
 
@@ -287,20 +325,28 @@ Prisma/programmer-flavored text:
 
 - Non-graviscan experiment: *"This experiment isn't a GraviScan experiment,
   so wave metadata can't be linked here."*
-- Accession has no `GraviPlateAccession` children: *"This file isn't a
-  GraviScan plate/section metadata file."*
+- Accession has no `GraviPlateAccession` children: *"This file looks like a
+  CylinderScan barcode-mapping file, not a GraviScan plate/section metadata
+  file — pick a file from the GraviScan metadata list instead."* (names what
+  the file actually is, not just what it isn't, so a confused researcher can
+  tell why their file was rejected)
 - Already-linked wave: *"Wave {waveNumber} already has metadata linked —
   unlink it first if you want to link a different file."*
-- Unlink on a non-existent link: *"Wave {waveNumber} has no metadata file
-  linked."*
+- Unlink on a non-existent link: *"Nothing to unlink — wave {waveNumber} has
+  no metadata file linked."* (makes the no-op outcome explicit, rather than
+  reading like an error about something the researcher did wrong)
 
 ## Open Questions
 
-1. **No audit trail / no link-history** (see Risks) — should this become a
+1. **No audit trail / no link-history, including the sharper
+   `experiments.delete` case** (see Risks) — should this become a
    requirement before researchers start relying on this data for
    provenance? Not blocking this proposal; flagging so it doesn't get lost.
    Candidate trigger: revisit once Tier 5 ships and real per-wave links
-   start accumulating.
+   start accumulating. If addressed, treat the `experiments.delete` case
+   (erases the whole current link set in one ungated call) and the relink
+   case (loses one wave's history per call) as two distinct scenarios to
+   cover, not one.
 2. **`verify-plates.ts` wave-scoping (issues #162, #164) is deferred** (see
    Non-Goals) pending a renderer caller to supply `waveNumber` — likely
    scoped alongside Tier 3 or Tier 4, whichever builds the

@@ -29,22 +29,31 @@
 ## 2. countMetadataReferences helper (TDD)
 
 - [ ] 2.1 In `tests/unit/graviscan/database-handlers.test.ts`, write failing
-      tests (all before any implementation, so all are genuinely red) for:
-      a new `countMetadataReferences(db, metadataFileId)` helper returning
-      `0` for an unreferenced file, counting a matching
-      `Experiment.accession_id` row, counting a matching
-      `GraviExperimentWaveMetadata.accession_id` row (create it via direct
-      Prisma call), and summing both when a file is referenced by each; AND
-      `graviPlateAccessionsDelete` is blocked when a file is linked only via
-      `GraviExperimentWaveMetadata` (no `Experiment.accession_id`
-      reference, set up via a direct Prisma call); AND
-      `graviPlateAccessionsDelete` succeeds again once that single blocking
-      `GraviExperimentWaveMetadata` link is removed (direct Prisma
-      create-then-delete for setup).
+      tests (all before any implementation, so all are genuinely red — see
+      2.1a for one assertion that is deliberately NOT red) for: a new
+      `countMetadataReferences(db, metadataFileId)` helper returning `0` for
+      an unreferenced file, counting a matching `Experiment.accession_id`
+      row, counting a matching `GraviExperimentWaveMetadata.accession_id`
+      row (create it via direct Prisma call), and summing both when a file
+      is referenced by each; AND `graviPlateAccessionsDelete` is blocked
+      when a file is linked only via `GraviExperimentWaveMetadata` (no
+      `Experiment.accession_id` reference, set up via a direct Prisma
+      call) — this one IS genuinely red today, since the current
+      `graviPlateAccessionsDelete` only checks `Experiment.accession_id`
+      and would otherwise allow the delete.
+- [ ] 2.1a Write a confirmatory (not TDD-red) test alongside 2.1's: that
+      `graviPlateAccessionsDelete` succeeds once a `GraviExperimentWaveMetadata`
+      link blocking it is removed (direct Prisma create-then-delete for
+      setup). This assertion is already true before 2.2's implementation
+      exists — today's `graviPlateAccessionsDelete` doesn't check the new
+      table at all, so an unlinked file is already deletable regardless.
+      It's included to guard against a regression once 2.2 adds the
+      guard (e.g. a helper that double-counts or never decrements), not
+      because it's currently failing.
 - [ ] 2.2 Implement `countMetadataReferences` in `database-handlers.ts` and
       refactor `graviPlateAccessionsDelete` to call it in place of its
-      current inline single-term count. Run all of 2.1's tests, plus the
-      pre-existing `graviPlateAccessionsDelete` tests, green.
+      current inline single-term count. Run all of 2.1/2.1a's tests, plus
+      the pre-existing `graviPlateAccessionsDelete` tests, green.
 - [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before starting Section 3.
 
@@ -55,8 +64,11 @@
       `linkGraviMetadata(db, experimentId, waveNumber, accessionId)`:
       rejects non-string/missing `experimentId` or `accessionId`; rejects a
       negative, non-integer (e.g. `1.5`), or non-numeric `waveNumber`;
-      accepts `waveNumber = 0` as valid; rejects an unknown `experimentId`
-      with a "not found" message; rejects an experiment whose
+      rejects a `waveNumber` outside the safe 32-bit integer range Prisma's
+      `Int` column can store (e.g. `2147483648`, one past `Int32` max) with
+      a friendly error rather than a raw DB range error; accepts
+      `waveNumber = 0` as valid; rejects an unknown `experimentId` with a
+      "not found" message; rejects an experiment whose
       `experiment_type !== 'graviscan'`; rejects an unknown `accessionId`
       with a "not found" message; rejects an `accessionId` with zero
       `GraviPlateAccession` children; rejects an already-linked
@@ -65,12 +77,17 @@
       returns the created row (with `accession` included) on the happy
       path.
 - [ ] 3.2 Implement `linkGraviMetadata` in `database-handlers.ts` to satisfy
-      all tests from 3.1.
-- [ ] 3.3 Write and confirm a round-trip test: link wave N to file A, call
-      `unlinkGraviMetadata` directly against the DB (or, once Section 4 is
-      implemented, via the handler — see task 4.4) to remove it, then link
-      wave N to a different file B — confirm B is now linked and the row
-      correctly reflects the new accession.
+      all tests from 3.1 (the `Int32`-range check is a plain numeric
+      comparison before the value ever reaches Prisma).
+- [ ] 3.3 Write and confirm a round-trip test: link wave N to file A, then
+      delete the `GraviExperimentWaveMetadata` row directly via Prisma
+      (`prisma.graviExperimentWaveMetadata.delete(...)` — equivalent to what
+      `unlinkGraviMetadata` will do once Section 4 implements it; not
+      calling that function itself, since it doesn't exist until Section 4),
+      then link wave N to a different file B — confirm B is now linked and
+      the row correctly reflects the new accession.
+- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+      gate before starting Section 4.
 
 ## 4. unlinkGraviMetadata handler (TDD)
 
@@ -82,10 +99,13 @@
       `(experimentId, waveNumber)` pair (not a raw Prisma `P2025`); succeeds
       and deletes the row, returning `{success: true}`, on the happy path.
 - [ ] 4.2 Implement `unlinkGraviMetadata` to satisfy all tests from 4.1.
-- [ ] 4.3 Re-run task 3.3's round-trip test using `unlinkGraviMetadata` (the
-      handler, not a direct Prisma call) for the unlink step, now that it
-      exists — confirms `linkGraviMetadata` and `unlinkGraviMetadata`
-      correctly compose for the "correct a mistake" workflow.
+- [ ] 4.3 Re-run task 3.3's round-trip test, this time using
+      `unlinkGraviMetadata` (the handler itself, not the direct Prisma
+      delete 3.3 used) for the unlink step, now that it exists — confirms
+      `linkGraviMetadata` and `unlinkGraviMetadata` correctly compose for
+      the "correct a mistake" workflow.
+- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+      gate before starting Section 5.
 
 ## 5. listGraviMetadata handler (TDD)
 

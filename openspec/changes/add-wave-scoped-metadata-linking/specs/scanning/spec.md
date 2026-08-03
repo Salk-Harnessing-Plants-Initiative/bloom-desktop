@@ -4,7 +4,7 @@
 
 The system SHALL provide a `database.experiments.linkGraviMetadata(experimentId, waveNumber, accessionId)` IPC handler in `src/main/database-handlers.ts`, backed by a `GraviExperimentWaveMetadata` Prisma model with a unique `(experiment_id, wave_number)` pair, FK to `Experiment` (`onDelete: Cascade`) and FK to `Accessions` (`onDelete: Restrict`). It SHALL validate, returning `{success: false, error: <message>}` and persisting nothing on any failure:
 
-- `experimentId` and `accessionId` are non-empty strings and `waveNumber` is a non-negative integer;
+- `experimentId` and `accessionId` are non-empty strings and `waveNumber` is a non-negative integer within the range Prisma's `Int` column can store (32-bit signed: 0 to 2147483647);
 - an `Experiment` with `id === experimentId` exists and its `experiment_type` is `"graviscan"`;
 - an `Accessions` row with `id === accessionId` exists and has at least one linked `GraviPlateAccession` child;
 - no `GraviExperimentWaveMetadata` row already exists for `(experimentId, waveNumber)`, regardless of whether the new `accessionId` would be the same as or different from the existing link's.
@@ -23,18 +23,32 @@ The system SHALL provide a `database.experiments.linkGraviMetadata(experimentId,
 - **THEN** a `GraviExperimentWaveMetadata` row SHALL be created for `(experimentId, 0, accessionId)`
 - **AND** the handler SHALL return `{success: true, data: <row with accession included>}`
 
-#### Scenario: link rejects malformed input before touching the database
+#### Scenario: link rejects a non-string or missing experimentId or accessionId
 
-- **GIVEN** any of: a non-string or missing `experimentId`; a non-string or missing `accessionId`; a `waveNumber` that is negative, non-integer (e.g. `1.5`), or not a number
+- **GIVEN** `experimentId` or `accessionId` is a non-string value (e.g. a number, object, or `undefined`)
 - **WHEN** `linkGraviMetadata` is called with that argument
 - **THEN** the handler SHALL return `{success: false, error: <message>}`
 - **AND** no `GraviExperimentWaveMetadata` row SHALL be created
 
-#### Scenario: link rejects an unknown experimentId or accessionId
+#### Scenario: link rejects a malformed waveNumber
 
-- **GIVEN** an `experimentId` that does not correspond to any `Experiment` row, or (independently) an `accessionId` that does not correspond to any `Accessions` row
-- **WHEN** `linkGraviMetadata` is called with that id
-- **THEN** the handler SHALL return `{success: false, error: <message>}` distinguishing "not found" from a type-mismatch error
+- **GIVEN** `waveNumber` is negative, non-integer (e.g. `1.5`), not a number, or exceeds `2147483647` (one past the maximum value Prisma's `Int` column can store)
+- **WHEN** `linkGraviMetadata` is called with that `waveNumber`
+- **THEN** the handler SHALL return `{success: false, error: <message>}` — a friendly validation error, not a raw database range error
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects an unknown experimentId
+
+- **GIVEN** an `experimentId` that is a non-empty string but does not correspond to any `Experiment` row
+- **WHEN** `linkGraviMetadata` is called with that `experimentId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}` indicating the experiment was not found
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects an unknown accessionId
+
+- **GIVEN** an `accessionId` that is a non-empty string but does not correspond to any `Accessions` row
+- **WHEN** `linkGraviMetadata` is called with that `accessionId`, for an otherwise-valid `graviscan` experiment
+- **THEN** the handler SHALL return `{success: false, error: <message>}` indicating the metadata file was not found
 - **AND** no `GraviExperimentWaveMetadata` row SHALL be created
 
 #### Scenario: link rejects a non-graviscan experiment
