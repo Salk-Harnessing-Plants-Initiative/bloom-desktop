@@ -39,6 +39,7 @@ import {
   saveEnvConfig,
   validateConfig,
   fetchScannersFromBloom,
+  getGraviScanEnvStatus,
   MachineConfig,
 } from './config-store';
 import {
@@ -112,6 +113,32 @@ let idleTimer: IdleTimer | null = null;
  * Pilot reference: bloom-desktop-pilot/app/src/main/main.ts:148
  */
 const scannerIdentity: { name: string } = { name: '' };
+
+/**
+ * Resolves once `app.on('ready', ...)`'s async startup sequence has
+ * reached a definitive outcome: either `registerDatabaseHandlers()` +
+ * GraviScan's own best-effort init attempt both ran (success), or
+ * database initialization itself threw, in which case
+ * `registerDatabaseHandlers()` was never called at all (failure).
+ *
+ * Exists because `createWindow()` (called synchronously, first, in the
+ * 'ready' handler below) starts the renderer loading immediately, while
+ * database/GraviScan handler registration happens asynchronously
+ * afterward — a renderer or E2E test that only waits for
+ * `domcontentloaded` can start invoking IPC channels before the
+ * corresponding `ipcMain.handle()` calls have run, producing "No
+ * handler registered for '<channel>'" for an effectively random
+ * channel depending on how far init had gotten. `app:wait-until-ready`
+ * (registered below, at module scope, so it's available the instant
+ * the renderer's preload script can call it — well before any window
+ * exists) gives callers a single await point instead of a fixed sleep.
+ */
+let resolveAppReady: (result: { success: boolean; error?: string }) => void;
+const appReadyPromise: Promise<{ success: boolean; error?: string }> =
+  new Promise((resolve) => {
+    resolveAppReady = resolve;
+  });
+ipcMain.handle('app:wait-until-ready', () => appReadyPromise);
 
 const createWindow = (): void => {
   // Create the browser window.
@@ -986,6 +1013,21 @@ ipcMain.handle('config:get-mode', async () => {
 });
 
 /**
+ * Handle config:get-graviscan-env-status - Boolean-only summary of the
+ * GraviScan Slack webhook / libusb-recovery env vars (#245), for the
+ * Configure Scanner page's status banner. Never returns the webhook URL.
+ */
+ipcMain.handle('config:get-graviscan-env-status', async () => {
+  try {
+    const config = loadEnvConfig(ENV_PATH);
+    return getGraviScanEnvStatus(config);
+  } catch (error) {
+    console.error('config:get-graviscan-env-status error:', error);
+    return { slackConfigured: false, libusbRecoveryEnabled: true };
+  }
+});
+
+/**
  * Handle config:fetch-scanners - Fetch valid scanners from Bloom API
  * Updated to accept parameters (apiUrl and credentials) from form
  */
@@ -1128,6 +1170,7 @@ app.on('ready', async () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('database:ready', { success: true });
     }
+    resolveAppReady({ success: true });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : undefined;
@@ -1136,6 +1179,7 @@ app.on('ready', async () => {
       errorMessage,
       errorStack
     );
+    resolveAppReady({ success: false, error: errorMessage });
 
     // Send error to renderer so user can see it in DevTools
     if (mainWindow && !mainWindow.isDestroyed()) {

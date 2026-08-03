@@ -23,6 +23,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
+import { waitForAppReady } from './helpers/app-ready';
 import {
   createTestBloomConfig,
   cleanupTestBloomConfig,
@@ -72,6 +73,7 @@ async function launchElectronApp() {
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
+  await waitForAppReady(window);
 }
 
 /**

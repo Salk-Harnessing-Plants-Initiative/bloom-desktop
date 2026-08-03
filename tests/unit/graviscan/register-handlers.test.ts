@@ -612,6 +612,158 @@ describe('registerGraviScanHandlers', () => {
         scannerUpsert.stopWorkersForDisabledScanners
       ).not.toHaveBeenCalled();
     });
+
+    it('lazily creates the coordinator via createCoordinator() when none exists yet, instead of silently skipping spawn-on-discovery', async () => {
+      // Regression test for a real bug found via E2E reproduction: a
+      // fresh app session whose first action is Detect Scanners (no
+      // scan ever started) never had a coordinator, since only
+      // graviscan:start-scan used to call createCoordinator() — this
+      // handler only ever read getCoordinator(), which stays null
+      // forever otherwise. Every detected scanner sat at "disconnected"
+      // with no spawn attempted, no matter how many times Detect/Reset
+      // USB were clicked.
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [
+          {
+            id: 's1',
+            enabled: true,
+            usb_bus: 1,
+            usb_device: 2,
+            usb_port: '1-2',
+          },
+        ],
+        count: 1,
+        disabled: [],
+      } as any);
+      const lazilyCreatedCoordinator = {
+        hasWorker: vi.fn().mockReturnValue(false),
+        addScanner: vi.fn().mockResolvedValue(undefined),
+        stopScanner: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(null); // no coordinator yet
+      const mockCreateCoordinator = vi
+        .fn()
+        .mockResolvedValue(lazilyCreatedCoordinator);
+
+      _resetRegistration();
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator,
+        mockCreateCoordinator
+      );
+
+      await mockIpcMain._invoke('graviscan:save-scanners-db', []);
+
+      expect(mockCreateCoordinator).toHaveBeenCalled();
+      expect(lazilyCreatedCoordinator.addScanner).toHaveBeenCalledWith({
+        scannerId: 's1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+    });
+
+    it('still reports the DB save as successful when createCoordinator() itself rejects', async () => {
+      // Regression test for a real bug found via review: createCoordinator()
+      // runs AFTER saveScannersToDB() has already committed. Before this
+      // fix, a rejection here propagated past wrapHandler's outer catch,
+      // turning the entire response into {success:false} and discarding
+      // the already-successful save — the operator would see a false
+      // "Save failed" for scanner rows that, in fact, persisted.
+      vi.mocked(scannerHandlers.saveScannersToDB).mockResolvedValueOnce({
+        success: true,
+        scanners: [
+          {
+            id: 's1',
+            enabled: true,
+            usb_bus: 1,
+            usb_device: 2,
+            usb_port: '1-2',
+          },
+        ],
+        count: 1,
+        disabled: [],
+      } as any);
+      mockGetCoordinator.mockReturnValue(null);
+      const mockCreateCoordinator = vi
+        .fn()
+        .mockRejectedValue(new Error('coordinator import failed'));
+
+      _resetRegistration();
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator,
+        mockCreateCoordinator
+      );
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:save-scanners-db',
+        []
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.scanners).toHaveLength(1);
+    });
+  });
+
+  describe('graviscan:reset-usb coordinator orchestration', () => {
+    it("passes getCoordinator()'s value through when no createCoordinator is supplied", async () => {
+      const coordinator = { shutdown: vi.fn(), initialize: vi.fn() };
+      mockGetCoordinator.mockReturnValue(coordinator);
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+
+      await mockIpcMain._invoke('graviscan:reset-usb');
+
+      expect(scannerHandlers.resetUsb).toHaveBeenCalledWith(
+        coordinator,
+        mockDb
+      );
+    });
+
+    it('lazily creates the coordinator via createCoordinator() so Reset USB can actually shut down and re-initialize it', async () => {
+      // Regression test for the same class of bug as save-scanners-db
+      // above: getCoordinator() alone returns null until something else
+      // has already created a coordinator, so clicking Reset USB before
+      // ever starting a scan used to shut down nothing and
+      // re-initialize nothing — every scanner ended up "disconnected"
+      // with no coordinator entry, never "ready".
+      const lazilyCreatedCoordinator = {
+        shutdown: vi.fn(),
+        initialize: vi.fn(),
+      };
+      mockGetCoordinator.mockReturnValue(null);
+      const mockCreateCoordinator = vi
+        .fn()
+        .mockResolvedValue(lazilyCreatedCoordinator);
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator,
+        mockCreateCoordinator
+      );
+
+      await mockIpcMain._invoke('graviscan:reset-usb');
+
+      expect(mockCreateCoordinator).toHaveBeenCalled();
+      expect(scannerHandlers.resetUsb).toHaveBeenCalledWith(
+        lazilyCreatedCoordinator,
+        mockDb
+      );
+    });
   });
 
   describe('error handling', () => {

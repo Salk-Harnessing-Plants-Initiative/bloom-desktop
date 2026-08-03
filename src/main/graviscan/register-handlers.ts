@@ -82,7 +82,39 @@ export function registerGraviScanHandlers(
     wrapHandler(async () => {
       const result = await scannerHandlers.saveScannersToDB(db, scanners);
 
-      const coordinator = getCoordinator();
+      // Bug found via E2E reproduction (Configure Scanner UI review): this
+      // used to call getCoordinator() (a read-only lookup), which returns
+      // null until something else has already created the coordinator —
+      // in practice, only graviscan:start-scan ever did that. In a fresh
+      // app session where the operator's first action is Detect Scanners
+      // (never having started a scan), the coordinator was never created,
+      // so spawn-on-discovery silently did nothing and every scanner sat
+      // at "disconnected" forever, no matter how many times Detect/Reset
+      // USB were clicked. createCoordinator() lazily creates it if needed,
+      // matching what #234's "spawn a worker on discovery" doc comment
+      // below actually promises. Falls back to getCoordinator() when no
+      // createCoordinator is supplied (defensive: keeps this handler
+      // usable if a future caller doesn't wire up lazy creation).
+      // Guard the lazy-create call itself: it runs AFTER saveScannersToDB()
+      // has already committed, so a throw here (e.g. a dynamic-import
+      // failure inside getOrCreateCoordinator) must not propagate past
+      // this point — wrapHandler's outer catch would turn the whole
+      // response into {success:false}, discarding the already-successful
+      // save and reporting a false "Save failed" to the operator for
+      // data that did persist. Skipping spawn-on-discovery for this call
+      // (the scanner rows are still saved; they come online on the next
+      // successful Detect/Reset) is the safe failure mode here.
+      let coordinator: ScanCoordinatorLike | null = null;
+      try {
+        coordinator = createCoordinator
+          ? await createCoordinator()
+          : getCoordinator();
+      } catch (err) {
+        console.error(
+          '[GraviScan:SAVE] Failed to create coordinator, skipping spawn-on-discovery:',
+          err instanceof Error ? err.message : err
+        );
+      }
       if (coordinator && result.success) {
         // #20 (Copilot PR #237 review): stop worker subprocesses for any
         // scanner rows that were just disabled as stale, so they don't
@@ -208,7 +240,19 @@ export function registerGraviScanHandlers(
   );
 
   ipcMain.handle('graviscan:reset-usb', () =>
-    wrapHandler(() => scannerHandlers.resetUsb(getCoordinator(), db))()
+    wrapHandler(async () => {
+      // Same fix as graviscan:save-scanners-db above: getCoordinator()
+      // alone returns null until a coordinator has already been created
+      // elsewhere, so a Reset USB click before any scan has ever started
+      // silently shut down nothing and re-initialized nothing — every
+      // scanner ended up "disconnected" with no coordinator entry at all,
+      // never "ready". createCoordinator() lazily creates one so reset
+      // actually has a coordinator to shut down and re-initialize.
+      const coordinator = createCoordinator
+        ? await createCoordinator()
+        : getCoordinator();
+      return scannerHandlers.resetUsb(coordinator, db);
+    })()
   );
 
   /**

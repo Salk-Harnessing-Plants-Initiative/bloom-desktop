@@ -341,6 +341,21 @@ function isValidURL(urlString: string): boolean {
  * @param config - Configuration to validate
  * @returns Validation result with field-specific errors
  */
+/**
+ * Boolean-only summary of the GraviScan-relevant env vars (#245), for the
+ * Configure Scanner page's status banner. Never returns the webhook URL
+ * itself — only whether it's present.
+ */
+export function getGraviScanEnvStatus(config: MachineConfig): {
+  slackConfigured: boolean;
+  libusbRecoveryEnabled: boolean;
+} {
+  return {
+    slackConfigured: !!config.slack_webhook_url,
+    libusbRecoveryEnabled: config.libusb_endpoint_recovery !== false,
+  };
+}
+
 export function validateConfig(config: MachineConfig): ValidationResult {
   const errors: ValidationResult['errors'] = {};
 

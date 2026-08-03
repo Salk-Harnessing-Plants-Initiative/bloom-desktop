@@ -54,12 +54,18 @@ describe('preload gravi namespace', () => {
       'readScanImage',
       'uploadAllScans',
       'downloadImages',
+      'getScannerStatus',
     ];
 
-    it('has all 16 invoke methods', () => {
+    it('has all 17 invoke methods', () => {
       for (const method of invokeMethods) {
         expect(typeof exposedAPI.gravi[method]).toBe('function');
       }
+    });
+
+    it('getScannerStatus calls ipcRenderer.invoke with correct channel and no arguments', async () => {
+      await exposedAPI.gravi.getScannerStatus();
+      expect(mockInvoke).toHaveBeenCalledWith('graviscan:get-scanner-status');
     });
 
     it('detectScanners calls ipcRenderer.invoke with correct channel', async () => {

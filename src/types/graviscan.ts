@@ -159,12 +159,19 @@ export interface GraviScanPlatformInfo {
 
 /**
  * Available resolutions for GraviScan (DPI).
+ * Restricted to the V600-validated set (issue #232) — 3200/6400 are not
+ * reliably achievable on the production scanner hardware.
  */
-export const GRAVISCAN_RESOLUTIONS = [
-  200, 400, 600, 800, 1200, 1600, 3200, 6400,
-] as const;
+export const GRAVISCAN_RESOLUTIONS = [200, 400, 600, 800, 1200, 1600] as const;
 
 export type GraviScanResolution = (typeof GRAVISCAN_RESOLUTIONS)[number];
+
+/**
+ * Type guard for the validated GraviScan resolution set.
+ */
+export function isValidResolution(value: number): value is GraviScanResolution {
+  return (GRAVISCAN_RESOLUTIONS as readonly number[]).includes(value);
+}
 
 /**
  * Grid mode options.
@@ -211,6 +218,74 @@ export interface ResetUsbResult {
   success: boolean;
   scanners?: Array<{ id: string; status: 'ready' | 'disconnected' }>;
   error?: string;
+}
+
+/**
+ * Merged live-coordinator + saved-DB row shown on the Configure Scanner
+ * page. Shared between `electron.d.ts` (GraviAPI.getScannerStatus) and
+ * ConfigureScanner.tsx so the two don't drift, as they did for `resetUsb()`.
+ */
+export interface ScannerStatusRow {
+  scannerId: string;
+  displayName: string;
+  usbPort: string | null;
+  gridMode: string;
+  status: 'ready' | 'starting' | 'error' | 'dead' | 'disconnected';
+  error?: string;
+}
+
+/** Input payload for `graviscan:save-scanners-db`. */
+export type SaveScannersInput = Array<{
+  name: string;
+  display_name?: string | null;
+  vendor_id: string;
+  product_id: string;
+  usb_port?: string;
+  usb_bus?: number;
+  usb_device?: number;
+}>;
+
+/** Result of `graviscan:detect-scanners` (`scanner-handlers.ts#detectScanners`). */
+export interface DetectScannersResult {
+  success: boolean;
+  scanners: DetectedScanner[];
+  count: number;
+  mock?: boolean;
+  error?: string;
+}
+
+/** Result of `graviscan:get-config` (`scanner-handlers.ts#getConfig`). */
+export interface GetConfigResult {
+  success: boolean;
+  config: GraviConfig | null;
+  error?: string;
+}
+
+/** Result of `graviscan:save-config` (`scanner-handlers.ts#saveConfig`). */
+export interface SaveConfigResult {
+  success: boolean;
+  config?: GraviConfig;
+  error?: string;
+}
+
+/** Result of `graviscan:save-scanners-db` (`scanner-handlers.ts#saveScannersToDB`). */
+export interface SaveScannersToDBResult {
+  success: boolean;
+  scanners: GraviScanner[];
+  count?: number;
+  disabled: string[];
+  error?: string;
+}
+
+/**
+ * Result of `graviscan:get-scan-status` (`session-handlers.ts#getScanStatus`).
+ * The underlying session-state object is intentionally loosely typed
+ * (`Record<string, any>` server-side) — this only pins down the one field
+ * every caller actually relies on.
+ */
+export interface GetScanStatusResult {
+  isActive: boolean;
+  [key: string]: unknown;
 }
 
 /**

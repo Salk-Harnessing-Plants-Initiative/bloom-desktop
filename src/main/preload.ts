@@ -305,6 +305,8 @@ const configAPI: ConfigAPI = {
   browseDirectory: () => ipcRenderer.invoke('config:browse-directory'),
   exists: () => ipcRenderer.invoke('config:exists'),
   getMode: () => ipcRenderer.invoke('config:get-mode'),
+  getGraviScanEnvStatus: () =>
+    ipcRenderer.invoke('config:get-graviscan-env-status'),
   fetchScanners: (
     apiUrl: string,
     credentials: {
@@ -360,6 +362,7 @@ const graviAPI = {
     ipcRenderer.invoke('graviscan:validate-scanners', ids),
   validateConfig: () => ipcRenderer.invoke('graviscan:validate-config'),
   resetUsb: () => ipcRenderer.invoke('graviscan:reset-usb'),
+  getScannerStatus: () => ipcRenderer.invoke('graviscan:get-scanner-status'),
 
   // Session operations
   startScan: (params: any) =>
@@ -455,6 +458,22 @@ const graviAPI = {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
+ * Resolves once the main process's startup sequence (database + GraviScan
+ * handler registration) has reached a definitive outcome. Renderer code
+ * doesn't need this (real app usage tolerates the brief window where
+ * IPC calls would fail — there's no user interaction that fast), but
+ * E2E tests launching a fresh Electron instance per spec DO race it:
+ * `window.waitForLoadState('domcontentloaded')` alone only waits for the
+ * renderer's HTML, not for the main process's async handler registration
+ * to finish. Awaiting this first closes that race.
+ */
+const waitUntilReady = () =>
+  ipcRenderer.invoke('app:wait-until-ready') as Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+/**
  * Expose electron API to renderer process
  */
 contextBridge.exposeInMainWorld('electron', {
@@ -466,4 +485,5 @@ contextBridge.exposeInMainWorld('electron', {
   config: configAPI,
   session: sessionAPI,
   gravi: graviAPI,
+  waitUntilReady,
 });

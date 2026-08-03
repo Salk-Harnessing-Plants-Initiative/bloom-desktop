@@ -97,8 +97,7 @@ describe('ScannerSubprocess', () => {
       expect(spawn).toHaveBeenCalledWith(
         '/usr/bin/python3',
         expect.arrayContaining([
-          '-m',
-          'graviscan.scan_worker',
+          '--scan-worker',
           '--scanner-id',
           'scanner-1',
           '--device',
@@ -110,7 +109,14 @@ describe('ScannerSubprocess', () => {
       expect(subprocess.isAlive).toBe(true);
     });
 
-    it('uses bloom-hardware args in packaged mode', async () => {
+    it('uses the identical --scan-worker invocation regardless of isPackaged', async () => {
+      // Regression test for a real bug found via E2E reproduction:
+      // `pythonPath` is always the PyInstaller-built executable in both
+      // packaged and dev/E2E mode (see python-paths.ts), never a raw
+      // Python interpreter — so there is no "development = python -m
+      // ..." case to branch on. Every dev/E2E-mode subprocess spawn
+      // previously failed immediately (frozen exe's argparse rejects
+      // `-m graviscan.scan_worker` as unrecognized) until this was fixed.
       subprocess = new ScannerSubprocess(
         '/app/bloom-hardware',
         true, // packaged
@@ -133,6 +139,10 @@ describe('ScannerSubprocess', () => {
         ]),
         expect.any(Object)
       );
+
+      // Never emit the raw-interpreter `-m` form, in either mode.
+      const [, packagedArgs] = vi.mocked(spawn).mock.calls[0];
+      expect(packagedArgs).not.toContain('-m');
     });
 
     it('rejects on spawn error (ENOENT)', async () => {

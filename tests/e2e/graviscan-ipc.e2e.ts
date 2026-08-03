@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
+import { waitForAppReady } from './helpers/app-ready';
 import type { ElectronAPI } from '../../src/types/electron';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -106,6 +107,7 @@ async function launchElectronApp() {
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
+  await waitForAppReady(window);
 }
 
 /**
@@ -209,6 +211,19 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(typeof result.data.path).toBe('string');
   });
 
+  test('getScannerStatus returns scanner list shape', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.gravi.getScannerStatus();
+    });
+
+    // getScannerStatus returns its shape directly ({success, scanners}),
+    // not wrapped via wrapHandler's {success, data} envelope.
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.scanners)).toBe(true);
+  });
+
   test('getScanStatus returns inactive when no scan active', async () => {
     const result = await window.evaluate(() => {
       return (
@@ -243,5 +258,70 @@ test.describe('GraviScan IPC Round-Trip', () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toBeDefined();
+  });
+});
+
+test.describe('Configure Scanner page', () => {
+  test('renders, detects mock scanners, and lists the validated resolution options', async () => {
+    await window.click('text=Configure Scanner');
+    await window.waitForSelector('h1:has-text("Configure Scanner")');
+
+    await window.click('button:has-text("Detect Scanners")');
+    await window.waitForSelector('table tbody tr');
+    const rowCount = await window.locator('table tbody tr').count();
+    expect(rowCount).toBeGreaterThan(0);
+
+    const resolutionOptions = await window
+      .locator('#graviscan-resolution option')
+      .allTextContents();
+    expect(resolutionOptions.map((o) => o.trim().split(' ')[0])).toEqual([
+      '200',
+      '400',
+      '600',
+      '800',
+      '1200',
+      '1600',
+    ]);
+  });
+
+  test('Remove hides a scanner row after the next status refresh', async () => {
+    await window.click('text=Configure Scanner');
+    await window.waitForSelector('h1:has-text("Configure Scanner")');
+
+    await window.click('button:has-text("Detect Scanners")');
+    await window.waitForSelector('table tbody tr');
+    const before = await window.locator('table tbody tr').count();
+    expect(before).toBeGreaterThan(0);
+
+    await window.click('table tbody tr:first-child button:has-text("Remove")');
+    await expect
+      .poll(async () => window.locator('table tbody tr').count())
+      .toBeLessThan(before);
+  });
+
+  test('Reset All USB Connections marks rows starting, then settles back to a populated list', async () => {
+    // resetUsb() has real, intentional hardware-safety delays: a 5s USB
+    // bus-release wait plus a 5s stagger between each of the 2 mock
+    // scanners' re-initialization (USB_RELEASE_WAIT_MS/USB_STAGGER_DELAY_MS
+    // in scanner-handlers.ts/scan-coordinator.ts), plus per-subprocess
+    // startup time. A short poll timeout here is a test-timing bug, not a
+    // reason to shorten the app's deliberate reset delays.
+    test.setTimeout(90000);
+
+    await window.click('text=Configure Scanner');
+    await window.waitForSelector('h1:has-text("Configure Scanner")');
+
+    await window.click('button:has-text("Detect Scanners")');
+    await window.waitForSelector('table tbody tr');
+
+    await window.click('button:has-text("Reset All USB Connections")');
+    await window.waitForSelector('table tbody tr:has-text("starting")');
+
+    await expect
+      .poll(
+        async () => window.locator('table tbody tr:has-text("ready")').count(),
+        { timeout: 45000 }
+      )
+      .toBeGreaterThan(0);
   });
 });

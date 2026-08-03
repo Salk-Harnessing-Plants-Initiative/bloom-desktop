@@ -38,6 +38,17 @@ import {
   PaginatedScansResponse,
 } from './database';
 import { UploadResult } from '../main/image-uploader';
+import {
+  ResetUsbResult,
+  ScannerStatusRow,
+  SaveScannersInput,
+  DetectScannersResult,
+  GetConfigResult,
+  SaveConfigResult,
+  SaveScannersToDBResult,
+  GetScanStatusResult,
+  GraviConfigInput,
+} from './graviscan';
 import type {
   GraviScanCreateInput,
   graviscansCreate,
@@ -62,7 +73,6 @@ import type {
   graviPlateAccessionsListFiles,
   graviPlateAccessionsDelete,
 } from '../main/database-handlers';
-import { ResetUsbResult } from './graviscan';
 
 /**
  * Python backend API
@@ -561,6 +571,15 @@ export interface ConfigAPI {
   getMode: () => Promise<{ mode: string }>;
 
   /**
+   * Boolean-only status of the GraviScan Slack webhook / libusb-recovery
+   * env vars (#245). Never returns the webhook URL itself.
+   */
+  getGraviScanEnvStatus: () => Promise<{
+    slackConfigured: boolean;
+    libusbRecoveryEnabled: boolean;
+  }>;
+
+  /**
    * Fetch list of valid scanners from Bloom API
    * @param apiUrl - Bloom API URL
    * @param credentials - Bloom API credentials from form
@@ -586,10 +605,25 @@ export interface ConfigAPI {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface GraviAPI {
   // Scanner operations
-  detectScanners: () => Promise<any>;
-  getConfig: () => Promise<any>;
-  saveConfig: (config: any) => Promise<any>;
-  saveScannersToDB: (scanners: any) => Promise<any>;
+  detectScanners: () => Promise<
+    | { success: true; data: DetectScannersResult }
+    | { success: false; error: string }
+  >;
+  getConfig: () => Promise<
+    { success: true; data: GetConfigResult } | { success: false; error: string }
+  >;
+  saveConfig: (
+    config: GraviConfigInput
+  ) => Promise<
+    | { success: true; data: SaveConfigResult }
+    | { success: false; error: string }
+  >;
+  saveScannersToDB: (
+    scanners: SaveScannersInput
+  ) => Promise<
+    | { success: true; data: SaveScannersToDBResult }
+    | { success: false; error: string }
+  >;
   /**
    * Disable a single scanner (per-row "Remove" action).
    * Sets enabled=false on the matching row and stops the worker.
@@ -602,11 +636,21 @@ export interface GraviAPI {
   getPlatformInfo: () => Promise<any>;
   validateScanners: (ids: string[]) => Promise<any>;
   validateConfig: () => Promise<any>;
-  resetUsb: () => Promise<ResetUsbResult>;
+  resetUsb: () => Promise<
+    { success: true; data: ResetUsbResult } | { success: false; error: string }
+  >;
+  getScannerStatus: () => Promise<{
+    success: boolean;
+    scanners: ScannerStatusRow[];
+    error?: string;
+  }>;
 
   // Session operations
   startScan: (params: any) => Promise<any>;
-  getScanStatus: () => Promise<any>;
+  getScanStatus: () => Promise<
+    | { success: true; data: GetScanStatusResult }
+    | { success: false; error: string }
+  >;
   markJobRecorded: (jobKey: string) => Promise<any>;
   cancelScan: () => Promise<any>;
 
@@ -645,6 +689,14 @@ export interface ElectronAPI {
   config: ConfigAPI;
   session: SessionAPI;
   gravi: GraviAPI;
+  /**
+   * Resolves once main.ts's startup sequence (database + GraviScan
+   * handler registration) has reached a definitive outcome. E2E tests
+   * should await this before making any IPC call — see preload.ts's
+   * `waitUntilReady` doc comment for why `domcontentloaded` alone isn't
+   * sufficient.
+   */
+  waitUntilReady: () => Promise<{ success: boolean; error?: string }>;
 }
 
 /**

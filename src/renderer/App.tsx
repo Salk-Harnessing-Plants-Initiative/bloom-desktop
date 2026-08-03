@@ -18,6 +18,7 @@ import { Experiments } from './Experiments';
 import { BrowseScans } from './BrowseScans';
 import { ScanPreview } from './ScanPreview';
 import { MachineConfiguration } from './MachineConfiguration';
+import { ConfigureScanner } from './ConfigureScanner';
 import { useAppMode } from './hooks/useAppMode';
 
 export default function App() {
@@ -56,6 +57,10 @@ export default function App() {
               <Route path="capture-scan" element={<CaptureScan />} />
               <Route path="accessions" element={<Accessions />} />
             </>
+          )}
+
+          {mode === 'graviscan' && (
+            <Route path="configure-scanner" element={<ConfigureScanner />} />
           )}
 
           {/* Data entry routes — available for all modes */}
