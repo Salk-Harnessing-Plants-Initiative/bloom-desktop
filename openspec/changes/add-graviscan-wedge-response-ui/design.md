@@ -167,12 +167,23 @@ even avoid the worst case, since a genuinely wedged row was headed for the
 90s timeout regardless of when `stopScanner()` is called. Not covered by
 an integration test in this change (section 2's tests exercise
 `setupWedgeDetection()` against a bare `EventEmitter` standing in for the
-coordinator, not a real `ScanCoordinator` with an in-flight `scanOnce()`)
-— reproducing the exact race would need real subprocess timing, which is
-a materially larger test-infrastructure investment than this UI-focused
-tier warrants; the 90s bound itself is already covered by
-`scan-coordinator.test.ts`'s existing row-timeout tests, unchanged by this
-proposal.
+coordinator, not a real `ScanCoordinator` with an in-flight `scanOnce()`).
+**Correction (post-PR-#277-review):** an earlier revision of this section
+claimed reproducing this race would need real subprocess timing — that
+was wrong. `scan-coordinator.test.ts`'s existing row-timeout test already
+reproduces the same class of async-listener/timer race with fake timers
+and a mocked `ScannerSubprocess`, and this proposal's own
+`stopScanner()`/`addScanner()` retry-integration tests (added in a later
+commit on PR #277) prove the same file's mocked `ScannerSubprocess` is
+adequate for exactly this kind of test. The actual reason it isn't added
+here: this file's shared `createMockSubprocess()` helper stubs
+`removeAllListeners()` as a `vi.fn()` no-op rather than delegating to the
+real `EventEmitter.prototype.removeAllListeners`, so it can't yet
+faithfully reproduce listener-stripping without a small, shared change to
+that helper (which every other test in the file also depends on) — an
+unstaffed follow-up, not an infrastructure gap. The 90s bound itself is
+already covered by `scan-coordinator.test.ts`'s existing row-timeout
+tests, unchanged by this proposal.
 
 Retry's respawn is safe to call at any point in a session because
 `addScanner()` already handles mid-cycle safety: if `isScanning`, it queues
