@@ -334,12 +334,27 @@ export async function cancelScan(
  * than from any value cached at session start, since a `reset-usb`
  * performed after auto-pause would otherwise make a stale value wrong.
  */
+// Tracks scanner_ids with a retryScanner() call currently in flight. A
+// scanner can re-wedge (and its banner entry remount, resetting the UI's
+// own `retrying` guard) before a prior retry's stopScanner()+addScanner()
+// pair has resolved — without this guard, a second concurrent retry for
+// the same scannerId could race the first (addScanner() only dedupes
+// concurrent calls while a cycle is in flight; it does not when idle).
+const retriesInFlight = new Set<string>();
+
 export async function retryScanner(
   coordinator: ScanCoordinatorLike | null,
   db: ScannerRetryLookupDb,
   sessionFns: SessionFns,
   scannerId: string
 ): Promise<{ success: boolean; error?: string }> {
+  if (retriesInFlight.has(scannerId)) {
+    return {
+      success: false,
+      error: `Retry already in progress for scanner ${scannerId}`,
+    };
+  }
+  retriesInFlight.add(scannerId);
   try {
     if (!sessionFns.getScanSession()?.isActive) {
       return { success: false, error: 'No active scan session' };
@@ -374,5 +389,7 @@ export async function retryScanner(
       `[WedgeResponse] retry failed scanner=${scannerId} error=${message}`
     );
     return { success: false, error: message };
+  } finally {
+    retriesInFlight.delete(scannerId);
   }
 }

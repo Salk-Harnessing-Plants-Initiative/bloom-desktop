@@ -599,5 +599,69 @@ describe('session-handlers', () => {
       expect(result.error).toContain('spawn failed');
       expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('sc-1'));
     });
+
+    it('rejects a second concurrent retry for the same scannerId while the first is still in flight, without a second stopScanner()+addScanner() pair', async () => {
+      let resolveAddScanner!: () => void;
+      coordinator = createMockCoordinator({
+        addScanner: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveAddScanner = resolve;
+            })
+        ),
+      } as any);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const first = retryScanner(coordinator, db as any, sessionFns, 'sc-1');
+      const second = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(second.success).toBe(false);
+      expect(second.error).toContain('already in progress');
+
+      // Let the first call's own await chain (findUnique, then
+      // stopScanner) actually reach its addScanner() call before we
+      // resolve it.
+      await new Promise((r) => setTimeout(r, 0));
+      resolveAddScanner();
+      const firstResult = await first;
+      expect(firstResult.success).toBe(true);
+      // Only the first call's addScanner() ever ran — the second was
+      // rejected by the in-flight guard before reaching the coordinator.
+      expect(coordinator.addScanner).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a subsequent retry for the same scannerId once a prior retry has resolved', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const first = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+      const second = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(coordinator.addScanner).toHaveBeenCalledTimes(2);
+    });
   });
 });
