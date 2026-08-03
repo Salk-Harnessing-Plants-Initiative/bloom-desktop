@@ -1,10 +1,14 @@
 # CylinderScan Finalization Roadmap
 
-**Status:** Drafted 2026-08-03 from two firsthand audits (the retired
-`bloom-desktop-pilot` repo, and current `bloom-desktop`'s CylinderScan code
-cross-referenced against every open issue below). Not yet adversarially
-reviewed — that review runs before Tier 1's proposal starts, mirroring
-`2026-07-30-graviscan-renderer-roadmap.md`'s process.
+**Status:** Drafted 2026-08-03 from two firsthand audits, then reconciled
+2026-08-03 after an adversarial roadmap-level review (4 independent
+`general-purpose` agents: factual accuracy, dependency/sequencing,
+completeness, scope/consistency/safety), mirroring
+`2026-07-30-graviscan-renderer-roadmap.md`'s process. See "Reconciliation
+from adversarial review" below for what changed — the review added real
+scope (e.g. #249, #120, pilot #3's metadata-readback gap) beyond the
+user's original tier approval, so this reconciled version is pending a
+final user sign-off before Tier 1 starts.
 
 ## Owner context
 
@@ -111,44 +115,110 @@ dataset, so each tier's "validation target" (in place of an oracle) is:
 
 | # | Tier | Depends on | New backend? | Related issues | Status |
 |---|------|-----------|---------------|-----------------|--------|
-| 1 | Correctness & security hardening | — | No — fixes to existing files only | #93, #96, #97, #47, #40, #198 | Not started — unblocked, ready to propose next |
-| 2 | Delete & upload data-integrity completion | — (parallel to 1) | No — extends existing `db:scans:delete` + `image-uploader.ts` | #79, #105 | Not started — unblocked |
-| 3 | Export page for batch scan export | 2 (needs correct delete-flag filtering) | Possibly — one new read-only IPC handler for scan enumeration by experiment/date, if none suitable exists | #77 | Not started — blocked on Tier 2 |
-| 4 | Style/UX parity pass | — | No | `align-page-layout-centering` (pending), #104, #175, #106, #107 | Not started — unblocked, can run anytime |
-| 5 | Windows packaging & deployment readiness | 1, 2, 3 | No | #251, #57 (bloom-desktop), #180 | Not started — CI/doc prep can start in parallel; final build+install gated on Tiers 1-3 |
+| 1 | Correctness & security hardening | — | Mostly no; #93 requires new protocol-handler registration + path-traversal validation logic, not a flag flip | #93, #96, #97, #47, #40, #198, #249 | Not started — unblocked, ready to propose next |
+| 2 | Delete & upload data-integrity + acquisition metadata completion | — (parallel to 1; shares `image-uploader.ts` with Tier 1's #97, disjoint regions) | Yes — one small new `db:scans:checkDuplicate`-style handler (#120), possibly a metadata-readback extension (pilot #3) | #79, #105, #120, pilot #3, (#110 optional) | Not started — unblocked |
+| 3 | Export page for batch scan export | — (the `Scan.deleted` field and its consistent `deleted: false` filtering convention already exist today; Tier 2 doesn't need to finish first) | Possibly — one new read-only IPC handler for scan enumeration by experiment/date, if none suitable exists | #77 | Not started — unblocked |
+| 4 | Style/UX parity pass | — | No | `align-page-layout-centering` (pending), #104, #175 (scoped carefully — see below), #106, #107 | Not started — unblocked, can run anytime |
+| 5a | Packaging CI/doc prep | — | No | #251, #57 (bloom-desktop), #180 | Not started — unblocked, can start immediately, no dependency on any other tier |
+| 5b | Windows build, install, and full-workflow QA | 1, 2, 3 | No | (validates 1-3) | Not started — blocked on Tiers 1-3 |
+
+## Reconciliation from adversarial review (2026-08-03)
+
+Four independent `general-purpose` agents reviewed this document against
+live repo state before Tier 1 was allowed to start. Summary of what changed
+(full detail is inline in each tier below):
+
+- **Factual accuracy review: no changes.** Every issue number, file:line
+  citation, and hedged claim (e.g. #78 already implemented, #95 mostly
+  fixed) was independently re-verified and confirmed accurate as drafted.
+- **Dependency/sequencing review:** Tier 3's dependency on Tier 2 was
+  removed (the `Scan.deleted` filtering convention it needs already exists
+  today, unrelated to what Tier 2 changes). Tier 5 was split into 5a
+  (CI/doc prep, no dependency, can start immediately) and 5b (the actual
+  Windows build+install, gated on Tiers 1-3). A coordination note was added
+  to Tier 1/Tier 2 for their shared edits to `image-uploader.ts`.
+- **Completeness review:** added #249 (concurrent app instances) to Tier 1,
+  added #120 (duplicate-scan blocking) and pilot #3 (acquisition-metadata
+  readback gap) to Tier 2, added #110 as an optional bonus check in Tier 2,
+  and added an explicit full-workflow manual QA pass to Tier 5b.
+- **Scope/consistency/safety review:** corrected Tier 1's #93 and #40 from
+  "mechanical, no open questions" to accurately scoped design work (see
+  Tier 1 below for the specific mechanisms); flagged Tier 4's #175 as
+  needing careful scoping to avoid unintentionally changing GraviScan's
+  shared `WorkflowSteps.tsx` rendering; required Tier 2 to formally amend
+  the already-accepted "Scan Delete IPC Handler" spec requirement, not just
+  the code.
+
+None of these were scope-fatal — all were reconcilable within the existing
+5-tier shape, which is why the tier count stayed at 5 (5a/5b are a split of
+one tier, not a new one).
 
 ### Tier 1 — Correctness & security hardening
 
-Scope: six independent, mechanical fixes to existing files, each already
-fully diagnosed (no open design questions):
+Scope: seven fixes to existing files. Most are mechanical with no open
+design questions, but two — flagged by adversarial review — need real design
+work, not a one-line swap:
 
-- #93 — replace `webSecurity: false` (`main.ts:156`) with a custom protocol
-  handler for local file access.
+- **#93 — replace `webSecurity: false` (`main.ts:156`) with a custom protocol
+  handler for local file access. NOT mechanical** — the existing code comment
+  at `main.ts:152-156` confirms this flag exists specifically so `ScanPreview.tsx`
+  can load local scan images under webpack-dev-server's http origin in dev.
+  Removing it requires: registering a privileged custom scheme before
+  `app.ready`, writing a handler with its own path-traversal validation (the
+  flag currently bypasses exactly that check), and testing both the dev
+  (http origin) and packaged (file origin) contexts on Windows paths
+  specifically, since Tier 5 targets Windows. Scope the proposal accordingly —
+  this is new main-process security logic.
+- **#40 — thread safety in `python/hardware/scanner.py`. Verify the race is
+  actually reachable before adding a lock.** `python/ipc_handler.py`'s command
+  loop (`for line in sys.stdin`) is single-threaded and strictly sequential;
+  the only background thread (`_streaming_thread`) touches a separate
+  `_camera_instance`, never `Scanner.is_scanning`. Confirm during the
+  proposal's design phase whether the race described in #40 is live under the
+  current architecture or was inherited from a different threading model. If
+  a `threading.Lock` is still warranted (e.g. for future-proofing or a
+  reachable path not yet found), scope it narrowly around the
+  check-then-set at lines 105/162/172/274 — **not** around all of
+  `perform_scan()`, which can run for minutes; wrapping the whole call would
+  make `cleanup()`'s `is_scanning` check at line 105 block for the full scan
+  duration instead of immediately raising "Cannot cleanup during active scan,"
+  a regression to a legitimate abort path.
 - #96 — add cleanup functions to the 8 preload listeners currently missing
   them: `python.onStatus`, `python.onError`, `camera.onTrigger`,
   `camera.onImageCaptured`, `daq.onInitialized`, `daq.onPositionChanged`,
   `daq.onHome`, `daq.onError` (all in `src/main/preload.ts`), matching the
   pattern the other 4 listeners already use.
 - #97 — replace the 4 `any`-typed fields in `image-uploader.ts:96-103` with
-  proper types from `bloom-fs`/`bloom-js`.
+  proper types from `bloom-fs`/`bloom-js`. (Touches the same file as Tier 2's
+  upload-integrity audit — disjoint regions, likely a clean merge, but
+  whichever of Tier 1/Tier 2 merges first, rebase the other onto it before
+  finalizing that tier's proposal, same discipline as the GraviScan roadmap's
+  `preload.ts` coordination note.)
 - #47 — add request/response correlation (e.g. a request ID) to
   `sendCommand` in `python-process.ts:142-183`, which currently uses a bare
   `this.once('data', ...)` with no way to match a response to its request.
-- #40 — add a `threading.Lock` around the `is_scanning` check-then-set in
-  `python/hardware/scanner.py` (currently racy at lines 105/162 vs. 172/274),
-  plus a concurrency test in `python/tests/test_scanner.py`.
 - #198 — make `PythonStatus.tsx` mode-aware: accept a mode prop (or read
   `useAppMode`) and suppress Camera/DAQ-specific warnings when in GraviScan
   mode; make `python/ipc_handler.py:167`'s `check_hardware()` branch on mode
-  too if it's currently CylinderScan-only.
+  too if it's currently CylinderScan-only. (Confirmed: `Home.tsx` renders
+  `<PythonStatus />` unconditionally for both modes today — this fix removes
+  GraviScan bleed, it doesn't introduce any.)
+- **#249 (added by completeness review) — multiple concurrent app instances.**
+  Cross-cutting (affects both scanner modes via shared `main.ts` singletons —
+  `PythonProcess`/`CameraProcess`/`DAQProcess` — and shared SQLite access), but
+  it's the same kind of mechanical, well-understood hardening as the rest of
+  this tier: Electron's built-in `app.requestSingleInstanceLock()` is the
+  standard pattern. Included here rather than left unaddressed, since a
+  double-launch on a lab machine is a real data-corruption risk this roadmap's
+  "production-level data integrity" goal can't responsibly ignore.
 
-No feature-parity or data-integrity work happens in this tier — it exists to
-de-risk the codebase before Tier 2 touches upload/delete.
+No feature-parity work happens in this tier — it exists to de-risk the
+codebase before Tier 2 touches upload/delete.
 
-### Tier 2 — Delete & upload data-integrity completion
+### Tier 2 — Delete & upload data-integrity + acquisition metadata completion
 
 Highest-stakes tier — this is what "production-level data integrity and
-metadata preservation" points at directly. Two parts:
+metadata preservation" points at directly. Four parts:
 
 1. **Finish #79/#105.** `db:scans:delete` (`database-handlers.ts:1710-1728`)
    must also update the scan's `metadata.json` on disk (matching the pilot's
@@ -156,7 +226,12 @@ metadata preservation" points at directly. Two parts:
    needs a delete affordance (currently upload-only). Decide and document a
    file-retention policy (soft-delete-only, matching pilot, vs. hard deletion
    of image bytes) as part of the proposal — this is a real design decision,
-   not just a port.
+   not just a port. **This proposal must also formally amend**
+   `openspec/specs/ui-management-pages/spec.md`'s already-accepted "Scan
+   Delete IPC Handler" requirement, which currently states deleted scans'
+   files/Image records are not removed and says nothing about
+   `metadata.json` — code-only changes here would leave the accepted spec
+   silently stale.
 2. **Audit `image-uploader.ts` against the pilot's three confirmed bugs,
    fix what's present:**
    - Does the current upload-queue query exclude images belonging to
@@ -168,10 +243,28 @@ metadata preservation" points at directly. Two parts:
      row? If not, add it for cross-system traceability (pilot bug #59
      equivalent). Consider whether a lightweight audit/reconciliation check
      (pilot's missing #61) is in scope here or worth a follow-up issue.
+   - Optional bonus check, cheap since this file is already open: #110 notes
+     the pilot used 10 upload workers vs. this app's 4 — worth a quick look,
+     not a blocker if out of scope.
 
    This audit happens first, in the proposal's design phase — the fix list
    above is provisional, not committed, until the current code is actually
-   read.
+   read. (Shares `image-uploader.ts` with Tier 1's #97 — disjoint regions,
+   see Tier 1's coordination note.)
+3. **#120 (added by completeness review) — block duplicate scans with the
+   same plant/wave/age.** CylinderScan-specific (`CaptureScan.tsx`), needs a
+   new `db:scans:checkDuplicate`-style handler — subject to the IPC coverage
+   gate noted in the validation-target section above.
+4. **Pilot #3 (added by completeness review) — acquisition-metadata
+   completeness gap.** The pilot only ever captured the app's own
+   user-configured camera settings (exposure, gain, brightness, contrast,
+   gamma, seconds-per-rotation), never raw Basler API readback (actual
+   applied exposure/gain, pixel format, ROI, firmware/serial). Confirm
+   whether current `bloom-desktop` has the same gap, and if "metadata
+   preservation" for this roadmap requires closing it now or is better
+   scoped as its own follow-up tier/issue — decide explicitly in this
+   proposal's design phase rather than leaving it silently unaddressed like
+   the pilot did.
 
 ### Tier 3 — Export page for batch scan export
 
@@ -181,8 +274,14 @@ whole-scan-folder copy (preserving `metadata.json` and all images verbatim) —
 rebuilt on current `bloom-desktop`'s IPC/data conventions rather than ported
 file-for-file. Carries forward the one thing the pilot's export code got
 right: filtering out soft-deleted scans (`Export.tsx:208,227`'s
-`!scan.deleted` pattern) — which is why this tier depends on Tier 2 having
-correct, consistent delete-flag semantics first.
+`!scan.deleted` pattern). Dependency correction from adversarial review:
+this does **not** require Tier 2 to finish first — `Scan.deleted`
+(`prisma/schema.prisma:80`, `@default(false)`) already exists, `db:scans:list`
+already filters `deleted: false` consistently today
+(`database-handlers.ts:1464,1611,1670`), and Tier 2's actual scope (metadata.json
+sync, delete affordance, upload-bug audit) never changes that filtering
+convention. Export's new handler can copy the existing `where: { deleted:
+false }` pattern verbatim regardless of Tier 2's status.
 
 ### Tier 4 — Style/UX parity pass
 
@@ -195,19 +294,32 @@ correct, consistent delete-flag semantics first.
   matching the convention already adopted in `ConfigureScanner.tsx`,
   `ExperimentChooser.tsx`, and `PhenotyperChooser.tsx`.
 - #104 — Home page as a status dashboard with quickstart guide.
-- #175 — redesign CylinderScan's `WorkflowSteps.tsx` flat 7-step list into the
-  richer workflow guide #104/#175 call for.
+- **#175 — redesign the CylinderScan workflow guide. Scope carefully:**
+  `WorkflowSteps.tsx` exports both `cylinderScanSteps` and `graviScanSteps`,
+  rendered through the *same* `WorkflowSteps` component — GraviScan's Home
+  screen uses this literal component with different step data. A redesign of
+  the component itself (not just `cylinderScanSteps`'s data) will change
+  GraviScan's rendered workflow guide too. This proposal must either scope
+  the redesign to `cylinderScanSteps`'s data only, or if the component itself
+  changes, explicitly verify GraviScan's rendering is unaffected (or
+  intentionally and visibly updated) and test both modes — not treat this as
+  CylinderScan-isolated by default.
 - #106/#107 — add thumbnail-preview and camera-settings columns to
   `BrowseScans.tsx`'s table (currently: Plant ID, Accession, Capture Date,
   Experiment, Phenotyper, Wave, Age, Images, Upload Status, Actions — no
-  preview/exposure/gain/device columns).
+  preview/exposure/gain/device columns). Heads-up: Tier 2 may also touch this
+  file's delete-affordance/state surfacing (`handleDelete`, line 101) — not a
+  hard dependency, just worth checking the other tier's latest state before
+  finalizing this one's diff if both are in flight at once.
 
 No dependency on Tiers 1-3; can run in parallel with any of them.
 
-### Tier 5 — Windows packaging & deployment readiness
+### Tier 5a — Packaging CI/doc prep
 
-Last by design — validates that everything above actually works packaged, on
-the real target OS, before it ships to lab machines.
+Dependency correction from adversarial review: none of this depends on any
+other tier. `pr-checks.yml`'s `test-package-database` job (lines 549-601) is
+fully self-contained (checkout → package → test) and touches zero
+CylinderScan feature code — it can start today, in parallel with Tier 1.
 
 - #251 — exercise `npm run make` (not just `npm run package`) end-to-end in
   CI, including a Windows-installer-launch-equivalent smoke test (current CI
@@ -218,12 +330,22 @@ the real target OS, before it ships to lab machines.
   Windows being the actual deployment target.
 - #180 — audit the existing CylinderScan hardware validation docs (Basler +
   NI-DAQ) for currency before relying on them for the physical rollout.
-- Build a signed, packaged Windows installer from the tip of Tiers 1-3 merged,
-  manually install it on the target machine(s), and run a hardware smoke test
-  (camera trigger + DAQ + a real scan capture end-to-end).
 
-The first three bullets (CI/doc prep) can start in parallel with Tier 4 once
-Tiers 1-2 are merged; the actual build-and-install is gated on Tiers 1-3.
+### Tier 5b — Windows build, install, and full-workflow QA
+
+Gated on Tiers 1-3 (shipping known security/race/data-integrity bugs to lab
+machines would be worse than waiting) and benefits from Tier 5a's CI having
+already exercised `make` before this tier relies on it manually.
+
+- Build a signed, packaged Windows installer from the tip of Tiers 1-3
+  merged, manually install it on the target machine(s), and run a hardware
+  smoke test (camera trigger + DAQ + a real scan capture end-to-end).
+- **Full-workflow manual QA pass (added by completeness review)** — the
+  happy path Metadata → CaptureScan → capture → BrowseScans → ScanPreview →
+  delete → export → upload, walked end-to-end by hand on the packaged
+  Windows build. This is what actually closes the loop on "making sure
+  everything is working as expected" — the per-tier TDD/E2E coverage above
+  verifies each piece in isolation, not the full chain together.
 
 ## Process per tier
 
