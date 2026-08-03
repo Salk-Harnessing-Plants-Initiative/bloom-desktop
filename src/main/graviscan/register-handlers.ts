@@ -95,9 +95,26 @@ export function registerGraviScanHandlers(
       // below actually promises. Falls back to getCoordinator() when no
       // createCoordinator is supplied (defensive: keeps this handler
       // usable if a future caller doesn't wire up lazy creation).
-      const coordinator = createCoordinator
-        ? await createCoordinator()
-        : getCoordinator();
+      // Guard the lazy-create call itself: it runs AFTER saveScannersToDB()
+      // has already committed, so a throw here (e.g. a dynamic-import
+      // failure inside getOrCreateCoordinator) must not propagate past
+      // this point — wrapHandler's outer catch would turn the whole
+      // response into {success:false}, discarding the already-successful
+      // save and reporting a false "Save failed" to the operator for
+      // data that did persist. Skipping spawn-on-discovery for this call
+      // (the scanner rows are still saved; they come online on the next
+      // successful Detect/Reset) is the safe failure mode here.
+      let coordinator: ScanCoordinatorLike | null = null;
+      try {
+        coordinator = createCoordinator
+          ? await createCoordinator()
+          : getCoordinator();
+      } catch (err) {
+        console.error(
+          '[GraviScan:SAVE] Failed to create coordinator, skipping spawn-on-discovery:',
+          err instanceof Error ? err.message : err
+        );
+      }
       if (coordinator && result.success) {
         // #20 (Copilot PR #237 review): stop worker subprocesses for any
         // scanner rows that were just disabled as stale, so they don't
