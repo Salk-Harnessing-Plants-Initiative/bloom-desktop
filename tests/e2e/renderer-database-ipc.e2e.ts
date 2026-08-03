@@ -2957,3 +2957,118 @@ test.describe('Renderer Database IPC - GraviScan graviPlateAccessions.*', () => 
     expect(remaining).toBeNull();
   });
 });
+
+/**
+ * experiments.{linkGraviMetadata,unlinkGraviMetadata,listGraviMetadata}
+ * (add-wave-scoped-metadata-linking). Seeds a graviscan-typed experiment and
+ * two GraviScan metadata files directly via Prisma, then exercises the
+ * real renderer -> preload -> IPC bridge for the full link/list/relink
+ * workflow.
+ */
+async function seedWaveMetadataFixture() {
+  const experiment = await prisma.experiment.create({
+    data: {
+      name: 'E2E Wave Metadata Experiment',
+      species: 'Amaranthus',
+      experiment_type: 'graviscan',
+    },
+  });
+  const accessionA = await prisma.accessions.create({
+    data: { name: 'E2E Wave File A' },
+  });
+  await prisma.graviPlateAccession.create({
+    data: {
+      metadata_file_id: accessionA.id,
+      plate_id: 'P1',
+      accession: 'Col-0',
+    },
+  });
+  const accessionB = await prisma.accessions.create({
+    data: { name: 'E2E Wave File B' },
+  });
+  await prisma.graviPlateAccession.create({
+    data: {
+      metadata_file_id: accessionB.id,
+      plate_id: 'P1',
+      accession: 'Col-0',
+    },
+  });
+  return { experiment, accessionA, accessionB };
+}
+
+test.describe('Renderer Database IPC - GraviScan experiments.{link,unlink,list}GraviMetadata', () => {
+  test('link, list, reject-relink, unlink, relink-with-different-file round-trip from renderer', async () => {
+    const fx = await seedWaveMetadataFixture();
+
+    const linked = await window.evaluate(
+      ({ experimentId, accessionId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.experiments.linkGraviMetadata(
+          experimentId,
+          1,
+          accessionId
+        );
+      },
+      { experimentId: fx.experiment.id, accessionId: fx.accessionA.id }
+    );
+    expect(linked.success).toBe(true);
+
+    const listed = await window.evaluate((experimentId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.listGraviMetadata(experimentId);
+    }, fx.experiment.id);
+    expect(listed.success).toBe(true);
+    expect(listed.data).toHaveLength(1);
+    expect(listed.data[0].wave_number).toBe(1);
+    expect(listed.data[0].accession.id).toBe(fx.accessionA.id);
+
+    const relinkRejected = await window.evaluate(
+      ({ experimentId, accessionId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.experiments.linkGraviMetadata(
+          experimentId,
+          1,
+          accessionId
+        );
+      },
+      { experimentId: fx.experiment.id, accessionId: fx.accessionB.id }
+    );
+    expect(relinkRejected.success).toBe(false);
+
+    const unlinked = await window.evaluate(
+      ({ experimentId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.experiments.unlinkGraviMetadata(experimentId, 1);
+      },
+      { experimentId: fx.experiment.id }
+    );
+    expect(unlinked.success).toBe(true);
+
+    const listedAfterUnlink = await window.evaluate((experimentId) => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.listGraviMetadata(experimentId);
+    }, fx.experiment.id);
+    expect(listedAfterUnlink.success).toBe(true);
+    expect(listedAfterUnlink.data).toHaveLength(0);
+
+    const relinked = await window.evaluate(
+      ({ experimentId, accessionId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.experiments.linkGraviMetadata(
+          experimentId,
+          1,
+          accessionId
+        );
+      },
+      { experimentId: fx.experiment.id, accessionId: fx.accessionB.id }
+    );
+    expect(relinked.success).toBe(true);
+    expect(relinked.data.accession.id).toBe(fx.accessionB.id);
+  });
+});

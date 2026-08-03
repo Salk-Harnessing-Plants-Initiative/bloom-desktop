@@ -45,6 +45,7 @@ them to lose, and this change's `design.md` was written by reading the
 current repo directly rather than assuming either branch's code is correct.
 
 Current repo state relevant to this change (`prisma/schema.prisma`):
+
 - `Experiment.id` is a scalar `String` PK; `Experiment.experiment_type` is a
   plain `String @default("cylinderscan")` (not an enum) — the two values in
   use elsewhere in the codebase are `'cylinderscan'` and `'graviscan'`.
@@ -78,6 +79,7 @@ Current repo state relevant to this change (`prisma/schema.prisma`):
 ## Goals / Non-Goals
 
 **Goals**
+
 - Add `GraviExperimentWaveMetadata` and wire up `link`/`unlink`/`list`
   handlers with the same existence-validation discipline as the rest of this
   repo's GraviScan handlers.
@@ -85,6 +87,7 @@ Current repo state relevant to this change (`prisma/schema.prisma`):
   reference path.
 
 **Non-Goals**
+
 - No renderer/UI code (Tier 5's job, once this merges).
 - No changes to `Experiment.accession_id` / `experiments.attachAccession` —
   it remains the linking mechanism for `experiment_type === 'cylinderscan'`.
@@ -222,7 +225,7 @@ deliberately does the opposite: `onDelete: Cascade`.
 **Alternative considered**: `RESTRICT`, matching every other child table of
 `Experiment`. Rejected, for a reason stronger than "the pointer has no
 remaining use": SQLite (via Prisma) enforces FK constraints atomically per
-statement, so an `Experiment` delete that would violate *any* RESTRICT'd
+statement, so an `Experiment` delete that would violate _any_ RESTRICT'd
 child table fails as a whole — nothing in that statement cascades, including
 `GraviExperimentWaveMetadata`. Concretely: if any `GraviScan`,
 `GraviScanSession`, or `GraviScanPlateAssignment` row exists for the
@@ -245,7 +248,7 @@ already implemented, already preload-exposed — not part of this change, but
 live on `main` today, even though no renderer caller invokes it yet) has no
 application-level guard at all. For an experiment with zero scan/session/
 plate-assignment rows but one or more wave-metadata links pre-linked ahead of
-scanning, a single call to that existing handler silently deletes *all* of
+scanning, a single call to that existing handler silently deletes _all_ of
 that experiment's `GraviExperimentWaveMetadata` rows in one shot — with no
 Prisma error to catch (unlike the RESTRICT'd tables, which force the caller
 to notice and handle a blocked delete) and no confirmation step specific to
@@ -287,8 +290,8 @@ direct-SQL script).
   only `createdAt`, not who created/removed a link, and unlink hard-deletes
   the row with no history retained. If wave 3 is linked to accession A, a
   `GraviScan` is captured under that linkage, and someone later unlinks and
-  relinks wave 3 to accession B, the fact that A was in effect *at scan
-  time* is permanently unrecoverable — `listGraviMetadata` only ever reflects
+  relinks wave 3 to accession B, the fact that A was in effect _at scan
+  time_ is permanently unrecoverable — `listGraviMetadata` only ever reflects
   current state. This is a real reproducibility gap for genotype-to-plant
   provenance, but retrofitting an audit/history table is a bigger design
   decision than this proposal's scope and isn't precedented elsewhere in
@@ -313,7 +316,7 @@ direct-SQL script).
    referential actions per Decision 8: `experiment_id` FK →
    `onDelete: Cascade`; `accession_id` FK → `onDelete: Restrict`.
 2. Generate the migration: `npx prisma migrate dev --name
-   add_gravi_experiment_wave_metadata`.
+add_gravi_experiment_wave_metadata`.
 3. Verify with `./scripts/verify-migrations.sh` (schema/migration parity) and
    `npm run test:db-upgrade` (confirms existing upgrade-path tests still pass
    unmodified, per the Risks section above).
@@ -329,16 +332,16 @@ researchers via Tier 5's UI, here's suggested researcher-facing wording to
 use as a starting point during implementation, rather than defaulting to
 Prisma/programmer-flavored text:
 
-- Non-graviscan experiment: *"This experiment isn't a GraviScan experiment,
-  so wave metadata can't be linked here."*
-- Accession has no `GraviPlateAccession` children: *"This file has no plate
-  or section data, so it can't be linked as GraviScan wave metadata."*
+- Non-graviscan experiment: _"This experiment isn't a GraviScan experiment,
+  so wave metadata can't be linked here."_
+- Accession has no `GraviPlateAccession` children: _"This file has no plate
+  or section data, so it can't be linked as GraviScan wave metadata."_
   (describes the observed fact rather than asserting a specific cause the
   check can't actually distinguish — see the note below)
-- Already-linked wave: *"Wave {waveNumber} already has metadata linked —
-  unlink it first if you want to link a different file."*
-- Unlink on a non-existent link: *"Nothing to unlink — wave {waveNumber} has
-  no metadata file linked."* (makes the no-op outcome explicit, rather than
+- Already-linked wave: _"Wave {waveNumber} already has metadata linked —
+  unlink it first if you want to link a different file."_
+- Unlink on a non-existent link: _"Nothing to unlink — wave {waveNumber} has
+  no metadata file linked."_ (makes the no-op outcome explicit, rather than
   reading like an error about something the researcher did wrong; this
   message is also what a caller sees for an unknown `experimentId`, since
   `unlinkGraviMetadata` has no separate "unknown experiment" scenario — both
@@ -379,7 +382,7 @@ a list that would also hide their file would be a dead end.)
    `listGraviMetadata`. Worth confirming with the roadmap owner whether Tier
    4 should list this change as a dependency, in addition to Tier 5.
 
-All four ambiguous points identified while *initially* scoping this change
+All four ambiguous points identified while _initially_ scoping this change
 (experiment_type enforcement, accession file-type validation, wave_number
 validation, re-link behavior) were resolved with the human reviewer before
 writing the first draft of this proposal — see Decisions 1-4. The three

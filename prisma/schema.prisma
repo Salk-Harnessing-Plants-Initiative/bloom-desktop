@@ -40,15 +40,17 @@ model Experiment {
   graviScans            GraviScan[]
   graviSessions         GraviScanSession[]
   graviPlateAssignments GraviScanPlateAssignment[]
+  graviWaveMetadata     GraviExperimentWaveMetadata[]
 }
 
 model Accessions {
-  id                   String                   @id @default(uuid())
+  id                   String                        @id @default(uuid())
   name                 String
-  createdAt            DateTime                 @default(now())
-  experiments          Experiment[]             @relation("AccessionToExperiment")
+  createdAt            DateTime                      @default(now())
+  experiments          Experiment[]                  @relation("AccessionToExperiment")
   mappings             PlantAccessionMappings[]
   graviPlateAccessions GraviPlateAccession[]
+  graviWaveMetadata    GraviExperimentWaveMetadata[]
 }
 
 model PlantAccessionMappings {
@@ -273,4 +275,19 @@ model GraviPlateSectionMapping {
   @@unique([gravi_plate_id, plant_qr])
   @@index([gravi_plate_id])
   @@index([plant_qr])
+}
+
+model GraviExperimentWaveMetadata {
+  id            String   @id @default(uuid())
+  experiment_id String
+  wave_number   Int
+  accession_id  String
+  createdAt     DateTime @default(now())
+
+  experiment Experiment @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
+  accession  Accessions @relation(fields: [accession_id], references: [id], onDelete: Restrict)
+
+  @@unique([experiment_id, wave_number])
+  @@index([experiment_id])
+  @@index([accession_id])
 }

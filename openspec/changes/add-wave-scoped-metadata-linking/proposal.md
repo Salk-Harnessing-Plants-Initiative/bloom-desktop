@@ -7,8 +7,8 @@ deliberately descoped `experiments.{listGraviMetadata,linkGraviMetadata,
 unlinkGraviMetadata}` because they require a `GraviExperimentWaveMetadata`
 Prisma model that doesn't exist on `main`
 (`openspec/changes/archive/2026-07-31-add-graviscan-data-layer-and-events/design.md`,
-Decision 1). Real lab data has many distinct accessions per experiment *and
-per wave* — the existing single-accession `Experiment.accession_id` field
+Decision 1). Real lab data has many distinct accessions per experiment _and
+per wave_ — the existing single-accession `Experiment.accession_id` field
 can't represent that, so falling back to it for Tier 5 would be a genuine
 functional loss (no per-wave metadata browsing), not a cosmetic regression.
 This is also the underlying gap behind issues #164 ("Support per-wave
@@ -26,7 +26,7 @@ QR-verification consumer that #162 is about.
   the `Experiment` FK cascades, deviating from this schema's usual
   RESTRICT-on-Experiment pattern.
 - Add `database.experiments.{linkGraviMetadata, unlinkGraviMetadata,
-  listGraviMetadata}` IPC handlers (main handler + preload exposure + typed
+listGraviMetadata}` IPC handlers (main handler + preload exposure + typed
   `electron.d.ts` declarations), fixing the existence/type-validation gaps the
   reference implementation has (a bad FK there just throws a raw Prisma
   error):
