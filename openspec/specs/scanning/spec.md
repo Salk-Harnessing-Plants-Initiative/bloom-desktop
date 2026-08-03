@@ -3,9 +3,7 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -835,7 +833,14 @@ The app SHALL conditionally render routes based on the configured scanner mode. 
 - **GIVEN** scanner mode is `cylinderscan`
 - **WHEN** the app renders routes
 - **THEN** `/capture-scan` and `/camera-settings` routes SHALL be available
-- **AND** `/graviscan` and `/scanner-config` routes SHALL NOT be available (when added in later increments)
+- **AND** `/graviscan` and `/configure-scanner` routes SHALL NOT be available (`/graviscan` when added in a later increment)
+
+#### Scenario: GraviScan configure-scanner route visible in graviscan mode
+
+- **GIVEN** scanner mode is `graviscan`
+- **WHEN** the app renders routes
+- **THEN** the `/configure-scanner` route SHALL be available
+- **AND** `/capture-scan` and `/camera-settings` routes SHALL NOT be available
 
 #### Scenario: Browse routes always visible
 
@@ -864,6 +869,8 @@ The app SHALL conditionally render routes based on the configured scanner mode. 
 - **WHEN** the `useAppMode()` hook resolves with mode `''`
 - **THEN** the app SHALL redirect to `/machine-config`
 - **AND** no capture or browse routes SHALL be rendered
+
+---
 
 ### Requirement: Mode-Aware Home Page
 
@@ -3568,3 +3575,27 @@ The `python/graviscan/scan_worker.py` worker SHALL read back the SANE device's a
 - **THEN** a warning SHALL be logged including both the requested and achieved values
 - **AND** the `scan-complete` event payload's `achieved_resolution` SHALL reflect the device-reported value, not the requested value
 - **AND** the TIFF's embedded resolution metadata SHALL reflect the achieved value
+
+### Requirement: Configure Scanner Navigation Link
+
+The Layout sidebar SHALL show a "Configure Scanner" navigation link
+(pointing to `/configure-scanner`) when, and only when, the configured
+scanner mode is `graviscan`. This link is independent of the "Capture
+Scan"/"Camera Settings" capture-links group governed by the
+Mode-Aware Navigation requirement — Configure Scanner has no
+CylinderScan equivalent and is not one of the six named Home-page
+workflow steps.
+
+#### Scenario: Configure Scanner nav link visible in graviscan mode
+
+- **GIVEN** scanner mode is `graviscan`
+- **WHEN** the Layout sidebar renders
+- **THEN** a "Configure Scanner" nav link SHALL be visible
+- **AND** it SHALL navigate to `/configure-scanner`
+
+#### Scenario: Configure Scanner nav link hidden in cylinderscan mode
+
+- **GIVEN** scanner mode is `cylinderscan`
+- **WHEN** the Layout sidebar renders
+- **THEN** no "Configure Scanner" nav link SHALL be rendered
+
