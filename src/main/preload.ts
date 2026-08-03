@@ -40,6 +40,8 @@ import type {
   ScanFilters,
   PaginatedScanFilters,
 } from '../types/database';
+// eslint-disable-next-line import/no-unresolved
+import type { GraviWedgeEvent } from '../types/graviscan';
 
 /**
  * Python backend API exposed to renderer
@@ -456,8 +458,8 @@ const graviAPI = {
     return () =>
       ipcRenderer.removeListener('graviscan:download-progress', listener);
   },
-  onWedgeDetected: (callback: (event: any) => void) => {
-    const listener = (_event: unknown, data: any) => callback(data);
+  onWedgeDetected: (callback: (event: GraviWedgeEvent) => void) => {
+    const listener = (_event: unknown, data: GraviWedgeEvent) => callback(data);
     ipcRenderer.on('graviscan:wedge-detected', listener);
     return () =>
       ipcRenderer.removeListener('graviscan:wedge-detected', listener);

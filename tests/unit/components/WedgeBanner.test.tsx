@@ -160,6 +160,80 @@ describe('WedgeBanner', () => {
     expect(screen.getByTestId('wedge-entry-sc-1')).toBeInTheDocument();
   });
 
+  it('a rejected Confirm Retry (IPC promise rejects, not resolves-with-error) shows an error and leaves the entry in place', async () => {
+    retryScanner.mockRejectedValue(new Error('IPC channel closed'));
+    const user = userEvent.setup();
+    render(<WedgeBanner />);
+    fireWedge(makeEvent());
+
+    await user.click(
+      screen.getByRole('button', { name: /power-cycled.*retry/i })
+    );
+    await user.click(screen.getByRole('button', { name: /confirm retry/i }));
+
+    expect(await screen.findByText(/IPC channel closed/)).toBeInTheDocument();
+    expect(screen.getByTestId('wedge-entry-sc-1')).toBeInTheDocument();
+  });
+
+  it('does not dismiss a fresh, superseding wedge entry when a stale in-flight retry for the same scanner later resolves successfully', async () => {
+    let resolveRetry!: (value: { success: true }) => void;
+    retryScanner.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    render(<WedgeBanner />);
+    fireWedge(makeEvent({ cycle_number: 1, signature: 'sane_start_invalid' }));
+
+    await user.click(
+      screen.getByRole('button', { name: /power-cycled.*retry/i })
+    );
+    await user.click(screen.getByRole('button', { name: /confirm retry/i }));
+
+    // A fresh wedge for the same scanner supersedes the entry before the
+    // first retry call resolves — e.g. the respawned worker re-wedged
+    // almost immediately because the physical power-cycle wasn't actually
+    // done yet.
+    fireWedge(
+      makeEvent({ cycle_number: 2, signature: 'device_io_120s_zero_bytes' })
+    );
+
+    // The stale retry call now resolves successfully.
+    await act(async () => {
+      resolveRetry({ success: true });
+    });
+
+    // The new, unaddressed wedge entry must still be showing — the stale
+    // "success" belongs to the superseded occurrence, not this one.
+    expect(screen.getByTestId('wedge-entry-sc-1')).toBeInTheDocument();
+    expect(screen.getByText(/device_io_120s_zero_bytes/)).toBeInTheDocument();
+  });
+
+  it('resets to the unconfirmed two-button view when a new wedge supersedes an entry mid-confirmation', async () => {
+    const user = userEvent.setup();
+    render(<WedgeBanner />);
+    fireWedge(makeEvent({ cycle_number: 1 }));
+
+    await user.click(
+      screen.getByRole('button', { name: /power-cycled.*retry/i })
+    );
+    expect(
+      screen.getByRole('button', { name: /confirm retry/i })
+    ).toBeInTheDocument();
+
+    fireWedge(makeEvent({ cycle_number: 2 }));
+
+    expect(
+      screen.queryByRole('button', { name: /confirm retry/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /power-cycled.*retry/i })
+    ).toBeInTheDocument();
+    expect(retryScanner).not.toHaveBeenCalled();
+  });
+
   it('shows no counter indicator when totalAutoPauseEvents is 0, and shows both numbers together once wedges occur', () => {
     render(<WedgeBanner />);
     expect(

@@ -14,9 +14,18 @@ import type { GraviWedgeEvent } from '../../types/graviscan';
 interface WedgeEntryRowProps {
   event: GraviWedgeEvent;
   onDismiss: (scannerId: string) => void;
+  onDismissIfCurrent: (
+    scannerId: string,
+    cycleNumber: number,
+    timestamp: string
+  ) => void;
 }
 
-function WedgeEntryRow({ event, onDismiss }: WedgeEntryRowProps) {
+function WedgeEntryRow({
+  event,
+  onDismiss,
+  onDismissIfCurrent,
+}: WedgeEntryRowProps) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -27,7 +36,14 @@ function WedgeEntryRow({ event, onDismiss }: WedgeEntryRowProps) {
     try {
       const result = await window.electron.gravi.retryScanner(event.scanner_id);
       if (result.success) {
-        onDismiss(event.scanner_id);
+        // Identity-checked: if a fresh wedge for this scanner_id superseded
+        // this entry while the retry call was in flight, don't dismiss the
+        // new (unaddressed) entry out from under the operator.
+        onDismissIfCurrent(
+          event.scanner_id,
+          event.cycle_number,
+          event.timestamp
+        );
       } else {
         // Manual cast: this repo's tsconfig doesn't set strictNullChecks,
         // so control-flow narrowing on the `success` discriminant doesn't
@@ -35,6 +51,8 @@ function WedgeEntryRow({ event, onDismiss }: WedgeEntryRowProps) {
         const err = (result as { success: false; error: string }).error;
         setError(err);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Retry failed');
     } finally {
       setRetrying(false);
     }
@@ -81,6 +99,7 @@ function WedgeEntryRow({ event, onDismiss }: WedgeEntryRowProps) {
             <button
               type="button"
               className="px-3 py-1 rounded border border-gray-400"
+              disabled={retrying}
               onClick={() => {
                 setConfirming(false);
                 setError(null);
@@ -104,8 +123,13 @@ function WedgeEntryRow({ event, onDismiss }: WedgeEntryRowProps) {
 }
 
 export function WedgeBanner() {
-  const { entries, totalAutoPauseEvents, totalScannersAffected, dismiss } =
-    useWedgeEvents();
+  const {
+    entries,
+    totalAutoPauseEvents,
+    totalScannersAffected,
+    dismiss,
+    dismissIfCurrent,
+  } = useWedgeEvents();
 
   const entryList = Object.values(entries);
 
@@ -114,7 +138,12 @@ export function WedgeBanner() {
   }
 
   return (
-    <div className="flex flex-col gap-2 p-2">
+    // Sticky, not just fixed-in-flow: Layout.tsx mounts this inside its
+    // scrollable main-content container, so without `sticky top-0` this
+    // safety banner would scroll out of view on any page with enough
+    // content to scroll — defeating design.md Decision 4's "always visible
+    // regardless of screen" requirement.
+    <div className="sticky top-0 z-10 flex flex-col gap-2 p-2 bg-white/95">
       {totalAutoPauseEvents > 0 && (
         <div
           data-testid="wedge-session-counter"
@@ -135,6 +164,7 @@ export function WedgeBanner() {
           key={`${event.scanner_id}:${event.cycle_number}:${event.timestamp}`}
           event={event}
           onDismiss={dismiss}
+          onDismissIfCurrent={dismissIfCurrent}
         />
       ))}
     </div>

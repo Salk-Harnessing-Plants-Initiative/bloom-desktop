@@ -130,6 +130,31 @@ describe('useWedgeEvents', () => {
     expect(Object.keys(result.current.entries)).toHaveLength(0);
   });
 
+  it('dismissIfCurrent removes the entry when cycle_number/timestamp still match', () => {
+    const { result } = renderHook(() => useWedgeEvents());
+    fireWedge(makeEvent({ cycle_number: 3, timestamp: 't1' }));
+
+    act(() => {
+      result.current.dismissIfCurrent('sc-1', 3, 't1');
+    });
+
+    expect(Object.keys(result.current.entries)).toHaveLength(0);
+  });
+
+  it('dismissIfCurrent is a no-op when a fresh wedge has superseded the entry (stale retry callback)', () => {
+    const { result } = renderHook(() => useWedgeEvents());
+    fireWedge(makeEvent({ cycle_number: 3, timestamp: 't1' }));
+    fireWedge(makeEvent({ cycle_number: 4, timestamp: 't2' }));
+
+    act(() => {
+      // Stale identity from the superseded (cycle 3) wedge.
+      result.current.dismissIfCurrent('sc-1', 3, 't1');
+    });
+
+    expect(Object.keys(result.current.entries)).toEqual(['sc-1']);
+    expect(result.current.entries['sc-1'].cycle_number).toBe(4);
+  });
+
   it('unmount calls all three cleanup functions', () => {
     const { unmount } = renderHook(() => useWedgeEvents());
     unmount();

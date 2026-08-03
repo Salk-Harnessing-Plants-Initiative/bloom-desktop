@@ -15,6 +15,17 @@ export interface UseWedgeEventsResult {
   /** Hides a scanner's banner entry. No backend call — the scanner is
    * already paused by auto-pause, independent of dismissal. */
   dismiss: (scannerId: string) => void;
+  /** Like dismiss(), but only removes the entry if it still matches the
+   * given cycle_number/timestamp. Guards against a retryScanner() promise
+   * resolving after a fresh wedge for the same scanner_id has already
+   * superseded the entry it was called for — without this check, a stale
+   * "retry succeeded" callback would silently discard the operator's
+   * not-yet-addressed new wedge (see WedgeBanner.tsx's handleConfirmRetry). */
+  dismissIfCurrent: (
+    scannerId: string,
+    cycleNumber: number,
+    timestamp: string
+  ) => void;
 }
 
 /**
@@ -68,10 +79,30 @@ export function useWedgeEvents(): UseWedgeEventsResult {
     });
   }, []);
 
+  const dismissIfCurrent = useCallback(
+    (scannerId: string, cycleNumber: number, timestamp: string) => {
+      setEntries((prev) => {
+        const current = prev[scannerId];
+        if (
+          !current ||
+          current.cycle_number !== cycleNumber ||
+          current.timestamp !== timestamp
+        ) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[scannerId];
+        return next;
+      });
+    },
+    []
+  );
+
   return {
     entries,
     totalAutoPauseEvents,
     totalScannersAffected: seenScannerIds.size,
     dismiss,
+    dismissIfCurrent,
   };
 }
