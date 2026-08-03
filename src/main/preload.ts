@@ -81,11 +81,9 @@ const cameraAPI: CameraAPI = {
     return () => ipcRenderer.removeListener('camera:trigger', listener);
   },
   onImageCaptured: (callback: (image: CapturedImage) => void) => {
-    const listener = (_event: unknown, image: CapturedImage) =>
-      callback(image);
+    const listener = (_event: unknown, image: CapturedImage) => callback(image);
     ipcRenderer.on('camera:image-captured', listener);
-    return () =>
-      ipcRenderer.removeListener('camera:image-captured', listener);
+    return () => ipcRenderer.removeListener('camera:image-captured', listener);
   },
   startStream: (settings?: Partial<CameraSettings>) =>
     ipcRenderer.invoke('camera:start-stream', settings),
@@ -120,8 +118,7 @@ const daqAPI: DAQAPI = {
     const listener = (_event: unknown, data: { position: number }) =>
       callback(data.position);
     ipcRenderer.on('daq:position-changed', listener);
-    return () =>
-      ipcRenderer.removeListener('daq:position-changed', listener);
+    return () => ipcRenderer.removeListener('daq:position-changed', listener);
   },
   onHome: (callback: () => void) => {
     const listener = () => callback();

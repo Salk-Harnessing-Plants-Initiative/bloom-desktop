@@ -58,6 +58,7 @@ work, each with its own risk profile:
   Current `bloom-desktop`'s `image-uploader.ts` has **not yet been checked**
   against these three specific failure modes — Tier 2 starts with that check,
   not with an assumption either way.
+
 - **Several "bugs" are already fixed**, confirmed by reading the code, not the
   issue title: most of #95's camera-settings type mismatches (gain is
   properly `int`-typed and validated both in Python and the renderer form; the
@@ -113,14 +114,14 @@ dataset, so each tier's "validation target" (in place of an oracle) is:
 
 ## Tiers
 
-| # | Tier | Depends on | New backend? | Related issues | Status |
-|---|------|-----------|---------------|-----------------|--------|
-| 1 | Correctness & security hardening | — | Mostly no; #93 requires new protocol-handler registration + path-traversal validation logic, not a flag flip | #93, #96, #97, #47, #40, #198, #249 | Not started — unblocked, ready to propose next |
-| 2 | Delete & upload data-integrity + acquisition metadata completion | — (parallel to 1; shares `image-uploader.ts` with Tier 1's #97, disjoint regions) | Yes — one small new `db:scans:checkDuplicate`-style handler (#120), possibly a metadata-readback extension (pilot #3) | #79, #105, #120, pilot #3, (#110 optional) | Not started — unblocked |
-| 3 | Export page for batch scan export | — (the `Scan.deleted` field and its consistent `deleted: false` filtering convention already exist today; Tier 2 doesn't need to finish first) | Possibly — one new read-only IPC handler for scan enumeration by experiment/date, if none suitable exists | #77 | Not started — unblocked |
-| 4 | Style/UX parity pass | — | No | `align-page-layout-centering` (pending), #104, #175 (scoped carefully — see below), #106, #107 | Not started — unblocked, can run anytime |
-| 5a | Packaging CI/doc prep | — | No | #251, #57 (bloom-desktop), #180 | Not started — unblocked, can start immediately, no dependency on any other tier |
-| 5b | Windows build, install, and full-workflow QA | 1, 2, 3 | No | (validates 1-3) | Not started — blocked on Tiers 1-3 |
+| #   | Tier                                                             | Depends on                                                                                                                                     | New backend?                                                                                                          | Related issues                                                                                 | Status                                                                          |
+| --- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 1   | Correctness & security hardening                                 | —                                                                                                                                              | Mostly no; #93 requires new protocol-handler registration + path-traversal validation logic, not a flag flip          | #93, #96, #97, #47, #40, #198, #249                                                            | Not started — unblocked, ready to propose next                                  |
+| 2   | Delete & upload data-integrity + acquisition metadata completion | — (parallel to 1; shares `image-uploader.ts` with Tier 1's #97, disjoint regions)                                                              | Yes — one small new `db:scans:checkDuplicate`-style handler (#120), possibly a metadata-readback extension (pilot #3) | #79, #105, #120, pilot #3, (#110 optional)                                                     | Not started — unblocked                                                         |
+| 3   | Export page for batch scan export                                | — (the `Scan.deleted` field and its consistent `deleted: false` filtering convention already exist today; Tier 2 doesn't need to finish first) | Possibly — one new read-only IPC handler for scan enumeration by experiment/date, if none suitable exists             | #77                                                                                            | Not started — unblocked                                                         |
+| 4   | Style/UX parity pass                                             | —                                                                                                                                              | No                                                                                                                    | `align-page-layout-centering` (pending), #104, #175 (scoped carefully — see below), #106, #107 | Not started — unblocked, can run anytime                                        |
+| 5a  | Packaging CI/doc prep                                            | —                                                                                                                                              | No                                                                                                                    | #251, #57 (bloom-desktop), #180                                                                | Not started — unblocked, can start immediately, no dependency on any other tier |
+| 5b  | Windows build, install, and full-workflow QA                     | 1, 2, 3                                                                                                                                        | No                                                                                                                    | (validates 1-3)                                                                                | Not started — blocked on Tiers 1-3                                              |
 
 ## Reconciliation from adversarial review (2026-08-03)
 
@@ -251,6 +252,7 @@ metadata preservation" points at directly. Four parts:
    above is provisional, not committed, until the current code is actually
    read. (Shares `image-uploader.ts` with Tier 1's #97 — disjoint regions,
    see Tier 1's coordination note.)
+
 3. **#120 (added by completeness review) — block duplicate scans with the
    same plant/wave/age.** CylinderScan-specific (`CaptureScan.tsx`), needs a
    new `db:scans:checkDuplicate`-style handler — subject to the IPC coverage
@@ -296,7 +298,7 @@ false }` pattern verbatim regardless of Tier 2's status.
 - #104 — Home page as a status dashboard with quickstart guide.
 - **#175 — redesign the CylinderScan workflow guide. Scope carefully:**
   `WorkflowSteps.tsx` exports both `cylinderScanSteps` and `graviScanSteps`,
-  rendered through the *same* `WorkflowSteps` component — GraviScan's Home
+  rendered through the _same_ `WorkflowSteps` component — GraviScan's Home
   screen uses this literal component with different step data. A redesign of
   the component itself (not just `cylinderScanSteps`'s data) will change
   GraviScan's rendered workflow guide too. This proposal must either scope

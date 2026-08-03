@@ -58,9 +58,7 @@ describe('PythonStatus — cylinderscan mode', () => {
   });
 
   it('invokes both cleanup functions on unmount', async () => {
-    const { unmount, getByText } = render(
-      <PythonStatus mode="cylinderscan" />
-    );
+    const { unmount, getByText } = render(<PythonStatus mode="cylinderscan" />);
 
     await waitFor(() => {
       expect(getByText('Python Backend Status')).toBeInTheDocument();
