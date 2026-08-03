@@ -1327,6 +1327,15 @@ describe('database.experiments.linkGraviMetadata', () => {
     );
 
     expect(result.success).toBe(true);
+    const row = await prisma.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experiment.id,
+          wave_number: 0,
+        },
+      },
+    });
+    expect(row?.accession_id).toBe(metadataFileId);
   });
 
   it.each([
@@ -1342,6 +1351,7 @@ describe('database.experiments.linkGraviMetadata', () => {
       metadataFileId
     );
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/experimentId must be a non-empty string/);
     expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
   });
 
@@ -1358,6 +1368,7 @@ describe('database.experiments.linkGraviMetadata', () => {
       accessionIdOverride
     );
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/accessionId must be a non-empty string/);
     expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
   });
 
@@ -1366,6 +1377,7 @@ describe('database.experiments.linkGraviMetadata', () => {
     ['non-integer', 1.5],
     ['not a number', NaN],
     ['past Int32 max', 2147483648],
+    ['a non-numeric type', '5' as unknown as number],
   ])('rejects a waveNumber that is %s', async (_label, waveNumber) => {
     const experiment = await createGraviscanExperiment();
     const metadataFileId = await createValidGraviMetadataFile();
@@ -1376,6 +1388,7 @@ describe('database.experiments.linkGraviMetadata', () => {
       metadataFileId
     );
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/waveNumber must be a non-negative integer/);
     expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
   });
 
@@ -1388,6 +1401,7 @@ describe('database.experiments.linkGraviMetadata', () => {
       metadataFileId
     );
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Experiment not found/);
     expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
   });
 
@@ -1400,6 +1414,7 @@ describe('database.experiments.linkGraviMetadata', () => {
       'nonexistent-accession-id'
     );
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Metadata file not found/);
     expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
   });
 
@@ -1530,7 +1545,14 @@ describe('database.experiments.unlinkGraviMetadata', () => {
     const result = await unlinkGraviMetadata(prisma, experiment.id, 5);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBeTruthy();
+    // Asserts the specific friendly message, not just any truthy string —
+    // Prisma's raw P2025 reads "An operation failed because it depends on
+    // one or more records that were required but not found. Record to
+    // delete does not exist." This must not be what surfaces here.
+    expect(result.error).toBe(
+      'Nothing to unlink — wave 5 has no metadata file linked'
+    );
+    expect(result.error).not.toMatch(/prisma|record to delete/i);
   });
 
   it.each([
@@ -1540,6 +1562,7 @@ describe('database.experiments.unlinkGraviMetadata', () => {
   ])('rejects a %s', async (_label, experimentIdOverride) => {
     const result = await unlinkGraviMetadata(prisma, experimentIdOverride, 0);
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/experimentId must be a non-empty string/);
   });
 
   it.each([
@@ -1547,10 +1570,12 @@ describe('database.experiments.unlinkGraviMetadata', () => {
     ['non-integer', 1.5],
     ['not a number', NaN],
     ['missing', undefined as unknown as number],
+    ['a non-numeric type', '5' as unknown as number],
   ])('rejects a waveNumber that is %s', async (_label, waveNumber) => {
     const experiment = await createGraviscanExperiment();
     const result = await unlinkGraviMetadata(prisma, experiment.id, waveNumber);
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/waveNumber must be a non-negative integer/);
   });
 });
 
@@ -1589,5 +1614,6 @@ describe('database.experiments.listGraviMetadata', () => {
   ])('rejects a %s', async (_label, experimentIdOverride) => {
     const result = await listGraviMetadata(prisma, experimentIdOverride);
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/experimentId must be a non-empty string/);
   });
 });
