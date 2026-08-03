@@ -11,15 +11,20 @@ Decision 1). Real lab data has many distinct accessions per experiment *and
 per wave* — the existing single-accession `Experiment.accession_id` field
 can't represent that, so falling back to it for Tier 5 would be a genuine
 functional loss (no per-wave metadata browsing), not a cosmetic regression.
-This change builds the model and handlers properly so Tier 5 can be scoped
-without that gap.
+This is also the underlying gap behind issues #164 ("Support per-wave
+metadata uploads for QR verification") and #162 ("QR verification query not
+scoped to experiment and wave") — this change builds the model and handlers
+those issues need, though (see Impact) it does not itself rewire the
+QR-verification consumer that #162 is about.
 
 ## What Changes
 
 - Add a `GraviExperimentWaveMetadata` Prisma model + migration: one row per
-  `(experiment_id, wave_number)`, FK to `Experiment` (cascade delete) and
-  `Accessions` (restrict delete). Add the corresponding back-relation fields
-  on `Experiment` and `Accessions`.
+  `(experiment_id, wave_number)`, FK to `Experiment` (`onDelete: Cascade`) and
+  `Accessions` (`onDelete: Restrict`). Add the corresponding back-relation
+  fields on `Experiment` and `Accessions`. See design.md Decision 8 for why
+  the `Experiment` FK cascades, deviating from this schema's usual
+  RESTRICT-on-Experiment pattern.
 - Add `database.experiments.{linkGraviMetadata, unlinkGraviMetadata,
   listGraviMetadata}` IPC handlers (main handler + preload exposure + typed
   `electron.d.ts` declarations), fixing the existence/type-validation gaps the
@@ -60,7 +65,27 @@ without that gap.
   `src/main/preload.ts`, `src/types/electron.d.ts`,
   `tests/unit/graviscan/database-handlers.test.ts`,
   `tests/e2e/renderer-database-ipc.e2e.ts`.
-- Blocks: the Tier 5 proposal — do not start Tier 5 until this merges.
+- **Not affected, left as-is on purpose**: `src/main/box-backup.ts` and
+  `src/main/graviscan-upload.ts` (Box upload metadata resolution) continue to
+  resolve a scan's accession/genotype via `Experiment.accession_id`, not the
+  new per-wave links — this change adds the link table and its handlers but
+  does not rewire any existing consumer to read from it.
+- **Not fixed by this change**: `src/main/graviscan/verify-plates.ts`'s
+  QR-verification lookup (issue #162, `pr-ready`) — it has no `waveNumber`
+  parameter anywhere in its call chain (IPC handler → `verifyPlates()` → DB
+  lookup) today, and no renderer caller yet exists to supply one (confirmed:
+  no `src/renderer/graviscan/` directory exists on `main` — only
+  `ConfigureScanner.tsx`, Tier 1's merged page, exists so far). Wave-scoping
+  it is a separate, larger change (new parameter threaded through 3 layers)
+  deserving its own proposal once a caller exists to supply the wave number
+  — likely alongside Tier 3 or Tier 4. See design.md Non-Goals and Open
+  Questions.
+- Blocks: the Tier 5 proposal — do not start Tier 5 until this merges. Also
+  possibly relevant to **Tier 4** (Core scan-operation screen): an unmerged
+  draft (PR #212) suggests Tier 4's Capture Scan auto-fill may also want
+  `listGraviMetadata` for per-wave plate metadata — the roadmap doesn't
+  currently list this change as a Tier 4 dependency; worth confirming with
+  the roadmap owner once Tier 4 is scoped.
 - No coordination needed with the two other in-flight worktrees (Tier 3
   wedge-response UI: renderer + wedge-detector consumption only; CylinderScan
   finalization: scope still being determined) — this change touches only the

@@ -6,7 +6,16 @@ fifth — `experiments.{listGraviMetadata,linkGraviMetadata,
 unlinkGraviMetadata}` — because those three are backed by a
 `GraviExperimentWaveMetadata` Prisma model that doesn't exist on `main` (see
 its `design.md` Decision 1 and Open Question 1). This change is that
-follow-up: add the model and the three handlers.
+follow-up: add the model and the three handlers. It's also the underlying gap
+behind two GitHub issues: **#164** ("GraviScan: Support per-wave metadata
+uploads for QR verification") describes the same scenario this proposal's
+`## Why` uses as motivation, and **#162** ("GraviScan: QR verification query
+not scoped to experiment and wave", `pr-ready`) is a confirmed-still-live bug
+in `src/main/graviscan/verify-plates.ts`'s QR-lookup, which resolves an
+experiment's accession purely via the old single-accession
+`Experiment.accession_id` mechanism with no wave dimension anywhere in its
+call chain. This change does not fix #162 — see Non-Goals and Open Questions
+below for why, and what should happen instead.
 
 A reference implementation exists on
 `origin/fix/v600-wedge-followups-metadata_propogation_followup` and was read
@@ -15,7 +24,15 @@ directly (not assumed) while scoping this change. Its model and
 `unlinkGraviMetadata` handlers are missing existence/type validation that
 this repo's other GraviScan ports have consistently added (e.g.
 `graviscansExperimentDetail`'s `findUnique`-then-friendly-404 pattern) — this
-change fixes that gap rather than porting it.
+change fixes that gap rather than porting it. Four unmerged, unreviewed draft
+PRs by a different author (#209-212, opened 2026-04-30, zero review
+comments) implement close to this same scope in increments; #209's schema +
+handlers is close to byte-for-byte identical to the reference branch above
+(same validation gaps), and #212 ("Capture Scan auto-fill, 4/4") is what
+surfaced the Tier 4 dependency question in Open Questions below. Neither is
+referenced further here beyond this pointer — there's no review feedback on
+them to lose, and this change's `design.md` was written by reading the
+current repo directly rather than assuming either branch's code is correct.
 
 Current repo state relevant to this change (`prisma/schema.prisma`):
 - `Experiment.id` is a scalar `String` PK; `Experiment.experiment_type` is a
@@ -36,6 +53,17 @@ Current repo state relevant to this change (`prisma/schema.prisma`):
   blocking deletion of a metadata file still linked via the old
   single-accession mechanism. It has no second term for the new table
   because that table doesn't exist yet.
+- Every existing FK from a GraviScan-family table (or plain `Scan`) to
+  `Experiment` is `ON DELETE RESTRICT`, confirmed directly against the
+  generated migration SQL: `GraviScan_experiment_id_fkey`,
+  `GraviScanSession_experiment_id_fkey`,
+  `GraviScanPlateAssignment_experiment_id_fkey`, and
+  `Scan_experiment_id_fkey` (all in
+  `prisma/migrations/20260408170532_add_graviscan_models/migration.sql` and
+  `prisma/migrations/20251028040530_init/migration.sql`) — there is no
+  existing cascade-on-`Experiment`-deletion anywhere in this schema. This
+  change's model is the first to use `Cascade` on that relation — see
+  Decision 8 for why that's the right call here rather than an oversight.
 
 ## Goals / Non-Goals
 
@@ -52,7 +80,25 @@ Current repo state relevant to this change (`prisma/schema.prisma`):
   it remains the linking mechanism for `experiment_type === 'cylinderscan'`.
 - No changes to `GraviPlateAccession`/`GraviPlateSectionMapping` or their
   existing CRUD handlers, beyond the reference-count guard extension.
+- No changes to `box-backup.ts`/`graviscan-upload.ts` — Box upload metadata
+  resolution keeps reading `Experiment.accession_id`, not the new per-wave
+  links.
 - No `Accessions.file_type` discriminator column (tracked as issue #275).
+- **Wave-scoping `verify-plates.ts`'s QR-verification lookup (issues #162,
+  #164) is explicitly deferred, not fixed here.** Investigated directly:
+  `verify-plates.ts`'s exported `verifyPlates()`, its IPC handler
+  (`graviscan:verify-plates` in `register-handlers.ts`), and its DB lookup
+  (`verify-plates.ts:454-464`, filtering via
+  `plate.metadata_file.experiments.some({id: experimentId})` — the old
+  single-accession back-relation) have **no `waveNumber` parameter anywhere
+  in that chain today**. Wave-scoping it means adding a new parameter
+  through three layers (IPC signature, `verifyPlates()` signature, the
+  lookup query) — and there is currently no renderer caller anywhere in this
+  repo to supply that parameter: `src/renderer/graviscan/` doesn't exist yet
+  (only `ConfigureScanner.tsx`, Tier 1's merged page, exists so far). That's
+  a bigger, differently-shaped change than this proposal's model+handlers
+  scope, and untestable end-to-end without a caller — see Open Questions for
+  what should happen next.
 
 ## Decisions
 
@@ -108,6 +154,18 @@ not this behavior) and keeps the API explicit — one link change is one
 `unlinkGraviMetadata` + one `linkGraviMetadata` call, with no implicit
 overwrite semantics to reason about later.
 
+This is a deliberately safer design, not just a style preference: an
+upsert-style "just overwrite" `linkGraviMetadata` would let a single
+malformed or double-submitted call silently replace an existing link with no
+confirmation and no distinguishable signal that a prior link existed. The
+explicit reject-then-require-unlink flow forces two distinct, independently
+validated IPC calls — a caller must observe the current state before
+mutating it, and the "already linked" error surfaces immediately rather than
+silently swapping a genotype mapping under a wave that may already have
+scans. Once Tier 5 builds a UI, it can still offer a single "Relink" button
+that fires `unlinkGraviMetadata` then `linkGraviMetadata` internally — the
+one-click UX and the safer two-call API aren't in tension.
+
 ### Decision 5: factor a shared `countMetadataReferences()` helper
 
 No such helper exists today — `graviPlateAccessionsDelete` has the guard
@@ -118,7 +176,9 @@ Promise<number>` helper (matching the reference implementation's own naming
 for this concept, per the pre-proposal notes) that sums both terms, and has
 `graviPlateAccessionsDelete` call it. This is a small refactor of existing
 code, not new-model-driven scope creep — it exists only because deletion
-now has two things to check instead of one.
+now has two things to check instead of one. (Independently confirmed as
+load-bearing, not speculative: draft PR #209 implements the same two-term
+helper under the same name for the same reason.)
 
 ### Decision 6: handlers live under the existing `experiments` IPC namespace
 
@@ -141,6 +201,37 @@ without Electron, and typed in `electron.d.ts` via
 declared-vs-runtime-shape drift. The three new handlers follow the newer
 pattern.
 
+### Decision 8: `Experiment` FK uses `onDelete: Cascade`, deviating from this schema's RESTRICT-on-Experiment pattern
+
+Every other table with a FK to `Experiment` (`GraviScan`, `GraviScanSession`,
+`GraviScanPlateAssignment`, `Scan`) uses `RESTRICT` — deleting an `Experiment`
+with any of those rows still attached is blocked outright, forcing an
+operator to consciously clean up real captured data first. This model
+deliberately does the opposite: `onDelete: Cascade`.
+
+**Alternative considered**: `RESTRICT`, matching every other child table of
+`Experiment`. Rejected: those other tables hold actual captured data (scans,
+sessions, plate assignments) whose loss would be irreversible and easily
+unnoticed if silently cascaded — RESTRICT exists specifically to force a
+deliberate cleanup step before that data can be lost. A
+`GraviExperimentWaveMetadata` row is not data in that sense — it's a pure
+pointer ("file X applies to wave N of experiment Y"), and the metadata file
+itself (the `Accessions`/`GraviPlateAccession`/`GraviPlateSectionMapping`
+rows) is untouched by this cascade — only the link disappears. Once the
+`Experiment` itself is gone, "wave N of experiment Y" no longer refers to
+anything, so the pointer has no possible remaining use; retaining it (or
+blocking the `Experiment` deletion because of it) would add friction with no
+corresponding benefit. This matches the reference implementation's own
+choice (`onDelete: Cascade` on the same relation) — confirmed independently
+correct here, not just copied.
+
+The `Accessions` FK, by contrast, is `onDelete: Restrict` — deleting a
+metadata file that's still wave-linked must be blocked (this is exactly what
+Decision 5's extended `countMetadataReferences()` guard enforces at the
+application layer; the schema-level `Restrict` is a second, DB-level
+backstop in case that application guard is ever bypassed, e.g. by a future
+direct-SQL script).
+
 ## Risks / Trade-offs
 
 - **Migration + hand-written upgrade path**: this repo maintains a parallel
@@ -158,16 +249,25 @@ pattern.
   changes to `upgrade-database.ts` or `detect-schema-version.ts` for the same
   reason. `tasks.md` includes a verification step (`npm run test:db-upgrade`)
   to confirm this holds rather than just asserting it.
-- **Cascade behavior on `Experiment` deletion**: deleting an `Experiment` now
-  cascades onto `GraviExperimentWaveMetadata` (by design, matching the
-  reference model). This is consistent with `GraviScan`'s own cascade
-  behavior on `Experiment` deletion elsewhere in the schema.
+- **No audit trail or link-history**: `GraviExperimentWaveMetadata` records
+  only `createdAt`, not who created/removed a link, and unlink hard-deletes
+  the row with no history retained. If wave 3 is linked to accession A, a
+  `GraviScan` is captured under that linkage, and someone later unlinks and
+  relinks wave 3 to accession B, the fact that A was in effect *at scan
+  time* is permanently unrecoverable — `listGraviMetadata` only ever reflects
+  current state. This is a real reproducibility gap for genotype-to-plant
+  provenance, but retrofitting an audit/history table is a bigger design
+  decision than this proposal's scope and isn't precedented elsewhere in
+  this schema either (`GraviScanPlateAssignment` tracks `updatedAt` but not
+  "updated by"). Deliberately deferred — see Open Questions.
 
 ## Migration Plan
 
 1. Add the model to `prisma/schema.prisma` (see reference shape in
    `docs/superpowers/plans/2026-08-03-graviscan-wave-scoped-metadata-linking.md`),
-   plus back-relation fields on `Experiment` and `Accessions`.
+   plus back-relation fields on `Experiment` and `Accessions`. Pin the exact
+   referential actions per Decision 8: `experiment_id` FK →
+   `onDelete: Cascade`; `accession_id` FK → `onDelete: Restrict`.
 2. Generate the migration: `npx prisma migrate dev --name
    add_gravi_experiment_wave_metadata`.
 3. Verify with `./scripts/verify-migrations.sh` (schema/migration parity) and
@@ -176,9 +276,44 @@ pattern.
 
 No data backfill is needed — this is a new, empty table.
 
+## Suggested error-message wording (for Tier 5)
+
+The spec deltas use `<message>` placeholders — the exact strings are an
+implementation detail, not a spec requirement — but since these four
+validation failures will eventually surface verbatim to non-programmer
+researchers via Tier 5's UI, here's suggested researcher-facing wording to
+use as a starting point during implementation, rather than defaulting to
+Prisma/programmer-flavored text:
+
+- Non-graviscan experiment: *"This experiment isn't a GraviScan experiment,
+  so wave metadata can't be linked here."*
+- Accession has no `GraviPlateAccession` children: *"This file isn't a
+  GraviScan plate/section metadata file."*
+- Already-linked wave: *"Wave {waveNumber} already has metadata linked —
+  unlink it first if you want to link a different file."*
+- Unlink on a non-existent link: *"Wave {waveNumber} has no metadata file
+  linked."*
+
 ## Open Questions
 
-None outstanding. All four ambiguous points identified while scoping this
-change (experiment_type enforcement, accession file-type validation,
-wave_number validation, re-link behavior) were resolved with the human
-reviewer before writing this proposal — see Decisions 1-4.
+1. **No audit trail / no link-history** (see Risks) — should this become a
+   requirement before researchers start relying on this data for
+   provenance? Not blocking this proposal; flagging so it doesn't get lost.
+   Candidate trigger: revisit once Tier 5 ships and real per-wave links
+   start accumulating.
+2. **`verify-plates.ts` wave-scoping (issues #162, #164) is deferred** (see
+   Non-Goals) pending a renderer caller to supply `waveNumber` — likely
+   scoped alongside Tier 3 or Tier 4, whichever builds the
+   verification-triggering screen. Needs a human decision on timing once
+   that tier is scoped.
+3. **Possible Tier 4 dependency** (see proposal.md Impact) — an unmerged
+   draft (PR #212) suggests Tier 4's Capture Scan auto-fill may also need
+   `listGraviMetadata`. Worth confirming with the roadmap owner whether Tier
+   4 should list this change as a dependency, in addition to Tier 5.
+
+All four ambiguous points identified while *initially* scoping this change
+(experiment_type enforcement, accession file-type validation, wave_number
+validation, re-link behavior) were resolved with the human reviewer before
+writing the first draft of this proposal — see Decisions 1-4. The three
+questions above surfaced later, during adversarial review, and are
+deliberately left open rather than resolved unilaterally.
