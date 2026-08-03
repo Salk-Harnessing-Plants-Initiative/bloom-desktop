@@ -18,3 +18,10 @@ The application SHALL acquire a single-instance lock at startup, before any wind
 - **THEN** the second instance SHALL detect the lock is held (`app.requestSingleInstanceLock()` returns `false`)
 - **AND** the second instance SHALL quit immediately without creating a window
 - **AND** the first instance's existing window SHALL be restored (if minimized) and focused
+
+#### Scenario: Second-instance event fires before the window exists
+
+- **GIVEN** the first instance is still starting up and has not yet created its main window
+- **WHEN** a `second-instance` event fires in that instance
+- **THEN** the handler SHALL NOT throw
+- **AND** it SHALL no-op (there is nothing yet to focus, and the second instance has already been told to quit)

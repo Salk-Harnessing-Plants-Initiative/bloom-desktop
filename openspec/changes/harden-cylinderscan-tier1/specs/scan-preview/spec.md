@@ -51,3 +51,17 @@ The BrowserWindow SHALL NOT set `webSecurity: false`. Local scan images SHALL be
 - **WHEN** a `bloom-scan://` request resolves to an absolute path outside `scans_dir` (e.g. via a `..` segment or an absolute path override)
 - **THEN** the protocol handler SHALL reject the request
 - **AND** SHALL NOT return file contents from outside `scans_dir`
+
+#### Scenario: Containment check reads the currently-configured scans_dir
+
+- **GIVEN** the protocol handler was registered while `scans_dir` was `C:\old-scans`
+- **AND** the operator has since changed `scans_dir` to `C:\new-scans` via Configure Scanner
+- **WHEN** a `bloom-scan://` request for a path under `C:\new-scans` arrives
+- **THEN** the request SHALL be served (the handler reads `scans_dir` fresh on every request, not a value captured at registration time)
+
+#### Scenario: Path rejection surfaces distinctly from a missing file
+
+- **GIVEN** `ScanPreview.tsx` requests an image via `bloom-scan://` that the protocol handler rejects for being outside `scans_dir`
+- **WHEN** the image fails to load
+- **THEN** the error state SHALL indicate the load was blocked by a security check
+- **AND** this SHALL be visually distinguishable from the existing generic "image failed to load" state

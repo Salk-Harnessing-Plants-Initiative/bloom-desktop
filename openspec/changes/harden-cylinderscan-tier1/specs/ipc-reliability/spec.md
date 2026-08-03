@@ -23,6 +23,20 @@ Every `on*` subscription method exposed on `window.electron` by `src/main/preloa
 - **WHEN** the returned cleanup function is invoked
 - **THEN** the corresponding `ipcRenderer` listener SHALL be removed
 
+#### Scenario: Calling a cleanup function twice is safe
+
+- **GIVEN** a renderer component has already invoked one of the 8 target listeners' returned cleanup function once
+- **WHEN** the same cleanup function is invoked a second time
+- **THEN** no error SHALL be thrown
+- **AND** the listener SHALL remain removed (no double-removal side effects)
+
+#### Scenario: PythonStatus consumes cleanup on unmount
+
+- **GIVEN** `PythonStatus` has subscribed to `python.onStatus` and `python.onError` in a `useEffect`
+- **WHEN** the component unmounts
+- **THEN** both listeners' cleanup functions SHALL be invoked
+- **AND** neither callback SHALL fire for events received after unmount
+
 ### Requirement: IPC Command Response Correlation
 
 Commands sent to the Python subprocess via `PythonProcess.sendCommand()` SHALL be correlated to their responses by a request id, so that multiple in-flight commands cannot cross-resolve or cross-reject each other's promises.
@@ -47,3 +61,18 @@ Commands sent to the Python subprocess via `PythonProcess.sendCommand()` SHALL b
 - **WHEN** an error is emitted with no request id (e.g. a raw stderr line or a fatal top-level exception in the Python process)
 - **THEN** every currently-pending request SHALL reject
 - **AND** none SHALL be left waiting until its own timeout fires
+
+#### Scenario: Streaming-thread errors are never attributed to an unrelated pending request
+
+- **GIVEN** a `sendCommand()` call is in flight with request id `N` (e.g. a `daq:get-status` command)
+- **AND** the camera streaming background thread encounters its own, unrelated error
+- **WHEN** the streaming thread's error is emitted
+- **THEN** it SHALL NOT carry request id `N` or resolve/reject the pending request for id `N`
+- **AND** it SHALL instead be treated as an unattributable error (rejecting all currently-pending requests, per the scenario above)
+
+#### Scenario: Timed-out request is removed from the pending map
+
+- **GIVEN** a `sendCommand()` call has been pending long enough to hit its timeout
+- **WHEN** the timeout fires and the call rejects
+- **THEN** its entry SHALL be removed from `pendingRequests`
+- **AND** a subsequent response arriving with that same (now-stale) id SHALL be ignored, not resolve/reject anything
