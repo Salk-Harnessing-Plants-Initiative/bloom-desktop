@@ -7,8 +7,8 @@ completeness, scope/consistency/safety), mirroring
 `2026-07-30-graviscan-renderer-roadmap.md`'s process. See "Reconciliation
 from adversarial review" below for what changed — the review added real
 scope (e.g. #249, #120, pilot #3's metadata-readback gap) beyond the
-user's original tier approval, so this reconciled version is pending a
-final user sign-off before Tier 1 starts.
+user's original tier approval. Reconciled version approved by the user
+2026-08-03; Tier 1 starting now.
 
 ## Owner context
 
