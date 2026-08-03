@@ -95,7 +95,8 @@
 - [ ] 4.1 Write failing unit tests for
       `unlinkGraviMetadata(db, experimentId, waveNumber)`: rejects
       non-string, missing, or empty-string `experimentId`; rejects a
-      `waveNumber` that is negative, non-integer, or missing; returns a friendly
+      `waveNumber` that is negative, non-integer, missing, or not a number;
+      returns a friendly
       `{success: false, error: <message>}` for a non-existent
       `(experimentId, waveNumber)` pair (not a raw Prisma `P2025`); succeeds
       and deletes the row, returning `{success: true}`, on the happy path.

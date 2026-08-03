@@ -143,8 +143,8 @@ The system SHALL provide a `database.experiments.listGraviMetadata(experimentId)
 
 #### Scenario: list rejects a non-string, missing, or empty experimentId
 
-- **GIVEN** `listGraviMetadata` is called with an `experimentId` that is a non-string value, missing, or an empty string `""`
-- **WHEN** the handler processes the request
+- **GIVEN** `experimentId` is a non-string value, missing, or an empty string `""`
+- **WHEN** `listGraviMetadata` is called with that `experimentId`
 - **THEN** the handler SHALL return `{success: false, error: <message>}` rather than passing the malformed value to Prisma
 
 ## MODIFIED Requirements
