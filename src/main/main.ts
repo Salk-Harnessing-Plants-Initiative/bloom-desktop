@@ -55,6 +55,7 @@ import { IdleTimer } from './idle-timer';
 import { createFrameForwarder } from './frame-forwarder';
 // GraviScan wiring is in a side-effect-free module for testability.
 import { initGraviScan, shutdownGraviScan } from './graviscan/wiring';
+import { shouldQuitAsSecondInstance, focusExistingWindow } from './single-instance';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -70,6 +71,15 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 if (require('electron-squirrel-startup')) {
   app.quit();
+}
+
+// Single-instance lock (#249): two instances running concurrently against
+// the same SQLite database and hardware is a real data-corruption risk on
+// lab machines. Must run before any app.on('ready', ...) registration.
+if (shouldQuitAsSecondInstance(app.requestSingleInstanceLock())) {
+  app.quit();
+} else {
+  app.on('second-instance', () => focusExistingWindow(mainWindow));
 }
 
 // Enable remote debugging for E2E tests specifically

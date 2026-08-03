@@ -42,8 +42,8 @@ const mockPythonAPI = {
   getVersion: vi.fn().mockResolvedValue({ version: '1.0.0' }),
   checkHardware: vi.fn().mockResolvedValue({ camera: false, daq: false }),
   restart: vi.fn().mockResolvedValue({ success: true }),
-  onStatus: vi.fn(),
-  onError: vi.fn(),
+  onStatus: vi.fn().mockReturnValue(vi.fn()),
+  onError: vi.fn().mockReturnValue(vi.fn()),
 };
 
 // Basic mock for database API - individual tests can override
