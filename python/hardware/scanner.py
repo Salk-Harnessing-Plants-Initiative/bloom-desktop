@@ -6,6 +6,7 @@ Coordinates camera and DAQ for automated cylinder scanning workflow.
 
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional, Union
@@ -100,8 +101,17 @@ class Scanner:
         """Cleanup camera and DAQ resources.
 
         Raises:
-            RuntimeError: If cleanup attempted during active scan
+            RuntimeError: If cleanup attempted during active scan, or if
+                called from a thread other than the main IPC thread (#40 —
+                belt-and-suspenders runtime tripwire; the single-threaded
+                calling architecture this relies on is otherwise unverified
+                at runtime).
         """
+        if threading.current_thread() is not threading.main_thread():
+            raise RuntimeError(
+                "Scanner.cleanup() must be called from the main IPC thread"
+            )
+
         if self.is_scanning:
             raise RuntimeError("Cannot cleanup during active scan")
 
@@ -154,8 +164,17 @@ class Scanner:
             ScanResult with success status, frames captured, and output path
 
         Raises:
-            RuntimeError: If scanner not initialized, scan already in progress, or scan fails
+            RuntimeError: If scanner not initialized, scan already in
+                progress, scan fails, or called from a thread other than
+                the main IPC thread (#40 — belt-and-suspenders runtime
+                tripwire; the single-threaded calling architecture this
+                relies on is otherwise unverified at runtime).
         """
+        if threading.current_thread() is not threading.main_thread():
+            raise RuntimeError(
+                "Scanner.perform_scan() must be called from the main IPC thread"
+            )
+
         if not self.is_initialized:
             raise RuntimeError("Scanner not initialized. Call initialize() first.")
 
