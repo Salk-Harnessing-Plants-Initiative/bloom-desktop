@@ -20,7 +20,7 @@ wiring like Tier 2's other four handler groups.
 **Decision (2026-08-03): build this properly, not a stand-in.** The alternative
 (fall back to the existing single-accession `Experiment.accession_id` field) was
 rejected: confirmed with the user that real lab data has many distinct accessions
-per experiment *and per wave* — a single field can't represent that, so the
+per experiment _and per wave_ — a single field can't represent that, so the
 fallback would be a real functional loss (can't browse metadata files in
 per-wave context), not a cosmetic UX regression.
 
@@ -66,7 +66,7 @@ model GraviExperimentWaveMetadata {
 
 - **One metadata file per (experiment, wave)** — the `@@unique` is on the pair,
   not many-to-many. `listGraviMetadata` returns a list because it lists across
-  an experiment's *waves*, not multiple files per wave.
+  an experiment's _waves_, not multiple files per wave.
 - `wave_number` is **not a new concept** — it already exists as a plain
   `Int @default(0)` on `GraviScan`. This model adds its own copy (no FK to
   `GraviScan`), unique per experiment.

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GraviScan wave-scoped metadata linking (`database.experiments.{linkGraviMetadata,unlinkGraviMetadata,listGraviMetadata}`), unblocking the Browse/Experiment Detail/Metadata UI proposal (roadmap Tier 5)
+  - `GraviExperimentWaveMetadata` model: one metadata-file link per `(experiment, wave)`, FK to `Experiment` (cascades) and `Accessions` (restricted)
+  - `linkGraviMetadata` validates experiment existence/type, accession existence/file-type, and wave-number range before linking; rejects re-linking an already-linked wave rather than silently overwriting
+  - `unlinkGraviMetadata` returns a friendly error for a non-existent link instead of a raw database error
+  - `graviPlateAccessionsDelete`'s reference-count guard extended to also block deleting a metadata file still referenced by a wave-scoped link
+  - Backend/IPC only — no renderer UI in this change
+
 - Idle session timer to prevent scan misattribution in shared lab environments (#102, #116)
   - Main process `IdleTimer` class resets session state after 10 minutes of inactivity
   - Session fields (phenotyper, experiment, wave number, plant age, accession name) cleared on idle
