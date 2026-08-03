@@ -42,8 +42,8 @@
 
 ## 5. Type-Safe ImageUploader Fields (#97)
 
-- [ ] 5.1 Replace the 4 `any`-typed fields in `src/main/image-uploader.ts:96-103` with `TypedSupabaseClient` (from `@salk-hpi/bloom-js`), `SupabaseUploader`, `SupabaseStore` (both `@salk-hpi/bloom-js` classes), and `typeof uploadImages` (imported from `@salk-hpi/bloom-fs`) — matching the types already assigned to these fields in `authenticate()` (lines 140-163). Remove the now-unnecessary `eslint-disable @typescript-eslint/no-explicit-any` comments.
-- [ ] 5.2 Run `npx tsc --noEmit` to confirm the real types actually match every usage site in this file (this is the test signal for this task — a type-safety refactor with no behavior change has no new runtime test to write). Run `npm run lint && npm run test:unit` to confirm no regressions in existing `image-uploader` test coverage.
+- [x] 5.1 Replace the 4 `any`-typed fields in `src/main/image-uploader.ts:96-103` with `TypedSupabaseClient` (from `@salk-hpi/bloom-js`), `SupabaseUploader`, `SupabaseStore` (both `@salk-hpi/bloom-js` classes), and `typeof uploadImages` (imported from `@salk-hpi/bloom-fs`) — matching the types already assigned to these fields in `authenticate()` (lines 140-163). Remove the now-unnecessary `eslint-disable @typescript-eslint/no-explicit-any` comments.
+- [x] 5.2 Run `npx tsc --noEmit` to confirm the real types actually match every usage site in this file (this is the test signal for this task — a type-safety refactor with no behavior change has no new runtime test to write). Run `npm run lint && npm run test:unit` to confirm no regressions in existing `image-uploader` test coverage.
 
 ## 6. Verify (Not Fix) Scanner Thread Safety (#40)
 
