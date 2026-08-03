@@ -240,7 +240,7 @@ implementation's own choice (`onDelete: Cascade` on the same relation) —
 confirmed independently correct here, not just copied.
 
 One residual gap this cascade does introduce, not present in the RESTRICT'd
-tables: `database.experiments.delete` (`database-handlers.ts:996-1023`,
+tables: `database.experiments.delete` (`database-handlers.ts:980-994`,
 already implemented, already preload-exposed — not part of this change, but
 live on `main` today, even though no renderer caller invokes it yet) has no
 application-level guard at all. For an experiment with zero scan/session/
@@ -249,10 +249,15 @@ scanning, a single call to that existing handler silently deletes *all* of
 that experiment's `GraviExperimentWaveMetadata` rows in one shot — with no
 Prisma error to catch (unlike the RESTRICT'd tables, which force the caller
 to notice and handle a blocked delete) and no confirmation step specific to
-the metadata links being lost. This is a sharper, more immediate version of
-the no-audit-trail gap below (one ungated call destroys the whole current
-link set, vs. one relink losing history for a single wave) — flagged
-explicitly here and cross-referenced from Risks, rather than left implicit.
+the metadata links being lost. This is real but time-boxed to the same
+narrow pre-scan window the cascade itself is limited to — no
+already-captured genotype-to-image provenance is destroyed by it, unlike a
+relink after scanning has started (a distinction worth keeping in mind: this
+gap is easier to trigger per-call, but the relink case is reachable at any
+time and is the one that can actually lose scan-time provenance). Tracked as
+issue #276 (a cheap, pattern-consistent fix — a count guard mirroring
+Decision 5's `countMetadataReferences()` — rather than folded into the
+larger audit-trail question below, since it doesn't need one to fix).
 
 The `Accessions` FK, by contrast, is `onDelete: Restrict` — deleting a
 metadata file that's still wave-linked must be blocked (this is exactly what
@@ -294,10 +299,11 @@ direct-SQL script).
   above (two deliberate, individually-validated calls, one wave at a time),
   this is one call to an already-existing, ungated handler that removes
   every current wave-metadata link for an experiment at once, with zero
-  confirmation specific to that loss. Also deliberately deferred — same
-  Open Questions entry — but worth keeping distinct from the relink case
-  when that entry is eventually revisited, since it's a materially larger
-  and easier-to-trigger blast radius.
+  confirmation specific to that loss — though, unlike the relink case, it's
+  reachable only in the pre-scan window and never destroys already-captured
+  scan-time provenance. Tracked as **issue #276** rather than folded into the
+  audit-trail Open Question below, since a cheap count-guard fixes it without
+  needing a full audit-trail system.
 
 ## Migration Plan
 
@@ -325,33 +331,49 @@ Prisma/programmer-flavored text:
 
 - Non-graviscan experiment: *"This experiment isn't a GraviScan experiment,
   so wave metadata can't be linked here."*
-- Accession has no `GraviPlateAccession` children: *"This file looks like a
-  CylinderScan barcode-mapping file, not a GraviScan plate/section metadata
-  file — pick a file from the GraviScan metadata list instead."* (names what
-  the file actually is, not just what it isn't, so a confused researcher can
-  tell why their file was rejected)
+- Accession has no `GraviPlateAccession` children: *"This file has no plate
+  or section data, so it can't be linked as GraviScan wave metadata."*
+  (describes the observed fact rather than asserting a specific cause the
+  check can't actually distinguish — see the note below)
 - Already-linked wave: *"Wave {waveNumber} already has metadata linked —
   unlink it first if you want to link a different file."*
 - Unlink on a non-existent link: *"Nothing to unlink — wave {waveNumber} has
   no metadata file linked."* (makes the no-op outcome explicit, rather than
-  reading like an error about something the researcher did wrong)
+  reading like an error about something the researcher did wrong; this
+  message is also what a caller sees for an unknown `experimentId`, since
+  `unlinkGraviMetadata` has no separate "unknown experiment" scenario — both
+  cases reduce to "no row for this pair," which is accurate either way)
+
+Note on the accession-file-type message: `Accessions` has no type
+discriminator (see Context, issue #275), so a zero-`GraviPlateAccession`
+accession could be a CylinderScan mapping file, but could equally be a
+genuinely empty/degenerate GraviScan upload — `graviPlateAccessionsCreateWithSections`
+doesn't currently validate that `plates` is non-empty, so a real GraviScan
+upload with zero plates is possible today. The check can only observe "no
+plate data," not which of those two causes produced it, so the message
+above says only what's actually verified. (It also deliberately doesn't tell
+the researcher to "check the GraviScan metadata list" — `graviPlateAccessionsListFiles`
+filters on the same "has ≥1 `GraviPlateAccession`" predicate, so a genuinely
+empty GraviScan file wouldn't appear there either; pointing a researcher at
+a list that would also hide their file would be a dead end.)
 
 ## Open Questions
 
-1. **No audit trail / no link-history, including the sharper
-   `experiments.delete` case** (see Risks) — should this become a
+1. **No audit trail / no link-history** (see Risks) — should this become a
    requirement before researchers start relying on this data for
    provenance? Not blocking this proposal; flagging so it doesn't get lost.
    Candidate trigger: revisit once Tier 5 ships and real per-wave links
-   start accumulating. If addressed, treat the `experiments.delete` case
-   (erases the whole current link set in one ungated call) and the relink
-   case (loses one wave's history per call) as two distinct scenarios to
-   cover, not one.
+   start accumulating. This covers the relink-loses-history case only — the
+   related but separately-fixable `experiments.delete` gap is tracked as
+   issue #276, not bundled into this question.
 2. **`verify-plates.ts` wave-scoping (issues #162, #164) is deferred** (see
    Non-Goals) pending a renderer caller to supply `waveNumber` — likely
    scoped alongside Tier 3 or Tier 4, whichever builds the
    verification-triggering screen. Needs a human decision on timing once
-   that tier is scoped.
+   that tier is scoped. Note: of #162's three original complaints
+   (cross-experiment leakage, no wave-scoping, case-sensitive plate-id
+   comparison), PR #270 already fixed the first and third on `main` — only
+   the wave-scoping piece (this deferral) remains open.
 3. **Possible Tier 4 dependency** (see proposal.md Impact) — an unmerged
    draft (PR #212) suggests Tier 4's Capture Scan auto-fill may also need
    `listGraviMetadata`. Worth confirming with the roadmap owner whether Tier

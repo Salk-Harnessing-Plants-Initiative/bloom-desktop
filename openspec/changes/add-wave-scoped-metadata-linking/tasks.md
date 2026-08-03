@@ -62,7 +62,8 @@
 - [ ] 3.1 Write failing unit tests in
       `tests/unit/graviscan/database-handlers.test.ts` for
       `linkGraviMetadata(db, experimentId, waveNumber, accessionId)`:
-      rejects non-string/missing `experimentId` or `accessionId`; rejects a
+      rejects non-string, missing, or empty-string (`""`) `experimentId` or
+      `accessionId`, tested separately for each; rejects a
       negative, non-integer (e.g. `1.5`), or non-numeric `waveNumber`;
       rejects a `waveNumber` outside the safe 32-bit integer range Prisma's
       `Int` column can store (e.g. `2147483648`, one past `Int32` max) with
@@ -93,8 +94,8 @@
 
 - [ ] 4.1 Write failing unit tests for
       `unlinkGraviMetadata(db, experimentId, waveNumber)`: rejects
-      non-string/missing `experimentId`; rejects a `waveNumber` that is
-      negative, non-integer, or missing; returns a friendly
+      non-string, missing, or empty-string `experimentId`; rejects a
+      `waveNumber` that is negative, non-integer, or missing; returns a friendly
       `{success: false, error: <message>}` for a non-existent
       `(experimentId, waveNumber)` pair (not a raw Prisma `P2025`); succeeds
       and deletes the row, returning `{success: true}`, on the happy path.
@@ -110,7 +111,8 @@
 ## 5. listGraviMetadata handler (TDD)
 
 - [ ] 5.1 Write failing unit tests for `listGraviMetadata(db, experimentId)`:
-      rejects a non-string `experimentId`; returns `{success: true, data: []}`
+      rejects a non-string, missing, or empty-string `experimentId`; returns
+      `{success: true, data: []}`
       for an experiment with no links; returns links ordered by
       `wave_number` ascending, each with `accession` included; correctly
       scoped (does not include another experiment's links).

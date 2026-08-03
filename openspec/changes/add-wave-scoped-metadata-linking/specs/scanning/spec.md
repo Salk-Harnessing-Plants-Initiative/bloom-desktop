@@ -23,10 +23,17 @@ The system SHALL provide a `database.experiments.linkGraviMetadata(experimentId,
 - **THEN** a `GraviExperimentWaveMetadata` row SHALL be created for `(experimentId, 0, accessionId)`
 - **AND** the handler SHALL return `{success: true, data: <row with accession included>}`
 
-#### Scenario: link rejects a non-string or missing experimentId or accessionId
+#### Scenario: link rejects a non-string, missing, or empty experimentId
 
-- **GIVEN** `experimentId` or `accessionId` is a non-string value (e.g. a number, object, or `undefined`)
-- **WHEN** `linkGraviMetadata` is called with that argument
+- **GIVEN** `experimentId` is a non-string value (e.g. a number, object, or `undefined`), or an empty string `""`
+- **WHEN** `linkGraviMetadata` is called with that `experimentId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects a non-string, missing, or empty accessionId
+
+- **GIVEN** `accessionId` is a non-string value (e.g. a number, object, or `undefined`), or an empty string `""`
+- **WHEN** `linkGraviMetadata` is called with that `accessionId`
 - **THEN** the handler SHALL return `{success: false, error: <message>}`
 - **AND** no `GraviExperimentWaveMetadata` row SHALL be created
 
@@ -103,10 +110,17 @@ The system SHALL provide a `database.experiments.unlinkGraviMetadata(experimentI
 - **WHEN** `unlinkGraviMetadata(experimentId, 5)` is called
 - **THEN** the handler SHALL return `{success: false, error: <message>}` rather than a raw Prisma `P2025` error
 
-#### Scenario: unlink rejects malformed input
+#### Scenario: unlink rejects a non-string, missing, or empty experimentId
 
-- **GIVEN** a non-string or missing `experimentId`, or a `waveNumber` that is negative, non-integer, or missing
-- **WHEN** `unlinkGraviMetadata` is called with that argument
+- **GIVEN** `experimentId` is a non-string value (e.g. a number, object, or `undefined`), or an empty string `""`
+- **WHEN** `unlinkGraviMetadata` is called with that `experimentId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be deleted
+
+#### Scenario: unlink rejects a malformed waveNumber
+
+- **GIVEN** `waveNumber` is negative, non-integer, missing, or not a number
+- **WHEN** `unlinkGraviMetadata` is called with that `waveNumber`
 - **THEN** the handler SHALL return `{success: false, error: <message>}`
 - **AND** no `GraviExperimentWaveMetadata` row SHALL be deleted
 
@@ -127,9 +141,9 @@ The system SHALL provide a `database.experiments.listGraviMetadata(experimentId)
 - **WHEN** `listGraviMetadata(experimentId)` is called
 - **THEN** the handler SHALL return `{success: true, data: []}`
 
-#### Scenario: list rejects a non-string experimentId
+#### Scenario: list rejects a non-string, missing, or empty experimentId
 
-- **GIVEN** `listGraviMetadata` is called with a non-string `experimentId`
+- **GIVEN** `listGraviMetadata` is called with an `experimentId` that is a non-string value, missing, or an empty string `""`
 - **WHEN** the handler processes the request
 - **THEN** the handler SHALL return `{success: false, error: <message>}` rather than passing the malformed value to Prisma
 
