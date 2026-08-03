@@ -3,7 +3,9 @@
 ## Purpose
 
 This specification defines the requirements for the UI management pages for both Scientists and Phenotypers. It covers the functionality and user experience for listing, creating, editing, and deleting Scientists and Phenotypers, ensuring that users can efficiently manage these entities through intuitive interfaces, robust validation, and clear feedback. The goal is to provide a unified, consistent, and reliable management experience for both Scientists and Phenotypers within the application.
+
 ## Requirements
+
 ### Requirement: Scientists List View
 
 The Scientists page SHALL display all scientists from the database in a clean, readable list format, with support for both empty and populated states.
@@ -2134,4 +2136,3 @@ presence is transmitted to the renderer).
   Slack state from the "configured" libusb-recovery state (e.g. via
   color or icon), so the operator does not need to read closely to
   notice a missing wedge-alert channel
-

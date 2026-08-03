@@ -35,7 +35,7 @@ sign-off before Tier 3 relies on it, with a recommended backtest first.
 - Zero zero-byte output files among all 28,980 `.tif` files still on disk.
 - Zero individual scan-error log entries of any kind.
 
-Caveat for whoever reads this later: the rig runs the *production* branch, which
+Caveat for whoever reads this later: the rig runs the _production_ branch, which
 doesn't have main's coordinator-level row-timeout/file-verification checks at all
 — so this backtests the underlying physical failure conditions as the best
 available proxy, not an exact replay of the new code path. Small sample (one rig,
