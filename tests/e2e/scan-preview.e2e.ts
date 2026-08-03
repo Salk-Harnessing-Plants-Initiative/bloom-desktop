@@ -718,14 +718,19 @@ test.describe('Batch Upload', () => {
 
 test.describe('ScanPreview Image Loading', () => {
   /**
-   * Test that images load from file:// URLs.
+   * Test that images load from bloom-scan:// URLs.
    *
-   * This test verifies that webSecurity: false is properly configured,
-   * allowing the renderer (served from http://localhost in dev) to load
-   * local file:// URLs.
-   *
-   * See: openspec/changes/fix-scan-preview-image-loading/
-   * Reference: pilot app/src/main/main.ts:39 uses webSecurity: false
+   * This test verifies the custom bloom-scan:// protocol handler (#93) is
+   * properly registered and serves local scan images, without needing
+   * webSecurity: false to allow the renderer (served from http://localhost
+   * in dev) to load them. Since Node's fs/path APIs produce genuinely
+   * native paths on whichever OS this suite runs on (CI runs E2E on
+   * Windows too, not just Linux), this test naturally exercises a real
+   * Windows-style path (drive letter + backslashes) when run there — no
+   * separate synthetic Windows-path case is needed here; the
+   * platform-injectable path.win32/path.posix cases in
+   * tests/unit/scan-protocol.test.ts already cover the URL-construction
+   * logic deterministically on any host OS.
    */
   test('should load images from local filesystem', async () => {
     // Use a sample image from test fixtures
@@ -812,16 +817,17 @@ test.describe('ScanPreview Image Loading', () => {
     const imageNotFound = window.locator('text=Image not found');
     await expect(imageNotFound).not.toBeVisible({ timeout: 5000 });
 
-    // Verify the img element exists with correct file:// src
-    // Note: In CI headless mode, file:// images may not render visibly
-    // (zero dimensions), so we check the element exists with correct src
+    // Verify the img element exists with correct bloom-scan:// src
+    // Note: In CI headless mode, images may not render visibly (zero
+    // dimensions), so we check the element exists with correct src
     // rather than checking visibility
     const imgElement = imageContainer.locator('img');
     await expect(imgElement).toHaveCount(1, { timeout: 5000 });
 
-    // Verify the src attribute points to the local file
+    // Verify the src attribute points to the local file via the custom
+    // protocol
     const src = await imgElement.getAttribute('src');
-    expect(src).toContain('file://');
+    expect(src).toContain('bloom-scan://');
     expect(src).toContain('1.png');
   });
 });

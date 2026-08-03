@@ -12,10 +12,11 @@ if (process.platform === 'linux') {
   process.env.GDK_BACKEND = process.env.GDK_BACKEND || 'x11';
 }
 
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createScanProtocolHandler } from './scan-protocol';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './cylinderscan/camera-process';
 import type { CameraSettings } from './cylinderscan/camera-process';
@@ -55,7 +56,10 @@ import { IdleTimer } from './idle-timer';
 import { createFrameForwarder } from './frame-forwarder';
 // GraviScan wiring is in a side-effect-free module for testability.
 import { initGraviScan, shutdownGraviScan } from './graviscan/wiring';
-import { shouldQuitAsSecondInstance, focusExistingWindow } from './single-instance';
+import {
+  shouldQuitAsSecondInstance,
+  focusExistingWindow,
+} from './single-instance';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -81,6 +85,24 @@ if (shouldQuitAsSecondInstance(app.requestSingleInstanceLock())) {
 } else {
   app.on('second-instance', () => focusExistingWindow(mainWindow));
 }
+
+// Register the bloom-scan:// custom scheme (#93) as privileged — must run
+// before app 'ready'. Serves local scan images without needing
+// webSecurity: false, since a custom scheme's permissions are independent
+// of the renderer's own origin (unlike file:// loaded from an http://
+// origin in development). The actual protocol.handle() registration
+// happens in the 'ready' handler, before createWindow()'s loadURL() call.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'bloom-scan',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
 
 // Enable remote debugging for E2E tests specifically
 // This must be set before app.ready event fires
@@ -159,11 +181,6 @@ const createWindow = (): void => {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       contextIsolation: true,
       nodeIntegration: false,
-      // TODO: Replace webSecurity: false with a custom protocol handler for file:// URLs
-      // This is needed to load local scan images from HTTP context (webpack-dev-server)
-      // Reference: pilot implementation uses same approach
-      // See: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/93
-      webSecurity: false,
     },
   });
 
@@ -1139,6 +1156,14 @@ ipcMain.handle('session:reset', async (): Promise<void> => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+  // Register the bloom-scan:// protocol handler BEFORE createWindow()'s
+  // loadURL() call, closing the narrow race where the renderer could
+  // request a bloom-scan:// resource before the handler exists (#93).
+  protocol.handle(
+    'bloom-scan',
+    createScanProtocolHandler(() => loadEnvConfig(ENV_PATH).scans_dir)
+  );
+
   createWindow();
 
   // Initialize idle timer for session auto-reset (default: 10 min, see idle-timer.ts)
