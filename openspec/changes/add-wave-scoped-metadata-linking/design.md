@@ -307,6 +307,26 @@ direct-SQL script).
   scan-time provenance. Tracked as **issue #276** rather than folded into the
   audit-trail Open Question below, since a cheap count-guard fixes it without
   needing a full audit-trail system.
+- **Check-then-act race windows surface a raw error instead of a friendly
+  one, under concurrent calls**: `linkGraviMetadata`'s existing-link check,
+  `unlinkGraviMetadata`'s existing-row check, and
+  `graviPlateAccessionsDelete`'s `countMetadataReferences` check each run
+  before their corresponding write, not inside the same transaction. Two
+  concurrent calls for the same target (e.g. a double-clicked Link/Unlink
+  button) can both pass the check, then the losing write hits Prisma's raw
+  constraint error (`P2002` unique violation, `P2025` not-found, or an
+  FK-restrict violation) instead of this change's friendly message —
+  defeating, in that narrow window, exactly what the friendly-message
+  validation was built to prevent. No data corruption results (Prisma's
+  transactional/constraint enforcement keeps the DB consistent either way)
+  and this repo has no existing precedent for catching specific Prisma
+  error codes to translate them (`graviscanSessionsComplete`, e.g., already
+  accepts the same raw-`P2025`-on-race trade-off) — adding that discrimination
+  here would be a new pattern for the file, not a fix within its established
+  style, for a race that requires a rare double-invocation in a
+  single-user, non-adversarial desktop app. Deliberately accepted rather
+  than fixed in this change; revisit if this pattern becomes common enough
+  across handlers to warrant a shared helper.
 
 ## Migration Plan
 
