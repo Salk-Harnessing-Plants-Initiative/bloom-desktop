@@ -24,6 +24,11 @@ interface ScanCoordinatorLike {
   hasWorker(scannerId: string): boolean;
   addScanner(config: any): Promise<void>;
   stopScanner(scannerId: string): Promise<void>;
+  getScannerStatuses(): Array<{
+    scannerId: string;
+    status: 'ready' | 'starting' | 'error' | 'dead';
+    error?: string;
+  }>;
 }
 
 function createMockCoordinator(
@@ -43,6 +48,12 @@ function createMockCoordinator(
     hasWorker: vi.fn().mockReturnValue(true),
     addScanner: vi.fn().mockResolvedValue(undefined),
     stopScanner: vi.fn().mockResolvedValue(undefined),
+    // Default: whichever scanner was queried reports 'ready' — matches
+    // the retryScanner happy-path expectation. Tests for the silent-failure
+    // fix override this per-test.
+    getScannerStatuses: vi.fn(() => [
+      { scannerId: 'sc-1', status: 'ready' as const },
+    ]),
     ...overrides,
   };
 }
@@ -464,7 +475,84 @@ describe('session-handlers', () => {
         plates: [],
       });
       expect(result).toEqual({ success: true });
+      expect(coordinator.getScannerStatuses).toHaveBeenCalled();
       expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('sc-1'));
+    });
+
+    it('reports failure when addScanner() resolves but the respawned worker reports status "error"', async () => {
+      coordinator = createMockCoordinator({
+        getScannerStatuses: vi.fn(() => [
+          {
+            scannerId: 'sc-1',
+            status: 'error' as const,
+            error: 'sane_start: Invalid argument',
+          },
+        ]),
+      } as any);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: 'sane_start: Invalid argument',
+      });
+      expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('sc-1'));
+    });
+
+    it('reports failure when addScanner() resolves but the scanner is missing entirely from getScannerStatuses()', async () => {
+      coordinator = createMockCoordinator({
+        getScannerStatuses: vi.fn(() => []),
+      } as any);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error).not.toBe('');
+    });
+
+    it('reports failure when addScanner() resolves but the respawned worker reports status "dead" with no error field', async () => {
+      coordinator = createMockCoordinator({
+        getScannerStatuses: vi.fn(() => [
+          { scannerId: 'sc-1', status: 'dead' as const },
+        ]),
+      } as any);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error).not.toBe('');
     });
 
     it('fails without respawning when the scanner row cannot be found', async () => {

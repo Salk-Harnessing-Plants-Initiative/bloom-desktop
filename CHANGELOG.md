@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GraviScan `retry-scanner` reporting success when a respawned worker silently fails to come online (#283)
+  - `retryScanner()` now checks `coordinator.getScannerStatuses()` immediately after `addScanner()` resolves and returns `{ success: false, error }` if the scanner isn't reported `'ready'` — `addScanner()`/`spawnSingleScanner()` never throw on spawn failure, so a resolved promise alone didn't mean the worker actually came online
+  - Retry outcome log lines (`scanLog()`) now also include `session_id`/`cycle_number`, matching the existing wedge auto-pause log line's precedent for disambiguating cycles across sessions
+  - No renderer changes — `WedgeBanner.tsx` already handled `{ success: false, error }` correctly
 - Zero value persistence for waveNumber and plantAgeDays fields (#91)
   - Fixed save logic using `||` which converted 0 to null
   - Fixed load check using truthy comparison instead of `!== null`
