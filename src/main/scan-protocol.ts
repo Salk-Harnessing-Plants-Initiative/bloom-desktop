@@ -49,21 +49,15 @@ export function resolveScanPath(
 }
 
 /**
- * Convert a bloom-scan:// URL's path portion back to a native filesystem
- * path, undoing the leading-slash-before-drive-letter convention
- * `pathToFileUrl()` (src/utils/file-url.ts) adds — the standard file://
- * URL convention, e.g. "/C:/Users/foo/bar.png" — since `path.resolve()`
- * would otherwise treat "C:" as a literal path segment under root instead
- * of a drive letter.
+ * Extract the real filesystem path from a bloom-scan:// URL's `path` query
+ * parameter (see file-url.ts's pathToFileUrl() for why the path lives in
+ * the query string rather than the URL's authority/path position — that
+ * position is subject to Chromium's "special scheme" host-parsing, which
+ * corrupts Windows drive letters and even plain Unix absolute paths).
+ * `URLSearchParams` already percent-decodes the value.
  */
 function urlPathToNativePath(requestUrl: string): string {
-  let requestedPath = decodeURIComponent(
-    requestUrl.replace('bloom-scan://', '')
-  );
-  if (/^\/[A-Za-z]:/.test(requestedPath)) {
-    requestedPath = requestedPath.slice(1);
-  }
-  return requestedPath;
+  return new URL(requestUrl).searchParams.get('path') ?? '';
 }
 
 /**

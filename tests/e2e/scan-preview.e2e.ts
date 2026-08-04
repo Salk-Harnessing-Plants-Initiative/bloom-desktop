@@ -737,6 +737,15 @@ test.describe('ScanPreview Image Loading', () => {
     const fixturesDir = path.join(__dirname, '../fixtures/sample_scan');
     const testImagePath = path.join(fixturesDir, '1.png');
 
+    // Point the configured scans_dir at the fixtures directory for this
+    // test only, so this test's absolute fixture path is genuinely inside
+    // the containment boundary the #93 protocol handler enforces (it's
+    // read fresh per-request, so overriding it here mid-suite still takes
+    // effect). Other tests in this file use non-existent fake image paths
+    // and never assert a real image load, so they're unaffected by
+    // scans_dir's value and don't need this override.
+    createTestBloomConfig(path.join(__dirname, '../fixtures'));
+
     // Verify fixture exists
     if (!fs.existsSync(testImagePath)) {
       throw new Error(`Test fixture not found: ${testImagePath}`);

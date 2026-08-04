@@ -147,7 +147,7 @@ describe('createScanProtocolHandler — reads scans_dir fresh on every request',
     const scansDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-scans-'));
     try {
       const handler = createScanProtocolHandler(() => scansDir);
-      const outsideUrl = `bloom-scan://${encodeURI('/etc/passwd')}`;
+      const outsideUrl = pathToFileUrl('/etc/passwd');
       const response = await handler(new Request(outsideUrl));
       expect(response.status).toBe(403);
     } finally {
