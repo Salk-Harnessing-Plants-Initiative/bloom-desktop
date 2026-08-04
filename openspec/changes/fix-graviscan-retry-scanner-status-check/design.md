@@ -26,18 +26,18 @@ if (!status || status.status !== 'ready') {
   const message =
     status?.error ?? `Scanner ${scannerId} did not come online after retry`;
   scanLog(
-    `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} cycle=${session.currentCycle} error=${message}`
+    `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} error=${message}`
   );
   return { success: false, error: message };
 }
 
 scanLog(
-  `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId} cycle=${session.currentCycle}`
+  `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId}`
 );
 return { success: true };
 ```
 
-(`session` above refers to the `sessionFns.getScanSession()` result — but the _current_ code (`session-handlers.ts:359`) calls `getScanSession()` inline and discards it, inside the function's `try { ... }` block: `if (!sessionFns.getScanSession()?.isActive) { ... }`. There is no `session` local today, and the fix must be careful about _where_ it declares one: the success-path log line (line 31 above) is reachable from inside `try`, but the failure-path log line at line 27 above corresponds to the pre-existing `catch (error) { ... }` block (`session-handlers.ts:386-391`) — a sibling scope to `try`, not nested inside it. A `session` declared with `const`/`let` inside `try` is NOT visible inside `catch`. The correct fix declares `session` _before_ the `try`/`catch` split:
+(`session` above refers to the `sessionFns.getScanSession()` result — but the _current_ code (`session-handlers.ts:359`) calls `getScanSession()` inline and discards it, inside the function's `try { ... }` block: `if (!sessionFns.getScanSession()?.isActive) { ... }`. There is no `session` local today, and the fix must be careful about _where_ it declares one: the success-path log line above is reachable from inside `try`, but the failure-path log line corresponds to the pre-existing `catch (error) { ... }` block (`session-handlers.ts:386-391`) — a sibling scope to `try`, not nested inside it. A `session` declared with `const`/`let` inside `try` is NOT visible inside `catch`. The correct fix declares `session` _before_ the `try`/`catch` split:
 
 ```ts
 let session: ReturnType<SessionFns['getScanSession']> | undefined;
@@ -48,13 +48,13 @@ try {
   }
   // ...existing body...
   scanLog(
-    `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId} cycle=${session.currentCycle}`
+    `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId}`
   );
   return { success: true };
 } catch (error) {
   const message = error instanceof Error ? error.message : 'Retry failed';
   scanLog(
-    `[WedgeResponse] retry failed scanner=${scannerId} session=${session?.sessionId} cycle=${session?.currentCycle} error=${message}`
+    `[WedgeResponse] retry failed scanner=${scannerId} session=${session?.sessionId} error=${message}`
   );
   return { success: false, error: message };
 } finally {
@@ -73,11 +73,13 @@ Note the `session?.` (not `session.`) in the catch-block log line: `SessionFns['
 
 Net: there is no async gap between "`addScanner()` resolved" and "the `subprocesses`/`initErrors` state `getScannerStatuses()` reads is accurate" on either path. Calling `getScannerStatuses()` immediately after `await coordinator.addScanner(...)` is safe.
 
-### Decision 2: Log the new failure path, matching the "rejected respawn" precedent — and include `session_id`/`cycle_number`
+### Decision 2: Log the new failure path, matching the "rejected respawn" precedent — and include `session_id`
 
 The existing spec's "A rejected respawn is caught and surfaced, not left unhandled" scenario requires a log entry when `addScanner()` throws. The new silent-failure path (status check fails, no throw) is the same operational event from an operator's perspective — a retry that didn't actually bring the scanner back — so it gets the same `scanLog()` treatment for consistency and rig-log traceability. The five early-return guard-rail failures (no active session, no live coordinator, scanner not found, missing USB identity, disabled) are unchanged and still don't log, since those are input-validation rejections that never touch the coordinator, not spawn failures.
 
-All three `retryScanner()` log lines (success, the pre-existing caught-rejection failure, and the new status-check failure) now also include `session=${session.sessionId} cycle=${session.currentCycle}`, matching the precedent set by `WedgeDetector`'s auto-pause log line (`[WedgeDetector] auto-paused scanner=... session=${evt.session_id} cycle=${evt.cycle_number}`, from the archived wedge-response-ui proposal). That line added those fields specifically to disambiguate cycle numbers across sessions that share a calendar-day log file — the same ambiguity otherwise applies to retry-outcome lines. This requires declaring `session` _before_ the function's `try`/`catch` split (not merely "at the top of the `try` block"), since the failure-path log line lives in the `catch` block, a sibling scope — see the code sample in Decision 1 above for the exact shape.
+All three `retryScanner()` log lines (success, the pre-existing caught-rejection failure, and the new status-check failure) now also include `session=${session.sessionId}`. This requires declaring `session` _before_ the function's `try`/`catch` split (not merely "at the top of the `try` block"), since the failure-path log line lives in the `catch` block, a sibling scope — see the code sample in Decision 1 above for the exact shape.
+
+**Correction made during PR review (round 1 of post-implementation review — see `/review-pr`'s findings): dropped `cycle=${session.currentCycle}`, which an earlier draft of this decision included by analogy with `WedgeDetector`'s auto-pause log line (`[WedgeDetector] auto-paused scanner=... session=${evt.session_id} cycle=${evt.cycle_number}`).** That analogy doesn't hold: `WedgeDetector`'s `cycle_number` comes from a live, independently-tracked value (`wiring.ts`'s listener on the coordinator's real per-cycle counter, updated on every `scan-started` event), whereas `ScanSessionState.currentCycle` (what `session.currentCycle` would read) is set once to `0` in `startScan()` (`session-handlers.ts:201`) and never reassigned anywhere in `src/` — confirmed by exhaustive grep. `ScanCoordinator` does track a real, live cycle count internally (`this.currentCycle`, incremented in `scanOnce()`), but nothing copies it back into the session object `sessionFns.setScanSession()` manages. Wiring a live value through would require either listening for `cycle-complete`/`scan-started` events in `session-handlers.ts` and updating session state on every cycle (mirroring `wiring.ts`'s pattern), or exposing a `getCurrentCycle()` method on `ScanCoordinatorLike` — both larger, legitimate follow-ups, but out of scope for this fix (which exists solely to correct `retryScanner()`'s success/failure reporting). Shipping a confidently-wrong `cycle=0` in every log line would be worse than omitting the field, especially for a log a researcher might later trust to reconstruct which cycle a retry happened in. `session=${session.sessionId}` is unaffected by this correction — a session's ID is genuinely constant and correct for that session's entire lifetime, unlike the cycle counter.
 
 ## Risks / Trade-offs
 

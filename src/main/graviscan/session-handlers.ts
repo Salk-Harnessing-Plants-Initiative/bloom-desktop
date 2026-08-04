@@ -392,19 +392,19 @@ export async function retryScanner(
       const message =
         status?.error ?? `Scanner ${scannerId} did not come online after retry`;
       scanLog(
-        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} cycle=${session.currentCycle} error=${message}`
+        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} error=${message}`
       );
       return { success: false, error: message };
     }
 
     scanLog(
-      `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId} cycle=${session.currentCycle}`
+      `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId}`
     );
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Retry failed';
     scanLog(
-      `[WedgeResponse] retry failed scanner=${scannerId} session=${session?.sessionId} cycle=${session?.currentCycle} error=${message}`
+      `[WedgeResponse] retry failed scanner=${scannerId} session=${session?.sessionId} error=${message}`
     );
     return { success: false, error: message };
   } finally {

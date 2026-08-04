@@ -16,6 +16,7 @@
 ## 3. Green: implement the status check in `retryScanner()`
 
 - [x] 3.1 In `src/main/graviscan/session-handlers.ts`'s `retryScanner()`: the pre-existing success log line lives inside the function's `try { ... }` block, but the pre-existing failure log line lives in the sibling `catch (error) { ... }` block — so `session` must be declared _before_ the `try`/`catch` split, not inside `try`, or the `catch`-block reference won't compile. Change:
+
   ```ts
   // before
   try {
@@ -27,7 +28,9 @@
     // ...
   }
   ```
+
   to:
+
   ```ts
   // after
   let session: ReturnType<SessionFns['getScanSession']> | undefined;
@@ -38,11 +41,17 @@
     }
     // ...
   } catch (error) {
-    // ... use session?.sessionId / session?.currentCycle here (optional chain — TS can't
-    // narrow that the `let` was assigned before this catch block runs)
+    // ... use session?.sessionId here (optional chain — TS can't narrow that
+    // the `let` was assigned before this catch block runs)
   }
   ```
-  Then, after `await coordinator.addScanner({ scannerId, saneName, plates: [] })` (inside `try`), look up `coordinator.getScannerStatuses().find((s) => s.scannerId === scannerId)`. If the result is missing or its `status !== 'ready'`, `scanLog()` a failure entry and return `{ success: false, error: status?.error ?? \`Scanner ${scannerId} did not come online after retry\` }`. Otherwise fall through to the existing success `scanLog()` call and `{ success: true }` return. Add `session=${session.sessionId} cycle=${session.currentCycle}` (no `?.` needed — `session` is narrowed non-null by the `if (!session?.isActive) return` guard above) to the success line and the new status-check failure line (both inside `try`, after that guard), and `session=${session?.sessionId} cycle=${session?.currentCycle}` (with `?.`, since the `let` isn't narrowed inside `catch`) to the pre-existing catch-block failure line. This matches the existing precedent set by `WedgeDetector`'s auto-pause log line (`[WedgeDetector] auto-paused scanner=... session=${evt.session_id} cycle=${evt.cycle_number}`), which added those fields specifically to disambiguate cycles across sessions sharing a calendar-day log file — the same ambiguity otherwise exists for retry outcomes.
+
+  Then, after `await coordinator.addScanner({ scannerId, saneName, plates: [] })` (inside `try`), look up `coordinator.getScannerStatuses().find((s) => s.scannerId === scannerId)`. If the result is missing or its `status !== 'ready'`, `scanLog()` a failure entry and return `{ success: false, error: status?.error ?? \`Scanner ${scannerId} did not come online after retry\` }`. Otherwise fall through to the existing success `scanLog()`call and`{ success: true }` return.
+
+  Add a `session=${session.sessionId}` field to the success line and the new status-check failure line, both inside `try` and reachable only after the `isActive` guard above, so no optional chain is needed there. Add the same field to the pre-existing catch-block failure line too, but written as `session=${session?.sessionId}` — an optional chain is required there since the `let` isn't narrowed non-null inside `catch`. This is for cross-session log correlation.
+
+  Correction made during post-implementation review (`/review-pr`, round 1): an earlier draft of this task also added `cycle=${session.currentCycle}`/`cycle=${session?.currentCycle}` to these lines, by analogy with `WedgeDetector`'s auto-pause log line (`[WedgeDetector] auto-paused scanner=... session=${evt.session_id} cycle=${evt.cycle_number}`). Three independent review passes caught that the analogy doesn't hold: `WedgeDetector`'s `cycle_number` is a live, independently-tracked value, but `ScanSessionState.currentCycle` is set once to `0` in `startScan()` and never reassigned anywhere in `src/` (confirmed by grep) — so `session.currentCycle` would always log `cycle=0`, silently wrong for the entire duration of every session. Dropped the field rather than wiring a real live cycle count through (that would mean listening for coordinator cycle events in `session-handlers.ts`, a larger change out of scope for this fix). See `design.md` Decision 2 for the full account.
+
 - [x] 3.2 Update the existing happy-path retryScanner test (line ~446, "stops then respawns the scanner...") to add `expect(coordinator.getScannerStatuses).toHaveBeenCalled();` — the MODIFIED requirement's THEN clause requires this check to run on the success path too, not just the failure path, and without this assertion a regression that bypasses the check entirely on success would go uncaught.
 - [x] 3.3 Run `npx vitest run tests/unit/graviscan/session-handlers.test.ts` — all tests (pre-existing + the three new ones from Task 2 + the updated happy-path assertion from 3.2) MUST pass. Confirmed: 33/33 passed.
 - [x] 3.4 Run `npx tsc --noEmit` (or the project's typecheck script) to confirm the mock interface change in Task 1.1 satisfies `retryScanner()`'s real `ScanCoordinatorLike` parameter type with no `any`-casts added beyond what the test file already uses. Confirmed clean (after running `npx prisma generate`, a one-time fresh-worktree setup step unrelated to this change — the Prisma-client-generation errors it fixed did not reference `session-handlers.ts` either before or after).
