@@ -132,13 +132,13 @@ the upload screen) can be scoped concretely.
 
 ## Tiers
 
-| #   | Tier                                              | Depends on                               | New backend?                                                                               | Related issues                        | Status                                      |
-| --- | ------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------- |
-| 1   | Configure Scanner UI                              | —                                        | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03) |
-| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note) | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31) |
-| 3   | Wedge-response UI (fast-tracked)                  | 2                                        | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04) |
-| 4   | Core scan-operation screen                        | 1, 2, 3                                  | Preload wiring only (`verify-plates` + its events)                                         | #133                                  | Not started — unblocked                     |
-| 5   | Browse / Experiment Detail / Metadata UI          | 2                                        | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207                            | Not started — unblocked (only needs Tier 2) |
+| #   | Tier                                              | Depends on                                                           | New backend?                                                                               | Related issues                        | Status                                      |
+| --- | ------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------- |
+| 1   | Configure Scanner UI                              | —                                                                    | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03) |
+| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                             | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31) |
+| 3   | Wedge-response UI (fast-tracked)                  | 2                                                                    | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04) |
+| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose) | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | Not started — unblocked                     |
+| 5   | Browse / Experiment Detail / Metadata UI          | 2                                                                    | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207                            | Not started — unblocked (only needs Tier 2) |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
 `src/main/preload.ts`'s `graviAPI` object — Tier 1 adds one method near the
@@ -251,6 +251,25 @@ livelock. Reproduces the production branch's genuinely valuable UX
 deliberately and with tests, not by copying the file: predictive cadence
 warning (already an accepted spec requirement), graded-severity QR-verification
 result banner, and session restoration across app restart.
+
+**Re-check against `add-wave-scoped-metadata-linking` (merged PR #278, not one
+of the five original tiers — a prerequisite discovered while scoping Tier 5):
+two open questions from that change's `design.md` point at this tier
+specifically, and should be resolved as part of this tier's own proposal
+scoping, not carried further as unowned questions:**
+
+- **Issue #162** (QR verification not wave-scoped) was deferred there
+  specifically because `verify-plates.ts`'s IPC handler had no `waveNumber`
+  parameter anywhere in its call chain and no renderer caller existed yet to
+  supply one. This tier _is_ that caller — decide whether to thread
+  `waveNumber` through as part of the "graded-severity QR-verification result
+  banner" work above, or explicitly defer again with a reason.
+- Prior-art evidence (unmerged draft PR #212, "Capture Scan auto-fill 4/4",
+  same author as #209-211) suggests `usePlateAssignments` may need
+  `listGraviMetadata` (now available) to auto-fill plate/accession metadata
+  per wave, rather than requiring manual entry each capture. Confirm whether
+  this tier's `usePlateAssignments` should consume it, or whether that's
+  Tier 5-only scope.
 
 ### Tier 5 — Browse / Experiment Detail / Metadata UI
 
