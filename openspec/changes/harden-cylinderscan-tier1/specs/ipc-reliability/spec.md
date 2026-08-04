@@ -91,3 +91,17 @@ Commands sent to the Python subprocess via `PythonProcess.sendCommand()` SHALL b
 - **THEN** it SHALL NOT null out the reference to the new, live process
 - **AND** it SHALL NOT reject any of the new process's currently-pending requests
 - **AND** the new process's pending requests SHALL still resolve normally when their own matching responses arrive
+
+#### Scenario: stop() rejects currently-pending requests immediately, not via the eventual exit event
+
+- **GIVEN** one or more `sendCommand()` calls are pending against the current process
+- **WHEN** `stop()` is called (directly, or as part of `restart()`)
+- **THEN** every currently-pending request SHALL reject immediately
+- **AND** none SHALL be left waiting for the process's real (possibly delayed, possibly generation-guarded-away) `exit` event, or for its own timeout, to fail
+
+#### Scenario: Generation protection applies to a direct stop()-then-start(), not only to restart()
+
+- **GIVEN** `stop()` is called directly (not via `restart()`) and `start()` is called again afterward
+- **AND** the first process's real OS-level exit event arrives late, after the second `start()` has begun
+- **WHEN** the stale exit event fires
+- **THEN** it SHALL NOT corrupt the second process's state, identically to the `restart()` case above

@@ -101,6 +101,35 @@ describe('PythonStatus — cylinderscan mode', () => {
       expect(button.disabled).toBe(false);
     });
   });
+
+  it('surfaces a failed restart instead of reporting success', async () => {
+    mockPythonAPI.restart.mockResolvedValue({
+      success: false,
+      error: 'Python executable not found',
+    });
+
+    const { getByText, queryByText } = render(
+      <PythonStatus mode="cylinderscan" />
+    );
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    const button = getByText('Restart Python') as HTMLButtonElement;
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(getByText('Python executable not found')).toBeInTheDocument();
+    });
+
+    // The button must re-enable, and "Restarted" must never be shown for a
+    // failed restart — getVersion() must not be re-fetched either (only
+    // the initial on-mount call should have happened), since there's no
+    // reason to believe it's safe to call after a failed restart.
+    expect(button.disabled).toBe(false);
+    expect(queryByText('Restarted')).not.toBeInTheDocument();
+    expect(mockPythonAPI.getVersion).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('PythonStatus — graviscan mode', () => {

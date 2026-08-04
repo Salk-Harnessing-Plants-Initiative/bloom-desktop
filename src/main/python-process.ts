@@ -200,11 +200,20 @@ export class PythonProcess extends EventEmitter {
 
   /**
    * Stop the Python subprocess.
+   *
+   * Rejects any currently-pending requests immediately, rather than
+   * relying on the real (possibly delayed, possibly asynchronous) process
+   * `exit` event to do it — that event's generation guard (see `start()`)
+   * intentionally no-ops once a subsequent `start()` has begun a new
+   * generation, so without this, a request that was genuinely orphaned by
+   * this `stop()` call would otherwise sit waiting for its own
+   * `COMMAND_TIMEOUT_MS` (3 minutes) instead of failing fast.
    */
   stop(): void {
     if (this.process) {
       this.process.kill();
       this.process = null;
+      this.rejectAllPending(new Error('Python process stopped'));
     }
     // Clear stdout buffer
     this.stdoutChunks = [];

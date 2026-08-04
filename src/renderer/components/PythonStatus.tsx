@@ -90,7 +90,17 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
   const restartPython = async () => {
     setIsRestarting(true);
     try {
-      await window.electron.python.restart();
+      // python:restart never rejects — it always resolves, reporting
+      // failure via { success: false, error }. Ignoring that and assuming
+      // success would show "Restarted" for a restart that actually failed
+      // (e.g. a missing Python executable), with no indication anything
+      // went wrong.
+      const result = await window.electron.python.restart();
+      if (!result.success) {
+        setError(result.error || 'Failed to restart Python process');
+        setStatus('Error');
+        return;
+      }
       setStatus('Restarted');
       setError('');
       // Re-fetch version after restart

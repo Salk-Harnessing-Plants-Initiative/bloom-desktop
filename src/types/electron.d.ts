@@ -115,9 +115,11 @@ export interface PythonAPI {
 
   /**
    * Restart the Python subprocess
-   * @returns Promise resolving when restart is complete
+   * @returns Promise resolving when restart is complete. `error` is
+   *   present when `success` is `false` (see main.ts's `python:restart`
+   *   handler, which never rejects — it always resolves).
    */
-  restart: () => Promise<{ success: boolean }>;
+  restart: () => Promise<{ success: boolean; error?: string }>;
 
   /**
    * Register callback for Python status updates

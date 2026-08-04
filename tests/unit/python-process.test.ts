@@ -231,6 +231,47 @@ describe('PythonProcess.restart', () => {
     await expect(commandPromise).resolves.toEqual({ success: true, id: 1 });
     expect(proc.isRunning()).toBe(true);
   });
+
+  it('stop() proactively rejects currently-pending requests instead of leaving them to time out', async () => {
+    // A request is in flight against the process being stopped.
+    const commandPromise = proc.sendCommand({ command: 'test' });
+
+    // Once stop() is called, this request can never get a real response —
+    // the generation guard on the (possibly-delayed, possibly-never-fired)
+    // real exit event now intentionally no-ops once a new generation has
+    // started, so relying on that event to reject an old-generation
+    // request would otherwise leave it hanging for the full 3-minute
+    // COMMAND_TIMEOUT_MS instead of failing fast.
+    proc.stop();
+
+    await expect(commandPromise).rejects.toThrow();
+  });
+
+  it('a stale exit event after a direct stop()+start() (no restart()) does not corrupt the new process — generation protection is not restart()-specific', async () => {
+    const staleMock = vi.mocked(spawn).mock.results[0].value as ReturnType<
+      typeof createMockProcess
+    >;
+    const staleExitCallback = staleMock.on.mock.calls.find(
+      ([event]) => event === 'exit'
+    )?.[1] as ((code: number | null) => void) | undefined;
+    expect(staleExitCallback).toBeDefined();
+
+    // Stop and start again directly — no restart() involved.
+    proc.stop();
+    const startPromise = proc.start();
+    proc.emit('status', 'IPC handler ready');
+    await startPromise;
+
+    const commandPromise = proc.sendCommand({ command: 'test' });
+
+    // The first process's real exit event arrives late, after the second
+    // start() has already begun a new generation.
+    staleExitCallback!(1);
+
+    proc.emit('data', { success: true, id: 1 });
+    await expect(commandPromise).resolves.toEqual({ success: true, id: 1 });
+    expect(proc.isRunning()).toBe(true);
+  });
 });
 
 describe('handleStdout', () => {
