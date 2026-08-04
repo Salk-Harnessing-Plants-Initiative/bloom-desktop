@@ -3,8 +3,15 @@
 **Status:** Reconciled after adversarial roadmap review (2026-07-30, 4 independent
 `Explore` agents: factual accuracy, dependency/sequencing, completeness,
 scope/consistency/safety), approved, and now underway. Tiers 1, 2, and 3
-merged 2026-07-31/08-04 (PRs #273, #274, #277). Tiers 4–5 not yet started —
-see the table below and "Closing the loop."
+merged 2026-07-31/08-04 (PRs #273, #274, #277). A prerequisite discovered
+while scoping Tier 5, `add-wave-scoped-metadata-linking`, merged separately
+as **PR #278** (2026-08-04) — not one of the five tiers below; see Tier 4
+and Tier 5's own sections for what it changes for each. Tiers 4–5 not yet
+started — see the table below and "Closing the loop." **Re-audited
+2026-08-04** against current `main` (post #278, via 2 independent `Explore`
+agents covering backend/preload wiring and nav/workflow-step routing) — one
+further staleness gap found and corrected below (Tier 5's handler
+attribution); everything else checked out.
 
 **Owner context:** Follows the GraviScan backend-parity port (PRs #267–#272,
 merged 2026-07-29/30, archived `openspec/changes/archive/2026-07-30-*`). That
@@ -97,18 +104,34 @@ dataset, so each tier's "validation target" (in place of an oracle) is:
 Two already-accepted `openspec/specs/scanning/spec.md` requirements — **"Mode-
 Aware Home Page"** and **"Mode-Aware Navigation"** — anticipate GraviScan's
 workflow steps (Scientists → Phenotypers → Metadata → Experiments → Capture
-Scan → Browse Scans) and nav links, currently pointing at CylinderScan's
-shared pages as unfulfilled placeholders. Rather than one tier speculatively
-rewiring `Home.tsx`/`WorkflowSteps.tsx`/`Layout.tsx` for screens that don't
-exist yet, **each tier updates the one workflow-step/nav-link entry its own
-new route makes real**, as part of that tier's own proposal:
+Scan → Browse Scans) and nav links. **Re-verified 2026-08-04 against current
+`main`** (the placeholder framing below was previously a generalization, not
+independently checked per-step — corrected here to what each step's route
+actually resolves to):
+
+- **"Browse Scans"** (`WorkflowSteps.tsx`) points at `/browse-scans`, a real
+  working page (`BrowseScans.tsx`) backed by CylinderScan's shared
+  `database.scans.*` data layer.
+- **"Metadata"** points at `/experiments` — the same route as the
+  "Experiments" step, i.e. an alias, not a distinct placeholder page.
+- **"Capture Scan"** points at `/capture-scan`, a route `App.tsx` only
+  registers under `mode === 'cylinderscan'`. In GraviScan mode there is no
+  matching route at all — it falls through to the catch-all
+  `<Route path="*" element={<Navigate to="/" />} />` and silently redirects
+  Home. This is a dead link today, not a working CylinderScan placeholder.
+
+Rather than one tier speculatively rewiring `Home.tsx`/`WorkflowSteps.tsx`/
+`Layout.tsx` for screens that don't exist yet, **each tier updates the one
+workflow-step/nav-link entry its own new route makes real**, as part of
+that tier's own proposal:
 
 - Tier 1 adds a `/configure-scanner` route + nav link (not one of the six
   named workflow steps, so no `WorkflowSteps.tsx` change — just `Layout.tsx`).
+  **Confirmed shipped** (`Layout.tsx`'s `graviscanLinks` array).
 - Tier 4 fixes the "Capture Scan" step and nav link to point at the new
-  GraviScan scan screen instead of CylinderScan's `/capture-scan`.
+  GraviScan scan screen instead of today's dead link.
 - Tier 5 fixes "Metadata" and "Browse Scans" steps/nav to point at the new
-  screens instead of the current CylinderScan-shared placeholders.
+  screens instead of today's alias route / CylinderScan-shared route.
 
 This also resolves what would otherwise look like a gap: the production
 branch's `Scanning.tsx` dispatcher, its deletion of `useAppMode.ts`/
@@ -132,13 +155,13 @@ the upload screen) can be scoped concretely.
 
 ## Tiers
 
-| #   | Tier                                              | Depends on                               | New backend?                                                                               | Related issues                        | Status                                         |
-| --- | ------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ---------------------------------------------- |
-| 1   | Configure Scanner UI                              | —                                        | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03)    |
-| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note) | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31)    |
-| 3   | Wedge-response UI (fast-tracked)                  | 2                                        | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04)    |
-| 4   | Core scan-operation screen                        | 1, 2, 3                                  | Preload wiring only (`verify-plates` + its events)                                         | #133                                  | Not started — unblocked                        |
-| 5   | Browse / Experiment Detail / Metadata UI          | 2                                        | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207                            | Not started — unblocked (only needs Tier 2)    |
+| #   | Tier                                              | Depends on                                                                                                | New backend?                                                                               | Related issues                        | Status                                                 |
+| --- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------------------ |
+| 1   | Configure Scanner UI                              | —                                                                                                         | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03)            |
+| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                                                                  | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31)            |
+| 3   | Wedge-response UI (fast-tracked)                  | 2                                                                                                         | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04)            |
+| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose)                                      | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | Not started — unblocked                                |
+| 5   | Browse / Experiment Detail / Metadata UI          | 2; wave-scoped metadata-link UI also needs `add-wave-scoped-metadata-linking` (merged PR #278, see prose) | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207, #164                      | Not started — unblocked (Tier 2 + PR #278 both merged) |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
 `src/main/preload.ts`'s `graviAPI` object — Tier 1 adds one method near the
@@ -252,6 +275,25 @@ deliberately and with tests, not by copying the file: predictive cadence
 warning (already an accepted spec requirement), graded-severity QR-verification
 result banner, and session restoration across app restart.
 
+**Re-check against `add-wave-scoped-metadata-linking` (merged PR #278, not one
+of the five original tiers — a prerequisite discovered while scoping Tier 5):
+two open questions from that change's `design.md` point at this tier
+specifically, and should be resolved as part of this tier's own proposal
+scoping, not carried further as unowned questions:**
+
+- **Issue #162** (QR verification not wave-scoped) was deferred there
+  specifically because `verify-plates.ts`'s IPC handler had no `waveNumber`
+  parameter anywhere in its call chain and no renderer caller existed yet to
+  supply one. This tier _is_ that caller — decide whether to thread
+  `waveNumber` through as part of the "graded-severity QR-verification result
+  banner" work above, or explicitly defer again with a reason.
+- Prior-art evidence (unmerged draft PR #212, "Capture Scan auto-fill 4/4",
+  same author as #209-211) suggests `usePlateAssignments` may need
+  `listGraviMetadata` (now available) to auto-fill plate/accession metadata
+  per wave, rather than requiring manual entry each capture. Confirm whether
+  this tier's `usePlateAssignments` should consume it, or whether that's
+  Tier 5-only scope.
+
 ### Tier 5 — Browse / Experiment Detail / Metadata UI
 
 Depends on Tier 2 (all three screens are built on the DB data-layer that tier
@@ -262,8 +304,27 @@ matching this repo's existing test convention (e.g.
 rather than requiring the capture screen to produce real data first. New
 `BrowseGraviScans.tsx`, `ExperimentDetail.tsx`, and `Metadata.tsx`/
 `GraviMetadataUpload.tsx`/`GraviMetadataList.tsx`, plus the wave-scoped
-metadata-link UI in `Experiments.tsx`/`ExperimentForm.tsx` that calls Tier 2's
-new `listGraviMetadata`/`linkGraviMetadata`/`unlinkGraviMetadata` handlers.
+metadata-link UI in `Experiments.tsx`/`ExperimentForm.tsx`.
+
+**Correction (2026-08-04, found while re-auditing this roadmap before
+starting Tier 5):** an earlier version of this section attributed the
+wave-scoped metadata-link handlers (`listGraviMetadata`/`linkGraviMetadata`/
+`unlinkGraviMetadata`) to "Tier 2." That was wrong even at write-time — Tier
+2 explicitly descoped them (they need a `GraviExperimentWaveMetadata` Prisma
+model Tier 2 didn't add; see Tier 2's own archived `design.md`, Decision 1).
+A separate change, `add-wave-scoped-metadata-linking`, built them instead —
+merged as **PR #278** (2026-08-04), backend-only, no renderer code, and
+already archived on `main` (`openspec/changes/archive/2026-08-04-add-wave-scoped-metadata-linking/`).
+Read its `design.md` there for the exact validation rules
+`linkGraviMetadata` enforces
+(experiment must be `experiment_type === 'graviscan'`, accession must have
+≥1 `GraviPlateAccession` row, `waveNumber` a non-negative integer, no
+re-linking an already-linked wave without unlinking first) rather than
+re-deriving them. Issue #164 ("Support per-wave metadata uploads for QR
+verification") is the underlying motivation for both that change and this
+tier's `GraviMetadataUpload.tsx` — this tier is the UI consumer, not a
+second implementation of the linking logic.
+
 Extracts the production branch's duplicated imperative drag-resize DOM code
 into one shared hook/utility instead of copying it twice, fixes the
 `verifyPlates` status value mismatch against the real backend contract before
@@ -278,6 +339,37 @@ skill, 5 subagents → user approval → `/openspec:apply` with TDD →
 `/pre-merge` → PR → `/cleanup-merged`). Prefer running each tier as its own
 session once context on the prior tier's merged state is needed, rather than
 carrying all five tiers in one long-running session.
+
+**Explicitly cycle reviews at both ends, converging on fixes each round
+rather than stopping at the first pass** (established 2026-08-04, after
+Tier 3 and `add-wave-scoped-metadata-linking` both needed it in practice —
+apply to every remaining tier, not just the ones that look safety-critical
+or backend-heavy):
+
+- **Before implementation:** run `openspec-review` as many rounds as it
+  takes to stop finding real issues, not a fixed count. Tier 3 took 4 rounds
+  and one real mid-review redesign; `add-wave-scoped-metadata-linking` also
+  took 4 rounds before converging to cosmetic-only findings. Don't assume 1
+  round is enough just because a tier looks more mechanical (e.g. CRUD-ish
+  Browse/Metadata screens) than another tier's safety-feature or
+  data-model scope — mechanical-looking surface area has hidden state and
+  validation-logic complexity too.
+- **After implementation, before merge:** once the PR is open, run
+  `/copilot-review` and `/review-pr` (5-lens adversarial review of the
+  actual diff) — apply `superpowers:receiving-code-review` when triaging:
+  verify before implementing, push back if a suggestion is technically
+  questionable. If a round surfaces real fixes, apply them, then run
+  `/review-pr` again against the updated diff rather than treating one pass
+  as final — keep cycling until a round turns up nothing but suggestions or
+  already-considered, still-defensible tradeoffs. Tier 3's own
+  post-implementation round found 3 real bugs in code a pre-implementation
+  review had already scrutinized — this step is not a formality to skip
+  when the pre-implementation review already looked thorough.
+
+`openspec/changes/archive/2026-08-04-add-wave-scoped-metadata-linking/` is a
+worked example of the expected depth (4 proposal-review rounds + 1
+post-implementation round, converged to zero blocking issues) — read it for
+calibration before assuming a lighter pass is enough.
 
 ## Tracking issues
 

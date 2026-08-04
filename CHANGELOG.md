@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GraviScan wave-scoped metadata linking (`database.experiments.{linkGraviMetadata,unlinkGraviMetadata,listGraviMetadata}`), unblocking the Browse/Experiment Detail/Metadata UI proposal (roadmap Tier 5)
+  - `GraviExperimentWaveMetadata` model: one metadata-file link per `(experiment, wave)`, FK to `Experiment` (cascades) and `Accessions` (restricted)
+  - `linkGraviMetadata` validates experiment existence/type, accession existence/file-type, and wave-number range before linking; rejects re-linking an already-linked wave rather than silently overwriting
+  - `unlinkGraviMetadata` returns a friendly error for a non-existent link instead of a raw database error
+  - `graviPlateAccessionsDelete`'s reference-count guard extended to also block deleting a metadata file still referenced by a wave-scoped link
+  - Backend/IPC only — no renderer UI in this change
+
 - GraviScan wedge-response UI: auto-pause and operator recovery for USB wedges (#244, #240, #228)
   - When the `WedgeDetector` fires, the wedged scanner's worker is now automatically stopped and excluded from all subsequent cycles — no operator action required to stop the data loss
   - App-wide `WedgeBanner` (visible regardless of which screen the operator is on) shows one entry per auto-paused scanner with its signature and error message

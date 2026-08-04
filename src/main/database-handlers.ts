@@ -816,12 +816,31 @@ export async function graviPlateAccessionsListFiles(
 }
 
 /**
+ * Sums how many rows reference an `Accessions` metadata file across both
+ * linking mechanisms: the single-accession `Experiment.accession_id` FK
+ * (cylinderscan) and the per-wave `GraviExperimentWaveMetadata.accession_id`
+ * FK (graviscan, add-wave-scoped-metadata-linking). Used by
+ * `graviPlateAccessionsDelete` to block deleting a metadata file that's
+ * still referenced by either mechanism.
+ */
+export async function countMetadataReferences(
+  db: Db,
+  metadataFileId: string
+): Promise<number> {
+  const [experimentRefs, waveMetadataRefs] = await Promise.all([
+    db.experiment.count({ where: { accession_id: metadataFileId } }),
+    db.graviExperimentWaveMetadata.count({
+      where: { accession_id: metadataFileId },
+    }),
+  ]);
+  return experimentRefs + waveMetadataRefs;
+}
+
+/**
  * Deletes an `Accessions` row (and, via schema-level `onDelete: Cascade`,
  * its `GraviPlateAccession`/`GraviPlateSectionMapping` children) unless
- * it is still referenced by `Experiment.accession_id` (mirrors the
- * reference implementation's `countMetadataReferences` concept, scoped
- * to what exists on `main` — no `graviExperimentWaveMetadata` count term,
- * see design.md Decision 1).
+ * it is still referenced, per `countMetadataReferences`, by either
+ * `Experiment.accession_id` or `GraviExperimentWaveMetadata.accession_id`.
  */
 export async function graviPlateAccessionsDelete(
   db: Db,
@@ -834,9 +853,7 @@ export async function graviPlateAccessionsDelete(
         error: 'metadataFileId must be a non-empty string',
       };
     }
-    const refCount = await db.experiment.count({
-      where: { accession_id: metadataFileId },
-    });
+    const refCount = await countMetadataReferences(db, metadataFileId);
     if (refCount > 0) {
       return {
         success: false,
@@ -868,6 +885,219 @@ export async function graviPlateAccessionsDelete(
     return { success: true };
   } catch (error) {
     console.error('[DB] Failed to delete plate accession file:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+// -----------------------------------------------------------------------
+// database.experiments.{linkGraviMetadata,unlinkGraviMetadata,listGraviMetadata}
+// (add-wave-scoped-metadata-linking)
+// -----------------------------------------------------------------------
+
+/** Largest value Prisma's `Int` column can store (32-bit signed). */
+const INT32_MAX = 2147483647;
+
+function isValidWaveNumber(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= INT32_MAX
+  );
+}
+
+/**
+ * Links a GraviScan metadata file to a specific `(experimentId, waveNumber)`.
+ * Validates existence/type of both the experiment and the accession before
+ * writing — a bad id in the reference implementation this was ported from
+ * just threw a raw Prisma error; see design.md Decisions 1-4.
+ */
+export async function linkGraviMetadata(
+  db: Db,
+  experimentId: string,
+  waveNumber: number,
+  accessionId: string
+): Promise<
+  DatabaseResponse<
+    Prisma.GraviExperimentWaveMetadataGetPayload<{
+      include: { accession: true };
+    }>
+  >
+> {
+  try {
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    if (!isNonEmptyString(accessionId)) {
+      return {
+        success: false,
+        error: 'accessionId must be a non-empty string',
+      };
+    }
+    if (!isValidWaveNumber(waveNumber)) {
+      return {
+        success: false,
+        error: `waveNumber must be a non-negative integer no greater than ${INT32_MAX}`,
+      };
+    }
+
+    const experiment = await db.experiment.findUnique({
+      where: { id: experimentId },
+    });
+    if (!experiment) {
+      return { success: false, error: `Experiment not found: ${experimentId}` };
+    }
+    if (experiment.experiment_type !== 'graviscan') {
+      return {
+        success: false,
+        error: `Experiment ${experimentId} is not a graviscan experiment`,
+      };
+    }
+
+    const accession = await db.accessions.findUnique({
+      where: { id: accessionId },
+      include: { graviPlateAccessions: { select: { id: true }, take: 1 } },
+    });
+    if (!accession) {
+      return {
+        success: false,
+        error: `Metadata file not found: ${accessionId}`,
+      };
+    }
+    if (accession.graviPlateAccessions.length === 0) {
+      return {
+        success: false,
+        error: `Metadata file ${accessionId} has no plate or section data, so it can't be linked as GraviScan wave metadata`,
+      };
+    }
+
+    const existing = await db.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experimentId,
+          wave_number: waveNumber,
+        },
+      },
+    });
+    if (existing) {
+      return {
+        success: false,
+        error: `Wave ${waveNumber} already has metadata linked — unlink it first if you want to link a different file`,
+      };
+    }
+
+    const created = await db.graviExperimentWaveMetadata.create({
+      data: {
+        experiment_id: experimentId,
+        wave_number: waveNumber,
+        accession_id: accessionId,
+      },
+      include: { accession: true },
+    });
+    logDatabaseOperation(
+      'CREATE',
+      'GraviExperimentWaveMetadata',
+      `experimentId=${experimentId} waveNumber=${waveNumber} accessionId=${accessionId}`
+    );
+    return { success: true, data: created };
+  } catch (error) {
+    console.error('[DB] Failed to link GraviScan wave metadata:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Removes the `GraviExperimentWaveMetadata` link for `(experimentId,
+ * waveNumber)`. Returns a friendly error for a non-existent link instead of
+ * letting Prisma's raw `P2025` ("record not found") surface — the reference
+ * implementation this was ported from did the latter.
+ */
+export async function unlinkGraviMetadata(
+  db: Db,
+  experimentId: string,
+  waveNumber: number
+): Promise<DatabaseResponse> {
+  try {
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    if (!isValidWaveNumber(waveNumber)) {
+      return {
+        success: false,
+        error: `waveNumber must be a non-negative integer no greater than ${INT32_MAX}`,
+      };
+    }
+
+    const existing = await db.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experimentId,
+          wave_number: waveNumber,
+        },
+      },
+    });
+    if (!existing) {
+      return {
+        success: false,
+        error: `Nothing to unlink — wave ${waveNumber} has no metadata file linked`,
+      };
+    }
+
+    await db.graviExperimentWaveMetadata.delete({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experimentId,
+          wave_number: waveNumber,
+        },
+      },
+    });
+    logDatabaseOperation(
+      'DELETE',
+      'GraviExperimentWaveMetadata',
+      `experimentId=${experimentId} waveNumber=${waveNumber}`
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('[DB] Failed to unlink GraviScan wave metadata:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Lists an experiment's linked GraviScan wave metadata, ordered by
+ * `wave_number` ascending, each with its `accession` included.
+ */
+export async function listGraviMetadata(
+  db: Db,
+  experimentId: string
+): Promise<
+  DatabaseResponse<
+    Prisma.GraviExperimentWaveMetadataGetPayload<{
+      include: { accession: true };
+    }>[]
+  >
+> {
+  try {
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    const rows = await db.graviExperimentWaveMetadata.findMany({
+      where: { experiment_id: experimentId },
+      include: { accession: true },
+      orderBy: { wave_number: 'asc' },
+    });
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error('[DB] Failed to list GraviScan wave metadata:', error);
     return { success: false, error: errorMessage(error) };
   }
 }
@@ -1812,17 +2042,21 @@ export function registerDatabaseHandlers() {
 
   // ============================================
   // GraviScans (add-graviscan-data-layer-and-events)
-  //
-  // NOTE (tasks.md Section 6, design.md Decision 1): the reference
-  // implementation also exposes `experiments.listGraviMetadata`/
-  // `linkGraviMetadata`/`unlinkGraviMetadata`, backed by a
-  // `GraviExperimentWaveMetadata` Prisma model that does not exist on
-  // `main`. Adding that model is out of scope for this change (it would
-  // be a new schema migration deserving its own dedicated review, not a
-  // rider here) — these three handlers are deliberately NOT implemented.
-  // See design.md Open Question 1 for what a future Tier 5 proposal
-  // should do about this.
   // ============================================
+
+  ipcMain.handle(
+    'db:experiments:linkGraviMetadata',
+    (_event, experimentId, waveNumber, accessionId) =>
+      linkGraviMetadata(db, experimentId, waveNumber, accessionId)
+  );
+  ipcMain.handle(
+    'db:experiments:unlinkGraviMetadata',
+    (_event, experimentId, waveNumber) =>
+      unlinkGraviMetadata(db, experimentId, waveNumber)
+  );
+  ipcMain.handle('db:experiments:listGraviMetadata', (_event, experimentId) =>
+    listGraviMetadata(db, experimentId)
+  );
 
   ipcMain.handle('db:graviscans:create', (_event, data) =>
     graviscansCreate(db, data)
