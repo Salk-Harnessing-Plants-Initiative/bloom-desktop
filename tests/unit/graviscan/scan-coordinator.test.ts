@@ -1037,6 +1037,83 @@ describe('ScanCoordinator', () => {
     });
   });
 
+  // Real-coordinator-level coverage for the exact `stopScanner()` +
+  // `addScanner()` sequence the wedge-response-ui feature's
+  // `retryScanner()` handler calls (session-handlers.ts). Every other
+  // test of this sequence in the codebase (main-wiring, register-handlers,
+  // session-handlers) exercises it against a fully mocked coordinator —
+  // this describe block is the first to exercise it against the real
+  // `ScanCoordinator` class, mocking only `ScannerSubprocess` beneath it.
+  describe('stopScanner() + addScanner() — retry-scanner integration', () => {
+    it('stopScanner() removes the worker, and addScanner() for the same id spawns a fresh subprocess while idle', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+      expect(createdSubprocesses).toHaveLength(1);
+
+      await coordinator.stopScanner('scanner-1');
+
+      expect(createdSubprocesses[0].shutdown).toHaveBeenCalled();
+      expect(coordinator.hasWorker('scanner-1')).toBe(false);
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      expect(createdSubprocesses[1].spawn).toHaveBeenCalled();
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+    });
+
+    it('addScanner() for a retried scanner while a different scanner is mid-cycle queues until cycle-complete, then respawns', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2)); // scanner-1, scanner-2
+      expect(createdSubprocesses).toHaveLength(2);
+
+      // Simulate auto-pause: scanner-1 wedged and was auto-stopped
+      // (design.md Decision 1), leaving scanner-2 as the only one with
+      // plates for this cycle.
+      await coordinator.stopScanner('scanner-1');
+      expect(coordinator.hasWorker('scanner-1')).toBe(false);
+
+      const sub2 = createdSubprocesses[1];
+      sub2.scan.mockImplementation(() => {
+        // Delay cycle-done so isScanning is observably true while the
+        // operator's Retry click (addScanner) is in flight.
+        setTimeout(() => sub2.emit('cycle-done', {}), 50);
+      });
+
+      const platesMap = makePlatesMap(['scanner-2']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(coordinator.isScanning).toBe(true);
+
+      // Operator confirms "Power-Cycled & Retry" for scanner-1 while
+      // scanner-2's cycle is still in flight — this is retryScanner()'s
+      // exact call, `coordinator.addScanner({scannerId: 'scanner-1', ...})`.
+      const retryPromise = coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      // Must NOT spawn immediately — queued until this cycle's
+      // cycle-complete, per addScanner()'s documented mid-scan safety.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+
+      await scanPromise; // scanOnce() emits 'cycle-complete' before resolving
+      await retryPromise;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(3);
+      expect(createdSubprocesses[2].scannerId).toBe('scanner-1');
+      expect(createdSubprocesses[2].spawn).toHaveBeenCalled();
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+    });
+  });
+
   describe('implements ScanCoordinatorLike', () => {
     it('exposes all interface methods at runtime', async () => {
       // The `implements ScanCoordinatorLike` on the class is enforced by

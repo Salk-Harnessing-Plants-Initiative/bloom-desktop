@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -3598,4 +3600,3 @@ workflow steps.
 - **GIVEN** scanner mode is `cylinderscan`
 - **WHEN** the Layout sidebar renders
 - **THEN** no "Configure Scanner" nav link SHALL be rendered
-

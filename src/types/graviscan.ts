@@ -2,6 +2,13 @@
  * Type definitions for GraviScan functionality.
  */
 
+import type { WedgeDetectedEvent } from '../main/wedge-detector';
+
+/** Renderer-facing alias for the main-process wedge-detector's event shape.
+ * Type-only import — erased at compile time, so this does not pull
+ * wedge-detector.ts's runtime code into the renderer bundle. */
+export type GraviWedgeEvent = WedgeDetectedEvent;
+
 // =============================================================================
 // Scan Timing Constants
 // Empirical values from Epson Perfection V600 at 1200dpi with 2 scanners.

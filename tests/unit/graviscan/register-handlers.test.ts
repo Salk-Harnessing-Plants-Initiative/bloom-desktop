@@ -15,6 +15,12 @@ vi.mock('../../../src/main/graviscan/scanner-handlers', () => ({
   validateConfig: vi.fn().mockResolvedValue({ status: 'valid' }),
   resetUsb: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
   getScannerStatus: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
+  buildSaneName: vi
+    .fn()
+    .mockImplementation(
+      (usbBus: number, usbDevice: number) =>
+        `epkowa:interpreter:${String(usbBus).padStart(3, '0')}:${String(usbDevice).padStart(3, '0')}`
+    ),
 }));
 
 vi.mock('../../../src/main/graviscan/scanner-upsert', () => ({
@@ -27,6 +33,7 @@ vi.mock('../../../src/main/graviscan/session-handlers', () => ({
   getScanStatus: vi.fn().mockReturnValue(null),
   markJobRecorded: vi.fn(),
   cancelScan: vi.fn().mockResolvedValue({ success: true }),
+  retryScanner: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 vi.mock('../../../src/main/graviscan/image-handlers', () => ({
@@ -81,6 +88,7 @@ const CHANNELS = [
   'graviscan:get-scan-status',
   'graviscan:mark-job-recorded',
   'graviscan:cancel-scan',
+  'graviscan:retry-scanner',
   'graviscan:get-output-dir',
   'graviscan:read-scan-image',
   'graviscan:upload-all-scans',
@@ -148,7 +156,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 21 IPC channels', () => {
+  it('registers all 22 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -157,7 +165,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(21);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(22);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }
@@ -228,6 +236,29 @@ describe('registerGraviScanHandlers', () => {
     it('graviscan:cancel-scan delegates to cancelScan', async () => {
       await mockIpcMain._invoke('graviscan:cancel-scan');
       expect(sessionHandlers.cancelScan).toHaveBeenCalled();
+    });
+
+    it('graviscan:retry-scanner wires the coordinator, db, sessionFns, and scannerId through to retryScanner, returning its result directly (not wrapHandler-wrapped)', async () => {
+      const coordinator = { fake: 'coordinator' };
+      mockGetCoordinator.mockReturnValue(coordinator);
+      vi.mocked(sessionHandlers.retryScanner).mockResolvedValueOnce({
+        success: false,
+        error: 'disabled',
+      });
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:retry-scanner',
+        'sc-1'
+      );
+
+      expect(sessionHandlers.retryScanner).toHaveBeenCalledWith(
+        coordinator,
+        mockDb,
+        mockSessionFns,
+        'sc-1'
+      );
+      // Direct pass-through — no { success: true, data: {...} } envelope.
+      expect(result).toEqual({ success: false, error: 'disabled' });
     });
   });
 

@@ -17,6 +17,7 @@ import {
   runStartupScannerValidation,
   getSessionValidationState,
   resetSessionValidation,
+  buildSaneName,
 } from '../../../src/main/graviscan/scanner-handlers';
 import type { DetectedScanner } from '../../../src/types/graviscan';
 
@@ -584,5 +585,15 @@ describe('scanner-handlers', () => {
       expect(freshState.detectedScanners).toHaveLength(1);
       expect(freshState.cachedScannerIds).toHaveLength(1);
     });
+  });
+});
+
+describe('buildSaneName', () => {
+  it('zero-pads both usb_bus and usb_device to 3 digits', () => {
+    expect(buildSaneName(3, 7)).toBe('epkowa:interpreter:003:007');
+  });
+
+  it('zero-pads independently when one value already has 3 digits', () => {
+    expect(buildSaneName(123, 45)).toBe('epkowa:interpreter:123:045');
   });
 });
