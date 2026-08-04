@@ -55,9 +55,10 @@ describe('preload gravi namespace', () => {
       'uploadAllScans',
       'downloadImages',
       'getScannerStatus',
+      'retryScanner',
     ];
 
-    it('has all 17 invoke methods', () => {
+    it('has all 18 invoke methods', () => {
       for (const method of invokeMethods) {
         expect(typeof exposedAPI.gravi[method]).toBe('function');
       }
@@ -98,6 +99,14 @@ describe('preload gravi namespace', () => {
         { thumbnail: true }
       );
     });
+
+    it('retryScanner passes scannerId to the correct channel', async () => {
+      await exposedAPI.gravi.retryScanner('scanner-1');
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'graviscan:retry-scanner',
+        'scanner-1'
+      );
+    });
   });
 
   describe('event listeners', () => {
@@ -117,9 +126,10 @@ describe('preload gravi namespace', () => {
       'onScanError',
       'onUploadProgress',
       'onDownloadProgress',
+      'onWedgeDetected',
     ];
 
-    it('has all 13 event listener methods', () => {
+    it('has all 14 event listener methods', () => {
       for (const method of listenerMethods) {
         expect(typeof exposedAPI.gravi[method]).toBe('function');
       }
@@ -193,6 +203,44 @@ describe('preload gravi namespace', () => {
         'graviscan:scan-complete',
         expect.any(Function)
       );
+    });
+
+    it('onWedgeDetected registers listener on the correct channel', () => {
+      const callback = vi.fn();
+      exposedAPI.gravi.onWedgeDetected(callback);
+      expect(mockOn).toHaveBeenCalledWith(
+        'graviscan:wedge-detected',
+        expect.any(Function)
+      );
+    });
+
+    it('onWedgeDetected cleanup function calls removeListener', () => {
+      const callback = vi.fn();
+      const cleanup = exposedAPI.gravi.onWedgeDetected(callback);
+      cleanup();
+      expect(mockRemoveListener).toHaveBeenCalledWith(
+        'graviscan:wedge-detected',
+        expect.any(Function)
+      );
+    });
+
+    it('onWedgeDetected forwards the event payload to the callback', () => {
+      const callback = vi.fn();
+      exposedAPI.gravi.onWedgeDetected(callback);
+
+      const registeredListener = mockOn.mock.calls.find(
+        (call: any[]) => call[0] === 'graviscan:wedge-detected'
+      )?.[1];
+      expect(registeredListener).toBeTruthy();
+
+      registeredListener(
+        {},
+        { scanner_id: 'sc-1', signature: 'sane_start_invalid' }
+      );
+      expect(callback).toHaveBeenCalledWith({
+        scanner_id: 'sc-1',
+        signature: 'sane_start_invalid',
+      });
     });
   });
 });

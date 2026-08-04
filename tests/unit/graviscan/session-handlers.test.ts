@@ -2,6 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('../../../src/main/graviscan/scan-logger', () => ({
+  scanLog: vi.fn(),
+  cleanupOldLogs: vi.fn(),
+  closeScanLog: vi.fn(),
+}));
+
 // Types matching Ben's ScanCoordinator + PlateConfig
 interface ScanCoordinatorLike {
   readonly isScanning: boolean;
@@ -55,7 +61,23 @@ import {
   getScanStatus,
   markJobRecorded,
   cancelScan,
+  retryScanner,
 } from '../../../src/main/graviscan/session-handlers';
+import { scanLog } from '../../../src/main/graviscan/scan-logger';
+
+function createMockRetryDb(
+  row: {
+    usb_bus: number | null;
+    usb_device: number | null;
+    enabled: boolean;
+  } | null
+) {
+  return {
+    graviScanner: {
+      findUnique: vi.fn().mockResolvedValue(row),
+    },
+  };
+}
 
 describe('session-handlers', () => {
   let coordinator: ReturnType<typeof createMockCoordinator>;
@@ -413,6 +435,233 @@ describe('session-handlers', () => {
       const result = await cancelScan(coordinator, sessionFns);
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('retryScanner', () => {
+    beforeEach(() => {
+      sessionFns.getScanSession.mockReturnValue({ isActive: true } as any);
+    });
+
+    it('stops then respawns the scanner using a fresh saneName from the db, and logs success', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(coordinator.stopScanner).toHaveBeenCalledWith('sc-1');
+      expect(coordinator.addScanner).toHaveBeenCalledWith({
+        scannerId: 'sc-1',
+        saneName: 'epkowa:interpreter:003:007',
+        plates: [],
+      });
+      expect(result).toEqual({ success: true });
+      expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('sc-1'));
+    });
+
+    it('fails without respawning when the scanner row cannot be found', async () => {
+      const db = createMockRetryDb(null);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(coordinator.stopScanner).not.toHaveBeenCalled();
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('fails without respawning when usb_bus/usb_device is null (mid reset-usb)', async () => {
+      const db = createMockRetryDb({
+        usb_bus: null,
+        usb_device: null,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('fails without respawning a disabled scanner', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: false,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('fails cleanly with no active session, without querying the db', async () => {
+      sessionFns.getScanSession.mockReturnValue(null);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(db.graviScanner.findUnique).not.toHaveBeenCalled();
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('fails cleanly with an inactive session', async () => {
+      sessionFns.getScanSession.mockReturnValue({ isActive: false } as any);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('fails cleanly when coordinator is null, without throwing', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        null as any,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('catches a rejected addScanner and surfaces it, logging the failed retry', async () => {
+      coordinator = createMockCoordinator({
+        addScanner: vi.fn().mockRejectedValue(new Error('spawn failed')),
+      } as any);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('spawn failed');
+      expect(scanLog).toHaveBeenCalledWith(expect.stringContaining('sc-1'));
+    });
+
+    it('rejects a second concurrent retry for the same scannerId while the first is still in flight, without a second stopScanner()+addScanner() pair', async () => {
+      let resolveAddScanner!: () => void;
+      coordinator = createMockCoordinator({
+        addScanner: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              resolveAddScanner = resolve;
+            })
+        ),
+      } as any);
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const first = retryScanner(coordinator, db as any, sessionFns, 'sc-1');
+      const second = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(second.success).toBe(false);
+      expect(second.error).toContain('already in progress');
+
+      // Let the first call's own await chain (findUnique, then
+      // stopScanner) actually reach its addScanner() call before we
+      // resolve it.
+      await new Promise((r) => setTimeout(r, 0));
+      resolveAddScanner();
+      const firstResult = await first;
+      expect(firstResult.success).toBe(true);
+      // Only the first call's addScanner() ever ran — the second was
+      // rejected by the in-flight guard before reaching the coordinator.
+      expect(coordinator.addScanner).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a subsequent retry for the same scannerId once a prior retry has resolved', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        enabled: true,
+      });
+
+      const first = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+      const second = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(coordinator.addScanner).toHaveBeenCalledTimes(2);
     });
   });
 });

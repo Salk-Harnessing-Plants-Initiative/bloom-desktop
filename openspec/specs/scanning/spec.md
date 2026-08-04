@@ -3524,7 +3524,7 @@ The system SHALL provide `database.graviscanPlateAssignments.*` IPC handlers (`l
 
 ### Requirement: GraviScan Database Handlers — graviPlateAccessions.\*
 
-The system SHALL provide `database.graviPlateAccessions.*` IPC handlers (`createWithSections`, `list`, `listFiles`, `delete`) in `src/main/database-handlers.ts`, following the existing convention. `createWithSections` and `delete` SHALL perform all writes inside a single `db.$transaction`. `listFiles` accepts no filesystem path argument — it queries `Accessions` rows with linked `GraviPlateAccession` children, not a directory listing.
+The system SHALL provide `database.graviPlateAccessions.*` IPC handlers (`createWithSections`, `list`, `listFiles`, `delete`) in `src/main/database-handlers.ts`, following the existing convention. `createWithSections` and `delete` SHALL perform all writes inside a single `db.$transaction`. `listFiles` accepts no filesystem path argument — it queries `Accessions` rows with linked `GraviPlateAccession` children, not a directory listing. `delete` SHALL block deletion of a metadata file that is still referenced either by `Experiment.accession_id` or by any `GraviExperimentWaveMetadata.accession_id`, via a shared `countMetadataReferences()` helper that sums both reference counts.
 
 #### Scenario: createWithSections is atomic across the whole batch
 
@@ -3546,11 +3546,23 @@ The system SHALL provide `database.graviPlateAccessions.*` IPC handlers (`create
 - **WHEN** `listFiles()` is called with no arguments
 - **THEN** only the rows with at least one linked `GraviPlateAccession` SHALL be returned, each annotated with linked experiment names and a plate count
 
-#### Scenario: delete is blocked while linked to an experiment
+#### Scenario: delete is blocked while linked to an experiment via accession_id
 
 - **GIVEN** a metadata file (`Accessions` row) referenced by `Experiment.accession_id` on at least one experiment
 - **WHEN** `delete(metadataFileId)` is called
 - **THEN** the handler SHALL return `{success: false, error: <message>}` and delete nothing
+
+#### Scenario: delete is blocked while linked via GraviExperimentWaveMetadata
+
+- **GIVEN** a metadata file (`Accessions` row) with no `Experiment.accession_id` reference, but referenced by at least one `GraviExperimentWaveMetadata.accession_id`
+- **WHEN** `delete(metadataFileId)` is called
+- **THEN** the handler SHALL return `{success: false, error: <message>}` and delete nothing
+
+#### Scenario: delete is allowed again after the blocking wave-link is unlinked
+
+- **GIVEN** a metadata file blocked from deletion only by a single `GraviExperimentWaveMetadata` link (no `Experiment.accession_id` reference)
+- **WHEN** that link is removed via `unlinkGraviMetadata`, and `delete(metadataFileId)` is then called
+- **THEN** the handler SHALL return `{success: true}` and the `Accessions` row SHALL be deleted
 
 #### Scenario: delete cascades its own children when unlinked
 
@@ -3600,3 +3612,250 @@ workflow steps.
 - **GIVEN** scanner mode is `cylinderscan`
 - **WHEN** the Layout sidebar renders
 - **THEN** no "Configure Scanner" nav link SHALL be rendered
+
+### Requirement: GraviScan Wedge Auto-Pause on Detection
+
+When the `WedgeDetector` emits a `wedge-detected` event, `setupWedgeDetection()` SHALL immediately stop that scanner's worker subprocess via the coordinator's existing `stopScanner(scanner_id)`, excluding it from all subsequent scan cycles in the active session unless and until a later `retry-scanner` call (see below) respawns it — without waiting for any operator action to trigger the initial pause.
+
+The auto-pause call SHALL NOT be gated behind (or delayed by) the Slack notification or the renderer-forwarding path: a slow or failing Slack webhook SHALL NOT delay stopping the wedged scanner. A durable log entry (via the existing `scanLog()` facility) SHALL record the auto-pause, including the scanner_id, signature, session_id, and cycle_number, in addition to — not instead of — the pre-existing `wedge-detected` log entry.
+
+#### Scenario: Wedge detection auto-pauses the scanner
+
+- **GIVEN** an active scan session with a running worker for scanner `sc-1`
+- **WHEN** the `WedgeDetector` emits a `wedge-detected` event for `sc-1`
+- **THEN** `coordinator.stopScanner('sc-1')` SHALL be called
+- **AND** subsequent scan cycles SHALL NOT include `sc-1`
+- **AND** a log entry recording the auto-pause SHALL be written
+
+#### Scenario: Auto-pause is not delayed by a slow Slack notification
+
+- **GIVEN** the configured `SlackNotifier.notify()` call would hang or reject
+- **WHEN** the `WedgeDetector` emits a `wedge-detected` event
+- **THEN** `coordinator.stopScanner()` SHALL still be called for the wedged scanner without waiting for the Slack call to settle
+
+---
+
+### Requirement: GraviScan Wedge Event Forwarding to Renderer
+
+`setupWedgeDetection()` SHALL forward every `wedge-detected` event emitted by the `WedgeDetector` to the renderer, in addition to — not instead of — the existing `SlackNotifier.notify()` call and the auto-pause action.
+
+The forwarded event SHALL be sent as a `graviscan:wedge-detected` IPC message carrying the same enriched payload (including `display_name`/`usb_port` when available) that is sent to Slack. Forwarding SHALL be best-effort: a missing or destroyed main window SHALL NOT throw or block the Slack notification or the auto-pause.
+
+#### Scenario: Wedge event reaches Slack, the renderer, and triggers auto-pause
+
+- **GIVEN** a `WedgeDetector` wired via `setupWedgeDetection(coordinator, db, getMainWindow)` with a live, non-destroyed main window
+- **WHEN** the detector emits a `wedge-detected` event
+- **THEN** `SlackNotifier.notify()` SHALL be called with the enriched event
+- **AND** `getMainWindow().webContents.send('graviscan:wedge-detected', ...)` SHALL be called with the same enriched event
+- **AND** `coordinator.stopScanner()` SHALL be called for the wedged scanner
+
+#### Scenario: No main window available
+
+- **GIVEN** a `WedgeDetector` wired via `setupWedgeDetection(coordinator, db)` with no third argument (or a `getMainWindow` that returns `null` or a destroyed window)
+- **WHEN** the detector emits a `wedge-detected` event
+- **THEN** the Slack notification path and the auto-pause SHALL be unaffected
+- **AND** no `webContents.send` call SHALL occur
+- **AND** no error SHALL be thrown
+
+---
+
+### Requirement: GraviScan Retry-Scanner Action
+
+The system SHALL provide a `graviscan:retry-scanner` IPC handler that, given a `scannerId`, stops that scanner's worker (`stopScanner`, a no-op if already stopped by auto-pause) and respawns it (`addScanner`) using a `saneName` rebuilt from a fresh database read of the scanner's current `usb_bus`/`usb_device` (not a value cached from session start). The action SHALL require an active scan session and a live coordinator. If the scanner's `usb_bus` or `usb_device` is null (e.g. mid `reset-usb`), the scanner row's `enabled` field is `false`, or the scanner row cannot be found, the handler SHALL fail without calling `addScanner`. The handler SHALL write a durable log entry (via `scanLog()`) recording the retry attempt and its outcome.
+
+#### Scenario: Retry respawns the worker with a fresh saneName
+
+- **GIVEN** an active scan session with a running coordinator
+- **AND** the database's `GraviScanner` row for `sc-1` has `usb_bus: 3, usb_device: 7, enabled: true`
+- **WHEN** `graviscan:retry-scanner` is invoked with `scannerId: 'sc-1'`
+- **THEN** `coordinator.stopScanner('sc-1')` SHALL be called
+- **AND** `coordinator.addScanner({ scannerId: 'sc-1', saneName: 'epkowa:interpreter:003:007', plates: [] })` SHALL be called
+- **AND** the handler SHALL resolve `{ success: true }`
+- **AND** a log entry recording the successful retry SHALL be written
+
+#### Scenario: Retry fails without respawning when USB identity is unknown
+
+- **GIVEN** an active scan session with a running coordinator
+- **AND** the database's `GraviScanner` row for `sc-1` has `usb_bus: null` (e.g. a `reset-usb` is in progress)
+- **WHEN** `graviscan:retry-scanner` is invoked with `scannerId: 'sc-1'`
+- **THEN** the handler SHALL resolve `{ success: false, error: '...' }`
+- **AND** `coordinator.addScanner` SHALL NOT be called
+
+#### Scenario: Retry fails without respawning a disabled scanner
+
+- **GIVEN** an active scan session with a running coordinator
+- **AND** the database's `GraviScanner` row for `sc-1` has `enabled: false` (the operator disabled it via ConfigureScanner's "Remove" action)
+- **WHEN** `graviscan:retry-scanner` is invoked with `scannerId: 'sc-1'`
+- **THEN** the handler SHALL resolve `{ success: false, error: '...' }`
+- **AND** `coordinator.addScanner` SHALL NOT be called
+
+#### Scenario: Retry fails when the scanner row cannot be found
+
+- **GIVEN** an active scan session with a running coordinator
+- **AND** no `GraviScanner` row exists for `sc-1`
+- **WHEN** `graviscan:retry-scanner` is invoked with `scannerId: 'sc-1'`
+- **THEN** the handler SHALL resolve `{ success: false, error: '...' }`
+- **AND** neither `coordinator.stopScanner` nor `coordinator.addScanner` SHALL be called
+
+#### Scenario: Retry fails cleanly with no active session or no coordinator
+
+- **GIVEN** either no active scan session (or a session with `isActive: false`), or no live coordinator
+- **WHEN** `graviscan:retry-scanner` is invoked with any `scannerId`
+- **THEN** the handler SHALL resolve `{ success: false, error: '...' }` without throwing
+- **AND** the database SHALL NOT be queried and `coordinator.addScanner` SHALL NOT be called
+
+#### Scenario: A rejected respawn is caught and surfaced, not left unhandled
+
+- **GIVEN** an active scan session with a running coordinator
+- **AND** the database's `GraviScanner` row for `sc-1` has valid `usb_bus`/`usb_device`/`enabled: true`
+- **WHEN** `graviscan:retry-scanner` is invoked with `scannerId: 'sc-1'`
+- **AND** `coordinator.addScanner()` rejects
+- **THEN** the handler SHALL resolve `{ success: false, error: msg }` (the rejection SHALL be caught, not left as an unhandled promise rejection)
+- **AND** a log entry recording the failed retry SHALL be written
+
+### Requirement: GraviScan Database Handler — experiments.linkGraviMetadata
+
+The system SHALL provide a `database.experiments.linkGraviMetadata(experimentId, waveNumber, accessionId)` IPC handler in `src/main/database-handlers.ts`, backed by a `GraviExperimentWaveMetadata` Prisma model with a unique `(experiment_id, wave_number)` pair, FK to `Experiment` (`onDelete: Cascade`) and FK to `Accessions` (`onDelete: Restrict`). It SHALL validate, returning `{success: false, error: <message>}` and persisting nothing on any failure:
+
+- `experimentId` and `accessionId` are non-empty strings and `waveNumber` is a non-negative integer within the range Prisma's `Int` column can store (32-bit signed: 0 to 2147483647);
+- an `Experiment` with `id === experimentId` exists and its `experiment_type` is `"graviscan"`;
+- an `Accessions` row with `id === accessionId` exists and has at least one linked `GraviPlateAccession` child;
+- no `GraviExperimentWaveMetadata` row already exists for `(experimentId, waveNumber)`, regardless of whether the new `accessionId` would be the same as or different from the existing link's.
+
+#### Scenario: link succeeds for a valid graviscan experiment and metadata file
+
+- **GIVEN** a `graviscan`-typed experiment and an `Accessions` row with at least one `GraviPlateAccession` child, neither yet linked for wave `2`
+- **WHEN** `linkGraviMetadata(experimentId, 2, accessionId)` is called
+- **THEN** a `GraviExperimentWaveMetadata` row SHALL be created for `(experimentId, 2, accessionId)`
+- **AND** the handler SHALL return `{success: true, data: <row with accession included>}`
+
+#### Scenario: link accepts wave 0 as a valid boundary value
+
+- **GIVEN** a `graviscan`-typed experiment and a valid metadata file, wave `0` not yet linked
+- **WHEN** `linkGraviMetadata(experimentId, 0, accessionId)` is called
+- **THEN** a `GraviExperimentWaveMetadata` row SHALL be created for `(experimentId, 0, accessionId)`
+- **AND** the handler SHALL return `{success: true, data: <row with accession included>}`
+
+#### Scenario: link rejects a non-string, missing, or empty experimentId
+
+- **GIVEN** `experimentId` is a non-string value (e.g. a number, object, or `undefined`), or an empty string `""`
+- **WHEN** `linkGraviMetadata` is called with that `experimentId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects a non-string, missing, or empty accessionId
+
+- **GIVEN** `accessionId` is a non-string value (e.g. a number, object, or `undefined`), or an empty string `""`
+- **WHEN** `linkGraviMetadata` is called with that `accessionId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects a malformed waveNumber
+
+- **GIVEN** `waveNumber` is negative, non-integer (e.g. `1.5`), not a number, or exceeds `2147483647` (one past the maximum value Prisma's `Int` column can store)
+- **WHEN** `linkGraviMetadata` is called with that `waveNumber`
+- **THEN** the handler SHALL return `{success: false, error: <message>}` — a friendly validation error, not a raw database range error
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects an unknown experimentId
+
+- **GIVEN** an `experimentId` that is a non-empty string but does not correspond to any `Experiment` row
+- **WHEN** `linkGraviMetadata` is called with that `experimentId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}` indicating the experiment was not found
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects an unknown accessionId
+
+- **GIVEN** an `accessionId` that is a non-empty string but does not correspond to any `Accessions` row
+- **WHEN** `linkGraviMetadata` is called with that `accessionId`, for an otherwise-valid `graviscan` experiment
+- **THEN** the handler SHALL return `{success: false, error: <message>}` indicating the metadata file was not found
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects a non-graviscan experiment
+
+- **GIVEN** an experiment with `experiment_type === "cylinderscan"`
+- **WHEN** `linkGraviMetadata(experimentId, 0, accessionId)` is called
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects a metadata file with no GraviPlateAccession children
+
+- **GIVEN** an `Accessions` row created via `accessions.createWithMappings` (a CylinderScan barcode-mapping file, no `GraviPlateAccession` children)
+- **WHEN** `linkGraviMetadata(experimentId, 0, thatAccessionId)` is called on a `graviscan`-typed experiment
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be created
+
+#### Scenario: link rejects an already-linked wave, even to the same accession
+
+- **GIVEN** wave `3` of an experiment is already linked to metadata file A
+- **WHEN** `linkGraviMetadata(experimentId, 3, metadataFileB)` is called, where metadata file B is either a different file or the same file A
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** wave `3` SHALL remain linked to metadata file A, unchanged
+
+#### Scenario: link succeeds again after the wave was unlinked, even with a different accession
+
+- **GIVEN** wave `3` of an experiment was linked to metadata file A, then unlinked via `unlinkGraviMetadata`
+- **WHEN** `linkGraviMetadata(experimentId, 3, metadataFileB)` is called with a different metadata file B
+- **THEN** a new `GraviExperimentWaveMetadata` row SHALL be created linking wave `3` to metadata file B
+- **AND** the handler SHALL return `{success: true, data: <row with accession B included>}`
+
+#### Scenario: deleting the linked Experiment cascades away the link
+
+- **GIVEN** wave `1` of an experiment is linked to a metadata file
+- **WHEN** that `Experiment` row is deleted
+- **THEN** the corresponding `GraviExperimentWaveMetadata` row SHALL no longer exist
+- **AND** the linked `Accessions` row (the metadata file itself) SHALL be unaffected
+
+### Requirement: GraviScan Database Handler — experiments.unlinkGraviMetadata
+
+The system SHALL provide a `database.experiments.unlinkGraviMetadata(experimentId, waveNumber)` IPC handler in `src/main/database-handlers.ts`.
+
+#### Scenario: unlink succeeds and removes the link
+
+- **GIVEN** wave `3` of an experiment is linked to a metadata file
+- **WHEN** `unlinkGraviMetadata(experimentId, 3)` is called
+- **THEN** the `GraviExperimentWaveMetadata` row for `(experimentId, 3)` SHALL be deleted
+- **AND** the handler SHALL return `{success: true}`
+
+#### Scenario: unlink on a non-existent link returns a friendly error
+
+- **GIVEN** an experiment with no `GraviExperimentWaveMetadata` row for wave `5`
+- **WHEN** `unlinkGraviMetadata(experimentId, 5)` is called
+- **THEN** the handler SHALL return `{success: false, error: <message>}` rather than a raw Prisma `P2025` error
+
+#### Scenario: unlink rejects a non-string, missing, or empty experimentId
+
+- **GIVEN** `experimentId` is a non-string value (e.g. a number, object, or `undefined`), or an empty string `""`
+- **WHEN** `unlinkGraviMetadata` is called with that `experimentId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be deleted
+
+#### Scenario: unlink rejects a malformed waveNumber
+
+- **GIVEN** `waveNumber` is negative, non-integer, missing, or not a number
+- **WHEN** `unlinkGraviMetadata` is called with that `waveNumber`
+- **THEN** the handler SHALL return `{success: false, error: <message>}`
+- **AND** no `GraviExperimentWaveMetadata` row SHALL be deleted
+
+### Requirement: GraviScan Database Handler — experiments.listGraviMetadata
+
+The system SHALL provide a `database.experiments.listGraviMetadata(experimentId)` IPC handler in `src/main/database-handlers.ts`, returning the experiment's linked metadata files ordered by `wave_number` ascending, each including its `accession`.
+
+#### Scenario: list returns links ordered by wave number, scoped to one experiment
+
+- **GIVEN** experiment A has metadata linked for waves `2` and `0`, and experiment B has metadata linked for wave `1`
+- **WHEN** `listGraviMetadata(experimentA.id)` is called
+- **THEN** the result SHALL contain exactly experiment A's two links, ordered `[wave 0, wave 2]`, each with its `accession` included
+- **AND** experiment B's link SHALL NOT be included
+
+#### Scenario: list returns an empty array for an experiment with no links
+
+- **GIVEN** a `graviscan`-typed experiment with zero `GraviExperimentWaveMetadata` rows
+- **WHEN** `listGraviMetadata(experimentId)` is called
+- **THEN** the handler SHALL return `{success: true, data: []}`
+
+#### Scenario: list rejects a non-string, missing, or empty experimentId
+
+- **GIVEN** `experimentId` is a non-string value, missing, or an empty string `""`
+- **WHEN** `listGraviMetadata` is called with that `experimentId`
+- **THEN** the handler SHALL return `{success: false, error: <message>}` rather than passing the malformed value to Prisma

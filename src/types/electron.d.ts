@@ -48,6 +48,7 @@ import {
   SaveScannersToDBResult,
   GetScanStatusResult,
   GraviConfigInput,
+  GraviWedgeEvent,
 } from './graviscan';
 import type {
   GraviScanCreateInput,
@@ -72,6 +73,9 @@ import type {
   graviPlateAccessionsList,
   graviPlateAccessionsListFiles,
   graviPlateAccessionsDelete,
+  linkGraviMetadata,
+  unlinkGraviMetadata,
+  listGraviMetadata,
 } from '../main/database-handlers';
 
 /**
@@ -317,6 +321,18 @@ export interface DatabaseAPI {
       experimentId: string,
       accessionId: string
     ) => Promise<DatabaseResponse<ExperimentWithRelations>>;
+    linkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number,
+      accessionId: string
+    ) => ReturnType<typeof linkGraviMetadata>;
+    unlinkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number
+    ) => ReturnType<typeof unlinkGraviMetadata>;
+    listGraviMetadata: (
+      experimentId: string
+    ) => ReturnType<typeof listGraviMetadata>;
   };
   scans: {
     /**
@@ -661,6 +677,9 @@ export interface GraviAPI {
   >;
   markJobRecorded: (jobKey: string) => Promise<any>;
   cancelScan: () => Promise<any>;
+  retryScanner: (
+    scannerId: string
+  ) => Promise<{ success: true } | { success: false; error: string }>;
 
   // Image operations
   getOutputDir: () => Promise<any>;
@@ -682,6 +701,7 @@ export interface GraviAPI {
   onScanError: (callback: (data: any) => void) => () => void;
   onUploadProgress: (callback: (data: any) => void) => () => void;
   onDownloadProgress: (callback: (data: any) => void) => () => void;
+  onWedgeDetected: (callback: (event: GraviWedgeEvent) => void) => () => void;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

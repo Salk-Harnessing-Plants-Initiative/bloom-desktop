@@ -34,6 +34,10 @@ import {
   graviPlateAccessionsList,
   graviPlateAccessionsListFiles,
   graviPlateAccessionsDelete,
+  countMetadataReferences,
+  linkGraviMetadata,
+  unlinkGraviMetadata,
+  listGraviMetadata,
 } from '../../../src/main/database-handlers';
 
 const prisma = new PrismaClient();
@@ -54,10 +58,42 @@ async function cleanDatabase() {
   await prisma.plantAccessionMappings.deleteMany();
   await prisma.scan.deleteMany();
   await prisma.image.deleteMany();
+  // Every GraviExperimentWaveMetadata row has a required experiment_id FK
+  // with onDelete: Cascade, so deleting all experiments below removes these
+  // rows too, before accessions.deleteMany() runs — no explicit
+  // graviExperimentWaveMetadata.deleteMany() needed (its accession_id FK is
+  // onDelete: Restrict, so it must be empty before accessions can be wiped).
   await prisma.experiment.deleteMany();
   await prisma.accessions.deleteMany();
   await prisma.phenotyper.deleteMany();
   await prisma.scientist.deleteMany();
+}
+
+/** A `graviscan`-typed Experiment — required by `linkGraviMetadata`. */
+async function createGraviscanExperiment(name = 'Gravi Experiment') {
+  return prisma.experiment.create({
+    data: { name, species: 'Amaranthus', experiment_type: 'graviscan' },
+  });
+}
+
+/**
+ * A genuine GraviScan metadata file: an `Accessions` row with at least one
+ * `GraviPlateAccession` child, via the real `createWithSections` handler —
+ * required by `linkGraviMetadata`'s file-type check (Decision 2).
+ */
+async function createValidGraviMetadataFile(name = 'Valid Metadata File') {
+  const created = await graviPlateAccessionsCreateWithSections(
+    prisma,
+    { name },
+    [
+      {
+        plate_id: 'P1',
+        accession: 'Col-0',
+        sections: [{ plate_section_id: 'S1', plant_qr: 'QR1' }],
+      },
+    ]
+  );
+  return created.data!.metadataFileId;
 }
 
 /**
@@ -1121,5 +1157,463 @@ describe('database.graviPlateAccessions.*', () => {
       expect(orphanedSections).toBe(0);
       expect(orphanedPlates).toBe(0);
     });
+  });
+});
+
+describe('GraviExperimentWaveMetadata schema behavior', () => {
+  it('cascades away when the linked Experiment is deleted (onDelete: Cascade)', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+    await prisma.graviExperimentWaveMetadata.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 1,
+        accession_id: metadataFileId,
+      },
+    });
+
+    await prisma.experiment.delete({ where: { id: experiment.id } });
+
+    const remaining = await prisma.graviExperimentWaveMetadata.findMany({
+      where: { experiment_id: experiment.id },
+    });
+    expect(remaining).toHaveLength(0);
+    // The metadata file itself is untouched — only the link disappears.
+    const accession = await prisma.accessions.findUnique({
+      where: { id: metadataFileId },
+    });
+    expect(accession).not.toBeNull();
+  });
+});
+
+describe('countMetadataReferences', () => {
+  it('returns 0 for a metadata file with no references', async () => {
+    const metadataFileId = await createValidGraviMetadataFile();
+    const count = await countMetadataReferences(prisma, metadataFileId);
+    expect(count).toBe(0);
+  });
+
+  it('counts a matching Experiment.accession_id reference', async () => {
+    const fx = await seedBaseFixture();
+    const metadataFileId = await createValidGraviMetadataFile();
+    await prisma.experiment.update({
+      where: { id: fx.experimentA.id },
+      data: { accession_id: metadataFileId },
+    });
+
+    const count = await countMetadataReferences(prisma, metadataFileId);
+    expect(count).toBe(1);
+  });
+
+  it('counts a matching GraviExperimentWaveMetadata.accession_id reference', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+    await prisma.graviExperimentWaveMetadata.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 0,
+        accession_id: metadataFileId,
+      },
+    });
+
+    const count = await countMetadataReferences(prisma, metadataFileId);
+    expect(count).toBe(1);
+  });
+
+  it('sums both reference terms when a file is referenced by each', async () => {
+    const fx = await seedBaseFixture();
+    const graviExperiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+    await prisma.experiment.update({
+      where: { id: fx.experimentA.id },
+      data: { accession_id: metadataFileId },
+    });
+    await prisma.graviExperimentWaveMetadata.create({
+      data: {
+        experiment_id: graviExperiment.id,
+        wave_number: 0,
+        accession_id: metadataFileId,
+      },
+    });
+
+    const count = await countMetadataReferences(prisma, metadataFileId);
+    expect(count).toBe(2);
+  });
+});
+
+describe('database.graviPlateAccessions.delete (wave-metadata guard)', () => {
+  it('is blocked when linked only via GraviExperimentWaveMetadata (no Experiment.accession_id reference)', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+    await prisma.graviExperimentWaveMetadata.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 0,
+        accession_id: metadataFileId,
+      },
+    });
+
+    const result = await graviPlateAccessionsDelete(prisma, metadataFileId);
+    expect(result.success).toBe(false);
+    const stillExists = await prisma.accessions.findUnique({
+      where: { id: metadataFileId },
+    });
+    expect(stillExists).not.toBeNull();
+  });
+
+  it('succeeds once the blocking GraviExperimentWaveMetadata link is removed', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+    await prisma.graviExperimentWaveMetadata.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 0,
+        accession_id: metadataFileId,
+      },
+    });
+    await prisma.graviExperimentWaveMetadata.delete({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experiment.id,
+          wave_number: 0,
+        },
+      },
+    });
+
+    const result = await graviPlateAccessionsDelete(prisma, metadataFileId);
+    expect(result.success).toBe(true);
+    const stillExists = await prisma.accessions.findUnique({
+      where: { id: metadataFileId },
+    });
+    expect(stillExists).toBeNull();
+  });
+});
+
+describe('database.experiments.linkGraviMetadata', () => {
+  it('succeeds for a valid graviscan experiment and metadata file', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+
+    const result = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      2,
+      metadataFileId
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.wave_number).toBe(2);
+    expect(result.data?.accession?.id).toBe(metadataFileId);
+    const row = await prisma.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experiment.id,
+          wave_number: 2,
+        },
+      },
+    });
+    expect(row?.accession_id).toBe(metadataFileId);
+  });
+
+  it('accepts wave 0 as a valid boundary value', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+
+    const result = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      0,
+      metadataFileId
+    );
+
+    expect(result.success).toBe(true);
+    const row = await prisma.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experiment.id,
+          wave_number: 0,
+        },
+      },
+    });
+    expect(row?.accession_id).toBe(metadataFileId);
+  });
+
+  it.each([
+    ['non-string experimentId', 123 as unknown as string, undefined],
+    ['missing experimentId', undefined as unknown as string, undefined],
+    ['empty-string experimentId', '', undefined],
+  ])('rejects a %s', async (_label, experimentIdOverride) => {
+    const metadataFileId = await createValidGraviMetadataFile();
+    const result = await linkGraviMetadata(
+      prisma,
+      experimentIdOverride,
+      0,
+      metadataFileId
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/experimentId must be a non-empty string/);
+    expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
+  });
+
+  it.each([
+    ['non-string accessionId', 123 as unknown as string],
+    ['missing accessionId', undefined as unknown as string],
+    ['empty-string accessionId', ''],
+  ])('rejects a %s', async (_label, accessionIdOverride) => {
+    const experiment = await createGraviscanExperiment();
+    const result = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      0,
+      accessionIdOverride
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/accessionId must be a non-empty string/);
+    expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
+  });
+
+  it.each([
+    ['negative', -1],
+    ['non-integer', 1.5],
+    ['not a number', NaN],
+    ['past Int32 max', 2147483648],
+    ['a non-numeric type', '5' as unknown as number],
+  ])('rejects a waveNumber that is %s', async (_label, waveNumber) => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+    const result = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      waveNumber,
+      metadataFileId
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/waveNumber must be a non-negative integer/);
+    expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
+  });
+
+  it('rejects an unknown experimentId', async () => {
+    const metadataFileId = await createValidGraviMetadataFile();
+    const result = await linkGraviMetadata(
+      prisma,
+      'nonexistent-experiment-id',
+      0,
+      metadataFileId
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Experiment not found/);
+    expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
+  });
+
+  it('rejects an unknown accessionId', async () => {
+    const experiment = await createGraviscanExperiment();
+    const result = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      0,
+      'nonexistent-accession-id'
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/Metadata file not found/);
+    expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
+  });
+
+  it('rejects a non-graviscan experiment', async () => {
+    const fx = await seedBaseFixture(); // experimentA defaults to cylinderscan
+    const metadataFileId = await createValidGraviMetadataFile();
+    const result = await linkGraviMetadata(
+      prisma,
+      fx.experimentA.id,
+      0,
+      metadataFileId
+    );
+    expect(result.success).toBe(false);
+    expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
+  });
+
+  it('rejects a metadata file with no GraviPlateAccession children', async () => {
+    const experiment = await createGraviscanExperiment();
+    // A CylinderScan-style file: an Accessions row via createWithMappings,
+    // no GraviPlateAccession children.
+    const cylinderFile = await prisma.accessions.create({
+      data: { name: 'Cylinder Mapping File' },
+    });
+
+    const result = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      0,
+      cylinderFile.id
+    );
+    expect(result.success).toBe(false);
+    expect(await prisma.graviExperimentWaveMetadata.count()).toBe(0);
+  });
+
+  it('rejects an already-linked wave, even to the same accession', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileA = await createValidGraviMetadataFile('File A');
+    const metadataFileB = await createValidGraviMetadataFile('File B');
+    const first = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      3,
+      metadataFileA
+    );
+    expect(first.success).toBe(true);
+
+    const relinkDifferent = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      3,
+      metadataFileB
+    );
+    const relinkSame = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      3,
+      metadataFileA
+    );
+
+    expect(relinkDifferent.success).toBe(false);
+    expect(relinkSame.success).toBe(false);
+    const row = await prisma.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experiment.id,
+          wave_number: 3,
+        },
+      },
+    });
+    expect(row?.accession_id).toBe(metadataFileA);
+  });
+
+  it('succeeds again after the wave was unlinked (via unlinkGraviMetadata), even with a different accession', async () => {
+    // Task 4.3: re-run task 3.3's round trip using the real
+    // unlinkGraviMetadata handler for the unlink step, now that it exists,
+    // confirming link/unlink compose correctly for the "correct a mistake"
+    // workflow.
+    const experiment = await createGraviscanExperiment();
+    const metadataFileA = await createValidGraviMetadataFile('File A');
+    const metadataFileB = await createValidGraviMetadataFile('File B');
+    await linkGraviMetadata(prisma, experiment.id, 3, metadataFileA);
+    const unlinkResult = await unlinkGraviMetadata(prisma, experiment.id, 3);
+    expect(unlinkResult.success).toBe(true);
+
+    const result = await linkGraviMetadata(
+      prisma,
+      experiment.id,
+      3,
+      metadataFileB
+    );
+
+    expect(result.success).toBe(true);
+    const row = await prisma.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experiment.id,
+          wave_number: 3,
+        },
+      },
+    });
+    expect(row?.accession_id).toBe(metadataFileB);
+  });
+});
+
+describe('database.experiments.unlinkGraviMetadata', () => {
+  it('succeeds and removes the link', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile();
+    await linkGraviMetadata(prisma, experiment.id, 3, metadataFileId);
+
+    const result = await unlinkGraviMetadata(prisma, experiment.id, 3);
+
+    expect(result.success).toBe(true);
+    const row = await prisma.graviExperimentWaveMetadata.findUnique({
+      where: {
+        experiment_id_wave_number: {
+          experiment_id: experiment.id,
+          wave_number: 3,
+        },
+      },
+    });
+    expect(row).toBeNull();
+  });
+
+  it('returns a friendly error for a non-existent link, not a raw Prisma error', async () => {
+    const experiment = await createGraviscanExperiment();
+
+    const result = await unlinkGraviMetadata(prisma, experiment.id, 5);
+
+    expect(result.success).toBe(false);
+    // Asserts the specific friendly message, not just any truthy string —
+    // Prisma's raw P2025 reads "An operation failed because it depends on
+    // one or more records that were required but not found. Record to
+    // delete does not exist." This must not be what surfaces here.
+    expect(result.error).toBe(
+      'Nothing to unlink — wave 5 has no metadata file linked'
+    );
+    expect(result.error).not.toMatch(/prisma|record to delete/i);
+  });
+
+  it.each([
+    ['non-string experimentId', 123 as unknown as string],
+    ['missing experimentId', undefined as unknown as string],
+    ['empty-string experimentId', ''],
+  ])('rejects a %s', async (_label, experimentIdOverride) => {
+    const result = await unlinkGraviMetadata(prisma, experimentIdOverride, 0);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/experimentId must be a non-empty string/);
+  });
+
+  it.each([
+    ['negative', -1],
+    ['non-integer', 1.5],
+    ['not a number', NaN],
+    ['missing', undefined as unknown as number],
+    ['a non-numeric type', '5' as unknown as number],
+  ])('rejects a waveNumber that is %s', async (_label, waveNumber) => {
+    const experiment = await createGraviscanExperiment();
+    const result = await unlinkGraviMetadata(prisma, experiment.id, waveNumber);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/waveNumber must be a non-negative integer/);
+  });
+});
+
+describe('database.experiments.listGraviMetadata', () => {
+  it('returns links ordered by wave number, scoped to one experiment', async () => {
+    const experimentA = await createGraviscanExperiment('Experiment A');
+    const experimentB = await createGraviscanExperiment('Experiment B');
+    const fileA0 = await createValidGraviMetadataFile('A wave 0');
+    const fileA2 = await createValidGraviMetadataFile('A wave 2');
+    const fileB1 = await createValidGraviMetadataFile('B wave 1');
+    await linkGraviMetadata(prisma, experimentA.id, 2, fileA2);
+    await linkGraviMetadata(prisma, experimentA.id, 0, fileA0);
+    await linkGraviMetadata(prisma, experimentB.id, 1, fileB1);
+
+    const result = await listGraviMetadata(prisma, experimentA.id);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(2);
+    expect(result.data?.map((row) => row.wave_number)).toEqual([0, 2]);
+    expect(result.data?.every((row) => row.accession)).toBe(true);
+    expect(result.data?.some((row) => row.accession_id === fileB1)).toBe(false);
+  });
+
+  it('returns an empty array for an experiment with no links', async () => {
+    const experiment = await createGraviscanExperiment();
+
+    const result = await listGraviMetadata(prisma, experiment.id);
+
+    expect(result).toEqual({ success: true, data: [] });
+  });
+
+  it.each([
+    ['non-string experimentId', 123 as unknown as string],
+    ['missing experimentId', undefined as unknown as string],
+    ['empty-string experimentId', ''],
+  ])('rejects a %s', async (_label, experimentIdOverride) => {
+    const result = await listGraviMetadata(prisma, experimentIdOverride);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/experimentId must be a non-empty string/);
   });
 });

@@ -40,6 +40,8 @@ import type {
   ScanFilters,
   PaginatedScanFilters,
 } from '../types/database';
+// eslint-disable-next-line import/no-unresolved
+import type { GraviWedgeEvent } from '../types/graviscan';
 
 /**
  * Python backend API exposed to renderer
@@ -189,6 +191,25 @@ const databaseAPI: DatabaseAPI = {
         experimentId,
         accessionId
       ),
+    linkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number,
+      accessionId: string
+    ) =>
+      ipcRenderer.invoke(
+        'db:experiments:linkGraviMetadata',
+        experimentId,
+        waveNumber,
+        accessionId
+      ),
+    unlinkGraviMetadata: (experimentId: string, waveNumber: number) =>
+      ipcRenderer.invoke(
+        'db:experiments:unlinkGraviMetadata',
+        experimentId,
+        waveNumber
+      ),
+    listGraviMetadata: (experimentId: string) =>
+      ipcRenderer.invoke('db:experiments:listGraviMetadata', experimentId),
   },
   scans: {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>
@@ -381,6 +402,8 @@ const graviAPI = {
   markJobRecorded: (jobKey: string) =>
     ipcRenderer.invoke('graviscan:mark-job-recorded', jobKey),
   cancelScan: () => ipcRenderer.invoke('graviscan:cancel-scan'),
+  retryScanner: (scannerId: string) =>
+    ipcRenderer.invoke('graviscan:retry-scanner', scannerId),
 
   // Image operations
   getOutputDir: () => ipcRenderer.invoke('graviscan:get-output-dir'),
@@ -463,6 +486,12 @@ const graviAPI = {
     ipcRenderer.on('graviscan:download-progress', listener);
     return () =>
       ipcRenderer.removeListener('graviscan:download-progress', listener);
+  },
+  onWedgeDetected: (callback: (event: GraviWedgeEvent) => void) => {
+    const listener = (_event: unknown, data: GraviWedgeEvent) => callback(data);
+    ipcRenderer.on('graviscan:wedge-detected', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:wedge-detected', listener);
   },
 };
 /* eslint-enable @typescript-eslint/no-explicit-any */
