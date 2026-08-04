@@ -149,6 +149,90 @@ describe('PythonProcess.sendCommand', () => {
   });
 });
 
+describe('PythonProcess.restart', () => {
+  let proc: PythonProcess;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.mocked(spawn).mockClear();
+    proc = new PythonProcess('/fake/python', ['--ipc']);
+
+    const startPromise = proc.start();
+    setTimeout(() => proc.emit('status', 'IPC handler ready'), 10);
+    vi.advanceTimersByTime(10);
+    await startPromise;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    proc.stop();
+  });
+
+  it('concurrent restart() calls share the same in-flight operation instead of racing', async () => {
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1); // the initial start() above
+
+    // Two restart() calls fired back-to-back, before the first resolves —
+    // simulates a user double-clicking "Restart Python" (PythonStatus.tsx
+    // has no disabled-while-restarting guard).
+    const restart1 = proc.restart();
+    const restart2 = proc.restart();
+
+    // Advance past restart()'s internal stop()-then-start() delay. Use
+    // the async variant so the promise continuation that actually calls
+    // start() (and, inside it, registers the 'status' listener) has run
+    // by the time this resolves — a plain vi.advanceTimersByTime() only
+    // fires the timer callback and does not flush the microtask queue,
+    // so the listener wouldn't exist yet when 'status' is emitted below.
+    await vi.advanceTimersByTimeAsync(100);
+
+    // start()'s Promise executor (which registers the 'status' listener
+    // and calls spawn()) runs synchronously once reached, so the ready
+    // event can be emitted directly with no further timer needed.
+    proc.emit('status', 'IPC handler ready');
+
+    await expect(Promise.all([restart1, restart2])).resolves.toBeDefined();
+
+    // Exactly one new process should have been spawned for the two
+    // concurrent restart() calls — not two competing spawns, and not a
+    // rejection from the second call finding a process already started.
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(2);
+  });
+
+  it('a stale exit event from a process generation superseded by restart() does not reject the new process’s pending requests', async () => {
+    // Capture the FIRST (pre-restart) process's exit callback before
+    // restarting — this simulates that process's real OS-level exit
+    // event arriving late (e.g. delayed by OS scheduling), after a
+    // restart() has already spawned a replacement.
+    const staleMock = vi.mocked(spawn).mock.results[0].value as ReturnType<
+      typeof createMockProcess
+    >;
+    const staleExitCallback = staleMock.on.mock.calls.find(
+      ([event]) => event === 'exit'
+    )?.[1] as ((code: number | null) => void) | undefined;
+    expect(staleExitCallback).toBeDefined();
+
+    // Restart to a new process generation.
+    const restartPromise = proc.restart();
+    await vi.advanceTimersByTimeAsync(100);
+    proc.emit('status', 'IPC handler ready');
+    await restartPromise;
+
+    // A command is now in flight against the NEW process generation.
+    const commandPromise = proc.sendCommand({ command: 'test' });
+
+    // The stale, pre-restart process's exit event arrives late.
+    staleExitCallback!(1);
+
+    // It must NOT reject the new generation's in-flight command, and
+    // must NOT null out the live process reference either — resolve the
+    // command normally via the new generation's own response id to
+    // prove both.
+    proc.emit('data', { success: true, id: 1 });
+    await expect(commandPromise).resolves.toEqual({ success: true, id: 1 });
+    expect(proc.isRunning()).toBe(true);
+  });
+});
+
 describe('handleStdout', () => {
   let pyProc: PythonProcess;
   let mockProc: ReturnType<typeof createMockProcess>;

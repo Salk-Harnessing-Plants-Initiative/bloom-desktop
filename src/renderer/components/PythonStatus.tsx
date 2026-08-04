@@ -29,6 +29,7 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
   const [hardware, setHardware] = useState<HardwareStatus | null>(null);
   const [status, setStatus] = useState<string>('Checking...');
   const [error, setError] = useState<string>('');
+  const [isRestarting, setIsRestarting] = useState(false);
 
   useEffect(() => {
     // Camera/DAQ hardware status is CylinderScan-specific — this component
@@ -87,6 +88,7 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
   };
 
   const restartPython = async () => {
+    setIsRestarting(true);
     try {
       await window.electron.python.restart();
       setStatus('Restarted');
@@ -96,6 +98,8 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
       setVersion(res.version);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsRestarting(false);
     }
   };
 
@@ -190,9 +194,10 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
           </button>
           <button
             onClick={restartPython}
-            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+            disabled={isRestarting}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Restart Python
+            {isRestarting ? 'Restarting...' : 'Restart Python'}
           </button>
         </div>
       </div>

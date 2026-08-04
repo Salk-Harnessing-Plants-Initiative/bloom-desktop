@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor } from '@testing-library/react';
+import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { PythonStatus } from '../../../src/renderer/components/PythonStatus';
 
 const mockOnStatusCleanup = vi.fn();
@@ -68,6 +68,38 @@ describe('PythonStatus — cylinderscan mode', () => {
 
     expect(mockOnStatusCleanup).toHaveBeenCalledTimes(1);
     expect(mockOnErrorCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the Restart Python button while a restart is in flight, so a double-click cannot fire two concurrent restarts', async () => {
+    let resolveRestart: () => void;
+    mockPythonAPI.restart.mockReturnValue(
+      new Promise<{ success: boolean }>((resolve) => {
+        resolveRestart = () => resolve({ success: true });
+      })
+    );
+
+    const { getByText } = render(<PythonStatus mode="cylinderscan" />);
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    const button = getByText('Restart Python') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(button.disabled).toBe(true);
+    });
+    // A second click while disabled must not invoke restart() again.
+    fireEvent.click(button);
+    expect(mockPythonAPI.restart).toHaveBeenCalledTimes(1);
+
+    resolveRestart!();
+
+    await waitFor(() => {
+      expect(button.disabled).toBe(false);
+    });
   });
 });
 

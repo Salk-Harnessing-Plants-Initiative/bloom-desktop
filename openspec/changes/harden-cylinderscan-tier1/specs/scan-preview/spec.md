@@ -22,10 +22,13 @@ The ScanPreview component SHALL load and display scan images from the local file
 
 #### Scenario: Cross-platform custom-scheme URL construction
 
-- **WHEN** an image path contains Windows backslashes (e.g., `C:\Users\foo\bar.png`)
-- **THEN** the URL SHALL use forward slashes with a leading slash (e.g., `bloom-scan:///C:/Users/foo/bar.png`)
-- **WHEN** an image path contains spaces (e.g., `/Users/foo bar/img.png`)
-- **THEN** spaces SHALL be percent-encoded in the URL (e.g., `bloom-scan:///Users/foo%20bar/img.png`)
+- **WHEN** an image path is converted to a `bloom-scan://` URL
+- **THEN** the path SHALL be carried as a `path` query parameter behind a fixed `local-file` host (e.g., `bloom-scan://local-file/?path=<encoded>`), never embedded directly in the URL's authority/path position
+- **AND** the path SHALL be percent-encoded via `encodeURIComponent` before being placed in the query string, so Windows backslashes (normalized to forward slashes first), drive letters, spaces, and other special characters all round-trip correctly
+- **WHEN** the URL is parsed back into a native path
+- **THEN** the original path SHALL be recovered by reading the `path` query parameter (e.g. via `URLSearchParams`), not by string-manipulating the URL's authority or path components
+
+> **Why not the `file://` triple-slash convention (e.g. `bloom-scan:///C:/Users/foo/bar.png`):** `bloom-scan://` is registered with `standard: true`, so Chromium's generic WHATWG "special scheme" URL parser applies to it — the same authority-parsing rules as `http`/`file`. Unlike the literal `file:` scheme, a _custom_ standard scheme gets none of `file:`'s spec-mandated drive-letter/empty-host quirk handling: the parser collapses the extra leading slash and reads the first path segment as the **host** (e.g. `bloom-scan:///C:/foo` arrives at the protocol handler as host `"c"`, path `/foo` — confirmed against a real Electron build, not just unit tests, since Node's own `URL`/`Request` don't apply special-scheme parsing to unlisted custom schemes and so never reproduce this). Carrying the path in the query string sidesteps authority/path parsing entirely and is immune to this regardless of the path's shape.
 
 ### Requirement: Web Security Configuration
 

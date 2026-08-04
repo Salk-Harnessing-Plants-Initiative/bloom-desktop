@@ -13,7 +13,12 @@ export function shouldQuitAsSecondInstance(hasLock: boolean): boolean {
 }
 
 export function focusExistingWindow(win: BrowserWindow | null): void {
-  if (!win) return;
+  // A destroyed-but-non-null mainWindow is a real state, not a
+  // theoretical one: on macOS, window-all-closed does not quit the app
+  // (main.ts), so mainWindow stays non-null after the user closes it.
+  // isMinimized()/focus() throw on a destroyed BrowserWindow, so this
+  // must be checked before either is called.
+  if (!win || win.isDestroyed()) return;
   if (win.isMinimized()) {
     win.restore();
   }

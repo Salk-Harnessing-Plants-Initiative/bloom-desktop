@@ -76,3 +76,18 @@ Commands sent to the Python subprocess via `PythonProcess.sendCommand()` SHALL b
 - **WHEN** the timeout fires and the call rejects
 - **THEN** its entry SHALL be removed from `pendingRequests`
 - **AND** a subsequent response arriving with that same (now-stale) id SHALL be ignored, not resolve/reject anything
+
+#### Scenario: Concurrent restart() calls share one in-flight operation
+
+- **GIVEN** `PythonProcess.restart()` is called while an earlier `restart()` call is still in flight (e.g. a user double-clicking "Restart Python")
+- **WHEN** the second call is made
+- **THEN** it SHALL return the same in-flight operation rather than starting a competing `stop()`-then-`start()` sequence
+- **AND** exactly one new process SHALL be spawned as a result of the overlapping calls, not two, and neither call SHALL reject with "Process already started"
+
+#### Scenario: A stale exit event from a superseded process generation does not corrupt the new process's state
+
+- **GIVEN** `restart()` has stopped an old process and started a new one, and the old process's real OS-level exit event arrives late (after the new process is already running with its own in-flight `sendCommand()` requests)
+- **WHEN** the stale exit event fires
+- **THEN** it SHALL NOT null out the reference to the new, live process
+- **AND** it SHALL NOT reject any of the new process's currently-pending requests
+- **AND** the new process's pending requests SHALL still resolve normally when their own matching responses arrive

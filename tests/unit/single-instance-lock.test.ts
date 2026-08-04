@@ -31,6 +31,7 @@ describe('focusExistingWindow', () => {
     const restore = vi.fn();
     const focus = vi.fn();
     const win = {
+      isDestroyed: () => false,
       isMinimized: () => true,
       restore,
       focus,
@@ -46,6 +47,7 @@ describe('focusExistingWindow', () => {
     const restore = vi.fn();
     const focus = vi.fn();
     const win = {
+      isDestroyed: () => false,
       isMinimized: () => false,
       restore,
       focus,
@@ -55,5 +57,32 @@ describe('focusExistingWindow', () => {
 
     expect(restore).not.toHaveBeenCalled();
     expect(focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw and is a no-op when the window has been destroyed', () => {
+    // On macOS, window-all-closed does not quit the app (main.ts), so
+    // mainWindow stays non-null but destroyed after the user closes it.
+    // A second launch attempt then fires second-instance against this
+    // destroyed-but-non-null window — isMinimized()/focus() throw on a
+    // destroyed BrowserWindow, so isDestroyed() must be checked first,
+    // before either of them is ever called.
+    const isMinimized = vi.fn(() => {
+      throw new Error('Object has been destroyed');
+    });
+    const restore = vi.fn();
+    const focus = vi.fn(() => {
+      throw new Error('Object has been destroyed');
+    });
+    const win = {
+      isDestroyed: () => true,
+      isMinimized,
+      restore,
+      focus,
+    } as unknown as import('electron').BrowserWindow;
+
+    expect(() => focusExistingWindow(win)).not.toThrow();
+    expect(isMinimized).not.toHaveBeenCalled();
+    expect(restore).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
   });
 });

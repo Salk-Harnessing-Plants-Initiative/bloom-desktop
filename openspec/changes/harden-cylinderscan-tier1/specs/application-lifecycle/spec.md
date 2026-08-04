@@ -25,3 +25,10 @@ The application SHALL acquire a single-instance lock at startup, before any wind
 - **WHEN** a `second-instance` event fires in that instance
 - **THEN** the handler SHALL NOT throw
 - **AND** it SHALL no-op (there is nothing yet to focus, and the second instance has already been told to quit)
+
+#### Scenario: Second-instance event fires after the window has been destroyed
+
+- **GIVEN** the first instance's main window has been destroyed (e.g. on macOS, where `window-all-closed` does not quit the app, so the process keeps running with a destroyed-but-non-null window reference)
+- **WHEN** a `second-instance` event fires in that instance
+- **THEN** the handler SHALL NOT throw
+- **AND** it SHALL no-op without calling `isMinimized()`, `restore()`, or `focus()` on the destroyed window

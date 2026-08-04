@@ -51,6 +51,20 @@ export class PythonProcess extends EventEmitter {
   private nextRequestId = 1;
   private pendingRequests = new Map<number, PendingRequest>();
 
+  // Incremented on every start() call and captured by that call's own
+  // 'exit' handler closure. restart()'s stop() doesn't wait for the old
+  // process's real OS-level exit — if that exit event arrives late (after
+  // a new process has already started), the handler compares its
+  // captured generation against the current one to recognize itself as
+  // stale and no-op, rather than nulling out the new process reference
+  // or rejecting the new generation's in-flight requests.
+  private generation = 0;
+
+  // Memoizes an in-flight restart() so concurrent calls (e.g. a user
+  // double-clicking "Restart Python") share the same stop()-then-start()
+  // operation instead of racing two independent ones.
+  private restartPromise: Promise<void> | null = null;
+
   /**
    * Create a new Python process manager.
    *
@@ -116,6 +130,8 @@ export class PythonProcess extends EventEmitter {
       throw new Error('Process already started');
     }
 
+    const myGeneration = ++this.generation;
+
     return new Promise((resolve, reject) => {
       try {
         // Set up ready handler BEFORE spawning to avoid race condition
@@ -154,14 +170,20 @@ export class PythonProcess extends EventEmitter {
 
         // Handle process exit
         this.process.on('exit', (code: number | null) => {
+          // A stale exit event from a process generation already
+          // superseded by a subsequent restart() — ignore entirely, so
+          // it can't null out the new process reference or misattribute
+          // a rejection to the new generation's in-flight requests.
+          if (myGeneration !== this.generation) return;
+
           // Reject every in-flight command immediately rather than leaving
           // each one to individually time out — the process is confirmed
           // gone, so no pending command will ever get a real response.
+          this.process = null;
           this.rejectAllPending(
             new Error(`Python process exited with code ${code}`)
           );
           this.emit('exit', code);
-          this.process = null;
         });
 
         // Handle process errors
@@ -190,8 +212,23 @@ export class PythonProcess extends EventEmitter {
 
   /**
    * Restart the Python subprocess.
+   *
+   * Concurrent calls (e.g. a user double-clicking "Restart Python" with
+   * no disabled-while-restarting UI guard) share the same in-flight
+   * restart rather than racing two independent stop()-then-start()
+   * sequences against each other.
    */
   async restart(): Promise<void> {
+    if (this.restartPromise) {
+      return this.restartPromise;
+    }
+    this.restartPromise = this.performRestart().finally(() => {
+      this.restartPromise = null;
+    });
+    return this.restartPromise;
+  }
+
+  private async performRestart(): Promise<void> {
     this.stop();
     await new Promise((resolve) => setTimeout(resolve, 100)); // Brief delay
     await this.start();
