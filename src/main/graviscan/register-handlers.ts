@@ -1,7 +1,7 @@
 /**
  * GraviScan IPC Handler Registration
  *
- * Wraps pure handler functions with ipcMain.handle() for 21 IPC channels.
+ * Wraps pure handler functions with ipcMain.handle() for 22 IPC channels.
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
  *
  * This is also where coordinator-aware orchestration around the DB-only
@@ -163,7 +163,10 @@ export function registerGraviScanHandlers(
             continue;
           }
 
-          const saneName = `epkowa:interpreter:${String(saved.usb_bus).padStart(3, '0')}:${String(saved.usb_device).padStart(3, '0')}`;
+          const saneName = scannerHandlers.buildSaneName(
+            saved.usb_bus,
+            saved.usb_device
+          );
           spawnChain = spawnChain.then(() => {
             console.log(
               `[GraviScan:SAVE] Spawning worker for newly-discovered scanner ${saved.id} (port ${saved.usb_port})`
@@ -319,6 +322,14 @@ export function registerGraviScanHandlers(
     wrapHandler(() =>
       sessionHandlers.cancelScan(getCoordinator(), sessionFns)
     )()
+  );
+
+  // Returns `retryScanner()`'s own `{ success, error? }` shape directly
+  // (matching `disable-scanner`'s convention above) rather than via
+  // `wrapHandler`, which would double-nest it inside a `{ success, data }`
+  // envelope — `retryScanner()` already does its own try/catch.
+  ipcMain.handle('graviscan:retry-scanner', (_event, scannerId: string) =>
+    sessionHandlers.retryScanner(getCoordinator(), db, sessionFns, scannerId)
   );
 
   // --- Image handlers ---

@@ -52,6 +52,13 @@ const mockGraviAPI = {
   onScanStarted: vi.fn().mockReturnValue(vi.fn()),
   onScanComplete: vi.fn().mockReturnValue(vi.fn()),
   onScanError: vi.fn().mockReturnValue(vi.fn()),
+  // Wedge-response UI (Tier 3) — without these, WedgeBanner mounting
+  // unconditionally in graviscan mode throws (this file renders the real
+  // App -> Layout tree, so Layout's WedgeBanner mounts for real here too).
+  onWedgeDetected: vi.fn().mockReturnValue(vi.fn()),
+  onIntervalComplete: vi.fn().mockReturnValue(vi.fn()),
+  onCancelled: vi.fn().mockReturnValue(vi.fn()),
+  retryScanner: vi.fn().mockResolvedValue({ success: true }),
 };
 
 beforeEach(() => {

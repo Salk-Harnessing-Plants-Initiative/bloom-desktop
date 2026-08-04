@@ -252,7 +252,8 @@ export function setupCoordinatorEventForwarding(
  */
 export function setupWedgeDetection(
   coordinator: ScanCoordinator,
-  db: ScannerLookupDb | null = null
+  db: ScannerLookupDb | null = null,
+  getMainWindow: (() => BrowserWindow | null) | null = null
 ): void {
   const slackNotifier = new SlackNotifier({
     webhookUrl: process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL,
@@ -265,13 +266,35 @@ export function setupWedgeDetection(
     wedgeDetector = new WedgeDetector({
       sessionId,
       onWedge: (evt) => {
-        void (async () => {
-          const enriched = await enrichWedgeEvent(evt, db);
-          void slackNotifier.notify(enriched);
-        })();
+        // Auto-pause first, fire-and-forget — don't let a slow/failing
+        // Slack call or DB enrichment delay stopping the wedged scanner
+        // (design.md Decision 1). `coordinator` is already in scope as
+        // this function's first parameter.
+        void coordinator.stopScanner(evt.scanner_id).catch((err) => {
+          console.error(
+            `[WedgeDetector] Failed to auto-pause ${evt.scanner_id}:`,
+            err
+          );
+        });
+        // Pre-existing line — unchanged.
         scanLog(
           `[WedgeDetector] wedge-detected scanner=${evt.scanner_id} signature=${evt.signature} cycle=${evt.cycle_number}`
         );
+        // New line for the auto-pause action itself (design.md Decision
+        // 3) — includes session_id to disambiguate cycle numbers across
+        // sessions that share a calendar-day log file.
+        scanLog(
+          `[WedgeDetector] auto-paused scanner=${evt.scanner_id} signature=${evt.signature} session=${evt.session_id} cycle=${evt.cycle_number}`
+        );
+
+        void (async () => {
+          const enriched = await enrichWedgeEvent(evt, db);
+          void slackNotifier.notify(enriched);
+          const win = getMainWindow?.();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('graviscan:wedge-detected', enriched);
+          }
+        })();
       },
     });
     lastSeenCycleNumber = -1;
@@ -378,8 +401,10 @@ export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
     }
 
     // Wire wedge detection + Slack notification (#236), enriched with
-    // scanner display_name/usb_port when a db handle is available (#4)
-    setupWedgeDetection(scanCoordinator, _db);
+    // scanner display_name/usb_port when a db handle is available (#4),
+    // and forwarded to the renderer + auto-pausing the wedged scanner
+    // when a main window getter is available (Tier 3 wedge-response UI)
+    setupWedgeDetection(scanCoordinator, _db, _getMainWindow);
 
     return scanCoordinator;
   })();

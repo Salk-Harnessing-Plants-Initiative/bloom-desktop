@@ -48,6 +48,7 @@ import {
   SaveScannersToDBResult,
   GetScanStatusResult,
   GraviConfigInput,
+  GraviWedgeEvent,
 } from './graviscan';
 import type {
   GraviScanCreateInput,
@@ -653,6 +654,9 @@ export interface GraviAPI {
   >;
   markJobRecorded: (jobKey: string) => Promise<any>;
   cancelScan: () => Promise<any>;
+  retryScanner: (
+    scannerId: string
+  ) => Promise<{ success: true } | { success: false; error: string }>;
 
   // Image operations
   getOutputDir: () => Promise<any>;
@@ -674,6 +678,7 @@ export interface GraviAPI {
   onScanError: (callback: (data: any) => void) => () => void;
   onUploadProgress: (callback: (data: any) => void) => () => void;
   onDownloadProgress: (callback: (data: any) => void) => () => void;
+  onWedgeDetected: (callback: (event: GraviWedgeEvent) => void) => () => void;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
