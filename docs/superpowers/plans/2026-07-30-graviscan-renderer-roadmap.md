@@ -2,9 +2,9 @@
 
 **Status:** Reconciled after adversarial roadmap review (2026-07-30, 4 independent
 `Explore` agents: factual accuracy, dependency/sequencing, completeness,
-scope/consistency/safety), approved, and now underway. Tiers 1 and 2 merged
-2026-07-31/08-03 (PRs #273, #274). Tiers 3–5 not yet started — see the table
-below and "Closing the loop."
+scope/consistency/safety), approved, and now underway. Tiers 1, 2, and 3
+merged 2026-07-31/08-04 (PRs #273, #274, #277). Tiers 4–5 not yet started —
+see the table below and "Closing the loop."
 
 **Owner context:** Follows the GraviScan backend-parity port (PRs #267–#272,
 merged 2026-07-29/30, archived `openspec/changes/archive/2026-07-30-*`). That
@@ -136,8 +136,8 @@ the upload screen) can be scoped concretely.
 | --- | ------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ---------------------------------------------- |
 | 1   | Configure Scanner UI                              | —                                        | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03)    |
 | 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note) | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31)    |
-| 3   | Wedge-response UI (fast-tracked)                  | 2                                        | No — consumes Tier 2's granular events                                                     | #244, #240                            | Not started — unblocked, ready to propose next |
-| 4   | Core scan-operation screen                        | 1, 2, 3                                  | Preload wiring only (`verify-plates` + its events)                                         | #133                                  | Not started — blocked on Tier 3                |
+| 3   | Wedge-response UI (fast-tracked)                  | 2                                        | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04)    |
+| 4   | Core scan-operation screen                        | 1, 2, 3                                  | Preload wiring only (`verify-plates` + its events)                                         | #133                                  | Not started — unblocked                        |
 | 5   | Browse / Experiment Detail / Metadata UI          | 2                                        | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207                            | Not started — unblocked (only needs Tier 2)    |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
