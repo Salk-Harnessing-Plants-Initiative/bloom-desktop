@@ -3,8 +3,15 @@
 **Status:** Reconciled after adversarial roadmap review (2026-07-30, 4 independent
 `Explore` agents: factual accuracy, dependency/sequencing, completeness,
 scope/consistency/safety), approved, and now underway. Tiers 1, 2, and 3
-merged 2026-07-31/08-04 (PRs #273, #274, #277). Tiers 4–5 not yet started —
-see the table below and "Closing the loop."
+merged 2026-07-31/08-04 (PRs #273, #274, #277). A prerequisite discovered
+while scoping Tier 5, `add-wave-scoped-metadata-linking`, merged separately
+as **PR #278** (2026-08-04) — not one of the five tiers below; see Tier 4
+and Tier 5's own sections for what it changes for each. Tiers 4–5 not yet
+started — see the table below and "Closing the loop." **Re-audited
+2026-08-04** against current `main` (post #278, via 2 independent `Explore`
+agents covering backend/preload wiring and nav/workflow-step routing) — one
+further staleness gap found and corrected below (Tier 5's handler
+attribution); everything else checked out.
 
 **Owner context:** Follows the GraviScan backend-parity port (PRs #267–#272,
 merged 2026-07-29/30, archived `openspec/changes/archive/2026-07-30-*`). That
@@ -97,18 +104,34 @@ dataset, so each tier's "validation target" (in place of an oracle) is:
 Two already-accepted `openspec/specs/scanning/spec.md` requirements — **"Mode-
 Aware Home Page"** and **"Mode-Aware Navigation"** — anticipate GraviScan's
 workflow steps (Scientists → Phenotypers → Metadata → Experiments → Capture
-Scan → Browse Scans) and nav links, currently pointing at CylinderScan's
-shared pages as unfulfilled placeholders. Rather than one tier speculatively
-rewiring `Home.tsx`/`WorkflowSteps.tsx`/`Layout.tsx` for screens that don't
-exist yet, **each tier updates the one workflow-step/nav-link entry its own
-new route makes real**, as part of that tier's own proposal:
+Scan → Browse Scans) and nav links. **Re-verified 2026-08-04 against current
+`main`** (the placeholder framing below was previously a generalization, not
+independently checked per-step — corrected here to what each step's route
+actually resolves to):
+
+- **"Browse Scans"** (`WorkflowSteps.tsx`) points at `/browse-scans`, a real
+  working page (`BrowseScans.tsx`) backed by CylinderScan's shared
+  `database.scans.*` data layer.
+- **"Metadata"** points at `/experiments` — the same route as the
+  "Experiments" step, i.e. an alias, not a distinct placeholder page.
+- **"Capture Scan"** points at `/capture-scan`, a route `App.tsx` only
+  registers under `mode === 'cylinderscan'`. In GraviScan mode there is no
+  matching route at all — it falls through to the catch-all
+  `<Route path="*" element={<Navigate to="/" />} />` and silently redirects
+  Home. This is a dead link today, not a working CylinderScan placeholder.
+
+Rather than one tier speculatively rewiring `Home.tsx`/`WorkflowSteps.tsx`/
+`Layout.tsx` for screens that don't exist yet, **each tier updates the one
+workflow-step/nav-link entry its own new route makes real**, as part of
+that tier's own proposal:
 
 - Tier 1 adds a `/configure-scanner` route + nav link (not one of the six
   named workflow steps, so no `WorkflowSteps.tsx` change — just `Layout.tsx`).
+  **Confirmed shipped** (`Layout.tsx`'s `graviscanLinks` array).
 - Tier 4 fixes the "Capture Scan" step and nav link to point at the new
-  GraviScan scan screen instead of CylinderScan's `/capture-scan`.
+  GraviScan scan screen instead of today's dead link.
 - Tier 5 fixes "Metadata" and "Browse Scans" steps/nav to point at the new
-  screens instead of the current CylinderScan-shared placeholders.
+  screens instead of today's alias route / CylinderScan-shared route.
 
 This also resolves what would otherwise look like a gap: the production
 branch's `Scanning.tsx` dispatcher, its deletion of `useAppMode.ts`/
@@ -138,7 +161,7 @@ the upload screen) can be scoped concretely.
 | 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                             | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31) |
 | 3   | Wedge-response UI (fast-tracked)                  | 2                                                                    | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04) |
 | 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose) | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | Not started — unblocked                     |
-| 5   | Browse / Experiment Detail / Metadata UI          | 2                                                                    | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207                            | Not started — unblocked (only needs Tier 2) |
+| 5   | Browse / Experiment Detail / Metadata UI          | 2; wave-scoped metadata-link UI also needs `add-wave-scoped-metadata-linking` (merged PR #278, see prose) | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207, #164                      | Not started — unblocked (Tier 2 + PR #278 both merged) |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
 `src/main/preload.ts`'s `graviAPI` object — Tier 1 adds one method near the
@@ -281,8 +304,27 @@ matching this repo's existing test convention (e.g.
 rather than requiring the capture screen to produce real data first. New
 `BrowseGraviScans.tsx`, `ExperimentDetail.tsx`, and `Metadata.tsx`/
 `GraviMetadataUpload.tsx`/`GraviMetadataList.tsx`, plus the wave-scoped
-metadata-link UI in `Experiments.tsx`/`ExperimentForm.tsx` that calls Tier 2's
-new `listGraviMetadata`/`linkGraviMetadata`/`unlinkGraviMetadata` handlers.
+metadata-link UI in `Experiments.tsx`/`ExperimentForm.tsx`.
+
+**Correction (2026-08-04, found while re-auditing this roadmap before
+starting Tier 5):** an earlier version of this section attributed the
+wave-scoped metadata-link handlers (`listGraviMetadata`/`linkGraviMetadata`/
+`unlinkGraviMetadata`) to "Tier 2." That was wrong even at write-time — Tier
+2 explicitly descoped them (they need a `GraviExperimentWaveMetadata` Prisma
+model Tier 2 didn't add; see Tier 2's own archived `design.md`, Decision 1).
+A separate change, `add-wave-scoped-metadata-linking`, built them instead —
+merged as **PR #278** (2026-08-04), backend-only, no renderer code, and
+already archived on `main` (`openspec/changes/archive/2026-08-04-add-wave-scoped-metadata-linking/`).
+Read its `design.md` there for the exact validation rules
+`linkGraviMetadata` enforces
+(experiment must be `experiment_type === 'graviscan'`, accession must have
+≥1 `GraviPlateAccession` row, `waveNumber` a non-negative integer, no
+re-linking an already-linked wave without unlinking first) rather than
+re-deriving them. Issue #164 ("Support per-wave metadata uploads for QR
+verification") is the underlying motivation for both that change and this
+tier's `GraviMetadataUpload.tsx` — this tier is the UI consumer, not a
+second implementation of the linking logic.
+
 Extracts the production branch's duplicated imperative drag-resize DOM code
 into one shared hook/utility instead of copying it twice, fixes the
 `verifyPlates` status value mismatch against the real backend contract before
