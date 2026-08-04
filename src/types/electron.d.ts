@@ -73,6 +73,9 @@ import type {
   graviPlateAccessionsList,
   graviPlateAccessionsListFiles,
   graviPlateAccessionsDelete,
+  linkGraviMetadata,
+  unlinkGraviMetadata,
+  listGraviMetadata,
 } from '../main/database-handlers';
 
 /**
@@ -310,6 +313,18 @@ export interface DatabaseAPI {
       experimentId: string,
       accessionId: string
     ) => Promise<DatabaseResponse<ExperimentWithRelations>>;
+    linkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number,
+      accessionId: string
+    ) => ReturnType<typeof linkGraviMetadata>;
+    unlinkGraviMetadata: (
+      experimentId: string,
+      waveNumber: number
+    ) => ReturnType<typeof unlinkGraviMetadata>;
+    listGraviMetadata: (
+      experimentId: string
+    ) => ReturnType<typeof listGraviMetadata>;
   };
   scans: {
     /**
