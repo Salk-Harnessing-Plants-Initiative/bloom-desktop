@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type {
+  GetScanStatusResult,
   GridMode,
   PlateAssignment,
   QRVerifyPlateInput,
@@ -8,6 +9,7 @@ import type {
   ScanSessionJob,
 } from '../../types/graviscan';
 import { useWedgeContext } from '../contexts/WedgeContext';
+import { unwrapGraviResult } from '../utils/graviIpc';
 
 export interface UseScanSessionParams {
   experimentId: string | null;
@@ -465,7 +467,9 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
 
   useEffect(() => {
     (async () => {
-      const status = await (window as any).electron.gravi.getScanStatus();
+      const status = unwrapGraviResult<GetScanStatusResult & Record<string, any>>(
+        await (window as any).electron.gravi.getScanStatus()
+      );
       if (!status?.isActive) {
         if (experimentId) {
           const marker = localStorage.getItem(abnormalMarkerKey(experimentId, waveNumber));
@@ -529,7 +533,11 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
       return;
     }
 
-    const outputDirResult = await (window as any).electron.gravi.getOutputDir();
+    const outputDirResult = unwrapGraviResult<{
+      success: boolean;
+      path?: string;
+      error?: string;
+    }>(await (window as any).electron.gravi.getOutputDir());
     if (!outputDirResult?.success || !outputDirResult.path) {
       dispatch({
         type: 'ERROR',
@@ -598,11 +606,13 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
         : 1
       : 1;
 
-    const result = await (window as any).electron.gravi.startScan({
-      scanners,
-      interval: isContinuous ? { intervalSeconds, durationSeconds } : undefined,
-      metadata: { experimentId, phenotyperId, resolution, waveNumber },
-    });
+    const result = unwrapGraviResult<{ success: boolean; error?: string }>(
+      await (window as any).electron.gravi.startScan({
+        scanners,
+        interval: isContinuous ? { intervalSeconds, durationSeconds } : undefined,
+        metadata: { experimentId, phenotyperId, resolution, waveNumber },
+      })
+    );
 
     if (!result?.success) {
       dispatch({ type: 'ERROR', payload: { error: result?.error ?? 'Failed to start scan.' } });
@@ -652,7 +662,9 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
 
   const cancelScan = useCallback(async () => {
     try {
-      const result = await (window as any).electron.gravi.cancelScan();
+      const result = unwrapGraviResult<{ success: boolean; error?: string }>(
+        await (window as any).electron.gravi.cancelScan()
+      );
       if (!result?.success) {
         dispatch({ type: 'ERROR', payload: { error: result?.error ?? 'Cancel failed.' } });
         return;

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useRef, useState } from 'react';
 import { createPlateAssignments, type GridMode } from '../../types/graviscan';
+import { unwrapGraviResult } from '../utils/graviIpc';
 
 export interface UseTestScanParams {
   scannerIds: string[];
@@ -67,7 +68,11 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
     resultsRef.current = {};
     setTestResults({});
 
-    const outputDirResult = await (window as any).electron.gravi.getOutputDir();
+    const outputDirResult = unwrapGraviResult<{
+      success: boolean;
+      path?: string;
+      error?: string;
+    }>(await (window as any).electron.gravi.getOutputDir());
     if (!outputDirResult?.success || !outputDirResult.path) {
       setError(outputDirResult?.error ?? 'Could not determine the scan output directory.');
       setIsTesting(false);
@@ -128,7 +133,9 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
     });
 
     try {
-      const startResult = await gravi.startScan({ scanners });
+      const startResult = unwrapGraviResult<{ success: boolean; error?: string }>(
+        await gravi.startScan({ scanners })
+      );
       if (!startResult?.success) {
         resolveRef.current = null;
         resultsRef.current = Object.fromEntries(

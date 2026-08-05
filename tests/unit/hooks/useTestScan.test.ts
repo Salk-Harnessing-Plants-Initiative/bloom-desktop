@@ -32,8 +32,13 @@ describe('useTestScan', () => {
 
   beforeEach(() => {
     listeners = {};
-    startScan = vi.fn().mockResolvedValue({ success: true });
-    getOutputDir = vi.fn().mockResolvedValue({ success: true, path: '/out' });
+    // register-handlers.ts's wrapHandler() wraps both channels' normal
+    // (non-throwing) resolution in a { success: true, data: T } envelope —
+    // confirmed via direct inspection. Mocks must match that shape.
+    startScan = vi.fn().mockResolvedValue({ success: true, data: { success: true } });
+    getOutputDir = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { success: true, path: '/out' } });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = global.window as any;
@@ -107,7 +112,10 @@ describe('useTestScan', () => {
   });
 
   it('getOutputDir() failure surfaces a blocking error and does not fall back to /tmp', async () => {
-    getOutputDir.mockResolvedValue({ success: false, error: 'cannot resolve output dir' });
+    getOutputDir.mockResolvedValue({
+      success: true,
+      data: { success: false, error: 'cannot resolve output dir' },
+    });
     const { result } = renderHook(() => useTestScan(baseParams()));
 
     await act(async () => {
@@ -120,7 +128,10 @@ describe('useTestScan', () => {
   });
 
   it('a startScan() failure marks every assigned scanner failed with the returned error', async () => {
-    startScan.mockResolvedValue({ success: false, error: 'No scanners came online' });
+    startScan.mockResolvedValue({
+      success: true,
+      data: { success: false, error: 'No scanners came online' },
+    });
     const { result } = renderHook(() => useTestScan(baseParams()));
 
     await act(async () => {

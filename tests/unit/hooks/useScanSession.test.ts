@@ -67,10 +67,18 @@ describe('useScanSession', () => {
     listeners = {};
     localStorage.clear();
 
-    startScan = vi.fn().mockResolvedValue({ success: true });
-    cancelScan = vi.fn().mockResolvedValue({ success: true });
-    getScanStatus = vi.fn().mockResolvedValue({ isActive: false });
-    getOutputDir = vi.fn().mockResolvedValue({ success: true, path: '/out' });
+    // register-handlers.ts's wrapHandler() wraps these four channels'
+    // normal (non-throwing) resolution in a { success: true, data: T }
+    // envelope — confirmed via direct inspection, and matching
+    // ConfigureScanner.tsx's own `result.data?.isActive` usage. Mocks here
+    // must return that same shape or they don't exercise what the real
+    // preload bridge actually resolves with.
+    startScan = vi.fn().mockResolvedValue({ success: true, data: { success: true } });
+    cancelScan = vi.fn().mockResolvedValue({ success: true, data: { success: true } });
+    getScanStatus = vi.fn().mockResolvedValue({ success: true, data: { isActive: false } });
+    getOutputDir = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { success: true, path: '/out' } });
     verifyPlates = vi.fn().mockResolvedValue({ success: true, results: [], swaps: [] });
     graviscansCreate = vi.fn().mockResolvedValue({ success: true, data: { id: 'gs-1' } });
     graviscanSessionsCreate = vi
@@ -208,7 +216,10 @@ describe('useScanSession', () => {
   });
 
   it('a cancelScan() success response with success:false surfaces the error without throwing', async () => {
-    cancelScan.mockResolvedValue({ success: false, error: 'no active session' });
+    cancelScan.mockResolvedValue({
+      success: true,
+      data: { success: false, error: 'no active session' },
+    });
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
@@ -223,7 +234,10 @@ describe('useScanSession', () => {
   });
 
   it('getOutputDir() failure surfaces a blocking error and does not fall back to /tmp', async () => {
-    getOutputDir.mockResolvedValue({ success: false, error: 'cannot resolve output dir' });
+    getOutputDir.mockResolvedValue({
+      success: true,
+      data: { success: false, error: 'cannot resolve output dir' },
+    });
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
@@ -241,24 +255,27 @@ describe('useScanSession', () => {
   it('on-mount restore rehydrates pendingJobs/waveNumber/timing when the session is active', async () => {
     const onRestoreWaveNumber = vi.fn();
     getScanStatus.mockResolvedValue({
-      isActive: true,
-      experimentId: 'exp-1',
-      waveNumber: 3,
-      currentCycle: 2,
-      totalCycles: 5,
-      coordinatorState: 'scanning',
-      scanStartedAt: 1000,
-      nextScanAt: null,
-      jobs: {
-        'sc-1:00': {
-          scannerId: 'sc-1',
-          plateIndex: '00',
-          outputPath: '/out/00.tiff',
-          plantBarcode: 'PLATE_001',
-          transplantDate: null,
-          customNote: null,
-          gridMode: '2grid',
-          status: 'pending',
+      success: true,
+      data: {
+        isActive: true,
+        experimentId: 'exp-1',
+        waveNumber: 3,
+        currentCycle: 2,
+        totalCycles: 5,
+        coordinatorState: 'scanning',
+        scanStartedAt: 1000,
+        nextScanAt: null,
+        jobs: {
+          'sc-1:00': {
+            scannerId: 'sc-1',
+            plateIndex: '00',
+            outputPath: '/out/00.tiff',
+            plantBarcode: 'PLATE_001',
+            transplantDate: null,
+            customNote: null,
+            gridMode: '2grid',
+            status: 'pending',
+          },
         },
       },
     });
@@ -277,7 +294,7 @@ describe('useScanSession', () => {
   });
 
   it('on-mount restore rehydrates nothing when the session is not active', async () => {
-    getScanStatus.mockResolvedValue({ isActive: false });
+    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
     const onRestoreWaveNumber = vi.fn();
 
     const { result } = renderHook(
@@ -485,7 +502,7 @@ describe('useScanSession', () => {
       'graviscan:session-in-progress:exp-1:0',
       JSON.stringify({ expectedCycles: 6 })
     );
-    getScanStatus.mockResolvedValue({ isActive: false });
+    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
 
     const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
       wrapper: wedgeWrapper,
@@ -501,7 +518,7 @@ describe('useScanSession', () => {
       'graviscan:session-in-progress:exp-1:5',
       JSON.stringify({ expectedCycles: 6 })
     );
-    getScanStatus.mockResolvedValue({ isActive: false });
+    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
 
     const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
       wrapper: wedgeWrapper,
@@ -512,7 +529,7 @@ describe('useScanSession', () => {
   });
 
   it('no marker for the current experiment+wave produces no banner', async () => {
-    getScanStatus.mockResolvedValue({ isActive: false });
+    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
     const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
       wrapper: wedgeWrapper,
     });
