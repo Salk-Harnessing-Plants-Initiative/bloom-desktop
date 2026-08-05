@@ -206,7 +206,7 @@ third outcome, and an explicit await so verification work can't outlive
 
 ## 4. Duplicate-scan check (#120) + dead-code removal
 
-- [ ] 4.1 Write failing unit tests for a new `checkDuplicateScan(db,
+- [x] 4.1 Write failing unit tests for a new `checkDuplicateScan(db,
       plantId, experimentId, waveNumber, plantAgeDays)` handler function,
       validating each of the four fields independently (not as a group):
       - Returns `true` when a non-deleted matching scan exists, `false`
@@ -218,17 +218,17 @@ third outcome, and an explicit await so verification work can't outlive
         matching the `ui-management-pages` spec's "Invalid plantId or
         experimentId..." and "Invalid waveNumber or plantAgeDays..."
         scenarios exactly.
-- [ ] 4.2 Implement `checkDuplicateScan` and register
+- [x] 4.2 Implement `checkDuplicateScan` and register
       `db:scans:checkDuplicate` in `database-handlers.ts`, following the
       existing `db:scans:*` inline-handler convention. Confirm 4.1 passes.
-- [ ] 4.3 Add `checkDuplicate` to `preload.ts` and its typed declaration in
+- [x] 4.3 Add `checkDuplicate` to `preload.ts` and its typed declaration in
       `electron.d.ts`.
-- [ ] 4.4 Write the required E2E test in
+- [x] 4.4 Write the required E2E test in
       `tests/e2e/renderer-database-ipc.e2e.ts` for `db:scans:checkDuplicate`
       (direct-Prisma-seed + `window.evaluate` pattern, matching the file's
       existing style) — this repo's CI coverage gate statically scans this
       file for `db:*` handler calls.
-- [ ] 4.5 In `tests/unit/capture-scan-config.test.tsx` (the file that
+- [x] 4.5 In `tests/unit/capture-scan-config.test.tsx` (the file that
       already stubs the duplicate-check IPC call for this component's
       other tests — this is where these new tests belong), write failing
       tests asserting `CaptureScan.tsx` calls `checkDuplicate` with
@@ -255,9 +255,9 @@ third outcome, and an explicit await so verification work can't outlive
         `tests/unit/pages/CaptureScan-event-cleanup.test.tsx:220-323`'s
         `describe('Interval cleanup', ...)` block — port the pattern into
         this actively-running file rather than relying on the skipped one.
-- [ ] 4.6 Update `CaptureScan.tsx` to use `checkDuplicate`. Confirm 4.5
+- [x] 4.6 Update `CaptureScan.tsx` to use `checkDuplicate`. Confirm 4.5
       passes.
-- [ ] 4.7 Remove `db:scans:getMostRecentScanDate` entirely (per design.md
+- [x] 4.7 Remove `db:scans:getMostRecentScanDate` entirely (per design.md
       Decision 6, confirmed dead once 4.6 lands — an independent full-tree
       grep for "getMostRecentScanDate" found no other caller): the handler
       in `database-handlers.ts`, its `preload.ts` exposure, its
@@ -293,7 +293,7 @@ third outcome, and an explicit await so verification work can't outlive
         `describe.skip`'d, so this is a low-risk cleanup, not a live-test
         fix — the working interval-cleanup pattern from this file is
         ported to `capture-scan-config.test.tsx` in 4.5, not left here).
-- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before full E2E.
 
 ## 5. Follow-up issues (documentation only, no code)

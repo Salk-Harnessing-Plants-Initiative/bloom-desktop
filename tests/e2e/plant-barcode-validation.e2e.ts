@@ -326,149 +326,6 @@ test.describe('IPC: db:accessions:getAccessionNameByBarcode', () => {
 });
 
 // ============================================================================
-// IPC Handler Tests - db:scans:getMostRecentScanDate
-// ============================================================================
-
-test.describe('IPC: db:scans:getMostRecentScanDate', () => {
-  test('should return most recent scan date for plant and experiment', async () => {
-    // Create required entities
-    const scientist = await prisma.scientist.create({
-      data: { name: 'Dr. Scan', email: 'scan@example.com' },
-    });
-
-    const phenotyper = await prisma.phenotyper.create({
-      data: { name: 'Test Phenotyper', email: 'pheno@example.com' },
-    });
-
-    const experiment = await prisma.experiment.create({
-      data: {
-        name: 'Scan Test Experiment',
-        species: 'Arabidopsis',
-        scientist_id: scientist.id,
-      },
-    });
-
-    // Create a scan for today
-    const today = new Date();
-    await prisma.scan.create({
-      data: {
-        experiment_id: experiment.id,
-        phenotyper_id: phenotyper.id,
-        scanner_name: 'Test Scanner',
-        plant_id: 'PLANT_001',
-        path: '/test/path',
-        capture_date: today,
-        num_frames: 100,
-        exposure_time: 1000,
-        gain: 1.0,
-        brightness: 50.0,
-        contrast: 50.0,
-        gamma: 1.0,
-        seconds_per_rot: 30.0,
-        wave_number: 1,
-        plant_age_days: 14,
-      },
-    });
-
-    const result = await window.evaluate(
-      ({ plantId, expId }) => {
-        return (
-          window as unknown as WindowWithElectron
-        ).electron.database.scans.getMostRecentScanDate(plantId, expId);
-      },
-      { plantId: 'PLANT_001', expId: experiment.id }
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.data).not.toBeNull();
-
-    // Verify it's today's date
-    const scanDate = new Date(result.data!);
-    expect(scanDate.getFullYear()).toBe(today.getFullYear());
-    expect(scanDate.getMonth()).toBe(today.getMonth());
-    expect(scanDate.getDate()).toBe(today.getDate());
-  });
-
-  test('should return null when no scans exist', async () => {
-    const scientist = await prisma.scientist.create({
-      data: { name: 'Dr. NoScan', email: 'noscan@example.com' },
-    });
-
-    const experiment = await prisma.experiment.create({
-      data: {
-        name: 'No Scan Experiment',
-        species: 'Arabidopsis',
-        scientist_id: scientist.id,
-      },
-    });
-
-    const result = await window.evaluate(
-      ({ plantId, expId }) => {
-        return (
-          window as unknown as WindowWithElectron
-        ).electron.database.scans.getMostRecentScanDate(plantId, expId);
-      },
-      { plantId: 'NONEXISTENT_PLANT', expId: experiment.id }
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.data).toBeNull();
-  });
-
-  test('should ignore deleted scans', async () => {
-    const scientist = await prisma.scientist.create({
-      data: { name: 'Dr. Deleted', email: 'deleted@example.com' },
-    });
-
-    const phenotyper = await prisma.phenotyper.create({
-      data: { name: 'Delete Phenotyper', email: 'delpheno@example.com' },
-    });
-
-    const experiment = await prisma.experiment.create({
-      data: {
-        name: 'Delete Test Experiment',
-        species: 'Arabidopsis',
-        scientist_id: scientist.id,
-      },
-    });
-
-    // Create a deleted scan
-    await prisma.scan.create({
-      data: {
-        experiment_id: experiment.id,
-        phenotyper_id: phenotyper.id,
-        scanner_name: 'Test Scanner',
-        plant_id: 'PLANT_DELETED',
-        path: '/test/path',
-        capture_date: new Date(),
-        num_frames: 100,
-        exposure_time: 1000,
-        gain: 1.0,
-        brightness: 50.0,
-        contrast: 50.0,
-        gamma: 1.0,
-        seconds_per_rot: 30.0,
-        wave_number: 1,
-        plant_age_days: 14,
-        deleted: true, // Marked as deleted
-      },
-    });
-
-    const result = await window.evaluate(
-      ({ plantId, expId }) => {
-        return (
-          window as unknown as WindowWithElectron
-        ).electron.database.scans.getMostRecentScanDate(plantId, expId);
-      },
-      { plantId: 'PLANT_DELETED', expId: experiment.id }
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.data).toBeNull(); // Deleted scan should be ignored
-  });
-});
-
-// ============================================================================
 // UI Tests - Plant Barcode Validation
 // ============================================================================
 
@@ -595,7 +452,7 @@ test.describe('UI: Plant Barcode Validation', () => {
 // ============================================================================
 
 test.describe('UI: Duplicate Scan Prevention', () => {
-  test('should show warning when plant already scanned today', async () => {
+  test('should show warning when plant/experiment/wave/age all match an existing scan', async () => {
     const scientist = await prisma.scientist.create({
       data: { name: 'Dr. Duplicate', email: 'duplicate@example.com' },
     });
@@ -612,7 +469,6 @@ test.describe('UI: Duplicate Scan Prevention', () => {
       },
     });
 
-    // Create a scan for today
     await prisma.scan.create({
       data: {
         experiment_id: experiment.id,
@@ -628,8 +484,8 @@ test.describe('UI: Duplicate Scan Prevention', () => {
         contrast: 50.0,
         gamma: 1.0,
         seconds_per_rot: 30.0,
-        wave_number: 1,
-        plant_age_days: 14,
+        wave_number: 2,
+        plant_age_days: 21,
       },
     });
 
@@ -640,15 +496,75 @@ test.describe('UI: Duplicate Scan Prevention', () => {
     await window.selectOption('.experiment-chooser', { index: 1 });
     await window.selectOption('.phenotyper-chooser', { index: 1 });
 
-    // Enter the already scanned plant barcode
+    // The new 4-field key requires wave number and plant age to be filled
+    // too, not just the plant barcode — the old same-day check never
+    // needed these fields.
+    await window.locator('#waveNumber').fill('2');
+    await window.locator('#plantAgeDays').fill('21');
+
     const plantBarcodeInput = window.locator('#plantQrCode');
     await plantBarcodeInput.fill('ALREADY_SCANNED_PLANT');
     await plantBarcodeInput.blur();
 
-    // Should show duplicate warning
     await expect(
-      window.locator('text=This plant was already scanned today')
+      window.locator('[data-testid="duplicate-scan-warning"]')
     ).toBeVisible({ timeout: 5000 });
+  });
+
+  test('should not show a warning when wave number differs from the matching scan', async () => {
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr. NoDuplicate', email: 'noduplicate@example.com' },
+    });
+
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'NoDup Phenotyper', email: 'noduppheno@example.com' },
+    });
+
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'No Duplicate Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test Scanner',
+        plant_id: 'DIFFERENT_WAVE_PLANT',
+        path: '/test/path',
+        capture_date: new Date(),
+        num_frames: 100,
+        exposure_time: 1000,
+        gain: 1.0,
+        brightness: 50.0,
+        contrast: 50.0,
+        gamma: 1.0,
+        seconds_per_rot: 30.0,
+        wave_number: 2,
+        plant_age_days: 21,
+      },
+    });
+
+    await window.click('text=Capture Scan');
+    await window.waitForLoadState('networkidle');
+
+    await window.waitForSelector('.experiment-chooser');
+    await window.selectOption('.experiment-chooser', { index: 1 });
+    await window.selectOption('.phenotyper-chooser', { index: 1 });
+
+    await window.locator('#waveNumber').fill('3');
+    await window.locator('#plantAgeDays').fill('21');
+
+    const plantBarcodeInput = window.locator('#plantQrCode');
+    await plantBarcodeInput.fill('DIFFERENT_WAVE_PLANT');
+    await plantBarcodeInput.blur();
+
+    await expect(
+      window.locator('[data-testid="duplicate-scan-warning"]')
+    ).not.toBeVisible({ timeout: 3000 });
   });
 });
 

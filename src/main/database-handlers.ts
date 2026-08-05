@@ -1153,6 +1153,64 @@ export async function scansDelete(
 }
 
 /**
+ * Checks whether a non-deleted scan already exists matching
+ * `(plant_id, experiment_id, wave_number, plant_age_days)` — backs
+ * `db:scans:checkDuplicate`, replacing the imprecise same-day/
+ * (plant_id+experiment_id) check `getMostRecentScanDate` used to back.
+ * Each of the four fields is validated independently; a malformed
+ * argument returns an error rather than `{ data: false }`, since the
+ * latter would read as "no duplicate" rather than "the check could not
+ * run."
+ */
+export async function checkDuplicateScan(
+  db: Db,
+  plantId: string,
+  experimentId: string,
+  waveNumber: number,
+  plantAgeDays: number
+): Promise<DatabaseResponse<boolean>> {
+  try {
+    if (!isNonEmptyString(plantId)) {
+      return { success: false, error: 'plantId must be a non-empty string' };
+    }
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    if (!isValidWaveNumber(waveNumber)) {
+      return {
+        success: false,
+        error: 'waveNumber must be a non-negative integer',
+      };
+    }
+    if (!isValidWaveNumber(plantAgeDays)) {
+      return {
+        success: false,
+        error: 'plantAgeDays must be a non-negative integer',
+      };
+    }
+
+    const scan = await db.scan.findFirst({
+      where: {
+        plant_id: plantId,
+        experiment_id: experimentId,
+        wave_number: waveNumber,
+        plant_age_days: plantAgeDays,
+        deleted: false,
+      },
+      select: { id: true },
+    });
+
+    return { success: true, data: scan !== null };
+  } catch (error) {
+    console.error('[DB] Failed to check for duplicate scan:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
  * Register all database IPC handlers
  *
  * Handlers follow naming convention: db:{model}:{action}
@@ -1883,34 +1941,21 @@ export function registerDatabaseHandlers(deps: {
   );
 
   ipcMain.handle(
-    'db:scans:getMostRecentScanDate',
+    'db:scans:checkDuplicate',
     async (
       _event,
       plantId: string,
-      experimentId: string
-    ): Promise<DatabaseResponse<string | null>> => {
-      try {
-        const scan = await db.scan.findFirst({
-          where: {
-            plant_id: plantId,
-            experiment_id: experimentId,
-            deleted: false,
-          },
-          orderBy: { capture_date: 'desc' },
-          select: { capture_date: true },
-        });
-
-        return {
-          success: true,
-          data: scan?.capture_date?.toISOString() || null,
-        };
-      } catch (error) {
-        console.error('[DB] Failed to get most recent scan date:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ): Promise<DatabaseResponse<boolean>> => {
+      return checkDuplicateScan(
+        db,
+        plantId,
+        experimentId,
+        waveNumber,
+        plantAgeDays
+      );
     }
   );
 

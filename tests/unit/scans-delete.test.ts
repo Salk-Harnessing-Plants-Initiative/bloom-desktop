@@ -12,13 +12,14 @@
  * two files sharing one Prisma-backed SQLite database race on
  * `deleteMany()`/`create()` calls against shared tables (Experiment,
  * Phenotyper), causing intermittent FK-constraint failures unrelated to
- * either file's actual logic. `beforeAll` provisions this file's schema
- * by copying the already-migrated `prisma/dev.db` (both this repo's local
- * setup convention and CI's `pr-checks.yml` run `prisma migrate deploy`
- * against `dev.db` before any test file runs) — cheap and avoids the
- * flakiness of spawning `prisma migrate deploy` as a subprocess while ~70
- * other test files are also starting up in parallel (observed
- * intermittent ENOENT/timeout failures under that load).
+ * either file's actual logic. `beforeAll` provisions this file's schema by
+ * copying a pristine template database built once (before any test file
+ * starts) by tests/unit/global-setup.ts. Copying the live `dev.db` instead
+ * was tried and found unsafe: dev.db is also the shared scratch database
+ * for other real-Prisma test files, so a mid-run copy can capture
+ * GraviScan-family rows (FK'd to Experiment) that this file's narrower
+ * cleanDatabase() can't purge, causing `experiment.deleteMany()` to fail
+ * with a foreign key violation.
  */
 import {
   describe,
@@ -39,16 +40,11 @@ import {
   markMetadataDeleted,
 } from '../../src/main/cylinderscan/scan-metadata-json';
 import type { ScannerSettings } from '../../src/types/scanner';
+import { TEMPLATE_DB_ABSOLUTE_PATH } from './global-setup';
 
 // Resolved by Prisma relative to prisma/schema.prisma, not this file's cwd.
 const TEST_DB_RELATIVE_URL = 'file:./dev-scans-delete-test.db';
-const SOURCE_DB_ABSOLUTE_PATH = path.join(
-  __dirname,
-  '..',
-  '..',
-  'prisma',
-  'dev.db'
-);
+const SOURCE_DB_ABSOLUTE_PATH = TEMPLATE_DB_ABSOLUTE_PATH;
 const TEST_DB_ABSOLUTE_PATH = path.join(
   __dirname,
   '..',
@@ -125,9 +121,9 @@ function makeScannerSettings(
 beforeAll(async () => {
   if (!fs.existsSync(SOURCE_DB_ABSOLUTE_PATH)) {
     throw new Error(
-      `${SOURCE_DB_ABSOLUTE_PATH} does not exist — run ` +
-        `BLOOM_DATABASE_URL="file:./dev.db" npx prisma migrate deploy first ` +
-        `(CI does this in a dedicated setup step before tests run).`
+      `${SOURCE_DB_ABSOLUTE_PATH} does not exist — vitest's globalSetup ` +
+        `(tests/unit/global-setup.ts) should have created it before any ` +
+        `test file ran.`
     );
   }
   fs.copyFileSync(SOURCE_DB_ABSOLUTE_PATH, TEST_DB_ABSOLUTE_PATH);
