@@ -864,14 +864,31 @@ describe('CaptureScan duplicate-scan check', () => {
   });
 
   it('stops polling checkDuplicate after unmount', async () => {
+    // A bare `expect(clearIntervalSpy).toHaveBeenCalled()` is satisfied by
+    // @testing-library/dom's own internal `waitFor` polling below (it uses
+    // the same global setInterval/clearInterval to poll its condition),
+    // completely independent of whether CaptureScan's own effect cleans up
+    // its 2000ms duplicate-check interval. Identify that specific interval
+    // by its distinctive 2000ms delay and assert clearInterval was called
+    // with THAT id, not just "called for any reason."
+    const setIntervalSpy = vi.spyOn(global, 'setInterval');
     const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
 
     const { unmount } = renderCaptureScan();
     await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
 
+    const duplicateCheckCall = setIntervalSpy.mock.calls.find(
+      (call) => call[1] === 2000
+    );
+    expect(duplicateCheckCall).toBeDefined();
+    const duplicateCheckIntervalId = setIntervalSpy.mock.results[
+      setIntervalSpy.mock.calls.indexOf(duplicateCheckCall!)
+    ].value;
+
     unmount();
 
-    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(clearIntervalSpy).toHaveBeenCalledWith(duplicateCheckIntervalId);
+    setIntervalSpy.mockRestore();
     clearIntervalSpy.mockRestore();
   });
 });
