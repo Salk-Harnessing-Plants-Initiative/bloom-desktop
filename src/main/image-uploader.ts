@@ -16,7 +16,7 @@
 
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { ImageStatus } from '../types/database';
-import { loadEnvConfig } from './config-store';
+import { loadEnvConfig, getScansDir as getConfiguredScansDir } from './config-store';
 import path from 'path';
 import os from 'os';
 import type {
@@ -114,8 +114,7 @@ export class ImageUploader {
    * Used to resolve relative Image.path values to absolute paths for upload.
    */
   private async getScansDir(): Promise<string> {
-    const config = loadEnvConfig(path.join(os.homedir(), '.bloom', '.env'));
-    return config.scans_dir || path.join(os.homedir(), '.bloom', 'scans');
+    return getConfiguredScansDir();
   }
 
   /**

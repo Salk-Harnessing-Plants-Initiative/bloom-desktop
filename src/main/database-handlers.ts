@@ -6,9 +6,11 @@
  */
 
 import { ipcMain } from 'electron';
+import * as path from 'path';
 import { getDatabase } from './database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { ImageUploader, UploadResult } from './image-uploader';
+import { getScansDir } from './config-store';
 
 /**
  * Standard response format for database operations
@@ -1103,12 +1105,66 @@ export async function listGraviMetadata(
 }
 
 /**
+ * Soft-delete a scan (sets `deleted: true`) and keep its on-disk
+ * `metadata.json` in sync with the same flag, per
+ * add-cylinderscan-delete-upload-integrity's "Scan Delete IPC Handler"
+ * requirement. `scan.path` can be absolute (legacy/pilot-imported scans)
+ * or relative to `scansDir` — mirrors the same guard
+ * `image-uploader.ts:255-257` uses for `Image.path`. A missing
+ * `metadata.json` (e.g. a legacy scan captured before metadata.json
+ * support existed) logs a warning but does not fail the delete.
+ *
+ * `markMetadataDeleted` is injected rather than imported directly: this
+ * file is shared code and must not import from `cylinderscan/` (enforced
+ * by `@typescript-eslint/no-restricted-imports`) — only `main.ts` (the
+ * orchestrator) may import mode-specific modules, so `main.ts` supplies
+ * the real implementation when it calls `registerDatabaseHandlers()`.
+ */
+export async function scansDelete(
+  db: Db,
+  id: string,
+  scansDir: string,
+  markMetadataDeleted: (outputDir: string) => void
+): Promise<DatabaseResponse> {
+  try {
+    const scan = await db.scan.update({
+      where: { id },
+      data: { deleted: true },
+    });
+    logDatabaseOperation('DELETE', 'Scan', `id=${id} (soft delete)`);
+
+    const outputDir = path.isAbsolute(scan.path)
+      ? scan.path
+      : path.join(scansDir, scan.path);
+    try {
+      markMetadataDeleted(outputDir);
+    } catch (error) {
+      console.warn(
+        `[DB] Could not update metadata.json for scan ${id} at ${outputDir}:`,
+        error
+      );
+    }
+
+    return { success: true, data: scan };
+  } catch (error) {
+    console.error('[DB] Failed to delete scan:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
  * Register all database IPC handlers
  *
  * Handlers follow naming convention: db:{model}:{action}
  * All handlers return DatabaseResponse for consistent error handling
+ *
+ * @param deps.markMetadataDeleted - Injected by `main.ts`, since this
+ * file (shared code) is not allowed to import `cylinderscan/` directly.
+ * See `scansDelete()`'s doc comment.
  */
-export function registerDatabaseHandlers() {
+export function registerDatabaseHandlers(deps: {
+  markMetadataDeleted: (outputDir: string) => void;
+}) {
   const db = getDatabase();
 
   // ============================================
@@ -1934,26 +1990,14 @@ export function registerDatabaseHandlers() {
   );
 
   /**
-   * Soft delete a scan by setting deleted=true
-   * Does NOT delete associated Image records
+   * Soft delete a scan by setting deleted=true, and keep metadata.json
+   * on disk in sync with the same flag. Does NOT delete associated Image
+   * records or any files (see scansDelete()).
    */
   ipcMain.handle(
     'db:scans:delete',
     async (_event, id: string): Promise<DatabaseResponse> => {
-      try {
-        const scan = await db.scan.update({
-          where: { id },
-          data: { deleted: true },
-        });
-        logDatabaseOperation('DELETE', 'Scan', `id=${id} (soft delete)`);
-        return { success: true, data: scan };
-      } catch (error) {
-        console.error('[DB] Failed to delete scan:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
+      return scansDelete(db, id, getScansDir(), deps.markMetadataDeleted);
     }
   );
 

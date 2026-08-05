@@ -1,6 +1,6 @@
 ## 1. Delete completion — metadata.json sync
 
-- [ ] 1.1 In a new test file (or extending existing coverage) for
+- [x] 1.1 In a new test file (or extending existing coverage) for
       `scan-metadata-json.ts`, write failing tests for `markMetadataDeleted(outputDir)`:
       reads an existing `metadata.json`, adds `deleted: true`, writes it back
       atomically (`.tmp` + rename), preserves all other fields unchanged.
@@ -10,7 +10,7 @@
       `deleted` key at all (design.md Decision 13 — absence must mean
       "not deleted," enforced by this helper rather than left as
       prose-only guidance).
-- [ ] 1.2 Add `deleted?: boolean` to the `ScanMetadataJson` interface and
+- [x] 1.2 Add `deleted?: boolean` to the `ScanMetadataJson` interface and
       implement `markMetadataDeleted()` and `isScanMetadataDeleted()` in
       `scan-metadata-json.ts`. Decide during implementation whether to
       extract a shared `atomicWriteJson()` helper from `writeMetadataJson`'s
@@ -18,7 +18,7 @@
       or duplicate the ~4-line pattern inline — either is acceptable, but
       if extracting, re-run `writeMetadataJson`'s existing tests to confirm
       no behavior change. Confirm 1.1's tests pass.
-- [ ] 1.3 Write a failing unit test for `db:scans:delete`
+- [x] 1.3 Write a failing unit test for `db:scans:delete`
       (`database-handlers.ts`) asserting it calls `markMetadataDeleted()`
       with the correct resolved path after the Prisma soft-delete succeeds.
       Path resolution must mirror `image-uploader.ts:255-257`'s existing
@@ -28,15 +28,15 @@
       `path.isAbsolute(scan.path) ? path.join(scan.path, 'metadata.json') :
       path.join(scansDir, scan.path, 'metadata.json')`, not an unconditional
       `path.join(scansDir, scan.path, 'metadata.json')`.
-- [ ] 1.4 Write a failing unit test for the missing-file case: `db:scans:delete`
+- [x] 1.4 Write a failing unit test for the missing-file case: `db:scans:delete`
       still returns `{ success: true }` and logs a warning when
       `metadata.json` doesn't exist on disk.
-- [ ] 1.5 Update `db:scans:delete` to call `markMetadataDeleted()` per 1.3/1.4,
+- [x] 1.5 Update `db:scans:delete` to call `markMetadataDeleted()` per 1.3/1.4,
       with the absolute-path-aware resolution from 1.3. Reuse the `scansDir`
       resolution already used in `image-uploader.ts` (extract to a shared
       helper if that avoids duplicating the `loadEnvConfig` call, otherwise
       inline consistently).
-- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before moving to UI work.
 
 ## 2. Delete completion — shared modal, ScanPreview affordance, success message

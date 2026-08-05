@@ -73,13 +73,14 @@ vi.mock('@salk-hpi/bloom-fs', () => ({
 // Mock config-store
 vi.mock('../../src/main/config-store', () => ({
   loadEnvConfig: vi.fn(),
+  getScansDir: vi.fn(),
 }));
 
 // Import after mocking
 import { createClient } from '@supabase/supabase-js';
 import { SupabaseUploader, SupabaseStore } from '@salk-hpi/bloom-js';
 import { uploadImages } from '@salk-hpi/bloom-fs';
-import { loadEnvConfig } from '../../src/main/config-store';
+import { loadEnvConfig, getScansDir } from '../../src/main/config-store';
 
 // Import the module under test (will fail until implemented)
 import {
@@ -226,6 +227,7 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
 
     // Setup mock config
     (loadEnvConfig as Mock).mockReturnValue(mockCredentials);
+    (getScansDir as Mock).mockReturnValue(mockCredentials.scans_dir);
 
     // Setup mock Prisma client
     mockPrismaClient = {

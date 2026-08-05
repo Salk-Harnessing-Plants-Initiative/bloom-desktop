@@ -25,6 +25,7 @@ import { DAQProcess } from './cylinderscan/daq-process';
 import type { DAQSettings } from '../types/daq';
 import { ScannerProcess } from './cylinderscan/scanner-process';
 import type { ScannerSettings } from '../types/scanner';
+import { markMetadataDeleted } from './cylinderscan/scan-metadata-json';
 import {
   getPythonExecutablePath,
   validatePythonExecutable,
@@ -1185,7 +1186,7 @@ app.on('ready', async () => {
     console.log('[Main] Initializing database...');
     await initializeDatabaseAsync();
     console.log('[Main] Database initialized, registering handlers...');
-    registerDatabaseHandlers();
+    registerDatabaseHandlers({ markMetadataDeleted });
     console.log('[Main] Database initialized and handlers registered');
 
     // Initialize GraviScan handlers if mode is graviscan
