@@ -26,21 +26,30 @@ CI SHALL run `npm run make` and verify that electron-forge's maker stage produce
 
 ### Requirement: Make-Based Packaged App Launch Verification
 
-CI SHALL apply the database schema externally (matching the app's production deployment model — the packaged app never runs migrations itself), then launch the packaged application binary staged by `electron-forge make` (prior to installation) and verify that a window actually renders and the database remains intact and correctly structured after launch, for each platform CI packages the app on. A database-initialization log line alone SHALL NOT be treated as sufficient evidence that the app launched successfully, nor SHALL it be relied upon at all — log lines emitted early in startup can race with other consumers of the process's stdout and are not a reliable signal.
+CI SHALL apply the database schema externally (matching the app's production deployment model — the packaged app never runs migrations itself), then launch the packaged application binary staged by `electron-forge make` (prior to installation) and verify that a window actually renders and the app's own database connection and IPC handlers actually work, for each platform CI packages the app on. A database-initialization log line alone SHALL NOT be treated as sufficient evidence that the app launched successfully, nor SHALL it be relied upon at all — log lines emitted early in startup can race with other consumers of the process's stdout and are not a reliable signal. Checking only that the externally-seeded database file still exists and has the expected schema SHALL NOT be treated as sufficient evidence either — because the schema is seeded before launch, that file would look identical whether the app's own database initialization succeeded, failed, or never ran at all; a real IPC round-trip through the running app is required to prove the app's own database code path actually executed successfully.
 
-#### Scenario: Window renders and database is intact on macOS
+#### Scenario: Window renders and the app's database IPC works on macOS
 
 - **WHEN** the `test-make` CI job applies the database schema externally, then launches the staged app binary via Playwright's Electron driver
 - **THEN** a window becomes available (`firstWindow()` resolves) within the configured timeout
+- **AND** a read-only database IPC call made through the running app's renderer succeeds (proving `registerDatabaseHandlers()` ran and the database connection works)
 - **AND** the expected database tables still exist in the database file after launch
-- **AND** the job fails if either check does not pass
+- **AND** the job fails if any of these checks does not pass
 
-#### Scenario: Window renders and database is intact on Windows
+#### Scenario: Window renders and the app's database IPC works on Windows
 
 - **WHEN** the `test-make-windows` CI job applies the database schema externally, then launches the staged app binary via Playwright's Electron driver
 - **THEN** a window becomes available (`firstWindow()` resolves) within the configured timeout
+- **AND** a read-only database IPC call made through the running app's renderer succeeds (proving `registerDatabaseHandlers()` ran and the database connection works)
 - **AND** the expected database tables still exist in the database file after launch
-- **AND** the job fails if either check does not pass
+- **AND** the job fails if any of these checks does not pass
+
+#### Scenario: A broken database connection is detected, not masked by the pre-seeded file
+
+- **GIVEN** the app's own database initialization fails after the schema has already been applied externally
+- **WHEN** the verification runs
+- **THEN** the read-only database IPC call fails (the handler is never registered, or the call resolves with a failure result)
+- **AND** the job fails, even though the externally-seeded database file itself remains present and correctly structured
 
 ### Requirement: Packaged-App Database Symlink Resolution Has a Copy Fallback
 

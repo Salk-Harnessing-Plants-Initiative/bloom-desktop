@@ -7,8 +7,11 @@
 
 import Database from 'better-sqlite3';
 
-// Prisma tables (based on prisma/schema.prisma), matching the list in
-// scripts/lib/verify-database.sh's verify_schema().
+// Prisma tables (based on prisma/schema.prisma). Ported from
+// scripts/lib/verify-database.sh's verify_schema() list, plus
+// GraviExperimentWaveMetadata (added in prisma/schema.prisma after that
+// bash-script list was last updated — a real coverage gap there, not
+// reproduced here).
 export const EXPECTED_TABLES = [
   'Scientist',
   'Phenotyper',
@@ -25,6 +28,7 @@ export const EXPECTED_TABLES = [
   'GraviConfig',
   'GraviPlateAccession',
   'GraviPlateSectionMapping',
+  'GraviExperimentWaveMetadata',
   '_prisma_migrations',
 ];
 
