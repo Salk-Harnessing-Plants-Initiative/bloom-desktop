@@ -734,3 +734,39 @@ attachExperimentId || 'none')` fires a wasted no-op
       12 — config-store/image-uploader/scan-coordinator path-separator
       assertions, flaky `AccessionForm` timeouts — no new failures; all
       touched test files re-run in isolation first and confirmed green.)
+
+### Round 2: verifying the round-1 fixes themselves (no new full 5-lens sweep)
+
+A second, narrower review verified 13.1-13.10's fixes are correct and
+checked whether they introduced anything new. Verdict: solid enough to
+merge, no blocking issues — closing this loop rather than spawning a third
+round, since nothing beyond the two items below surfaced.
+
+- [x] 13.12 **Test-coverage gaps that would let a regression slip through
+      undetected**, even though the fixes themselves were correct: the
+      "All Waves" mismatch-warning test only checked that the diverged
+      waves were named, never that the matching wave (0) was excluded — a
+      "warn about every linked wave regardless of match" regression would
+      still have passed. Neither `ExperimentDetail.tsx`'s nor
+      `Experiments.tsx`'s new double-submit guards (13.6) had a test
+      actually exercising them. Added: an exclusion assertion to the
+      "All Waves" test; two new tests (one per component) that hold
+      `linkGraviMetadata`/`unlinkGraviMetadata` pending, click the
+      button twice, and assert the IPC method was called exactly once.
+- [x] 13.13 **New, real (if narrow) limitation surfaced by 13.4's fix, not
+      a regression in the fix itself**: keying `boxProgress` by
+      `exp.name` (there is no id in the real payload to key by) means two
+      _different_ experiments sharing the same name, visible on the same
+      page during a concurrent Box backup, would show identical/bleeding
+      progress on both rows. Before this fix the wrong `exp.id` key meant
+      progress silently never rendered at all (safe but useless); now that
+      it renders correctly, this is the one scenario where it can render
+      _incorrectly_. `Experiment.name` has no uniqueness constraint and
+      `box-backup.ts`'s payload has no id to fix this on the renderer side
+      alone. Filed
+      [#292](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/292)
+      to add an id to `BoxBackupProgress` rather than fix in scope here.
+- [x] Run `npm run lint && npx tsc --noEmit` plus the three touched test
+      files in isolation — check gate after 13.12. (Clean; 41/41 across
+      `ExperimentDetail.test.tsx`/`Experiments.test.tsx`/
+      `BrowseGraviScans.test.tsx`.)

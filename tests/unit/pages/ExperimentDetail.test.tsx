@@ -216,6 +216,67 @@ describe('ExperimentDetail', () => {
       });
     });
 
+    it('disables Link while a link call is in flight, so a rapid second click cannot fire a duplicate IPC call', async () => {
+      let resolveLink: (v: { success: true }) => void;
+      linkGraviMetadata.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveLink = resolve;
+          })
+      );
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(listFiles).toHaveBeenCalled());
+
+      const metadataSelect = screen.getByLabelText(/metadata file/i);
+      await user.selectOptions(metadataSelect, 'acc-2');
+      const linkButton = screen.getByRole('button', { name: /^link$/i });
+      await user.click(linkButton);
+
+      expect(screen.getByRole('button', { name: /linking/i })).toBeDisabled();
+      await user.click(screen.getByRole('button', { name: /linking/i }));
+
+      resolveLink!({ success: true });
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /^link$/i })
+        ).not.toBeDisabled()
+      );
+      expect(linkGraviMetadata).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables Unlink while an unlink call is in flight, so a rapid second click cannot fire a duplicate IPC call', async () => {
+      let resolveUnlink: (v: { success: true }) => void;
+      unlinkGraviMetadata.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveUnlink = resolve;
+          })
+      );
+      listGraviMetadata.mockResolvedValue({
+        success: true,
+        data: [
+          {
+            wave_number: 1,
+            accession_id: 'acc-1',
+            accession: { id: 'acc-1', name: 'batch3.xlsx' },
+          },
+        ],
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => screen.getByText(/wave 1: batch3\.xlsx/i));
+
+      const unlinkButton = screen.getByRole('button', { name: /^unlink$/i });
+      await user.click(unlinkButton);
+
+      expect(screen.getByRole('button', { name: /unlinking/i })).toBeDisabled();
+      await user.click(screen.getByRole('button', { name: /unlinking/i }));
+
+      resolveUnlink!({ success: true });
+      await waitFor(() => expect(unlinkGraviMetadata).toHaveBeenCalledTimes(1));
+    });
+
     it('shows linkError inline on failure without clearing the form', async () => {
       linkGraviMetadata.mockResolvedValue({
         success: false,

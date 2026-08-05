@@ -469,8 +469,12 @@ describe('BrowseGraviScans', () => {
       const warning = screen.getByText(
         /differs from the experiment's default accession/i
       );
-      expect(warning.textContent).toMatch(/1/);
-      expect(warning.textContent).toMatch(/2/);
+      expect(warning.textContent).toMatch(/waves 1, 2/i);
+      // Wave 0 matches the default accession — it must NOT be named
+      // alongside the two that actually diverge (a naive "include every
+      // linked wave" regression would still pass a bare /1/ /2/ check).
+      expect(warning.textContent).not.toMatch(/waves? 0/i);
+      expect(warning.textContent).not.toMatch(/0,/);
     });
 
     it('does not warn for "All Waves" when every linked wave matches the experiment default accession', async () => {

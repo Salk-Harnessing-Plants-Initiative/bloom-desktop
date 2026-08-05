@@ -135,6 +135,42 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     expect(unlinkGraviMetadata).not.toHaveBeenCalled();
   });
 
+  it('disables Unlink while an unlink call is in flight, so a rapid second click cannot fire a duplicate IPC call', async () => {
+    let resolveUnlink: (v: { success: true }) => void;
+    unlinkGraviMetadata.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUnlink = resolve;
+        })
+    );
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [makeExperiment({ experiment_type: 'graviscan' })],
+    });
+    listGraviMetadata.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          wave_number: 1,
+          accession_id: 'gacc-1',
+          accession: { id: 'gacc-1', name: 'batch3.xlsx' },
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<Experiments mode="graviscan" />);
+    await waitFor(() => screen.getByText(/wave 1: batch3\.xlsx/i));
+
+    const unlinkButton = screen.getByRole('button', { name: /^unlink$/i });
+    await user.click(unlinkButton);
+
+    expect(screen.getByRole('button', { name: /unlinking/i })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: /unlinking/i }));
+
+    resolveUnlink!({ success: true });
+    await waitFor(() => expect(unlinkGraviMetadata).toHaveBeenCalledTimes(1));
+  });
+
   it('cylinderscan experiments keep the existing single-accession attachAccession flow', async () => {
     listExperiments.mockResolvedValue({
       success: true,
