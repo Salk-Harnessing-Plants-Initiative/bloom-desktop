@@ -182,7 +182,7 @@ positionally-called function. Validation reuses
 32-bit integer) rather than a second, potentially divergent copy of the
 same check — that function is not currently `export`ed
 (`database-handlers.ts:900`), so this proposal also exports it as a small,
-mechanical prerequisite (task in Section 1).
+mechanical prerequisite (tasks.md task 3.1).
 
 This keeps the existing "experimentId scopes both the plate lookup and
 every DB write" scenario (`scanning/spec.md:2888`) true, unmodified, for
