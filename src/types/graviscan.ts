@@ -381,6 +381,17 @@ export interface ScannerPanelState {
   progress: number;
   outputFilename: string;
   lastError?: string;
+  /** Sourced from `getScannerStatus()`'s existing `ScannerStatusRow.gridMode`
+   * — no backend change needed. Used to compute the real (not hardcoded)
+   * `platesPerScanner` for the predictive cadence warning (design.md
+   * Decision 7). */
+  gridMode: string;
+  /** The scanner's raw hardware/connection status from
+   * `ScannerStatusRow.status` ('ready' | 'starting' | 'error' | 'dead' |
+   * 'disconnected'), kept distinct from `state` (which describes
+   * scan-progress, not connectivity) — collapsing the two would lose the
+   * "starting" distinction PR #213's fix depends on polling for. */
+  connectionStatus: ScannerStatusRow['status'];
 }
 
 /**
