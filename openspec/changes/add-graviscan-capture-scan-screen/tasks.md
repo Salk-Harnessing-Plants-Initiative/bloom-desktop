@@ -465,7 +465,7 @@ other out of order.
       empty state; the auto-fill IPC-failure inline error from task 9.1
       actually renders in this component (not just asserted at the hook
       level). Implement to satisfy.
-- [ ] 14.4 `ScanControlSection.tsx` — failing tests in
+- [x] 14.4 `ScanControlSection.tsx` — failing tests in
       `tests/unit/components/ScanControlSection.test.tsx`: Start/Cancel/
       continuous-mode controls call the corresponding `useScanSession`/
       `useContinuousMode` handlers; **the Cancel-rejection error banner
