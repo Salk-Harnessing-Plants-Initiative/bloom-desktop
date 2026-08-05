@@ -213,9 +213,15 @@ linked metadata" below.
 - **WHEN** the swap correction's `GraviScan` `updateMany` runs
 - **THEN** its `where` clause SHALL include `wave_number: waveNumber` in
   addition to `experiment_id`/`scanner_id`/`plate_barcode`
-- **AND** the other wave's historical `GraviScan` rows SHALL NOT be
-  touched by this correction, even though they share every other matching
-  field
+- **AND** the corresponding `GraviScanPlateAssignment` `verification_status`/
+  swap-correction `updateMany` SHALL likewise include
+  `wave_number: waveNumber` in its `where` clause (this table now has a
+  `wave_number` column — see the Tier 4 proposal's design.md Decision 3,
+  added there to fix a different bug, and reused here so verification
+  results are genuinely wave-attributable rather than current-state-only)
+- **AND** the other wave's historical `GraviScan`/`GraviScanPlateAssignment`
+  rows SHALL NOT be touched by this correction, even though they share
+  every other matching field
 - **NOTE**: without this, a wave-precise lookup paired with an
   experiment-wide write would be a regression relative to today's
   behavior, not just an incomplete improvement — before wave-scoping
@@ -224,13 +230,6 @@ linked metadata" below.
   while leaving the write's blast radius unchanged introduces a new way
   to silently corrupt a different wave's historical data that could not
   happen before this change.
-- **NOTE**: `GraviScanPlateAssignment.verification_status` itself has no
-  `wave_number` column and remains current-state-only — a second
-  verification run for the same scanner/position under a different wave
-  still overwrites the first run's `verification_status` with no
-  wave-attributable trace of either run. This is an accepted, named
-  limitation of this change (see the Tier 4 proposal's design.md), not
-  something this scenario claims to fix.
 
 #### Scenario: Wave-scoped lookup with no linked metadata
 

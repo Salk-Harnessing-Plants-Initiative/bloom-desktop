@@ -56,6 +56,13 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   positional argument at `verifyPlates()`'s ~50 existing call sites.
   Every existing caller/test that omits it keeps today's behavior
   unchanged.
+- **Schema migration (added after review — an earlier draft of this
+  proposal claimed none was needed):** `GraviScanPlateAssignment` gains a
+  `wave_number Int @default(0)` column and a wave-inclusive unique
+  constraint; `GraviScan` gains a unique constraint enabling
+  upsert-based, idempotent per-job persistence. Both are small, additive,
+  default-backed changes with no data loss to existing rows. See
+  design.md's Migration Plan.
 - Wave-scoped QR verification (issue #162): when `waveNumber` is supplied,
   the plate *lookup* resolves the wave's linked accession via
   `GraviExperimentWaveMetadata` and scopes the `GraviPlateSectionMapping`
@@ -65,32 +72,39 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   `GraviScan.wave_number`, which already exists), so a wave-precise read
   is never paired with an experiment-wide write that could touch another
   wave's scan history — this depends on `useScanSession` actually calling
-  `database.graviscans.create(...)` with the real wave number per
-  completed job, since no existing caller in the app does this today (the
-  real scan lifecycle currently persists no `GraviScan` rows at all —
-  there was no renderer to trigger one before this tier). Also exports
-  `database-handlers.ts`'s existing (currently un-exported)
-  `isValidWaveNumber()` helper for reuse rather than a second copy of the
-  same check. `GraviScanPlateAssignment.verification_status` remains
-  current-state-only (no `wave_number` column, an existing, separate
-  design predating this proposal), and a mis-load that persisted across
-  several waves before detection is now corrected only for the wave just
-  verified, not retroactively for earlier waves — both accepted, named
-  limitations (design.md Decision 2/Risks), not schema changes.
-- Plate auto-fill via `listGraviMetadata` (already fully wired,
-  zero renderer callers today), with fixes over both the reference
-  implementation and draft PR #212: auto-filled fields stay editable
-  (not read-only text); manual overrides are derived by comparing
-  persisted assignment values against a freshly recomputed auto-fill
-  baseline for same-wave re-fires, surviving renderer remount/navigation
-  unlike an in-memory dirty flag; and — found during a second review
-  round — a genuine wave switch always unconditionally resets to the new
-  wave's own fresh computation rather than ever comparing against a
-  previous wave's persisted values, closing the PR #216 stale-assignment
-  bug for every wave-switch case (not only "no metadata linked").
-  Manually entering a barcode triggers the same accession-match lookup
-  auto-fill uses, populating transplant date/note (the actual #223 fix,
-  not merely a side effect of editable fields).
+  `database.graviscans.upsert(...)` (idempotent, per the new unique
+  constraint above) with the real wave number per completed job, since no
+  existing caller in the app does this today (the real scan lifecycle
+  currently persists no `GraviScan` rows at all — there was no renderer
+  to trigger one before this tier). Also exports `database-handlers.ts`'s
+  existing (currently un-exported) `isValidWaveNumber()` helper for reuse
+  rather than a second copy of the same check.
+  `GraviScanPlateAssignment.verification_status` becomes genuinely
+  wave-attributable via the same schema column the plate-assignment fix
+  below needs anyway (no longer a separate accepted limitation, as an
+  earlier draft framed it). A mis-load that persisted across several
+  waves before detection is still corrected only for the wave just
+  verified, not retroactively for earlier waves — this one remains an
+  accepted, named limitation (design.md Decision 2/Risks).
+- **Plate auto-fill via `listGraviMetadata`, now wave-scoped at the schema
+  level, not by renderer-side inference.** Two prior review rounds each
+  found a real bug in a purely renderer-side approach to "did the operator
+  override this value" (round 1: an in-memory `Set` that doesn't survive
+  remount; round 2: a ref-based wave-switch heuristic that *also* doesn't
+  survive remount, and could silently discard a real operator override on
+  ordinary navigation — a worse bug than the display glitch it fixed).
+  The actual fix: `GraviScanPlateAssignment` gains the `wave_number`
+  column named above, so each wave has its own genuinely separate
+  persisted row per position — there is no render-history inference left
+  to get wrong. Auto-filled fields stay editable (not read-only text);
+  manual overrides are detected by comparing the current wave's own
+  persisted row against a freshly recomputed auto-fill baseline, correct
+  on first load, same-wave re-fires, wave switches, and remounts alike,
+  since "which wave's row" is now an explicit parameter rather than
+  inferred state. This closes PR #216's stale-cross-wave-assignment bug
+  for every case. Manually entering a barcode triggers the same
+  accession-match lookup auto-fill uses, populating transplant date/note
+  (the actual #223 fix, not merely a side effect of editable fields).
 - Session restore scoped honestly to renderer navigation/remount while the
   main process stays alive — matching what the reference implementation's
   "restoration across app restart" claim actually delivers (its
@@ -105,12 +119,13 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   neither.
 - "Start Scan" is disabled while any assigned scanner has an active,
   unacknowledged wedge, via a small `WedgeContext` that `Layout.tsx`
-  provides around its existing `useWedgeEvents()` call — both
-  `WedgeBanner` and this screen consume the same shared state, rather
-  than each independently subscribing (an independent second subscription
-  was the first draft's approach; review found it would start blank on
-  every navigation back to this screen, silently missing a wedge that
-  occurred while the operator was elsewhere).
+  provides — the `useWedgeEvents()` call moves up from `WedgeBanner.tsx`
+  (where it lives today) to `Layout.tsx`, and both `WedgeBanner` and this
+  screen consume the shared context instead of each subscribing
+  independently (an independent second subscription was the first draft's
+  approach; review found it would start blank on every navigation back to
+  this screen, silently missing a wedge that occurred while the operator
+  was elsewhere).
 - Predictive cadence warning computes `platesPerScanner` from each
   scanner's real `gridMode` (already returned by `getScannerStatus()`
   today), closing a spec-conformance gap the reference implementation
@@ -129,27 +144,41 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   Scan screen composition and routing, QR verification banner UI, plate
   auto-fill/override UX, session restore-on-navigation UX, test-scan UI,
   cancel-scan UI, real cadence-calculation wiring).
-- Affected code: `src/renderer/GraviScan.tsx` (new),
+- Affected code: `prisma/schema.prisma` + a new migration under
+  `prisma/migrations/` (`GraviScanPlateAssignment.wave_number` +
+  constraint, `GraviScan`'s new unique constraint),
+  `src/renderer/GraviScan.tsx` (new),
   `src/renderer/hooks/{useScannerStatus,useWaveNumber,usePlateAssignments,
   useContinuousMode,useScanSession,useTestScan}.ts` (new),
   `src/renderer/components/graviscan/*` (new),
+  `src/renderer/components/WedgeBanner.tsx` (modified — its internal
+  `useWedgeEvents()` call moves up into a new `WedgeContext`),
   `src/renderer/utils/cadenceEstimator.ts` (new), `src/renderer/App.tsx`,
-  `src/renderer/Layout.tsx`, `src/main/graviscan/verify-plates.ts`,
-  `src/main/graviscan/register-handlers.ts`, `src/main/preload.ts`,
-  `src/types/electron.d.ts`, `src/types/graviscan.ts` (new
-  `VerificationStatus` type — no such type exists in this repo today;
-  this is a creation, not a "unification" of anything currently present),
-  `tests/unit/graviscan/{verify-plates,register-handlers}.test.ts`,
+  `src/renderer/Layout.tsx` (modified — provides `WedgeContext`, adds the
+  nav-link entry), `src/main/graviscan/verify-plates.ts`,
+  `src/main/graviscan/register-handlers.ts`,
+  `src/main/database-handlers.ts` (existing
+  `graviscanPlateAssignments.{upsertMany,list}` gain a `waveNumber`
+  parameter; `graviscansCreate` becomes upsert-based),
+  `src/main/preload.ts`, `src/types/electron.d.ts`,
+  `src/types/graviscan.ts` (new `VerificationStatus` type — no such type
+  exists in this repo today; this is a creation, not a "unification" of
+  anything currently present),
+  `tests/unit/graviscan/{verify-plates,register-handlers,
+  database-handlers}.test.ts`,
   `tests/unit/hooks/{useScannerStatus,useWaveNumber,usePlateAssignments,
   useContinuousMode,useScanSession,useTestScan}.test.ts` (new, matching
   this repo's existing convention — e.g. `tests/unit/hooks/
-  useWedgeEvents.test.ts` — not a `tests/unit/renderer/` prefix, which
-  doesn't exist anywhere in this codebase),
+  useWedgeEvents.test.ts` — not a `tests/unit/renderer/` prefix),
   `tests/unit/components/{CadenceWarningBanner,QRVerificationBanner,
-  ScanFormSection,ScanControlSection,ScannerStatusPanel}.test.tsx` (new,
-  matching e.g. `tests/unit/components/WedgeBanner.test.tsx`),
-  `tests/unit/renderer/cadenceEstimator.test.ts` (pure utility, not a
-  hook/component — kept separate from the two directories above),
+  ScanFormSection,ScanControlSection,ScannerStatusPanel,
+  WedgeContext}.test.tsx` (new, matching e.g.
+  `tests/unit/components/WedgeBanner.test.tsx`),
+  `tests/unit/cadenceEstimator.test.ts` (pure utility — this repo's
+  convention for such files is a flat path directly under `tests/unit/`,
+  e.g. `tests/unit/date-helpers.test.ts`, not a `tests/unit/renderer/`
+  subdirectory; an earlier draft of this proposal used that nonexistent
+  prefix for this one file while correctly avoiding it everywhere else),
   `tests/unit/pages/{App,Layout,GraviScan}.test.tsx` (existing `App.test.tsx`/
   `Layout.test.tsx` modified, new `GraviScan.test.tsx` — matching e.g.
   `tests/unit/pages/ConfigureScanner.test.tsx`), `tests/e2e/
@@ -158,12 +187,19 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   covers the separate `db:*` namespace and its own static coverage gate,
   unrelated to `graviscan:*` handlers).
 - **Not affected, left as-is on purpose**: `graviscan:ensure-dir` and
-  `graviscan:list-scan-files` preload wiring (Tier 5); `WedgeBanner`/
-  `useWedgeEvents` (Tier 3, already globally mounted — this screen
-  consumes, does not modify, that mechanism); `ScannerConfigSection`/
+  `graviscan:list-scan-files` preload wiring (Tier 5); `ScannerConfigSection`/
   `useScannerConfig` (confirmed dead code, not ported);
   `graviscan:upload-all-scans` (verification status does not gate uploads
   — already explicitly deferred by the accepted spec, unchanged here).
+  **Recommended immediate follow-up, not this tier's scope**:
+  `image-handlers.ts`'s `downloadImages`, `box-backup.ts`, and
+  `graviscan-upload.ts` all resolve per-wave metadata via the legacy
+  single `Experiment.accession_id` relation rather than
+  `GraviExperimentWaveMetadata` — a gap `add-wave-scoped-metadata-linking`
+  (PR #278) named for two of these three files as pending exactly this
+  tier's existence; this tier is what activates it into an observable
+  defect (see design.md Non-Goals) but rewiring three existing,
+  backend-only, unrelated-to-this-screen files is out of scope here.
 - Depends on Tiers 1–3 (all merged: PRs #273, #274, #277) and
   `add-wave-scoped-metadata-linking` (merged PR #278, archived
   `openspec/changes/archive/2026-08-04-add-wave-scoped-metadata-linking/`).

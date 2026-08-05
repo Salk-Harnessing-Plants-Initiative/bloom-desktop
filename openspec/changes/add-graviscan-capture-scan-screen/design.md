@@ -88,6 +88,42 @@ on manual barcode pick" — `usePlateAssignments`, see Decision 3).
   of dead code via `git grep`) or `ToastContext` (this codebase
   deliberately uses inline banners; see roadmap "Closing the loop"
   section).
+- **Rewiring `downloadImages` (`image-handlers.ts`), `box-backup.ts`, and
+  `graviscan-upload.ts` to resolve per-wave metadata via
+  `GraviExperimentWaveMetadata` instead of the legacy single
+  `Experiment.accession_id` relation.** `add-wave-scoped-metadata-linking`
+  (PR #278) explicitly deferred this for `box-backup.ts`/
+  `graviscan-upload.ts`, naming it as pending "a renderer caller to supply
+  `waveNumber`... likely scoped alongside Tier 3 or Tier 4" (its own
+  design.md, Open Question 2) — review found `image-handlers.ts`'s
+  `downloadImages` has the identical pattern, not previously named at
+  all. **This tier is exactly that trigger condition**: once an operator
+  links different waves to different accessions (PR #278's entire
+  purpose) and this tier starts persisting real, distinct `wave_number`
+  values (Decision 2 point 4 / Section 9), all three of these existing,
+  unrelated-to-this-screen backend files will silently resolve **every**
+  wave's exported/uploaded metadata (CSV contents, `accession_name`,
+  `transplant_date`, `custom_note`) from whichever single accession the
+  legacy relation happens to point at — correctly wave-labeled output
+  folders/rows with potentially wrong contents for every wave but one.
+  This is a real, now-activated gap, explicitly named rather than
+  silently left implicit (per this proposal's own convention elsewhere) —
+  but rewiring three existing, working, backend-only files unrelated to
+  the Capture Scan screen is a distinct piece of work from this tier's
+  renderer build-out, and is out of scope here. **Recommended as an
+  immediate, small follow-up change** (each file needs the same
+  `GraviExperimentWaveMetadata`-based accession resolution this tier
+  already builds for `verify-plates.ts`/`usePlateAssignments` — no new
+  concept, just three more call sites), filed once this tier merges.
+- **Triaged, deferred without further scope in this tier:** five open,
+  unmerged issues touch files this tier rebuilds (`#241` per-cycle
+  plate-subset selection, `#250` A/B plate display order vs. physical
+  scanner bed layout, `#168` per-scanner reconnect button, `#239`
+  surfacing `bytes_received`/`wall_seconds` in `ScannerStatusPanel`,
+  `#225` continuous-scan cycle time exceeding the configured interval).
+  None describe a bug in behavior this tier itself introduces; each is an
+  independent enhancement request. Recorded here, once, so three
+  successive review rounds re-flagging their silence can stop doing so.
 
 ## Decisions
 
@@ -203,7 +239,24 @@ When Tier 4 (the first and only renderer caller) passes `waveNumber`:
    existing `experimentId`/`GraviScan` browse-by-experiment features) to
    operate on. This was implicit in the roadmap's own Tier 4 dependency
    note ("DB layer to persist completed scans/sessions") but is made an
-   explicit task here since review found the write path doesn't exist yet.
+   explicit task here since review found the write path doesn't exist yet
+   (see Section 9 in tasks.md for the exact field shape and an
+   idempotency fix — see that section's note below).
+
+   **Idempotency:** `GraviScan` has no unique constraint today
+   (`schema.prisma:109-147` — only non-unique `@@index`s), so a
+   duplicated/retried job-complete event (the same event-duplication risk
+   Decision 1 rebuilds `useScanSession` to guard against on the renderer
+   side) could create two rows for one physical scan if the per-job
+   `create()` call fires twice. This proposal adds
+   `@@unique([session_id, scanner_id, plate_index, cycle_number])` to
+   `GraviScan` (a small, additive schema change — SQLite treats multiple
+   `NULL`s in a unique index as distinct, so one-shot/test scans with no
+   `session_id` are unaffected) and changes the per-job persistence call
+   to `db.graviScan.upsert({ where: {
+   session_id_scanner_id_plate_index_cycle_number: {...} }, create:
+   {...}, update: {} })` — a retried event becomes a true no-op rather
+   than a second row.
 
    **Accepted, named trade-off of wave-scoping the write:** if a plate was
    physically mis-loaded and stayed mis-loaded across *several* waves
@@ -214,27 +267,24 @@ When Tier 4 (the first and only renderer caller) passes `waveNumber`:
    Detecting and warning about that cross-wave case is out of scope for
    this tier — recorded here so it's a named, accepted limitation rather
    than an unconsidered regression.
-5. **`GraviScanPlateAssignment.verification_status` is accepted as
-   current-state-only, not wave-historical** — this table has no
-   `wave_number` column (`schema.prisma:169-196`) and is already, by
-   existing design (predating this proposal), a "current assignment for
-   this position" record that gets overwritten wave-to-wave (this is the
-   same table PR #216 found stale-data bugs in). Adding a `wave_number`/
-   `verified_against_accession_id` column to make a verification result
-   wave-attributable after the fact would require a schema migration and
-   is judged out of scope for this tier; it is recorded as an explicit,
-   accepted limitation (see Risks/Trade-offs) rather than silently
-   reproduced without comment.
+5. **`GraviScanPlateAssignment.verification_status` becomes genuinely
+   wave-attributable, via the same schema change Decision 3 makes for a
+   different reason.** Decision 3 (below) adds a `wave_number` column to
+   `GraviScanPlateAssignment` to fix a real data-loss bug found in this
+   proposal's own review history (not primarily for verification's
+   sake) — but once that column exists, `verify-plates.ts`'s swap-
+   correction and `verification_status` writes to
+   `GraviScanPlateAssignment` are scoped by `wave_number` too, when one is
+   supplied. This closes what would otherwise be an accepted limitation
+   (an earlier draft of this design judged a schema migration for this
+   column out of scope and recorded current-state-only semantics as a
+   permanent trade-off) — it turns out not to be a separate, deferrable
+   concern once Decision 3's own fix requires the same column anyway.
 
 **Alternatives considered:** defer again (as `add-wave-scoped-metadata-
 linking` did), tracked as a follow-up. Rejected per this proposal's user
 decision — Tier 4 is exactly the caller that was missing, and the
-addition is small and additive. Also considered: add a `wave_number`
-column to `GraviScanPlateAssignment` now to close the provenance gap in
-point 5 fully. Rejected for this tier — it's a schema migration for a
-table whose "current state only" semantics are an existing, separate
-design decision predating this proposal; worth its own follow-up if a
-real incident demonstrates the need.
+addition is small and additive.
 
 ### Decision 3 — Plate auto-fill with manual override
 
@@ -244,72 +294,67 @@ wired end-to-end — preload, IPC, handler — with zero renderer callers
 today), then `graviPlateAccessions.list(accessionId)` to auto-populate
 `plantBarcode`/`transplantDate`/`customNote`/`selected` per position.
 
-Two fixes over the reference implementation (and draft PR #212, whose
-`usePlateAssignments.ts` diff is a strict subset of the reference's),
-whose auto-fill has **effectively replaced** manual entry once a wave has
-linked metadata (confirmed: `plantBarcode` renders as a static `<span>`,
-not an input, in `isGraviMetadata` mode; the one remaining editable
-field, `selected`, has no protection against being silently overwritten
-if the auto-fill effect re-fires for any reason — wave switch, experiment
-switch, scanner reconfig — since it unconditionally rebuilds all
-assignments with no merge logic):
+Two rounds of review on this decision each found a real bug, both rooted
+in the same underlying cause: `GraviScanPlateAssignment` has no
+`wave_number` column (`@@unique([experiment_id, scanner_id,
+plate_index])`) — it is **one shared row per position across every
+wave**, by existing design predating this proposal. Round 1 tried a
+purely renderer-side fix (an in-memory `dirty: Set`); review found it
+doesn't survive remount. Round 2 tried a derived comparison plus a
+`lastAutoFilledWave` ref to distinguish same-wave re-fires from real wave
+switches; review found the ref itself doesn't survive remount either —
+navigating away and back to the *same* wave is indistinguishable, to a
+fresh hook instance, from switching to a different wave, so that design's
+"unconditional reset on wave switch" branch would fire on ordinary
+navigation and **silently discard a legitimate, already-persisted
+operator override** — a worse bug (silent data loss) than the one it
+fixed (stale display).
+
+**Revised decision: give `GraviScanPlateAssignment` a real `wave_number`
+column, closing the root cause instead of working around it with
+renderer-side heuristics.** Add `wave_number Int @default(0)` and change
+the unique constraint to `@@unique([experiment_id, scanner_id,
+plate_index, wave_number])` (schema migration, see Migration Plan).
+`database-handlers.ts`'s existing `graviscanPlateAssignments.upsertMany`/
+`.list` handlers (from Tier 2, already wired end-to-end) gain a
+`waveNumber` parameter, scoping reads/writes to that specific wave's own
+row.
+
+This eliminates the entire remount-fragility problem, not just patches
+around it: each wave now has its own independent, genuinely separate
+persisted row per position. There is no "which wave was this ref last set
+to" question to get wrong, because there is no shared state to
+misattribute in the first place —
 
 1. `ScanFormSection.tsx` renders `plantBarcode`/`transplantDate`/
    `customNote` as editable inputs in **both** gravi-metadata and manual
    modes — auto-fill pre-populates, it does not lock the field.
-2. **"Override" (operator-corrected) is a derived, not stored, property —
-   scoped strictly to same-wave re-fires, never across a wave switch.**
-   Rather than an in-memory `Set` that resets on remount (which would
-   silently defeat its own purpose the moment the operator navigates away
-   and back — a case Decision 4 explicitly supports), `usePlateAssignments`
-   tracks the wave number its auto-fill baseline was last computed for
-   (`lastAutoFilledWave`, a ref, not state — it must not itself trigger a
-   re-render).
-   - **When the current wave equals `lastAutoFilledWave`** (an auto-fill
-     re-fire caused by something *other* than a wave change — scanner
-     reassignment, experiment metadata reload): a position is treated as
-     operator-overridden whenever its currently **persisted**
-     `GraviScanPlateAssignment` values differ from what a fresh
-     recomputation of the wave's auto-fill would produce for that
-     position, **and a persisted row for that position already exists**.
-     A position with **no persisted row yet** is never treated as
-     overridden — it is always populated by the fresh auto-fill
-     computation on first load, regardless of whether "no value" trivially
-     "differs" from a computed one. A match (persisted equals freshly
-     computed) means it's safe to overwrite with the — possibly
-     unchanged — fresh value; a mismatch means the operator changed it
-     after the last auto-fill and it is left untouched.
-   - **When the current wave differs from `lastAutoFilledWave`** (a real
-     wave switch): every position for the newly-selected wave is
-     **unconditionally** overwritten by the fresh auto-fill computation
-     (or left empty, if the new wave has no link) — the persisted-vs-
-     computed comparison above is not applied at all for a wave switch.
-     `lastAutoFilledWave` is then updated to the new wave. This is the fix
-     for a gap review found in an earlier draft of this design: comparing
-     a *different* wave's own genuinely different auto-fill values against
-     stale, persisted data left over from a *previous* wave would
-     otherwise misclassify the stale data as "operator override" and
-     preserve it — reproducing PR #216's exact symptom (a previous wave's
-     values bleeding into the new wave's grid) through a path a simpler
-     "just compare persisted vs. computed" rule doesn't catch. Requiring
-     an unconditional reset on every wave change, and reserving the
-     persisted-vs-computed comparison for same-wave re-fires only, closes
-     this regardless of whether the new wave has its own metadata link, no
-     link at all, or a link to a different accession than the previous
-     wave.
-   This makes the override survive remounts/navigation for free (the
-   comparison is recomputed fresh from persisted DB state on every mount,
-   not from in-memory-only state a remount would reset), without a second
-   persistence mechanism.
-3. **Avoids PR #216's stale-cross-wave-assignment bug, including the
-   different-metadata variant.** #216 documents that
-   `usePlateAssignments`'s reference/draft-PR ancestor loads persisted
-   `GraviScanPlateAssignment` rows keyed only on `(experiment_id,
-   scanner_id)` — no wave — so switching wave still displays the
-   *previous* wave's persisted assignments as if they belonged to the
-   current one. Point 2's wave-switch hard-reset closes this for **every**
-   wave-switch case (no link, same link, or a different link) — not only
-   the no-link case an earlier draft of this design handled.
+2. **"Override" (operator-corrected) is now a direct, wave-scoped
+   comparison — no ref, no remount-lifecycle dependency.** On mount and
+   on every auto-fill re-run, `usePlateAssignments` reads the persisted
+   row for `(experimentId, scannerId, plateIndex, waveNumber)` — the
+   **current** wave's own row, always, regardless of why the effect
+   fired or how many times the hook has (re)mounted. If a row already
+   exists and its values differ from a freshly recomputed auto-fill
+   baseline, it's treated as operator-overridden and left untouched; if
+   no row exists yet for this wave, it is populated by the fresh
+   computation (never misclassified as "overridden" merely because
+   "no value" trivially differs from a computed one). Switching wave
+   simply reads a **different** row (or none) — there is no "was this a
+   real wave switch or just a remount" question to answer, because
+   "which wave's row to read" is now an explicit query parameter, not an
+   inferred fact about render history. A round-trip (wave 2 → wave 3 →
+   back to wave 2) correctly restores wave 2's own persisted override,
+   because it was never touched by wave 3's auto-fill in the first
+   place — they're different rows.
+3. **Avoids PR #216's stale-cross-wave-assignment bug, and the
+   remount-vs-wave-switch data-loss variant review's own fixes introduced
+   along the way.** #216's literal symptom (a previous wave's values
+   bleeding into the new wave's grid) cannot occur: each wave reads its
+   own row. The round-2 regression (an operator's own override silently
+   discarded on ordinary remount) also cannot occur, for the same reason
+   — there is no ref-based "was this a wave switch" inference left to get
+   wrong.
 4. **Avoids PR #223's dropped-metadata bug via an explicit re-lookup, not
    merely "fields are editable."** #223 found that picking a plate barcode
    manually dropped `transplant_date`/`custom_note` (never captured for a
@@ -326,19 +371,23 @@ assignments with no merge logic):
 **Alternatives considered:** manual-entry-only, deferring all auto-fill to
 Tier 5. Rejected per user decision — `listGraviMetadata` is already fully
 wired with no caller, and manual-only would be a real UX regression for
-the first working Capture Scan screen. Also considered: an in-memory
-`dirty: Set<string>` (the originally-drafted approach). Rejected once
-review found it does not survive the renderer remount Decision 4 requires
-this screen to handle gracefully — the derived-comparison approach above
-achieves the same protection without that gap.
+the first working Capture Scan screen. Also considered, across two
+successive review rounds: an in-memory `dirty: Set<string>`, then a
+derived comparison gated by a `lastAutoFilledWave` ref. Both rejected —
+each is a renderer-side heuristic trying to infer "did the wave actually
+change" without a wave-scoped data model to ground the inference in, and
+each broke on ordinary remount for that reason. The schema column removes
+the need to infer anything.
 
-**Accepted limitation:** neither approach labels *which* field was
-overridden or distinguishes "operator correction" from "auto-fill result"
-in the database itself — `GraviScanPlateAssignment` has no
-`is_manual_override`/`source` column (see Risks/Trade-offs). A future
-researcher querying the table directly cannot tell provenance; only the
-live session's own comparison can reconstruct it, and only until the next
-auto-fill baseline changes it again.
+**Accepted limitation, now narrower:** the DB still does not label
+*which* field within an existing wave-scoped row was auto-filled versus
+manually typed (`GraviScanPlateAssignment` has no `is_manual_override`/
+`source` column) — a future researcher can tell "this wave's row differs
+from what auto-fill would compute today" but not which specific edit made
+it differ, or when. This is a narrower gap than round 2's version of this
+limitation (which was "no wave attribution at all"): a verification
+result or plate assignment is now at least correctly attributed to its
+own wave.
 
 ### Decision 4 — Session restore: in-process only
 
@@ -410,6 +459,19 @@ the cost of only covering sessions started from this same browser
 profile/machine (an accepted, narrower scope, consistent with this
 tier's other renderer-local, non-DB-backed choices like Decision 4).
 
+**Accepted limitation, two distinct dimensions:** (1) a session started
+on one machine/profile is invisible to this check from a different
+machine/profile reading the same shared database — a scoping choice the
+operator can reason about and work around (check from the same machine).
+(2) More sharply: the marker can also be lost on the **same**
+machine/profile with no fallback and no indication anything was lost —
+cleared browser/app storage, an Electron `userData` reset, storage-quota
+eviction. In that case the banner simply does not appear, which is
+indistinguishable from "the scan completed cleanly." This is a real,
+silent-failure-mode limitation, not merely a scoping choice, and is
+recorded here rather than only under the (narrower) cross-machine framing
+above so it isn't mistaken for something more benign than it is.
+
 ### Decision 6 — Start Scan is blocked while any assigned scanner has an active wedge
 
 Design research left this as a hedge ("`GraviScan.tsx` ... may call
@@ -435,13 +497,15 @@ on either (confirmed: only the event subscription is exposed).
 
 **Revised decision:** lift wedge state one level, to a small
 `WedgeContext` provided by `Layout.tsx` (the component that already
-mounts `WedgeBanner` and already owns the one long-lived
-`useWedgeEvents()` call for the whole graviscan-mode session). Both
-`WedgeBanner` and `GraviScan.tsx` consume this context instead of each
-calling `useWedgeEvents()` independently, so there is exactly one
-subscription instance per app session and both consumers always observe
-the same, consistently-accumulated wedge state regardless of which one
-mounted more recently. `GraviScan.tsx` disables "Start Scan" whenever the
+mounts `WedgeBanner`, but does **not** itself call `useWedgeEvents()`
+today — that call currently lives inside `WedgeBanner.tsx` itself,
+confirmed via direct inspection; the fix moves it up to `Layout.tsx` as
+part of introducing the provider, it does not merely "wrap an existing
+call already there"). Both `WedgeBanner` and `GraviScan.tsx` consume this
+context instead of each calling `useWedgeEvents()` independently, so there
+is exactly one subscription instance per app session and both consumers
+always observe the same, consistently-accumulated wedge state regardless
+of which one mounted more recently. `GraviScan.tsx` disables "Start Scan" whenever the
 context reports an active, unacknowledged wedge for any scanner currently
 assigned to this session. Safety-first default: starting a new scan while
 a scanner is jammed/paused is more likely to compound the problem (e.g.
@@ -488,7 +552,7 @@ costs little.
 src/renderer/GraviScan.tsx                                  — screen root
 src/renderer/hooks/useScannerStatus.ts                       — polls getScannerStatus(), ScannerPanelState[] incl. gridMode
 src/renderer/hooks/useWaveNumber.ts                          — wave selection + "suggested next wave" (getMaxWaveNumber)
-src/renderer/hooks/usePlateAssignments.ts                    — plate/position state, wave-metadata auto-fill w/ override (Decision 3)
+src/renderer/hooks/usePlateAssignments.ts                    — plate/position state, wave-scoped auto-fill w/ override (Decision 3, schema-backed)
 src/renderer/hooks/useContinuousMode.ts                      — interval/duration form state, cadence estimate wiring
 src/renderer/hooks/useScanSession.ts                         — reducer-based session state (Decision 1), start/cancel/verify, restore-on-mount (Decision 4), abnormal-termination signal (Decision 5), wedge-blocks-start (Decision 6)
 src/renderer/hooks/useTestScan.ts                            — single test capture, independent of session state
@@ -574,10 +638,15 @@ a stale pointer).
   today) so `verify-plates.ts` can import rather than duplicate it
   (Decision 2).
 - The auto-fill override comparison never misclassifies a
-  never-before-persisted position as "overridden," and a wave switch
-  always hard-resets rather than comparing against a different wave's
-  stale data (Decision 3, point 2 — the fix for the PR #216 variant round
-  2 of review found).
+  never-before-persisted position as "overridden," and correctly survives
+  both a wave switch and an ordinary remount without confusing the two —
+  because `GraviScanPlateAssignment` now has a real `wave_number` column
+  (Decision 3), so "which wave's row to read" is an explicit parameter,
+  not something inferred from render history via a ref that two
+  successive review rounds each found a way to get wrong.
+- `GraviScan` gains a unique constraint and an upsert-based write, so a
+  duplicated/retried job-complete event cannot create two rows for one
+  physical scan (Decision 2, point 4's idempotency fix).
 - "Start Scan" wedge-blocking reads from one shared, `Layout`-level wedge
   subscription via context, not a second independent
   `useWedgeEvents()` instance that would start blank on every remount
@@ -591,22 +660,23 @@ a stale pointer).
   parameter's position (appended last) is deliberate and must not move —
   any earlier position risks silently rebinding an existing positional
   argument in ~50 existing test call sites.
-- **Accepted, named limitation:** `GraviScanPlateAssignment.
-  verification_status` still has no column recording which wave/accession
-  a given verification run checked it against (Decision 2, point 5). A
-  second verification run for the same scanner/position under a different
-  wave overwrites the first run's result with no trace of the earlier
-  one. Closing this fully needs a schema migration (a `wave_number` or
-  `verified_against_accession_id` column); judged out of scope for this
-  tier since the table's "current-state-only" semantics predate this
-  proposal. Revisit if this becomes a real problem in practice.
-- **Accepted, named limitation:** the derived-dirty comparison (Decision
-  3) tells the *current* session whether a position was operator-
-  overridden, but nothing is persisted to distinguish "auto-filled" from
-  "manually corrected" in the database itself — a future query against
-  `GraviScanPlateAssignment` cannot recover that distinction once the
-  live comparison's baseline (the wave's auto-fill computation) is no
-  longer available to compare against.
+- **Schema migration required** (a change from this proposal's first
+  draft, which claimed none was needed): `GraviScanPlateAssignment` gains
+  a `wave_number` column and a new unique constraint (Decision 3);
+  `GraviScan` gains a new unique constraint for upsert-based idempotency
+  (Decision 2, point 4). Both are small, additive, `@default`-backed
+  changes with no data-loss risk to existing rows (existing
+  `GraviScanPlateAssignment` rows default to `wave_number: 0`, matching
+  how `GraviScan.wave_number` already defaults) — see Migration Plan.
+- **Accepted, named limitation, narrower than an earlier draft of this
+  design:** `GraviScanPlateAssignment` still does not label *which field*
+  within a wave-scoped row was auto-filled versus manually corrected
+  (Decision 3) — only that the row differs from what today's auto-fill
+  computation would produce. An earlier draft of this proposal accepted a
+  broader limitation here (no wave attribution at all, for both plate
+  assignments and verification results); the schema fix in Decision 3
+  closes that broader gap as a side effect, leaving only the
+  narrower, field-level provenance question open.
 - Session-restore Non-Goal (Decision 4) is an honest scope limitation, not
   a technical blocker → a future tier could add it if an operator
   incident demonstrates the need. Decision 5's localStorage marker
@@ -630,29 +700,71 @@ a stale pointer).
 
 ## Migration Plan
 
-No Prisma schema migration needed — `GraviExperimentWaveMetadata` already
-exists (added by PR #278), and `GraviScan.wave_number` already exists for
-Decision 2's write-scoping fix. No data backfill required: `waveNumber` is
-optional everywhere it's added, so existing rows/callers are unaffected.
-Rollout is a single PR; rollback is a plain revert (no schema or data
-changes to unwind).
+Two small, additive schema changes are needed (a correction from this
+proposal's first draft, which claimed none were required before review
+found the data-loss and idempotency gaps above):
+
+1. `GraviScanPlateAssignment`: add `wave_number Int @default(0)`; change
+   `@@unique([experiment_id, scanner_id, plate_index])` to
+   `@@unique([experiment_id, scanner_id, plate_index, wave_number])`.
+   Existing rows default to `wave_number: 0`, matching this schema's
+   existing convention for `GraviScan.wave_number` — no data loss, no
+   backfill script needed (a `0` default is a correct, meaningful value:
+   pre-this-tier, no real scan ever had a wave other than the implicit
+   default anyway).
+2. `GraviScan`: add `@@unique([session_id, scanner_id, plate_index,
+   cycle_number])` for upsert-based idempotency (Decision 2, point 4).
+   SQLite treats multiple `NULL`s in a unique index as distinct, so
+   existing rows with `session_id: null` (one-shot/test scans) are
+   unaffected.
+
+No data backfill required beyond the schema defaults above.
+`GraviExperimentWaveMetadata` already exists (added by PR #278), and
+`waveNumber` is optional everywhere it's added at the API boundary, so
+existing callers are unaffected. Rollout is a single PR (schema + code
+together, per this repo's convention — see `scripts/verify-migrations.sh`
+in tasks.md); rollback is a plain revert plus the standard down-migration.
 
 ## Open Questions
 
 None outstanding. Both roadmap-flagged questions (issue #162 threading,
-PR #212-informed auto-fill scope), two design ambiguities surfaced during
-initial research (session-restore scope, cadence-calc accuracy), and the
-gaps found during round 1 of proposal review (wave-scoped write
-consistency, the wedge/Start-Scan interaction, three related open draft
-PRs) are resolved above with an explicit Decision. Round 2 of review then
-found that two of round 1's own fixes needed further correction — the
-wedge-blocking mechanism (Decision 6, now context-based rather than a
-second independent hook instance) and the auto-fill override's wave-switch
-behavior (Decision 3 point 2, now an unconditional hard-reset on wave
-change rather than a comparison that could misclassify a different wave's
-genuinely different data) — both now resolved above as well, plus the
-abnormal-termination signal was redesigned (Decision 5, now a
-renderer-local marker rather than a DB query that depended on a write path
-this proposal wasn't otherwise adding). This history is left visible here,
-rather than edited away, per this repo's own convention of naming
-corrections rather than silently smoothing over them.
+PR #212-informed auto-fill scope) and two design ambiguities surfaced
+during initial research (session-restore scope, cadence-calc accuracy)
+were resolved before the first review round. Three successive review
+rounds each found real, substantive issues in the round before it —
+this history is left visible here, rather than edited away, per this
+repo's own convention of naming corrections rather than silently
+smoothing over them:
+
+- **Round 1** found: wave-scoped verify-plates needed its write scoped
+  too, not just its lookup (Decision 2); the wedge/Start-Scan interaction
+  was a hedge, not a decision (Decision 6, first draft); three related
+  open draft PRs (#216/#213/#223) were unaddressed.
+- **Round 2** found that two of round 1's own fixes needed further
+  correction: the wedge-blocking mechanism (a second independent
+  `useWedgeEvents()` call would start blank on every remount — fixed via
+  `WedgeContext`, Decision 6 final) and the auto-fill override's
+  wave-switch behavior (an unconditional-reset-via-ref approach, while
+  better than round 1's plain comparison, still risked misclassifying an
+  ordinary remount as a wave switch). Round 2 also redesigned the
+  abnormal-termination signal away from a `GraviScanSession` DB query
+  once review found that table has no writer and no wave column.
+- **Round 3** found that round 2's own ref-based wave-switch fix
+  (`lastAutoFilledWave`) was *itself* remount-fragile for the same
+  reason as round 1's `dirty: Set` — a ref doesn't survive remount either,
+  so it could silently discard a real operator override on ordinary
+  navigation. This is now fixed at the root cause (Decision 3, final):
+  `GraviScanPlateAssignment` gains a real `wave_number` column, so "which
+  wave's data to read" is an explicit parameter rather than something
+  inferred from render history. Round 3 also found: `graviscans.create()`
+  needed additional required fields and an idempotency guard (Decision 2,
+  point 4); a factual error in Decision 6's justification (`Layout.tsx`
+  did not already call `useWedgeEvents()` — fixed, the wording now
+  correctly describes moving that call up from `WedgeBanner.tsx`); a
+  same-machine silent-storage-loss gap in the localStorage marker,
+  distinct from its already-named cross-machine limitation (Decision 5);
+  and a real, now-activated gap in three existing backend files
+  (`downloadImages`, `box-backup.ts`, `graviscan-upload.ts`) that resolve
+  metadata via the legacy pre-wave-scoping relation — named as a
+  recommended immediate follow-up rather than pulled into this tier's own
+  scope (Non-Goals).

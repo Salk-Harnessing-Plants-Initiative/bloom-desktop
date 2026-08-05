@@ -51,29 +51,30 @@ editable inputs at all times — auto-fill pre-populates these fields, it
 SHALL NOT render them as read-only text or otherwise prevent the operator
 from correcting an auto-filled value.
 
-When the auto-fill effect re-runs for a reason **other than a wave
-change** (e.g. a scanner reassignment while staying on the same wave), a
-position that already has a persisted `GraviScanPlateAssignment` row SHALL
-be treated as operator-overridden whenever its persisted values differ
-from what a fresh recomputation of the current wave's auto-fill would
-produce, and SHALL be preserved rather than overwritten. A position with
-**no persisted row yet** SHALL NOT be treated as overridden merely
-because "no value" trivially differs from a computed one — it SHALL
-always be populated by the fresh auto-fill computation. This is a derived
-comparison, not a stored or purely in-memory flag, so it SHALL correctly
+Persisted plate-assignment data (`GraviScanPlateAssignment`) SHALL be
+scoped per wave, not shared across every wave of an experiment — each
+`(experimentId, scannerId, plateIndex, waveNumber)` combination reads and
+writes its own row. When the auto-fill effect re-runs for a reason
+**other than a wave change** (e.g. a scanner reassignment while staying on
+the same wave), a position that already has a persisted row **for the
+current wave** SHALL be treated as operator-overridden whenever that row's
+values differ from what a fresh recomputation of the current wave's
+auto-fill would produce, and SHALL be preserved rather than overwritten. A
+position with **no persisted row yet for the current wave** SHALL NOT be
+treated as overridden merely because "no value" trivially differs from a
+computed one — it SHALL always be populated by the fresh auto-fill
+computation. This is a derived comparison against the current wave's own
+data, not a stored or purely in-memory flag, so it SHALL correctly
 identify an override even immediately after the renderer remounts (e.g.
-after navigating away and back), not only within the same continuous
-session.
+after navigating away and back) or after switching wave and back, not
+only within the same continuous session on the same wave.
 
-Switching wave or experiment SHALL **unconditionally** overwrite every
-position with the newly-selected wave's fresh auto-fill computation (or
-empty it, if the new wave has no link) — the persisted-vs-computed
-override comparison above SHALL NOT be applied across a wave/experiment
-switch, only to same-wave re-fires. This holds regardless of whether the
-new wave has no metadata link, its own metadata link, or a link to a
-different accession than the previous wave — in every case, the previous
-wave's persisted values SHALL NOT be compared against, loaded into, or
-otherwise influence the new wave's positions.
+Switching wave or experiment SHALL show the newly-selected wave's own
+persisted data (auto-filled fresh, if no override exists for that wave, or
+empty if the new wave has no metadata link) — a *different* wave's
+persisted values SHALL NOT be compared against, loaded into, or otherwise
+influence the newly-selected wave's positions, since each wave's data is
+independently scoped.
 
 Entering or changing `plantBarcode` manually, in either mode, SHALL
 trigger a case-insensitive match against the currently-loaded
@@ -160,6 +161,20 @@ no-link-exists case.
 - **AND** wave 2's persisted value SHALL NOT be treated as an "override"
   of wave 3's fresh computation merely because it differs from it — the
   wave switch is an unconditional reset, not a comparison
+
+#### Scenario: A wave-switch round-trip preserves each wave's own override
+
+- **GIVEN** wave 2 has an operator-overridden value at scanner/position
+  `(sc-1, 00)`
+- **AND** wave 3 has its own, different linked metadata
+- **WHEN** the operator switches to wave 3, then switches back to wave 2
+- **THEN** wave 2's position `(sc-1, 00)` SHALL show the operator's
+  original override, exactly as it was — not re-derived from a fresh
+  auto-fill computation, and not lost
+- **NOTE**: this is the critical regression case for this requirement —
+  since each wave's plate-assignment data is independently scoped, wave
+  3's auto-fill never touches wave 2's row, so there is nothing to lose or
+  restore incorrectly on the round trip
 
 #### Scenario: A brand-new position is never mistaken for an override
 
