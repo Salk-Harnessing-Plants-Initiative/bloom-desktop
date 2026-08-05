@@ -500,13 +500,18 @@ other out of order.
 
 ## 16. Verification
 
-- [ ] 16.1 Run `npm run lint && npm run format:check`.
-- [ ] 16.2 Run `npm run test:unit` (full suite) — confirm no new failures
-      beyond any pre-existing, unrelated ones (document which).
-- [ ] 16.3 Run `npx tsc --noEmit`.
+- [x] 16.1 Run `npm run lint && npm run format:check`.
+- [x] 16.2 Run `npm run test:unit` (full suite) — confirm no new failures
+      beyond any pre-existing, unrelated ones (document which). **Result:**
+      1408 passed, 5 pre-existing failures, all unrelated to this tier —
+      Windows path-separator (`\` vs `/`) assertion mismatches in
+      `config-store.test.ts`, `image-uploader.test.ts` (×3), and
+      `scan-coordinator.test.ts`'s "regex path rewriting" test. Confirmed
+      present on `main` before this tier's work and unaffected by it.
+- [x] 16.3 Run `npx tsc --noEmit`.
 - [ ] 16.4 Run `npm run test:e2e -- tests/e2e/graviscan-ipc.e2e.ts` (full
       file, not just this tier's new block) and confirm no regressions.
-- [ ] 16.5 Re-run `./scripts/verify-migrations.sh` and
+- [x] 16.5 Re-run `./scripts/verify-migrations.sh` and
       `npm run test:db-upgrade` as a final check after all handler
       changes (matching this repo's convention for schema-touching
       changes, per `add-wave-scoped-metadata-linking`'s own tasks.md).
@@ -522,5 +527,5 @@ other out of order.
       to confirm the abnormal-termination informational banner appears
       for that wave. This is a live-Electron check, not a substitute for
       the automated suites above.
-- [ ] 16.7 Run `openspec validate add-graviscan-capture-scan-screen
+- [x] 16.7 Run `openspec validate add-graviscan-capture-scan-screen
 --strict` and resolve any issues.
