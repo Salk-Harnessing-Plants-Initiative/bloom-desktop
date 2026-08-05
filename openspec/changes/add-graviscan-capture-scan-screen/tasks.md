@@ -441,11 +441,11 @@ other out of order.
 
 ## 14. Components (TDD, React Testing Library)
 
-- [ ] 14.1 `CadenceWarningBanner.tsx` — failing tests in
+- [x] 14.1 `CadenceWarningBanner.tsx` — failing tests in
       `tests/unit/components/CadenceWarningBanner.test.tsx`: hidden when
       estimate fits interval, shown with correct copy when it doesn't,
       reactive to DPI/gridMode/scannerCount changes. Implement to satisfy.
-- [ ] 14.2 `QRVerificationBanner.tsx` — failing tests in
+- [x] 14.2 `QRVerificationBanner.tsx` — failing tests in
       `tests/unit/components/QRVerificationBanner.test.tsx`: red (any
       `duplicate_qr`) / amber (`unreadable`/`needs_review`/`incorrect`/
       `lookup_failed`, none `duplicate_qr`) / green (all
