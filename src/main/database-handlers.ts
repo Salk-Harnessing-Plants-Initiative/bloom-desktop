@@ -91,6 +91,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
+/** `fs.promises` has no direct equivalent to `fs.existsSync`. */
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.promises.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // -----------------------------------------------------------------------
 // database.graviscans.*
 // -----------------------------------------------------------------------
@@ -1168,8 +1178,18 @@ export async function scansExport(
     }
 
     try {
-      fs.mkdirSync(destinationDir, { recursive: true });
-      fs.accessSync(destinationDir, fs.constants.W_OK);
+      await fs.promises.mkdir(destinationDir, { recursive: true });
+      // fs.access(W_OK) is well-known to be unreliable for detecting a
+      // genuinely write-protected/read-only external drive on Windows —
+      // exactly the USB-drive scenario this feature targets. A real
+      // write-then-delete probe is the only check that's actually trustworthy
+      // here.
+      const probePath = path.join(
+        destinationDir,
+        `.bloom-export-write-probe-${Date.now()}`
+      );
+      await fs.promises.writeFile(probePath, '');
+      await fs.promises.unlink(probePath);
     } catch (error) {
       return {
         success: false,
@@ -1226,7 +1246,7 @@ export async function scansExport(
 
       let files: string[];
       try {
-        files = fs.readdirSync(resolvedSource);
+        files = await fs.promises.readdir(resolvedSource);
       } catch (error) {
         fail(`Could not read scan source folder: ${errorMessage(error)}`);
         continue;
@@ -1258,7 +1278,7 @@ export async function scansExport(
     // see this function's doc comment on why completion order matters.
     for (const entry of processable) {
       const scan = scans.find((s) => s.id === entry.scanId)!;
-      fs.mkdirSync(entry.resolvedDest, { recursive: true });
+      await fs.promises.mkdir(entry.resolvedDest, { recursive: true });
 
       let scanFailureReason: string | null = null;
 
@@ -1270,15 +1290,18 @@ export async function scansExport(
           // Unconditional: a stray .tmp from an earlier crashed attempt at
           // this exact file must not linger just because this run happens
           // to skip the file (final already present some other way).
-          if (fs.existsSync(tmpFile)) {
-            fs.unlinkSync(tmpFile);
+          if (await pathExists(tmpFile)) {
+            await fs.promises.unlink(tmpFile);
           }
 
-          if (fs.existsSync(finalFile)) {
+          if (await pathExists(finalFile)) {
             skippedFiles++;
           } else {
-            fs.copyFileSync(path.join(entry.resolvedSource, filename), tmpFile);
-            fs.renameSync(tmpFile, finalFile);
+            await fs.promises.copyFile(
+              path.join(entry.resolvedSource, filename),
+              tmpFile
+            );
+            await fs.promises.rename(tmpFile, finalFile);
             exportedFiles++;
           }
         } catch (error) {
@@ -1291,6 +1314,24 @@ export async function scansExport(
           completedFiles,
           currentScanId: entry.scanId,
         });
+
+        // Stop this scan's remaining files as soon as one fails — critically,
+        // this is what stops a metadata.json failure from being masked by a
+        // LATER frame file still copying successfully, which would produce
+        // exactly the "frames present, metadata missing" state the
+        // metadata-first reordering above exists to prevent. It also means a
+        // mid-batch failure leaves a contiguous, diagnosable prefix of files
+        // rather than scattered gaps.
+        if (scanFailureReason) {
+          completedFiles +=
+            entry.files.length - entry.files.indexOf(filename) - 1;
+          onProgress?.({
+            totalFiles,
+            completedFiles,
+            currentScanId: entry.scanId,
+          });
+          break;
+        }
       }
 
       if (scanFailureReason) {

@@ -102,6 +102,7 @@ async function createScanFixture(opts: {
   files: Record<string, string>;
   captureDate?: Date;
   deleted?: boolean;
+  scannerName?: string;
 }) {
   const absDir = path.join(scansDir, opts.relativePath);
   fs.mkdirSync(absDir, { recursive: true });
@@ -113,7 +114,7 @@ async function createScanFixture(opts: {
     data: {
       experiment_id: opts.experimentId,
       phenotyper_id: opts.phenotyperId,
-      scanner_name: 'Station-A',
+      scanner_name: opts.scannerName ?? 'Station-A',
       plant_id: 'PLANT-001',
       accession_name: 'Col-0',
       path: opts.relativePath,
@@ -365,6 +366,40 @@ describe('scansExport', () => {
     expect(fs.existsSync(path.join(destDir, '002.png'))).toBe(false);
   });
 
+  it('metadata-first ordering: if metadata.json itself fails to copy, no frame file is copied either — even one that would have succeeded', async () => {
+    const experiment = await createExperiment();
+    const phenotyper = await createPhenotyper();
+    const scan = await createScanFixture({
+      experimentId: experiment.id,
+      phenotyperId: phenotyper.id,
+      relativePath: '2026-01-05/PLANT-001/scan-1',
+      files: { 'metadata.json': '{}', '001.png': 'frame1' },
+    });
+
+    // Make metadata.json itself fail to copy (EISDIR), while leaving 001.png
+    // a perfectly healthy file that would copy successfully on its own.
+    const sourceDir = path.join(scansDir, '2026-01-05/PLANT-001/scan-1');
+    fs.rmSync(path.join(sourceDir, 'metadata.json'));
+    fs.mkdirSync(path.join(sourceDir, 'metadata.json'));
+
+    const result = await scansExport(prisma, scansDir, {
+      scanIds: [scan.id],
+      destinationDir,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data!.failedScans).toHaveLength(1);
+    expect(result.data!.failedScans[0].scanId).toBe(scan.id);
+    // Nothing copied at all — proves the loop stops on the FIRST failure
+    // rather than continuing to later files, which would otherwise let
+    // 001.png land at the destination with no metadata.json alongside it.
+    expect(result.data!.exportedFiles).toBe(0);
+
+    const destDir = path.join(destinationDir, '2026-01-05/PLANT-001/scan-1');
+    expect(fs.existsSync(path.join(destDir, 'metadata.json'))).toBe(false);
+    expect(fs.existsSync(path.join(destDir, '001.png'))).toBe(false);
+  });
+
   it('mixed batch: exported/skipped/failed scans are all accounted for, and one failure does not abort the batch', async () => {
     const experiment = await createExperiment();
     const phenotyper = await createPhenotyper();
@@ -495,5 +530,62 @@ describe('scansExport', () => {
     expect(updates.every((u) => u.totalFiles === 3)).toBe(true);
     expect(updates.map((u) => u.completedFiles)).toEqual([1, 2, 3]);
     expect(updates.every((u) => u.currentScanId === scan.id)).toBe(true);
+  });
+
+  it('rejects an empty scanIds array with a validation error, before touching the database or filesystem', async () => {
+    const result = await scansExport(prisma, scansDir, {
+      scanIds: [],
+      destinationDir,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/non-empty array/i);
+  });
+
+  it('rejects an empty destinationDir string with a validation error', async () => {
+    const experiment = await createExperiment();
+    const phenotyper = await createPhenotyper();
+    const scan = await createScanFixture({
+      experimentId: experiment.id,
+      phenotyperId: phenotyper.id,
+      relativePath: '2026-01-05/PLANT-001/scan-1',
+      files: { 'metadata.json': '{}' },
+    });
+
+    const result = await scansExport(prisma, scansDir, {
+      scanIds: [scan.id],
+      destinationDir: '',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/non-empty string/i);
+  });
+
+  it('exports scans captured on different scanners in a single batch — this feature is deliberately not scoped to one scanner', async () => {
+    const experiment = await createExperiment();
+    const phenotyper = await createPhenotyper();
+    const scanA = await createScanFixture({
+      experimentId: experiment.id,
+      phenotyperId: phenotyper.id,
+      relativePath: '2026-01-05/PLANT-001/scan-a',
+      files: { 'metadata.json': '{}' },
+      scannerName: 'Station-A',
+    });
+    const scanB = await createScanFixture({
+      experimentId: experiment.id,
+      phenotyperId: phenotyper.id,
+      relativePath: '2026-01-05/PLANT-002/scan-b',
+      files: { 'metadata.json': '{}' },
+      scannerName: 'Station-B',
+    });
+
+    const result = await scansExport(prisma, scansDir, {
+      scanIds: [scanA.id, scanB.id],
+      destinationDir,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data!.exportedScans).toBe(2);
+    expect(result.data!.failedScans).toEqual([]);
   });
 });

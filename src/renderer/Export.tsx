@@ -71,29 +71,36 @@ function groupScans(scans: ScanWithImageSummary[]): ScanGroup[] {
   );
 }
 
+const SCANS_PAGE_SIZE = 100;
+// Defense-in-depth only: at 100/page this covers 500k scans, far beyond any
+// real lab's scan count. Guards against an infinite fetch loop if
+// `db:scans:list`'s pagination ever regresses (e.g. a miscounted `total`)
+// rather than silently spinning forever.
+const MAX_SCAN_PAGES = 5000;
+
 /** Fetches every non-deleted scan across all scanners, looping over `db:scans:list`'s
  * paginated branch (which already filters `deleted: false`, unlike the legacy branch). */
 async function fetchAllScans(): Promise<ScanWithImageSummary[]> {
-  const pageSize = 100;
   let page = 1;
   const all: ScanWithImageSummary[] = [];
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (page <= MAX_SCAN_PAGES) {
     const result = await window.electron.database.scans.list({
       page,
-      pageSize,
+      pageSize: SCANS_PAGE_SIZE,
     });
     if (!result.success) {
       throw new Error(result.error || 'Failed to load scans');
     }
     const data = result.data as PaginatedScansResponse;
     all.push(...data.scans);
-    if (all.length >= data.total || data.scans.length === 0) break;
+    if (all.length >= data.total || data.scans.length === 0) return all;
     page++;
   }
 
-  return all;
+  throw new Error(
+    `Scan list pagination did not terminate after ${MAX_SCAN_PAGES} pages`
+  );
 }
 
 function GroupHeaderCheckbox({
@@ -203,6 +210,20 @@ export function Export() {
 
   const handleExport = useCallback(async () => {
     if (exporting || selectedScanIds.size === 0 || !destinationDir) return;
+
+    // The completion banner (in particular a `partial` banner's failed-scan
+    // list) is the only record of what failed in the last run — nothing is
+    // persisted to disk. Starting a new export silently replaces it, so
+    // confirm before discarding one the user hasn't dismissed yet.
+    if (
+      resultBanner &&
+      resultBanner.type !== 'success' &&
+      !window.confirm(
+        'The previous export had failures you have not dismissed. Starting a new export will replace that summary. Continue?'
+      )
+    ) {
+      return;
+    }
 
     setExporting(true);
     setResultBanner(null);
@@ -398,6 +419,12 @@ export function Export() {
                         <span className="text-gray-700">{scan.plant_id}</span>
                         <span className="text-gray-500">
                           {timestampLabel(scan.capture_date)}
+                        </span>
+                        <span
+                          className="text-xs text-gray-400"
+                          title="Capturing scanner — shown because this list is not scoped to the current machine's scanner"
+                        >
+                          {scan.scanner_name}
                         </span>
                       </div>
                     ))}

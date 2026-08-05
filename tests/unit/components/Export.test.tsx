@@ -112,6 +112,32 @@ describe('Export page', () => {
     expect((groupCheckbox as HTMLInputElement).indeterminate).toBe(false);
   });
 
+  it('clicking the group-header checkbox selects every scan in the group, and clicking it again deselects them all', async () => {
+    const user = userEvent.setup();
+    mockList([makeScan('a'), makeScan('b'), makeScan('c')]);
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    const groupCheckbox = screen.getByLabelText('Select all scans in group');
+    const scanCheckboxes = screen
+      .getAllByRole('checkbox')
+      .filter((cb) => cb !== groupCheckbox);
+    expect(scanCheckboxes).toHaveLength(3);
+
+    await user.click(groupCheckbox);
+    expect(screen.getByText('3 scans selected')).toBeInTheDocument();
+    for (const cb of scanCheckboxes) {
+      expect(cb).toBeChecked();
+    }
+    expect(groupCheckbox).toBeChecked();
+
+    await user.click(groupCheckbox);
+    expect(screen.getByText('0 scans selected')).toBeInTheDocument();
+    for (const cb of scanCheckboxes) {
+      expect(cb).not.toBeChecked();
+    }
+  });
+
   it('renders the group header with a scan-count label', async () => {
     mockList([makeScan('a'), makeScan('b'), makeScan('c')]);
     render(<Export />);
@@ -206,6 +232,50 @@ describe('Export page', () => {
         (text) => text.includes('Experiment A') && text.includes('2:30 PM')
       )
     ).toBeInTheDocument();
+  });
+
+  it('confirms before discarding an unread partial-failure banner when starting another export, and honors cancel', async () => {
+    const user = userEvent.setup();
+    mockList([makeScan('a')]);
+    getDb().export = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 1,
+        exportedScans: 1,
+        skippedFiles: 0,
+        failedScans: [
+          {
+            scanId: 'zzz',
+            experimentName: 'Experiment A',
+            captureDate: new Date('2026-01-05T14:30:00'),
+            reason: 'boom',
+          },
+        ],
+      },
+    });
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await pickDestination(user);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+    await waitFor(() => {
+      expect(screen.getByText('1 scan failed:')).toBeInTheDocument();
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    // Cancelled: the stale failure banner must still be visible, and export()
+    // must not have been called a second time.
+    expect(screen.getByText('1 scan failed:')).toBeInTheDocument();
+    expect(getDb().export).toHaveBeenCalledTimes(1);
+
+    confirmSpy.mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+    expect(getDb().export).toHaveBeenCalledTimes(2);
   });
 
   it('shows a persistent disconnect warning while exporting, which disappears once the completion banner appears', async () => {
