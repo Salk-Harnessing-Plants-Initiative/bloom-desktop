@@ -298,7 +298,7 @@ third outcome, and an explicit await so verification work can't outlive
 
 ## 5. Follow-up issues (documentation only, no code)
 
-- [ ] 5.1 File a follow-up issue against the local↔cloud UUID traceability
+- [x] 5.1 File a follow-up issue against the local↔cloud UUID traceability
       gap (pilot #59 equivalent), referencing design.md Decision 5 —
       needs a `@salk-hpi/bloom-fs` type change plus a Supabase schema
       migration. Reference issue #60's 2026-06-17 follow-up comment
@@ -307,7 +307,8 @@ third outcome, and an explicit await so verification work can't outlive
       also why delete-then-rescan can orphan indistinguishable duplicate
       data in cloud storage — this follow-up is the natural place to also
       address that.
-- [ ] 5.2 File a follow-up issue for the scheduled upload/storage audit
+      Filed as [#297](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/297).
+- [x] 5.2 File a follow-up issue for the scheduled upload/storage audit
       tool (pilot #61 equivalent), with its scope **explicitly widened**
       per design.md Decisions 9 and 11: it must include a reconciliation/
       write-back capability (flip a historically-corrupted `'uploaded'`
@@ -318,18 +319,26 @@ third outcome, and an explicit await so verification work can't outlive
       automatic in-line recovery (re-uploading a confirmed-missing object
       to its existing path within the same verification call, as pilot
       #60 itself proposed) — that capability, if wanted, belongs here too.
-- [ ] 5.3 File a follow-up tier/issue for the Basler acquisition-metadata
+      Filed as [#298](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/298).
+- [x] 5.3 File a follow-up tier/issue for the Basler acquisition-metadata
       readback gap (pilot #3 equivalent), referencing design.md Decision 11
       and Non-Goals.
-- [ ] 5.4 File a follow-up issue for #110's two unaddressed asks
+      Filed as [#299](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/299).
+- [x] 5.4 File a follow-up issue for #110's two unaddressed asks
       (benchmark 4/8/10 workers; consider configurable concurrency) —
       this tier only documents the existing rationale (3.9).
-- [ ] 5.5 Comment on #79 explaining the soft-delete-only decision
+      #110 already exists in this repo and its own acceptance criteria are
+      exactly these two remaining asks plus "document the rationale" —
+      opening a new issue would have duplicated it. Commented on #110
+      instead, noting the rationale criterion is now satisfied and leaving
+      the other two open: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/110#issuecomment-5197760785
+- [x] 5.5 Comment on #79 explaining the soft-delete-only decision
       (design.md Decision 1/12) and naming **all three** of its
       acceptance criteria this change intentionally doesn't meet: scan
       files are not removed from disk, the `Scan` row is not removed from
       the database (only soft-deleted), and associated `Image` records
       are not cleaned up.
+      Posted: https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/79#issuecomment-5197763298
 
 ## 6. Final verification
 
