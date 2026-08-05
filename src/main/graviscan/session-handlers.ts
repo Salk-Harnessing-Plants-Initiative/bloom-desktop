@@ -355,8 +355,10 @@ export async function retryScanner(
     };
   }
   retriesInFlight.add(scannerId);
+  let session: ReturnType<SessionFns['getScanSession']> | undefined;
   try {
-    if (!sessionFns.getScanSession()?.isActive) {
+    session = sessionFns.getScanSession();
+    if (!session?.isActive) {
       return { success: false, error: 'No active scan session' };
     }
     if (!coordinator) {
@@ -381,12 +383,28 @@ export async function retryScanner(
     await coordinator.stopScanner(scannerId);
     await coordinator.addScanner({ scannerId, saneName, plates: [] });
 
-    scanLog(`[WedgeResponse] retry succeeded scanner=${scannerId}`);
+    // addScanner() never throws on spawn failure (see scan-coordinator.ts) —
+    // a resolved promise alone doesn't mean the worker actually came online.
+    const status = coordinator
+      .getScannerStatuses()
+      .find((s) => s.scannerId === scannerId);
+    if (!status || status.status !== 'ready') {
+      const message =
+        status?.error ?? `Scanner ${scannerId} did not come online after retry`;
+      scanLog(
+        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} error=${message}`
+      );
+      return { success: false, error: message };
+    }
+
+    scanLog(
+      `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId}`
+    );
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Retry failed';
     scanLog(
-      `[WedgeResponse] retry failed scanner=${scannerId} error=${message}`
+      `[WedgeResponse] retry failed scanner=${scannerId} session=${session?.sessionId} error=${message}`
     );
     return { success: false, error: message };
   } finally {

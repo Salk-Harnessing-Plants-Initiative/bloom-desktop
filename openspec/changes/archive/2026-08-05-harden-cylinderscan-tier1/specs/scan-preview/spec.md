@@ -1,9 +1,5 @@
-# scan-preview Specification
+## MODIFIED Requirements
 
-## Purpose
-
-TBD - created by archiving change fix-scan-preview-image-loading. Update Purpose after archive.
-## Requirements
 ### Requirement: ScanPreview Image Loading
 
 The ScanPreview component SHALL load and display scan images from the local filesystem in both development and production modes. File paths SHALL be converted to proper `bloom-scan://` URLs that work on all platforms (macOS, Windows, Linux), handling backslashes, drive letters, and spaces.
@@ -72,47 +68,3 @@ The BrowserWindow SHALL NOT set `webSecurity: false`. Local scan images SHALL be
 - **AND** the operator has since changed `scans_dir` to `C:\new-scans` via Configure Scanner
 - **WHEN** a `bloom-scan://` request for a path under `C:\new-scans` arrives
 - **THEN** the request SHALL be served (the handler reads `scans_dir` fresh on every request, not a value captured at registration time)
-
-### Requirement: ScanPreview Frame Reset on Navigation
-
-The ScanPreview component SHALL reset the current frame to 0 when the scan ID changes, preventing out-of-bounds frame indices when navigating between scans with different frame counts.
-
-#### Scenario: Frame resets when navigating to different scan
-
-- **GIVEN** the user is viewing scan A at frame 5 of 10
-- **WHEN** the user navigates to scan B (which has 3 frames)
-- **THEN** the current frame SHALL reset to 0
-- **AND** the first image of scan B SHALL be displayed
-- **AND** no out-of-bounds access SHALL occur
-
-### Requirement: Scan Preview Image Error Handling
-
-The system SHALL display scan images using React-managed state for all rendering, including error states. When an image fails to load, the system SHALL display an error message using React conditional rendering (not direct DOM manipulation). The error state SHALL reset when navigating to a different frame.
-
-#### Scenario: Image load failure shows error via React state
-
-- **WHEN** an image fails to load in ScanPreview
-- **THEN** an error message is displayed via React state (not innerHTML)
-- **AND** the image element is hidden
-
-#### Scenario: Error state resets on frame navigation
-
-- **WHEN** the user navigates to a different frame after an image error
-- **THEN** the error state resets and the new image loads normally
-
-### Requirement: Scan Preview Keyboard Navigation
-
-The system SHALL support keyboard navigation through scan frames using arrow keys, Home, and End. The keyboard handler SHALL use functional state updates to avoid stale closure references.
-
-#### Scenario: Consecutive keyboard navigation works correctly
-
-- **WHEN** the user presses ArrowRight multiple times in succession
-- **THEN** the frame advances by one for each press (no skipped or repeated frames)
-
-#### Scenario: Home and End keys navigate to boundaries
-
-- **WHEN** the user presses Home
-- **THEN** the viewer navigates to the first frame
-- **WHEN** the user presses End
-- **THEN** the viewer navigates to the last frame
-

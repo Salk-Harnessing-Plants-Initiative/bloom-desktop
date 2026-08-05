@@ -26,8 +26,8 @@ const mockConfigAPI = {
 const mockPythonAPI = {
   getVersion: vi.fn().mockResolvedValue({ version: '1.0.0' }),
   checkHardware: vi.fn().mockResolvedValue({ camera: false, daq: false }),
-  onStatus: vi.fn(),
-  onError: vi.fn(),
+  onStatus: vi.fn().mockReturnValue(vi.fn()),
+  onError: vi.fn().mockReturnValue(vi.fn()),
 };
 
 beforeEach(() => {

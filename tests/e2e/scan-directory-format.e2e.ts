@@ -232,12 +232,12 @@ test.describe('Scan Directory Format — Relative Path Resolution', () => {
     const imageNotFound = window.locator('text=Image not found');
     await expect(imageNotFound).not.toBeVisible({ timeout: 5000 });
 
-    // Verify img element exists with file:// src containing the resolved path
+    // Verify img element exists with bloom-scan:// src containing the resolved path
     const imgElement = imageContainer.locator('img');
     await expect(imgElement).toHaveCount(1, { timeout: 5000 });
 
     const src = await imgElement.getAttribute('src');
-    expect(src).toContain('file://');
+    expect(src).toContain('bloom-scan://');
     expect(src).toContain('1.png');
   });
 
@@ -271,7 +271,7 @@ test.describe('Scan Directory Format — Relative Path Resolution', () => {
     await expect(imgElement).toHaveCount(1, { timeout: 5000 });
 
     const src = await imgElement.getAttribute('src');
-    expect(src).toContain('file://');
+    expect(src).toContain('bloom-scan://');
     expect(src).toContain('1.png');
   });
 });
@@ -311,7 +311,7 @@ test.describe('Scan Directory Format — Date Timezone', () => {
     await expect(imgElement).toHaveCount(1, { timeout: 5000 });
 
     const src = await imgElement.getAttribute('src');
-    expect(src).toContain('file://');
+    expect(src).toContain('bloom-scan://');
     expect(src).toContain('1.png');
   });
 });

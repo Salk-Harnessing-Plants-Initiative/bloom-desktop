@@ -490,7 +490,14 @@ class TestCameraUnavailable:
         # Try status command - should return error since module unavailable
         handle_command({"command": "camera", "action": "status"})
         captured = capsys.readouterr()
-        assert "ERROR:Camera module not available" in captured.out
+        error_line = [
+            line
+            for line in captured.out.strip().split("\n")
+            if line.startswith("ERROR:")
+        ][0]
+        assert json.loads(error_line[len("ERROR:") :])["message"] == (
+            "Camera module not available"
+        )
 
         # Try connect command - should return error
         handle_command(
@@ -505,7 +512,14 @@ class TestCameraUnavailable:
             }
         )
         captured = capsys.readouterr()
-        assert "ERROR:Camera module not available" in captured.out
+        error_line = [
+            line
+            for line in captured.out.strip().split("\n")
+            if line.startswith("ERROR:")
+        ][0]
+        assert json.loads(error_line[len("ERROR:") :])["message"] == (
+            "Camera module not available"
+        )
 
 
 class TestMockCameraPathResolution:

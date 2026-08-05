@@ -155,12 +155,12 @@ the upload screen) can be scoped concretely.
 
 ## Tiers
 
-| #   | Tier                                              | Depends on                                                           | New backend?                                                                               | Related issues                        | Status                                      |
-| --- | ------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------- |
-| 1   | Configure Scanner UI                              | —                                                                    | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03) |
-| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                             | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31) |
-| 3   | Wedge-response UI (fast-tracked)                  | 2                                                                    | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04) |
-| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose) | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | Not started — unblocked                     |
+| #   | Tier                                              | Depends on                                                                                                | New backend?                                                                               | Related issues                        | Status                                                 |
+| --- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------------------ |
+| 1   | Configure Scanner UI                              | —                                                                                                         | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03)            |
+| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                                                                  | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31)            |
+| 3   | Wedge-response UI (fast-tracked)                  | 2                                                                                                         | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04)            |
+| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose)                                      | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | Not started — unblocked                                |
 | 5   | Browse / Experiment Detail / Metadata UI          | 2; wave-scoped metadata-link UI also needs `add-wave-scoped-metadata-linking` (merged PR #278, see prose) | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207, #164                      | Not started — unblocked (Tier 2 + PR #278 both merged) |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
@@ -339,6 +339,37 @@ skill, 5 subagents → user approval → `/openspec:apply` with TDD →
 `/pre-merge` → PR → `/cleanup-merged`). Prefer running each tier as its own
 session once context on the prior tier's merged state is needed, rather than
 carrying all five tiers in one long-running session.
+
+**Explicitly cycle reviews at both ends, converging on fixes each round
+rather than stopping at the first pass** (established 2026-08-04, after
+Tier 3 and `add-wave-scoped-metadata-linking` both needed it in practice —
+apply to every remaining tier, not just the ones that look safety-critical
+or backend-heavy):
+
+- **Before implementation:** run `openspec-review` as many rounds as it
+  takes to stop finding real issues, not a fixed count. Tier 3 took 4 rounds
+  and one real mid-review redesign; `add-wave-scoped-metadata-linking` also
+  took 4 rounds before converging to cosmetic-only findings. Don't assume 1
+  round is enough just because a tier looks more mechanical (e.g. CRUD-ish
+  Browse/Metadata screens) than another tier's safety-feature or
+  data-model scope — mechanical-looking surface area has hidden state and
+  validation-logic complexity too.
+- **After implementation, before merge:** once the PR is open, run
+  `/copilot-review` and `/review-pr` (5-lens adversarial review of the
+  actual diff) — apply `superpowers:receiving-code-review` when triaging:
+  verify before implementing, push back if a suggestion is technically
+  questionable. If a round surfaces real fixes, apply them, then run
+  `/review-pr` again against the updated diff rather than treating one pass
+  as final — keep cycling until a round turns up nothing but suggestions or
+  already-considered, still-defensible tradeoffs. Tier 3's own
+  post-implementation round found 3 real bugs in code a pre-implementation
+  review had already scrutinized — this step is not a formality to skip
+  when the pre-implementation review already looked thorough.
+
+`openspec/changes/archive/2026-08-04-add-wave-scoped-metadata-linking/` is a
+worked example of the expected depth (4 proposal-review rounds + 1
+post-implementation round, converged to zero blocking issues) — read it for
+calibration before assuming a lighter pass is enough.
 
 ## Tracking issues
 
