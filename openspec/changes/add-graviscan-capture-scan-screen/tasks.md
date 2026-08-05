@@ -500,11 +500,11 @@ other out of order.
       session state reaches `ScanControlSection`/`ScannerStatusPanel`).
 - [x] 15.2 Implement `src/renderer/GraviScan.tsx` to satisfy 15.1,
       composing all hooks and components from Sections 7–14.
-- [ ] 15.3 Add the `capture-scan` route to `App.tsx`'s `mode ===
+- [x] 15.3 Add the `capture-scan` route to `App.tsx`'s `mode ===
       'graviscan'` block; update `tests/unit/pages/App.test.tsx` to cover
       it and to confirm **CylinderScan mode's own `/capture-scan` route
       (`CaptureScan.tsx`) renders unchanged**.
-- [ ] 15.4 Add a "Capture Scan" entry to `graviscanLinks` in
+- [x] 15.4 Add a "Capture Scan" entry to `graviscanLinks` in
       `Layout.tsx`; update `tests/unit/pages/Layout.test.tsx` to confirm
       the sidebar link is present in graviscan mode, and confirm
       `WorkflowSteps.tsx`'s existing graviscan step 5 now navigates to a
