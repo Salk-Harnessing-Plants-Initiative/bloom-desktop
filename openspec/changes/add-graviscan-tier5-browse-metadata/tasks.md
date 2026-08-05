@@ -531,7 +531,7 @@ E2E coverage as complete.**
       `addEventListener('mousemove'/'mouseup', ...)` in the file returns no
       matches, confirming no duplicate drag implementation.
 - [x] 11.3 Run `gh issue list --search "downloadImages wave-scoped accession"
-  --state all` (or equivalent search on "GraviExperimentWaveMetadata
+--state all` (or equivalent search on "GraviExperimentWaveMetadata
       download" / "wave-scoped CSV export") from the repo root. If no
       matching open or closed issue is found, file a new one referencing
       `design.md` Decision 10 and `image-handlers.ts:501-505`, so the
@@ -543,24 +543,69 @@ E2E coverage as complete.**
 
 ## 12. Verification
 
-- [ ] 12.1 Run `npm run lint` and `npm run format:check`.
-- [ ] 12.2 Run `npm run test:unit` (full suite, not just this change's new
+- [x] 12.1 Run `npm run lint` and `npm run format:check`.
+      Both clean. `format:check` initially flagged formatting drift in this
+      change's own files (never previously run through Prettier) plus 5
+      files that arrived via the `origin/main` merge below and are
+      pre-existing baseline issues on `main` itself (not touched by this
+      change) — left those alone; fixed the former with `prettier --write`.
+- [x] 12.2 Run `npm run test:unit` (full suite, not just this change's new
       files) and confirm no new failures relative to the pre-change baseline.
-- [ ] 12.3 Run `npx tsc --noEmit` (or the project's typecheck script).
-- [ ] 12.4 Run the full `npm run test:e2e` suite (not just this change's new
-      specs) to confirm no regression in cylinderscan-mode routing or the
-      pre-existing GraviScan E2E coverage (Tier 1-3's specs, and PR #278's
-      `experiments.{link,unlink,list}GraviMetadata` block in
-      `tests/e2e/renderer-database-ipc.e2e.ts`).
-- [ ] 12.5 Run `npm run build` (or the project's renderer build script) to
+      This branch was 5 commits behind `origin/main` (missed
+      `harden-cylinderscan-tier1` PR #280 and the retryScanner fix PR #285);
+      merged `origin/main` in cleanly (no conflicts, including in
+      `preload.ts`/`electron.d.ts` where both sides had added content) before
+      running this. Also needed `npx prisma generate` (fresh worktree) and
+      `BLOOM_DATABASE_URL="file:./prisma/dev.db" npx prisma migrate deploy`
+      (the merge brought in 3 new migrations `dev.db` hadn't applied yet) to
+      get `tests/unit/graviscan/database-handlers.test.ts` running at all —
+      both environment setup, not code changes. Result: 6 failures, same
+      baseline family as before (Windows path-separator assertions in
+      `config-store.test.ts`/`image-uploader.test.ts`/`scan-coordinator.test.ts`,
+      plus a flaky `AccessionForm.test.tsx` timeout and an unrelated
+      `MachineConfiguration.test.tsx` unhandled-rejection) — none in files
+      this change touches, no regression.
+- [x] 12.3 Run `npx tsc --noEmit` (or the project's typecheck script). Clean,
+      both before and after the `origin/main` merge.
+- [~] 12.4 Run the full `npm run test:e2e` suite (not just this change's new
+  specs) to confirm no regression in cylinderscan-mode routing or the
+  pre-existing GraviScan E2E coverage (Tier 1-3's specs, and PR #278's
+  `experiments.{link,unlink,list}GraviMetadata` block in
+  `tests/e2e/renderer-database-ipc.e2e.ts`). **Not completed** — same
+  environment blocker as 10.4.
+- [x] 12.5 Run `npm run build` (or the project's renderer build script) to
       confirm the new routes/components compile into the packaged bundle
-      without error.
-- [ ] 12.6 Manually launch the app in `graviscan` mode (`npm run dev` /
-      the project's dev-server workflow) and walk the golden path: Home →
-      Metadata (upload a real spreadsheet) → Experiments (create a graviscan
-      experiment, link a wave) → Browse GraviScans (see the row, click
-      through to Experiment Detail) → Experiment Detail (link/unlink a wave,
-      confirming the Unlink dialog, view a file preview) → Layout (confirm
-      the upload-progress indicator persists across the navigation above) —
-      confirm no console errors and no visibly broken states, per the
-      CLAUDE.md UI-verification requirement.
+      without error. `npm run build:webpack` turned out to be a pre-existing,
+      unrelated broken script (it invokes `webpack` directly against
+      Electron Forge's webpack-plugin config files, which use plugin-specific
+      keys like `mainConfig`/`rendererConfig` that raw webpack's CLI doesn't
+      understand — not something this change introduced or can fix in
+      scope). Used `npx electron-forge package` instead, which is the
+      project's actual packaging path and exercises the same webpack build
+      internally: succeeded with no errors, confirming the new routes and
+      components compile cleanly into the packaged bundle.
+- [~] 12.6 Manually launch the app in `graviscan` mode (`npm run dev` /
+  the project's dev-server workflow) and walk the golden path: Home →
+  Metadata (upload a real spreadsheet) → Experiments (create a graviscan
+  experiment, link a wave) → Browse GraviScans (see the row, click
+  through to Experiment Detail) → Experiment Detail (link/unlink a wave,
+  confirming the Unlink dialog, view a file preview) → Layout (confirm
+  the upload-progress indicator persists across the navigation above) —
+  confirm no console errors and no visibly broken states, per the
+  CLAUDE.md UI-verification requirement.
+  **Not completed.** Two blockers, both environment-specific to this
+  session, neither a code defect: (1) the local `~/.bloom/.env` this
+  machine's real hardware config lives in was blanked by an unrelated
+  mishap while attempting an automated stand-in for this task (see
+  conversation) — the user will refill it separately, so this
+  environment currently has no real graviscan hardware config to launch
+  against; (2) this sandbox has no interactive display attached, and a
+  throwaway script attempt to drive the packaged app via Playwright's
+  `_electron` API failed to launch against the renamed/packaged exe
+  (works against the raw `electron` binary in the existing E2E specs,
+  per Section 10, but not against `Bloom Desktop.exe` directly) — so
+  there is no working path to a real, visible golden-path walkthrough
+  from this environment. This is a genuine gap: a human (or a session
+  with a real display and the real `.env` restored) should still walk
+  the golden path described above before treating this tier as fully
+  verified, per the CLAUDE.md UI-verification requirement.
