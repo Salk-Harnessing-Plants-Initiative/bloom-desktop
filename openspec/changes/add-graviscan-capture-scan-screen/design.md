@@ -100,7 +100,7 @@ on manual barcode pick" — `usePlateAssignments`, see Decision 3).
   all. **This tier is exactly that trigger condition**: once an operator
   links different waves to different accessions (PR #278's entire
   purpose) and this tier starts persisting real, distinct `wave_number`
-  values (Decision 2 point 4 / Section 9), all three of these existing,
+  values (Decision 2 point 4 / tasks.md Section 12), all three of these existing,
   unrelated-to-this-screen backend files will silently resolve **every**
   wave's exported/uploaded metadata (CSV contents, `accession_name`,
   `transplant_date`, `custom_note`) from whichever single accession the
@@ -240,8 +240,8 @@ When Tier 4 (the first and only renderer caller) passes `waveNumber`:
    operate on. This was implicit in the roadmap's own Tier 4 dependency
    note ("DB layer to persist completed scans/sessions") but is made an
    explicit task here since review found the write path doesn't exist yet
-   (see Section 9 in tasks.md for the exact field shape and an
-   idempotency fix — see that section's note below).
+   (see tasks.md Section 2 for the backend handler change and Section 12
+   for the renderer call site).
 
    **Idempotency:** `GraviScan` has no unique constraint today
    (`schema.prisma:109-147` — only non-unique `@@index`s), so a
@@ -252,11 +252,28 @@ When Tier 4 (the first and only renderer caller) passes `waveNumber`:
    `@@unique([session_id, scanner_id, plate_index, cycle_number])` to
    `GraviScan` (a small, additive schema change — SQLite treats multiple
    `NULL`s in a unique index as distinct, so one-shot/test scans with no
-   `session_id` are unaffected) and changes the per-job persistence call
-   to `db.graviScan.upsert({ where: {
+   `session_id` are unaffected). **The renderer-facing
+   `database.graviscans.create(...)` method name and signature are
+   unchanged** — no new preload/IPC surface, no new method name — only
+   `graviscansCreate()`'s internal implementation
+   (`database-handlers.ts:123-173`) changes, from a plain
+   `db.graviScan.create(...)` to `db.graviScan.upsert({ where: {
    session_id_scanner_id_plate_index_cycle_number: {...} }, create:
-   {...}, update: {} })` — a retried event becomes a true no-op rather
-   than a second row.
+   {...}, update: {} })`. A retried event becomes a true no-op rather than
+   a second row, invisibly to every caller.
+
+   **Named, narrow risk on the `update: {}` no-op:** this assumes a
+   retried job-complete event always carries identical data to the first
+   attempt (the same physical scan, re-delivered) — reasonable for
+   today's actual failure mode (a duplicated IPC event, not a second
+   physical capture; `scan-coordinator.ts` has no code path today that
+   re-emits `scan-complete` for an already-completed cycle). If a future
+   change ever legitimately re-captures under the same
+   `(session_id, scanner_id, plate_index, cycle_number)` key (e.g. a
+   retry-with-recapture feature), the no-op would silently keep the
+   *first* attempt's data and discard the second's with no warning.
+   Out of scope to guard against now since no such feature exists;
+   recorded here rather than left implicit.
 
    **Accepted, named trade-off of wave-scoping the write:** if a plate was
    physically mis-loaded and stayed mis-loaded across *several* waves
@@ -367,6 +384,49 @@ misattribute in the first place —
    from that plate's row (still overridable afterward, per points 1-2).
    This mirrors #223's own actual fix (an explicit match-and-populate
    step), not just a side effect of making fields editable.
+5. **A staleness guard prevents an out-of-order async response from
+   resurrecting #216's symptom via a third mechanism.** The wave-scoped
+   fetch chain (`listGraviMetadata` → resolve `accessionId` →
+   `graviPlateAccessions.list(accessionId)` → merge with
+   `graviscanPlateAssignments.list(...)`) is multiple sequential IPC
+   round-trips whose latency varies with data volume. If the operator
+   switches wave twice in quick succession (e.g. wave A, with many linked
+   plates and a slower resolution chain, then wave B, with no linked
+   metadata and a fast path) before wave A's fetch resolves, wave A's
+   response landing *after* wave B's would overwrite the just-rendered
+   wave B grid with wave A's data — user-visibly identical to PR #216's
+   original symptom, caused by an unguarded race rather than the missing
+   schema column the rest of this Decision fixes. `usePlateAssignments`
+   SHALL track which wave a fetch was issued for and discard (not commit
+   to state) a response that resolves after the currently-selected wave
+   has since changed — the same `let cancelled = false`-style guard
+   already used elsewhere in this codebase's async effects
+   (`src/renderer/hooks/useAppMode.ts:12-28`), applied here for the same
+   reason.
+6. **`usePlateAssignments`'s writes SHALL NOT clobber `verify-plates.ts`'s
+   writes to the same row.** Both now write to `GraviScanPlateAssignment`
+   for the same `(experiment_id, scanner_id, plate_index, wave_number)`
+   key: `verify-plates.ts` sets `verification_status`/
+   `previous_plate_barcode` right after a scan completes (Decision 2,
+   point 5); `usePlateAssignments` persists plate/note edits via the
+   existing Tier-2 `graviscanPlateAssignmentsUpsertMany` handler, whose
+   `update:` clause today unconditionally replaces the **entire** row from
+   the caller's payload, including defaulting `verification_status`/
+   `previous_plate_barcode` to `'pending'`/`null` when the caller's
+   payload doesn't carry them (`database-handlers.ts:610-618`) — which it
+   never does, since plate assignment is a different concern than
+   verification. Concretely: a swap is auto-corrected and flagged
+   `'swapped'`; the operator, reacting to exactly that QR banner (a
+   plausible real workflow), edits that position's note in the
+   still-mounted grid; the resulting `upsertMany` call silently resets
+   `verification_status` back to `'pending'` and clears
+   `previous_plate_barcode` — erasing the swap-correction audit trail
+   Decision 2 point 5 was built to guarantee, with no error or warning.
+   **Fix:** `graviscanPlateAssignmentsUpsertMany`'s `update:` clause SHALL
+   preserve `verification_status`/`previous_plate_barcode` when the
+   caller's payload omits them, rather than defaulting — these two fields
+   are owned by the verification flow, not the plate-assignment flow, and
+   `usePlateAssignments`'s own writes SHALL never include them.
 
 **Alternatives considered:** manual-entry-only, deferring all auto-fill to
 Tier 5. Rejected per user decision — `listGraviMetadata` is already fully
@@ -644,6 +704,16 @@ a stale pointer).
   (Decision 3), so "which wave's row to read" is an explicit parameter,
   not something inferred from render history via a ref that two
   successive review rounds each found a way to get wrong.
+- A staleness guard discards an out-of-order async plate-assignment
+  fetch response from an earlier, since-abandoned wave selection
+  (Decision 3, point 5) — closing a third, independently-found mechanism
+  for reproducing PR #216's user-visible symptom, on top of the schema
+  fix above.
+- `usePlateAssignments`'s writes never clobber `verify-plates.ts`'s
+  `verification_status`/`previous_plate_barcode` writes to the same row
+  (Decision 3, point 6) — the two features write to the same table from
+  independent code paths, and the shared handler now preserves fields a
+  given caller doesn't own rather than defaulting them away.
 - `GraviScan` gains a unique constraint and an upsert-based write, so a
   duplicated/retried job-complete event cannot create two rows for one
   physical scan (Decision 2, point 4's idempotency fix).

@@ -72,13 +72,16 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   `GraviScan.wave_number`, which already exists), so a wave-precise read
   is never paired with an experiment-wide write that could touch another
   wave's scan history — this depends on `useScanSession` actually calling
-  `database.graviscans.upsert(...)` (idempotent, per the new unique
-  constraint above) with the real wave number per completed job, since no
-  existing caller in the app does this today (the real scan lifecycle
-  currently persists no `GraviScan` rows at all — there was no renderer
-  to trigger one before this tier). Also exports `database-handlers.ts`'s
-  existing (currently un-exported) `isValidWaveNumber()` helper for reuse
-  rather than a second copy of the same check.
+  `database.graviscans.create(...)` (the existing, unchanged
+  renderer-facing method — idempotency is added internally, via the new
+  unique constraint above, by changing that handler's own Prisma call to
+  an upsert, not by exposing a new method) with the real wave number per
+  completed job, since no existing caller in the app does this today (the
+  real scan lifecycle currently persists no `GraviScan` rows at all —
+  there was no renderer to trigger one before this tier). Also exports
+  `database-handlers.ts`'s existing (currently un-exported)
+  `isValidWaveNumber()` helper for reuse rather than a second copy of the
+  same check.
   `GraviScanPlateAssignment.verification_status` becomes genuinely
   wave-attributable via the same schema column the plate-assignment fix
   below needs anyway (no longer a separate accepted limitation, as an
@@ -102,9 +105,19 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   on first load, same-wave re-fires, wave switches, and remounts alike,
   since "which wave's row" is now an explicit parameter rather than
   inferred state. This closes PR #216's stale-cross-wave-assignment bug
-  for every case. Manually entering a barcode triggers the same
-  accession-match lookup auto-fill uses, populating transplant date/note
-  (the actual #223 fix, not merely a side effect of editable fields).
+  for every case, including a third mechanism found in a later review
+  round: a staleness guard discards an out-of-order async response from
+  an abandoned wave selection during rapid wave-switching, the same
+  guard idiom already used by `useAppMode.ts` elsewhere in this codebase.
+  Manually entering a barcode triggers the same accession-match lookup
+  auto-fill uses, populating transplant date/note (the actual #223 fix,
+  not merely a side effect of editable fields). Also fixes a write
+  collision found in review between this feature and Decision 2's
+  verification writes to the same table: `graviscanPlateAssignments`'s
+  existing upsert handler now preserves `verification_status`/
+  `previous_plate_barcode` when a plate-assignment edit's payload doesn't
+  carry them, instead of silently resetting a QR-verification result
+  every time the operator edits an unrelated field on the same row.
 - Session restore scoped honestly to renderer navigation/remount while the
   main process stays alive — matching what the reference implementation's
   "restoration across app restart" claim actually delivers (its
@@ -159,13 +172,22 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   `src/main/graviscan/register-handlers.ts`,
   `src/main/database-handlers.ts` (existing
   `graviscanPlateAssignments.{upsertMany,list}` gain a `waveNumber`
-  parameter; `graviscansCreate` becomes upsert-based),
+  parameter and preserve `verification_status`/`previous_plate_barcode`
+  when a caller's payload omits them; `graviscansCreate` becomes
+  upsert-based internally, same external method name/signature),
   `src/main/preload.ts`, `src/types/electron.d.ts`,
   `src/types/graviscan.ts` (new `VerificationStatus` type — no such type
   exists in this repo today; this is a creation, not a "unification" of
   anything currently present),
   `tests/unit/graviscan/{verify-plates,register-handlers,
   database-handlers}.test.ts`,
+  `tests/unit/preload-database-graviscan.test.ts` (existing positional
+  assertions for `graviscanPlateAssignments.list`/`.upsertMany` need the
+  new trailing `waveNumber` argument),
+  `tests/e2e/renderer-database-ipc.e2e.ts` (add coverage for the new
+  `waveNumber` parameter and `graviscans.create`'s upsert-based
+  idempotency — both are `db:*` channels squarely inside this file's
+  existing static IPC-coverage gate, unlike `graviscan:verify-plates`),
   `tests/unit/hooks/{useScannerStatus,useWaveNumber,usePlateAssignments,
   useContinuousMode,useScanSession,useTestScan}.test.ts` (new, matching
   this repo's existing convention — e.g. `tests/unit/hooks/

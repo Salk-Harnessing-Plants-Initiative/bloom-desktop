@@ -30,7 +30,7 @@ them.
 - [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before starting Section 2.
 
-## 2. Backend: wave-scoped graviscanPlateAssignments handlers (TDD)
+## 2. Backend: wave-scoped graviscanPlateAssignments handlers, idempotent graviscansCreate (TDD)
 
 - [ ] 2.1 Write failing tests in
       `tests/unit/graviscan/database-handlers.test.ts` for
@@ -44,10 +44,58 @@ them.
       pre-existing caller — none exist today, confirmed — would see
       today's behavior unchanged); `waveNumber: 0` is accepted as valid,
       not rejected (already-accepted "Wave Number Zero Validation" spec
-      requirement, `scanning/spec.md:117-127`).
-- [ ] 2.2 Implement the `waveNumber` parameter in both handlers. Update
+      requirement, `scanning/spec.md:117-127`). **Also cover the
+      verification-field-preservation fix (design.md Decision 3, point
+      6)**: `.upsertMany`'s payload does not include
+      `verification_status`/`previous_plate_barcode` for a position that
+      already has those fields set from a prior `verify-plates` run —
+      confirm the `update:` clause preserves the existing
+      `verification_status`/`previous_plate_barcode` values rather than
+      resetting them to `'pending'`/`null`; confirm a payload that
+      *does* explicitly include them (not this tier's own caller, but
+      keeping the capability available) still updates them.
+- [ ] 2.2 Implement the `waveNumber` parameter and the verification-field
+      preservation fix in both handlers
+      (`graviscanPlateAssignmentsUpsertMany`'s `update:` clause,
+      `database-handlers.ts:610-618`, changes from unconditionally
+      defaulting `verification_status ?? 'pending'`/
+      `previous_plate_barcode ?? null` to omitting those keys from the
+      `update:` object entirely when the caller's payload doesn't specify
+      them, so Prisma leaves the existing column value untouched). Update
       their preload bindings (`src/main/preload.ts`) and typed signatures
-      (`src/types/electron.d.ts`). Run 2.1's tests green.
+      (`src/types/electron.d.ts`). Update the two existing exact
+      positional assertions in
+      `tests/unit/preload-database-graviscan.test.ts:152-174`
+      (`.list('e1', 's1')` and `.upsertMany('e1', 's1', assignments)`) to
+      include the new trailing `waveNumber` argument — confirmed via
+      direct inspection that these assertions exist today and use
+      `toHaveBeenCalledWith` (exact-arity match), so they will fail once
+      2.2's preload changes land if left unmodified. Run 2.1's tests
+      green.
+- [ ] 2.3 Write failing tests in
+      `tests/unit/graviscan/database-handlers.test.ts` for
+      `graviscansCreate()` becoming upsert-based (design.md Decision 2,
+      point 4): calling it twice with identical
+      `(session_id, scanner_id, plate_index, cycle_number)` and identical
+      field values results in exactly one `GraviScan` row, not two (the
+      idempotency fix); the renderer-facing method name/signature
+      (`database.graviscans.create(...)`) is unchanged — this is a
+      purely internal Prisma-call change
+      (`db.graviScan.create()` → `db.graviScan.upsert()`), no new preload
+      method, no new IPC channel.
+- [ ] 2.4 Implement the upsert change in `graviscansCreate()`
+      (`database-handlers.ts:123-173`). Run 2.3's tests green.
+- [ ] 2.5 Add coverage to `tests/e2e/renderer-database-ipc.e2e.ts` (the
+      real `db:*` IPC-coverage-gate file — unlike `graviscan:verify-plates`,
+      `db:graviscanPlateAssignments:*` and `db:graviscans:create` are
+      squarely in that gate's scope, confirmed via existing
+      `graviscanPlateAssignments.*`/`graviscanSessions.*` blocks already
+      at lines 2832-2892) for: the new `waveNumber` parameter on
+      `graviscanPlateAssignments.list`/`.upsertMany` (two waves, same
+      scanner/position, confirm each wave's row is independent through
+      the real IPC bridge); `graviscans.create`'s upsert-based
+      idempotency (call twice with identical keys through the real
+      bridge, confirm one row).
 - [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before starting Section 3.
 
@@ -127,7 +175,7 @@ them.
       this codebase. No dedicated test file — this is a compile-time-only
       type alias with no runtime behavior of its own; every one of its 8
       values is exercised behaviorally by `QRVerificationBanner.test.tsx`
-      (task 12.2) and `useScanSession.test.ts` (task 10.1).
+      (task 14.2) and `useScanSession.test.ts` (task 12.1).
 - [ ] Run `npx tsc --noEmit` — confirm no new type errors before Section 5.
 
 ## 5. Preload wiring: verifyPlates + events, with real E2E coverage (TDD)
@@ -252,9 +300,23 @@ design.md Decision 3's history).
         `GraviPlateAccession` rows is visually/textually distinguished
         (e.g. a warning-styled note) from the "no link exists at all"
         empty state.
+      - **Out-of-order async response guard (design.md Decision 3, point
+        5)**: issue a fetch for wave A, then before it resolves switch to
+        wave B and let wave B's fetch resolve first, then let wave A's
+        fetch resolve — confirm wave A's (now-stale) response does NOT
+        overwrite wave B's already-rendered state. This is the third,
+        independently-found mechanism for reproducing PR #216's
+        user-visible symptom (the first two — no wave column, and a
+        ref-based wave-switch heuristic — are closed by this section's
+        schema-backed design; this one is a plain async race, closed by a
+        staleness check, not by the schema).
 - [ ] 9.2 Implement `src/renderer/hooks/usePlateAssignments.ts` to satisfy
       9.1, calling `graviscanPlateAssignments.list`/`.upsertMany` (task
-      2.2) with the current `waveNumber` on every read/write.
+      2.2) with the current `waveNumber` on every read/write, and guarding
+      every wave-scoped fetch with the same `let cancelled = false`-style
+      pattern already used in this codebase's other async effects (e.g.
+      `src/renderer/hooks/useAppMode.ts:12-28`) so a response is discarded
+      if the selected wave has changed since the fetch was issued.
 
 ## 10. Hook: useContinuousMode (TDD)
 
@@ -326,24 +388,26 @@ other out of order.
 - [ ] 12.3 Write failing tests (same file) for backend persistence wiring:
       on `startScan()` success, `database.graviscanSessions.create(...)`
       is called with `experimentId`/`phenotyperId`/mode/interval/
-      duration; on each job completion, `database.graviscans.upsert(...)`
-      (not `.create` — task 1.2/3's unique constraint enables upsert-based
-      idempotency) is called with the completed job's `experimentId`,
-      `phenotyperId`, `scannerId`, `plateIndex`, `waveNumber` (including
-      `0`), `sessionId`, `cycleNumber`, `gridMode`, `resolution`, and
-      image path — all fields `graviscansCreate`'s handler actually
-      requires (`database-handlers.ts:123-173`,
-      `prisma/schema.prisma:109-131` — a prior draft of this task omitted
-      `phenotyper_id`/`grid_mode`/`resolution`, which would have made
-      every real call fail); confirm a duplicated/retried job-complete
-      event for the **same** job (same `sessionId`/`scannerId`/
-      `plateIndex`/`cycleNumber`) results in exactly one `GraviScan` row,
-      not two (idempotency regression test — mock two identical upsert
-      calls, assert the mock is called correctly rather than actually
-      needing a real DB, since this is Vitest against a mocked
-      `window.electron.database`); on clean session completion or a
-      successful cancel, `database.graviscanSessions.complete(...)` is
-      called with the matching `cancelled` flag.
+      duration; on each job completion, **`database.graviscans.create(...)`
+      — the existing, unchanged renderer-facing method name; task 2.3/2.4
+      make its *internal* Prisma call idempotent via `upsert()`, this hook
+      does not call a different method** — is called with the completed
+      job's `experimentId`, `phenotyperId`, `scannerId`, `plateIndex`,
+      `waveNumber` (including `0`), `sessionId`, `cycleNumber`,
+      `gridMode`, `resolution`, and image path — all fields
+      `graviscansCreate`'s handler actually requires
+      (`database-handlers.ts:123-173`, `prisma/schema.prisma:109-131` — a
+      prior draft of this task omitted `phenotyper_id`/`grid_mode`/
+      `resolution`, which would have made every real call fail); confirm
+      calling it twice for the **same** job (same `sessionId`/
+      `scannerId`/`plateIndex`/`cycleNumber`, e.g. simulating a duplicated
+      IPC event) is safe to do from this hook's own retry/re-render logic
+      (the actual dedup happens inside the handler per task 2.3 — this
+      hook-level test only needs to confirm the hook doesn't itself skip
+      or double-fire the call in a way that would defeat that); on clean
+      session completion or a successful cancel,
+      `database.graviscanSessions.complete(...)` is called with the
+      matching `cancelled` flag.
 - [ ] 12.4 Implement this wiring to satisfy 12.3.
 - [ ] 12.5 Write failing tests (same file) for Decision 5 (abnormal-
       termination marker): on successful `startScan()`, a `localStorage`
