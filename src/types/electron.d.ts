@@ -464,12 +464,14 @@ export interface DatabaseAPI {
   graviscanPlateAssignments: {
     list: (
       experimentId: string,
-      scannerId: string
+      scannerId: string,
+      waveNumber?: number
     ) => ReturnType<typeof graviscanPlateAssignmentsList>;
     upsertMany: (
       experimentId: string,
       scannerId: string,
-      assignments: PlateAssignmentUpsertInput[]
+      assignments: PlateAssignmentUpsertInput[],
+      waveNumber?: number
     ) => ReturnType<typeof graviscanPlateAssignmentsUpsertMany>;
   };
   graviPlateAccessions: {

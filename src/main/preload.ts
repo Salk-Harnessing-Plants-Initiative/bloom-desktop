@@ -285,18 +285,25 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:graviscanSessions:complete', args),
   },
   graviscanPlateAssignments: {
-    list: (experimentId: string, scannerId: string) =>
+    list: (experimentId: string, scannerId: string, waveNumber?: number) =>
       ipcRenderer.invoke(
         'db:graviscanPlateAssignments:list',
         experimentId,
-        scannerId
+        scannerId,
+        waveNumber
       ),
-    upsertMany: (experimentId: string, scannerId: string, assignments: any) =>
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      assignments: any,
+      waveNumber?: number
+    ) =>
       ipcRenderer.invoke(
         'db:graviscanPlateAssignments:upsertMany',
         experimentId,
         scannerId,
-        assignments
+        assignments,
+        waveNumber
       ),
   },
   graviPlateAccessions: {

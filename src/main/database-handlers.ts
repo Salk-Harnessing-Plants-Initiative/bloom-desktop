@@ -134,36 +134,65 @@ export async function graviscansCreate(
         return { success: false, error: `${field} must be a non-empty string` };
       }
     }
-    const created = await db.graviScan.create({
-      data: {
-        experiment_id: data.experiment_id as string,
-        phenotyper_id: data.phenotyper_id as string,
-        scanner_id: data.scanner_id as string,
-        session_id: (data.session_id as string | null) ?? null,
-        cycle_number: (data.cycle_number as number | null) ?? null,
-        wave_number:
-          typeof data.wave_number === 'number' ? data.wave_number : 0,
-        plate_barcode: (data.plate_barcode as string | null) ?? null,
-        transplant_date: data.transplant_date
-          ? new Date(data.transplant_date as string | Date)
-          : null,
-        custom_note: (data.custom_note as string | null) ?? null,
-        path: data.path as string,
-        capture_date: data.capture_date
-          ? new Date(data.capture_date as string | Date)
-          : undefined,
-        scan_started_at: data.scan_started_at
-          ? new Date(data.scan_started_at as string | Date)
-          : null,
-        scan_ended_at: data.scan_ended_at
-          ? new Date(data.scan_ended_at as string | Date)
-          : null,
-        grid_mode: data.grid_mode as string,
-        plate_index: data.plate_index as string,
-        resolution: data.resolution as number,
-        format: typeof data.format === 'string' ? data.format : 'tiff',
-      },
-    });
+    const sessionId = (data.session_id as string | null) ?? null;
+    const cycleNumber = (data.cycle_number as number | null) ?? null;
+    const scannerId = data.scanner_id as string;
+    const plateIndex = data.plate_index as string;
+    const fields = {
+      experiment_id: data.experiment_id as string,
+      phenotyper_id: data.phenotyper_id as string,
+      scanner_id: scannerId,
+      session_id: sessionId,
+      cycle_number: cycleNumber,
+      wave_number: typeof data.wave_number === 'number' ? data.wave_number : 0,
+      plate_barcode: (data.plate_barcode as string | null) ?? null,
+      transplant_date: data.transplant_date
+        ? new Date(data.transplant_date as string | Date)
+        : null,
+      custom_note: (data.custom_note as string | null) ?? null,
+      path: data.path as string,
+      capture_date: data.capture_date
+        ? new Date(data.capture_date as string | Date)
+        : undefined,
+      scan_started_at: data.scan_started_at
+        ? new Date(data.scan_started_at as string | Date)
+        : null,
+      scan_ended_at: data.scan_ended_at
+        ? new Date(data.scan_ended_at as string | Date)
+        : null,
+      grid_mode: data.grid_mode as string,
+      plate_index: plateIndex,
+      resolution: data.resolution as number,
+      format: typeof data.format === 'string' ? data.format : 'tiff',
+    };
+    // Upsert on (session_id, scanner_id, plate_index, cycle_number), not a
+    // plain create — a duplicated/retried job-complete event for the same
+    // physical scan must not create a second GraviScan row. `update: {}`
+    // is a deliberate no-op: this assumes a retry always carries identical
+    // data to the first attempt (see design.md Decision 2's named risk).
+    //
+    // Only meaningful when both session_id and cycle_number are present —
+    // that pair is what identifies "the same job." Without them (one-shot/
+    // test captures with no session), there is no job identity to dedupe
+    // against: Prisma's compound-unique lookup would still match on
+    // `IS NULL AND IS NULL`, silently collapsing two distinct, legitimate
+    // captures into one row and discarding the second's image path. Fall
+    // back to a plain create in that case.
+    const created =
+      sessionId !== null && cycleNumber !== null
+        ? await db.graviScan.upsert({
+            where: {
+              session_id_scanner_id_plate_index_cycle_number: {
+                session_id: sessionId,
+                scanner_id: scannerId,
+                plate_index: plateIndex,
+                cycle_number: cycleNumber,
+              },
+            },
+            create: fields,
+            update: {},
+          })
+        : await db.graviScan.create({ data: fields });
     logDatabaseOperation('CREATE', 'GraviScan', `id=${created.id}`);
     return { success: true, data: created };
   } catch (error) {
@@ -540,7 +569,8 @@ export async function graviscanSessionsComplete(
 export async function graviscanPlateAssignmentsList(
   db: Db,
   experimentId: string,
-  scannerId: string
+  scannerId: string,
+  waveNumber?: number
 ): Promise<DatabaseResponse> {
   try {
     if (!isNonEmptyString(experimentId) || !isNonEmptyString(scannerId)) {
@@ -550,7 +580,11 @@ export async function graviscanPlateAssignmentsList(
       };
     }
     const rows = await db.graviScanPlateAssignment.findMany({
-      where: { experiment_id: experimentId, scanner_id: scannerId },
+      where: {
+        experiment_id: experimentId,
+        scanner_id: scannerId,
+        wave_number: typeof waveNumber === 'number' ? waveNumber : 0,
+      },
       orderBy: { plate_index: 'asc' },
     });
     return { success: true, data: rows };
@@ -574,7 +608,8 @@ export async function graviscanPlateAssignmentsUpsertMany(
   db: Db,
   experimentId: string,
   scannerId: string,
-  assignments: PlateAssignmentUpsertInput[]
+  assignments: PlateAssignmentUpsertInput[],
+  waveNumber?: number
 ): Promise<DatabaseResponse> {
   try {
     if (!isNonEmptyString(experimentId) || !isNonEmptyString(scannerId)) {
@@ -583,21 +618,45 @@ export async function graviscanPlateAssignmentsUpsertMany(
         error: 'experimentId and scannerId must be non-empty strings',
       };
     }
+    const wave = typeof waveNumber === 'number' ? waveNumber : 0;
     const rows = await db.$transaction(async (tx) => {
       const written = [];
       for (const a of assignments) {
+        // verification_status/previous_plate_barcode are owned by the
+        // verify-plates flow, not plate assignment — omitting them from
+        // the update payload (rather than defaulting to
+        // 'pending'/null) leaves Prisma's existing column value
+        // untouched, so an operator editing an unrelated field here
+        // can't silently erase a verification result written moments
+        // earlier by a different caller.
+        const update: Record<string, unknown> = {
+          plate_barcode: a.plate_barcode ?? null,
+          transplant_date: a.transplant_date
+            ? new Date(a.transplant_date)
+            : null,
+          custom_note: a.custom_note ?? null,
+          selected: a.selected ?? true,
+        };
+        if (a.verification_status !== undefined) {
+          update.verification_status = a.verification_status;
+        }
+        if (a.previous_plate_barcode !== undefined) {
+          update.previous_plate_barcode = a.previous_plate_barcode;
+        }
         const row = await tx.graviScanPlateAssignment.upsert({
           where: {
-            experiment_id_scanner_id_plate_index: {
+            experiment_id_scanner_id_plate_index_wave_number: {
               experiment_id: experimentId,
               scanner_id: scannerId,
               plate_index: a.plate_index,
+              wave_number: wave,
             },
           },
           create: {
             experiment_id: experimentId,
             scanner_id: scannerId,
             plate_index: a.plate_index,
+            wave_number: wave,
             plate_barcode: a.plate_barcode ?? null,
             transplant_date: a.transplant_date
               ? new Date(a.transplant_date)
@@ -607,16 +666,7 @@ export async function graviscanPlateAssignmentsUpsertMany(
             verification_status: a.verification_status ?? 'pending',
             previous_plate_barcode: a.previous_plate_barcode ?? null,
           },
-          update: {
-            plate_barcode: a.plate_barcode ?? null,
-            transplant_date: a.transplant_date
-              ? new Date(a.transplant_date)
-              : null,
-            custom_note: a.custom_note ?? null,
-            selected: a.selected ?? true,
-            verification_status: a.verification_status ?? 'pending',
-            previous_plate_barcode: a.previous_plate_barcode ?? null,
-          },
+          update,
         });
         written.push(row);
       }
@@ -2094,17 +2144,18 @@ export function registerDatabaseHandlers() {
 
   ipcMain.handle(
     'db:graviscanPlateAssignments:list',
-    (_event, experimentId, scannerId) =>
-      graviscanPlateAssignmentsList(db, experimentId, scannerId)
+    (_event, experimentId, scannerId, waveNumber) =>
+      graviscanPlateAssignmentsList(db, experimentId, scannerId, waveNumber)
   );
   ipcMain.handle(
     'db:graviscanPlateAssignments:upsertMany',
-    (_event, experimentId, scannerId, assignments) =>
+    (_event, experimentId, scannerId, assignments, waveNumber) =>
       graviscanPlateAssignmentsUpsertMany(
         db,
         experimentId,
         scannerId,
-        assignments
+        assignments,
+        waveNumber
       )
   );
 
