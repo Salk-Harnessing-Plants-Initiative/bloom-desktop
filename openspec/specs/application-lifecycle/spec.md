@@ -1,8 +1,11 @@
 # application-lifecycle Specification
 
 ## Purpose
+
 TBD - created by archiving change harden-cylinderscan-tier1. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Single Instance Application Lock
 
 The application SHALL acquire a single-instance lock at startup, before any window is created. If the lock cannot be acquired (another instance is already running), the new instance SHALL quit immediately without creating a window or initializing hardware/database connections. This applies app-wide, to both CylinderScan and GraviScan modes, since they share the same main process.
@@ -35,4 +38,3 @@ The application SHALL acquire a single-instance lock at startup, before any wind
 - **WHEN** a `second-instance` event fires in that instance
 - **THEN** the handler SHALL NOT throw
 - **AND** it SHALL no-op without calling `isMinimized()`, `restore()`, or `focus()` on the destroyed window
-

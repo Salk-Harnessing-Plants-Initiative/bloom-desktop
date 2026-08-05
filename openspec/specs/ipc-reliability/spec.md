@@ -1,8 +1,11 @@
 # ipc-reliability Specification
 
 ## Purpose
+
 TBD - created by archiving change harden-cylinderscan-tier1. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Preload Listener Cleanup
 
 Every `on*` subscription method exposed on `window.electron` by `src/main/preload.ts` SHALL return a cleanup function that removes its underlying `ipcRenderer` listener, so renderer components can unsubscribe on unmount without leaking listeners.
@@ -108,4 +111,3 @@ Commands sent to the Python subprocess via `PythonProcess.sendCommand()` SHALL b
 - **AND** the first process's real OS-level exit event arrives late, after the second `start()` has begun
 - **WHEN** the stale exit event fires
 - **THEN** it SHALL NOT corrupt the second process's state, identically to the `restart()` case above
-
