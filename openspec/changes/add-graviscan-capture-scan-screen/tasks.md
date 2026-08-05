@@ -7,32 +7,32 @@ no purely renderer-side or application-level fix can close correctly.
 This section lands both schema changes first, before any code depends on
 them.
 
-- [ ] 1.1 Add `wave_number Int @default(0)` to `GraviScanPlateAssignment`
+- [x] 1.1 Add `wave_number Int @default(0)` to `GraviScanPlateAssignment`
       in `prisma/schema.prisma`; change its
       `@@unique([experiment_id, scanner_id, plate_index])` to
       `@@unique([experiment_id, scanner_id, plate_index, wave_number])`
       (design.md Decision 3 — this is what makes "which wave's row to
       read" an explicit, always-correct parameter instead of something
       inferred from render history).
-- [ ] 1.2 Add `@@unique([session_id, scanner_id, plate_index,
+- [x] 1.2 Add `@@unique([session_id, scanner_id, plate_index,
       cycle_number])` to `GraviScan` in `prisma/schema.prisma` (design.md
       Decision 2, point 4 — enables upsert-based idempotent per-job
       persistence; SQLite treats multiple `NULL`s in a unique index as
       distinct, so existing `session_id: null` rows are unaffected).
-- [ ] 1.3 Run `npx prisma migrate dev --name
+- [x] 1.3 Run `npx prisma migrate dev --name
       add_wave_number_to_plate_assignment_and_scan_unique_constraint` to
       generate the migration and regenerate the client.
-- [ ] 1.4 Run `./scripts/verify-migrations.sh` to confirm the generated
+- [x] 1.4 Run `./scripts/verify-migrations.sh` to confirm the generated
       migration matches `schema.prisma` (schema/migration parity check,
       per this repo's existing convention for schema changes).
-- [ ] 1.5 Run `npm run test:db-upgrade` to confirm the existing
+- [x] 1.5 Run `npm run test:db-upgrade` to confirm the existing
       hand-written upgrade path needs no further changes.
-- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before starting Section 2.
 
 ## 2. Backend: wave-scoped graviscanPlateAssignments handlers, idempotent graviscansCreate (TDD)
 
-- [ ] 2.1 Write failing tests in
+- [x] 2.1 Write failing tests in
       `tests/unit/graviscan/database-handlers.test.ts` for
       `graviscanPlateAssignments.upsertMany`/`.list`
       (`src/main/database-handlers.ts`) gaining a `waveNumber` parameter:
@@ -54,7 +54,7 @@ them.
       resetting them to `'pending'`/`null`; confirm a payload that
       *does* explicitly include them (not this tier's own caller, but
       keeping the capability available) still updates them.
-- [ ] 2.2 Implement the `waveNumber` parameter and the verification-field
+- [x] 2.2 Implement the `waveNumber` parameter and the verification-field
       preservation fix in both handlers
       (`graviscanPlateAssignmentsUpsertMany`'s `update:` clause,
       `database-handlers.ts:610-618`, changes from unconditionally
@@ -72,7 +72,7 @@ them.
       `toHaveBeenCalledWith` (exact-arity match), so they will fail once
       2.2's preload changes land if left unmodified. Run 2.1's tests
       green.
-- [ ] 2.3 Write failing tests in
+- [x] 2.3 Write failing tests in
       `tests/unit/graviscan/database-handlers.test.ts` for
       `graviscansCreate()` becoming upsert-based (design.md Decision 2,
       point 4): calling it twice with identical
@@ -83,9 +83,9 @@ them.
       purely internal Prisma-call change
       (`db.graviScan.create()` → `db.graviScan.upsert()`), no new preload
       method, no new IPC channel.
-- [ ] 2.4 Implement the upsert change in `graviscansCreate()`
+- [x] 2.4 Implement the upsert change in `graviscansCreate()`
       (`database-handlers.ts:123-173`). Run 2.3's tests green.
-- [ ] 2.5 Add coverage to `tests/e2e/renderer-database-ipc.e2e.ts` (the
+- [x] 2.5 Add coverage to `tests/e2e/renderer-database-ipc.e2e.ts` (the
       real `db:*` IPC-coverage-gate file — unlike `graviscan:verify-plates`,
       `db:graviscanPlateAssignments:*` and `db:graviscans:create` are
       squarely in that gate's scope, confirmed via existing
@@ -96,15 +96,15 @@ them.
       the real IPC bridge); `graviscans.create`'s upsert-based
       idempotency (call twice with identical keys through the real
       bridge, confirm one row).
-- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before starting Section 3.
 
 ## 3. Backend: wave-scoped verify-plates, read AND write (TDD)
 
-- [ ] 3.1 Export `isValidWaveNumber()` from `src/main/database-handlers.ts`
+- [x] 3.1 Export `isValidWaveNumber()` from `src/main/database-handlers.ts`
       (currently a bare, un-exported `function` — confirmed no other file
       can import it as-is). No behavior change, just the `export` keyword.
-- [ ] 3.2 In `tests/unit/graviscan/verify-plates.test.ts`, write failing
+- [x] 3.2 In `tests/unit/graviscan/verify-plates.test.ts`, write failing
       tests for the new optional `waveNumber` parameter — **appended as
       the last parameter** in `verifyPlates(db, plates, experimentId,
       scanOutputDir, onProgress, waveNumber)`, not grouped next to
@@ -133,7 +133,7 @@ them.
       plate_barcode)` combination and confirm only the wave-matching rows
       are touched, for both tables. This is a plain mocked-Prisma Vitest
       unit test, consistent with every other test already in this file.
-- [ ] 3.3 Implement the `waveNumber` parameter in `verifyPlates()`
+- [x] 3.3 Implement the `waveNumber` parameter in `verifyPlates()`
       (`src/main/graviscan/verify-plates.ts`): resolve `accessionId` via
       `db.graviExperimentWaveMetadata.findUnique({ where: {
       experiment_id_wave_number: { experiment_id, wave_number } } })` when
@@ -146,7 +146,7 @@ them.
       and to the `GraviScanPlateAssignment` `verification_status`/swap
       `updateMany` calls (`verify-plates.ts:665`, `:680`) when
       `waveNumber` was supplied. Run 3.2's tests green.
-- [ ] 3.4 Update `graviscan:verify-plates`'s `ipcMain.handle` signature in
+- [x] 3.4 Update `graviscan:verify-plates`'s `ipcMain.handle` signature in
       `src/main/graviscan/register-handlers.ts` to accept and pass through
       an optional `waveNumber` (same last-position placement, same
       `isValidWaveNumber()` validation). Add/update unit coverage in
@@ -155,12 +155,12 @@ them.
       `toHaveBeenCalledWith(mockDb, plates, 'exp-1', outputDir,
       expect.any(Function))` assertion to account for the new trailing
       argument.
-- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before starting Section 4.
 
 ## 4. Renderer: new VerificationStatus type
 
-- [ ] 4.1 In `src/types/graviscan.ts`, **create** a new `VerificationStatus`
+- [x] 4.1 In `src/types/graviscan.ts`, **create** a new `VerificationStatus`
       type (no such type exists in this repo today — this is new, not a
       "replace" or "unify" of anything currently present; that framing
       described only the external reference implementation's bug). Match
@@ -176,11 +176,11 @@ them.
       type alias with no runtime behavior of its own; every one of its 8
       values is exercised behaviorally by `QRVerificationBanner.test.tsx`
       (task 14.2) and `useScanSession.test.ts` (task 12.1).
-- [ ] Run `npx tsc --noEmit` — confirm no new type errors before Section 5.
+- [x] Run `npx tsc --noEmit` — confirm no new type errors before Section 5.
 
 ## 5. Preload wiring: verifyPlates + events, with real E2E coverage (TDD)
 
-- [ ] 5.1 Add a round-trip `test.describe` block to
+- [x] 5.1 Add a round-trip `test.describe` block to
       `tests/e2e/graviscan-ipc.e2e.ts` (the actual existing home for
       `gravi.*` IPC round-trip tests, confirmed via its existing
       `test.describe('GraviScan IPC Round-Trip', ...)` block — **not**
@@ -195,21 +195,21 @@ them.
       linked metadata producing `lookup_failed`, and the wave-scoped
       swap-correction writes from task 3.2 exercised end-to-end through
       the real IPC bridge.
-- [ ] 5.2 Add `verifyPlates(plates, experimentId, scanOutputDir?,
+- [x] 5.2 Add `verifyPlates(plates, experimentId, scanOutputDir?,
       waveNumber?)` (matching the final backend signature from Section 3)
       to `graviAPI` in `src/main/preload.ts`, plus `onVerifyStarted`,
       `onVerifyResult`, `onVerifyComplete` listener wrappers (matching the
       existing `onScanStarted`/`onScanComplete` pattern for cleanup/removal
       semantics). Add corresponding typed signatures to
       `src/types/electron.d.ts`. Run 5.1's test green.
-- [ ] 5.3 Run `npm run test:e2e -- tests/e2e/graviscan-ipc.e2e.ts` against
+- [x] 5.3 Run `npm run test:e2e -- tests/e2e/graviscan-ipc.e2e.ts` against
       a real Electron+SQLite instance and confirm it passes, alongside the
       full existing file (no regressions in the rest of the `gravi.*`
       suite).
 
 ## 6. Renderer utility: cadenceEstimator (TDD)
 
-- [ ] 6.1 Write failing unit tests in `tests/unit/cadenceEstimator.test.ts`
+- [x] 6.1 Write failing unit tests in `tests/unit/cadenceEstimator.test.ts`
       (a flat path directly under `tests/unit/`, matching this repo's
       convention for pure-utility tests — e.g.
       `tests/unit/date-helpers.test.ts` — not a `tests/unit/renderer/`
@@ -217,11 +217,11 @@ them.
       `estimateCycleSeconds({ platesPerScanner, dpi, regionMm })` per the
       accepted spec (`ui-management-pages/spec.md:1836`): base-case
       calculation, DPI scaling, region-height scaling.
-- [ ] 6.2 Implement `src/renderer/utils/cadenceEstimator.ts` to satisfy 6.1.
+- [x] 6.2 Implement `src/renderer/utils/cadenceEstimator.ts` to satisfy 6.1.
 
 ## 7. Hook: useScannerStatus (TDD)
 
-- [ ] 7.1 Write failing tests in `tests/unit/hooks/useScannerStatus.test.ts`
+- [x] 7.1 Write failing tests in `tests/unit/hooks/useScannerStatus.test.ts`
       (matching this repo's existing convention, e.g.
       `tests/unit/hooks/useWedgeEvents.test.ts`) for `useScannerStatus`:
       polls `getScannerStatus()` and maps each row into a
@@ -236,17 +236,17 @@ them.
       scanner leaves `starting`, so a lost/never-replayed
       `webContents.send` init event cannot leave a row stuck showing
       "Connecting..." indefinitely.
-- [ ] 7.2 Implement `src/renderer/hooks/useScannerStatus.ts` to satisfy 7.1.
+- [x] 7.2 Implement `src/renderer/hooks/useScannerStatus.ts` to satisfy 7.1.
 
 ## 8. Hook: useWaveNumber (TDD)
 
-- [ ] 8.1 Write failing tests in `tests/unit/hooks/useWaveNumber.test.ts`
+- [x] 8.1 Write failing tests in `tests/unit/hooks/useWaveNumber.test.ts`
       for `useWaveNumber`: reads/sets the selected wave number (including
       `waveNumber: 0`, an already-accepted valid value per
       `scanning/spec.md:117-127` — not just non-zero cases), surfaces a
       "suggested next wave" via `getMaxWaveNumber()` + 1, rejects
       negative input.
-- [ ] 8.2 Implement `src/renderer/hooks/useWaveNumber.ts` to satisfy 8.1.
+- [x] 8.2 Implement `src/renderer/hooks/useWaveNumber.ts` to satisfy 8.1.
 
 ## 9. Hook: usePlateAssignments — schema-backed wave scoping (TDD)
 
@@ -256,7 +256,7 @@ comparison — no ref-based "was this a wave switch or a remount" inference
 (two prior review rounds each found a bug in that kind of inference; see
 design.md Decision 3's history).
 
-- [ ] 9.1 Write failing tests in
+- [x] 9.1 Write failing tests in
       `tests/unit/hooks/usePlateAssignments.test.ts` covering:
       - No linked wave metadata for the current wave → empty, editable
         positions; a *different* wave's persisted row (even one that
@@ -310,7 +310,7 @@ design.md Decision 3's history).
         ref-based wave-switch heuristic — are closed by this section's
         schema-backed design; this one is a plain async race, closed by a
         staleness check, not by the schema).
-- [ ] 9.2 Implement `src/renderer/hooks/usePlateAssignments.ts` to satisfy
+- [x] 9.2 Implement `src/renderer/hooks/usePlateAssignments.ts` to satisfy
       9.1, calling `graviscanPlateAssignments.list`/`.upsertMany` (task
       2.2) with the current `waveNumber` on every read/write, and guarding
       every wave-scoped fetch with the same `let cancelled = false`-style
@@ -320,7 +320,7 @@ design.md Decision 3's history).
 
 ## 10. Hook: useContinuousMode (TDD)
 
-- [ ] 10.1 Write failing tests in
+- [x] 10.1 Write failing tests in
       `tests/unit/hooks/useContinuousMode.test.ts` for
       `useContinuousMode`: interval/duration form state, rejects a
       zero-or-negative interval before it would ever reach `startScan()`
@@ -328,7 +328,7 @@ design.md Decision 3's history).
       the `cadenceContext` (`platesPerScanner` from Section 7's real
       `gridMode` values via `createPlateAssignments`, not a hardcoded
       constant) passed to `CadenceWarningBanner`.
-- [ ] 10.2 Implement `src/renderer/hooks/useContinuousMode.ts` to satisfy
+- [x] 10.2 Implement `src/renderer/hooks/useContinuousMode.ts` to satisfy
       10.1.
 
 ## 11. Shared wedge context (Layout.tsx)
@@ -337,7 +337,7 @@ Landed **before** `useScanSession` (Section 12), which consumes it — a
 prior draft of this task list had these in the reverse order, creating a
 forward reference to a context that didn't exist yet.
 
-- [ ] 11.1 Write failing tests in
+- [x] 11.1 Write failing tests in
       `tests/unit/components/WedgeContext.test.tsx` confirming: a
       `WedgeContext` provider, mounted in `Layout.tsx`, wraps a single
       `useWedgeEvents()` call — moved up from where it lives today
@@ -349,7 +349,7 @@ forward reference to a context that didn't exist yet.
       occurred before the second consumer's mount — the regression test
       for the bug found in an earlier draft's independent-
       `useWedgeEvents()`-per-consumer design (design.md Decision 6).
-- [ ] 11.2 Implement the context: add `WedgeContext`/`WedgeProvider` (new
+- [x] 11.2 Implement the context: add `WedgeContext`/`WedgeProvider` (new
       file or inline in `Layout.tsx`), move `useWedgeEvents()` from
       `WedgeBanner.tsx` into the provider, update `WedgeBanner.tsx` to
       consume the context instead. Run 11.1's tests green, plus the
