@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 const {
@@ -156,6 +156,16 @@ describe('GraviScan screen composition', () => {
         },
       }),
     };
+    win.electron.session = {
+      get: vi.fn().mockResolvedValue({
+        phenotyperId: null,
+        experimentId: null,
+        waveNumber: null,
+        plantAgeDays: null,
+        accessionName: null,
+      }),
+      set: vi.fn().mockResolvedValue({}),
+    };
   });
 
   it('passes plate-assignment state through to ScanFormSection', () => {
@@ -209,5 +219,39 @@ describe('GraviScan screen composition', () => {
   it('renders the suggested-next-wave hint from useWaveNumber', () => {
     render(<GraviScan />);
     expect(screen.getByText(/suggested next wave: 3/i)).toBeInTheDocument();
+  });
+
+  it('restores experimentId/phenotyperId/waveNumber from window.electron.session on mount (regression: lost on navigating away and back)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.session.get = vi.fn().mockResolvedValue({
+      phenotyperId: 'pheno-9',
+      experimentId: 'exp-9',
+      waveNumber: 4,
+      plantAgeDays: null,
+      accessionName: null,
+    });
+
+    render(<GraviScan />);
+
+    await waitFor(() =>
+      expect(usePlateAssignmentsSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ experimentId: 'exp-9' })
+      )
+    );
+    expect(mockWaveNumber.setWaveNumber).toHaveBeenCalledWith(4);
+  });
+
+  it('debounce-saves experimentId/phenotyperId/waveNumber to window.electron.session (regression: selections lost on navigating away and back)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+
+    render(<GraviScan />);
+
+    await waitFor(() =>
+      expect(win.electron.session.set).toHaveBeenCalledWith(
+        expect.objectContaining({ waveNumber: 2 })
+      )
+    );
   });
 });

@@ -168,6 +168,11 @@ export function ScanControlSection({
           type="button"
           onClick={() => void scanSession.startScan()}
           disabled={!scanSession.canStartScan || scanSession.isScanning}
+          className={`px-6 py-2 rounded-lg font-semibold shadow-sm transition-all ${
+            !scanSession.canStartScan || scanSession.isScanning
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md'
+          }`}
         >
           Start Scan
         </button>
@@ -175,6 +180,11 @@ export function ScanControlSection({
           type="button"
           onClick={() => void handleCancel()}
           disabled={!scanSession.isScanning || isCancelling}
+          className={`px-6 py-2 rounded-lg font-semibold shadow-sm transition-all ${
+            !scanSession.isScanning || isCancelling
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-red-600 text-white hover:bg-red-700 hover:shadow-md'
+          }`}
         >
           Cancel
         </button>
@@ -182,6 +192,11 @@ export function ScanControlSection({
           type="button"
           onClick={() => void testScan.testAllScanners()}
           disabled={testScan.isTesting}
+          className={`px-6 py-2 rounded-lg font-semibold border transition-all ${
+            testScan.isTesting
+              ? 'border-gray-300 text-gray-400 cursor-not-allowed'
+              : 'border-gray-400 text-gray-700 hover:bg-gray-50'
+          }`}
         >
           Test Scan
         </button>

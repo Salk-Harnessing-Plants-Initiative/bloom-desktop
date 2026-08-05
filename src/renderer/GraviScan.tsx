@@ -32,10 +32,44 @@ export function GraviScan() {
   const [phenotyperId, setPhenotyperId] = useState<string | null>(null);
   const [resolution, setResolution] = useState<number>(DEFAULT_RESOLUTION_DPI);
   const [saneNames, setSaneNames] = useState<Record<string, string>>({});
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   const { waveNumber, setWaveNumber, suggestedNextWave } =
     useWaveNumber(experimentId);
   const { scanners } = useScannerStatus();
+
+  // Restore experiment/phenotyper/wave on mount so they survive navigating
+  // away from this screen and back (CaptureScan.tsx uses the same
+  // window.electron.session mechanism for this exact purpose).
+  useEffect(() => {
+    (async () => {
+      try {
+        const session = await window.electron.session.get();
+        if (session.experimentId !== null) setExperimentId(session.experimentId);
+        if (session.phenotyperId !== null) setPhenotyperId(session.phenotyperId);
+        if (session.waveNumber !== null) setWaveNumber(session.waveNumber);
+      } catch (error) {
+        console.error('Failed to load session state:', error);
+      } finally {
+        setSessionLoaded(true);
+      }
+    })();
+  }, [setWaveNumber]);
+
+  // Persist experiment/phenotyper/wave selections (debounced) once the
+  // initial restore above has completed, so a fresh mount never clobbers
+  // a previously saved selection with this screen's blank initial state.
+  useEffect(() => {
+    if (!sessionLoaded) return;
+    const saveTimeout = setTimeout(() => {
+      window.electron.session
+        .set({ experimentId, phenotyperId, waveNumber })
+        .catch((error) => {
+          console.error('Failed to save session state:', error);
+        });
+    }, 300);
+    return () => clearTimeout(saveTimeout);
+  }, [sessionLoaded, experimentId, phenotyperId, waveNumber]);
 
   const scannerIds = useMemo(
     () => scanners.map((s) => s.scannerId),

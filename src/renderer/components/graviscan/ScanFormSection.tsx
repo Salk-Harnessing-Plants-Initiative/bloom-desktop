@@ -76,6 +76,13 @@ export function ScanFormSection({
           <div className="font-semibold">
             {scannerLabels[scannerId] ?? scannerId}
           </div>
+          <div className="flex items-center gap-2 text-xs font-medium text-gray-500 uppercase tracking-wide px-1">
+            <span className="w-4" aria-hidden="true" />
+            <span className="w-10">Plate</span>
+            <span className="flex-1">Plant Barcode</span>
+            <span className="flex-1">Transplant Date</span>
+            <span className="flex-1">Custom Note</span>
+          </div>
           <div className="space-y-2">
             {(assignmentsByScanner[scannerId] || []).map((plate) => {
               const inputId = `${scannerId}-${plate.plateIndex}-barcode`;
