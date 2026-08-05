@@ -494,11 +494,11 @@ other out of order.
 
 ## 15. Screen: GraviScan.tsx + routing/nav wiring
 
-- [ ] 15.1 Write failing tests in `tests/unit/pages/GraviScan.test.tsx`
+- [x] 15.1 Write failing tests in `tests/unit/pages/GraviScan.test.tsx`
       confirming the screen composes Sections 7-14's hooks/components
       correctly (e.g. plate-assignment state reaches `ScanFormSection`,
       session state reaches `ScanControlSection`/`ScannerStatusPanel`).
-- [ ] 15.2 Implement `src/renderer/GraviScan.tsx` to satisfy 15.1,
+- [x] 15.2 Implement `src/renderer/GraviScan.tsx` to satisfy 15.1,
       composing all hooks and components from Sections 7–14.
 - [ ] 15.3 Add the `capture-scan` route to `App.tsx`'s `mode ===
       'graviscan'` block; update `tests/unit/pages/App.test.tsx` to cover
