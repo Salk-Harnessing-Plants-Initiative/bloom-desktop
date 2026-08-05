@@ -53,18 +53,32 @@ per the roadmap's request but is **not implemented here** — see Impact.
 - `uploadScan`/`uploadBatch` now reject soft-deleted scans outright
   (`success: false` with a clear message) instead of silently uploading
   their images.
-- Retrying a scan now skips images already at `status: 'uploaded'` instead
-  of resending every image in the scan — avoids creating duplicate/orphaned
-  remote metadata rows on retry.
+- Retrying a scan now skips **re-uploading** images already at `status:
+  'uploaded'` instead of resending every image in the scan — avoids
+  creating duplicate/orphaned remote metadata rows on retry. Critically,
+  already-`'uploaded'` images are still independently re-verified against
+  storage (not re-uploaded) on retry, so a historically-corrupted
+  `'uploaded'` image doesn't become permanently invisible to the new
+  verification logic below (design.md Decision 9 — found during review).
+  The internal per-image index mapping is fixed to key off the filtered
+  upload list, not the full scan, so this doesn't misapply a status update
+  to the wrong image (design.md Decision 10 — found during review).
 - After `@salk-hpi/bloom-fs` reports an image upload as successful, the
   code now independently verifies the object exists in Supabase storage
-  (via the raw Supabase client already held by `ImageUploader`) before
-  marking the local image `'uploaded'` — the same caller-side fix pilot
-  issue #60 itself proposed, requiring no changes to the external
-  `bloom-fs` package or the Supabase schema.
+  (via the raw Supabase client already held by `ImageUploader`, plus one
+  additional Supabase query to look up the `object_path` bloom-fs never
+  returns to the caller — design.md Decision 7) before marking the local
+  image `'uploaded'` — the same caller-side fix pilot issue #60 itself
+  proposed, requiring no changes to the external `bloom-fs` package or the
+  Supabase schema. A verification call that itself fails (not a confirmed-
+  missing object) is retried up to 3 times before falling back to
+  `'failed'`, so a transient network blip during the check can't silently
+  mark a real success as failed (design.md Decision 7 — found during
+  review).
 - `nWorkers: 4` gets a documentation-only comment (matching
   `graviscan-upload.ts`'s existing rationale for the same constant); no
-  behavior change (pilot issue #110, evaluated and left as-is).
+  behavior change (pilot issue #110 — see Impact for the follow-up on its
+  other two, unaddressed asks).
 - New `upload` spec requirements: "Upload Excludes Soft-Deleted Scans",
   "Upload Skips Already-Uploaded Images on Retry", "Upload Verifies Storage
   Object Existence Before Marking Uploaded".
@@ -77,13 +91,20 @@ per the roadmap's request but is **not implemented here** — see Impact.
 - `CaptureScan.tsx`'s existing same-day/(plant_id+experiment_id) warning is
   **replaced** (not supplemented) by a call to the new handler — same
   warning-banner/hard-block UX, corrected trigger condition.
-- `db:scans:getMostRecentScanDate` becomes dead code once this switch
-  happens (its only production call site is the code being replaced) and
-  is removed entirely, per this repo's no-dead-code convention — including
-  its preload/`electron.d.ts` exposure and its dedicated test coverage.
-  The "Plant Barcode IPC Handlers" requirement drops that scenario; the
+- **BREAKING**: `db:scans:getMostRecentScanDate` becomes dead code once
+  this switch happens (its only production call site is the code being
+  replaced, confirmed by an independent full-tree search, not just the
+  original claim) and is removed entirely, per this repo's no-dead-code
+  convention — including its `preload.ts`/`electron.d.ts` exposure and its
+  dedicated test coverage in `tests/e2e/plant-barcode-validation.e2e.ts`
+  and two blocks in `tests/e2e/renderer-database-ipc.e2e.ts`. This is an
+  internal Electron IPC surface (no external consumers), but it is a real
+  API removal, marked as such per this repo's proposal conventions. The
+  "Plant Barcode IPC Handlers" requirement drops that scenario; the
   "Duplicate Scan Prevention" requirement is rewritten for the new key and
-  handler name.
+  handler name — including a new scenario for the changed cross-day
+  behavior (a match on a *different* day is now correctly flagged, since
+  day is no longer part of the key).
 - New E2E test in `tests/e2e/renderer-database-ipc.e2e.ts` for
   `db:scans:checkDuplicate` — required by this repo's CI coverage gate,
   which statically scans that specific file for `db:*` handler calls (a
@@ -108,7 +129,16 @@ implemented**
   this repo's PR can do alone. Follow-up cross-repo issue.
 - Pilot #61 (scheduled upload/storage audit tool) — separate, larger ops
   tooling; this tier's fixes address the specific failure mode already
-  confirmed in production. Follow-up issue.
+  confirmed in production, and narrow (but don't eliminate) the
+  historical-corruption blind spot this tool would fully close — see
+  design.md Decision 9/Risks. Follow-up issue.
+- #110's two unaddressed asks (benchmark 4/8/10 workers; consider making
+  concurrency configurable) — only its third ask (document the rationale)
+  is done here. Follow-up issue for the other two.
+- #79's own acceptance criteria include removing scan files from disk on
+  delete — deliberately not done (Decision 1, soft-delete-only). This
+  proposal comments on #79 explaining the decision rather than silently
+  diverging from one of its stated criteria.
 
 ## Impact
 
@@ -117,26 +147,49 @@ implemented**
   Handlers"; ADDED: "Scan Duplicate Check IPC Handler"); `upload` (ADDED:
   three new requirements, see above).
 - **Affected code**: `src/main/database-handlers.ts`,
-  `src/main/cylinderscan/scan-metadata-json.ts`, `src/main/image-uploader.ts`,
+  `src/main/cylinderscan/scan-metadata-json.ts` (adds
+  `isScanMetadataDeleted()`, design.md Decision 13), `src/main/image-uploader.ts`,
   `src/main/preload.ts`, `src/types/electron.d.ts`,
-  `src/renderer/BrowseScans.tsx`, `src/renderer/ScanPreview.tsx`,
+  `src/renderer/BrowseScans.tsx` (also gains a success-message affordance —
+  no toast/message infrastructure exists anywhere in the renderer today,
+  confirmed by search, so this is new, minimal UI, not a wire-up of
+  something existing), `src/renderer/ScanPreview.tsx`,
   `src/renderer/CaptureScan.tsx`, a new
   `src/renderer/components/DeleteConfirmModal.tsx` (or equivalent shared
-  location — confirmed during implementation), plus test files:
-  `tests/e2e/renderer-database-ipc.e2e.ts`,
-  `tests/e2e/plant-barcode-validation.e2e.ts`,
-  `tests/unit/capture-scan-config.test.tsx`,
-  `tests/unit/pages/CaptureScan-event-cleanup.test.tsx`, and new unit tests
-  for `image-uploader.ts`'s three fixes.
+  location — confirmed during implementation).
+- **Affected tests** (existing, modified or removed):
+  `tests/e2e/renderer-database-ipc.e2e.ts` (removes 2 `getMostRecentScanDate`
+  tests inside its larger scans-with-filters describe block, adds the new
+  `checkDuplicate` test), `tests/e2e/plant-barcode-validation.e2e.ts`
+  (removes its dedicated `getMostRecentScanDate` describe block, and
+  **rewrites** — not just deletes — its separate "UI: Duplicate Scan
+  Prevention" test, which asserts on the old "already scanned today"
+  message that no longer applies), `tests/unit/capture-scan-config.test.tsx`
+  (replaces the `getMostRecentScanDate` mock with a `checkDuplicate` mock,
+  not just removes it), `tests/unit/pages/CaptureScan-event-cleanup.test.tsx`
+  (mock removal only — this file's suite is currently `describe.skip`'d,
+  so it doesn't run in CI either way).
+- **New tests**: `markMetadataDeleted()`/`isScanMetadataDeleted()` unit
+  tests; `db:scans:delete`'s metadata-sync and missing-file-handling unit
+  tests; a `DeleteConfirmModal` component test; `BrowseScans.tsx`/
+  `ScanPreview.tsx` delete-flow tests including the new success message;
+  `checkDuplicateScan` unit test plus its required `renderer-database-ipc.e2e.ts`
+  entry; `CaptureScan.tsx` duplicate-check tests including an invalid/
+  incomplete `waveNumber`/`plantAgeDays` edge case; and `image-uploader.ts`
+  unit tests for the soft-delete guard, the retry-skip-but-still-verify
+  behavior (design.md Decision 9), the filtered-index correctness
+  regression test (design.md Decision 10), and the three-way verification
+  outcome including the bounded-retry-on-inconclusive-check path
+  (design.md Decision 7).
 - **No Prisma schema changes** — `Scan.deleted` already exists; this
-  change only adds a `deleted` field to the on-disk `ScanMetadataJson`
-  TypeScript interface, not the database.
+  change only adds a `deleted` field (plus a helper function) to the
+  on-disk `ScanMetadataJson` TypeScript interface, not the database.
 - **Coordination with Tier 1** (`harden-cylinderscan-tier1`, PR #280, not
   yet merged): both touch `image-uploader.ts`, in disjoint regions — Tier 1
   fixes 4 `any`-typed fields (lines ~96-103), this change touches
   `uploadScan`/`uploadBatch` (lines ~212-350+) and the `nWorkers` constant.
   Whichever merges first, the other should rebase before finalizing, per
   the same discipline the roadmap already calls out.
-- **Not affected, left as-is on purpose**: pilot #59 (local↔cloud UUID) and
-  #61 (audit tooling) — see "Not fixed by this change" above. Pilot #3
-  (acquisition-metadata readback) — see Part 4.
+- **Not affected, left as-is on purpose**: pilot #59 (local↔cloud UUID) —
+  see "Not fixed by this change" above. Pilot #3 (acquisition-metadata
+  readback) — see Part 4.

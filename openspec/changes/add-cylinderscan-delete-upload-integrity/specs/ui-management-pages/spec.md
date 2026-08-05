@@ -44,6 +44,21 @@ matching a specific plant, experiment, wave, and age already exists.
   `db:scans:checkDuplicate("PLANT_001", "EXP_001", 2, 21)`
 - **THEN** the handler SHALL return `{ success: true, data: false }`
 
+#### Scenario: Invalid or missing arguments return an error, not a false negative
+
+- **GIVEN** `plantId` or `experimentId` is a non-string, missing, or empty
+  value, or `waveNumber`/`plantAgeDays` is not a non-negative integer
+- **WHEN** `db:scans:checkDuplicate` is called with that argument
+- **THEN** the handler SHALL return `{ success: false, error: <message> }`
+- **AND** it SHALL NOT return `{ success: true, data: false }` (which would
+  read as "no duplicate" rather than "the check could not run")
+
+**Acceptance Criteria**:
+
+- Returns `{ success: true, data: boolean }` on a well-formed request
+- Returns `{ success: false, error: string }` for malformed arguments
+- Never throws — all failure paths return a typed error response
+
 ## MODIFIED Requirements
 
 ### Requirement: Duplicate Scan Prevention
@@ -59,6 +74,16 @@ experiment, wave, and plant age.
   "PLANT_001", wave 2, and plant age 21
 - **THEN** a warning SHALL be displayed indicating this plant/wave/age
   combination was already scanned for this experiment
+- **AND** the scan button SHALL be disabled
+
+#### Scenario: Matching duplicate found on a different day
+
+- **GIVEN** a non-deleted scan exists for plant "PLANT_001", experiment
+  "EXP_001", wave 2, plant age 21 days, captured yesterday
+- **WHEN** the user enters the same plant, experiment, wave, and plant age
+  today
+- **THEN** a warning SHALL be displayed, the same as same-day duplicate
+  matches — capture date is no longer part of the duplicate key
 - **AND** the scan button SHALL be disabled
 
 #### Scenario: Different wave number

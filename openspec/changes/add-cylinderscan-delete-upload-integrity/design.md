@@ -123,11 +123,12 @@ instead of leaving it or degrading the spec.
 ### Decision 3: duplicate-scan key is `(plant_id, experiment_id, wave_number, plant_age_days)`
 
 The roadmap's stated key (`plant_id, wave_number, plant_age_days`) omits
-`experiment_id`. The user caught this during review: `plant_id` (a QR-code
-barcode) is not guaranteed unique across experiments, so a key without
-`experiment_id` could false-positive across unrelated experiments sharing a
-barcode scheme, or false-negative isn't possible but the match would be
-overly broad. All four fields are required for an exact match.
+`experiment_id` — and issue #120's own proposed implementation has the same
+gap (it isn't only the roadmap's paraphrase that missed it). The user caught
+this during review: `plant_id` (a QR-code barcode) is not guaranteed unique
+across experiments, so a key without `experiment_id` risks a false-positive
+duplicate match across two unrelated experiments that happen to share a
+barcode scheme. All four fields are required for an exact match.
 
 **Alternative considered:** keep the roadmap's 3-field key as originally
 stated. Rejected once the `experiment_id` gap was identified — it would
@@ -195,10 +196,10 @@ semantics aren't visible from this repo), the fix targets the *outcome*
 After bloom-fs's callback reports success, `image-uploader.ts` uses the raw
 Supabase client (`this.supabase`, already instantiated) to independently
 verify the object exists in the `images` storage bucket before flipping
-local status to `'uploaded'`. If the object is missing, status becomes
-`'failed'` with a distinguishing error message ("upload reported success
-but object not found in storage") rather than silently matching the
-existing generic failure path — so if this class of bug is ever
+local status to `'uploaded'`. If the object is confirmed missing, status
+becomes `'failed'` with a distinguishing error message ("upload reported
+success but object not found in storage") rather than silently matching
+the existing generic failure path — so if this class of bug is ever
 reintroduced upstream in bloom-fs, it's diagnosable from local logs alone.
 
 **Alternative considered:** patch bloom-fs's dedup path directly (pilot
@@ -208,9 +209,120 @@ reach without a package version bump and coordination with that package's
 maintainers. The caller-side check is pilot #60's own documented
 alternative for exactly this situation ("if touching bloom-fs is
 undesirable, the same verification can be added in
-`app/src/main/imageuploader.ts`'s branch").
+`app/src/main/imageuploader.ts`'s branch"). Issue #60 also has a later
+follow-up comment (2026-06-17) proposing a structural fix — deterministic
+storage paths keyed by local scan/image UUID — that the comment itself
+notes would need both a `bloom-fs` change and an `insert_image_v3_0` RPC
+change; that's the same external-package/schema boundary Decision 5
+already rejects for this tier, so it's noted here for traceability rather
+than adopted.
 
-### Decision 8: pilot #3 (acquisition-metadata readback) and pilot #61 (audit tooling) are follow-up tiers, not this one
+**Implementation detail the verification step depends on (found during
+review, not in the original design): bloom-fs never returns the
+`object_path` it generated.** `uploadImages()`'s `result` callback signature
+is `(index, metadata, created, error)` — no `object_path`. The path
+(`cyl-image_${created}_${uuid.v4()}.png`) is built inside bloom-fs's
+compiled `uploadImage()` and written to the `cyl_images` row via its own
+internal `updateImageMetadata()` call, whose error is discarded and whose
+result never reaches the caller. `DataStore` has no read method for
+`cyl_images` at all. So the verification step requires an **additional**
+Supabase query the original design didn't account for: after `created` is
+known, `ImageUploader` must `select('object_path').eq('id', created)`
+against `cyl_images` itself before it can even check storage — and that
+query can itself return a null `object_path` (if bloom-fs's own discarded
+`updateImageMetadata` call silently failed) or fail outright. Both are
+now folded into the three-way outcome in the scenario below.
+
+**Verification has three outcomes, not two — the third (network/lookup
+failure during verification itself) matters for correctness.** The
+original design only specified "object confirmed present → `'uploaded'`"
+and "object confirmed missing → `'failed'`." A transient network failure
+during the `object_path` lookup or the storage existence check itself is a
+third, distinct case: naively folding it into "missing" would mark a
+*genuinely successful* upload `'failed'`, and since Decision 9 (below) only
+skips re-sending images already at `'uploaded'`, a `'failed'` status from a
+merely-inconclusive check would cause a subsequent retry to fully
+re-upload an image whose bytes may already be sitting in storage —
+recreating the duplicate-remote-row risk the retry-skip fix exists to
+prevent. **Resolution**: on a verification-call failure (not a confirmed-
+missing result), retry the verification check itself up to 3 times with a
+brief backoff, within the same upload attempt — this is cheap (a read-only
+lookup, not a re-upload) and absorbs ordinary transient blips without
+touching the retry/re-upload path at all. If verification is still
+inconclusive after 3 attempts, mark the image `'failed'` with a distinct
+message ("upload succeeded but verification could not be confirmed —
+needs reconciliation") and accept the residual risk documented in Risks —
+this is a deliberately scoped decision, not a gap: introducing a fifth
+`ImageStatus` value to represent "verification-inconclusive" would be a
+bigger change (a new state in the `upload` spec's closed 4-value union,
+rippling into `BrowseScans.tsx`'s status-summary logic) than this tier's
+scope justifies for a rare residual case pilot #61's audit tooling is the
+intended long-term backstop for anyway.
+
+### Decision 9: retry re-verifies (but does not re-upload) images already marked `'uploaded'`
+
+Found during review: the retry-skip fix (previously "skip already-
+`'uploaded'` images on retry," full stop) has a serious interaction with
+Decision 7's own verification step. Once this change ships, any image that
+was **already** wrongly marked `'uploaded'` by the pre-existing bug (the
+exact class of bug pilot #60 and this proposal's motivating incident
+describe) becomes permanently unreachable by the new verification logic —
+it's already at `'uploaded'`, so retry-skip means it's never looked at
+again. Worse, before this change a manual retry at least resent the bytes
+(even though it couldn't detect a storage gap either); after this change,
+retrying a scan with a historically-corrupted `'uploaded'` image becomes a
+silent, falsely-reassuring no-op.
+
+**Chosen:** retry does not re-upload (re-insert metadata, re-send bytes)
+for an already-`'uploaded'` image, but it **does** run the same lightweight
+storage-existence check (Decision 7) against that image's already-recorded
+`object_path` before leaving it at `'uploaded'`. If the object is
+confirmed missing, the image is flipped to `'failed'` (making the gap
+visible and eligible for a real re-upload on the *next* retry, since it's
+no longer at `'uploaded'`); if confirmed present, it's left unchanged; if
+the check is inconclusive, apply the same bounded-retry-then-`'failed'`
+rule as Decision 7. This closes the "old corruption becomes permanently
+invisible" gap using a check this tier is already building, without
+reintroducing the duplicate-row risk retry-skip exists to prevent (no
+metadata re-insert or byte re-upload happens for these images — only a
+read-only existence check).
+
+**Alternative considered:** leave the original retry-skip behavior
+(fully untouched, no re-verification) and treat historical corruption as
+entirely the audit tool's (#61 equivalent) problem. Rejected — the audit
+tool isn't scoped or built yet, and shipping a change that actively closes
+off the one remaining accidental detection path (a user-initiated retry)
+for a bug class this severe, in the same tier that fixes the bug going
+forward, is an avoidable regression for a small amount of additional work.
+
+### Decision 10: index-safety for the filtered retry-skip array
+
+Found during review: `image-uploader.ts`'s current `uploadScan()` builds
+`imagePaths`/`metadata` as 1:1, same-order arrays with `scan.images`
+(`scan.images.map(...)`), and its `result` callback recovers the DB row via
+`scan.images[index]` — this only works because the arrays passed to
+`uploadImagesFn` are never filtered. Decision 9's retry-skip logic makes
+`imagePaths`/`metadata` a **filtered subset** of `scan.images`; if the
+result/progress callbacks keep indexing into the *unfiltered* `scan.images`
+array, `index` (a position in the filtered array) will resolve to the
+wrong `Image` row the moment any image in the scan is already `'uploaded'`
+— silently applying a status update to an untouched image. This is exactly
+the class of bug this whole tier exists to close, so it must not be
+reintroduced by the fix itself.
+
+**Chosen:** build an explicit `imagesToUpload` array (the filtered subset)
+and have the result/progress callbacks index into `imagesToUpload[index]`,
+not `scan.images[index]`. The "mark all images as uploading" loop (which
+today unconditionally sets every `scan.images` row to `'uploading'`) must
+filter the same way — otherwise a retried image already at `'uploaded'`
+would be flipped to `'uploading'` and never resolved back, since it's
+excluded from the filtered call. `UploadResult.total`/progress denominators
+use `imagesToUpload.length`, matching the `upload` spec's requirement that
+`total` reflect only images actually attempted in that call. A regression
+test asserting the correct `Image` row receives each status update — not
+just that *some* row does — is required (see `tasks.md`).
+
+### Decision 11: pilot #3 (acquisition-metadata readback) and pilot #61 (audit tooling) are follow-up tiers, not this one
 
 Both confirmed real (Context) and explicitly requested by the roadmap to be
 "decided explicitly, not silently left unaddressed." Confirmed with the
@@ -222,12 +334,62 @@ write pass or an explicit decision to accept that tradeoff, which deserves
 its own scoped design). #61 needs a scheduled job / ops-tooling design
 independent of anything else in this tier.
 
+### Decision 12: comment on #79 and file a follow-up for #110's unaddressed asks, closing the documentation loop
+
+Found during review: #79's own acceptance criteria include "scan images
+removed from disk" — Decision 1 deliberately does the opposite
+(soft-delete-only), for good reason, but nothing in this proposal closes
+the loop with #79 itself. Similarly, #110 asks for three things
+(benchmark 4/8/10 workers, consider configurability, document the
+rationale) — this tier only does the third. Both are process gaps, not
+design gaps: `tasks.md` now includes commenting on #79 explaining the
+soft-delete-only decision and its rationale, and filing a follow-up issue
+for #110's unaddressed benchmarking/configurability asks (alongside the
+already-planned #59/#61/#3 follow-ups).
+
+### Decision 13: `metadata.json`'s `deleted` field gets an explicit absence-handling helper; `markMetadataDeleted` mirrors the existing absolute-path guard
+
+Two small gaps found during review, both cheap to close now:
+
+- No code in this repo currently reads `metadata.json` back in (confirmed
+  by grep — this field is inert today, written only for future/external
+  consumers such as the eventual #61 audit tooling). The Migration Plan's
+  "treat a missing `deleted` key as `false`" guidance was prose-only, with
+  no enforcement point. This change adds a one-line helper,
+  `isScanMetadataDeleted(json): boolean` (returns `json.deleted === true`),
+  next to `ScanMetadataJson` in `scan-metadata-json.ts`, so any future
+  consumer has a correct-by-construction way to check the field instead of
+  risking an inverted `=== false` check against files that predate it.
+- `image-uploader.ts:255-257` already branches on `path.isAbsolute()`
+  before resolving `image.path`, because some legacy/pilot-imported scans
+  store an absolute path instead of a relative one. `markMetadataDeleted`'s
+  path resolution (`path.join(scansDir, scan.path, 'metadata.json')`) must
+  mirror that same guard for `scan.path`, not assume it's always relative.
+
+### Decision 14: intended duplicate-check override path is delete-then-rescan; documenting it, not changing it
+
+`checkDuplicate`'s spec excludes soft-deleted scans, and Part 1 (delete)
+and Part 3 (duplicate block) ship in the same tier — so a researcher who
+legitimately needs to redo a scan for an already-used `(plant_id,
+experiment_id, wave_number, plant_age_days)` key has a working path:
+delete the old scan, then rescan. This was an emergent property of two
+independently-motivated features, not a stated design decision, until
+now — this design doc and the proposal now say so explicitly, so it isn't
+silently rediscovered later. **Known limitation, deliberately not solved
+here**: this conflates "delete because the old scan was bad" with "delete
+solely to unblock a legitimate second scan at the same key" (e.g. a QC
+re-verification protocol needing two valid scans at one key) — soft-delete
+hides the original from `BrowseScans.tsx` either way. Flagged as an open
+question below rather than addressed in this tier.
+
 ## Risks / Trade-offs
 
-- **Storage-existence verification adds a round-trip per uploaded image.**
-  Acceptable given the confirmed production data-loss history this
-  directly targets; no evidence current upload volume makes this a
-  meaningful performance concern (worker count stays at 4).
+- **Storage-existence verification adds one to several round-trips per
+  uploaded image** (the object_path lookup, the storage check, and up to 3
+  bounded retries on a transient failure — Decision 7). Acceptable given
+  the confirmed production data-loss history this directly targets; no
+  evidence current upload volume makes this a meaningful performance
+  concern (worker count stays at 4).
 - **The exact root cause of the user's past retry-false-success incident
   remains unconfirmed** (Decision 7) — the fix targets the observable
   outcome rather than a pinned-down mechanism, which is deliberately more
@@ -235,11 +397,25 @@ independent of anything else in this tier.
   proposal cannot claim to have identified *why* the old incident happened,
   only that the new verification step would have caught it regardless of
   cause.
+- **A verification check that's inconclusive after 3 retries still risks a
+  duplicate remote row on the next full retry**, in the rare case the
+  object actually exists but every verification attempt hit a transient
+  failure (Decision 7). Accepted as a residual, low-probability risk rather
+  than solved with a fifth `ImageStatus` value — pilot #61's audit tooling
+  (once built) is the intended long-term backstop for this class of drift,
+  which raises that follow-up's practical priority beyond "nice to have"
+  now that this tier's own fixes narrow, but don't eliminate, the
+  historical-corruption blind spot (see Decision 9).
 - **Removing `getMostRecentScanDate` touches files outside the immediate
-  delete/upload/duplicate feature areas** (two unit test files, one
-  dedicated E2E file) — a deliberate, scoped cleanup (Decision 6), not
-  scope creep, since this change's own Part 3 work is what makes the
-  handler dead.
+  delete/upload/duplicate feature areas** (two unit test files, two
+  dedicated E2E test blocks across two files) — a deliberate, scoped
+  cleanup (Decision 6), not scope creep, since this change's own Part 3
+  work is what makes the handler dead. This also removes a currently
+  user-facing string ("This plant was already scanned today") that one
+  existing E2E test (`plant-barcode-validation.e2e.ts`'s "UI: Duplicate
+  Scan Prevention" describe block) asserts on directly — that test needs
+  rewriting to the new key/message, not just deletion, since the *feature*
+  (a duplicate warning) still exists, only its trigger condition changed.
 - **No coordination lock with Tier 1** beyond the documented rebase
   discipline (proposal.md Impact) — both branches are in flight
   concurrently; whichever merges first, the other rebases. Disjoint line
@@ -251,12 +427,25 @@ independent of anything else in this tier.
 No Prisma schema changes. `Scan.deleted` already exists on `main`. The only
 schema-shaped change is adding `deleted?: boolean` to the `ScanMetadataJson`
 TypeScript interface (an on-disk JSON file shape, not a database table) —
-existing `metadata.json` files without the field are still valid; consumers
-should treat a missing `deleted` key as `false`.
+existing `metadata.json` files without the field are still valid; the new
+`isScanMetadataDeleted()` helper (Decision 13) is the enforced access point
+for that "absence means false" contract rather than leaving it as
+unenforced prose.
 
 ## Open Questions
 
-None blocking. The follow-up issues for pilot #59, #61, and #3 should be
-filed once this proposal is approved (tracked as a task in `tasks.md`), but
-their content is already fully specified above and in the proposal — no
-further human decision is needed before filing them.
+Not blocking this proposal's approval — flagged so they aren't lost:
+
+1. **Delete-then-rescan conflates two different researcher intents**
+   (Decision 14) — revisit if this friction actually comes up in lab use;
+   no evidence yet that it will.
+2. **Soft-delete-only means deleted scans never free disk space** — a
+   pre-existing property (Decision 1 matches the pilot and the already-
+   accepted spec), not a regression introduced here, but worth surfacing
+   given "production-level data integrity" is this roadmap's stated goal
+   alongside actually running lab hardware with finite storage.
+
+Follow-up issues for pilot #59, #61, #3, and #110's unaddressed asks
+(Decision 12) should be filed once this proposal is approved (tracked in
+`tasks.md`) — their content is already fully specified above and in the
+proposal, so no further human decision is needed before filing them.
