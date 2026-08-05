@@ -151,6 +151,10 @@ type Action =
   | { type: 'JOB_ERROR'; payload: { key: string; error: string } }
   | { type: 'CANCELLED' }
   | { type: 'SCAN_ENDED' }
+  | {
+      type: 'CYCLE_ADVANCE';
+      payload: { jobs: Record<string, ScanSessionJob>; cycle: number };
+    }
   | { type: 'ERROR'; payload: { error: string } }
   | {
       type: 'RESTORE';
@@ -209,6 +213,20 @@ function reducer(state: ScanState, action: Action): ScanState {
       delete nextPendingJobs[key];
       return { ...state, pendingJobs: nextPendingJobs, error };
     }
+    case 'CYCLE_ADVANCE':
+      // Continuous mode only (design.md/tasks.md 12.x's job-keying is
+      // scanner+plateIndex only, not cycle-scoped, so each new cycle's
+      // fresh job set must explicitly replace the just-finished one —
+      // without this, `pendingJobs` would stay permanently empty after
+      // cycle 1 and the "all done" count would never reset).
+      return {
+        ...state,
+        pendingJobs: action.payload.jobs,
+        progressByScanner: Object.fromEntries(
+          Object.keys(state.scannerTotals).map((scannerId) => [scannerId, 0])
+        ),
+        currentCycle: action.payload.cycle,
+      };
     case 'CANCELLED':
       return {
         ...state,
@@ -296,6 +314,15 @@ export function useScanSession(
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Read by the IPC-listener effect (deps: []) below to tell single-mode
+  // (one cycle, job-completion IS session-completion) from continuous mode
+  // (many cycles, job-completion only means "this cycle" — the backend's
+  // own interval-complete event is the sole session-end signal).
+  const isContinuousRef = useRef(isContinuous);
+  useEffect(() => {
+    isContinuousRef.current = isContinuous;
+  }, [isContinuous]);
 
   const contextRef = useRef({
     experimentId,
@@ -447,10 +474,16 @@ export function useScanSession(
     const markJobAccountedFor = (key: string) => {
       completedKeysRef.current.add(key);
       const totalJobs = Object.keys(jobTemplateRef.current).length;
-      if (
-        !allDoneFiredRef.current &&
-        completedKeysRef.current.size >= totalJobs
-      ) {
+      if (completedKeysRef.current.size < totalJobs) return;
+      // In continuous mode, "this cycle's jobs are all in" is not "the
+      // session is done" — the backend keeps scanning further cycles
+      // regardless of what this hook thinks. `onCycleComplete`/
+      // `onIntervalComplete` below are the sole authority on continuous-
+      // mode session end (round-4 regression: this used to fire
+      // finishSession after cycle 1 while the backend kept scanning cycles
+      // 2+ independently, silently overwriting each cycle's images).
+      if (isContinuousRef.current) return;
+      if (!allDoneFiredRef.current) {
         allDoneFiredRef.current = true;
         dispatch({ type: 'SCAN_ENDED' });
         void finishSession(false);
@@ -522,10 +555,23 @@ export function useScanSession(
       markJobAccountedFor(key);
     });
 
-    const cleanupCycleComplete = gravi.onCycleComplete?.(() => {
-      // Continuous-mode cycle bookkeeping is intentionally minimal here —
-      // the per-plate state above already reflects real progress.
-    });
+    const cleanupCycleComplete = gravi.onCycleComplete?.(
+      (data: Record<string, unknown>) => {
+        if (!isContinuousRef.current) return;
+        const cycle = typeof data?.cycle === 'number' ? data.cycle : null;
+        if (cycle === null) return;
+        // The final cycle's cycle-complete is immediately followed by
+        // interval-complete, which ends the session — resetting to a
+        // nonexistent "next cycle" here would just flash stale UI state
+        // right before that.
+        if (cycle >= stateRef.current.totalCycles) return;
+        completedKeysRef.current = new Set();
+        dispatch({
+          type: 'CYCLE_ADVANCE',
+          payload: { jobs: jobTemplateRef.current, cycle: cycle + 1 },
+        });
+      }
+    );
 
     const cleanupIntervalComplete = gravi.onIntervalComplete(() => {
       dispatch({ type: 'SCAN_ENDED' });

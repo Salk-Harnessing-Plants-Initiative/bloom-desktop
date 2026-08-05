@@ -450,6 +450,90 @@ describe('useScanSession', () => {
     );
   });
 
+  it('continuous-mode session does not end after the first cycle completes — only interval-complete ends it (regression: markJobAccountedFor fired finishSession after cycle 1, while the backend kept scanning cycles 2/3 independently, silently overwriting data)', async () => {
+    const { result } = renderHook(
+      () =>
+        useScanSession(
+          baseParams({
+            isContinuous: true,
+            intervalMinutes: 60,
+            durationHours: 3,
+          })
+        ),
+      { wrapper: wedgeWrapper }
+    );
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+    expect(result.current.totalCycles).toBe(3);
+    expect(result.current.currentCycle).toBe(1);
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00_cy1.tiff',
+      cycleNumber: 1,
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01_cy1.tiff',
+      cycleNumber: 1,
+    });
+
+    // Cycle 1's plates are all in — the backend still has 2 more cycles to
+    // go, so the session must not end here.
+    expect(result.current.isScanning).toBe(true);
+    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+
+    fire('cycle-complete', { cycle: 1 });
+    expect(result.current.currentCycle).toBe(2);
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(2);
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00_cy2.tiff',
+      cycleNumber: 2,
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01_cy2.tiff',
+      cycleNumber: 2,
+    });
+    expect(result.current.isScanning).toBe(true);
+    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+
+    fire('cycle-complete', { cycle: 2 });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00_cy3.tiff',
+      cycleNumber: 3,
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01_cy3.tiff',
+      cycleNumber: 3,
+    });
+    expect(result.current.isScanning).toBe(true);
+    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+
+    fire('interval-complete', {
+      cyclesCompleted: 3,
+      totalCycles: 3,
+      cancelled: false,
+    });
+
+    await waitFor(() => expect(result.current.isScanning).toBe(false));
+    expect(graviscanSessionsComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ session_id: 'sess-1', cancelled: false })
+    );
+  });
+
   it('each job completion calls graviscans.create with all fields graviscansCreate requires', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
