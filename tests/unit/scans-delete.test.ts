@@ -162,10 +162,18 @@ describe('scansDelete', () => {
     const relativeScanPath = path.join('2026-03-05', 'PLANT-001', 'uuid-1');
     const outputDir = path.join(scansDir, relativeScanPath);
     fs.mkdirSync(outputDir, { recursive: true });
-    writeMetadataJson(outputDir, makeScannerSettings({ output_path: outputDir }));
+    writeMetadataJson(
+      outputDir,
+      makeScannerSettings({ output_path: outputDir })
+    );
 
     const scan = await seedScan({ path: relativeScanPath });
-    const result = await scansDelete(prisma, scan.id, scansDir, markMetadataDeleted);
+    const result = await scansDelete(
+      prisma,
+      scan.id,
+      scansDir,
+      markMetadataDeleted
+    );
 
     expect(result.success).toBe(true);
     const updated = await prisma.scan.findUnique({ where: { id: scan.id } });
@@ -188,14 +196,16 @@ describe('scansDelete', () => {
 
     const scan = await seedScan({ path: absoluteOutputDir });
     try {
-      const result = await scansDelete(prisma, scan.id, scansDir, markMetadataDeleted);
+      const result = await scansDelete(
+        prisma,
+        scan.id,
+        scansDir,
+        markMetadataDeleted
+      );
 
       expect(result.success).toBe(true);
       const metadata = JSON.parse(
-        fs.readFileSync(
-          path.join(absoluteOutputDir, 'metadata.json'),
-          'utf-8'
-        )
+        fs.readFileSync(path.join(absoluteOutputDir, 'metadata.json'), 'utf-8')
       );
       expect(metadata.deleted).toBe(true);
     } finally {
@@ -207,7 +217,10 @@ describe('scansDelete', () => {
     const relativeScanPath = path.join('2026-03-05', 'PLANT-002', 'uuid-2');
     const outputDir = path.join(scansDir, relativeScanPath);
     fs.mkdirSync(outputDir, { recursive: true });
-    writeMetadataJson(outputDir, makeScannerSettings({ output_path: outputDir }));
+    writeMetadataJson(
+      outputDir,
+      makeScannerSettings({ output_path: outputDir })
+    );
     const before = JSON.parse(
       fs.readFileSync(path.join(outputDir, 'metadata.json'), 'utf-8')
     );
@@ -229,7 +242,12 @@ describe('scansDelete', () => {
     // legacy scan captured before metadata.json support existed.
     const scan = await seedScan({ path: relativeScanPath });
 
-    const result = await scansDelete(prisma, scan.id, scansDir, markMetadataDeleted);
+    const result = await scansDelete(
+      prisma,
+      scan.id,
+      scansDir,
+      markMetadataDeleted
+    );
 
     expect(result.success).toBe(true);
     const updated = await prisma.scan.findUnique({ where: { id: scan.id } });
@@ -237,7 +255,12 @@ describe('scansDelete', () => {
   });
 
   it('returns an error when the scan does not exist', async () => {
-    const result = await scansDelete(prisma, 'nonexistent-id', scansDir, markMetadataDeleted);
+    const result = await scansDelete(
+      prisma,
+      'nonexistent-id',
+      scansDir,
+      markMetadataDeleted
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();

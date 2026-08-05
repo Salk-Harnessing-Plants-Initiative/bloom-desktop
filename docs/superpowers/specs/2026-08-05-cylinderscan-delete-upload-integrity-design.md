@@ -45,7 +45,7 @@ incomplete — documented inline below wherever that happened.
   a `bloom-fs` type change plus a Supabase schema migration, both outside
   this repo's control.
 - **Duplicate-scan check key: `(plant_id, experiment_id, wave_number,
-  plant_age_days)`**, replacing (not running alongside) the existing
+plant_age_days)`**, replacing (not running alongside) the existing
   same-day/(plant_id+experiment_id) check. The user caught that `plant_id`
   alone isn't guaranteed unique across experiments — the roadmap's
   originally-stated key omitted `experiment_id`.
@@ -106,16 +106,17 @@ incomplete — documented inline below wherever that happened.
 ## Part 2 — Upload data-integrity audit (`image-uploader.ts`)
 
 ### Current state (confirmed by reading the full file, plus the actual
+
 compiled `@salk-hpi/bloom-fs` source — not just its `.d.ts` files)
 
 - **No soft-delete filtering anywhere in the upload call path.** `uploadScan`
   (lines 212-350) fetches via `prisma.scan.findUnique({ where: { id: scanId },
-  ... })` with no `deleted` clause, and there is no queue — uploads are only
+... })` with no `deleted` clause, and there is no queue — uploads are only
   ever triggered per explicit `scanId`(s) via `db:scans:upload`/
   `db:scans:uploadBatch`. If a caller passes a soft-deleted scan's id (stale
   batch selection, or a race with an in-flight delete), it uploads normally.
 - **Retry resends every image, not just failed ones.** `uploadScan` builds
-  `imagePaths`/`metadata` from *all* `scan.images` (line 255-260) with no
+  `imagePaths`/`metadata` from _all_ `scan.images` (line 255-260) with no
   status filter, and marks all of them `'uploading'` again (lines 263-269)
   on every call. Since `store.insertImageMetadata()` is a plain insert (not
   a client-side upsert — confirmed via the `DataStore` interface, which
@@ -132,13 +133,13 @@ compiled `@salk-hpi/bloom-fs` source — not just its `.d.ts` files)
   `{created, error: dbError || uploadError}`. `image-uploader.ts`'s
   callback (lines 282-338) marks local status `'uploaded'` whenever
   `!error && created !== null`.
-  - This means the *current* code's condition is structurally different
+  - This means the _current_ code's condition is structurally different
     from — and safer than — the pilot's inverted `created===null &&
-    error===null` bug (pilot issue #60): current code treats
+error===null` bug (pilot issue #60): current code treats
     `created===null` as failure, not success.
   - However, per the pilot incident: filed 2026-05-22, `bloom-desktop-pilot`
     issues #57-#61. The pilot's post-incident re-diagnosis (#58, updated
-    2026-05-22) found the *specific* 2026-05 data-loss event was actually
+    2026-05-22) found the _specific_ 2026-05 data-loss event was actually
     server-side (an incomplete AWS→local-storage migration, not a client
     bug) — but #60 documents a **separate, still-open, latent client-side
     gap**: bloom-fs's dedup/"already exists" path can report success
@@ -156,7 +157,7 @@ compiled `@salk-hpi/bloom-fs` source — not just its `.d.ts` files)
   sent to bloom-fs has no id field, and the remote `cyl_images` table
   (traced via `@salk-hpi/bloom-js`'s generated `database.types.d.ts`) has
   columns `id, scan_id, frame_number, date_scanned, object_path, status,
-  uploaded_at` — no slot for a local id at all.
+uploaded_at` — no slot for a local id at all.
 - **Upload worker count:** hardcoded `nWorkers: 4` (line 274), no comment.
   GraviScan's equivalent constant (`graviscan-upload.ts:230-234`,
   `UPLOAD_CONCURRENCY = 4`) has an explicit rationale comment ("each image
@@ -180,7 +181,7 @@ compiled `@salk-hpi/bloom-fs` source — not just its `.d.ts` files)
    the raw Supabase client (`this.supabase`, already instantiated in
    `authenticate()`) to verify the uploaded object actually exists in the
    `images` bucket (e.g. `storage.from('images').list(dir, { search:
-   filename })` or an equivalent existence check against the `object_path`
+filename })` or an equivalent existence check against the `object_path`
    bloom-fs assigned) **before** flipping local status to `'uploaded'`. If
    the object is missing, mark `'failed'` instead, with an error message
    distinguishing this case ("upload reported success but object not found
@@ -207,7 +208,7 @@ compiled `@salk-hpi/bloom-fs` source — not just its `.d.ts` files)
   every 2s via `db:scans:getMostRecentScanDate(plantId, experimentId)`
   (`database-handlers.ts:1829-1859`, which already filters
   `deleted: false`). It warns only if the same `(plant_id, experiment_id)`
-  was scanned on the *same calendar day* — no `wave_number` or
+  was scanned on the _same calendar day_ — no `wave_number` or
   `plant_age_days` awareness. The warning **hard-blocks** `Start Scan`
   (`canStartScan`, lines 462-467 requires `!duplicateScanWarning`) — this is
   stronger than a passive warning, worth preserving in the replacement.
@@ -218,7 +219,7 @@ compiled `@salk-hpi/bloom-fs` source — not just its `.d.ts` files)
    matching existing `db:scans:*` conventions (inline `ipcMain.handle`,
    returns `DatabaseResponse<boolean>` or similar), checking for any
    non-deleted scan matching `(plant_id, experiment_id, wave_number,
-   plant_age_days)` exactly.
+plant_age_days)` exactly.
 2. Replace `CaptureScan.tsx`'s existing check with a call to the new
    handler — same polling/warning-banner/hard-block UX, new trigger
    condition. Remove `getMostRecentScanDate`'s usage from this component
@@ -233,6 +234,7 @@ compiled `@salk-hpi/bloom-fs` source — not just its `.d.ts` files)
 ## Part 4 — Acquisition metadata completeness gap (pilot #3)
 
 ### Current state (confirmed by full read of `python/hardware/camera.py`
+
 and `python/hardware/scanner.py`)
 
 - `scan-metadata-json.ts` writes only user-configured values

@@ -16,7 +16,10 @@
 
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { ImageStatus } from '../types/database';
-import { loadEnvConfig, getScansDir as getConfiguredScansDir } from './config-store';
+import {
+  loadEnvConfig,
+  getScansDir as getConfiguredScansDir,
+} from './config-store';
 import path from 'path';
 import os from 'os';
 import type {
@@ -428,7 +431,11 @@ export class ImageUploader {
     await concurrentMapFn(
       recorded,
       VERIFICATION_CONCURRENCY,
-      async (entry: { index: number; created: number | null; error: unknown }) => {
+      async (entry: {
+        index: number;
+        created: number | null;
+        error: unknown;
+      }) => {
         const image = imagesToUpload[entry.index];
 
         try {

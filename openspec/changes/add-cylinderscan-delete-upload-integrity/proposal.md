@@ -131,7 +131,7 @@ for all uploads going forward, which is its main value.
   "Plant Barcode IPC Handlers" requirement drops that scenario; the
   "Duplicate Scan Prevention" requirement is rewritten for the new key and
   handler name — including a new scenario for the changed cross-day
-  behavior (a match on a *different* day is now correctly flagged, since
+  behavior (a match on a _different_ day is now correctly flagged, since
   day is no longer part of the key).
 - New E2E test in `tests/e2e/renderer-database-ipc.e2e.ts` for
   `db:scans:checkDuplicate` — required by this repo's CI coverage gate,
@@ -237,7 +237,7 @@ implemented**
   `uploadBatch` internals and the `nWorkers` constant) and no conflict
   resulted.
 - **Coordination with an in-flight, unmerged PR**: `feat/auto-plate-
-  assignment` (#148) already implements a general-purpose `ToastContext`/
+assignment` (#148) already implements a general-purpose `ToastContext`/
   `useToast()` for the whole renderer. This tier builds a minimal, local
   success-message banner instead of depending on #148's unmerged API
   (design.md Decision 16) — if #148 merges first, migrating the banner to

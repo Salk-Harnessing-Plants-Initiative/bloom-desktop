@@ -881,9 +881,10 @@ describe('CaptureScan duplicate-scan check', () => {
       (call) => call[1] === 2000
     );
     expect(duplicateCheckCall).toBeDefined();
-    const duplicateCheckIntervalId = setIntervalSpy.mock.results[
-      setIntervalSpy.mock.calls.indexOf(duplicateCheckCall!)
-    ].value;
+    const duplicateCheckIntervalId =
+      setIntervalSpy.mock.results[
+        setIntervalSpy.mock.calls.indexOf(duplicateCheckCall!)
+      ].value;
 
     unmount();
 

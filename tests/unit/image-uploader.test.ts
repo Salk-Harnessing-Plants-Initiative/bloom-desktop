@@ -1150,7 +1150,10 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
 
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
-        const results = await uploader.uploadBatch(['scan-deleted', 'scan-123']);
+        const results = await uploader.uploadBatch([
+          'scan-deleted',
+          'scan-123',
+        ]);
 
         expect(results).toHaveLength(2);
         expect(results[0].success).toBe(false);
@@ -1321,7 +1324,9 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         const result = await uploadPromise;
 
         expect(result.failed).toBe(3);
-        expect(result.errors[0]).toContain('verification could not be confirmed');
+        expect(result.errors[0]).toContain(
+          'verification could not be confirmed'
+        );
         expect(result.errors[0]).not.toContain('not found in storage');
         vi.useRealTimers();
       });
@@ -1388,7 +1393,9 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         const result = await uploadPromise;
 
         expect(result.failed).toBe(1);
-        expect(result.errors[0]).toContain('verification could not be confirmed');
+        expect(result.errors[0]).toContain(
+          'verification could not be confirmed'
+        );
         vi.useRealTimers();
       });
 
@@ -1443,12 +1450,10 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         await uploader.authenticate();
 
         let settled = false;
-        const uploadPromise = uploader
-          .uploadScan('scan-123')
-          .then((result) => {
-            settled = true;
-            return result;
-          });
+        const uploadPromise = uploader.uploadScan('scan-123').then((result) => {
+          settled = true;
+          return result;
+        });
 
         // Flush microtasks without resolving verifyPromise.
         await Promise.resolve();

@@ -34,12 +34,8 @@ describe('DeleteConfirmModal', () => {
       />
     );
 
-    expect(
-      screen.getByRole('button', { name: /cancel/i })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /delete/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument();
   });
 
   it('calls onConfirm when Delete is clicked', () => {

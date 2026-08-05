@@ -22,21 +22,21 @@ capture failure). Delete IS implemented today, but only in
 that the actual code has never implemented.
 
 **Upload (`image-uploader.ts`):** Read the full 382-line file, plus the
-*compiled* `@salk-hpi/bloom-fs` source (not just its `.d.ts` — the type
+_compiled_ `@salk-hpi/bloom-fs` source (not just its `.d.ts` — the type
 files don't show the actual insert-then-upload orchestration or where
 errors get silently discarded). Confirmed:
 
 - No `deleted` check anywhere in `uploadScan`/`uploadBatch`'s fetch or
   upload path.
-- `uploadScan` refetches and resends *all* of a scan's images on every
+- `uploadScan` refetches and resends _all_ of a scan's images on every
   call, including already-`'uploaded'` ones — `store.insertImageMetadata()`
   is a plain insert, not a client-side upsert, so retries risk duplicate
   remote rows.
 - bloom-fs's `uploadImage()` (`dist/cyl/metadata.js`) inserts the metadata
   row, then uploads bytes, then calls `updateImageMetadata(status:
-  'SUCCESS')` — **discarding that final call's own error**. The current
+'SUCCESS')` — **discarding that final call's own error**. The current
   `image-uploader.ts` condition (`if (error || created === null) failed
-  else uploaded`) is structurally different from, and safer than, the
+else uploaded`) is structurally different from, and safer than, the
   pilot's inverted bug (pilot #60: `created===null && error===null` treated
   as success) — but the user independently confirmed hitting the exact
   failure pattern #60 describes ("uploaded again, marked succeeded, wasn't
@@ -95,7 +95,7 @@ present" API, a genuinely absent one.
 - No change to the upload worker count (pilot #110) — documentation only.
 - No hard-delete/purge functionality — file retention stays soft-delete-only.
 - **No re-verification of images uploaded before this change ships.**
-  Found during review: re-verifying an *already*-`'uploaded'` image on
+  Found during review: re-verifying an _already_-`'uploaded'` image on
   retry would need a locally-stored remote reference (`cyl_images.id` or
   `object_path`) that nothing in this schema persists, and that this
   proposal does not add — see Decision 9. Historical corruption (an image
@@ -120,11 +120,12 @@ only ever sets `deleted: true` in `metadata.json`; it never deletes the
 ### Decision 2: build the real delete-confirmation modal, not a spec rewrite
 
 The already-accepted "Delete Scan" requirement describes a modal (Plant ID
-+ capture date, Cancel/Delete) that `BrowseScans.tsx` has never actually
-implemented (it uses a generic `window.confirm()`). Two options:
-(a) build the real modal, matching the spec, used by both `BrowseScans.tsx`
-and the new `ScanPreview.tsx` delete button, or (b) leave `window.confirm()`
-and rewrite the spec down to match reality.
+
+- capture date, Cancel/Delete) that `BrowseScans.tsx` has never actually
+  implemented (it uses a generic `window.confirm()`). Two options:
+  (a) build the real modal, matching the spec, used by both `BrowseScans.tsx`
+  and the new `ScanPreview.tsx` delete button, or (b) leave `window.confirm()`
+  and rewrite the spec down to match reality.
 
 **Chosen: (a).** Confirmed with the user. Since this change already touches
 `BrowseScans.tsx` (delete becomes metadata-aware) and adds delete to
@@ -168,7 +169,7 @@ Traced the actual upload path: `image-uploader.ts` → `@salk-hpi/bloom-fs`'s
 `cyl_images` has columns `id, scan_id, frame_number, date_scanned,
 object_path, status, uploaded_at` — no slot for a local id. The
 `CylImageMetadata` type bloom-fs accepts has no id field either. Fixing
-this needs a `bloom-fs` package type change *and* a Supabase schema
+this needs a `bloom-fs` package type change _and_ a Supabase schema
 migration — both outside a `bloom-desktop`-only PR's reach.
 
 **Alternative considered:** encode the local UUID into the `object_path`
@@ -203,7 +204,7 @@ speculative-future-use retention this repo's conventions explicitly reject.
 
 Given the uncertainty in Context about the precise internal cause of the
 user's retry-false-success incident (the underlying Postgres RPC's dedup
-semantics aren't visible from this repo), the fix targets the *outcome*
+semantics aren't visible from this repo), the fix targets the _outcome_
 (local status must reflect ground truth) rather than a guessed mechanism,
 for images going through `bloom-fs`'s upload call **within the current
 `uploadScan()` invocation**. After bloom-fs's callback reports success,
@@ -282,7 +283,7 @@ original design only specified "object confirmed present → `'uploaded'`"
 and "object confirmed missing → `'failed'`." A transient network failure
 during the `object_path` lookup or the storage existence check itself is a
 third, distinct case: naively folding it into "missing" would mark a
-*genuinely successful* upload `'failed'`, which — because a `'failed'`
+_genuinely successful_ upload `'failed'`, which — because a `'failed'`
 image is no longer at `'uploaded'` and is therefore re-uploaded on the
 next retry (Decision 9) — would recreate the duplicate-remote-row risk
 the retry-skip fix exists to prevent. **Resolution**: on a verification-
@@ -379,7 +380,7 @@ any one of which would block it:
    fresh per IPC call (`new ImageUploader(db)` in `database-handlers.ts`),
    and the local `Image` Prisma model stores only
    `id, scan_id, frame_number, path, status` — no column for a remote id
-   or `object_path`. Re-verifying an image uploaded in a *prior* call has
+   or `object_path`. Re-verifying an image uploaded in a _prior_ call has
    nothing to look up. This is the same gap Decision 5 already identifies
    for a different reason (no local↔remote join key exists anywhere in
    this schema) — Decision 9's original design silently assumed a link
@@ -419,7 +420,7 @@ scoped design) rather than bolted onto this tier's retry button.
 (`Image.remoteImageId`/`objectPath`) so retry-time re-verification has a
 key to look up. Rejected for this tier — contradicts the "no Prisma
 schema changes" scope this tier otherwise holds to, still wouldn't help
-scans uploaded *before* the column existed (a backfill/business-key
+scans uploaded _before_ the column existed (a backfill/business-key
 fallback would still be needed for those, and the pilot's own postmortem
 on issue #59 describes exactly this kind of fallback matching as
 "brittle" in practice), and still leaves the UI-gating problem (point 2
@@ -432,7 +433,7 @@ UI label for pre-this-tier uploads, short of an active re-check. Also
 rejected for this tier, for the same underlying reason — `Scan` and
 `Image` have no timestamp fields at all (confirmed by reading
 `prisma/schema.prisma`: no `createdAt`/`updatedAt`/`uploaded_at`
-anywhere), so even a passive label needs a schema addition to know *when*
+anywhere), so even a passive label needs a schema addition to know _when_
 an image was marked `'uploaded'` relative to this tier's ship date. No
 cheaper option was found that stays within this tier's no-schema-change
 scope.
@@ -445,7 +446,7 @@ Found during review: `image-uploader.ts`'s current `uploadScan()` builds
 `scan.images[index]` — this only works because the arrays passed to
 `uploadImagesFn` are never filtered. Decision 9's retry-skip logic makes
 `imagePaths`/`metadata` a **filtered subset** of `scan.images`; if the
-result/progress callbacks keep indexing into the *unfiltered* `scan.images`
+result/progress callbacks keep indexing into the _unfiltered_ `scan.images`
 array, `index` (a position in the filtered array) will resolve to the
 wrong `Image` row the moment any image in the scan is already `'uploaded'`
 — silently applying a status update to an untouched image. This is exactly
@@ -466,7 +467,7 @@ this has no observable UI regression, since neither `BrowseScans.tsx` nor
 `ScanPreview.tsx` reads `UploadResult`'s counts; both recompute their
 displayed status directly from a fresh `scan.images` read after upload
 completes. A regression test asserting the correct `Image` row receives
-each status update — not just that *some* row does — is required (see
+each status update — not just that _some_ row does — is required (see
 `tasks.md`).
 
 ### Decision 11: pilot #3 (acquisition-metadata readback) and pilot #61 (audit tooling, now widened) are follow-up tiers, not this one
@@ -524,7 +525,7 @@ Two small gaps found during review, both cheap to close now:
 **Note on consistency with Decision 6**: `isScanMetadataDeleted()` ships
 with zero call sites today (nothing in this repo reads `metadata.json`
 back in yet), which sits in mild tension with Decision 6's justification
-for *removing* `getMostRecentScanDate` elsewhere in this same proposal
+for _removing_ `getMostRecentScanDate` elsewhere in this same proposal
 ("no backwards-compat shims for unused code"). Treated as a defensible
 exception, not a contradiction: it's a one-line, unit-tested,
 correct-by-construction accessor for a field this very change introduces
@@ -559,7 +560,7 @@ storage**, with no cloud-side marker of which is authoritative and no way
 for a downstream consumer querying Bloom directly (not through this
 desktop app) to tell them apart. This tier's own upload-verification
 hardening makes this worse in one specific sense: both copies will now
-reliably *pass* verification and look equally legitimate, whereas today
+reliably _pass_ verification and look equally legitimate, whereas today
 that's already true. This is not fixable without the same local↔cloud
 traceability Decision 5 already defers (a fix would need exactly the kind
 of linkage pilot issue #59 asks for), so it is not solved in this tier —
@@ -623,7 +624,7 @@ permanent inconsistency — noted here so that follow-up isn't a surprise.
   remains unconfirmed** (Decision 7) — the fix targets the observable
   outcome rather than a pinned-down mechanism, which is deliberately more
   robust to variations in the underlying RPC's behavior but means this
-  proposal cannot claim to have identified *why* the old incident happened,
+  proposal cannot claim to have identified _why_ the old incident happened,
   only that the new verification step would have caught it regardless of
   cause.
 - **A verification check that's inconclusive after 3 retries risks a
@@ -654,7 +655,7 @@ permanent inconsistency — noted here so that follow-up isn't a surprise.
   Scan Prevention" describe block) asserts on directly — that test needs
   rewriting (including filling in the wave-number/plant-age-days form
   fields the old test never needed) to the new key/message, not just
-  deletion, since the *feature* (a duplicate warning) still exists, only
+  deletion, since the _feature_ (a duplicate warning) still exists, only
   its trigger condition changed.
 - **A one-off success-message banner (Decision 16) may need migrating to
   a real toast system** if PR #148 merges — accepted, not solved here.
