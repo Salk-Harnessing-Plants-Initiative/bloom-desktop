@@ -600,6 +600,146 @@ jobs:
       - name: Test packaged app database initialization
         run: npm run test:package:database
 
+  # Exercise electron-forge's make/maker stage end-to-end (DMG/ZIP), and
+  # assert the packaged app actually renders a window and initializes its
+  # database when launched — not just that packaging succeeded.
+  test-make:
+    needs: build-python
+    name: Test - Make (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
+
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x dist/bloom-hardware
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: 'file:./dev.db'
+
+      - name: Make application (maker stage)
+        run: npm run make
+
+      - name: Verify maker artifacts were produced
+        run: npm run test:make:artifacts
+
+      - name: Verify packaged app window renders and database initializes
+        run: npm run test:package:launch
+
+      - name: Upload verified maker artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-app-${{ runner.os }}
+          path: out/make/**
+          retention-days: 7
+
+  # Windows equivalent of test-make: exercises the Squirrel maker and is
+  # CylinderScan's first Windows packaged-app verification (the actual lab
+  # machine deployment target).
+  test-make-windows:
+    needs: build-python
+    name: Test - Make (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
+
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x dist/bloom-hardware
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: 'file:./dev.db'
+
+      - name: Make application (maker stage)
+        run: npm run make
+
+      - name: Verify maker artifacts were produced
+        run: npm run test:make:artifacts
+
+      - name: Verify packaged app window renders and database initializes
+        run: npm run test:package:launch
+
+      - name: Upload verified maker artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-app-${{ runner.os }}
+          path: out/make/**
+          retention-days: 7
+
   all-checks-passed:
     name: All Checks Passed
     runs-on: ubuntu-latest
@@ -615,6 +755,8 @@ jobs:
       - test-dev-database
       - test-e2e-dev
       - test-package-database
+      - test-make
+      - test-make-windows
 
     steps:
       - name: All checks passed

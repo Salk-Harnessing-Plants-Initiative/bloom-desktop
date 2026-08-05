@@ -162,6 +162,7 @@ the upload screen) can be scoped concretely.
 | 3   | Wedge-response UI (fast-tracked)                  | 2                                                                                                         | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04)            |
 | 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose)                                      | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | Not started — unblocked                                |
 | 5   | Browse / Experiment Detail / Metadata UI          | 2; wave-scoped metadata-link UI also needs `add-wave-scoped-metadata-linking` (merged PR #278, see prose) | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207, #164                      | Not started — unblocked (Tier 2 + PR #278 both merged) |
+| 6   | Packaging CI & Linux deployment docs              | — (no dependency; infra/docs work, not renderer/backend feature work — see prose)                         | No                                                                                         | #294, #295                            | Not started — unblocked, added 2026-08-05              |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
 `src/main/preload.ts`'s `graviAPI` object — Tier 1 adds one method near the
@@ -330,6 +331,45 @@ into one shared hook/utility instead of copying it twice, fixes the
 `verifyPlates` status value mismatch against the real backend contract before
 displaying verification results, and does not port the dead
 `ScannerConfigSection`/`useScannerConfig` code.
+
+### Tier 6 — Packaging CI & Linux deployment docs
+
+**Note on scope:** unlike Tiers 1-5, this is infra/CI/documentation work, not a
+renderer or backend feature — it's tracked here as a tier for consistency with
+how the CylinderScan finalization roadmap tracks its own analogous packaging
+tier (`docs/superpowers/plans/2026-08-03-cylinderscan-finalization-roadmap.md`'s
+Tier 5a, `add-cylinderscan-packaging-ci`), not because it belongs to this
+roadmap's renderer/backend theme.
+
+Added 2026-08-05 after `add-cylinderscan-packaging-ci` (CylinderScan's
+Windows+macOS equivalent) shipped CI verification that `npm run make` produces
+working, launchable installer artifacts, plus uploading those artifacts as
+downloadable CI build artifacts. GraviScan's deployment target is Linux, which
+that change explicitly deferred (a scope decision, not an oversight — see that
+change's `design.md` non-goals). Confirmed while scoping it: no CI job
+packages, verifies, or uploads any Linux artifact (`.deb`/`.rpm`/AppImage)
+today, and the Linux-only `libusb-filter.so`/`LD_PRELOAD` packaged-app
+deployment mechanism (`forge.config.ts`'s `extraResource`) has zero
+documentation anywhere in the repo (GraviScan's Linux _driver_ setup —
+`docs/GRAVISCAN_SCANNER_DRIVER_SETUP.md` — is well documented; the _packaged
+app_ deployment side is not).
+
+- **#294** — add a `test-make-linux` CI job mirroring `add-cylinderscan-packaging-ci`'s
+  `test-make`/`test-make-windows` pattern (maker-artifact verification,
+  window-render + DB-init assertion via Playwright's `_electron` driver, likely
+  needs `xvfb-run` since `ubuntu-latest` has no real desktop session unlike
+  macOS/Windows), and upload the resulting deb/rpm artifacts as downloadable CI
+  artifacts. Also resolve whether an AppImage maker should be added.
+- **#295** — document the `libusb-filter.so`/`LD_PRELOAD` packaged-app
+  deployment mechanism, the deb-vs-rpm(-vs-AppImage) choice, and any
+  systemd/permissions caveats for running the packaged app (not the SANE
+  driver, which is already documented) on a GraviScan lab machine.
+
+Not gated on any other tier in this roadmap; can start any time. A separate,
+not-yet-scoped issue (#296) covers an actual release pipeline (versioning,
+signing, publish target, cadence) across both CylinderScan/Windows and
+GraviScan/Linux — that depends on this tier landing for the Linux side, and is
+tracked outside this roadmap since it's cross-cutting both scanner modes.
 
 ## Process per tier
 

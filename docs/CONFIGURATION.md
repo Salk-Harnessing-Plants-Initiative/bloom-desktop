@@ -26,6 +26,12 @@ This document describes all configurable constants and default values in the Blo
 - **Slower rotation** (higher `seconds_per_rot`): Sharper images, but longer scan times
 - **More frames** (higher `num_frames`): Higher angular resolution, but more data storage
 
+## Experiment Settings
+
+| Constant          | Type     | Default          | Description                                                                                 | Location                                                             | Admin Configurable                                                  |
+| ----------------- | -------- | ---------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `experiment_type` | `string` | `'cylinderscan'` | Distinguishes which scanner mode created an experiment (`'cylinderscan'` or `'graviscan'`). | [prisma/schema.prisma](../prisma/schema.prisma) (`Experiment` model) | ❌ No - Set by the app based on scanner mode, not user-configurable |
+
 ## DAQ (Data Acquisition) Settings
 
 ### Hardware Configuration
@@ -42,13 +48,14 @@ This document describes all configurable constants and default values in the Blo
 
 ### Image Capture Parameters
 
-| Constant            | Type     | Default  | Description                                           | Location                                               | Admin Configurable                      |
-| ------------------- | -------- | -------- | ----------------------------------------------------- | ------------------------------------------------------ | --------------------------------------- |
-| `exposure_time`     | `number` | `10000`  | Camera exposure time in microseconds (10ms = 10000µs) | [src/types/camera.ts:119](../src/types/camera.ts#L119) | ✅ Yes - Affects image brightness       |
-| `gain`              | `number` | `0`      | Camera sensor gain value (0 = no amplification)       | [src/types/camera.ts:120](../src/types/camera.ts#L120) | ✅ Yes - Affects image brightness/noise |
-| `camera_ip_address` | `string` | `'mock'` | IP address for network camera, or 'mock' for testing  | [src/types/camera.ts:121](../src/types/camera.ts#L121) | ⚠️ Maybe - Hardware-specific            |
-| `gamma`             | `number` | `1.0`    | Gamma correction value (1.0 = no correction)          | [src/types/camera.ts:122](../src/types/camera.ts#L122) | ✅ Yes - Image processing               |
-| `brightness`        | `number` | `0.5`    | Brightness adjustment (0.0-1.0 range)                 | [src/types/camera.ts:123](../src/types/camera.ts#L123) | ✅ Yes - Image processing               |
+| Constant            | Type     | Default  | Description                                                        | Location                                               | Admin Configurable                      |
+| ------------------- | -------- | -------- | ------------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------- |
+| `exposure_time`     | `number` | `10000`  | Camera exposure time in microseconds (10ms = 10000µs)              | [src/types/camera.ts:119](../src/types/camera.ts#L119) | ✅ Yes - Affects image brightness       |
+| `gain`              | `number` | `100`    | Camera sensor gain (GainRaw integer, ~9.9 dB for the acA2000-50gm) | [src/types/camera.ts:17](../src/types/camera.ts#L17)   | ✅ Yes - Affects image brightness/noise |
+| `camera_ip_address` | `string` | `'mock'` | IP address for network camera, or 'mock' for testing               | [src/types/camera.ts:121](../src/types/camera.ts#L121) | ⚠️ Maybe - Hardware-specific            |
+| `gamma`             | `number` | `1.0`    | Gamma correction value (1.0 = no correction)                       | [src/types/camera.ts:122](../src/types/camera.ts#L122) | ✅ Yes - Image processing               |
+
+> **Note:** `brightness` and `contrast` are not configurable — the acA2000-50gm (ace Classic) does not support `BslBrightness`/`BslContrast` (ace 2+ only). They do not appear in the `CameraSettings` type. `metadata.json` still writes them as fixed `0` values for backward compatibility with the pilot app's format — see [SCANNER_TESTING.md](SCANNER_TESTING.md).
 
 **Camera Configuration Tips**:
 
@@ -105,8 +112,7 @@ When implementing the admin configuration UI, prioritize settings in this order:
 ### Phase 2: Image Quality
 
 1. `gamma` - Fine-tuning image appearance
-2. `brightness` - Basic image adjustment
-3. `output_path` - Data management
+2. `output_path` - Data management
 
 ### Phase 3: Advanced/Hardware (Optional)
 
@@ -147,9 +153,9 @@ Configuration values should be stored in:
 
 **gain**:
 
-- Type: `number`
-- Range: Camera-dependent (Basler typically `0 - 24` dB)
-- Validation: See [python/hardware/camera_types.py:55](../python/hardware/camera_types.py#L55)
+- Type: integer (`GainRaw`) — must be a whole number, not a dB value
+- Range: `36 - 512` for the acA2000-50gm (Basler Pylon `GainRaw` range); default `100` (~9.9 dB)
+- Validation: See [python/hardware/camera_types.py:38-44](../python/hardware/camera_types.py#L38-L44) — the Python layer raises `TypeError` if `gain` is not an `int`
 
 ## Database Schema
 
@@ -171,6 +177,13 @@ model Scan {
   // ... other fields
 }
 ```
+
+> **Note:** the `gain` column is `Float` at the database layer (unchanged by this
+> documentation update — this is a schema detail, not a doc error), while the
+> Python hardware layer enforces `gain` as an integer `GainRaw` value (see
+> above). Values written through the app are always whole numbers; the wider
+> DB column type is a pre-existing minor inconsistency, not something this
+> guide's admin-configurable settings should be read as contradicting.
 
 See [prisma/schema.prisma](../prisma/schema.prisma) for complete schema.
 
