@@ -332,10 +332,36 @@ final DB status to land asynchronously after the caller has moved on.
 **Chosen:** the `result` callback only synchronously records
 `(index, created, error)` into an in-memory list; `uploadScan()` then
 explicitly runs the verification-and-status-write work for every recorded
-entry via `Promise.all(...)` **after** `await this.uploadImagesFn(...)`
-returns, and only resolves once that `Promise.all` completes. This fixes
-the race without needing any change to `bloom-fs` itself — the fix lives
-entirely on this repo's side of the callback boundary.
+entry **after** `await this.uploadImagesFn(...)` returns, and only
+resolves once all of that work completes. This fixes the race without
+needing any change to `bloom-fs` itself — the fix lives entirely on this
+repo's side of the callback boundary.
+
+**Found on a third round of review: a naive `Promise.all(...)` over every
+recorded entry, with no concurrency cap, is a real regression, not a
+theoretical one.** `num_frames` defaults to 72 across this codebase
+(`python/hardware/*_types.py`, `src/types/scanner.ts`, `prisma/seed.ts`)
+— a typical scan, not a rare large one. An uncapped `Promise.all` would
+fire up to 72 concurrent `object_path` lookups + storage checks per
+upload (more on a retry with several failed images), directly
+contradicting this document's own Risks section, which justifies the
+added round-trips on the premise that "worker count stays at 4." Left
+uncapped, this fan-out could itself trip Supabase/PostgREST connection or
+rate limits — manufacturing exactly the persistent-failure condition
+Decision 7's Risks section already treats as a bounded edge case, on
+ordinary scans, not rare ones.
+
+**Chosen (revised):** bound the post-loop verification pass at the same
+concurrency as the upload itself, reusing `@salk-hpi/bloom-fs`'s own
+exported `concurrentMap(array, nWorkers, asyncFunc)` helper (already a
+public export, per its `index.d.ts`) rather than introducing a second,
+different concurrency primitive. Each entry's verification-and-write work
+is also individually wrapped so one entry's unexpected error (distinct
+from the already-handled "inconclusive after 3 retries" outcome) doesn't
+reject the whole batch — with a bare `Promise.all`, a single unexpected
+throw would discard every other entry's already-successful status write
+from the aggregated `UploadResult`, and `database-handlers.ts`'s
+call site has no code path to recover those results after the fact.
 
 ### Decision 9: retry skips already-`'uploaded'` images entirely — re-verification on retry is out of scope for this tier
 
@@ -400,6 +426,16 @@ on issue #59 describes exactly this kind of fallback matching as
 above) unsolved on its own. This is squarely the shape of problem the
 #61 follow-up should own, not a schema change squeezed into this tier
 under review pressure.
+
+**Alternative also considered:** a passive "last verified: never/stale"
+UI label for pre-this-tier uploads, short of an active re-check. Also
+rejected for this tier, for the same underlying reason — `Scan` and
+`Image` have no timestamp fields at all (confirmed by reading
+`prisma/schema.prisma`: no `createdAt`/`updatedAt`/`uploaded_at`
+anywhere), so even a passive label needs a schema addition to know *when*
+an image was marked `'uploaded'` relative to this tier's ship date. No
+cheaper option was found that stays within this tier's no-schema-change
+scope.
 
 ### Decision 10: index-safety for the filtered retry-skip array
 
@@ -485,6 +521,17 @@ Two small gaps found during review, both cheap to close now:
   path resolution (`path.join(scansDir, scan.path, 'metadata.json')`) must
   mirror that same guard for `scan.path`, not assume it's always relative.
 
+**Note on consistency with Decision 6**: `isScanMetadataDeleted()` ships
+with zero call sites today (nothing in this repo reads `metadata.json`
+back in yet), which sits in mild tension with Decision 6's justification
+for *removing* `getMostRecentScanDate` elsewhere in this same proposal
+("no backwards-compat shims for unused code"). Treated as a defensible
+exception, not a contradiction: it's a one-line, unit-tested,
+correct-by-construction accessor for a field this very change introduces
+(guarding against a real inverted-boolean bug class for whoever the first
+consumer turns out to be — likely the #61 follow-up), not speculative
+scaffolding for a feature that may never exist.
+
 ### Decision 14: intended duplicate-check override path is delete-then-rescan; this creates a new, unaddressed cloud-data-integrity gap
 
 `checkDuplicate`'s spec excludes soft-deleted scans, and Part 1 (delete)
@@ -563,12 +610,15 @@ permanent inconsistency — noted here so that follow-up isn't a surprise.
 - **Storage-existence verification adds one to several round-trips per
   uploaded image** (the object_path lookup, the storage check, and up to 3
   bounded retries on a transient failure — Decision 7). Acceptable given
-  the confirmed production data-loss history this directly targets; no
-  evidence current upload volume makes this a meaningful performance
-  concern (worker count stays at 4). Decision 8's explicit `Promise.all`
-  await means `uploadScan()` now genuinely waits for all of this work
-  before returning, so total call latency increases accordingly — also
-  acceptable for the same reason.
+  the confirmed production data-loss history this directly targets; the
+  verification pass is capped at the same `nWorkers` (4) concurrency as
+  the upload itself (Decision 8, revised on a third review round after an
+  uncapped `Promise.all` was found to fan out to the scan's full image
+  count — 72 by default — rather than staying bounded), so this doesn't
+  introduce a new, larger concurrency spike than the upload phase already
+  has. Decision 8's explicit await means `uploadScan()` now genuinely
+  waits for all of this work before returning, so total call latency
+  increases accordingly — also acceptable for the same reason.
 - **The exact root cause of the user's past retry-false-success incident
   remains unconfirmed** (Decision 7) — the fix targets the observable
   outcome rather than a pinned-down mechanism, which is deliberately more

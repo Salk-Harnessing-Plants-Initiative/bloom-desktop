@@ -158,19 +158,45 @@ third outcome, and an explicit await so verification work can't outlive
       is the caller's job. Confirm 3.5 passes.
 - [ ] 3.7 Write a failing test for the awaited-verification correctness
       property (design.md Decision 8, `upload` spec's "Upload Awaits
-      Verification Before Returning"): simulate `bloom-fs`'s
-      `uploadImages()` resolving while a per-item verification (mocked
-      with a delay) is still pending, and assert `uploadScan()` does not
-      resolve until that verification's status write has completed, and
-      that the returned `UploadResult`'s counts reflect the post-
-      verification outcome.
+      Verification Before Returning"). Be precise about the mock target —
+      a test that mocks a delay inside the existing `uploadImagesFn` mock
+      loop (the pattern `tests/unit/image-uploader.test.ts` already uses
+      elsewhere) proves nothing here, since that callback does no async
+      work after 3.8 lands; it must pass or fail identically with or
+      without the fix. Instead:
+      - Use a **scan with at least 2 images** (matching the `upload`
+        spec's own "multiple images... across worker slots" scenario —
+        a single-image test can't distinguish "awaited" from
+        "not awaited").
+      - Mock the verification/Supabase call itself (not the `bloom-fs`
+        callback) with a manually-resolvable deferred promise — e.g.
+        `let resolveVerify; const verifyPromise = new Promise(r =>
+        {resolveVerify = r})`, returned by the mocked verification call
+        for at least one image.
+      - Call `uploadScan()`, let `uploadImagesFn`'s mock resolve
+        immediately (its callback only records now, per 3.8), then assert
+        via a settled-flag or `Promise.race` against a sentinel that the
+        `uploadScan()` promise has **not yet resolved** while
+        `verifyPromise` is still pending.
+      - Call `resolveVerify(...)`, then assert `uploadScan()` **does**
+        resolve, and that the returned `UploadResult`'s counts reflect
+        every image's final, post-verification status — not just the one
+        image whose promise was manually controlled.
 - [ ] 3.8 Implement the fix: inside `uploadImagesFn`'s `result` callback,
       only synchronously record `(index, created, error)` into an
       in-memory list — do not perform verification there. After
       `await this.uploadImagesFn(...)` returns, run verification and the
-      corresponding status write for every recorded entry via
-      `Promise.all(...)`, and only return `uploadScan()`'s result once
-      that resolves. Confirm 3.7 passes.
+      corresponding status write for every recorded entry, **bounded at
+      the same `nWorkers` (4) concurrency as the upload phase** — reuse
+      `@salk-hpi/bloom-fs`'s own exported `concurrentMap(array, nWorkers,
+      asyncFunc)` rather than an uncapped `Promise.all` (found on review:
+      an uncapped `Promise.all` would fan out to the scan's full image
+      count — 72 by default — not stay bounded like the upload phase).
+      Wrap each entry's verification-and-write work individually (e.g. a
+      per-entry try/catch) so one entry's unexpected error doesn't reject
+      the whole pass and discard every other entry's already-completed
+      status write. Only return `uploadScan()`'s result once every entry
+      has settled. Confirm 3.7 passes.
 - [ ] 3.9 Add a documentation comment to `nWorkers: 4` matching
       `graviscan-upload.ts`'s existing rationale (3 round-trips per image:
       insert RPC → file upload → update RPC). No behavior change — no test
