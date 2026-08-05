@@ -487,7 +487,7 @@ other out of order.
       component — an earlier draft of this task list built and unit-
       tested `useTestScan` in isolation with no component wiring or
       render-level test at all. Implement to satisfy.
-- [ ] 14.5 `ScannerStatusPanel.tsx` — failing tests in
+- [x] 14.5 `ScannerStatusPanel.tsx` — failing tests in
       `tests/unit/components/ScannerStatusPanel.test.tsx`: renders
       per-scanner live status from `useScannerStatus`/`useScanSession`
       state. Implement to satisfy.
