@@ -217,7 +217,12 @@ test.describe('Export Scans Page', () => {
     await expect(window.locator('text=PLANT-002')).toBeVisible();
     await window.locator('input[type="checkbox"]').nth(1).check();
     await window.click('button:has-text("Choose Destination")');
-    await expect(window.locator(`text=${destDir}`)).toBeVisible();
+    // Not `locator('text=...')` — that selector engine's shorthand string
+    // parses a leading `/` as the start of a `/pattern/flags` regex literal,
+    // and POSIX temp dirs (os.tmpdir()) start with `/`, corrupting the match
+    // on macOS/Linux while working by coincidence on Windows. getByText()
+    // does plain substring matching with no such ambiguity.
+    await expect(window.getByText(destDir)).toBeVisible();
 
     await window.click('button:has-text("Export 1 scan")');
 
@@ -262,7 +267,12 @@ test.describe('Export Scans Page', () => {
     await expect(window.locator('text=PLANT-003')).toBeVisible();
     await window.locator('input[type="checkbox"]').nth(1).check();
     await window.click('button:has-text("Choose Destination")');
-    await expect(window.locator(`text=${destDir}`)).toBeVisible();
+    // Not `locator('text=...')` — that selector engine's shorthand string
+    // parses a leading `/` as the start of a `/pattern/flags` regex literal,
+    // and POSIX temp dirs (os.tmpdir()) start with `/`, corrupting the match
+    // on macOS/Linux while working by coincidence on Windows. getByText()
+    // does plain substring matching with no such ambiguity.
+    await expect(window.getByText(destDir)).toBeVisible();
 
     // First export: both files land on disk.
     await window.click('button:has-text("Export 1 scan")');
