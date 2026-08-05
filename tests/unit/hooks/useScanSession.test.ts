@@ -890,6 +890,34 @@ describe('useScanSession', () => {
     );
   });
 
+  it('a stray scan-error for a job outside this session (unknown scanner/plate key) does not count toward "all done" (round-3 regression)', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(2);
+
+    // A leftover/mismatched event for a job this session never started.
+    fire('scan-error', {
+      scannerId: 'sc-unknown',
+      plateIndex: '99',
+      error: 'stray event',
+    });
+    // Only one of the two real jobs completes — the session must NOT be
+    // considered done just because the stray event inflated the count.
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+
+    expect(result.current.isScanning).toBe(true);
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(1);
+    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+  });
+
   it('startScan() called twice in rapid succession only starts one session', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,

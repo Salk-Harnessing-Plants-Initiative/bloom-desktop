@@ -497,6 +497,13 @@ export function useScanSession(
       const plateIndex = resolvePlateIndex(data);
       if (!scannerId || !plateIndex) return;
       const key = jobKey(scannerId, plateIndex);
+      // Mirrors onScanComplete's own unknown-job guard: without this, a
+      // stray scan-error for a key outside this session's jobTemplateRef
+      // (a leftover event from a prior session, a hardware echo with a
+      // mismatched plate index) would inflate completedKeysRef past what
+      // this session actually has jobs for, risking a premature
+      // finishSession(false) while a real job is still in flight.
+      if (!(key in jobTemplateRef.current)) return;
       dispatch({
         type: 'JOB_ERROR',
         payload: {
