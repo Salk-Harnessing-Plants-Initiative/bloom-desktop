@@ -306,6 +306,28 @@ export type ScannerState =
   | 'error';
 
 /**
+ * Renderer-facing verification status for a plate assignment. Matches
+ * `src/main/graviscan/verify-plates.ts`'s `VerifyStatus` union exactly
+ * (`verified | incorrect | unreadable | needs_review | duplicate_qr |
+ * swapped | lookup_failed`), plus `'pending'` for
+ * `GraviScanPlateAssignment.verification_status`'s own pre-verification
+ * DB default — `verifyPlates()` itself never emits `'pending'`, but a
+ * freshly-created row can carry it before any verification has run.
+ * Deliberately does NOT include `'skipped'`: that value was removed from
+ * `VerifyStatus` as dead code (never produced, never consumed) and
+ * reintroducing it here would recreate the same anti-pattern.
+ */
+export type VerificationStatus =
+  | 'pending'
+  | 'verified'
+  | 'incorrect'
+  | 'unreadable'
+  | 'needs_review'
+  | 'duplicate_qr'
+  | 'swapped'
+  | 'lookup_failed';
+
+/**
  * Per-scanner state for tracking scan progress.
  */
 export interface ScannerPanelState {
