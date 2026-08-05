@@ -206,6 +206,23 @@ describe('database.graviscans.*', () => {
       expect(count).toBe(0);
     });
 
+    it('rejects a negative wave_number rather than silently coercing it to 0', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscansCreate(prisma, {
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+        wave_number: -1,
+        path: '/scans/x.tif',
+        grid_mode: '2grid',
+        plate_index: '00',
+        resolution: 600,
+      } as never);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/wave_number/);
+      expect(await prisma.graviScan.count()).toBe(0);
+    });
+
     it('persists all fields and defaults format to tiff and wave_number to 0 when omitted', async () => {
       const fx = await seedBaseFixture();
       const session = await prisma.graviScanSession.create({
@@ -961,6 +978,30 @@ describe('database.graviscanPlateAssignments.*', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data![0].plate_barcode).toBe('WAVE0-VALUE');
     });
+
+    it('rejects a negative waveNumber rather than silently coercing it', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscanPlateAssignmentsList(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        -1
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
+    });
+
+    it('rejects a non-integer waveNumber (e.g. NaN) rather than silently coercing it', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscanPlateAssignmentsList(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        NaN
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
+    });
   });
 
   describe('upsertMany', () => {
@@ -1003,6 +1044,19 @@ describe('database.graviscanPlateAssignments.*', () => {
         []
       );
       expect(result.success).toBe(false);
+    });
+
+    it('rejects a negative waveNumber rather than silently coercing it', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscanPlateAssignmentsUpsertMany(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        [{ plate_index: '00', plate_barcode: 'X' }],
+        -1
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
     });
 
     it('is atomic — a failing entry rolls back the whole batch', async () => {

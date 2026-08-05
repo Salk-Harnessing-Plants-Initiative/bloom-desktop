@@ -68,6 +68,27 @@ function resolvePlateIndex(event: Record<string, unknown>): string {
   return (event.plate_index as string) ?? (event.plateIndex as string) ?? '';
 }
 
+/** `scan-coordinator.ts`'s forwarded scan-complete event only ever carries
+ * the image location as `path` (spread verbatim from the worker's own
+ * `ScanWorkerEvent`) — it is never duplicated as camelCase `imagePath` the
+ * way `scanner_id`/`plate_index` are. Resolving both anyway, dual-casing-
+ * style, is deliberate defense against a future relay change, not evidence
+ * `imagePath` is expected today. */
+function resolveImagePath(event: Record<string, unknown>): string {
+  return (event.path as string) ?? (event.imagePath as string) ?? '';
+}
+
+/** Mirrors `resolveImagePath()` — the coordinator only ever adds
+ * `cycle_number` (snake_case) to the forwarded event, never a `cycleNumber`
+ * duplicate. */
+function resolveCycleNumber(event: Record<string, unknown>): number | null {
+  const snake = event.cycle_number;
+  if (typeof snake === 'number') return snake;
+  const camel = event.cycleNumber;
+  if (typeof camel === 'number') return camel;
+  return null;
+}
+
 function jobKey(scannerId: string, plateIndex: string): string {
   return `${scannerId}:${plateIndex}`;
 }
@@ -353,6 +374,19 @@ export function useScanSession(
   // `database.graviscans.create()` call actually idempotent — this hook
   // does not try to suppress the repeat call itself (tasks.md 12.3).
   const jobTemplateRef = useRef<Record<string, ScanSessionJob>>({});
+  // Synchronous, ref-based completion tracking for the "are all jobs done"
+  // decision inside the onScanComplete handler. `stateRef.current` is only
+  // refreshed by a useEffect that runs after a render commits — if two
+  // scan-complete events for the last two remaining jobs are delivered
+  // within the same render/effect cycle (React 18 batches dispatches from
+  // any source), both handler invocations would read the same stale
+  // `stateRef.current.pendingJobs` and neither would see 0 remaining. A
+  // plain Set mutated synchronously has no such lag: the second call always
+  // sees the first call's addition, regardless of render timing.
+  const completedKeysRef = useRef<Set<string>>(new Set());
+  const allDoneFiredRef = useRef(false);
+  // Re-entrancy guard for startScan() — see its own comment at the call site.
+  const isStartingRef = useRef(false);
 
   const recordCompletedJob = useCallback(
     async (
@@ -413,11 +447,8 @@ export function useScanSession(
         const job = jobTemplateRef.current[key];
         if (!job) return; // unknown job key — nothing to record
 
-        const imagePath = (data.imagePath as string) ?? '';
-        const cycleNumber =
-          typeof data.cycleNumber === 'number'
-            ? (data.cycleNumber as number)
-            : null;
+        const imagePath = resolveImagePath(data);
+        const cycleNumber = resolveCycleNumber(data);
 
         completedJobsRef.current[key] = {
           ...job,
@@ -429,16 +460,26 @@ export function useScanSession(
         // Always recorded, even on a duplicated/retried event for a job
         // already removed from `pendingJobs` — the backend's own upsert is
         // what makes the repeat safe (tasks.md 12.3), not a hook-side guard.
-        void recordCompletedJob(job, imagePath, cycleNumber);
-
-        if (stateRef.current.isScanning) {
-          const stillPending = Object.keys(stateRef.current.pendingJobs).filter(
-            (k) => k !== key
-          );
-          if (stillPending.length === 0) {
-            dispatch({ type: 'SCAN_ENDED' });
-            void finishSession(false);
+        void recordCompletedJob(job, imagePath, cycleNumber).catch(
+          (err: unknown) => {
+            dispatch({
+              type: 'ERROR',
+              payload: {
+                error: `Failed to save captured plate ${key}: ${err instanceof Error ? err.message : String(err)}`,
+              },
+            });
           }
+        );
+
+        completedKeysRef.current.add(key);
+        const totalJobs = Object.keys(jobTemplateRef.current).length;
+        if (
+          !allDoneFiredRef.current &&
+          completedKeysRef.current.size >= totalJobs
+        ) {
+          allDoneFiredRef.current = true;
+          dispatch({ type: 'SCAN_ENDED' });
+          void finishSession(false);
         }
       }
     );
@@ -526,6 +567,10 @@ export function useScanSession(
       }
 
       jobTemplateRef.current = jobs;
+      completedKeysRef.current = new Set(
+        Object.keys(jobs).filter((k) => !(k in pendingJobs))
+      );
+      allDoneFiredRef.current = false;
       dispatch({
         type: 'RESTORE',
         payload: {
@@ -556,160 +601,196 @@ export function useScanSession(
   // ── startScan / cancelScan ────────────────────────────────────────────
 
   const startScan = useCallback(async () => {
-    if (!canStartScan) {
-      dispatch({
-        type: 'ERROR',
-        payload: {
-          error: 'Cannot start — an assigned scanner has an active wedge.',
-        },
-      });
-      return;
-    }
-    if (!experimentId || !phenotyperId) {
-      dispatch({
-        type: 'ERROR',
-        payload: { error: 'Select an experiment and phenotyper first.' },
-      });
-      return;
-    }
+    // Re-entrancy guard: a fast double-click on Start would otherwise run
+    // two overlapping setup chains (each calling gravi.startScan() and
+    // graviscanSessions.create() independently), with whichever dispatches
+    // 'START' last silently clobbering jobTemplateRef/completedJobsRef for
+    // a physical scan the first call's hardware may still be running.
+    // `isScanning` alone doesn't cover this — it stays false for this
+    // entire async setup, only flipping true once 'START' dispatches.
+    if (isStartingRef.current || stateRef.current.isScanning) return;
+    isStartingRef.current = true;
+    try {
+      if (!canStartScan) {
+        dispatch({
+          type: 'ERROR',
+          payload: {
+            error: 'Cannot start — an assigned scanner has an active wedge.',
+          },
+        });
+        return;
+      }
+      if (!experimentId || !phenotyperId) {
+        dispatch({
+          type: 'ERROR',
+          payload: { error: 'Select an experiment and phenotyper first.' },
+        });
+        return;
+      }
 
-    const outputDirResult = unwrapGraviResult<{
-      success: boolean;
-      path?: string;
-      error?: string;
-    }>(await (window as any).electron.gravi.getOutputDir());
-    if (!outputDirResult?.success || !outputDirResult.path) {
-      dispatch({
-        type: 'ERROR',
-        payload: {
-          error:
-            outputDirResult?.error ??
-            'Could not determine the scan output directory.',
-        },
-      });
-      return;
-    }
-    const outputDir = outputDirResult.path;
+      const outputDirResult = unwrapGraviResult<{
+        success: boolean;
+        path?: string;
+        error?: string;
+      }>(await (window as any).electron.gravi.getOutputDir());
+      if (!outputDirResult?.success || !outputDirResult.path) {
+        dispatch({
+          type: 'ERROR',
+          payload: {
+            error:
+              outputDirResult?.error ??
+              'Could not determine the scan output directory.',
+          },
+        });
+        return;
+      }
+      const outputDir = outputDirResult.path;
 
-    const timestamp = Date.now();
-    const jobs: Record<string, ScanSessionJob> = {};
-    const scannerTotals: Record<string, number> = {};
-    const scanners: Array<{
-      scannerId: string;
-      saneName: string;
-      plates: Array<{
-        plate_index: string;
-        grid_mode: GridMode;
-        resolution: number;
-        output_path: string;
-        wave_number: number;
-        plate_barcode?: string | null;
-      }>;
-    }> = [];
+      const timestamp = Date.now();
+      const jobs: Record<string, ScanSessionJob> = {};
+      const scannerTotals: Record<string, number> = {};
+      const scanners: Array<{
+        scannerId: string;
+        saneName: string;
+        plates: Array<{
+          plate_index: string;
+          grid_mode: GridMode;
+          resolution: number;
+          output_path: string;
+          wave_number: number;
+          plate_barcode?: string | null;
+        }>;
+      }> = [];
 
-    for (const scannerId of scannerIds) {
-      const assignments = (assignmentsByScanner[scannerId] || []).filter(
-        (a) => a.selected
+      for (const scannerId of scannerIds) {
+        const assignments = (assignmentsByScanner[scannerId] || []).filter(
+          (a) => a.selected
+        );
+        const gridMode = gridModes[scannerId];
+        const plates = assignments.map((a) => {
+          const outputPath = `${outputDir}/${experimentId}/wave${waveNumber}/${scannerId}/${a.plateIndex}_${timestamp}.tiff`;
+          jobs[jobKey(scannerId, a.plateIndex)] = {
+            scannerId,
+            plateIndex: a.plateIndex,
+            outputPath,
+            plantBarcode: a.plantBarcode,
+            transplantDate: a.transplantDate,
+            customNote: a.customNote,
+            gridMode,
+            status: 'pending',
+          };
+          return {
+            plate_index: a.plateIndex,
+            grid_mode: gridMode,
+            resolution,
+            output_path: outputPath,
+            wave_number: waveNumber,
+            plate_barcode: a.plantBarcode,
+          };
+        });
+        if (plates.length > 0) {
+          scannerTotals[scannerId] = plates.length;
+          scanners.push({
+            scannerId,
+            saneName: saneNames[scannerId] ?? '',
+            plates,
+          });
+        }
+      }
+
+      if (scanners.length === 0) {
+        dispatch({
+          type: 'ERROR',
+          payload: { error: 'No plates selected for scanning.' },
+        });
+        return;
+      }
+
+      const intervalSeconds = Math.round(intervalMinutes * 60);
+      const durationSeconds = Math.round(durationHours * 3600);
+      const totalCycles = isContinuous
+        ? intervalSeconds > 0
+          ? Math.ceil(durationSeconds / intervalSeconds)
+          : 1
+        : 1;
+
+      const result = unwrapGraviResult<{ success: boolean; error?: string }>(
+        await (window as any).electron.gravi.startScan({
+          scanners,
+          interval: isContinuous
+            ? { intervalSeconds, durationSeconds }
+            : undefined,
+          metadata: { experimentId, phenotyperId, resolution, waveNumber },
+        })
       );
-      const gridMode = gridModes[scannerId];
-      const plates = assignments.map((a) => {
-        const outputPath = `${outputDir}/${experimentId}/wave${waveNumber}/${scannerId}/${a.plateIndex}_${timestamp}.tiff`;
-        jobs[jobKey(scannerId, a.plateIndex)] = {
-          scannerId,
-          plateIndex: a.plateIndex,
-          outputPath,
-          plantBarcode: a.plantBarcode,
-          transplantDate: a.transplantDate,
-          customNote: a.customNote,
-          gridMode,
-          status: 'pending',
-        };
-        return {
-          plate_index: a.plateIndex,
-          grid_mode: gridMode,
-          resolution,
-          output_path: outputPath,
-          wave_number: waveNumber,
-          plate_barcode: a.plantBarcode,
-        };
+
+      if (!result?.success) {
+        dispatch({
+          type: 'ERROR',
+          payload: { error: result?.error ?? 'Failed to start scan.' },
+        });
+        return;
+      }
+
+      let sessionId: string | null = null;
+      const sessionResult = await (
+        window as any
+      ).electron.database.graviscanSessions.create({
+        experiment_id: experimentId,
+        phenotyper_id: phenotyperId,
+        scan_mode: isContinuous ? 'continuous' : 'single',
+        interval_seconds: isContinuous ? intervalSeconds : null,
+        duration_seconds: isContinuous ? durationSeconds : null,
+        total_cycles: totalCycles,
       });
-      if (plates.length > 0) {
-        scannerTotals[scannerId] = plates.length;
-        scanners.push({
-          scannerId,
-          saneName: saneNames[scannerId] ?? '',
-          plates,
+      if (sessionResult?.success && sessionResult.data) {
+        sessionId = sessionResult.data.id;
+      }
+
+      completedJobsRef.current = {};
+      jobTemplateRef.current = jobs;
+      completedKeysRef.current = new Set();
+      allDoneFiredRef.current = false;
+      dispatch({
+        type: 'START',
+        payload: {
+          jobs,
+          scannerTotals,
+          totalCycles,
+          sessionId,
+          scanStartedAt: Date.now(),
+        },
+      });
+
+      // The coordinator has already physically started scanning by this
+      // point (gravi.startScan() above succeeded) — a failure here can't
+      // un-start it, but a null sessionId silently degrades
+      // graviscansCreate's upsert-based idempotency (task 2.3/2.4) back to
+      // a plain create() for every job this session completes. Dispatched
+      // AFTER 'START' so it isn't immediately wiped by START's own state
+      // reset.
+      if (!sessionResult?.success) {
+        dispatch({
+          type: 'ERROR',
+          payload: {
+            error: `Scan started, but session tracking failed to save (${sessionResult?.error ?? 'unknown error'}) — duplicate-write protection will not apply this session.`,
+          },
         });
       }
-    }
 
-    if (scanners.length === 0) {
+      if (experimentId) {
+        localStorage.setItem(
+          abnormalMarkerKey(experimentId, waveNumber),
+          JSON.stringify({ expectedCycles: totalCycles })
+        );
+      }
+    } catch (err) {
       dispatch({
         type: 'ERROR',
-        payload: { error: 'No plates selected for scanning.' },
+        payload: { error: err instanceof Error ? err.message : String(err) },
       });
-      return;
-    }
-
-    const intervalSeconds = Math.round(intervalMinutes * 60);
-    const durationSeconds = Math.round(durationHours * 3600);
-    const totalCycles = isContinuous
-      ? intervalSeconds > 0
-        ? Math.ceil(durationSeconds / intervalSeconds)
-        : 1
-      : 1;
-
-    const result = unwrapGraviResult<{ success: boolean; error?: string }>(
-      await (window as any).electron.gravi.startScan({
-        scanners,
-        interval: isContinuous
-          ? { intervalSeconds, durationSeconds }
-          : undefined,
-        metadata: { experimentId, phenotyperId, resolution, waveNumber },
-      })
-    );
-
-    if (!result?.success) {
-      dispatch({
-        type: 'ERROR',
-        payload: { error: result?.error ?? 'Failed to start scan.' },
-      });
-      return;
-    }
-
-    let sessionId: string | null = null;
-    const sessionResult = await (
-      window as any
-    ).electron.database.graviscanSessions.create({
-      experiment_id: experimentId,
-      phenotyper_id: phenotyperId,
-      scan_mode: isContinuous ? 'continuous' : 'single',
-      interval_seconds: isContinuous ? intervalSeconds : null,
-      duration_seconds: isContinuous ? durationSeconds : null,
-      total_cycles: totalCycles,
-    });
-    if (sessionResult?.success && sessionResult.data) {
-      sessionId = sessionResult.data.id;
-    }
-
-    completedJobsRef.current = {};
-    jobTemplateRef.current = jobs;
-    dispatch({
-      type: 'START',
-      payload: {
-        jobs,
-        scannerTotals,
-        totalCycles,
-        sessionId,
-        scanStartedAt: Date.now(),
-      },
-    });
-
-    if (experimentId) {
-      localStorage.setItem(
-        abnormalMarkerKey(experimentId, waveNumber),
-        JSON.stringify({ expectedCycles: totalCycles })
-      );
+    } finally {
+      isStartingRef.current = false;
     }
   }, [
     canStartScan,

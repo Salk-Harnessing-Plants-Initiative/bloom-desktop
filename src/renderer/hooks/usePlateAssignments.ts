@@ -27,6 +27,13 @@ export interface UsePlateAssignmentsResult {
    * intentionally-manual wave apart from a likely misconfigured link. */
   waveLinkedButEmpty: boolean;
   loadError: string | null;
+  /** Set when a plate-assignment edit fails to persist — distinct from
+   * `loadError` (which is about the initial wave-scoped read). A failed
+   * save otherwise looks identical to a successful one: the edit stays
+   * visible locally but silently reverts on the next remount/wave-switch,
+   * the same "silent data loss" failure class Decision 3 eliminated on the
+   * read side. */
+  saveError: string | null;
   updateField: (
     scannerId: string,
     plateIndex: string,
@@ -49,6 +56,8 @@ interface PersistedRow {
   custom_note: string | null;
   selected: boolean;
 }
+
+type UpsertManyResult = { success: boolean; error?: string };
 
 function fieldsEqual(
   a: Pick<
@@ -88,6 +97,7 @@ export function usePlateAssignments(
   const [waveMissingMetadata, setWaveMissingMetadata] = useState(false);
   const [waveLinkedButEmpty, setWaveLinkedButEmpty] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   /** Available plates for the current wave, distributed across scanners in
    * assignment order — kept for the manual-barcode-entry re-lookup
@@ -101,6 +111,23 @@ export function usePlateAssignments(
 
   const scannerIdsKey = scannerIds.join(',');
   const gridModesKey = scannerIds.map((id) => gridModes[id]).join(',');
+
+  const reportUpsertOutcome = useCallback(
+    (promise: Promise<UpsertManyResult>) => {
+      promise
+        .then((result) => {
+          if (!result?.success) {
+            setSaveError(result?.error ?? 'Failed to save plate assignment.');
+          } else {
+            setSaveError(null);
+          }
+        })
+        .catch((err: unknown) => {
+          setSaveError(err instanceof Error ? err.message : String(err));
+        });
+    },
+    []
+  );
 
   useEffect(() => {
     const thisRequestId = ++requestIdRef.current;
@@ -251,17 +278,19 @@ export function usePlateAssignments(
       for (const scannerId of scannerIds) {
         const toWrite = toPersist[scannerId];
         if (toWrite.length === 0) continue;
-        void window.electron.database.graviscanPlateAssignments.upsertMany(
-          experimentId,
-          scannerId,
-          toWrite.map((a) => ({
-            plate_index: a.plateIndex,
-            plate_barcode: a.plantBarcode,
-            transplant_date: a.transplantDate,
-            custom_note: a.customNote,
-            selected: a.selected,
-          })),
-          waveNumber
+        reportUpsertOutcome(
+          window.electron.database.graviscanPlateAssignments.upsertMany(
+            experimentId,
+            scannerId,
+            toWrite.map((a) => ({
+              plate_index: a.plateIndex,
+              plate_barcode: a.plantBarcode,
+              transplant_date: a.transplantDate,
+              custom_note: a.customNote,
+              selected: a.selected,
+            })),
+            waveNumber
+          )
         );
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -274,22 +303,24 @@ export function usePlateAssignments(
   const persistPosition = useCallback(
     (scannerId: string, assignment: PlateAssignment) => {
       if (!experimentId) return;
-      void window.electron.database.graviscanPlateAssignments.upsertMany(
-        experimentId,
-        scannerId,
-        [
-          {
-            plate_index: assignment.plateIndex,
-            plate_barcode: assignment.plantBarcode,
-            transplant_date: assignment.transplantDate,
-            custom_note: assignment.customNote,
-            selected: assignment.selected,
-          },
-        ],
-        waveNumber
+      reportUpsertOutcome(
+        window.electron.database.graviscanPlateAssignments.upsertMany(
+          experimentId,
+          scannerId,
+          [
+            {
+              plate_index: assignment.plateIndex,
+              plate_barcode: assignment.plantBarcode,
+              transplant_date: assignment.transplantDate,
+              custom_note: assignment.customNote,
+              selected: assignment.selected,
+            },
+          ],
+          waveNumber
+        )
       );
     },
-    [experimentId, waveNumber]
+    [experimentId, waveNumber, reportUpsertOutcome]
   );
 
   const updateField = useCallback(
@@ -360,6 +391,7 @@ export function usePlateAssignments(
     waveMissingMetadata,
     waveLinkedButEmpty,
     loadError,
+    saveError,
     updateField,
     toggleSelected,
   };

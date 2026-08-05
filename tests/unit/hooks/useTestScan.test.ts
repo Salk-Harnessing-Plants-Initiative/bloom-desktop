@@ -198,4 +198,146 @@ describe('useTestScan', () => {
     expect(result.current.error).toMatch(/no scanners/i);
     expect(startScan).not.toHaveBeenCalled();
   });
+
+  // ── Regressions found by review-pr round 1 ──────────────────────────────
+
+  it('resolves the real scan-complete event shape (`path`, not `imagePath`)', async () => {
+    const { result } = renderHook(() => useTestScan(baseParams()));
+
+    let testPromise!: Promise<void>;
+    act(() => {
+      testPromise = result.current.testAllScanners();
+    });
+    await waitFor(() => expect(result.current.isTesting).toBe(true));
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/sc-1-00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      path: '/out/sc-1-01.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '00',
+      path: '/out/sc-2-00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '01',
+      path: '/out/sc-2-01.tiff',
+    });
+
+    await act(async () => {
+      await testPromise;
+    });
+
+    expect(result.current.testResults['sc-1'].imagePath).toBe(
+      '/out/sc-1-01.tiff'
+    );
+  });
+
+  it('a second testAllScanners() call while the first is still running is a no-op, not a re-entrant corruption', async () => {
+    let resolveStart!: (value: unknown) => void;
+    startScan.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStart = resolve;
+        })
+    );
+    const { result } = renderHook(() => useTestScan(baseParams()));
+
+    let firstPromise!: Promise<void>;
+    act(() => {
+      firstPromise = result.current.testAllScanners();
+    });
+    await waitFor(() => expect(result.current.isTesting).toBe(true));
+
+    // A double-click while the first run's own startScan() call hasn't
+    // even resolved yet.
+    let secondPromise!: Promise<void>;
+    act(() => {
+      secondPromise = result.current.testAllScanners();
+    });
+    expect(startScan).toHaveBeenCalledTimes(1);
+
+    resolveStart({ success: true, data: { success: true } });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      path: '/out/01.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '01',
+      path: '/out/01.tiff',
+    });
+
+    await act(async () => {
+      await Promise.all([firstPromise, secondPromise]);
+    });
+
+    expect(startScan).toHaveBeenCalledTimes(1);
+    expect(result.current.testResults['sc-1'].success).toBe(true);
+    expect(result.current.testResults['sc-2'].success).toBe(true);
+  });
+
+  it('a getOutputDir() promise rejection surfaces an error and does not permanently lock out future test runs', async () => {
+    getOutputDir.mockRejectedValueOnce(new Error('IPC bridge closed'));
+    const { result } = renderHook(() => useTestScan(baseParams()));
+
+    await act(async () => {
+      await result.current.testAllScanners();
+    });
+    expect(result.current.error).toMatch(/IPC bridge closed/);
+    expect(result.current.isTesting).toBe(false);
+
+    // A later, working call must not be permanently blocked by the guard.
+    getOutputDir.mockResolvedValue({
+      success: true,
+      data: { success: true, path: '/out' },
+    });
+    let secondPromise!: Promise<void>;
+    act(() => {
+      secondPromise = result.current.testAllScanners();
+    });
+    await waitFor(() => expect(startScan).toHaveBeenCalledTimes(1));
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      path: '/out/01.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '01',
+      path: '/out/01.tiff',
+    });
+    await act(async () => {
+      await secondPromise;
+    });
+  });
 });

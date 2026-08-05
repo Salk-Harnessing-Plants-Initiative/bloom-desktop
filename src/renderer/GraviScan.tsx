@@ -181,6 +181,7 @@ export function GraviScan() {
         waveMissingMetadata={plateAssignments.waveMissingMetadata}
         waveLinkedButEmpty={plateAssignments.waveLinkedButEmpty}
         loadError={plateAssignments.loadError}
+        saveError={plateAssignments.saveError}
         updateField={plateAssignments.updateField}
         toggleSelected={plateAssignments.toggleSelected}
       />

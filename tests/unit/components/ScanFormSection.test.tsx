@@ -27,6 +27,7 @@ function baseProps(
     waveMissingMetadata: true,
     waveLinkedButEmpty: false,
     loadError: null,
+    saveError: null,
     updateField: vi.fn(),
     toggleSelected: vi.fn(),
     ...overrides,
@@ -122,6 +123,13 @@ describe('ScanFormSection', () => {
     expect(
       screen.getByText(/Failed to load wave metadata/)
     ).toBeInTheDocument();
+  });
+
+  it('renders a distinct save-failure error when a plate-assignment edit fails to persist', () => {
+    render(<ScanFormSection {...baseProps({ saveError: 'db locked' })} />);
+    expect(screen.getByTestId('plate-save-error').textContent).toMatch(
+      /db locked/
+    );
   });
 
   it('renders one section per scanner using the provided label', () => {

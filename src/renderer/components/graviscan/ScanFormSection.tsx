@@ -14,6 +14,7 @@ export interface ScanFormSectionProps {
   waveMissingMetadata: boolean;
   waveLinkedButEmpty: boolean;
   loadError: string | null;
+  saveError: string | null;
   updateField: (
     scannerId: string,
     plateIndex: string,
@@ -31,6 +32,7 @@ export function ScanFormSection({
   waveMissingMetadata,
   waveLinkedButEmpty,
   loadError,
+  saveError,
   updateField,
   toggleSelected,
 }: ScanFormSectionProps) {
@@ -42,6 +44,14 @@ export function ScanFormSection({
           className="bg-red-50 border border-red-500 text-red-800 rounded p-2 text-sm"
         >
           {loadError}
+        </div>
+      )}
+      {saveError && (
+        <div
+          data-testid="plate-save-error"
+          className="bg-red-50 border border-red-500 text-red-800 rounded p-2 text-sm"
+        >
+          Failed to save: {saveError}
         </div>
       )}
       {waveMissingMetadata && (

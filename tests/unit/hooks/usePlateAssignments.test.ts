@@ -452,4 +452,56 @@ describe('usePlateAssignments', () => {
       'Plate_B'
     );
   });
+
+  // ── Regression found by review-pr round 1 ───────────────────────────────
+
+  it('a failed upsertMany() from an operator edit surfaces via saveError instead of failing silently', async () => {
+    listGraviMetadata.mockResolvedValue({ success: true, data: [] });
+    listAssignments.mockResolvedValue({ success: true, data: [] });
+    upsertMany.mockResolvedValue({ success: false, error: 'db locked' });
+
+    const { result } = renderHook(() =>
+      usePlateAssignments({
+        experimentId: 'exp-1',
+        waveNumber: 0,
+        scannerIds: ['sc-1'],
+        gridModes: { 'sc-1': '2grid' },
+      })
+    );
+    await waitFor(() =>
+      expect(result.current.assignmentsByScanner['sc-1']).toBeDefined()
+    );
+
+    act(() => {
+      result.current.updateField('sc-1', '00', 'plantBarcode', 'PLATE_099');
+    });
+
+    await waitFor(() => expect(result.current.saveError).toMatch(/db locked/));
+  });
+
+  it('an upsertMany() promise rejection also surfaces via saveError', async () => {
+    listGraviMetadata.mockResolvedValue({ success: true, data: [] });
+    listAssignments.mockResolvedValue({ success: true, data: [] });
+    upsertMany.mockRejectedValue(new Error('IPC bridge closed'));
+
+    const { result } = renderHook(() =>
+      usePlateAssignments({
+        experimentId: 'exp-1',
+        waveNumber: 0,
+        scannerIds: ['sc-1'],
+        gridModes: { 'sc-1': '2grid' },
+      })
+    );
+    await waitFor(() =>
+      expect(result.current.assignmentsByScanner['sc-1']).toBeDefined()
+    );
+
+    act(() => {
+      result.current.toggleSelected('sc-1', '00');
+    });
+
+    await waitFor(() =>
+      expect(result.current.saveError).toMatch(/IPC bridge closed/)
+    );
+  });
 });

@@ -773,4 +773,158 @@ describe('useScanSession', () => {
     expect(startScan).not.toHaveBeenCalled();
     expect(result.current.error).toMatch(/wedge/i);
   });
+
+  // ── Regressions found by review-pr round 1 ──────────────────────────────
+
+  it('resolves the real scan-complete event shape: `path` (not `imagePath`) and `cycle_number` (not `cycleNumber`)', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    // scan-coordinator.ts's real forwarded event: only `path` and
+    // `cycle_number`, never `imagePath`/`cycleNumber` — no camelCase
+    // duplicates exist for these two fields (unlike scanner_id/plate_index).
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+      cycle_number: 3,
+    });
+    await waitFor(() =>
+      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
+    );
+
+    expect(graviscansCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/out/00.tiff', cycle_number: 3 })
+    );
+  });
+
+  it('two scan-complete events for the last two remaining jobs, delivered synchronously with no render between them, both correctly resolve and end the session exactly once', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(2);
+
+    // Both events fired inside the same act() — no render/effect flush
+    // happens between them, exactly the scenario where a stateRef-based
+    // "still pending" check would see the same stale snapshot twice.
+    act(() => {
+      (listeners['scan-complete'] || []).forEach((cb) =>
+        cb({ scannerId: 'sc-1', plateIndex: '00', path: '/out/00.tiff' })
+      );
+      (listeners['scan-complete'] || []).forEach((cb) =>
+        cb({ scannerId: 'sc-1', plateIndex: '01', path: '/out/01.tiff' })
+      );
+    });
+
+    await waitFor(() => expect(result.current.isScanning).toBe(false));
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(0);
+    // finishSession must have run exactly once — graviscanSessions.complete
+    // is its own unique signal for that.
+    await waitFor(() =>
+      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
+    );
+  });
+
+  it('a duplicated scan-complete for an already-completed job (after the session already ended) does not re-fire finishSession', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      path: '/out/01.tiff',
+    });
+    await waitFor(() =>
+      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
+    );
+
+    // A retried/duplicated IPC event for a job that already completed.
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+    expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('startScan() called twice in rapid succession only starts one session', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+
+    await act(async () => {
+      await Promise.all([
+        result.current.startScan(),
+        result.current.startScan(),
+      ]);
+    });
+
+    expect(startScan).toHaveBeenCalledTimes(1);
+    expect(graviscanSessionsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('a getOutputDir() promise rejection (not just a resolved failure) surfaces an error instead of throwing unhandled', async () => {
+    getOutputDir.mockRejectedValue(new Error('IPC bridge closed'));
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    expect(result.current.error).toMatch(/IPC bridge closed/);
+    expect(result.current.isScanning).toBe(false);
+  });
+
+  it('a failed graviscanSessions.create() surfaces an error but still starts the session (hardware already started)', async () => {
+    graviscanSessionsCreate.mockResolvedValue({
+      success: false,
+      error: 'db locked',
+    });
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    expect(result.current.isScanning).toBe(true);
+    expect(result.current.error).toMatch(/db locked/);
+  });
+
+  it('a failed database.graviscans.create() (recordCompletedJob) surfaces an error rather than failing silently', async () => {
+    graviscansCreate.mockRejectedValue(new Error('disk full'));
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+
+    await waitFor(() => expect(result.current.error).toMatch(/disk full/));
+  });
 });

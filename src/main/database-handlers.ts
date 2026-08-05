@@ -134,6 +134,15 @@ export async function graviscansCreate(
         return { success: false, error: `${field} must be a non-empty string` };
       }
     }
+    if (
+      data.wave_number !== undefined &&
+      !isValidWaveNumber(data.wave_number)
+    ) {
+      return {
+        success: false,
+        error: 'wave_number, when provided, must be a non-negative integer',
+      };
+    }
     const sessionId = (data.session_id as string | null) ?? null;
     const cycleNumber = (data.cycle_number as number | null) ?? null;
     const scannerId = data.scanner_id as string;
@@ -579,6 +588,12 @@ export async function graviscanPlateAssignmentsList(
         error: 'experimentId and scannerId must be non-empty strings',
       };
     }
+    if (waveNumber !== undefined && !isValidWaveNumber(waveNumber)) {
+      return {
+        success: false,
+        error: 'waveNumber, when provided, must be a non-negative integer',
+      };
+    }
     const rows = await db.graviScanPlateAssignment.findMany({
       where: {
         experiment_id: experimentId,
@@ -616,6 +631,12 @@ export async function graviscanPlateAssignmentsUpsertMany(
       return {
         success: false,
         error: 'experimentId and scannerId must be non-empty strings',
+      };
+    }
+    if (waveNumber !== undefined && !isValidWaveNumber(waveNumber)) {
+      return {
+        success: false,
+        error: 'waveNumber, when provided, must be a non-negative integer',
       };
     }
     const wave = typeof waveNumber === 'number' ? waveNumber : 0;
