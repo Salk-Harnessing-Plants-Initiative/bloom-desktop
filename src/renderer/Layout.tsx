@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { WedgeBanner } from './components/WedgeBanner';
+import { WedgeProvider } from './contexts/WedgeContext';
 
 /** Maps scanner_mode values to human-readable labels */
 function modeLabel(mode: string | null): string {
@@ -305,8 +306,14 @@ export function Layout({ mode = null }: LayoutProps) {
 
       {/* Main content */}
       <div className="flex-1 overflow-auto">
-        {showGraviscanLinks && <WedgeBanner />}
-        <Outlet />
+        {showGraviscanLinks ? (
+          <WedgeProvider>
+            <WedgeBanner />
+            <Outlet />
+          </WedgeProvider>
+        ) : (
+          <Outlet />
+        )}
       </div>
     </div>
   );
