@@ -49,6 +49,9 @@ import {
   GetScanStatusResult,
   GraviConfigInput,
   GraviWedgeEvent,
+  QRVerifyPlateInput,
+  QRVerifyPlateResult,
+  QRVerifyPlatesResult,
 } from './graviscan';
 import type {
   GraviScanCreateInput,
@@ -681,6 +684,18 @@ export interface GraviAPI {
   uploadAllScans: () => Promise<any>;
   downloadImages: (params: any) => Promise<any>;
 
+  /**
+   * Post-scan QR verification (Tier 4, issue #162). `waveNumber` is
+   * OPTIONAL and appended last. No `scanOutputDir` parameter here — unlike
+   * `verifyPlates()` itself (the main-process function this IPC channel
+   * delegates to), the handler resolves the output directory internally.
+   */
+  verifyPlates: (
+    plates: QRVerifyPlateInput[],
+    experimentId: string,
+    waveNumber?: number
+  ) => Promise<QRVerifyPlatesResult>;
+
   // Event listeners (return cleanup functions)
   onScanStarted: (callback: (event: any) => void) => () => void;
   onScanComplete: (callback: (event: any) => void) => () => void;
@@ -696,6 +711,16 @@ export interface GraviAPI {
   onUploadProgress: (callback: (data: any) => void) => () => void;
   onDownloadProgress: (callback: (data: any) => void) => () => void;
   onWedgeDetected: (callback: (event: GraviWedgeEvent) => void) => () => void;
+  onVerifyStarted: (callback: () => void) => () => void;
+  onVerifyResult: (
+    callback: (result: QRVerifyPlateResult) => void
+  ) => () => void;
+  onVerifyComplete: (
+    callback: (data: {
+      results: QRVerifyPlateResult[];
+      swaps: QRVerifyPlatesResult['swaps'];
+    }) => void
+  ) => () => void;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 

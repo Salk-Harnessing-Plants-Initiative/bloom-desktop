@@ -328,6 +328,47 @@ export type VerificationStatus =
   | 'lookup_failed';
 
 /**
+ * Renderer-facing mirrors of `src/main/graviscan/verify-plates.ts`'s
+ * `VerifyPlateInput`/`VerifyPlateResult`/`PlateSwap`/`VerifyPlatesResult`.
+ * Declared independently here, not imported from that module — shared/
+ * renderer code is not allowed to import from `src/main/graviscan/`
+ * (enforced by this repo's `no-restricted-imports` ESLint rule; only
+ * `main.ts`, the orchestrator, may import mode-specific modules). Keep
+ * these fields in sync with verify-plates.ts's own types by hand.
+ */
+export interface QRVerifyPlateInput {
+  scannerId: string;
+  plateIndex: string;
+  imagePath: string;
+  assignedPlateId: string;
+}
+
+export interface QRVerifyPlateResult {
+  scannerId: string;
+  plateIndex: string;
+  assignedPlateId: string;
+  imagePath: string;
+  detectedPlateId: string | null;
+  detectedCodes: string[];
+  status: VerificationStatus;
+  inconsistentMappings?: Record<string, string[]>;
+  duplicateQrCodes?: string[];
+}
+
+export interface QRVerifyPlateSwap {
+  position1: { scannerId: string; plateIndex: string; assignedPlateId: string };
+  position2: { scannerId: string; plateIndex: string; assignedPlateId: string };
+}
+
+export interface QRVerifyPlatesResult {
+  success: boolean;
+  results: QRVerifyPlateResult[];
+  swaps: QRVerifyPlateSwap[];
+  error?: string;
+  warnings?: string[];
+}
+
+/**
  * Per-scanner state for tracking scan progress.
  */
 export interface ScannerPanelState {
