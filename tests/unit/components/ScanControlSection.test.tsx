@@ -212,6 +212,51 @@ describe('ScanControlSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('the continuous-scan checkbox toggles continuousMode.setIsContinuous', async () => {
+    const setIsContinuous = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ScanControlSection
+        {...baseProps({ continuousMode: continuousMode({ setIsContinuous }) })}
+      />
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /continuous scan/i }));
+    expect(setIsContinuous).toHaveBeenCalledWith(true);
+  });
+
+  it('interval/duration inputs only render once continuous mode is on, and edits call their setters', async () => {
+    const setIntervalMinutes = vi.fn();
+    const setDurationHours = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <ScanControlSection {...baseProps({ continuousMode: continuousMode({ isContinuous: false }) })} />
+    );
+    expect(screen.queryByLabelText(/interval/i)).not.toBeInTheDocument();
+
+    rerender(
+      <ScanControlSection
+        {...baseProps({
+          continuousMode: continuousMode({
+            isContinuous: true,
+            setIntervalMinutes,
+            setDurationHours,
+          }),
+        })}
+      />
+    );
+
+    const intervalInput = screen.getByLabelText(/interval/i);
+    await user.clear(intervalInput);
+    await user.type(intervalInput, '9');
+    expect(setIntervalMinutes).toHaveBeenCalled();
+
+    const durationInput = screen.getByLabelText(/duration/i);
+    await user.clear(durationInput);
+    await user.type(durationInput, '2');
+    expect(setDurationHours).toHaveBeenCalled();
+  });
+
   it('renders the CadenceWarningBanner using the continuousMode context when continuous mode is selected', () => {
     render(
       <ScanControlSection

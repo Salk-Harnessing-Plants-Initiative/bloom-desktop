@@ -124,6 +124,37 @@ export function ScanControlSection({
         </div>
       )}
 
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={continuousMode.isContinuous}
+            onChange={(e) => continuousMode.setIsContinuous(e.target.checked)}
+          />
+          Continuous scan
+        </label>
+        {continuousMode.isContinuous && (
+          <>
+            <label className="flex items-center gap-1">
+              Interval (minutes)
+              <input
+                type="number"
+                value={continuousMode.intervalMinutes}
+                onChange={(e) => continuousMode.setIntervalMinutes(Number(e.target.value))}
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              Duration (hours)
+              <input
+                type="number"
+                value={continuousMode.durationHours}
+                onChange={(e) => continuousMode.setDurationHours(Number(e.target.value))}
+              />
+            </label>
+          </>
+        )}
+      </div>
+
       <div className="flex gap-2">
         <button
           type="button"
