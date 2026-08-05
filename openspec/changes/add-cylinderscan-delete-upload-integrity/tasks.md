@@ -342,18 +342,40 @@ third outcome, and an explicit await so verification work can't outlive
 
 ## 6. Final verification
 
-- [ ] 6.1 Run the full unit test suite (`npm run test:unit`) — confirm no
+- [x] 6.1 Run the full unit test suite (`npm run test:unit`) — confirm no
       regressions outside this change's scope.
+      Ran 3x total across this section; stable at exactly the known
+      pre-existing baseline (4 files / 7 tests, all path-separator/timing
+      issues unrelated to this change — confirmed via `git stash` diffing
+      against the Section 3 baseline commit).
 - [ ] 6.2 Run the full E2E suite (`npm run test:e2e` or equivalent) —
       confirm `renderer-database-ipc.e2e.ts`'s new test passes and existing
       delete/upload/duplicate-check E2E coverage (`scan-preview.e2e.ts`,
       any BrowseScans delete E2E, the rewritten
       `plant-barcode-validation.e2e.ts` tests) still passes.
-- [ ] 6.3 Run `npx tsc --noEmit` and `npm run lint` clean.
-- [ ] 6.4 Manually verify the IPC coverage gate would pass (per the repo's
+      **Deferred to CI, by explicit user decision.** Electron E2E tests on
+      this repo have no true headless mode on Windows (this repo's own
+      `playwright.config.ts` `use.headless` option only governs Playwright
+      browser contexts, not `_electron.launch()`-based Electron windows;
+      CI itself only gets a non-interactive run via Linux + Xvfb) — running
+      them locally on the user's Windows machine pops up real, visible app
+      windows for the duration of the run. After popping up an unexpected
+      window twice while diagnosing this (first from a wrong
+      `BLOOM_DATABASE_URL` override that made every test fail identically
+      against the wrong DB, then from discovering this worktree had never
+      been built — `.webpack/` didn't exist, so every Electron launch
+      errored immediately regardless of DB), the user was asked directly
+      and chose to let CI's headless run be the real E2E verification for
+      this PR rather than run it locally a third time.
+- [x] 6.3 Run `npx tsc --noEmit` and `npm run lint` clean.
+- [x] 6.4 Manually verify the IPC coverage gate would pass (per the repo's
       "IPC coverage gate" convention: confirm `db:scans:checkDuplicate` has
       a real call in `renderer-database-ipc.e2e.ts`, not just a unit test).
-- [ ] 6.5 Manually re-confirm three areas that were the most severe gaps
+      Ran `scripts/check-ipc-coverage.py` directly: `db:scans:checkDuplicate`
+      shows 2 test calls; overall coverage 95.6% (43/45), clearing the 90%
+      gate. The 2 untested handlers (`db:accessions:updateMapping`,
+      `db:images:create`) predate this change.
+- [x] 6.5 Manually re-confirm three areas that were the most severe gaps
       found in pre-implementation review, since they're easy to
       under-implement without noticing in code review: (a) the
       index-safety regression test (3.3) genuinely fails against a naive
@@ -363,10 +385,23 @@ third outcome, and an explicit await so verification work can't outlive
       not just present/absent; (c) the awaited-verification test (3.7)
       genuinely fails if the `Promise.all` await in 3.8 is removed, not
       just a happy-path pass.
-- [ ] 6.6 Confirm the interval-cleanup test added per 4.5 lives in
+      Confirmed all three by temporarily reverting each fix in a working
+      tree edit (not committed) and re-running the corresponding test:
+      each failed exactly as expected, then passed again once reverted
+      back. (a) 2 tests failed; (b) 3 tests failed; (c) 1 test failed.
+- [x] 6.6 Confirm the interval-cleanup test added per 4.5 lives in
       `tests/unit/capture-scan-config.test.tsx` (an actively-running file)
       and not the still-`describe.skip`'d `CaptureScan-event-cleanup.test.tsx`
       — and that it actually fails if `clearInterval` is removed from the
       effect's cleanup.
-- [ ] 6.7 `openspec validate add-cylinderscan-delete-upload-integrity --strict`
+      Confirmed it lives in the right file. Found on first check that it
+      did NOT genuinely fail — `@testing-library/dom`'s own `waitFor` used
+      earlier in the test polls with the same global `setInterval`/
+      `clearInterval` the spy targets, so a bare `toHaveBeenCalled()`
+      assertion was silently satisfied by `waitFor`'s own internal
+      bookkeeping. Fixed by identifying the duplicate-check interval
+      specifically (its distinctive 2000ms delay) and asserting
+      `clearInterval` was called with that exact id; re-confirmed it now
+      fails when the cleanup is removed and passes once restored.
+- [x] 6.7 `openspec validate add-cylinderscan-delete-upload-integrity --strict`
       passes with no issues.
