@@ -264,6 +264,32 @@ describe('ExperimentDetail', () => {
       removeSpy.mockRestore();
     });
 
+    it('renders real Date objects (as returned by IPC, not strings) without throwing', async () => {
+      // ipcRenderer.invoke's structured-clone preserves capture_date/
+      // transplant_date as real Date instances, not the ISO strings other
+      // tests in this file use as a shorthand — rendering a bare Date as a
+      // JSX child throws, so this must go through formatDate().
+      experimentDetail.mockResolvedValue({
+        success: true,
+        data: {
+          scans: [
+            makeScan({
+              capture_date: new Date('2026-08-01T00:00:00.000Z'),
+              transplant_date: new Date('2026-07-01T00:00:00.000Z'),
+            }),
+          ],
+          verificationStatusMap: {},
+        },
+      });
+      const user = userEvent.setup();
+      expect(() => renderPage()).not.toThrow();
+      await waitFor(() => screen.getByText('Drought Study'));
+
+      await user.click(screen.getByTestId('file-row-scan-1'));
+
+      expect(screen.getAllByText(/2026/).length).toBeGreaterThan(0);
+    });
+
     it('expands an inline TIFF preview and metadata fields on row click', async () => {
       experimentDetail.mockResolvedValue({
         success: true,

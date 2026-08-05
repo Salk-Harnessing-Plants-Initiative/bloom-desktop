@@ -180,7 +180,12 @@ describe('Layout upload-status indicator', () => {
     renderLayout('graviscan');
     await waitFor(() => screen.getByText(/scanner:/i));
 
-    fireUploadProgress({ completed: 2, total: 5, failed: 0 });
+    fireUploadProgress({
+      completedImages: 2,
+      totalImages: 5,
+      failedImages: 0,
+      currentExperiment: 'Exp',
+    });
 
     expect(screen.getByTestId('upload-status-indicator')).toBeInTheDocument();
     expect(screen.getByText(/2/)).toBeInTheDocument();
@@ -193,7 +198,12 @@ describe('Layout upload-status indicator', () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      fireUploadProgress({ completed: 2, total: 5, failed: 0 });
+      fireUploadProgress({
+        completedImages: 2,
+        totalImages: 5,
+        failedImages: 0,
+        currentExperiment: 'Exp',
+      });
 
       const dismissButton = screen.getByRole('button', { name: /dismiss/i });
       act(() => {
@@ -212,7 +222,12 @@ describe('Layout upload-status indicator', () => {
         screen.queryByTestId('upload-status-indicator')
       ).not.toBeInTheDocument();
 
-      fireUploadProgress({ completed: 4, total: 5, failed: 0 });
+      fireUploadProgress({
+        completedImages: 4,
+        totalImages: 5,
+        failedImages: 0,
+        currentExperiment: 'Exp',
+      });
       expect(screen.getByTestId('upload-status-indicator')).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -222,7 +237,12 @@ describe('Layout upload-status indicator', () => {
   it('persists across a route change (stays visible on Configure Scanner, not just Home)', async () => {
     renderLayout('graviscan');
     await waitFor(() => screen.getByText(/scanner:/i));
-    fireUploadProgress({ completed: 1, total: 5, failed: 0 });
+    fireUploadProgress({
+      completedImages: 1,
+      totalImages: 5,
+      failedImages: 0,
+      currentExperiment: 'Exp',
+    });
     expect(screen.getByTestId('upload-status-indicator')).toBeInTheDocument();
 
     const link = screen.getByRole('link', { name: /configure scanner/i });

@@ -63,14 +63,26 @@ function ExperimentRow({
   const navigate = useNavigate();
   const { links } = useWaveMetadataLinks(experiment.id);
   const [selectedWave, setSelectedWave] = useState<string>('');
-  const [mismatchWarning, setMismatchWarning] = useState(false);
+  const [divergedWaves, setDivergedWaves] = useState<number[]>([]);
 
   const handleDownload = async () => {
     const waveNumber = selectedWave === '' ? undefined : Number(selectedWave);
-    const link = links.find((l) => l.wave_number === waveNumber);
-    const diverges =
-      link !== undefined && link.accession_id !== experiment.accession?.id;
-    setMismatchWarning(diverges);
+    // "All Waves" must warn about every diverged wave, not just check the
+    // (nonexistent) selected one — a single-wave selection only checks that
+    // one wave's link.
+    const diverged =
+      waveNumber === undefined
+        ? links
+            .filter((l) => l.accession_id !== experiment.accession?.id)
+            .map((l) => l.wave_number)
+        : links
+            .filter(
+              (l) =>
+                l.wave_number === waveNumber &&
+                l.accession_id !== experiment.accession?.id
+            )
+            .map((l) => l.wave_number);
+    setDivergedWaves(diverged);
     await window.electron.gravi.downloadImages({
       experimentId: experiment.id,
       experimentName: experiment.name,
@@ -104,11 +116,14 @@ function ExperimentRow({
         ))}
       </select>
       <button onClick={handleDownload}>Download</button>
-      {mismatchWarning && (
+      {divergedWaves.length > 0 && (
         <p>
-          This wave&apos;s linked metadata differs from the experiment&apos;s
-          default accession — the downloaded CSV will reflect the default
-          accession, not this wave&apos;s link.
+          {divergedWaves.length > 1
+            ? `Waves ${divergedWaves.join(', ')}'s`
+            : `Wave ${divergedWaves[0]}'s`}{' '}
+          linked metadata differs from the experiment&apos;s default accession —
+          the downloaded CSV will reflect the default accession, not{' '}
+          {divergedWaves.length > 1 ? 'those waves' : 'this wave'}&apos;s link.
         </p>
       )}
       <button
@@ -307,7 +322,10 @@ export function BrowseGraviScans() {
             <ExperimentRow
               key={exp.id}
               experiment={exp}
-              boxProgress={boxProgress[exp.id]}
+              // box-backup.ts's progress payload identifies the in-flight
+              // experiment by name (currentExperiment), not id — there is
+              // no id in the payload to key by.
+              boxProgress={boxProgress[exp.name]}
             />
           ))}
         </div>

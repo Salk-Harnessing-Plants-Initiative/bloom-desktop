@@ -221,5 +221,8 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       expect(screen.getByText(/wave already linked/i)).toBeInTheDocument();
     });
     expect(screen.getByText(/wave 1: batch3\.xlsx/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/metadata file successfully linked/i)
+    ).not.toBeInTheDocument();
   });
 });

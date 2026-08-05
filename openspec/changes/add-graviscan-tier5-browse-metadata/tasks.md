@@ -210,6 +210,17 @@ ever succeed for a `graviscan`-typed experiment anyway.
       an inline warning appears before Download proceeds (and does not
       block it); given they match (e.g. wave 0 right after creation), no
       warning appears.
+      **Correction found during `/review-pr`**: the pagination-controls
+      coverage claimed above didn't actually exist, and the mismatch-warning
+      logic only ever checked the selected wave — leaving "All Waves"
+      (the default) unable to warn at all regardless of how many linked
+      waves diverged, contradicting the spec's own "Mismatch warning before
+      an 'All Waves' download" scenario. Both are now real: added the
+      missing Next/Previous pagination tests, and fixed
+      `BrowseGraviScans.tsx`'s `handleDownload` to check every linked wave
+      (not just the selected one) when "All Waves" is chosen, naming every
+      diverged wave in the warning per the spec's "not just the first"
+      wording; added matching "All Waves" warn/no-warn tests.
 - [x] 5.2 Implement `src/renderer/BrowseGraviScans.tsx` satisfying 5.1's
       tests (replacing task 4.4's placeholder, if that task landed first),
       using `useWaveMetadataLinks` for the mismatch-warning comparison.
@@ -418,6 +429,15 @@ ever succeed for a `graviscan`-typed experiment anyway.
       `window.confirm()` dialog), asserting against the real database both
       times. **Not executable-verified in this environment** — see Section
       10's note below; the same blocker applies here.
+      **Bug found during `/review-pr`** (confirmed real by reasoning through
+      Playwright's `selectOption` semantics, not by running it — the
+      environment blocker above still applies): the spec selected the
+      experiment via `{label: new RegExp(...).source}`, which collapses back
+      to a plain string, so Playwright would require an exact match — but
+      `Experiments.tsx`'s `getExperimentDisplay()` renders the option as
+      `"{species} - {name} ({scientistName})"`, not the bare name. Fixed to
+      select by `value` (the experiment id, already held in a local
+      variable) instead of `label`.
 - [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
       before starting Section 10. (Lint/typecheck clean; full unit suite
       green modulo the same pre-existing baseline flakiness noted throughout
@@ -609,3 +629,108 @@ E2E coverage as complete.**
   with a real display and the real `.env` restored) should still walk
   the golden path described above before treating this tier as fully
   verified, per the CLAUDE.md UI-verification requirement.
+
+## 13. Corrections found during `/review-pr` (post-implementation review, PR #290)
+
+Five parallel adversarial reviewers (code quality/architecture, testing/TDD,
+scientific rigor/UX, security/cross-platform, behavioural correctness) ran
+against the actual PR diff after Sections 1-12 were already complete and
+believed done. Matching the Tier 3 precedent this workflow follows
+(pre-implementation review scrutiny does not guarantee post-implementation
+correctness — see the roadmap doc's "cycle reviews at both ends" note), this
+round surfaced real bugs the unit-test suite's own mocks had been masking.
+Security review found no blocking issues (one dead-code note: `ensureDir`/
+`listScanFiles` are exposed in preload but have no consumer in this diff —
+left as-is, not a defect, just unused surface for now).
+
+- [x] 13.1 **`ExperimentDetail.tsx` rendered raw `Date` objects as JSX
+      children.** `graviscansExperimentDetail`'s real IPC return has
+      `capture_date`/`transplant_date` as actual `Date` instances
+      (structured-clone preserves them across `ipcRenderer.invoke`), not the
+      `string` the `GraviScanRow` interface declared and the `as unknown as
+GraviScanRow[]` cast forced past the compiler — React throws when a
+      bare `Date` is rendered directly. Masked by every test's `makeScan()`
+      fixture using ISO strings instead of real `Date` objects. Fixed with a
+      `formatDate()` helper matching `BrowseScans.tsx`/`ScanPreview.tsx`'s
+      existing convention; added a dedicated regression test using real
+      `Date` objects.
+- [x] 13.2 **False "success" message on failed metadata link.**
+      `Experiments.tsx`'s `handleAttachAccession` (graviscan branch) called
+      `link()` and unconditionally showed "Metadata file successfully
+      linked," even when `link()` failed — `useWaveMetadataLinks.link()`
+      swallowed failures into its own `linkError` state and returned
+      nothing, so the caller had no way to know. Fixed by having
+      `link()`/`unlink()` return a boolean; callers now gate success
+      messaging on that return value. Added a regression assertion that the
+      success text is absent when linking fails.
+- [x] 13.3 **Global upload-progress indicator was non-functional.**
+      `Layout.tsx`'s `UploadStatusBanner` read `progress.completed`/
+      `progress.total`, but the real `graviscan:upload-progress` payload
+      (`src/main/box-backup.ts`'s `BoxBackupProgress`) is
+      `{totalImages, completedImages, failedImages, currentExperiment}` —
+      there is no `completed`/`total` field, so the banner always showed
+      "0/0". Masked by `Layout.test.tsx` firing mock events shaped like the
+      wrong interface instead of the real payload. Fixed the type and
+      rendering to the real field names; corrected the test fixtures to
+      match. (The identity-based Dismiss comparison was _not_ a bug — it
+      correctly implements "hides until the next event," matching this
+      section's own test name and Decision 7's design; left unchanged.)
+- [x] 13.4 **`BrowseGraviScans.tsx`'s per-row Box-backup progress never
+      rendered.** `boxProgress` is keyed by `progress.currentExperiment`,
+      which `box-backup.ts` sets to the experiment's _name_
+      (`expName`) — but the row lookup used `boxProgress[exp.id]`, a key
+      that could never match. Fixed the lookup to key by `exp.name`,
+      matching what the payload actually contains (there is no id in the
+      real payload); corrected the existing test's fixture, which had been
+      asserting against the same wrong id-based key.
+- [x] 13.5 **Mismatch warning (Decision 10) never fired for "All Waves,"
+      the default selection.** `handleDownload` only checked the
+      _selected_ wave's link against the experiment's default accession;
+      with "All Waves" selected (`waveNumber === undefined`), the lookup
+      always returned nothing, so the warning could never appear no matter
+      how many linked waves diverged — directly contradicting this
+      requirement's own "Mismatch warning before an 'All Waves' download"
+      scenario, untested by the existing suite. Fixed to check every linked
+      wave when "All Waves" is selected and name every diverged wave (not
+      just the first) in the warning text; added warn/no-warn "All Waves"
+      tests.
+- [x] 13.6 **No double-submit guard on Link/Unlink in `ExperimentDetail.tsx`
+      or `Experiments.tsx`'s inline per-row Unlink** (unlike the attach
+      panel's existing `isAttaching` guard). Rapid re-clicks could fire
+      overlapping IPC calls; a second `linkGraviMetadata` call could pass
+      the handler's check-then-act "already linked" pre-check before the
+      first write lands, then hit the real DB unique constraint and surface
+      a raw Prisma error instead of a friendly message. Added
+      `isLinking`/`unlinkingWave` pending state to both components,
+      disabling the relevant button while a call is in flight.
+- [x] 13.7 **Stale-response race in `useWaveMetadataLinks`.** No
+      cancellation guard meant an in-flight `refetch`/`link`/`unlink` for a
+      previous `experimentId` (e.g. after route-param navigation, or
+      switching the selected experiment in the attach panel) could resolve
+      after a newer request and overwrite state with the wrong
+      experiment's data. Fixed with a ref tracking the current
+      `experimentId`, checked before every `setState` in the hook; added a
+      regression test simulating an out-of-order resolution.
+- [x] 13.8 **`unlink()` gave zero feedback on failure** (unlike `link()`).
+      Fixed to set `linkError` on failure, matching `link()`'s pattern;
+      `Experiments.tsx`'s inline `ExperimentWaveLinks` (which previously
+      didn't even read `linkError` from the hook) now displays it.
+- [x] 13.9 **E2E selector bug**, see 9.3's note above (fixed to select by
+      value/id instead of an exact-string label).
+- [x] 13.10 **Task 5.1's claimed pagination-control test coverage didn't
+      exist**, see 5.1's note above (added the real tests).
+- [x] 13.11 **Deferred, not fixed** (lower severity, tracked here rather
+      than silently dropped): `Experiments.tsx`'s `useWaveMetadataLinks(
+attachExperimentId || 'none')` fires a wasted no-op
+      `listGraviMetadata('none')` call when no experiment is selected for
+      attach; `GraviMetadataList.tsx`'s Delete has no `window.confirm()`
+      (backend still blocks deletion while referenced, so no data-loss risk,
+      just an inconsistency with Unlink's gating); `setAuditLogger`'s
+      unset-logger case fails silently rather than logging a warning if a
+      graviscan mutation ever somehow occurs outside graviscan mode.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+      gate after applying 13.1-13.10. (Lint and typecheck clean; full
+      suite: same pre-existing baseline failures as documented in Section
+      12 — config-store/image-uploader/scan-coordinator path-separator
+      assertions, flaky `AccessionForm` timeouts — no new failures; all
+      touched test files re-run in isolation first and confirmed green.)

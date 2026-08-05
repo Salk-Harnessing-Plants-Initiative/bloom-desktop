@@ -111,4 +111,103 @@ describe('useWaveMetadataLinks', () => {
     expect(result.current.links).toHaveLength(1);
     expect(result.current.links[0].wave_number).toBe(2);
   });
+
+  it('unlink() sets linkError and keeps the entry in links on failure', async () => {
+    unlinkGraviMetadata.mockResolvedValue({
+      success: false,
+      error: 'Nothing to unlink',
+    });
+    listGraviMetadata.mockResolvedValue({
+      success: true,
+      data: [makeLink(0)],
+    });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    await waitFor(() => expect(result.current.links).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.unlink(0);
+    });
+
+    expect(result.current.linkError).toBe('Nothing to unlink');
+    expect(result.current.links).toHaveLength(1);
+  });
+
+  it('link() resolves true on success and false on failure', async () => {
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    await waitFor(() => expect(listGraviMetadata).toHaveBeenCalledTimes(1));
+
+    let linkResult: boolean | undefined;
+    await act(async () => {
+      linkResult = await result.current.link(0, 'acc-0');
+    });
+    expect(linkResult).toBe(true);
+
+    linkGraviMetadata.mockResolvedValue({
+      success: false,
+      error: 'Wave already linked',
+    });
+    await act(async () => {
+      linkResult = await result.current.link(0, 'acc-0');
+    });
+    expect(linkResult).toBe(false);
+  });
+
+  it('unlink() resolves true on success and false on failure', async () => {
+    listGraviMetadata.mockResolvedValue({
+      success: true,
+      data: [makeLink(0)],
+    });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    await waitFor(() => expect(result.current.links).toHaveLength(1));
+
+    unlinkGraviMetadata.mockResolvedValue({ success: false, error: 'nope' });
+    let unlinkResult: boolean | undefined;
+    await act(async () => {
+      unlinkResult = await result.current.unlink(0);
+    });
+    expect(unlinkResult).toBe(false);
+
+    unlinkGraviMetadata.mockResolvedValue({ success: true });
+    await act(async () => {
+      unlinkResult = await result.current.unlink(0);
+    });
+    expect(unlinkResult).toBe(true);
+  });
+
+  it('ignores a stale refetch response after experimentId changes', async () => {
+    const resolvers: Record<
+      string,
+      (v: { success: true; data: unknown[] }) => void
+    > = {};
+    listGraviMetadata.mockImplementation(
+      (id: string) =>
+        new Promise((resolve) => {
+          resolvers[id] = resolve;
+        })
+    );
+
+    const { result, rerender } = renderHook(
+      ({ experimentId }) => useWaveMetadataLinks(experimentId),
+      { initialProps: { experimentId: 'exp-1' } }
+    );
+
+    rerender({ experimentId: 'exp-2' });
+
+    // Resolve the stale exp-1 request after the hook has already moved on
+    // to exp-2 — it must not overwrite exp-2's (still-pending) data.
+    await act(async () => {
+      resolvers['exp-1']({ success: true, data: [makeLink(9)] });
+      await Promise.resolve();
+    });
+
+    expect(result.current.links).toHaveLength(0);
+
+    await act(async () => {
+      resolvers['exp-2']({ success: true, data: [makeLink(1)] });
+      await Promise.resolve();
+    });
+
+    expect(result.current.links).toHaveLength(1);
+    expect(result.current.links[0].wave_number).toBe(1);
+  });
 });

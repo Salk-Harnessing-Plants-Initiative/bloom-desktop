@@ -10,11 +10,29 @@ interface GraviScanRow {
   wave_number: number;
   resolution: number;
   grid_mode: string;
-  capture_date: string;
-  transplant_date?: string | null;
+  capture_date: Date | string;
+  transplant_date?: Date | string | null;
   custom_note?: string | null;
   plate_barcode?: string | null;
   path: string;
+}
+
+/**
+ * capture_date/transplant_date arrive as real Date objects (structured-clone
+ * preserves Date across ipcRenderer.invoke) even though the IPC envelope's
+ * declared type is looser — rendering a bare Date as a JSX child throws.
+ * Matches the formatDate() convention in BrowseScans.tsx/ScanPreview.tsx.
+ */
+function formatDate(date: Date | string | null | undefined): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 interface Accession {
@@ -81,8 +99,8 @@ function FileRow({
       {expanded && (
         <div>
           {dataUri && <img src={dataUri} alt={scan.id} />}
-          <span>{scan.capture_date}</span>
-          <span>{scan.transplant_date}</span>
+          <span>{formatDate(scan.capture_date)}</span>
+          <span>{formatDate(scan.transplant_date)}</span>
           <span>{scan.custom_note}</span>
           <span>{scan.plate_barcode}</span>
           <span>{scan.scanner_id}</span>
@@ -117,6 +135,8 @@ export function ExperimentDetail() {
 
   const [newWave, setNewWave] = useState<number>(0);
   const [newAccession, setNewAccession] = useState<string>('');
+  const [isLinking, setIsLinking] = useState(false);
+  const [unlinkingWave, setUnlinkingWave] = useState<number | null>(null);
 
   useEffect(() => {
     setNewWave(suggestedNextWave);
@@ -155,17 +175,29 @@ export function ExperimentDetail() {
   }, []);
 
   const handleUnlink = async (waveNumber: number, accessionName: string) => {
+    if (unlinkingWave !== null) return;
     const message =
       waveNumber === 0
         ? `Unlink wave ${waveNumber} from "${accessionName}"? This does not preserve a record of what was linked at scan time. This experiment's default accession was originally set to this same file; unlinking wave 0 does not change that default.`
         : `Unlink wave ${waveNumber} from "${accessionName}"? This does not preserve a record of what was linked at scan time.`;
     if (window.confirm(message)) {
-      await unlink(waveNumber);
+      setUnlinkingWave(waveNumber);
+      try {
+        await unlink(waveNumber);
+      } finally {
+        setUnlinkingWave(null);
+      }
     }
   };
 
   const handleLink = async () => {
-    await link(newWave, newAccession);
+    if (isLinking) return;
+    setIsLinking(true);
+    try {
+      await link(newWave, newAccession);
+    } finally {
+      setIsLinking(false);
+    }
   };
 
   if (notFound) {
@@ -206,8 +238,9 @@ export function ExperimentDetail() {
               Wave {l.wave_number}: {l.accession.name}
               <button
                 onClick={() => handleUnlink(l.wave_number, l.accession.name)}
+                disabled={unlinkingWave !== null}
               >
-                Unlink
+                {unlinkingWave === l.wave_number ? 'Unlinking...' : 'Unlink'}
               </button>
             </li>
           ))}
@@ -236,7 +269,9 @@ export function ExperimentDetail() {
             </option>
           ))}
         </select>
-        <button onClick={handleLink}>Link</button>
+        <button onClick={handleLink} disabled={isLinking}>
+          {isLinking ? 'Linking...' : 'Link'}
+        </button>
       </div>
 
       <div>

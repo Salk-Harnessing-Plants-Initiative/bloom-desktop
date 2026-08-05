@@ -160,9 +160,10 @@ test.describe('Experiments.tsx — graviscan attach panel real IPC round-trip', 
     await window.click('text=Experiments');
     await window.waitForSelector('text=E2E Wave Experiment');
 
-    await window.selectOption('#attach-experiment-select', {
-      label: new RegExp('E2E Wave Experiment').source,
-    });
+    // Select by value (the experiment id), not label — the rendered option
+    // text is "{species} - {name} ({scientistName})" per
+    // Experiments.tsx's getExperimentDisplay(), not the bare experiment name.
+    await window.selectOption('#attach-experiment-select', experiment.id);
     await window.fill('#wave-number-attach-input', '2');
     await window.selectOption('#attach-gravi-accession-select', {
       label: 'wave-e2e.xlsx',

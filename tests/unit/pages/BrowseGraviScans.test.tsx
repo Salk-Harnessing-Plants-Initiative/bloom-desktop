@@ -120,6 +120,39 @@ describe('BrowseGraviScans', () => {
     ).toBeInTheDocument();
   });
 
+  it('Next/Previous pagination controls call browseByExperiment with an updated offset', async () => {
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(browseByExperiment).toHaveBeenCalledTimes(1));
+    expect(browseByExperiment).toHaveBeenLastCalledWith(
+      expect.objectContaining({ offset: 0 })
+    );
+
+    await user.click(screen.getByRole('button', { name: /^next$/i }));
+    await waitFor(() =>
+      expect(browseByExperiment).toHaveBeenLastCalledWith(
+        expect.objectContaining({ offset: 20 })
+      )
+    );
+
+    await user.click(screen.getByRole('button', { name: /^previous$/i }));
+    await waitFor(() =>
+      expect(browseByExperiment).toHaveBeenLastCalledWith(
+        expect.objectContaining({ offset: 0 })
+      )
+    );
+  });
+
+  it('disables Previous at offset 0', async () => {
+    renderPage();
+    await waitFor(() => expect(browseByExperiment).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: /^previous$/i })).toBeDisabled();
+  });
+
   it('shows a friendly message on a browseByExperiment error, without throwing', async () => {
     browseByExperiment.mockResolvedValue({
       success: false,
@@ -320,7 +353,9 @@ describe('BrowseGraviScans', () => {
             totalImages: 10,
             completedImages: 4,
             failedImages: 0,
-            currentExperiment: 'exp-1',
+            // box-backup.ts identifies the in-flight experiment by name,
+            // not id — there is no id in the real payload to key by.
+            currentExperiment: 'Drought Study',
           })
         );
       });
@@ -385,6 +420,84 @@ describe('BrowseGraviScans', () => {
 
       const waveSelect = screen.getByLabelText(/wave/i);
       await user.selectOptions(waveSelect, '0');
+      await user.click(screen.getByRole('button', { name: /^download$/i }));
+
+      await waitFor(() => expect(downloadImages).toHaveBeenCalled());
+      expect(
+        screen.queryByText(/differs from the experiment's default accession/i)
+      ).not.toBeInTheDocument();
+    });
+
+    it('warns naming every diverged wave when "All Waves" is downloaded with two or more linked waves', async () => {
+      listGraviMetadata.mockResolvedValue({
+        success: true,
+        data: [
+          {
+            wave_number: 0,
+            accession_id: 'acc-1',
+            accession: { id: 'acc-1', name: 'batch3.xlsx' },
+          },
+          {
+            wave_number: 1,
+            accession_id: 'acc-2',
+            accession: { id: 'acc-2', name: 'other-file.xlsx' },
+          },
+          {
+            wave_number: 2,
+            accession_id: 'acc-3',
+            accession: { id: 'acc-3', name: 'third-file.xlsx' },
+          },
+        ],
+      });
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: { experiments: [makeExperiment()], total: 1 },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => screen.getByText('Drought Study'));
+      await waitFor(() => expect(listGraviMetadata).toHaveBeenCalled());
+
+      // "All Waves" is the select's default — leave it unselected.
+      await user.click(screen.getByRole('button', { name: /^download$/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/differs from the experiment's default accession/i)
+        ).toBeInTheDocument();
+      });
+      const warning = screen.getByText(
+        /differs from the experiment's default accession/i
+      );
+      expect(warning.textContent).toMatch(/1/);
+      expect(warning.textContent).toMatch(/2/);
+    });
+
+    it('does not warn for "All Waves" when every linked wave matches the experiment default accession', async () => {
+      listGraviMetadata.mockResolvedValue({
+        success: true,
+        data: [
+          {
+            wave_number: 0,
+            accession_id: 'acc-1',
+            accession: { id: 'acc-1', name: 'batch3.xlsx' },
+          },
+          {
+            wave_number: 1,
+            accession_id: 'acc-1',
+            accession: { id: 'acc-1', name: 'batch3.xlsx' },
+          },
+        ],
+      });
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: { experiments: [makeExperiment()], total: 1 },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => screen.getByText('Drought Study'));
+      await waitFor(() => expect(listGraviMetadata).toHaveBeenCalled());
+
       await user.click(screen.getByRole('button', { name: /^download$/i }));
 
       await waitFor(() => expect(downloadImages).toHaveBeenCalled());

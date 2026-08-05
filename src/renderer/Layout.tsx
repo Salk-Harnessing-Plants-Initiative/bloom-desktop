@@ -3,10 +3,12 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { WedgeBanner } from './components/WedgeBanner';
 import { useUploadStatus } from './contexts/UploadStatusContext';
 
+/** Matches the real graviscan:upload-progress payload (src/main/box-backup.ts's BoxBackupProgress). */
 interface UploadProgressData {
-  completed?: number;
-  total?: number;
-  failed?: number;
+  totalImages: number;
+  completedImages: number;
+  failedImages: number;
+  currentExperiment: string;
 }
 
 function UploadStatusBanner() {
@@ -19,7 +21,7 @@ function UploadStatusBanner() {
   return (
     <div data-testid="upload-status-indicator">
       <span>
-        Upload progress: {progress.completed ?? 0}/{progress.total ?? 0}
+        Upload progress: {progress.completedImages}/{progress.totalImages}
       </span>
       <button onClick={() => setDismissed(status)}>Dismiss</button>
     </div>
