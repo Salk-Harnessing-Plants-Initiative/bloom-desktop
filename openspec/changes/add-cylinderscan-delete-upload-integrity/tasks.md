@@ -41,18 +41,18 @@
 
 ## 2. Delete completion — shared modal, ScanPreview affordance, success message
 
-- [ ] 2.1 Write a failing component test for a new `DeleteConfirmModal`
+- [x] 2.1 Write a failing component test for a new `DeleteConfirmModal`
       component: renders Plant ID + capture date, Cancel/Delete buttons,
       calls the provided `onConfirm`/`onCancel` callbacks.
-- [ ] 2.2 Implement `DeleteConfirmModal` (location: confirm during
+- [x] 2.2 Implement `DeleteConfirmModal` (location: confirm during
       implementation — likely `src/renderer/components/`).
-- [ ] 2.3 Write a failing test asserting `BrowseScans.tsx`'s delete button
+- [x] 2.3 Write a failing test asserting `BrowseScans.tsx`'s delete button
       opens `DeleteConfirmModal` instead of calling `window.confirm()`, and
       that confirming still calls `scans.delete` and refreshes the table.
-- [ ] 2.4 Update `BrowseScans.tsx`'s `handleDelete` flow to use
+- [x] 2.4 Update `BrowseScans.tsx`'s `handleDelete` flow to use
       `DeleteConfirmModal`. Confirm 2.3 passes and no existing BrowseScans
       delete tests regress.
-- [ ] 2.5 Write a failing test asserting a successful delete shows a brief
+- [x] 2.5 Write a failing test asserting a successful delete shows a brief
       success message ("Scan deleted successfully") in `BrowseScans.tsx`.
       Build a minimal, local success-message affordance for this tier only
       (design.md Decision 16) — do **not** depend on the `useToast()`
@@ -60,8 +60,8 @@
       (#148); a simple inline/dismissing banner is sufficient. If #148
       merges before this ships, migrating to `useToast()` is a separate,
       later cleanup, not part of this task.
-- [ ] 2.6 Implement the success message per 2.5. Confirm it passes.
-- [ ] 2.7 Write a failing test asserting the Delete button in
+- [x] 2.6 Implement the success message per 2.5. Confirm it passes.
+- [x] 2.7 Write a failing test asserting the Delete button in
       `BrowseScans.tsx` is disabled while that same scan's upload is in
       flight (`uploadInProgress === scan.id`), matching the existing
       pattern the Upload button already uses for the reverse case
@@ -69,14 +69,14 @@
       already-accepted spec requirement under "Upload Scan to Bloom
       Storage"/"Upload Progress Indication," which is not itself changing
       in this proposal).
-- [ ] 2.8 Add the `uploadInProgress` check to the Delete button's
+- [x] 2.8 Add the `uploadInProgress` check to the Delete button's
       `disabled` condition in `BrowseScans.tsx`. Confirm 2.7 passes.
-- [ ] 2.9 Write a failing test asserting `ScanPreview.tsx` has a delete
+- [x] 2.9 Write a failing test asserting `ScanPreview.tsx` has a delete
       button in its toolbar that opens `DeleteConfirmModal`, and that
       confirming calls `scans.delete` then navigates back to `/scans`.
-- [ ] 2.10 Add the delete button + modal wiring to `ScanPreview.tsx`.
+- [x] 2.10 Add the delete button + modal wiring to `ScanPreview.tsx`.
       Confirm 2.9 passes.
-- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before moving to upload work.
 
 ## 3. Upload data-integrity fixes (`image-uploader.ts`)

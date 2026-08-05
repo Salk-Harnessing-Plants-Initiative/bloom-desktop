@@ -6,9 +6,16 @@
  * `metadata.json` in sync with the `deleted` flag.
  *
  * Uses a real SQLite database via Prisma, matching the convention in
- * tests/unit/graviscan/database-handlers.test.ts. `BLOOM_DATABASE_URL`
- * must point at a migrated test database — see that file's header for
- * local setup instructions.
+ * tests/unit/graviscan/database-handlers.test.ts. Unlike that file, this
+ * one uses its OWN sqlite file (not the shared `dev.db`) — found during
+ * implementation that vitest runs test files in parallel by default, and
+ * two files sharing one Prisma-backed SQLite database race on
+ * `deleteMany()`/`create()` calls against shared tables (Experiment,
+ * Phenotyper), causing intermittent FK-constraint failures unrelated to
+ * either file's actual logic. `beforeAll` provisions this file's schema
+ * via `prisma migrate deploy` so no separate local setup step is needed
+ * beyond having `BLOOM_DATABASE_URL` (any valid value) set for the
+ * `@prisma/client` import to resolve.
  */
 import {
   describe,
@@ -20,6 +27,7 @@ import {
   afterEach,
 } from 'vitest';
 import { PrismaClient } from '@prisma/client';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -30,7 +38,17 @@ import {
 } from '../../src/main/cylinderscan/scan-metadata-json';
 import type { ScannerSettings } from '../../src/types/scanner';
 
-const prisma = new PrismaClient();
+// Resolved by Prisma relative to prisma/schema.prisma, not this file's cwd.
+const TEST_DB_RELATIVE_URL = 'file:./dev-scans-delete-test.db';
+const TEST_DB_ABSOLUTE_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  'prisma',
+  'dev-scans-delete-test.db'
+);
+
+const prisma = new PrismaClient({ datasourceUrl: TEST_DB_RELATIVE_URL });
 
 async function cleanDatabase() {
   await prisma.image.deleteMany();
@@ -96,12 +114,23 @@ function makeScannerSettings(
 }
 
 beforeAll(async () => {
+  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
+    env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_RELATIVE_URL },
+    stdio: 'ignore',
+    shell: true,
+  });
   await prisma.$connect();
 });
 
 afterAll(async () => {
   await cleanDatabase();
   await prisma.$disconnect();
+  for (const suffix of ['', '-journal', '-wal', '-shm']) {
+    const file = `${TEST_DB_ABSOLUTE_PATH}${suffix}`;
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
+  }
 });
 
 beforeEach(async () => {
