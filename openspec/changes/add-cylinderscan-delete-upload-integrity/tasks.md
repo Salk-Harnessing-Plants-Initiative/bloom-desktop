@@ -54,20 +54,42 @@
       delete tests regress.
 - [ ] 2.5 Write a failing test asserting a successful delete shows a brief
       success message ("Scan deleted successfully") in `BrowseScans.tsx`.
-      Confirmed during review: this repo has **no existing toast/success-
-      message component anywhere in the renderer** — this is new, minimal
-      UI (a simple inline/dismissing banner is sufficient; do not build a
-      general-purpose toast system for one call site).
+      Build a minimal, local success-message affordance for this tier only
+      (design.md Decision 16) — do **not** depend on the `useToast()`
+      system in the still-open, unmerged `feat/auto-plate-assignment` PR
+      (#148); a simple inline/dismissing banner is sufficient. If #148
+      merges before this ships, migrating to `useToast()` is a separate,
+      later cleanup, not part of this task.
 - [ ] 2.6 Implement the success message per 2.5. Confirm it passes.
-- [ ] 2.7 Write a failing test asserting `ScanPreview.tsx` has a delete
+- [ ] 2.7 Write a failing test asserting the Delete button in
+      `BrowseScans.tsx` is disabled while that same scan's upload is in
+      flight (`uploadInProgress === scan.id`), matching the existing
+      pattern the Upload button already uses for the reverse case
+      (design.md Decision 15 — this brings the code in line with an
+      already-accepted spec requirement under "Upload Scan to Bloom
+      Storage"/"Upload Progress Indication," which is not itself changing
+      in this proposal).
+- [ ] 2.8 Add the `uploadInProgress` check to the Delete button's
+      `disabled` condition in `BrowseScans.tsx`. Confirm 2.7 passes.
+- [ ] 2.9 Write a failing test asserting `ScanPreview.tsx` has a delete
       button in its toolbar that opens `DeleteConfirmModal`, and that
       confirming calls `scans.delete` then navigates back to `/scans`.
-- [ ] 2.8 Add the delete button + modal wiring to `ScanPreview.tsx`.
-      Confirm 2.7 passes.
+- [ ] 2.10 Add the delete button + modal wiring to `ScanPreview.tsx`.
+      Confirm 2.9 passes.
 - [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before moving to upload work.
 
 ## 3. Upload data-integrity fixes (`image-uploader.ts`)
+
+**Read design.md Decisions 7-10 in full before starting this section** —
+an earlier draft of this tier also attempted retry-time re-verification of
+already-`'uploaded'` images; that was found unimplementable during review
+(no local record of an old upload's remote reference exists) and is
+explicitly **out of scope**. Do not re-introduce it. What ships in this
+section is: soft-delete guard, retry-skip (skip only, no re-verification),
+filtered-index correctness, fresh-upload verification with a bounded-retry
+third outcome, and an explicit await so verification work can't outlive
+`uploadScan()`'s return.
 
 - [ ] 3.1 Write failing unit tests for the soft-delete guard: `uploadScan()`
       on a scan with `deleted: true` returns `{ success: false }` without
@@ -75,12 +97,12 @@
       the batch while still processing the others.
 - [ ] 3.2 Implement the soft-delete guard in `uploadScan`/`uploadBatch`.
       Confirm 3.1 passes.
-- [ ] 3.3 Write failing unit tests for the retry-skip-but-still-verify
-      filter (design.md Decisions 9 & 10 — read both before starting this
-      section):
+- [ ] 3.3 Write failing unit tests for the retry-skip filter and its
+      index-safety (design.md Decisions 9 & 10):
       - A scan with images [A `'uploaded'`, B `'failed'`, C `'pending'`]:
         only B and C are passed to the `bloom-fs` upload call; `total`
-        (re-upload count) is 2, not 3.
+        (re-upload count) is 2, not 3; A's status is never touched by this
+        call.
       - **Index-safety regression test**: with the same 3-image scan,
         assert that when `bloom-fs`'s callback reports index 0 (of the
         *filtered* 2-item call) as B succeeding and index 1 as C failing,
@@ -90,40 +112,66 @@
         and pass only once callbacks index into the filtered
         `imagesToUpload` array instead.
       - The "mark as uploading" loop only marks the filtered subset
-        (B and C), not A — assert A's status is untouched by this loop.
-      - An all-`'uploaded'` scan makes zero `bloom-fs` upload calls and
-        returns `total: 0`.
+        (B and C), not A.
+      - An all-`'uploaded'` scan makes zero `bloom-fs` upload calls,
+        returns `total: 0`, and leaves every image's status untouched (no
+        re-verification is attempted for already-`'uploaded'` images —
+        this is intentional, not a gap to fill in this task).
 - [ ] 3.4 Implement the filtered `imagesToUpload` array (design.md
-      Decision 10): build it once, pass it (not `scan.images`) to
+      Decision 10): build it once from `scan.images.filter(img =>
+      img.status !== 'uploaded')`, pass it (not `scan.images`) to
       `uploadImagesFn`, index into it (not `scan.images`) from the
       `result`/`before`/`onProgress` callbacks, and filter the
       "mark as uploading" loop the same way. Confirm 3.3 passes.
 - [ ] 3.5 Write failing unit tests for storage-existence verification,
       covering all outcomes from the `upload` spec's "Upload Verifies
-      Storage Object Existence Before Marking Uploaded" requirement:
+      Storage Object Existence Before Marking Uploaded" requirement (all
+      of these apply only to images freshly uploaded in the current call —
+      not to already-`'uploaded'` images, per 3.3's last bullet):
       - `object_path` lookup + storage check both succeed, object present
         → `'uploaded'`.
       - `object_path` lookup succeeds, storage check confirms object
-        missing → `'failed'` with the distinguishing message.
+        missing → `'failed'` with the distinguishing message; a second
+        `uploadScan()` call on the same scan now includes that image.
       - `object_path` lookup itself returns null (simulating `bloom-fs`'s
         own discarded internal update failure) → treated as inconclusive,
-        not confirmed-missing (see next bullet).
+        not confirmed-missing.
       - Verification call throws/times out on attempts 1-2 but succeeds
         (object present) on attempt 3 → final status `'uploaded'`, exactly
-        3 attempts made.
+        3 attempts made, with a 500ms delay asserted between attempts
+        (use fake timers, not real waits).
       - Verification call fails all 3 attempts → `'failed'` with the
         "verification could not be confirmed" message, distinct from the
         confirmed-missing message.
-      - Mock the Supabase client for all of the above — do not hit a real
-        network in these tests.
-- [ ] 3.6 Implement storage-existence verification using the raw Supabase
-      client already held by `ImageUploader` (`this.supabase`): look up
-      `object_path` from `cyl_images` by `created` id, then check storage;
-      wrap both in the bounded-retry-on-inconclusive-failure logic from
-      3.5. Reuse this same verification function for both a fresh upload's
-      result callback and the retry-skip path's re-verification (3.3/3.4)
-      — one implementation, two call sites. Confirm 3.5 passes.
-- [ ] 3.7 Add a documentation comment to `nWorkers: 4` matching
+      - Mock the Supabase client (`this.supabase`, a full
+        `SupabaseClient` — not `this.store`, which has no read method) for
+        all of the above — do not hit a real network in these tests.
+- [ ] 3.6 Implement storage-existence verification using `this.supabase`
+      (typing it properly, e.g. `SupabaseClient<Database>`, rather than
+      leaving it `any`, given this tier exists because of undetected
+      Supabase-call bugs): `this.supabase.from('cyl_images').select
+      ('object_path').eq('id', created)`, then a storage existence check,
+      wrapped in the bounded-retry-on-inconclusive-failure logic (3 total
+      attempts, 500ms fixed delay) from 3.5. This function's only
+      responsibility is to return a three-way outcome (present / missing /
+      inconclusive-after-retries); mapping that to an `Image.status` write
+      is the caller's job. Confirm 3.5 passes.
+- [ ] 3.7 Write a failing test for the awaited-verification correctness
+      property (design.md Decision 8, `upload` spec's "Upload Awaits
+      Verification Before Returning"): simulate `bloom-fs`'s
+      `uploadImages()` resolving while a per-item verification (mocked
+      with a delay) is still pending, and assert `uploadScan()` does not
+      resolve until that verification's status write has completed, and
+      that the returned `UploadResult`'s counts reflect the post-
+      verification outcome.
+- [ ] 3.8 Implement the fix: inside `uploadImagesFn`'s `result` callback,
+      only synchronously record `(index, created, error)` into an
+      in-memory list — do not perform verification there. After
+      `await this.uploadImagesFn(...)` returns, run verification and the
+      corresponding status write for every recorded entry via
+      `Promise.all(...)`, and only return `uploadScan()`'s result once
+      that resolves. Confirm 3.7 passes.
+- [ ] 3.9 Add a documentation comment to `nWorkers: 4` matching
       `graviscan-upload.ts`'s existing rationale (3 round-trips per image:
       insert RPC → file upload → update RPC). No behavior change — no test
       needed beyond confirming existing upload tests still pass.
@@ -133,13 +181,17 @@
 ## 4. Duplicate-scan check (#120) + dead-code removal
 
 - [ ] 4.1 Write failing unit tests for a new `checkDuplicateScan(db,
-      plantId, experimentId, waveNumber, plantAgeDays)` handler function:
-      returns `true` when a non-deleted matching scan exists, `false`
-      otherwise (including when the only match is soft-deleted); returns
-      an error (not `false`) for malformed/missing arguments — matching
-      the `ui-management-pages` spec's "Scan Duplicate Check IPC Handler"
-      scenarios exactly, including its "Invalid or missing arguments"
-      scenario.
+      plantId, experimentId, waveNumber, plantAgeDays)` handler function,
+      validating each of the four fields independently (not as a group):
+      - Returns `true` when a non-deleted matching scan exists, `false`
+        otherwise (including when the only match is soft-deleted).
+      - Returns an error (not `false`) for: empty/non-string/missing
+        `plantId`; empty/non-string/missing `experimentId`; negative,
+        non-integer, or non-numeric `waveNumber`; negative, non-integer,
+        or non-numeric `plantAgeDays` — one concrete test per case,
+        matching the `ui-management-pages` spec's "Invalid plantId or
+        experimentId..." and "Invalid waveNumber or plantAgeDays..."
+        scenarios exactly.
 - [ ] 4.2 Implement `checkDuplicateScan` and register
       `db:scans:checkDuplicate` in `database-handlers.ts`, following the
       existing `db:scans:*` inline-handler convention. Confirm 4.1 passes.
@@ -150,11 +202,16 @@
       (direct-Prisma-seed + `window.evaluate` pattern, matching the file's
       existing style) — this repo's CI coverage gate statically scans this
       file for `db:*` handler calls.
-- [ ] 4.5 Write failing tests asserting `CaptureScan.tsx` calls
-      `checkDuplicate` with `(plant_id, experiment_id, wave_number,
-      plant_age_days)` every 2s and shows/hides the warning + disables/
-      enables `Start Scan` accordingly, replacing the old
-      `getMostRecentScanDate`-based logic. Include:
+- [ ] 4.5 In `tests/unit/capture-scan-config.test.tsx` (the file that
+      already stubs the duplicate-check IPC call for this component's
+      other tests — this is where these new tests belong), write failing
+      tests asserting `CaptureScan.tsx` calls `checkDuplicate` with
+      `(plant_id, experiment_id, wave_number, plant_age_days)` every 2s
+      and shows/hides the warning + disables/enables `Start Scan`
+      accordingly, replacing the old `getMostRecentScanDate`-based logic.
+      This file has no fake-timer setup today — introduce
+      `vi.useFakeTimers()`/`vi.advanceTimersByTime()` for the 2s-interval
+      assertions rather than real-timer `waitFor`s. Include:
       - The two specific transitions issue #120 itself calls out: changing
         wave number away from a duplicate match clears the warning; changing
         plant ID away from a duplicate match clears the warning (not just
@@ -162,9 +219,16 @@
       - An edge case for invalid/unparsed `waveNumber`/`plantAgeDays` (both
         are string form state requiring `parseInt` before use, per
         `CaptureScan.tsx`'s existing pattern at lines ~305-306, ~512-513):
-        the check SHALL NOT run (or SHALL no-op) with a clearly invalid
-        wave/age value, matching the existing early-return guard for blank
+        the check SHALL NOT call `checkDuplicate` with an invalid value,
+        matching the existing early-return guard for blank
         `plantQrCode`/`experimentId`.
+      - An interval-cleanup test asserting `clearInterval` is called for
+        the duplicate-check interval on unmount, using the same
+        `vi.spyOn(global, 'clearInterval')` + `renderHook`/`unmount()`
+        pattern already proven (but currently disabled) in
+        `tests/unit/pages/CaptureScan-event-cleanup.test.tsx:220-323`'s
+        `describe('Interval cleanup', ...)` block — port the pattern into
+        this actively-running file rather than relying on the skipped one.
 - [ ] 4.6 Update `CaptureScan.tsx` to use `checkDuplicate`. Confirm 4.5
       passes.
 - [ ] 4.7 Remove `db:scans:getMostRecentScanDate` entirely (per design.md
@@ -186,24 +250,23 @@
         `tests/e2e/plant-barcode-validation.e2e.ts` (inside
         `describe('UI: Duplicate Scan Prevention', ...)`) — it asserts the
         literal string `'This plant was already scanned today'`, which no
-        longer applies under the new 4-field key. Rewrite it (and add
-        siblings) to cover the new key's match/no-match scenarios from the
-        `ui-management-pages` spec delta, including the new
-        "different day" scenario.
-      - In `tests/unit/capture-scan-config.test.tsx`, **replace** the
-        `getMostRecentScanDate` mock with a `checkDuplicate` mock (not just
-        remove it) — otherwise `CaptureScan.tsx`'s periodic effect calls an
-        `undefined` function in this test file's harness once 4.6 lands.
+        longer applies under the new 4-field key, and its current UI
+        interaction never fills the wave-number/plant-age-days form
+        fields (it only fills plant barcode + selects experiment/
+        phenotyper, since the old check didn't need them). The rewritten
+        test(s) must also fill in matching wave-number and plant-age-days
+        values, or the new check will no-op on invalid/blank input (per
+        4.5's edge case) and the test will fail for an unrelated reason.
+        Cover the match/no-match/different-day scenarios from the
+        `ui-management-pages` spec delta.
+      - **Replace**, not just remove, the `getMostRecentScanDate` mock in
+        `tests/unit/capture-scan-config.test.tsx` with a `checkDuplicate`
+        mock (see 4.5 — this is the same file 4.5's new tests live in).
       - In `tests/unit/pages/CaptureScan-event-cleanup.test.tsx`, remove the
         `getMostRecentScanDate` mock (this file's suite is currently
         `describe.skip`'d, so this is a low-risk cleanup, not a live-test
-        fix).
-- [ ] 4.8 Confirm the "duplicate check stops polling on unmount" scenario
-      (`ui-management-pages` spec's "Periodic duplicate check") has a real,
-      *running* test — not just one sitting in the currently-`describe.skip`'d
-      `CaptureScan-event-cleanup.test.tsx`. If no other active test file
-      covers interval cleanup for this component, add one (e.g. alongside
-      4.5's tests) rather than leaving this scenario structurally untested.
+        fix — the working interval-cleanup pattern from this file is
+        ported to `capture-scan-config.test.tsx` in 4.5, not left here).
 - [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before full E2E.
 
@@ -213,21 +276,34 @@
       gap (pilot #59 equivalent), referencing design.md Decision 5 —
       needs a `@salk-hpi/bloom-fs` type change plus a Supabase schema
       migration. Reference issue #60's 2026-06-17 follow-up comment
-      (deterministic storage paths) as related prior art.
+      (deterministic storage paths) as related prior art, and note
+      design.md Decision 14's finding that this same traceability gap is
+      also why delete-then-rescan can orphan indistinguishable duplicate
+      data in cloud storage — this follow-up is the natural place to also
+      address that.
 - [ ] 5.2 File a follow-up issue for the scheduled upload/storage audit
-      tool (pilot #61 equivalent), referencing design.md Decision 9's Risks
-      note that this tier's fixes narrow, but don't eliminate, the
-      historical-corruption blind spot — raising this follow-up's practical
-      priority.
+      tool (pilot #61 equivalent), with its scope **explicitly widened**
+      per design.md Decisions 9 and 11: it must include a reconciliation/
+      write-back capability (flip a historically-corrupted `'uploaded'`
+      image back to a re-uploadable status once drift is confirmed, and
+      design the lookup strategy — schema addition or business-key join —
+      that requires), not just detection/reporting. Also note design.md
+      Decision 7's finding that this tier deliberately does not build
+      automatic in-line recovery (re-uploading a confirmed-missing object
+      to its existing path within the same verification call, as pilot
+      #60 itself proposed) — that capability, if wanted, belongs here too.
 - [ ] 5.3 File a follow-up tier/issue for the Basler acquisition-metadata
       readback gap (pilot #3 equivalent), referencing design.md Decision 11
       and Non-Goals.
 - [ ] 5.4 File a follow-up issue for #110's two unaddressed asks
       (benchmark 4/8/10 workers; consider configurable concurrency) —
-      this tier only documents the existing rationale (3.7).
+      this tier only documents the existing rationale (3.9).
 - [ ] 5.5 Comment on #79 explaining the soft-delete-only decision
-      (design.md Decision 1) and why its "remove files from disk"
-      acceptance criterion is intentionally not met by this change.
+      (design.md Decision 1/12) and naming **all three** of its
+      acceptance criteria this change intentionally doesn't meet: scan
+      files are not removed from disk, the `Scan` row is not removed from
+      the database (only soft-deleted), and associated `Image` records
+      are not cleaned up.
 
 ## 6. Final verification
 
@@ -242,11 +318,20 @@
 - [ ] 6.4 Manually verify the IPC coverage gate would pass (per the repo's
       "IPC coverage gate" convention: confirm `db:scans:checkDuplicate` has
       a real call in `renderer-database-ipc.e2e.ts`, not just a unit test).
-- [ ] 6.5 Manually re-confirm the index-safety regression test (3.3) and
-      the three-way verification-outcome tests (3.5) are present and
-      genuinely exercise the failure modes described — these two areas
-      were the most severe gaps found in pre-implementation review, so
-      don't let them silently degrade into shallow assertions during
-      implementation.
-- [ ] 6.6 `openspec validate add-cylinderscan-delete-upload-integrity --strict`
+- [ ] 6.5 Manually re-confirm three areas that were the most severe gaps
+      found in pre-implementation review, since they're easy to
+      under-implement without noticing in code review: (a) the
+      index-safety regression test (3.3) genuinely fails against a naive
+      `scan.images[index]` implementation, not just against no
+      implementation at all; (b) the three-way verification-outcome tests
+      (3.5) genuinely distinguish confirmed-missing from inconclusive,
+      not just present/absent; (c) the awaited-verification test (3.7)
+      genuinely fails if the `Promise.all` await in 3.8 is removed, not
+      just a happy-path pass.
+- [ ] 6.6 Confirm the interval-cleanup test added per 4.5 lives in
+      `tests/unit/capture-scan-config.test.tsx` (an actively-running file)
+      and not the still-`describe.skip`'d `CaptureScan-event-cleanup.test.tsx`
+      — and that it actually fails if `clearInterval` is removed from the
+      effect's cleanup.
+- [ ] 6.7 `openspec validate add-cylinderscan-delete-upload-integrity --strict`
       passes with no issues.

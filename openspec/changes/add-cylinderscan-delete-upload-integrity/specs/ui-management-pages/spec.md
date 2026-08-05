@@ -44,19 +44,34 @@ matching a specific plant, experiment, wave, and age already exists.
   `db:scans:checkDuplicate("PLANT_001", "EXP_001", 2, 21)`
 - **THEN** the handler SHALL return `{ success: true, data: false }`
 
-#### Scenario: Invalid or missing arguments return an error, not a false negative
+#### Scenario: Invalid plantId or experimentId returns an error, not a false negative
 
-- **GIVEN** `plantId` or `experimentId` is a non-string, missing, or empty
-  value, or `waveNumber`/`plantAgeDays` is not a non-negative integer
-- **WHEN** `db:scans:checkDuplicate` is called with that argument
+- **GIVEN** `plantId` is `""`, `null`, `undefined`, or a non-string value
+  (e.g. `123`), with `experimentId="EXP_001"`, `waveNumber=2`,
+  `plantAgeDays=21` otherwise well-formed
+- **WHEN** `db:scans:checkDuplicate` is called with that `plantId`
 - **THEN** the handler SHALL return `{ success: false, error: <message> }`
 - **AND** it SHALL NOT return `{ success: true, data: false }` (which would
   read as "no duplicate" rather than "the check could not run")
+- **AND** the same holds symmetrically when `experimentId` (not `plantId`)
+  is the invalid argument
+
+#### Scenario: Invalid waveNumber or plantAgeDays returns an error, not a false negative
+
+- **GIVEN** `waveNumber` is negative (e.g. `-1`), non-integer (e.g. `1.5`),
+  or not a number at all (e.g. `"two"`), with `plantId="PLANT_001"`,
+  `experimentId="EXP_001"`, `plantAgeDays=21` otherwise well-formed
+- **WHEN** `db:scans:checkDuplicate` is called with that `waveNumber`
+- **THEN** the handler SHALL return `{ success: false, error: <message> }`
+- **AND** the same holds symmetrically when `plantAgeDays` (not
+  `waveNumber`) is the invalid argument
 
 **Acceptance Criteria**:
 
 - Returns `{ success: true, data: boolean }` on a well-formed request
-- Returns `{ success: false, error: string }` for malformed arguments
+- Returns `{ success: false, error: string }` for malformed arguments —
+  each of `plantId`, `experimentId`, `waveNumber`, `plantAgeDays` is
+  validated independently, not just checked as a group
 - Never throws — all failure paths return a typed error response
 
 ## MODIFIED Requirements
@@ -120,6 +135,15 @@ experiment, wave, and plant age.
 - **THEN** the duplicate check SHALL run every 2 seconds via
   `db:scans:checkDuplicate`
 - **AND** the check SHALL stop when the component unmounts
+
+#### Scenario: Unparsed wave number or plant age does not trigger the check
+
+- **GIVEN** the wave-number or plant-age-days form field is empty or
+  contains a non-numeric value
+- **WHEN** the periodic duplicate check would otherwise run
+- **THEN** the check SHALL NOT call `db:scans:checkDuplicate` with an
+  invalid value
+- **AND** no warning SHALL be displayed as a result of this skipped check
 
 ### Requirement: Plant Barcode IPC Handlers
 
