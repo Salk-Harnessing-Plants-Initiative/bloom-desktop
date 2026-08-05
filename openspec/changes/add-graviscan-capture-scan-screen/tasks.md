@@ -433,11 +433,11 @@ other out of order.
 
 ## 13. Hook: useTestScan (TDD)
 
-- [ ] 13.1 Write failing tests in `tests/unit/hooks/useTestScan.test.ts`
+- [x] 13.1 Write failing tests in `tests/unit/hooks/useTestScan.test.ts`
       for `useTestScan`: captures one-shot per assigned scanner without
       touching session state; `getOutputDir()` failure surfaces a
       blocking error, no `/tmp` fallback.
-- [ ] 13.2 Implement `src/renderer/hooks/useTestScan.ts` to satisfy 13.1.
+- [x] 13.2 Implement `src/renderer/hooks/useTestScan.ts` to satisfy 13.1.
 
 ## 14. Components (TDD, React Testing Library)
 
