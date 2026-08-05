@@ -19,7 +19,11 @@ import { BrowseScans } from './BrowseScans';
 import { ScanPreview } from './ScanPreview';
 import { MachineConfiguration } from './MachineConfiguration';
 import { ConfigureScanner } from './ConfigureScanner';
+import { BrowseGraviScans } from './BrowseGraviScans';
+import { ExperimentDetail } from './ExperimentDetail';
+import { Metadata } from './Metadata';
 import { useAppMode } from './hooks/useAppMode';
+import { UploadStatusProvider } from './contexts/UploadStatusContext';
 
 export default function App() {
   const { mode, isLoading } = useAppMode();
@@ -45,40 +49,56 @@ export default function App() {
   }
 
   return (
-    <Router initialEntries={['/']}>
-      <Routes>
-        <Route path="/" element={<Layout mode={mode} />}>
-          <Route index element={<Home mode={mode} />} />
+    <UploadStatusProvider>
+      <Router initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<Layout mode={mode} />}>
+            <Route index element={<Home mode={mode} />} />
 
-          {/* Capture routes — conditional on scanner mode */}
-          {mode === 'cylinderscan' && (
-            <>
-              <Route path="camera-settings" element={<CameraSettings />} />
-              <Route path="capture-scan" element={<CaptureScan />} />
-              <Route path="accessions" element={<Accessions />} />
-            </>
-          )}
+            {/* Capture routes — conditional on scanner mode */}
+            {mode === 'cylinderscan' && (
+              <>
+                <Route path="camera-settings" element={<CameraSettings />} />
+                <Route path="capture-scan" element={<CaptureScan />} />
+                <Route path="accessions" element={<Accessions />} />
+              </>
+            )}
 
-          {mode === 'graviscan' && (
-            <Route path="configure-scanner" element={<ConfigureScanner />} />
-          )}
+            {mode === 'graviscan' && (
+              <>
+                <Route
+                  path="configure-scanner"
+                  element={<ConfigureScanner />}
+                />
+                <Route
+                  path="browse-graviscans"
+                  element={<BrowseGraviScans />}
+                />
+                <Route
+                  path="graviscan-experiment/:experimentId"
+                  element={<ExperimentDetail />}
+                />
+                <Route path="metadata" element={<Metadata />} />
+              </>
+            )}
 
-          {/* Data entry routes — available for all modes */}
-          <Route path="scientists" element={<Scientists />} />
-          <Route path="phenotypers" element={<Phenotypers />} />
-          <Route path="experiments" element={<Experiments />} />
+            {/* Data entry routes — available for all modes */}
+            <Route path="scientists" element={<Scientists />} />
+            <Route path="phenotypers" element={<Phenotypers />} />
+            <Route path="experiments" element={<Experiments mode={mode} />} />
 
-          {/* Browse routes — always visible */}
-          <Route path="browse-scans" element={<BrowseScans />} />
-          <Route path="scan/:scanId" element={<ScanPreview />} />
+            {/* Browse routes — always visible */}
+            <Route path="browse-scans" element={<BrowseScans />} />
+            <Route path="scan/:scanId" element={<ScanPreview />} />
 
-          {/* Config */}
-          <Route path="machine-config" element={<MachineConfiguration />} />
+            {/* Config */}
+            <Route path="machine-config" element={<MachineConfiguration />} />
 
-          {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/" />} />
-        </Route>
-      </Routes>
-    </Router>
+            {/* Catch-all redirect */}
+            <Route path="*" element={<Navigate to="/" />} />
+          </Route>
+        </Routes>
+      </Router>
+    </UploadStatusProvider>
   );
 }

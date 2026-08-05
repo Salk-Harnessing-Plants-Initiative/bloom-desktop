@@ -402,6 +402,10 @@ const graviAPI = {
   uploadAllScans: () => ipcRenderer.invoke('graviscan:upload-all-scans'),
   downloadImages: (params: any) =>
     ipcRenderer.invoke('graviscan:download-images', params),
+  ensureDir: (dirPath?: string) =>
+    ipcRenderer.invoke('graviscan:ensure-dir', dirPath),
+  listScanFiles: (dirPath?: string) =>
+    ipcRenderer.invoke('graviscan:list-scan-files', dirPath),
 
   // Event listeners with cleanup functions
   onScanStarted: (callback: (event: any) => void) => {

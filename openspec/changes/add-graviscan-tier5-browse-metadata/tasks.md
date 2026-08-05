@@ -1,0 +1,566 @@
+## 1. Preload wiring: ensureDir / listScanFiles (TDD)
+
+- [x] 1.1 Write failing unit tests in `tests/unit/preload-gravi.test.ts`
+      (the existing preload test file for the `gravi` namespace) asserting
+      `graviAPI.ensureDir(dirPath)` invokes `ipcRenderer.invoke('graviscan:ensure-dir', dirPath)`
+      and `graviAPI.listScanFiles(dirPath?)` invokes
+      `ipcRenderer.invoke('graviscan:list-scan-files', dirPath)`, including the
+      no-argument case for `listScanFiles`. Also update this file's existing
+      hardcoded invoke-method enumeration/count assertion (currently asserts
+      18 methods and — pre-existing bug, unrelated to this change but in the
+      same assertion — already omits `resetUsb`) to the full, correct list of
+      21 methods per `scanning/spec.md`'s updated "GraviScan Preload Context
+      Bridge" requirement.
+- [x] 1.2 Implement `ensureDir`/`listScanFiles` in `src/main/preload.ts`'s
+      `graviAPI` object, next to `getOutputDir`, following its one-liner style.
+- [x] 1.3 Add `ensureDir`/`listScanFiles` to the `GraviAPI` interface in
+      `src/types/electron.d.ts` with the signatures from `scanning/spec.md`'s
+      updated "GraviScan Type Definitions for Preload API" requirement.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 1b. (Lint clean; typecheck clean after
+      `npx prisma generate`, needed once for this fresh worktree, unrelated
+      to this change; 7 pre-existing failures in AccessionForm/config-store/
+      scan-coordinator/image-uploader tests, same baseline as before this
+      change, no new failures.)
+
+## 1b. Durable logging for link/unlinkGraviMetadata (TDD)
+
+**Correction found during implementation**: `database-handlers.ts` cannot
+import `src/main/graviscan/scan-logger.ts` directly — the project's own
+`@typescript-eslint/no-restricted-imports` rule blocks any file outside
+`src/main/graviscan/**`, `src/main/cylinderscan/**`, or `src/main/main.ts`
+from importing `**/graviscan/**` (a real architectural boundary, not a
+style nit). Implemented via dependency injection instead:
+`database-handlers.ts` exports `setAuditLogger(fn)` and a module-level
+`auditLogger` (default no-op) that `linkGraviMetadata`/`unlinkGraviMetadata`
+call instead of `scanLog` directly; `graviscan/wiring.ts`'s
+`initGraviScan()` (which already runs only in graviscan mode, and is
+already allowed to import both `database-handlers.ts` and
+`graviscan/scan-logger.ts`) calls `setAuditLogger(scanLog)` once at
+startup. In cylinderscan mode `initGraviScan()` never runs, so
+`auditLogger` stays a no-op — harmless, since `linkGraviMetadata` can only
+ever succeed for a `graviscan`-typed experiment anyway.
+
+- [x] 1b.1 In `tests/unit/graviscan/database-handlers.test.ts`, imported
+      `setAuditLogger` from `database-handlers.ts` and wired a
+      `mockAuditLogger = vi.fn()` via `setAuditLogger(mockAuditLogger)` in
+      the file's existing top-level `beforeEach` (after `vi.clearAllMocks()`)
+      — no mock of `graviscan/scan-logger` needed, since
+      `database-handlers.ts` never imports it. Wrote failing tests asserting
+      `mockAuditLogger` is called exactly once, with a message containing
+      the experiment id, wave number, and the linked accession's file name
+      (not just its id), on a successful `linkGraviMetadata` call; called
+      exactly once with the experiment id, wave number, and the unlinked
+      accession's file name, on a successful `unlinkGraviMetadata` call; and
+      NOT called when either handler returns `{success: false, ...}`.
+      Confirmed red before implementing.
+- [x] 1b.2 Added `setAuditLogger`/`auditLogger` to `database-handlers.ts`
+      and the `auditLogger(...)` calls to `linkGraviMetadata`/
+      `unlinkGraviMetadata` on their success paths (including the
+      accession's file name, already available via each handler's existing
+      `include: { accession: true }`); added `setAuditLogger(scanLog)` to
+      `graviscan/wiring.ts`'s `initGraviScan()`. No signature change to
+      `linkGraviMetadata`/`unlinkGraviMetadata`, no new IPC handler.
+      Satisfies 1b.1's tests (85/85 passed in the test file).
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 2. (Lint clean, including the previously-
+      violated `no-restricted-imports` rule; typecheck clean; full suite:
+      same 7 pre-existing baseline failures, no new failures;
+      `tests/unit/graviscan/main-wiring.test.ts` — which exercises
+      `initGraviScan()` — still 45/45 green after the `setAuditLogger` call
+      was added to it.)
+
+## 2. Shared hooks (TDD)
+
+- [x] 2.1 Write failing unit tests for `useResizableColumns(initialWidths)`
+      (new file `tests/unit/hooks/useResizableColumns.test.tsx`): returns the
+      initial widths; `onResizeStart(column)` followed by simulated
+      `mousemove` events updates that column's width only; `mouseup` stops
+      further width updates from subsequent `mousemove` events; unmounting
+      mid-drag removes the `mousemove`/`mouseup` listeners (assert via a spy
+      on `document.removeEventListener`) without throwing.
+- [x] 2.2 Implement `useResizableColumns` in
+      `src/renderer/hooks/useResizableColumns.ts` per `design.md` Decision 8.
+- [x] 2.3 Write failing unit tests for `useWaveMetadataLinks(experimentId)`
+      (new file `tests/unit/hooks/useWaveMetadataLinks.test.tsx`): fetches and
+      exposes `listGraviMetadata`'s result as `links`; `suggestedNextWave`
+      equals `max(existing wave numbers) + 1` (and `0` when `links` is empty);
+      `link(waveNumber, accessionId)` calls `linkGraviMetadata` and refetches
+      `links` on success, setting `linkError` (without refetching) on failure;
+      `unlink(waveNumber)` calls `unlinkGraviMetadata` and removes that entry
+      from `links` on success.
+- [x] 2.4 Implement `useWaveMetadataLinks` in
+      `src/renderer/hooks/useWaveMetadataLinks.ts` per `design.md` Decision 5.
+      Note: this hook itself has no confirmation UI — `unlink()` performs the
+      IPC call directly. The `window.confirm()` step (Decision 9) belongs in
+      the calling components (Sections 7 and 9), not in the hook, so the hook
+      stays a plain data layer testable without mocking `window.confirm`.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 3. (Lint and typecheck clean; both new hook
+      test files green: 4/4 + 6/6.)
+
+## 3. experiment_type fix in ExperimentForm.tsx (TDD, fixes issue #286)
+
+- [x] 3.1 Write failing component tests extending the existing
+      `tests/unit/components/ExperimentForm.test.tsx`: given no `mode` prop
+      (or `mode="cylinderscan"`), behavior is unchanged from today — no
+      wave-number field appears, and the create payload has
+      `experiment_type: 'cylinderscan'` (confirms the default preserves every
+      existing render call site's current behavior, per `design.md`
+      Decision 4); given `mode="graviscan"`, the form shows a wave-number
+      field (default `0`) alongside the existing Accession dropdown, and
+      submitting a valid form calls `database.experiments.create` with
+      `experiment_type: 'graviscan'`; after creation succeeds, it also calls
+      `linkGraviMetadata(newExperimentId, waveNumber, accessionId)` using the
+      same accession the create payload used; given that link call fails,
+      the form shows "Experiment created but metadata link failed:
+      {message}" and the created experiment is NOT removed from the list;
+      no second accession/metadata-file dropdown is rendered in either mode;
+      given `mode="graviscan"`, the Accession dropdown's options come from a
+      mocked `graviPlateAccessions.listFiles()` response, not
+      `accessions.list()`.
+- [x] 3.2 Add the optional `mode` prop (default `'cylinderscan'`) to
+      `ExperimentForm.tsx`, set `experiment_type` on the create payload per
+      `design.md` Decision 4, and add the wave-number field (rendered only
+      when `mode === 'graviscan'`, reusing the existing `accession_id` field
+      for the link call) with the post-create `linkGraviMetadata` call and
+      its failure-message handling, satisfying 3.1's tests. In graviscan
+      mode, fetch the Accession dropdown's options from
+      `graviPlateAccessions.listFiles()` instead of the `accessions` prop
+      it's given today (per `design.md` Decision 4's issue-#275 mitigation);
+      in cylinderscan mode, the dropdown is unchanged.
+- [x] 3.3 Thread `mode` from `App.tsx` through `Experiments.tsx` down to
+      `<ExperimentForm mode={mode} />`, per `design.md` Decision 3.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 4. (Lint/typecheck clean; 14/14 in
+      ExperimentForm.test.tsx; same 7 pre-existing baseline failures
+      elsewhere, no new ones.)
+
+## 4. Nav / routing fixes (TDD)
+
+- [x] 4.1 Write failing tests: extend `tests/unit/pages/Layout.test.tsx`
+      asserting that in `graviscan` mode, the sidebar shows "Metadata"
+      (`/metadata`) and "Browse GraviScans" (`/browse-graviscans`) and does
+      NOT show the shared "Browse Scans" link, while "Experiments" is still
+      shown; in `cylinderscan` mode, the sidebar is unchanged from today
+      (shared "Browse Scans" still shown, no GraviScan-specific links).
+      Create new `tests/unit/components/WorkflowSteps.test.tsx` asserting
+      `graviScanSteps`'s "Metadata" step's route is `/metadata` (not
+      `/experiments`) and "Browse Scans" step's route is `/browse-graviscans`
+      (not `/browse-scans`), while `cylinderScanSteps` is unchanged.
+- [x] 4.2 Update `WorkflowSteps.tsx`'s `graviScanSteps`: "Metadata" `route`
+      changes from `/experiments` to `/metadata`; "Browse Scans" `route`
+      changes from `/browse-scans` to `/browse-graviscans`.
+      `cylinderScanSteps` is untouched. Update `Layout.tsx`: add "Metadata"
+      (`/metadata`) and "Browse GraviScans" (`/browse-graviscans`) entries to
+      `graviscanLinks`; make the shared "Browse Scans" entry in `alwaysLinks`
+      conditional so it does not render when `mode === 'graviscan'` (leave
+      "Experiments" unconditional, per `design.md` Decision 2). Run 4.1's
+      tests green.
+- [x] 4.3 Write a failing test extending `tests/unit/pages/App.test.tsx`
+      (the existing "App component — mode-conditional routing" test file)
+      asserting only the routing GATE, not which component is mounted: in
+      `cylinderscan` mode, `/browse-graviscans`, `/graviscan-experiment/:id`,
+      and `/metadata` are NOT reachable (render the catch-all redirect to
+      `/`); in `graviscan` mode, each path renders something other than the
+      catch-all redirect — per `scanning/spec.md`'s updated "Mode-Aware
+      Routing" requirement. Deliberately do NOT assert which specific
+      component renders here (that's Sections 5/7/8's job) — this keeps the
+      test passable against either a placeholder or the final component,
+      avoiding a contradiction with task 4.4 below.
+- [x] 4.4 Add the new mode-gated route block to `App.tsx` (per `design.md`
+      Decision 1): `/browse-graviscans` → `BrowseGraviScans`,
+      `/graviscan-experiment/:experimentId` → `ExperimentDetail`, `/metadata`
+      → `Metadata`, all inside one `{mode === 'graviscan' && (...)}` block.
+      Because Sections 5-8 create these three components, and this task must
+      still pass `npx tsc --noEmit` on its own if it lands first: create
+      minimal placeholder files now (`export default function BrowseGraviScans() { return null; }`
+      and the same shape for `ExperimentDetail`/`Metadata`), then replace each
+      placeholder in kind when its real section lands (5.2, 7.2, 8.5) — a
+      placeholder must never be the final state of this diff; each of 5.2,
+      7.2, and 8.5 explicitly includes "replace the placeholder" as part of
+      its own definition of done, and task 11.1 re-confirms no placeholder
+      file remains before this change is considered done.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 5. (Lint/typecheck clean after annotating the
+      3 placeholders' return types; found and fixed a real regression in
+      the pre-existing `App.test.tsx` "renders browse routes regardless of
+      mode" test, which asserted "Browse Scans" text is present in
+      graviscan mode — exactly the link this tier hides; updated it into
+      two mode-specific assertions. 9/9 in App.test.tsx, 7/7 in
+      Layout.test.tsx, 3/3 in WorkflowSteps.test.tsx; same 7 pre-existing
+      baseline failures elsewhere, no new ones.)
+
+## 5. BrowseGraviScans.tsx (TDD)
+
+- [x] 5.1 Write failing component tests in new
+      `tests/unit/pages/BrowseGraviScans.test.tsx` covering: empty state;
+      rendering one row per experiment from a mocked
+      `graviscans.browseByExperiment` response with the fields listed in
+      `ui-management-pages/spec.md`'s "GraviScan Browse Page" requirement;
+      a `browseByExperiment` error response rendering a friendly message, not
+      throwing; date-range/name/accession filters debounced 300ms,
+      upload-status filter applied immediately; pagination controls calling
+      `browseByExperiment` with updated `offset`; "View Images" navigating to
+      `/graviscan-experiment/:experimentId`; wave-selector-scoped Download
+      calling `gravi.downloadImages({experimentId, experimentName, waveNumber})`;
+      per `ui-management-pages/spec.md`'s "Mismatch warning before
+      downloading a diverged wave" scenario — given the selected wave's
+      `listGraviMetadata` link differs from the experiment's `accession_id`,
+      an inline warning appears before Download proceeds (and does not
+      block it); given they match (e.g. wave 0 right after creation), no
+      warning appears.
+- [x] 5.2 Implement `src/renderer/BrowseGraviScans.tsx` satisfying 5.1's
+      tests (replacing task 4.4's placeholder, if that task landed first),
+      using `useWaveMetadataLinks` for the mismatch-warning comparison.
+- [x] 5.3 Write failing tests for the Box-backup UI (still in
+      `BrowseGraviScans.test.tsx`): the three button states (idle/backing-up/
+      scan-in-progress) per `ui-management-pages/spec.md`'s "GraviScan Box
+      Backup UI" requirement's three split scenarios; `getScanStatus()`
+      called once on mount and `onIntervalStart`/`onIntervalComplete`/
+      `onCancelled` subscribed instead of any polling interval (assert no
+      `setInterval` call is made for scan status); success/partial-failure/
+      rclone-unavailable result messages; per-experiment "Box X/Y" indicator
+      updated from `onUploadProgress` events.
+- [x] 5.4 Implement the Box-backup section satisfying 5.3's tests, per
+      `design.md` Decision 6.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 6. (Lint/typecheck clean; 16/16 in
+      BrowseGraviScans.test.tsx. Found and fixed two real regressions: (1) a
+      fake-timers leak in this section's own new debounce test — one test
+      enabling `vi.useFakeTimers()` without restoring on failure cascaded
+      into 5s timeouts on every subsequent test in the file; fixed with
+      `fireEvent` instead of `userEvent` for that assertion plus a top-level
+      `afterEach(() => vi.useRealTimers())` safety net; (2)
+      `tests/unit/pages/App.test.tsx`'s route-reachability test now really
+      mounts `BrowseGraviScans` when clicking its nav link, which called
+      preload methods that file's mocks didn't provide
+      (`database.graviscans.browseByExperiment`, `gravi.onIntervalStart`,
+      `gravi.onUploadProgress`, `gravi.uploadAllScans`,
+      `gravi.downloadImages`, `database.experiments.listGraviMetadata`) —
+      an unhandled rejection in one test was corrupting a later test's React
+      render ("Should not already be working"); added the missing mocks.
+      Same 7 pre-existing baseline failures elsewhere, no new ones.)
+
+## 6. Global upload-progress indicator (TDD)
+
+- [x] 6.1 Write failing tests for `UploadStatusContext` in new
+      `tests/unit/hooks/UploadStatusContext.test.tsx` (or
+      `tests/unit/components/` if that better matches how context providers
+      are tested elsewhere in this codebase — check for precedent before
+      picking): the provider subscribes to `onUploadProgress` once and
+      exposes current progress/result to consumers; consumers mounted after
+      an event already fired still see the latest known state (not reset to
+      idle); the subscription is cleaned up on provider unmount.
+- [x] 6.2 Implement `src/renderer/contexts/UploadStatusContext.tsx`, and mount
+      the provider once in `App.tsx` wrapping the full route tree.
+- [x] 6.3 Write failing tests for the `Layout.tsx` indicator banner
+      (extending `tests/unit/pages/Layout.test.tsx`): renders nothing when
+      there is no in-flight/recent upload; renders progress while in flight;
+      renders a result summary on completion; a dismiss control hides it
+      until the next event; it does NOT auto-dismiss on a timer.
+- [x] 6.4 Implement the indicator banner in `Layout.tsx`, consuming
+      `UploadStatusContext`, per `design.md` Decision 7.
+- [x] 6.5 Write a test confirming the indicator remains visible/consistent
+      across a simulated route change (render the app at `/browse-graviscans`,
+      trigger an upload, navigate to `/metadata`, assert the indicator still
+      reflects the in-flight/completed state) — this is the behavior the
+      global context exists for; a per-page-local state implementation
+      would fail this test. (Implemented at the Layout-test level — renders
+      Home + Configure Scanner routes under one `UploadStatusProvider`,
+      fires progress, navigates via the sidebar link, confirms the
+      indicator survives the `Outlet` swap; the full-App
+      `/browse-graviscans` → `/metadata` version is covered as planned by
+      task 10.3's E2E scenario.)
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 7. (Lint/typecheck clean; 4/4 in
+      UploadStatusContext.test.tsx, 11/11 in Layout.test.tsx; same 7
+      pre-existing baseline failures elsewhere, no new ones.)
+
+## 7. ExperimentDetail.tsx (TDD)
+
+- [x] 7.1 Write failing component tests in new
+      `tests/unit/pages/ExperimentDetail.test.tsx` covering: metadata summary
+      rendering from a mocked `graviscans.experimentDetail` response;
+      "experiment not found" message (no crash) for an unknown
+      `experimentId`; a generic `experimentDetail` error response rendering a
+      friendly message, not throwing; Linked Metadata list using
+      `useWaveMetadataLinks`, where clicking Unlink shows a
+      `window.confirm()` naming the wave and accession before calling
+      `unlink()` — cancelling the confirmation makes no IPC call and leaves
+      the link in place; for wave `0`, the confirmation copy additionally
+      notes the experiment's default accession is unaffected; link-a-new-wave
+      form defaulting to `suggestedNextWave`, with its metadata-file select
+      sourced from a mocked `graviPlateAccessions.listFiles()` (not
+      `accessions.list()`), calling `link()`, and showing `linkError` inline on
+      failure without clearing the form; scanner/wave filter chips narrowing
+      visible rows; clicking a file row expands an inline TIFF preview
+      (mocked `readScanImage`) plus the 7 metadata fields (capture date,
+      transplant date, note, barcode, scanner, grid, plate, wave); per-plate
+      verification-status badges for `needs_review` and `verified`, with no
+      special styling for other status values.
+- [x] 7.2 Implement `src/renderer/ExperimentDetail.tsx` satisfying 7.1's
+      tests (replacing task 4.4's placeholder, if that task landed first),
+      using `useResizableColumns` for the file table's column widths (no
+      imperative `document.addEventListener` code directly in this
+      component), and `window.confirm()` for the Unlink flow.
+- [x] 7.3 Write a failing test confirming the resize handlers are the shared
+      hook's (e.g. asserting `useResizableColumns` is called, or that
+      unmounting mid-drag removes listeners exactly once per Section 2's hook
+      tests) rather than a second inline implementation.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 8. (Lint/typecheck clean — one `as unknown as`
+      cast needed for `experimentDetail`'s Prisma `Date` fields vs. this
+      component's string-typed row interface; 11/11 in
+      ExperimentDetail.test.tsx; same 7 pre-existing baseline failures
+      elsewhere, no new ones. Metadata-summary fields are sourced from two
+      calls — `experiments.get` for name/scientist/accession,
+      `graviscans.experimentDetail` for scans/verification — since no single
+      handler returns both; not previously specified at this level of detail
+      in tasks.md, recorded here for anyone tracing the implementation back
+      to the spec.)
+
+## 8. Metadata.tsx / GraviMetadataUpload.tsx / GraviMetadataList.tsx (TDD)
+
+- [x] 8.1 Add a spreadsheet-parsing dependency to `package.json` (per issue
+      #207's checklist item), and write a short
+      `docs/graviscan-metadata-spreadsheet-schema.md` documenting the
+      expected spreadsheet columns (Plate ID, Section ID, Plant QR,
+      Accession, Medium, Transplant Date, optional Custom Note).
+      **Correction found during implementation**: issue #207 names `xlsx`,
+      but the npm-registry build (0.18.5, npm's only version) has two
+      unpatched high-severity CVEs (prototype pollution, ReDoS) SheetJS
+      fixes only via their own CDN, not npm — and `xlsx` is already a
+      pre-existing transitive dependency of this repo's `@salk-hpi/bloom-fs`
+      package, so adding it again directly would compound that existing
+      vulnerability rather than merely accept it. Used `exceljs@^4.4.0`
+      instead (npm-registry-only, no direct high-severity findings — its
+      one audit hit is a moderate, unrelated issue via `uuid`), confirmed
+      with the user before installing.
+- [x] 8.2 Write failing tests for `GraviMetadataUpload.tsx` in new
+      `tests/unit/components/GraviMetadataUpload.test.tsx`: rejects
+      non-`.xlsx`/`.xls` files and files over 15MB before parsing; rejects a
+      valid-type file whose chosen sheet has zero data rows; sheet-selection
+      prompt for multi-sheet files; column-mapping UI for the six required
+      fields + optional Custom Note; live preview capped at 20 rows; a row
+      with some-but-not-all required cells filled is flagged as a validation
+      error and blocks submission; a fully valid mapped file groups rows by
+      Plate ID and calls
+      `graviPlateAccessions.createWithSections({name}, plates)`; success shows
+      a completion message, resets the form, and calls `onUploadComplete`.
+- [x] 8.3 Implement `src/renderer/components/GraviMetadataUpload.tsx`
+      satisfying 8.2's tests. Includes a sheet-selector dropdown, shown only
+      when the workbook has more than one sheet, re-parsing on change (this
+      was missing from the first implementation pass and added as a
+      follow-up fix once caught against the spec's "Column mapping"
+      scenario).
+- [x] 8.4 Write failing tests for `GraviMetadataList.tsx` in new
+      `tests/unit/components/GraviMetadataList.test.tsx`: lists
+      files from `listFiles()` with name/date/linked-experiments/plate count,
+      chronological, no filter/sort controls; expanding a row lazily fetches
+      `list(fileId)` and renders row-spanned plate cells over per-section
+      rows; Delete surfaces the backend's blocked-deletion error without
+      removing the entry when the file is still referenced; Delete removes
+      the entry on success when unreferenced.
+- [x] 8.5 Implement `src/renderer/components/GraviMetadataList.tsx`
+      satisfying 8.4's tests, and `src/renderer/Metadata.tsx` composing both
+      components with no internal mode branch (per `design.md` Decision 11,
+      replacing task 4.4's placeholder if that task landed first), and write
+      a test confirming it renders both unconditionally when mounted (its
+      mode-gating is entirely the route's responsibility, tested in
+      Section 4).
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 9. (Lint/typecheck clean; 9/9 in
+      GraviMetadataUpload.test.tsx, 4/4 in GraviMetadataList.test.tsx, 1/1
+      in Metadata.test.tsx, 9/9 in App.test.tsx after adding the
+      `graviPlateAccessions.listFiles` mock it now needs; same 7
+      pre-existing baseline failures elsewhere, no new ones.)
+
+## 9. Wave-scoped metadata-link UI in Experiments.tsx (TDD)
+
+- [x] 9.1 Write failing **component-level** tests in new
+      `tests/unit/pages/Experiments.test.tsx` (mocked IPC — this file owns
+      all the branching/UI-logic assertions): each `graviscan`-typed
+      experiment in the list shows its linked waves inline (via
+      `useWaveMetadataLinks`) with Unlink actions gated by a
+      `window.confirm()` step whose copy names the wave/accession
+      (cancelling makes no IPC call; for wave `0`, the copy additionally
+      notes the experiment's default accession is unaffected); the existing
+      "attach" panel branches per `experiment_type` — selecting a
+      `cylinderscan` experiment shows the existing single-accession
+      `attachAccession` flow unchanged; selecting a `graviscan` experiment
+      shows a wave-number field (defaulting to `suggestedNextWave`) +
+      metadata-file select (options from a mocked `graviPlateAccessions.listFiles()`,
+      not `accessions.list()`) calling `link()`; attempting to link an
+      already-linked wave surfaces the backend's rejection inline without
+      altering the existing link.
+- [x] 9.2 Implement the branch in `Experiments.tsx` satisfying 9.1's tests, per
+      `design.md` Decision 5 and the updated "Attach Accession to Existing
+      Experiment" requirement. (6/6 in Experiments.test.tsx, including the
+      wave-0 confirmation-copy case. Note: the attach panel's wave-number
+      input is labeled "Wave Number to Link" — not "Wave Number" — to avoid
+      an ambiguous duplicate-label collision with `ExperimentForm.tsx`'s own
+      "Wave Number" field, since both render simultaneously in graviscan
+      mode on this page.)
+- [x] 9.3 **Deviation found during implementation**: not added to
+      `tests/e2e/experiments-management.e2e.ts` as originally planned — that
+      file's file-level `test.beforeEach`/`afterEach` hardcode
+      `SCANNER_MODE=cylinderscan` via `createTestBloomConfig()`, shared
+      across every `describe` block in the file with no per-describe
+      override point; adding a graviscan-mode test there would mean either
+      editing shared hooks (risking that file's existing passing
+      cylinderscan tests) or launching a second, conflicting Electron
+      instance. Written instead as a new, self-contained
+      `tests/e2e/graviscan-experiments-wave-linking.e2e.ts`, matching
+      `graviscan-ipc.e2e.ts`'s existing graviscan-mode launch/teardown
+      pattern: seeds a graviscan experiment via Prisma, drives the real
+      "attach" panel to link then unlink a wave (handling the real
+      `window.confirm()` dialog), asserting against the real database both
+      times. **Not executable-verified in this environment** — see Section
+      10's note below; the same blocker applies here.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 10. (Lint/typecheck clean; full unit suite
+      green modulo the same pre-existing baseline flakiness noted throughout
+      this file, no new failures.)
+
+## 10. E2E coverage
+
+**Environment note, discovered while working this section**: none of the
+new specs below (10.1–10.3), nor 9.3's, could be executed to a verified
+green/red result in this local Windows dev environment. Two **pre-existing**
+infrastructure issues block the _entire_ E2E suite here, not just Tier 5's
+new specs — confirmed by first reproducing both against the untouched,
+already-merged `tests/e2e/graviscan-ipc.e2e.ts`:
+
+1. `tests/e2e/*.e2e.ts`'s `launchElectronApp()` helpers hardcode
+   `.webpack/main/index.js`, but the installed Electron Forge webpack
+   plugin now nests its output per-architecture
+   (`.webpack/x64/main/index.js`) — confirmed by running
+   `npx electron-forge package` directly and inspecting its output.
+2. Once that path is bridged (verified locally via a directory junction,
+   not committed — not a real fix), Electron still fails to start:
+   `src/main/database.ts`'s `loadPrismaClient()` treats any process where
+   `NODE_ENV !== 'development'` as "packaged" and looks for the Prisma
+   client under `process.resourcesPath/.prisma/client/index.js` — a path
+   only populated by a full `electron-forge package`/`make` run, not by
+   directly launching `electron .webpack/main/index.js` the way every
+   `*.e2e.ts` file's `launchElectronApp()` does (all of them set
+   `NODE_ENV: 'test'`, not `'development'`). This is a real, pre-existing
+   gap in `loadPrismaClient()`'s dev/packaged branching, not something this
+   change touches or introduces.
+
+Both were reproduced against the pre-existing, unmodified
+`graviscan-ipc.e2e.ts` before writing any new spec, confirming they are not
+caused by this change. `scripts/check-ipc-coverage.py` (task 10.5, a static
+analysis script with no Electron dependency) runs fine and is reported
+below. **The new E2E specs are written to spec and match established
+conventions, but are unverified — recommend running them in CI (which may
+already have a working launch path) or a freshly-provisioned dev
+environment, and fixing the two issues above, before treating this tier's
+E2E coverage as complete.**
+
+- [x] 10.1 Add a new Playwright E2E spec (e.g.
+      `tests/e2e/graviscan-browse-metadata.e2e.ts`) driving the real
+      Electron app: seed a `graviscan` experiment + `GraviScanner`/`GraviScan`
+      rows + a metadata file directly via Prisma (matching
+      `tests/integration/database.test.ts`'s seeding convention); navigate
+      `/browse-graviscans`, confirm the seeded experiment's row renders with
+      expected fields; navigate to its Experiment Detail page, link a new
+      wave, confirm it appears, unlink it (confirming the `window.confirm()`
+      dialog via Playwright's `page.on('dialog', ...)`), confirm it
+      disappears; navigate to `/metadata`, confirm the seeded file appears in
+      the list.
+- [x] 10.2 Add an E2E scenario confirming the "Metadata"/"Browse Scans"
+      workflow-step cards on Home and the sidebar links on Layout resolve to
+      the new routes in `graviscan` mode (not `/experiments`/`/browse-scans`),
+      and that the shared "Browse Scans" sidebar link is absent in graviscan
+      mode. (Included in `graviscan-browse-metadata.e2e.ts`.)
+- [x] 10.3 Add an E2E scenario for the global upload-progress indicator:
+      trigger an upload/backup from `/browse-graviscans`, navigate to
+      `/metadata` before it completes, and confirm the Layout-level indicator
+      still reflects live progress and the eventual result — this is exactly
+      the cross-navigation persistence behavior a mocked/unit-level test
+      cannot fully validate against real IPC event timing. (Included in
+      `graviscan-browse-metadata.e2e.ts`, using the deterministic
+      "rclone not installed" path so the test doesn't depend on a real
+      rclone binary being present.)
+- [~] 10.4 Run `npm run test:e2e -- <the new spec files from 10.1-10.3>` and
+  confirm they pass against a real Electron+SQLite instance. Also
+  re-run the pre-existing `tests/e2e/experiments-management.e2e.ts` and
+  `tests/e2e/experiment-accession-indicator.e2e.ts` (both exercise
+  `Experiments.tsx`/`ExperimentForm.tsx`, which this change modifies) to
+  confirm no regression from the new `mode` prop or wave-number field.
+  **Not completed** — blocked by the two pre-existing environment issues
+  described above. Specs are written and `--list`-verified to parse/
+  import correctly (`npx playwright test <files> --list` enumerates all
+  6 new tests with no errors), but no pass/fail result could be obtained
+  in this environment. Must be run for real (CI or a fixed dev
+  environment) before this tier is considered E2E-complete.
+- [x] 10.5 Run `npm run test:e2e:coverage` and confirm the existing 90% IPC
+      coverage gate is unaffected — this change adds no new `db:*`/
+      `database.*` handlers (`ensureDir`/`listScanFiles` are under the
+      `graviscan:*` prefix, outside the gate's scope, per `design.md` Context).
+      Verified: this script is pure static analysis (no Electron dependency),
+      ran successfully — 43/45 = 95.6%, same two pre-existing untested
+      handlers as before (`db:accessions:updateMapping`, `db:images:create`),
+      no regression.
+
+## 11. Roadmap-doc known-bug-avoidance spot checks
+
+- [x] 11.1 Confirm (by reading the final diff, not by memory) that no new
+      renderer file imports or references `ScannerConfigSection.tsx`/
+      `useScannerConfig.ts`, that no new component uses a build-time
+      `APP_MODE` constant or a `Scanning.tsx`-style dispatcher shell, and
+      that none of task 4.4's placeholder component bodies
+      (`return null`) remain anywhere in `src/renderer/` — each must have
+      been replaced by its real implementation (5.2, 7.2, 8.5).
+      Verified: grepped `src/renderer` for `ScannerConfigSection`,
+      `useScannerConfig`, `APP_MODE` — zero real references (one comment in
+      `Metadata.tsx` mentions `APP_MODE` only to explain why it was
+      deliberately avoided). Grepped for `return null;` — all five hits
+      (`ExperimentDetail.tsx`, `Experiments.tsx`, `Layout.tsx`, plus two
+      pre-existing in `AccessionFileUpload.tsx`/`WedgeBanner.tsx`) are
+      legitimate loading/empty-state guards, not leftover placeholder
+      component bodies.
+- [x] 11.2 Confirm the `useResizableColumns` hook's cleanup path (Section 2)
+      is actually exercised by `ExperimentDetail.tsx` (Section 7) — i.e. no
+      second inline drag-listener implementation was written instead of using
+      the hook.
+      Verified: `ExperimentDetail.tsx` imports and calls
+      `useResizableColumns`; a search for inline
+      `addEventListener('mousemove'/'mouseup', ...)` in the file returns no
+      matches, confirming no duplicate drag implementation.
+- [x] 11.3 Run `gh issue list --search "downloadImages wave-scoped accession"
+  --state all` (or equivalent search on "GraviExperimentWaveMetadata
+      download" / "wave-scoped CSV export") from the repo root. If no
+      matching open or closed issue is found, file a new one referencing
+      `design.md` Decision 10 and `image-handlers.ts:501-505`, so the
+      named-but-not-fixed limitation has a tracking home per this codebase's
+      convention (matching issue #286's precedent). If a matching issue is
+      found, link it here instead of filing a duplicate.
+      No matching issue found across 3 search phrasings. Filed
+      [#288](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/288).
+
+## 12. Verification
+
+- [ ] 12.1 Run `npm run lint` and `npm run format:check`.
+- [ ] 12.2 Run `npm run test:unit` (full suite, not just this change's new
+      files) and confirm no new failures relative to the pre-change baseline.
+- [ ] 12.3 Run `npx tsc --noEmit` (or the project's typecheck script).
+- [ ] 12.4 Run the full `npm run test:e2e` suite (not just this change's new
+      specs) to confirm no regression in cylinderscan-mode routing or the
+      pre-existing GraviScan E2E coverage (Tier 1-3's specs, and PR #278's
+      `experiments.{link,unlink,list}GraviMetadata` block in
+      `tests/e2e/renderer-database-ipc.e2e.ts`).
+- [ ] 12.5 Run `npm run build` (or the project's renderer build script) to
+      confirm the new routes/components compile into the packaged bundle
+      without error.
+- [ ] 12.6 Manually launch the app in `graviscan` mode (`npm run dev` /
+      the project's dev-server workflow) and walk the golden path: Home →
+      Metadata (upload a real spreadsheet) → Experiments (create a graviscan
+      experiment, link a wave) → Browse GraviScans (see the row, click
+      through to Experiment Detail) → Experiment Detail (link/unlink a wave,
+      confirming the Unlink dialog, view a file preview) → Layout (confirm
+      the upload-progress indicator persists across the navigation above) —
+      confirm no console errors and no visibly broken states, per the
+      CLAUDE.md UI-verification requirement.

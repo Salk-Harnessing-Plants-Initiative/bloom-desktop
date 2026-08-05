@@ -678,6 +678,12 @@ export interface GraviAPI {
   readScanImage: (filePath: string, opts?: any) => Promise<any>;
   uploadAllScans: () => Promise<any>;
   downloadImages: (params: any) => Promise<any>;
+  ensureDir: (
+    dirPath?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  listScanFiles: (
+    dirPath?: string
+  ) => Promise<{ success: boolean; files: string[]; error?: string }>;
 
   // Event listeners (return cleanup functions)
   onScanStarted: (callback: (event: any) => void) => () => void;
