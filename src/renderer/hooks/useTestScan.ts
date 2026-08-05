@@ -42,7 +42,9 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
   const { scannerIds, gridModes, saneNames } = params;
 
   const [isTesting, setIsTesting] = useState(false);
-  const [testResults, setTestResults] = useState<Record<string, TestScanResult>>({});
+  const [testResults, setTestResults] = useState<
+    Record<string, TestScanResult>
+  >({});
   const [error, setError] = useState<string | null>(null);
 
   const pendingRef = useRef<Map<string, number>>(new Map());
@@ -50,7 +52,9 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
   const resolveRef = useRef<(() => void) | null>(null);
 
   const checkDone = useCallback(() => {
-    const allDone = Array.from(pendingRef.current.values()).every((n) => n <= 0);
+    const allDone = Array.from(pendingRef.current.values()).every(
+      (n) => n <= 0
+    );
     if (allDone) {
       resolveRef.current?.();
       resolveRef.current = null;
@@ -74,7 +78,10 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
       error?: string;
     }>(await (window as any).electron.gravi.getOutputDir());
     if (!outputDirResult?.success || !outputDirResult.path) {
-      setError(outputDirResult?.error ?? 'Could not determine the scan output directory.');
+      setError(
+        outputDirResult?.error ??
+          'Could not determine the scan output directory.'
+      );
       setIsTesting(false);
       return;
     }
@@ -104,20 +111,22 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
       resolveRef.current = resolve;
     });
 
-    const cleanupComplete = gravi.onScanComplete((data: Record<string, unknown>) => {
-      const scannerId = resolveScannerId(data);
-      if (!pendingRef.current.has(scannerId)) return;
-      const remaining = (pendingRef.current.get(scannerId) ?? 1) - 1;
-      pendingRef.current.set(scannerId, remaining);
-      if (remaining <= 0) {
-        resultsRef.current = {
-          ...resultsRef.current,
-          [scannerId]: { success: true, imagePath: data.imagePath as string },
-        };
-        setTestResults({ ...resultsRef.current });
+    const cleanupComplete = gravi.onScanComplete(
+      (data: Record<string, unknown>) => {
+        const scannerId = resolveScannerId(data);
+        if (!pendingRef.current.has(scannerId)) return;
+        const remaining = (pendingRef.current.get(scannerId) ?? 1) - 1;
+        pendingRef.current.set(scannerId, remaining);
+        if (remaining <= 0) {
+          resultsRef.current = {
+            ...resultsRef.current,
+            [scannerId]: { success: true, imagePath: data.imagePath as string },
+          };
+          setTestResults({ ...resultsRef.current });
+        }
+        checkDone();
       }
-      checkDone();
-    });
+    );
 
     const cleanupError = gravi.onScanError((data: Record<string, unknown>) => {
       const scannerId = resolveScannerId(data);
@@ -126,22 +135,29 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
       pendingRef.current.set(scannerId, remaining);
       resultsRef.current = {
         ...resultsRef.current,
-        [scannerId]: { success: false, error: (data.error as string) ?? 'Test scan failed' },
+        [scannerId]: {
+          success: false,
+          error: (data.error as string) ?? 'Test scan failed',
+        },
       };
       setTestResults({ ...resultsRef.current });
       checkDone();
     });
 
     try {
-      const startResult = unwrapGraviResult<{ success: boolean; error?: string }>(
-        await gravi.startScan({ scanners })
-      );
+      const startResult = unwrapGraviResult<{
+        success: boolean;
+        error?: string;
+      }>(await gravi.startScan({ scanners }));
       if (!startResult?.success) {
         resolveRef.current = null;
         resultsRef.current = Object.fromEntries(
           scannerIds.map((id) => [
             id,
-            { success: false, error: startResult?.error ?? 'Failed to start test scan.' },
+            {
+              success: false,
+              error: startResult?.error ?? 'Failed to start test scan.',
+            },
           ])
         );
         setTestResults({ ...resultsRef.current });

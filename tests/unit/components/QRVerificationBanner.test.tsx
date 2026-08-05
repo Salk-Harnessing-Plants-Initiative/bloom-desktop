@@ -4,7 +4,9 @@ import '@testing-library/jest-dom';
 import { QRVerificationBanner } from '../../../src/renderer/components/graviscan/QRVerificationBanner';
 import type { QRVerifyPlateResult } from '../../../src/types/graviscan';
 
-function plate(overrides: Partial<QRVerifyPlateResult> = {}): QRVerifyPlateResult {
+function plate(
+  overrides: Partial<QRVerifyPlateResult> = {}
+): QRVerifyPlateResult {
   return {
     scannerId: 'sc-1',
     plateIndex: '00',
@@ -26,7 +28,10 @@ describe('QRVerificationBanner', () => {
   it('grades green ("QR Verification Complete") when every plate is verified or swapped', () => {
     render(
       <QRVerificationBanner
-        results={[plate({ status: 'verified' }), plate({ plateIndex: '01', status: 'swapped' })]}
+        results={[
+          plate({ status: 'verified' }),
+          plate({ plateIndex: '01', status: 'swapped' }),
+        ]}
       />
     );
     expect(screen.getByText(/QR Verification Complete/i)).toBeInTheDocument();
@@ -42,12 +47,16 @@ describe('QRVerificationBanner', () => {
       />
     );
     const banner = screen.getByTestId('qr-verification-banner');
-    expect(screen.getByText(/Duplicate QR Codes Detected/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Duplicate QR Codes Detected/i)
+    ).toBeInTheDocument();
     expect(banner.className).toContain('bg-red-50');
   });
 
   it('grades amber ("Some Plates Unreadable") for unreadable with no duplicate_qr', () => {
-    render(<QRVerificationBanner results={[plate({ status: 'unreadable' })]} />);
+    render(
+      <QRVerificationBanner results={[plate({ status: 'unreadable' })]} />
+    );
     const banner = screen.getByTestId('qr-verification-banner');
     expect(screen.getByText(/Some Plates Unreadable/i)).toBeInTheDocument();
     expect(banner.className).toContain('bg-amber-50');
@@ -56,18 +65,26 @@ describe('QRVerificationBanner', () => {
   it('renders "Plate Mismatch Detected" for incorrect, distinct from the unreadable label', () => {
     render(<QRVerificationBanner results={[plate({ status: 'incorrect' })]} />);
     expect(screen.getByText(/Plate Mismatch Detected/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Some Plates Unreadable/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Some Plates Unreadable/i)
+    ).not.toBeInTheDocument();
   });
 
   it('renders "Manual Review Needed" for needs_review', () => {
-    render(<QRVerificationBanner results={[plate({ status: 'needs_review' })]} />);
+    render(
+      <QRVerificationBanner results={[plate({ status: 'needs_review' })]} />
+    );
     expect(screen.getByText(/Manual Review Needed/i)).toBeInTheDocument();
   });
 
   it('renders its own pinned "Verification Lookup Failed" title for lookup_failed, distinct from both "QR Unreadable" and "Manual Review Needed"', () => {
-    render(<QRVerificationBanner results={[plate({ status: 'lookup_failed' })]} />);
+    render(
+      <QRVerificationBanner results={[plate({ status: 'lookup_failed' })]} />
+    );
     expect(screen.getByText(/Verification Lookup Failed/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Some Plates Unreadable/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Some Plates Unreadable/i)
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/Manual Review Needed/i)).not.toBeInTheDocument();
   });
 

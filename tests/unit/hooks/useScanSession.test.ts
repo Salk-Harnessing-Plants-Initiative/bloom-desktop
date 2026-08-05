@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor, act, render, screen } from '@testing-library/react';
+import {
+  renderHook,
+  waitFor,
+  act,
+  render,
+  screen,
+} from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { useScanSession } from '../../../src/renderer/hooks/useScanSession';
 import { WedgeProvider } from '../../../src/renderer/contexts/WedgeContext';
@@ -16,7 +22,9 @@ function plate(overrides: Partial<PlateAssignment> = {}): PlateAssignment {
   };
 }
 
-function baseParams(overrides: Partial<Parameters<typeof useScanSession>[0]> = {}) {
+function baseParams(
+  overrides: Partial<Parameters<typeof useScanSession>[0]> = {}
+) {
   return {
     experimentId: 'exp-1',
     phenotyperId: 'pheno-1',
@@ -25,7 +33,12 @@ function baseParams(overrides: Partial<Parameters<typeof useScanSession>[0]> = {
     scannerIds: ['sc-1'],
     gridModes: { 'sc-1': '2grid' as const },
     saneNames: { 'sc-1': 'epkowa:usb:001:005' },
-    assignmentsByScanner: { 'sc-1': [plate({ plateIndex: '00' }), plate({ plateIndex: '01', plantBarcode: 'PLATE_002' })] },
+    assignmentsByScanner: {
+      'sc-1': [
+        plate({ plateIndex: '00' }),
+        plate({ plateIndex: '01', plantBarcode: 'PLATE_002' }),
+      ],
+    },
     isContinuous: false,
     intervalMinutes: 5,
     durationHours: 1,
@@ -73,14 +86,25 @@ describe('useScanSession', () => {
     // ConfigureScanner.tsx's own `result.data?.isActive` usage. Mocks here
     // must return that same shape or they don't exercise what the real
     // preload bridge actually resolves with.
-    startScan = vi.fn().mockResolvedValue({ success: true, data: { success: true } });
-    cancelScan = vi.fn().mockResolvedValue({ success: true, data: { success: true } });
-    getScanStatus = vi.fn().mockResolvedValue({ success: true, data: { isActive: false } });
-    getOutputDir = vi
+    startScan = vi
       .fn()
-      .mockResolvedValue({ success: true, data: { success: true, path: '/out' } });
-    verifyPlates = vi.fn().mockResolvedValue({ success: true, results: [], swaps: [] });
-    graviscansCreate = vi.fn().mockResolvedValue({ success: true, data: { id: 'gs-1' } });
+      .mockResolvedValue({ success: true, data: { success: true } });
+    cancelScan = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { success: true } });
+    getScanStatus = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { isActive: false } });
+    getOutputDir = vi.fn().mockResolvedValue({
+      success: true,
+      data: { success: true, path: '/out' },
+    });
+    verifyPlates = vi
+      .fn()
+      .mockResolvedValue({ success: true, results: [], swaps: [] });
+    graviscansCreate = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { id: 'gs-1' } });
     graviscanSessionsCreate = vi
       .fn()
       .mockResolvedValue({ success: true, data: { id: 'sess-1' } });
@@ -94,7 +118,10 @@ describe('useScanSession', () => {
       getScanStatus,
       getOutputDir,
       verifyPlates,
-      readScanImage: vi.fn().mockResolvedValue({ success: true, dataUri: 'data:image/tiff;base64,x' }),
+      readScanImage: vi.fn().mockResolvedValue({
+        success: true,
+        dataUri: 'data:image/tiff;base64,x',
+      }),
       onScanStarted: on('scan-started'),
       onScanComplete: on('scan-complete'),
       onScanError: on('scan-error'),
@@ -130,13 +157,25 @@ describe('useScanSession', () => {
     expect(result.current.pendingJobs['sc-1:00']).toBeDefined();
     expect(result.current.pendingJobs['sc-1:01']).toBeDefined();
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff' });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
 
-    await waitFor(() => expect(result.current.pendingJobs['sc-1:00']).toBeUndefined());
+    await waitFor(() =>
+      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
+    );
     expect(result.current.progressByScanner['sc-1']).toBe(50);
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '01', imagePath: '/out/01.tiff' });
-    await waitFor(() => expect(result.current.pendingJobs['sc-1:01']).toBeUndefined());
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01.tiff',
+    });
+    await waitFor(() =>
+      expect(result.current.pendingJobs['sc-1:01']).toBeUndefined()
+    );
     expect(result.current.progressByScanner['sc-1']).toBe(100);
   });
 
@@ -148,11 +187,21 @@ describe('useScanSession', () => {
       await result.current.startScan();
     });
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff' });
-    await waitFor(() => expect(result.current.progressByScanner['sc-1']).toBe(50));
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+    await waitFor(() =>
+      expect(result.current.progressByScanner['sc-1']).toBe(50)
+    );
 
     // Retried/duplicated event for the same job.
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff' });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
     expect(result.current.progressByScanner['sc-1']).toBe(50);
   });
 
@@ -164,8 +213,14 @@ describe('useScanSession', () => {
       await result.current.startScan();
     });
 
-    fire('scan-complete', { scanner_id: 'sc-1', plate_index: '00', imagePath: '/out/00.tiff' });
-    await waitFor(() => expect(result.current.pendingJobs['sc-1:00']).toBeUndefined());
+    fire('scan-complete', {
+      scanner_id: 'sc-1',
+      plate_index: '00',
+      imagePath: '/out/00.tiff',
+    });
+    await waitFor(() =>
+      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
+    );
     expect(result.current.progressByScanner['sc-1']).toBe(50);
   });
 
@@ -294,7 +349,10 @@ describe('useScanSession', () => {
   });
 
   it('on-mount restore rehydrates nothing when the session is not active', async () => {
-    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: false },
+    });
     const onRestoreWaveNumber = vi.fn();
 
     const { result } = renderHook(
@@ -309,23 +367,32 @@ describe('useScanSession', () => {
   });
 
   it('verification invocation passes the current waveNumber (including 0) alongside experimentId', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
-      wrapper: wedgeWrapper,
-    });
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ waveNumber: 0 })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
     await act(async () => {
       await result.current.startScan();
     });
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff' });
-    await waitFor(() => expect(result.current.pendingJobs['sc-1:00']).toBeUndefined());
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '01', imagePath: '/out/01.tiff' });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+    await waitFor(() =>
+      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
+    );
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01.tiff',
+    });
 
     await waitFor(() => expect(verifyPlates).toHaveBeenCalled());
-    expect(verifyPlates).toHaveBeenCalledWith(
-      expect.any(Array),
-      'exp-1',
-      0
-    );
+    expect(verifyPlates).toHaveBeenCalledWith(expect.any(Array), 'exp-1', 0);
   });
 
   // ── Backend persistence wiring (task 12.3) ──────────────────────────────
@@ -334,7 +401,11 @@ describe('useScanSession', () => {
     const { result } = renderHook(
       () =>
         useScanSession(
-          baseParams({ isContinuous: true, intervalMinutes: 10, durationHours: 2 })
+          baseParams({
+            isContinuous: true,
+            intervalMinutes: 10,
+            durationHours: 2,
+          })
         ),
       { wrapper: wedgeWrapper }
     );
@@ -394,11 +465,21 @@ describe('useScanSession', () => {
       await result.current.startScan();
     });
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff', cycleNumber: 1 });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+      cycleNumber: 1,
+    });
     await waitFor(() => expect(graviscansCreate).toHaveBeenCalledTimes(1));
 
     // A duplicated IPC event redelivers scan-complete for the same job.
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff', cycleNumber: 1 });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+      cycleNumber: 1,
+    });
     await waitFor(() => expect(graviscansCreate).toHaveBeenCalledTimes(2));
     expect(graviscansCreate.mock.calls[1][0]).toMatchObject({
       scanner_id: 'sc-1',
@@ -415,9 +496,19 @@ describe('useScanSession', () => {
       await result.current.startScan();
     });
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff' });
-    await waitFor(() => expect(result.current.pendingJobs['sc-1:00']).toBeUndefined());
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '01', imagePath: '/out/01.tiff' });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+    await waitFor(() =>
+      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
+    );
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01.tiff',
+    });
 
     await waitFor(() =>
       expect(graviscanSessionsComplete).toHaveBeenCalledWith({
@@ -451,7 +542,12 @@ describe('useScanSession', () => {
     const { result } = renderHook(
       () =>
         useScanSession(
-          baseParams({ waveNumber: 2, isContinuous: true, intervalMinutes: 10, durationHours: 1 })
+          baseParams({
+            waveNumber: 2,
+            isContinuous: true,
+            intervalMinutes: 10,
+            durationHours: 1,
+          })
         ),
       { wrapper: wedgeWrapper }
     );
@@ -466,34 +562,56 @@ describe('useScanSession', () => {
   });
 
   it('a successful cancelScan() removes the marker', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
-      wrapper: wedgeWrapper,
-    });
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ waveNumber: 0 })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
     await act(async () => {
       await result.current.startScan();
     });
-    expect(localStorage.getItem('graviscan:session-in-progress:exp-1:0')).not.toBeNull();
+    expect(
+      localStorage.getItem('graviscan:session-in-progress:exp-1:0')
+    ).not.toBeNull();
 
     await act(async () => {
       await result.current.cancelScan();
     });
-    expect(localStorage.getItem('graviscan:session-in-progress:exp-1:0')).toBeNull();
+    expect(
+      localStorage.getItem('graviscan:session-in-progress:exp-1:0')
+    ).toBeNull();
   });
 
   it('clean completion removes the marker', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
-      wrapper: wedgeWrapper,
-    });
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ waveNumber: 0 })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
     await act(async () => {
       await result.current.startScan();
     });
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/00.tiff' });
-    await waitFor(() => expect(result.current.pendingJobs['sc-1:00']).toBeUndefined());
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '01', imagePath: '/out/01.tiff' });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+    await waitFor(() =>
+      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
+    );
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01.tiff',
+    });
 
     await waitFor(() =>
-      expect(localStorage.getItem('graviscan:session-in-progress:exp-1:0')).toBeNull()
+      expect(
+        localStorage.getItem('graviscan:session-in-progress:exp-1:0')
+      ).toBeNull()
     );
   });
 
@@ -502,11 +620,17 @@ describe('useScanSession', () => {
       'graviscan:session-in-progress:exp-1:0',
       JSON.stringify({ expectedCycles: 6 })
     );
-    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
-
-    const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
-      wrapper: wedgeWrapper,
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: false },
     });
+
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ waveNumber: 0 })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
 
     await waitFor(() =>
       expect(result.current.abnormalTermination).toEqual({ expectedCycles: 6 })
@@ -518,21 +642,33 @@ describe('useScanSession', () => {
       'graviscan:session-in-progress:exp-1:5',
       JSON.stringify({ expectedCycles: 6 })
     );
-    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
-
-    const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
-      wrapper: wedgeWrapper,
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: false },
     });
+
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ waveNumber: 0 })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
 
     await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
     expect(result.current.abnormalTermination).toBeNull();
   });
 
   it('no marker for the current experiment+wave produces no banner', async () => {
-    getScanStatus.mockResolvedValue({ success: true, data: { isActive: false } });
-    const { result } = renderHook(() => useScanSession(baseParams({ waveNumber: 0 })), {
-      wrapper: wedgeWrapper,
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: false },
     });
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ waveNumber: 0 })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
 
     await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
     expect(result.current.abnormalTermination).toBeNull();
@@ -541,9 +677,12 @@ describe('useScanSession', () => {
   // ── Wedge-blocks-start (task 12.7, Decision 6) ──────────────────────────
 
   it('disables starting while an assigned scanner has an active, unacknowledged wedge', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams({ scannerIds: ['sc-1'] })), {
-      wrapper: wedgeWrapper,
-    });
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ scannerIds: ['sc-1'] })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
     expect(result.current.canStartScan).toBe(true);
 
     fire('wedge-detected', {
@@ -565,11 +704,19 @@ describe('useScanSession', () => {
     // the scan-session consumer mounts afterward via rerender, reading the
     // context's already-accumulated state rather than starting fresh.
     function Placeholder() {
-      return createElement('div', { 'data-testid': 'can-start' }, 'not-mounted');
+      return createElement(
+        'div',
+        { 'data-testid': 'can-start' },
+        'not-mounted'
+      );
     }
     function ScanSessionConsumer() {
       const session = useScanSession(baseParams({ scannerIds: ['sc-1'] }));
-      return createElement('div', { 'data-testid': 'can-start' }, String(session.canStartScan));
+      return createElement(
+        'div',
+        { 'data-testid': 'can-start' },
+        String(session.canStartScan)
+      );
     }
 
     let showScanSession = false;
@@ -577,7 +724,9 @@ describe('useScanSession', () => {
       createElement(
         WedgeProvider,
         null,
-        showScanSession ? createElement(ScanSessionConsumer) : createElement(Placeholder)
+        showScanSession
+          ? createElement(ScanSessionConsumer)
+          : createElement(Placeholder)
       );
 
     const { rerender } = render(tree());
@@ -600,9 +749,12 @@ describe('useScanSession', () => {
   });
 
   it('startScan() is blocked (no IPC call made) while canStartScan is false', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams({ scannerIds: ['sc-1'] })), {
-      wrapper: wedgeWrapper,
-    });
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ scannerIds: ['sc-1'] })),
+      {
+        wrapper: wedgeWrapper,
+      }
+    );
 
     fire('wedge-detected', {
       scanner_id: 'sc-1',

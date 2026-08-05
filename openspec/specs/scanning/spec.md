@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -3857,4 +3859,3 @@ The system SHALL provide a `database.experiments.listGraviMetadata(experimentId)
 - **GIVEN** `experimentId` is a non-string value, missing, or an empty string `""`
 - **WHEN** `listGraviMetadata` is called with that `experimentId`
 - **THEN** the handler SHALL return `{success: false, error: <message>}` rather than passing the malformed value to Prisma
-

@@ -3,7 +3,9 @@ import { renderHook, act } from '@testing-library/react';
 import { useContinuousMode } from '../../../src/renderer/hooks/useContinuousMode';
 import type { ScannerPanelState } from '../../../src/types/graviscan';
 
-function scanner(overrides: Partial<ScannerPanelState> = {}): ScannerPanelState {
+function scanner(
+  overrides: Partial<ScannerPanelState> = {}
+): ScannerPanelState {
   return {
     scannerId: 'sc-1',
     name: 'Scanner 1',

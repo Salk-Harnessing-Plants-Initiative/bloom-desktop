@@ -15,7 +15,9 @@ export interface UseWaveNumberResult {
  * Selected wave number for the Capture Scan screen, plus a "suggested
  * next wave" surfaced from the experiment's own scan history.
  */
-export function useWaveNumber(experimentId: string | null): UseWaveNumberResult {
+export function useWaveNumber(
+  experimentId: string | null
+): UseWaveNumberResult {
   const [waveNumber, setWaveNumberState] = useState(0);
   const [suggestedNextWave, setSuggestedNextWave] = useState<number | null>(
     null

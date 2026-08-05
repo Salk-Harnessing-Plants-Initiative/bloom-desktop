@@ -56,7 +56,8 @@ export function useContinuousMode(
     const platesPerScanner = scannerStates.length
       ? Math.max(
           ...scannerStates.map(
-            (s) => createPlateAssignments(s.gridMode as '2grid' | '4grid').length
+            (s) =>
+              createPlateAssignments(s.gridMode as '2grid' | '4grid').length
           )
         )
       : 0;

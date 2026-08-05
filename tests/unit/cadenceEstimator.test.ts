@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { estimateCycleSeconds } from '../../src/renderer/utils/cadenceEstimator';
 
 describe('estimateCycleSeconds', () => {
-  it('matches the spec\'s 4-plate/5-scanner/1200dpi/140x140mm calibration point (~418s, exceeds a 300s interval)', () => {
+  it("matches the spec's 4-plate/5-scanner/1200dpi/140x140mm calibration point (~418s, exceeds a 300s interval)", () => {
     const seconds = estimateCycleSeconds({
       platesPerScanner: 4,
       scannerCount: 5,
@@ -26,7 +26,7 @@ describe('estimateCycleSeconds', () => {
     expect(seconds).toBeGreaterThan(300);
   });
 
-  it('matches the spec\'s 2-plate/5-scanner/1200dpi/140x140mm calibration point (~300s, fits a 300s interval)', () => {
+  it("matches the spec's 2-plate/5-scanner/1200dpi/140x140mm calibration point (~300s, fits a 300s interval)", () => {
     const seconds = estimateCycleSeconds({
       platesPerScanner: 2,
       scannerCount: 5,

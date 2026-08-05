@@ -4,7 +4,9 @@ import '@testing-library/jest-dom';
 import { ScannerStatusPanel } from '../../../src/renderer/components/graviscan/ScannerStatusPanel';
 import type { ScannerPanelState } from '../../../src/types/graviscan';
 
-function scanner(overrides: Partial<ScannerPanelState> = {}): ScannerPanelState {
+function scanner(
+  overrides: Partial<ScannerPanelState> = {}
+): ScannerPanelState {
   return {
     scannerId: 'sc-1',
     name: 'Scanner 1',
@@ -24,7 +26,10 @@ describe('ScannerStatusPanel', () => {
   it('renders each scanner name, connection status, and grid mode', () => {
     render(
       <ScannerStatusPanel
-        scanners={[scanner({ scannerId: 'sc-1', name: 'Scanner 1' }), scanner({ scannerId: 'sc-2', name: 'Scanner 2', gridMode: '4grid' })]}
+        scanners={[
+          scanner({ scannerId: 'sc-1', name: 'Scanner 1' }),
+          scanner({ scannerId: 'sc-2', name: 'Scanner 2', gridMode: '4grid' }),
+        ]}
         progressByScanner={{}}
         isScanning={false}
       />
@@ -39,8 +44,17 @@ describe('ScannerStatusPanel', () => {
     render(
       <ScannerStatusPanel
         scanners={[
-          scanner({ scannerId: 'sc-1', isOnline: true, connectionStatus: 'ready' }),
-          scanner({ scannerId: 'sc-2', isOnline: false, connectionStatus: 'error', lastError: 'wedged' }),
+          scanner({
+            scannerId: 'sc-1',
+            isOnline: true,
+            connectionStatus: 'ready',
+          }),
+          scanner({
+            scannerId: 'sc-2',
+            isOnline: false,
+            connectionStatus: 'error',
+            lastError: 'wedged',
+          }),
         ]}
         progressByScanner={{}}
         isScanning={false}
@@ -63,7 +77,9 @@ describe('ScannerStatusPanel', () => {
       />
     );
 
-    expect(screen.getByTestId('scanner-status-sc-1').textContent).toMatch(/50%/);
+    expect(screen.getByTestId('scanner-status-sc-1').textContent).toMatch(
+      /50%/
+    );
   });
 
   it('shows 0% progress for a scanner with no recorded progress yet while scanning', () => {
@@ -85,6 +101,8 @@ describe('ScannerStatusPanel', () => {
         isScanning={false}
       />
     );
-    expect(screen.getByTestId('scanner-status-sc-1').textContent).not.toMatch(/%/);
+    expect(screen.getByTestId('scanner-status-sc-1').textContent).not.toMatch(
+      /%/
+    );
   });
 });

@@ -1495,7 +1495,7 @@ describe('verifyPlates', () => {
     });
   });
 
-  it('does not match a different wave\'s linked accession plates', async () => {
+  it("does not match a different wave's linked accession plates", async () => {
     // Same detected QR, but resolved via wave 3's accession — the lookup
     // filter itself (`metadata_file_id: 'accession-wave-3'`) is what a real
     // Prisma query would use to exclude wave 2's plates; this test asserts

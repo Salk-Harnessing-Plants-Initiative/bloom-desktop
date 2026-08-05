@@ -242,7 +242,9 @@ function reducer(state: ScanState, action: Action): ScanState {
  * persistence wiring, the abnormal-termination localStorage marker, and
  * wedge-blocked-start — see tasks.md Section 12.
  */
-export function useScanSession(params: UseScanSessionParams): UseScanSessionResult {
+export function useScanSession(
+  params: UseScanSessionParams
+): UseScanSessionResult {
   const {
     experimentId,
     phenotyperId,
@@ -289,7 +291,13 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
       resolution,
       assignmentsByScanner,
     };
-  }, [experimentId, phenotyperId, waveNumber, resolution, assignmentsByScanner]);
+  }, [
+    experimentId,
+    phenotyperId,
+    waveNumber,
+    resolution,
+    assignmentsByScanner,
+  ]);
 
   const clearAbnormalMarker = useCallback(() => {
     if (!experimentId) return;
@@ -347,7 +355,11 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
   const jobTemplateRef = useRef<Record<string, ScanSessionJob>>({});
 
   const recordCompletedJob = useCallback(
-    async (job: ScanSessionJob, imagePath: string, cycleNumber: number | null) => {
+    async (
+      job: ScanSessionJob,
+      imagePath: string,
+      cycleNumber: number | null
+    ) => {
       const ctx = contextRef.current;
       if (!ctx.experimentId || !ctx.phenotyperId) return;
       await (window as any).electron.database.graviscans.create({
@@ -393,35 +405,43 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
   useEffect(() => {
     const gravi = (window as any).electron.gravi;
 
-    const cleanupComplete = gravi.onScanComplete((data: Record<string, unknown>) => {
-      const scannerId = resolveScannerId(data);
-      const plateIndex = resolvePlateIndex(data);
-      const key = jobKey(scannerId, plateIndex);
-      const job = jobTemplateRef.current[key];
-      if (!job) return; // unknown job key — nothing to record
+    const cleanupComplete = gravi.onScanComplete(
+      (data: Record<string, unknown>) => {
+        const scannerId = resolveScannerId(data);
+        const plateIndex = resolvePlateIndex(data);
+        const key = jobKey(scannerId, plateIndex);
+        const job = jobTemplateRef.current[key];
+        if (!job) return; // unknown job key — nothing to record
 
-      const imagePath = (data.imagePath as string) ?? '';
-      const cycleNumber =
-        typeof data.cycleNumber === 'number' ? (data.cycleNumber as number) : null;
+        const imagePath = (data.imagePath as string) ?? '';
+        const cycleNumber =
+          typeof data.cycleNumber === 'number'
+            ? (data.cycleNumber as number)
+            : null;
 
-      completedJobsRef.current[key] = { ...job, status: 'complete', imagePath };
-      dispatch({ type: 'JOB_COMPLETE', payload: { key, imagePath } });
+        completedJobsRef.current[key] = {
+          ...job,
+          status: 'complete',
+          imagePath,
+        };
+        dispatch({ type: 'JOB_COMPLETE', payload: { key, imagePath } });
 
-      // Always recorded, even on a duplicated/retried event for a job
-      // already removed from `pendingJobs` — the backend's own upsert is
-      // what makes the repeat safe (tasks.md 12.3), not a hook-side guard.
-      void recordCompletedJob(job, imagePath, cycleNumber);
+        // Always recorded, even on a duplicated/retried event for a job
+        // already removed from `pendingJobs` — the backend's own upsert is
+        // what makes the repeat safe (tasks.md 12.3), not a hook-side guard.
+        void recordCompletedJob(job, imagePath, cycleNumber);
 
-      if (stateRef.current.isScanning) {
-        const stillPending = Object.keys(stateRef.current.pendingJobs).filter(
-          (k) => k !== key
-        );
-        if (stillPending.length === 0) {
-          dispatch({ type: 'SCAN_ENDED' });
-          void finishSession(false);
+        if (stateRef.current.isScanning) {
+          const stillPending = Object.keys(stateRef.current.pendingJobs).filter(
+            (k) => k !== key
+          );
+          if (stillPending.length === 0) {
+            dispatch({ type: 'SCAN_ENDED' });
+            void finishSession(false);
+          }
         }
       }
-    });
+    );
 
     const cleanupError = gravi.onScanError((data: Record<string, unknown>) => {
       const scannerId = resolveScannerId(data);
@@ -429,7 +449,10 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
       if (!scannerId || !plateIndex) return;
       dispatch({
         type: 'JOB_ERROR',
-        payload: { key: jobKey(scannerId, plateIndex), error: (data.error as string) ?? 'Scan error' },
+        payload: {
+          key: jobKey(scannerId, plateIndex),
+          error: (data.error as string) ?? 'Scan error',
+        },
       });
     });
 
@@ -467,12 +490,14 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
 
   useEffect(() => {
     (async () => {
-      const status = unwrapGraviResult<GetScanStatusResult & Record<string, any>>(
-        await (window as any).electron.gravi.getScanStatus()
-      );
+      const status = unwrapGraviResult<
+        GetScanStatusResult & Record<string, any>
+      >(await (window as any).electron.gravi.getScanStatus());
       if (!status?.isActive) {
         if (experimentId) {
-          const marker = localStorage.getItem(abnormalMarkerKey(experimentId, waveNumber));
+          const marker = localStorage.getItem(
+            abnormalMarkerKey(experimentId, waveNumber)
+          );
           if (marker) {
             try {
               const parsed = JSON.parse(marker);
@@ -493,7 +518,10 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
         }
       }
 
-      if (typeof status.waveNumber === 'number' && status.waveNumber !== waveNumber) {
+      if (
+        typeof status.waveNumber === 'number' &&
+        status.waveNumber !== waveNumber
+      ) {
         onRestoreWaveNumber?.(status.waveNumber);
       }
 
@@ -506,13 +534,20 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
           totalCycles: status.totalCycles ?? 0,
           coordinatorState: status.coordinatorState ?? 'scanning',
           sessionId: status.sessionId ?? null,
-          scanStartedAt: typeof status.scanStartedAt === 'number' ? status.scanStartedAt : null,
-          nextScanAt: typeof status.nextScanAt === 'number' ? status.nextScanAt : null,
+          scanStartedAt:
+            typeof status.scanStartedAt === 'number'
+              ? status.scanStartedAt
+              : null,
+          nextScanAt:
+            typeof status.nextScanAt === 'number' ? status.nextScanAt : null,
         },
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })().catch((err: any) => {
-      dispatch({ type: 'ERROR', payload: { error: err instanceof Error ? err.message : String(err) } });
+      dispatch({
+        type: 'ERROR',
+        payload: { error: err instanceof Error ? err.message : String(err) },
+      });
     });
     // Intentionally runs once on mount only — restoration is a one-time
     // reconciliation against main-process state, not a reactive sync.
@@ -524,12 +559,17 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
     if (!canStartScan) {
       dispatch({
         type: 'ERROR',
-        payload: { error: 'Cannot start — an assigned scanner has an active wedge.' },
+        payload: {
+          error: 'Cannot start — an assigned scanner has an active wedge.',
+        },
       });
       return;
     }
     if (!experimentId || !phenotyperId) {
-      dispatch({ type: 'ERROR', payload: { error: 'Select an experiment and phenotyper first.' } });
+      dispatch({
+        type: 'ERROR',
+        payload: { error: 'Select an experiment and phenotyper first.' },
+      });
       return;
     }
 
@@ -541,7 +581,11 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
     if (!outputDirResult?.success || !outputDirResult.path) {
       dispatch({
         type: 'ERROR',
-        payload: { error: outputDirResult?.error ?? 'Could not determine the scan output directory.' },
+        payload: {
+          error:
+            outputDirResult?.error ??
+            'Could not determine the scan output directory.',
+        },
       });
       return;
     }
@@ -564,7 +608,9 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
     }> = [];
 
     for (const scannerId of scannerIds) {
-      const assignments = (assignmentsByScanner[scannerId] || []).filter((a) => a.selected);
+      const assignments = (assignmentsByScanner[scannerId] || []).filter(
+        (a) => a.selected
+      );
       const gridMode = gridModes[scannerId];
       const plates = assignments.map((a) => {
         const outputPath = `${outputDir}/${experimentId}/wave${waveNumber}/${scannerId}/${a.plateIndex}_${timestamp}.tiff`;
@@ -589,12 +635,19 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
       });
       if (plates.length > 0) {
         scannerTotals[scannerId] = plates.length;
-        scanners.push({ scannerId, saneName: saneNames[scannerId] ?? '', plates });
+        scanners.push({
+          scannerId,
+          saneName: saneNames[scannerId] ?? '',
+          plates,
+        });
       }
     }
 
     if (scanners.length === 0) {
-      dispatch({ type: 'ERROR', payload: { error: 'No plates selected for scanning.' } });
+      dispatch({
+        type: 'ERROR',
+        payload: { error: 'No plates selected for scanning.' },
+      });
       return;
     }
 
@@ -609,18 +662,25 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
     const result = unwrapGraviResult<{ success: boolean; error?: string }>(
       await (window as any).electron.gravi.startScan({
         scanners,
-        interval: isContinuous ? { intervalSeconds, durationSeconds } : undefined,
+        interval: isContinuous
+          ? { intervalSeconds, durationSeconds }
+          : undefined,
         metadata: { experimentId, phenotyperId, resolution, waveNumber },
       })
     );
 
     if (!result?.success) {
-      dispatch({ type: 'ERROR', payload: { error: result?.error ?? 'Failed to start scan.' } });
+      dispatch({
+        type: 'ERROR',
+        payload: { error: result?.error ?? 'Failed to start scan.' },
+      });
       return;
     }
 
     let sessionId: string | null = null;
-    const sessionResult = await (window as any).electron.database.graviscanSessions.create({
+    const sessionResult = await (
+      window as any
+    ).electron.database.graviscanSessions.create({
       experiment_id: experimentId,
       phenotyper_id: phenotyperId,
       scan_mode: isContinuous ? 'continuous' : 'single',
@@ -636,7 +696,13 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
     jobTemplateRef.current = jobs;
     dispatch({
       type: 'START',
-      payload: { jobs, scannerTotals, totalCycles, sessionId, scanStartedAt: Date.now() },
+      payload: {
+        jobs,
+        scannerTotals,
+        totalCycles,
+        sessionId,
+        scanStartedAt: Date.now(),
+      },
     });
 
     if (experimentId) {
@@ -666,13 +732,19 @@ export function useScanSession(params: UseScanSessionParams): UseScanSessionResu
         await (window as any).electron.gravi.cancelScan()
       );
       if (!result?.success) {
-        dispatch({ type: 'ERROR', payload: { error: result?.error ?? 'Cancel failed.' } });
+        dispatch({
+          type: 'ERROR',
+          payload: { error: result?.error ?? 'Cancel failed.' },
+        });
         return;
       }
       dispatch({ type: 'CANCELLED' });
       await finishSession(true);
     } catch (err) {
-      dispatch({ type: 'ERROR', payload: { error: err instanceof Error ? err.message : String(err) } });
+      dispatch({
+        type: 'ERROR',
+        payload: { error: err instanceof Error ? err.message : String(err) },
+      });
     }
   }, [finishSession]);
 

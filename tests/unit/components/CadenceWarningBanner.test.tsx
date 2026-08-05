@@ -4,7 +4,10 @@ import '@testing-library/jest-dom';
 import { CadenceWarningBanner } from '../../../src/renderer/components/graviscan/CadenceWarningBanner';
 import type { CadenceEstimatorInput } from '../../../src/renderer/utils/cadenceEstimator';
 
-function props(overrides: Partial<CadenceEstimatorInput> = {}, intervalMinutes = 5) {
+function props(
+  overrides: Partial<CadenceEstimatorInput> = {},
+  intervalMinutes = 5
+) {
   const cadenceContext: CadenceEstimatorInput = {
     platesPerScanner: 4,
     scannerCount: 5,
@@ -31,32 +34,50 @@ describe('CadenceWarningBanner', () => {
 
   it('is hidden when the estimate fits the interval', () => {
     render(<CadenceWarningBanner {...props({ platesPerScanner: 2 }, 5)} />);
-    expect(screen.queryByTestId('cadence-warning-banner')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('cadence-warning-banner')
+    ).not.toBeInTheDocument();
   });
 
   it('reacts to a DPI change that brings the estimate back within the interval', () => {
-    const { rerender } = render(<CadenceWarningBanner {...props({ dpi: 1200 }, 5)} />);
+    const { rerender } = render(
+      <CadenceWarningBanner {...props({ dpi: 1200 }, 5)} />
+    );
     expect(screen.getByTestId('cadence-warning-banner')).toBeInTheDocument();
 
     rerender(<CadenceWarningBanner {...props({ dpi: 800 }, 5)} />);
-    expect(screen.queryByTestId('cadence-warning-banner')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('cadence-warning-banner')
+    ).not.toBeInTheDocument();
   });
 
   it('reacts to a platesPerScanner (grid_mode) change that brings the estimate back within the interval', () => {
-    const { rerender } = render(<CadenceWarningBanner {...props({ platesPerScanner: 4 }, 5)} />);
+    const { rerender } = render(
+      <CadenceWarningBanner {...props({ platesPerScanner: 4 }, 5)} />
+    );
     expect(screen.getByTestId('cadence-warning-banner')).toBeInTheDocument();
 
     rerender(<CadenceWarningBanner {...props({ platesPerScanner: 2 }, 5)} />);
-    expect(screen.queryByTestId('cadence-warning-banner')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('cadence-warning-banner')
+    ).not.toBeInTheDocument();
   });
 
   it('reacts to a scannerCount change', () => {
     const { rerender } = render(
-      <CadenceWarningBanner {...props({ platesPerScanner: 1, scannerCount: 1 }, 5)} />
+      <CadenceWarningBanner
+        {...props({ platesPerScanner: 1, scannerCount: 1 }, 5)}
+      />
     );
-    expect(screen.queryByTestId('cadence-warning-banner')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('cadence-warning-banner')
+    ).not.toBeInTheDocument();
 
-    rerender(<CadenceWarningBanner {...props({ platesPerScanner: 1, scannerCount: 20 }, 5)} />);
+    rerender(
+      <CadenceWarningBanner
+        {...props({ platesPerScanner: 1, scannerCount: 20 }, 5)}
+      />
+    );
     expect(screen.getByTestId('cadence-warning-banner')).toBeInTheDocument();
   });
 

@@ -144,12 +144,16 @@ describe('GraviScan screen composition', () => {
     };
     win.electron.gravi = {
       ...win.electron.gravi,
-      getConfig: vi
-        .fn()
-        .mockResolvedValue({ success: true, data: { success: true, config: { resolution: 1200 } } }),
+      getConfig: vi.fn().mockResolvedValue({
+        success: true,
+        data: { success: true, config: { resolution: 1200 } },
+      }),
       detectScanners: vi.fn().mockResolvedValue({
         success: true,
-        data: { success: true, scanners: [{ scanner_id: 'sc-1', sane_name: 'epkowa:usb:001:005' }] },
+        data: {
+          success: true,
+          scanners: [{ scanner_id: 'sc-1', sane_name: 'epkowa:usb:001:005' }],
+        },
       }),
     };
   });
@@ -162,12 +166,16 @@ describe('GraviScan screen composition', () => {
   it('passes scan-session progress through to ScannerStatusPanel', () => {
     render(<GraviScan />);
     // Not scanning, so no % is shown per ScannerStatusPanel's own contract.
-    expect(screen.getByTestId('scanner-status-sc-1').textContent).not.toMatch(/42%/);
+    expect(screen.getByTestId('scanner-status-sc-1').textContent).not.toMatch(
+      /42%/
+    );
   });
 
   it('passes session state through to ScanControlSection (Start Scan enabled per canStartScan)', () => {
     render(<GraviScan />);
-    expect(screen.getByRole('button', { name: /^start scan$/i })).not.toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /^start scan$/i })
+    ).not.toBeDisabled();
   });
 
   it('passes verification results through to QRVerificationBanner', () => {
@@ -192,7 +200,9 @@ describe('GraviScan screen composition', () => {
       assignmentsByScanner: Record<string, unknown>;
       waveNumber: number;
     };
-    expect(call.assignmentsByScanner).toBe(mockPlateAssignments.assignmentsByScanner);
+    expect(call.assignmentsByScanner).toBe(
+      mockPlateAssignments.assignmentsByScanner
+    );
     expect(call.waveNumber).toBe(2);
   });
 

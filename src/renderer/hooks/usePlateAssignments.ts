@@ -51,8 +51,14 @@ interface PersistedRow {
 }
 
 function fieldsEqual(
-  a: Pick<PlateAssignment, 'plantBarcode' | 'transplantDate' | 'customNote' | 'selected'>,
-  b: Pick<PlateAssignment, 'plantBarcode' | 'transplantDate' | 'customNote' | 'selected'>
+  a: Pick<
+    PlateAssignment,
+    'plantBarcode' | 'transplantDate' | 'customNote' | 'selected'
+  >,
+  b: Pick<
+    PlateAssignment,
+    'plantBarcode' | 'transplantDate' | 'customNote' | 'selected'
+  >
 ): boolean {
   return (
     a.plantBarcode === b.plantBarcode &&

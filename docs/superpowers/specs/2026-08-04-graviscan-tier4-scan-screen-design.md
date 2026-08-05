@@ -109,9 +109,10 @@ arithmetic that assumes a specific staleness window.
 omits it.
 
 When Tier 4 (the first and only renderer caller) passes `waveNumber`:
+
 1. Resolve `accessionId` via `GraviExperimentWaveMetadata.findUnique({
-   where: { experiment_id_wave_number: { experiment_id: experimentId,
-   wave_number: waveNumber } } })` — the same lookup `usePlateAssignments`
+where: { experiment_id_wave_number: { experiment_id: experimentId,
+wave_number: waveNumber } } })` — the same lookup `usePlateAssignments`
    already performs for auto-fill (see D3).
 2. Scope the `GraviPlateSectionMapping` lookup to
    `plate: { metadata_file_id: accessionId }` directly, instead of the
@@ -120,7 +121,7 @@ When Tier 4 (the first and only renderer caller) passes `waveNumber`:
    relation — correct for the pre-#278 model, but not guaranteed to be
    populated for a graviscan experiment using wave-scoped links, and
    imprecise across waves regardless: it would happily match plates from
-   *any* accession ever linked to the experiment, not just the current
+   _any_ accession ever linked to the experiment, not just the current
    wave's).
 3. If no `GraviExperimentWaveMetadata` row exists for that
    `(experimentId, waveNumber)`, every plate in the batch is classified
@@ -245,8 +246,8 @@ entirely, not a stale pointer).
 - No ref-mirroring-with-hardcoded-lag-compensation shape (D1).
 - `VerifyStatus`/`VerificationStatus` unified to one type matching the
   live IPC contract exactly (`verified | incorrect | unreadable |
-  needs_review | duplicate_qr | swapped | lookup_failed | pending |
-  skipped`), consumed identically by the DB-persisted and live-event
+needs_review | duplicate_qr | swapped | lookup_failed | pending |
+skipped`), consumed identically by the DB-persisted and live-event
   paths — no renderer surface silently misses `incorrect` or
   `lookup_failed` the way the reference branch's banner/label logic did.
 

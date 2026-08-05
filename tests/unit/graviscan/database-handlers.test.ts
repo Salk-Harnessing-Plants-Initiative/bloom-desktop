@@ -899,7 +899,7 @@ describe('database.graviscanPlateAssignments.*', () => {
       expect(rows[1].plate_index).toBe('01');
     });
 
-    it('is scoped to waveNumber — a different wave\'s row for the same position is not returned', async () => {
+    it("is scoped to waveNumber — a different wave's row for the same position is not returned", async () => {
       const fx = await seedBaseFixture();
       await prisma.graviScanPlateAssignment.create({
         data: {
@@ -1027,7 +1027,7 @@ describe('database.graviscanPlateAssignments.*', () => {
       expect(rows).toHaveLength(0);
     });
 
-    it('writes to (experiment_id, scanner_id, plate_index, waveNumber) — does not clobber a different wave\'s row for the same position', async () => {
+    it("writes to (experiment_id, scanner_id, plate_index, waveNumber) — does not clobber a different wave's row for the same position", async () => {
       const fx = await seedBaseFixture();
       await prisma.graviScanPlateAssignment.create({
         data: {
@@ -1073,7 +1073,7 @@ describe('database.graviscanPlateAssignments.*', () => {
       expect(wave3Row?.plate_barcode).toBe('WAVE3-NEW');
     });
 
-    it('defaults waveNumber to 0 when omitted, matching the schema default and today\'s behavior', async () => {
+    it("defaults waveNumber to 0 when omitted, matching the schema default and today's behavior", async () => {
       const fx = await seedBaseFixture();
 
       const result = await graviscanPlateAssignmentsUpsertMany(

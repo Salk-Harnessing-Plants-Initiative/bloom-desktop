@@ -47,7 +47,9 @@ describe('usePlateAssignments', () => {
 
   beforeEach(() => {
     listGraviMetadata = vi.fn().mockResolvedValue({ success: true, data: [] });
-    listPlateAccessions = vi.fn().mockResolvedValue({ success: true, data: [] });
+    listPlateAccessions = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: [] });
     listAssignments = vi.fn().mockResolvedValue({ success: true, data: [] });
     upsertMany = vi.fn().mockResolvedValue({ success: true, data: [] });
 
@@ -188,7 +190,7 @@ describe('usePlateAssignments', () => {
     );
   });
 
-  it('wave-switch round-trip: switching wave and back restores the original wave\'s own override, not lost or re-derived', async () => {
+  it("wave-switch round-trip: switching wave and back restores the original wave's own override, not lost or re-derived", async () => {
     listGraviMetadata.mockImplementation(async () => ({
       success: true,
       data: [metadataLink(2, 'acc-2'), metadataLink(3, 'acc-3')],
@@ -205,7 +207,9 @@ describe('usePlateAssignments', () => {
         if (waveNumber === 2) {
           return {
             success: true,
-            data: [persistedRow({ plate_barcode: 'WAVE2_OVERRIDE', wave_number: 2 })],
+            data: [
+              persistedRow({ plate_barcode: 'WAVE2_OVERRIDE', wave_number: 2 }),
+            ],
           };
         }
         return { success: true, data: [] };
@@ -287,13 +291,13 @@ describe('usePlateAssignments', () => {
     });
 
     await waitFor(() =>
-      expect(
-        result.current.assignmentsByScanner['sc-1'][0].customNote
-      ).toBe('matched-note')
+      expect(result.current.assignmentsByScanner['sc-1'][0].customNote).toBe(
+        'matched-note'
+      )
     );
-    expect(
-      result.current.assignmentsByScanner['sc-1'][0].transplantDate
-    ).toBe('2026-02-02T00:00:00.000Z');
+    expect(result.current.assignmentsByScanner['sc-1'][0].transplantDate).toBe(
+      '2026-02-02T00:00:00.000Z'
+    );
   });
 
   it('a barcode with no match leaves transplantDate/customNote unchanged', async () => {
@@ -322,23 +326,20 @@ describe('usePlateAssignments', () => {
     );
 
     act(() => {
-      result.current.updateField(
-        'sc-1',
-        '01',
-        'plantBarcode',
-        'no-such-plate'
-      );
+      result.current.updateField('sc-1', '01', 'plantBarcode', 'no-such-plate');
     });
 
     await waitFor(() =>
-      expect(
-        result.current.assignmentsByScanner['sc-1'][1].plantBarcode
-      ).toBe('no-such-plate')
+      expect(result.current.assignmentsByScanner['sc-1'][1].plantBarcode).toBe(
+        'no-such-plate'
+      )
     );
     expect(
       result.current.assignmentsByScanner['sc-1'][1].transplantDate
     ).toBeNull();
-    expect(result.current.assignmentsByScanner['sc-1'][1].customNote).toBeNull();
+    expect(
+      result.current.assignmentsByScanner['sc-1'][1].customNote
+    ).toBeNull();
   });
 
   it('surfaces an inline error and keeps the last-known state when listGraviMetadata fails', async () => {
@@ -405,17 +406,15 @@ describe('usePlateAssignments', () => {
       resolveWaveA = resolve;
     });
 
-    listGraviMetadata.mockImplementation(
-      async () => {
-        // First call (wave A) hangs until we manually resolve it, after
-        // wave B's fetch has already completed.
-        if (listGraviMetadata.mock.calls.length === 1) {
-          await waveAPromise;
-          return { success: true, data: [metadataLink(1, 'acc-A')] };
-        }
-        return { success: true, data: [metadataLink(2, 'acc-B')] };
+    listGraviMetadata.mockImplementation(async () => {
+      // First call (wave A) hangs until we manually resolve it, after
+      // wave B's fetch has already completed.
+      if (listGraviMetadata.mock.calls.length === 1) {
+        await waveAPromise;
+        return { success: true, data: [metadataLink(1, 'acc-A')] };
       }
-    );
+      return { success: true, data: [metadataLink(2, 'acc-B')] };
+    });
     listPlateAccessions.mockImplementation(async (accessionId: string) => ({
       success: true,
       data: [

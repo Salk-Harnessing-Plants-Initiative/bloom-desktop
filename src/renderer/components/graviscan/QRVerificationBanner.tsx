@@ -5,17 +5,25 @@
  * undefined single-pick priority), and `incorrect`/`lookup_failed` each
  * get their own distinct title rather than folding into "QR Unreadable".
  */
-import type { QRVerifyPlateResult, VerificationStatus } from '../../../types/graviscan';
+import type {
+  QRVerifyPlateResult,
+  VerificationStatus,
+} from '../../../types/graviscan';
 
 export interface QRVerificationBannerProps {
   results: QRVerifyPlateResult[];
 }
 
-const AMBER_CAUSES: Array<{ status: VerificationStatus; title: string; detail: string }> = [
+const AMBER_CAUSES: Array<{
+  status: VerificationStatus;
+  title: string;
+  detail: string;
+}> = [
   {
     status: 'unreadable',
     title: 'Some Plates Unreadable',
-    detail: 'One or more plate QR codes could not be read from the captured image.',
+    detail:
+      'One or more plate QR codes could not be read from the captured image.',
   },
   {
     status: 'needs_review',
@@ -25,7 +33,8 @@ const AMBER_CAUSES: Array<{ status: VerificationStatus; title: string; detail: s
   {
     status: 'incorrect',
     title: 'Plate Mismatch Detected',
-    detail: 'One or more plates show a barcode that does not match the assigned plant.',
+    detail:
+      'One or more plates show a barcode that does not match the assigned plant.',
   },
   {
     status: 'lookup_failed',
@@ -55,7 +64,9 @@ export function QRVerificationBanner({ results }: QRVerificationBannerProps) {
     );
   }
 
-  const activeCauses = AMBER_CAUSES.filter((cause) => statuses.has(cause.status));
+  const activeCauses = AMBER_CAUSES.filter((cause) =>
+    statuses.has(cause.status)
+  );
   if (activeCauses.length > 0) {
     return (
       <div

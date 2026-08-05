@@ -35,17 +35,23 @@ describe('useTestScan', () => {
     // register-handlers.ts's wrapHandler() wraps both channels' normal
     // (non-throwing) resolution in a { success: true, data: T } envelope —
     // confirmed via direct inspection. Mocks must match that shape.
-    startScan = vi.fn().mockResolvedValue({ success: true, data: { success: true } });
-    getOutputDir = vi
+    startScan = vi
       .fn()
-      .mockResolvedValue({ success: true, data: { success: true, path: '/out' } });
+      .mockResolvedValue({ success: true, data: { success: true } });
+    getOutputDir = vi.fn().mockResolvedValue({
+      success: true,
+      data: { success: true, path: '/out' },
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = global.window as any;
     win.electron.gravi = {
       startScan,
       getOutputDir,
-      readScanImage: vi.fn().mockResolvedValue({ success: true, dataUri: 'data:image/tiff;base64,x' }),
+      readScanImage: vi.fn().mockResolvedValue({
+        success: true,
+        dataUri: 'data:image/tiff;base64,x',
+      }),
       onScanStarted: on('scan-started'),
       onScanComplete: on('scan-complete'),
       onScanError: on('scan-error'),
@@ -74,10 +80,26 @@ describe('useTestScan', () => {
     expect(startScan.mock.calls[0][0].metadata).toBeUndefined();
     expect(startScan.mock.calls[0][0].interval).toBeUndefined();
 
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '00', imagePath: '/out/sc-1-00.tiff' });
-    fire('scan-complete', { scannerId: 'sc-1', plateIndex: '01', imagePath: '/out/sc-1-01.tiff' });
-    fire('scan-complete', { scannerId: 'sc-2', plateIndex: '00', imagePath: '/out/sc-2-00.tiff' });
-    fire('scan-complete', { scannerId: 'sc-2', plateIndex: '01', imagePath: '/out/sc-2-01.tiff' });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/sc-1-00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/sc-1-01.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '00',
+      imagePath: '/out/sc-2-00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '01',
+      imagePath: '/out/sc-2-01.tiff',
+    });
 
     await act(async () => {
       await testPromise;
@@ -97,17 +119,35 @@ describe('useTestScan', () => {
     });
     await waitFor(() => expect(result.current.isTesting).toBe(true));
 
-    fire('scan-error', { scannerId: 'sc-1', plateIndex: '00', error: 'sane_start: Invalid argument' });
-    fire('scan-error', { scannerId: 'sc-1', plateIndex: '01', error: 'sane_start: Invalid argument' });
-    fire('scan-complete', { scannerId: 'sc-2', plateIndex: '00', imagePath: '/out/sc-2-00.tiff' });
-    fire('scan-complete', { scannerId: 'sc-2', plateIndex: '01', imagePath: '/out/sc-2-01.tiff' });
+    fire('scan-error', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      error: 'sane_start: Invalid argument',
+    });
+    fire('scan-error', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      error: 'sane_start: Invalid argument',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '00',
+      imagePath: '/out/sc-2-00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-2',
+      plateIndex: '01',
+      imagePath: '/out/sc-2-01.tiff',
+    });
 
     await act(async () => {
       await testPromise;
     });
 
     expect(result.current.testResults['sc-1'].success).toBe(false);
-    expect(result.current.testResults['sc-1'].error).toMatch(/Invalid argument/);
+    expect(result.current.testResults['sc-1'].error).toMatch(
+      /Invalid argument/
+    );
     expect(result.current.testResults['sc-2'].success).toBe(true);
   });
 
@@ -139,7 +179,9 @@ describe('useTestScan', () => {
     });
 
     expect(result.current.testResults['sc-1'].success).toBe(false);
-    expect(result.current.testResults['sc-1'].error).toBe('No scanners came online');
+    expect(result.current.testResults['sc-1'].error).toBe(
+      'No scanners came online'
+    );
     expect(result.current.testResults['sc-2'].success).toBe(false);
     expect(result.current.isTesting).toBe(false);
   });

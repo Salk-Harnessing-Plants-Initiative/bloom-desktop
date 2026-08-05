@@ -33,13 +33,19 @@ export function GraviScan() {
   const [resolution, setResolution] = useState<number>(DEFAULT_RESOLUTION_DPI);
   const [saneNames, setSaneNames] = useState<Record<string, string>>({});
 
-  const { waveNumber, setWaveNumber, suggestedNextWave } = useWaveNumber(experimentId);
+  const { waveNumber, setWaveNumber, suggestedNextWave } =
+    useWaveNumber(experimentId);
   const { scanners } = useScannerStatus();
 
-  const scannerIds = useMemo(() => scanners.map((s) => s.scannerId), [scanners]);
+  const scannerIds = useMemo(
+    () => scanners.map((s) => s.scannerId),
+    [scanners]
+  );
   const gridModes = useMemo(
     () =>
-      Object.fromEntries(scanners.map((s) => [s.scannerId, s.gridMode as GridMode])),
+      Object.fromEntries(
+        scanners.map((s) => [s.scannerId, s.gridMode as GridMode])
+      ),
     [scanners]
   );
   const scannerLabels = useMemo(
@@ -138,8 +144,14 @@ export function GraviScan() {
       <h1 className="text-xl font-semibold">Capture Scan</h1>
 
       <div className="flex gap-3 items-center">
-        <ExperimentChooser value={experimentId} onExperimentChange={setExperimentId} />
-        <PhenotyperChooser value={phenotyperId} onPhenotyperChange={setPhenotyperId} />
+        <ExperimentChooser
+          value={experimentId}
+          onExperimentChange={setExperimentId}
+        />
+        <PhenotyperChooser
+          value={phenotyperId}
+          onPhenotyperChange={setPhenotyperId}
+        />
         <label className="flex items-center gap-1">
           Wave
           <input

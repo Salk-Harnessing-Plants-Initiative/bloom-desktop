@@ -28,8 +28,12 @@ export function ScannerStatusPanel({
           <span>{scanner.connectionStatus}</span>
           {' · '}
           <span>{scanner.gridMode}</span>
-          {isScanning && <span> · {progressByScanner[scanner.scannerId] ?? 0}%</span>}
-          {scanner.lastError && <div className="text-sm text-red-700">{scanner.lastError}</div>}
+          {isScanning && (
+            <span> · {progressByScanner[scanner.scannerId] ?? 0}%</span>
+          )}
+          {scanner.lastError && (
+            <div className="text-sm text-red-700">{scanner.lastError}</div>
+          )}
         </div>
       ))}
     </div>

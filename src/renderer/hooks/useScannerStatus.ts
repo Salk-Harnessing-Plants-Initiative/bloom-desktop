@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ScannerPanelState, ScannerStatusRow } from '../../types/graviscan';
+import type {
+  ScannerPanelState,
+  ScannerStatusRow,
+} from '../../types/graviscan';
 
 const STATUS_POLL_INTERVAL_MS = 3000;
 
@@ -62,9 +65,7 @@ export function useScannerStatus(): UseScannerStatusResult {
   }, [refresh]);
 
   useEffect(() => {
-    const anyStarting = scanners.some(
-      (s) => s.connectionStatus === 'starting'
-    );
+    const anyStarting = scanners.some((s) => s.connectionStatus === 'starting');
     if (anyStarting && pollRef.current === null) {
       pollRef.current = setInterval(refresh, STATUS_POLL_INTERVAL_MS);
     } else if (!anyStarting && pollRef.current !== null) {

@@ -15,12 +15,12 @@ them.
       read" an explicit, always-correct parameter instead of something
       inferred from render history).
 - [x] 1.2 Add `@@unique([session_id, scanner_id, plate_index,
-      cycle_number])` to `GraviScan` in `prisma/schema.prisma` (design.md
+cycle_number])` to `GraviScan` in `prisma/schema.prisma` (design.md
       Decision 2, point 4 — enables upsert-based idempotent per-job
       persistence; SQLite treats multiple `NULL`s in a unique index as
       distinct, so existing `session_id: null` rows are unaffected).
 - [x] 1.3 Run `npx prisma migrate dev --name
-      add_wave_number_to_plate_assignment_and_scan_unique_constraint` to
+add_wave_number_to_plate_assignment_and_scan_unique_constraint` to
       generate the migration and regenerate the client.
 - [x] 1.4 Run `./scripts/verify-migrations.sh` to confirm the generated
       migration matches `schema.prisma` (schema/migration parity check,
@@ -45,14 +45,13 @@ them.
       today's behavior unchanged); `waveNumber: 0` is accepted as valid,
       not rejected (already-accepted "Wave Number Zero Validation" spec
       requirement, `scanning/spec.md:117-127`). **Also cover the
-      verification-field-preservation fix (design.md Decision 3, point
-      6)**: `.upsertMany`'s payload does not include
+      verification-field-preservation fix (design.md Decision 3, point 6)**: `.upsertMany`'s payload does not include
       `verification_status`/`previous_plate_barcode` for a position that
       already has those fields set from a prior `verify-plates` run —
       confirm the `update:` clause preserves the existing
       `verification_status`/`previous_plate_barcode` values rather than
       resetting them to `'pending'`/`null`; confirm a payload that
-      *does* explicitly include them (not this tier's own caller, but
+      _does_ explicitly include them (not this tier's own caller, but
       keeping the capability available) still updates them.
 - [x] 2.2 Implement the `waveNumber` parameter and the verification-field
       preservation fix in both handlers
@@ -107,7 +106,7 @@ them.
 - [x] 3.2 In `tests/unit/graviscan/verify-plates.test.ts`, write failing
       tests for the new optional `waveNumber` parameter — **appended as
       the last parameter** in `verifyPlates(db, plates, experimentId,
-      scanOutputDir, onProgress, waveNumber)`, not grouped next to
+scanOutputDir, onProgress, waveNumber)`, not grouped next to
       `experimentId` (design.md Decision 2: this is the only placement
       that doesn't risk silently rebinding an existing positional
       argument at this test file's ~50 existing call sites). Cover:
@@ -130,13 +129,13 @@ them.
       `wave_number: waveNumber` too** (design.md Decision 2 points 4-5,
       now both scoped via the Section 1 schema change) — set up a
       fixture with two waves sharing the same `(scanner_id, plate_index,
-      plate_barcode)` combination and confirm only the wave-matching rows
+plate_barcode)` combination and confirm only the wave-matching rows
       are touched, for both tables. This is a plain mocked-Prisma Vitest
       unit test, consistent with every other test already in this file.
 - [x] 3.3 Implement the `waveNumber` parameter in `verifyPlates()`
       (`src/main/graviscan/verify-plates.ts`): resolve `accessionId` via
       `db.graviExperimentWaveMetadata.findUnique({ where: {
-      experiment_id_wave_number: { experiment_id, wave_number } } })` when
+experiment_id_wave_number: { experiment_id, wave_number } } })` when
       `waveNumber` is provided, scope the plate **lookup** to
       `plate: { metadata_file_id: accessionId }` instead of the existing
       `plate.metadata_file.experiments.some.id` filter for that call only
@@ -153,7 +152,7 @@ them.
       `tests/unit/graviscan/register-handlers.test.ts`, including
       updating its existing exact positional
       `toHaveBeenCalledWith(mockDb, plates, 'exp-1', outputDir,
-      expect.any(Function))` assertion to account for the new trailing
+expect.any(Function))` assertion to account for the new trailing
       argument.
 - [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before starting Section 4.
@@ -166,12 +165,12 @@ them.
       described only the external reference implementation's bug). Match
       `src/main/graviscan/verify-plates.ts`'s real `VerifyStatus` union
       exactly (`verified | incorrect | unreadable | needs_review |
-      duplicate_qr | swapped | lookup_failed` — 7 values), plus
+duplicate_qr | swapped | lookup_failed` — 7 values), plus
       `'pending'` for the DB column's own pre-verification default
       (`schema.prisma:178`). Do **not** include `'skipped'` — it was
       deliberately removed from `VerifyStatus` itself as dead code
       (`openspec/changes/archive/2026-07-30-add-verify-plates-handler/
-      tasks.md:157-158`) and has no live producer or consumer anywhere in
+tasks.md:157-158`) and has no live producer or consumer anywhere in
       this codebase. No dedicated test file — this is a compile-time-only
       type alias with no runtime behavior of its own; every one of its 8
       values is exercised behaviorally by `QRVerificationBanner.test.tsx`
@@ -196,7 +195,7 @@ them.
       swap-correction writes from task 3.2 exercised end-to-end through
       the real IPC bridge.
 - [x] 5.2 Add `verifyPlates(plates, experimentId, scanOutputDir?,
-      waveNumber?)` (matching the final backend signature from Section 3)
+waveNumber?)` (matching the final backend signature from Section 3)
       to `graviAPI` in `src/main/preload.ts`, plus `onVerifyStarted`,
       `onVerifyResult`, `onVerifyComplete` listener wrappers (matching the
       existing `onScanStarted`/`onScanComplete` pattern for cleanup/removal
@@ -257,59 +256,48 @@ comparison — no ref-based "was this a wave switch or a remount" inference
 design.md Decision 3's history).
 
 - [x] 9.1 Write failing tests in
-      `tests/unit/hooks/usePlateAssignments.test.ts` covering:
-      - No linked wave metadata for the current wave → empty, editable
-        positions; a *different* wave's persisted row (even one that
-        exists in the DB) is never loaded or displayed for the current
-        wave (PR #216 regression guard — trivially true now, since
-        `.list()` is called with the current `waveNumber` and only that
-        wave's row can ever come back, but assert it explicitly).
-      - Linked metadata → auto-fill populates `plantBarcode`/
-        `transplantDate`/`customNote`/`selected` in metadata-row order.
-      - **Bootstrap case**: a position with no persisted row yet for the
-        current wave is always populated by the fresh auto-fill
-        computation — never treated as "operator-overridden" merely
-        because "no value" trivially differs from a computed one.
-      - A manual edit to any of those fields, once persisted for the
-        current wave, is detected as operator-overridden on the *next*
-        comparison (persisted value for *this wave* differs from a
-        freshly recomputed auto-fill baseline) and is preserved rather
-        than overwritten when the auto-fill effect re-fires for a
-        non-wave reason (simulate a scanner-assignment change).
-      - The same override survives an unmount/remount of the hook with
-        the manual edit already persisted.
-      - **Wave-switch round-trip**: wave 2 has an operator-overridden
-        value; switch to wave 3 (its own, different linked metadata);
-        confirm wave 3 shows its own fresh values; switch back to wave 2;
-        confirm wave 2's *own* override is restored exactly as it was —
-        not re-derived, not lost. This is the specific regression case
-        review found broken in the ref-based design this section
-        replaces; it must pass here since each wave now reads a distinct,
-        independently-persisted row.
-      - Entering/changing `plantBarcode` manually (in either mode)
-        triggers a case-insensitive match against the loaded
-        `AvailablePlate[]` list and auto-populates `transplantDate`/
-        `customNote` from the matching plate — the actual PR #223 fix
-        (design.md Decision 3, point 4); a barcode with no match leaves
-        date/note untouched rather than clearing them.
-      - `listGraviMetadata()` or `graviPlateAccessions.list()` rejecting
-        or returning `{ success: false }` leaves the grid in its
-        last-known state with an inline error, not a crash or a
-        silently-empty grid.
-      - A linked accession that resolves to **zero**
-        `GraviPlateAccession` rows is visually/textually distinguished
-        (e.g. a warning-styled note) from the "no link exists at all"
-        empty state.
-      - **Out-of-order async response guard (design.md Decision 3, point
-        5)**: issue a fetch for wave A, then before it resolves switch to
-        wave B and let wave B's fetch resolve first, then let wave A's
-        fetch resolve — confirm wave A's (now-stale) response does NOT
-        overwrite wave B's already-rendered state. This is the third,
-        independently-found mechanism for reproducing PR #216's
-        user-visible symptom (the first two — no wave column, and a
-        ref-based wave-switch heuristic — are closed by this section's
-        schema-backed design; this one is a plain async race, closed by a
-        staleness check, not by the schema).
+      `tests/unit/hooks/usePlateAssignments.test.ts` covering: - No linked wave metadata for the current wave → empty, editable
+      positions; a _different_ wave's persisted row (even one that
+      exists in the DB) is never loaded or displayed for the current
+      wave (PR #216 regression guard — trivially true now, since
+      `.list()` is called with the current `waveNumber` and only that
+      wave's row can ever come back, but assert it explicitly). - Linked metadata → auto-fill populates `plantBarcode`/
+      `transplantDate`/`customNote`/`selected` in metadata-row order. - **Bootstrap case**: a position with no persisted row yet for the
+      current wave is always populated by the fresh auto-fill
+      computation — never treated as "operator-overridden" merely
+      because "no value" trivially differs from a computed one. - A manual edit to any of those fields, once persisted for the
+      current wave, is detected as operator-overridden on the _next_
+      comparison (persisted value for _this wave_ differs from a
+      freshly recomputed auto-fill baseline) and is preserved rather
+      than overwritten when the auto-fill effect re-fires for a
+      non-wave reason (simulate a scanner-assignment change). - The same override survives an unmount/remount of the hook with
+      the manual edit already persisted. - **Wave-switch round-trip**: wave 2 has an operator-overridden
+      value; switch to wave 3 (its own, different linked metadata);
+      confirm wave 3 shows its own fresh values; switch back to wave 2;
+      confirm wave 2's _own_ override is restored exactly as it was —
+      not re-derived, not lost. This is the specific regression case
+      review found broken in the ref-based design this section
+      replaces; it must pass here since each wave now reads a distinct,
+      independently-persisted row. - Entering/changing `plantBarcode` manually (in either mode)
+      triggers a case-insensitive match against the loaded
+      `AvailablePlate[]` list and auto-populates `transplantDate`/
+      `customNote` from the matching plate — the actual PR #223 fix
+      (design.md Decision 3, point 4); a barcode with no match leaves
+      date/note untouched rather than clearing them. - `listGraviMetadata()` or `graviPlateAccessions.list()` rejecting
+      or returning `{ success: false }` leaves the grid in its
+      last-known state with an inline error, not a crash or a
+      silently-empty grid. - A linked accession that resolves to **zero**
+      `GraviPlateAccession` rows is visually/textually distinguished
+      (e.g. a warning-styled note) from the "no link exists at all"
+      empty state. - **Out-of-order async response guard (design.md Decision 3, point 5)**: issue a fetch for wave A, then before it resolves switch to
+      wave B and let wave B's fetch resolve first, then let wave A's
+      fetch resolve — confirm wave A's (now-stale) response does NOT
+      overwrite wave B's already-rendered state. This is the third,
+      independently-found mechanism for reproducing PR #216's
+      user-visible symptom (the first two — no wave column, and a
+      ref-based wave-switch heuristic — are closed by this section's
+      schema-backed design; this one is a plain async race, closed by a
+      staleness check, not by the schema).
 - [x] 9.2 Implement `src/renderer/hooks/usePlateAssignments.ts` to satisfy
       9.1, calling `graviscanPlateAssignments.list`/`.upsertMany` (task
       2.2) with the current `waveNumber` on every read/write, and guarding
@@ -390,7 +378,7 @@ other out of order.
       is called with `experimentId`/`phenotyperId`/mode/interval/
       duration; on each job completion, **`database.graviscans.create(...)`
       — the existing, unchanged renderer-facing method name; task 2.3/2.4
-      make its *internal* Prisma call idempotent via `upsert()`, this hook
+      make its _internal_ Prisma call idempotent via `upsert()`, this hook
       does not call a different method** — is called with the completed
       job's `experimentId`, `phenotyperId`, `scannerId`, `plateIndex`,
       `waveNumber` (including `0`), `sessionId`, `cycleNumber`,
@@ -419,7 +407,7 @@ other out of order.
       selected** experiment+wave, the hook surfaces a non-blocking
       informational state naming the expected cycle count; no marker for
       the current experiment+wave (including one that exists for a
-      *different* wave of the same experiment) produces no banner.
+      _different_ wave of the same experiment) produces no banner.
 - [x] 12.6 Implement to satisfy 12.5.
 - [x] 12.7 Write failing tests (same file) for Decision 6 (wedge-blocks-
       start): the hook (or the component consuming it) reads active-wedge
@@ -501,7 +489,7 @@ other out of order.
 - [x] 15.2 Implement `src/renderer/GraviScan.tsx` to satisfy 15.1,
       composing all hooks and components from Sections 7–14.
 - [x] 15.3 Add the `capture-scan` route to `App.tsx`'s `mode ===
-      'graviscan'` block; update `tests/unit/pages/App.test.tsx` to cover
+'graviscan'` block; update `tests/unit/pages/App.test.tsx` to cover
       it and to confirm **CylinderScan mode's own `/capture-scan` route
       (`CaptureScan.tsx`) renders unchanged**.
 - [x] 15.4 Add a "Capture Scan" entry to `graviscanLinks` in
@@ -535,4 +523,4 @@ other out of order.
       for that wave. This is a live-Electron check, not a substitute for
       the automated suites above.
 - [ ] 16.7 Run `openspec validate add-graviscan-capture-scan-screen
-      --strict` and resolve any issues.
+--strict` and resolve any issues.

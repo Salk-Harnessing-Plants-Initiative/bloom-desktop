@@ -2831,7 +2831,10 @@ test.describe('Renderer Database IPC - GraviScan graviscans.*', () => {
   test('create is idempotent for the same (session_id, scanner_id, plate_index, cycle_number) through the real IPC bridge', async () => {
     const fx = await seedGraviScanFixture();
     const session = await prisma.graviScanSession.create({
-      data: { experiment_id: fx.experiment.id, phenotyper_id: fx.phenotyper.id },
+      data: {
+        experiment_id: fx.experiment.id,
+        phenotyper_id: fx.phenotyper.id,
+      },
     });
 
     const payload = {

@@ -51,16 +51,21 @@ export function ScanFormSection({
       )}
       {waveLinkedButEmpty && (
         <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded p-2 text-sm">
-          This wave&apos;s linked accession has no plates — enter plate info manually.
+          This wave&apos;s linked accession has no plates — enter plate info
+          manually.
         </div>
       )}
       {isGraviMetadata && !waveLinkedButEmpty && (
-        <div className="text-sm text-gray-500">Auto-filled from linked metadata.</div>
+        <div className="text-sm text-gray-500">
+          Auto-filled from linked metadata.
+        </div>
       )}
 
       {scannerIds.map((scannerId) => (
         <div key={scannerId} data-testid={`scan-form-scanner-${scannerId}`}>
-          <div className="font-semibold">{scannerLabels[scannerId] ?? scannerId}</div>
+          <div className="font-semibold">
+            {scannerLabels[scannerId] ?? scannerId}
+          </div>
           <div className="space-y-2">
             {(assignmentsByScanner[scannerId] || []).map((plate) => {
               const inputId = `${scannerId}-${plate.plateIndex}-barcode`;
@@ -81,7 +86,12 @@ export function ScanFormSection({
                     type="text"
                     value={plate.plantBarcode ?? ''}
                     onChange={(e) =>
-                      updateField(scannerId, plate.plateIndex, 'plantBarcode', e.target.value || null)
+                      updateField(
+                        scannerId,
+                        plate.plateIndex,
+                        'plantBarcode',
+                        e.target.value || null
+                      )
                     }
                   />
                   <input
@@ -89,7 +99,12 @@ export function ScanFormSection({
                     aria-label="Transplant Date"
                     value={plate.transplantDate ?? ''}
                     onChange={(e) =>
-                      updateField(scannerId, plate.plateIndex, 'transplantDate', e.target.value || null)
+                      updateField(
+                        scannerId,
+                        plate.plateIndex,
+                        'transplantDate',
+                        e.target.value || null
+                      )
                     }
                   />
                   <input
@@ -97,7 +112,12 @@ export function ScanFormSection({
                     aria-label="Custom Note"
                     value={plate.customNote ?? ''}
                     onChange={(e) =>
-                      updateField(scannerId, plate.plateIndex, 'customNote', e.target.value || null)
+                      updateField(
+                        scannerId,
+                        plate.plateIndex,
+                        'customNote',
+                        e.target.value || null
+                      )
                     }
                   />
                 </div>

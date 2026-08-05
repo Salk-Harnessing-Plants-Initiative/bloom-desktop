@@ -36,9 +36,7 @@ const BASE_SECONDS_PER_PLATE = 59;
  * DPI/region — derived from: (300 - 2 * BASE_SECONDS_PER_PLATE) / 5. */
 const BASE_SECONDS_PER_SCANNER_OVERHEAD = 36.4;
 
-export function estimateCycleSeconds(
-  input: CadenceEstimatorInput
-): number {
+export function estimateCycleSeconds(input: CadenceEstimatorInput): number {
   const { platesPerScanner, scannerCount, dpi, regionMm } = input;
   const dpiScale = dpi / BASE_DPI;
   const regionScale = regionMm.height / BASE_REGION_HEIGHT_MM;

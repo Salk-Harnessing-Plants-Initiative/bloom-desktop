@@ -197,7 +197,7 @@ linked metadata" below.
   whose `metadata_file_id` equals that specific `accessionId` — not to every
   accession ever linked to the experiment via the legacy single
   `Experiment.accession_id` relation
-- **AND** a QR code belonging to a plate from a *different* wave's linked
+- **AND** a QR code belonging to a plate from a _different_ wave's linked
   accession SHALL NOT match, even if that other accession is also linked to
   the same experiment (for a different wave)
 

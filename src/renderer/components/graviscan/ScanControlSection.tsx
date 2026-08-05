@@ -41,9 +41,11 @@ export function ScanControlSection({
 
   useEffect(() => {
     const gravi = (window as any).electron.gravi;
-    const cleanupOvertime = gravi.onOvertime?.((data: { overtimeMs: number }) => {
-      setOvertimeMs(data.overtimeMs);
-    });
+    const cleanupOvertime = gravi.onOvertime?.(
+      (data: { overtimeMs: number }) => {
+        setOvertimeMs(data.overtimeMs);
+      }
+    );
     return () => cleanupOvertime?.();
   }, []);
 
@@ -51,7 +53,9 @@ export function ScanControlSection({
     if (!scanSession.isScanning) setOvertimeMs(null);
   }, [scanSession.isScanning]);
 
-  const intervalError = continuousMode.isContinuous ? continuousMode.validate() : null;
+  const intervalError = continuousMode.isContinuous
+    ? continuousMode.validate()
+    : null;
 
   async function handleCancel() {
     setIsCancelling(true);
@@ -90,8 +94,8 @@ export function ScanControlSection({
 
       {waveMissingMetadata && !anyPlateFilled && (
         <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded p-2 text-sm">
-          No plates have been filled in for this wave yet — fill in plate
-          info before starting, or proceed if this is intentional.
+          No plates have been filled in for this wave yet — fill in plate info
+          before starting, or proceed if this is intentional.
         </div>
       )}
 
@@ -100,8 +104,8 @@ export function ScanControlSection({
           data-testid="abnormal-termination-banner"
           className="bg-amber-50 border border-amber-300 text-amber-800 rounded p-2 text-sm"
         >
-          A previous scan session for this wave did not finish cleanly —
-          it expected {scanSession.abnormalTermination.expectedCycles} cycle
+          A previous scan session for this wave did not finish cleanly — it
+          expected {scanSession.abnormalTermination.expectedCycles} cycle
           {scanSession.abnormalTermination.expectedCycles === 1 ? '' : 's'}.
           Check completeness before trusting this wave&apos;s data.
         </div>
@@ -140,7 +144,9 @@ export function ScanControlSection({
               <input
                 type="number"
                 value={continuousMode.intervalMinutes}
-                onChange={(e) => continuousMode.setIntervalMinutes(Number(e.target.value))}
+                onChange={(e) =>
+                  continuousMode.setIntervalMinutes(Number(e.target.value))
+                }
               />
             </label>
             <label className="flex items-center gap-1">
@@ -148,7 +154,9 @@ export function ScanControlSection({
               <input
                 type="number"
                 value={continuousMode.durationHours}
-                onChange={(e) => continuousMode.setDurationHours(Number(e.target.value))}
+                onChange={(e) =>
+                  continuousMode.setDurationHours(Number(e.target.value))
+                }
               />
             </label>
           </>

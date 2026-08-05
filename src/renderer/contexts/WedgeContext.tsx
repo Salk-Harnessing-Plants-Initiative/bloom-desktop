@@ -15,7 +15,10 @@
  * state regardless of which one mounted more recently.
  */
 import { createContext, useContext, type ReactNode } from 'react';
-import { useWedgeEvents, type UseWedgeEventsResult } from '../hooks/useWedgeEvents';
+import {
+  useWedgeEvents,
+  type UseWedgeEventsResult,
+} from '../hooks/useWedgeEvents';
 
 const WedgeContext = createContext<UseWedgeEventsResult | null>(null);
 

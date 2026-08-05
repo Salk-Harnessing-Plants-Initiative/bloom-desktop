@@ -16,7 +16,9 @@ function plate(overrides: Partial<PlateAssignment> = {}): PlateAssignment {
   };
 }
 
-function baseProps(overrides: Partial<Parameters<typeof ScanFormSection>[0]> = {}) {
+function baseProps(
+  overrides: Partial<Parameters<typeof ScanFormSection>[0]> = {}
+) {
   return {
     scannerIds: ['sc-1'],
     scannerLabels: { 'sc-1': 'Scanner 1' },
@@ -38,7 +40,9 @@ describe('ScanFormSection', () => {
         {...baseProps({
           isGraviMetadata: true,
           waveMissingMetadata: false,
-          assignmentsByScanner: { 'sc-1': [plate({ plantBarcode: 'PLATE_001' })] },
+          assignmentsByScanner: {
+            'sc-1': [plate({ plantBarcode: 'PLATE_001' })],
+          },
         })}
       />
     );
@@ -64,7 +68,12 @@ describe('ScanFormSection', () => {
     const input = screen.getByLabelText(/plant barcode/i);
     await user.type(input, 'X');
 
-    expect(updateField).toHaveBeenCalledWith('sc-1', '00', 'plantBarcode', expect.any(String));
+    expect(updateField).toHaveBeenCalledWith(
+      'sc-1',
+      '00',
+      'plantBarcode',
+      expect.any(String)
+    );
   });
 
   it('the selected checkbox toggles via toggleSelected', async () => {
@@ -77,24 +86,42 @@ describe('ScanFormSection', () => {
   });
 
   it('shows the "no link" empty state distinctly when the wave has no linked metadata', () => {
-    render(<ScanFormSection {...baseProps({ waveMissingMetadata: true, waveLinkedButEmpty: false })} />);
+    render(
+      <ScanFormSection
+        {...baseProps({ waveMissingMetadata: true, waveLinkedButEmpty: false })}
+      />
+    );
     expect(screen.getByText(/no metadata linked/i)).toBeInTheDocument();
-    expect(screen.queryByText(/linked accession has no plates/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/linked accession has no plates/i)
+    ).not.toBeInTheDocument();
   });
 
   it('shows the "linked but empty accession" warning distinctly from the "no link" state', () => {
     render(
       <ScanFormSection
-        {...baseProps({ waveMissingMetadata: false, waveLinkedButEmpty: true, isGraviMetadata: true })}
+        {...baseProps({
+          waveMissingMetadata: false,
+          waveLinkedButEmpty: true,
+          isGraviMetadata: true,
+        })}
       />
     );
-    expect(screen.getByText(/linked accession has no plates/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/linked accession has no plates/i)
+    ).toBeInTheDocument();
     expect(screen.queryByText(/no metadata linked/i)).not.toBeInTheDocument();
   });
 
   it('renders the auto-fill IPC-failure inline error when loadError is set', () => {
-    render(<ScanFormSection {...baseProps({ loadError: 'Failed to load wave metadata' })} />);
-    expect(screen.getByText(/Failed to load wave metadata/)).toBeInTheDocument();
+    render(
+      <ScanFormSection
+        {...baseProps({ loadError: 'Failed to load wave metadata' })}
+      />
+    );
+    expect(
+      screen.getByText(/Failed to load wave metadata/)
+    ).toBeInTheDocument();
   });
 
   it('renders one section per scanner using the provided label', () => {
@@ -103,7 +130,10 @@ describe('ScanFormSection', () => {
         {...baseProps({
           scannerIds: ['sc-1', 'sc-2'],
           scannerLabels: { 'sc-1': 'Scanner 1', 'sc-2': 'Scanner 2' },
-          assignmentsByScanner: { 'sc-1': [plate()], 'sc-2': [plate({ plateIndex: '01' })] },
+          assignmentsByScanner: {
+            'sc-1': [plate()],
+            'sc-2': [plate({ plateIndex: '01' })],
+          },
         })}
       />
     );

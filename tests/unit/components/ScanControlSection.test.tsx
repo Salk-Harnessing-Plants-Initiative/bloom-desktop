@@ -7,7 +7,9 @@ import type { UseScanSessionResult } from '../../../src/renderer/hooks/useScanSe
 import type { UseContinuousModeResult } from '../../../src/renderer/hooks/useContinuousMode';
 import type { UseTestScanResult } from '../../../src/renderer/hooks/useTestScan';
 
-function scanSession(overrides: Partial<UseScanSessionResult> = {}): UseScanSessionResult {
+function scanSession(
+  overrides: Partial<UseScanSessionResult> = {}
+): UseScanSessionResult {
   return {
     isScanning: false,
     pendingJobs: {},
@@ -28,7 +30,9 @@ function scanSession(overrides: Partial<UseScanSessionResult> = {}): UseScanSess
   };
 }
 
-function continuousMode(overrides: Partial<UseContinuousModeResult> = {}): UseContinuousModeResult {
+function continuousMode(
+  overrides: Partial<UseContinuousModeResult> = {}
+): UseContinuousModeResult {
   return {
     isContinuous: false,
     setIsContinuous: vi.fn(),
@@ -37,12 +41,19 @@ function continuousMode(overrides: Partial<UseContinuousModeResult> = {}): UseCo
     durationHours: 1,
     setDurationHours: vi.fn(),
     validate: vi.fn().mockReturnValue(null),
-    cadenceContext: { platesPerScanner: 2, scannerCount: 1, dpi: 1200, regionMm: { width: 140, height: 140 } },
+    cadenceContext: {
+      platesPerScanner: 2,
+      scannerCount: 1,
+      dpi: 1200,
+      regionMm: { width: 140, height: 140 },
+    },
     ...overrides,
   };
 }
 
-function testScan(overrides: Partial<UseTestScanResult> = {}): UseTestScanResult {
+function testScan(
+  overrides: Partial<UseTestScanResult> = {}
+): UseTestScanResult {
   return {
     isTesting: false,
     testResults: {},
@@ -88,15 +99,25 @@ describe('ScanControlSection', () => {
   it('Start button calls scanSession.startScan', async () => {
     const start = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
-    render(<ScanControlSection {...baseProps({ scanSession: scanSession({ startScan: start }) })} />);
+    render(
+      <ScanControlSection
+        {...baseProps({ scanSession: scanSession({ startScan: start }) })}
+      />
+    );
 
     await user.click(screen.getByRole('button', { name: /^start scan$/i }));
     expect(start).toHaveBeenCalled();
   });
 
   it('Start button is disabled while WedgeContext (surfaced via canStartScan) reports an active wedge', () => {
-    render(<ScanControlSection {...baseProps({ scanSession: scanSession({ canStartScan: false }) })} />);
-    expect(screen.getByRole('button', { name: /^start scan$/i })).toBeDisabled();
+    render(
+      <ScanControlSection
+        {...baseProps({ scanSession: scanSession({ canStartScan: false }) })}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: /^start scan$/i })
+    ).toBeDisabled();
   });
 
   it('Cancel button calls scanSession.cancelScan and is disabled while a cancel is in flight', async () => {
@@ -110,7 +131,9 @@ describe('ScanControlSection', () => {
     const user = userEvent.setup();
     render(
       <ScanControlSection
-        {...baseProps({ scanSession: scanSession({ isScanning: true, cancelScan: cancel }) })}
+        {...baseProps({
+          scanSession: scanSession({ isScanning: true, cancelScan: cancel }),
+        })}
       />
     );
 
@@ -127,7 +150,9 @@ describe('ScanControlSection', () => {
   it('renders the scanSession error banner (covers the Cancel-rejection error from task 12.1)', () => {
     render(
       <ScanControlSection
-        {...baseProps({ scanSession: scanSession({ error: 'IPC channel closed' }) })}
+        {...baseProps({
+          scanSession: scanSession({ error: 'IPC channel closed' }),
+        })}
       />
     );
     expect(screen.getByText(/IPC channel closed/)).toBeInTheDocument();
@@ -139,7 +164,11 @@ describe('ScanControlSection', () => {
         {...baseProps({
           continuousMode: continuousMode({
             isContinuous: true,
-            validate: vi.fn().mockReturnValue('Interval must be a positive number of minutes.'),
+            validate: vi
+              .fn()
+              .mockReturnValue(
+                'Interval must be a positive number of minutes.'
+              ),
           }),
         })}
       />
@@ -152,7 +181,9 @@ describe('ScanControlSection', () => {
   it('renders the overtime banner when the coordinator fires an overtime event', () => {
     render(
       <ScanControlSection
-        {...baseProps({ scanSession: scanSession({ isScanning: true, currentCycle: 3 }) })}
+        {...baseProps({
+          scanSession: scanSession({ isScanning: true, currentCycle: 3 }),
+        })}
       />
     );
     expect(screen.queryByTestId('overtime-banner')).not.toBeInTheDocument();
@@ -168,34 +199,50 @@ describe('ScanControlSection', () => {
         {...baseProps({ waveMissingMetadata: true, anyPlateFilled: false })}
       />
     );
-    expect(screen.getByText(/no plates have been (filled|assigned)/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/no plates have been (filled|assigned)/i)
+    ).toBeInTheDocument();
     // Non-blocking: Start remains enabled by this warning alone.
-    expect(screen.getByRole('button', { name: /^start scan$/i })).not.toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /^start scan$/i })
+    ).not.toBeDisabled();
   });
 
   it('does not show the pre-start warning once at least one plate has been filled in', () => {
     render(
-      <ScanControlSection {...baseProps({ waveMissingMetadata: true, anyPlateFilled: true })} />
+      <ScanControlSection
+        {...baseProps({ waveMissingMetadata: true, anyPlateFilled: true })}
+      />
     );
-    expect(screen.queryByText(/no plates have been (filled|assigned)/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/no plates have been (filled|assigned)/i)
+    ).not.toBeInTheDocument();
   });
 
   it('renders the abnormal-termination banner with the expected cycle count', () => {
     render(
       <ScanControlSection
         {...baseProps({
-          scanSession: scanSession({ abnormalTermination: { expectedCycles: 6 } }),
+          scanSession: scanSession({
+            abnormalTermination: { expectedCycles: 6 },
+          }),
         })}
       />
     );
     expect(screen.getByText(/6/)).toBeInTheDocument();
-    expect(screen.getByText(/did not finish|never finished|incomplete/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/did not finish|never finished|incomplete/i)
+    ).toBeInTheDocument();
   });
 
   it('Test Scan button invokes useTestScan.testAllScanners', async () => {
     const run = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
-    render(<ScanControlSection {...baseProps({ testScan: testScan({ testAllScanners: run }) })} />);
+    render(
+      <ScanControlSection
+        {...baseProps({ testScan: testScan({ testAllScanners: run }) })}
+      />
+    );
 
     await user.click(screen.getByRole('button', { name: /test scan/i }));
     expect(run).toHaveBeenCalled();
@@ -204,7 +251,11 @@ describe('ScanControlSection', () => {
   it("renders useTestScan's blocking output-dir-failure error", () => {
     render(
       <ScanControlSection
-        {...baseProps({ testScan: testScan({ error: 'Could not determine the scan output directory.' }) })}
+        {...baseProps({
+          testScan: testScan({
+            error: 'Could not determine the scan output directory.',
+          }),
+        })}
       />
     );
     expect(
@@ -221,7 +272,9 @@ describe('ScanControlSection', () => {
       />
     );
 
-    await user.click(screen.getByRole('checkbox', { name: /continuous scan/i }));
+    await user.click(
+      screen.getByRole('checkbox', { name: /continuous scan/i })
+    );
     expect(setIsContinuous).toHaveBeenCalledWith(true);
   });
 
@@ -230,7 +283,11 @@ describe('ScanControlSection', () => {
     const setDurationHours = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(
-      <ScanControlSection {...baseProps({ continuousMode: continuousMode({ isContinuous: false }) })} />
+      <ScanControlSection
+        {...baseProps({
+          continuousMode: continuousMode({ isContinuous: false }),
+        })}
+      />
     );
     expect(screen.queryByLabelText(/interval/i)).not.toBeInTheDocument();
 

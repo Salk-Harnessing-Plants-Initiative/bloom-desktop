@@ -1363,12 +1363,7 @@ describe('registerGraviScanHandlers', () => {
         },
       ];
 
-      await mockIpcMain._invoke(
-        'graviscan:verify-plates',
-        plates,
-        'exp-1',
-        2
-      );
+      await mockIpcMain._invoke('graviscan:verify-plates', plates, 'exp-1', 2);
 
       expect(verifyPlatesHandlers.verifyPlates).toHaveBeenCalledWith(
         mockDb,

@@ -51,7 +51,7 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   (confirmed 1,508 lines of unused code via `git grep`).
 - **BREAKING**: none. `verifyPlates()`, its IPC handler, and its preload
   binding gain an **optional** `waveNumber` parameter, appended as the
-  *last* parameter in each signature (not grouped next to `experimentId`)
+  _last_ parameter in each signature (not grouped next to `experimentId`)
   — the only placement that doesn't risk silently rebinding an existing
   positional argument at `verifyPlates()`'s ~50 existing call sites.
   Every existing caller/test that omits it keeps today's behavior
@@ -64,11 +64,11 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   default-backed changes with no data loss to existing rows. See
   design.md's Migration Plan.
 - Wave-scoped QR verification (issue #162): when `waveNumber` is supplied,
-  the plate *lookup* resolves the wave's linked accession via
+  the plate _lookup_ resolves the wave's linked accession via
   `GraviExperimentWaveMetadata` and scopes the `GraviPlateSectionMapping`
   lookup to that accession directly, rather than the existing
   experiment-wide (legacy single-accession-relation) scope. The
-  swap-correction `GraviScan` *write* is scoped to the same wave (via
+  swap-correction `GraviScan` _write_ is scoped to the same wave (via
   `GraviScan.wave_number`, which already exists), so a wave-precise read
   is never paired with an experiment-wide write that could touch another
   wave's scan history — this depends on `useScanSession` actually calling
@@ -93,7 +93,7 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   level, not by renderer-side inference.** Two prior review rounds each
   found a real bug in a purely renderer-side approach to "did the operator
   override this value" (round 1: an in-memory `Set` that doesn't survive
-  remount; round 2: a ref-based wave-switch heuristic that *also* doesn't
+  remount; round 2: a ref-based wave-switch heuristic that _also_ doesn't
   survive remount, and could silently discard a real operator override on
   ordinary navigation — a worse bug than the display glitch it fixed).
   The actual fix: `GraviScanPlateAssignment` gains the `wave_number`
@@ -162,7 +162,7 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   constraint, `GraviScan`'s new unique constraint),
   `src/renderer/GraviScan.tsx` (new),
   `src/renderer/hooks/{useScannerStatus,useWaveNumber,usePlateAssignments,
-  useContinuousMode,useScanSession,useTestScan}.ts` (new),
+useContinuousMode,useScanSession,useTestScan}.ts` (new),
   `src/renderer/components/graviscan/*` (new),
   `src/renderer/components/WedgeBanner.tsx` (modified — its internal
   `useWedgeEvents()` call moves up into a new `WedgeContext`),
@@ -180,7 +180,7 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   exists in this repo today; this is a creation, not a "unification" of
   anything currently present),
   `tests/unit/graviscan/{verify-plates,register-handlers,
-  database-handlers}.test.ts`,
+database-handlers}.test.ts`,
   `tests/unit/preload-database-graviscan.test.ts` (existing positional
   assertions for `graviscanPlateAssignments.list`/`.upsertMany` need the
   new trailing `waveNumber` argument),
@@ -189,12 +189,12 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   idempotency — both are `db:*` channels squarely inside this file's
   existing static IPC-coverage gate, unlike `graviscan:verify-plates`),
   `tests/unit/hooks/{useScannerStatus,useWaveNumber,usePlateAssignments,
-  useContinuousMode,useScanSession,useTestScan}.test.ts` (new, matching
+useContinuousMode,useScanSession,useTestScan}.test.ts` (new, matching
   this repo's existing convention — e.g. `tests/unit/hooks/
-  useWedgeEvents.test.ts` — not a `tests/unit/renderer/` prefix),
+useWedgeEvents.test.ts` — not a `tests/unit/renderer/` prefix),
   `tests/unit/components/{CadenceWarningBanner,QRVerificationBanner,
-  ScanFormSection,ScanControlSection,ScannerStatusPanel,
-  WedgeContext}.test.tsx` (new, matching e.g.
+ScanFormSection,ScanControlSection,ScannerStatusPanel,
+WedgeContext}.test.tsx` (new, matching e.g.
   `tests/unit/components/WedgeBanner.test.tsx`),
   `tests/unit/cadenceEstimator.test.ts` (pure utility — this repo's
   convention for such files is a flat path directly under `tests/unit/`,
@@ -204,7 +204,7 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   `tests/unit/pages/{App,Layout,GraviScan}.test.tsx` (existing `App.test.tsx`/
   `Layout.test.tsx` modified, new `GraviScan.test.tsx` — matching e.g.
   `tests/unit/pages/ConfigureScanner.test.tsx`), `tests/e2e/
-  graviscan-ipc.e2e.ts` (the actual existing home for `gravi.*` IPC
+graviscan-ipc.e2e.ts` (the actual existing home for `gravi.*` IPC
   round-trip E2E coverage — not `renderer-database-ipc.e2e.ts`, which
   covers the separate `db:*` namespace and its own static coverage gate,
   unrelated to `graviscan:*` handlers).
@@ -226,7 +226,7 @@ across waves), #213 (scanner status stuck on "Connecting..."), and #223
   `add-wave-scoped-metadata-linking` (merged PR #278, archived
   `openspec/changes/archive/2026-08-04-add-wave-scoped-metadata-linking/`).
   Unblocks Tier 5 no further than it already was (Tier 5 depends on Tier 2
-  + PR #278, not on this change).
+  - PR #278, not on this change).
 - Coordination: a separate concurrent worktree is working Tier 5 (Browse/
   Experiment Detail/Metadata UI) in its own session. Both tiers touch
   `WorkflowSteps.tsx`/`Layout.tsx`, but each only rewires its own named

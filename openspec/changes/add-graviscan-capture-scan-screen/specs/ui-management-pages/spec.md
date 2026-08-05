@@ -71,7 +71,7 @@ only within the same continuous session on the same wave.
 
 Switching wave or experiment SHALL show the newly-selected wave's own
 persisted data (auto-filled fresh, if no override exists for that wave, or
-empty if the new wave has no metadata link) — a *different* wave's
+empty if the new wave has no metadata link) — a _different_ wave's
 persisted values SHALL NOT be compared against, loaded into, or otherwise
 influence the newly-selected wave's positions, since each wave's data is
 independently scoped.
@@ -349,7 +349,7 @@ SHALL check for a marker matching the **currently selected**
 `experimentId`/`waveNumber`; if one is present, the previous session for
 that exact wave never cleanly finished, and the screen SHALL show a
 non-blocking informational banner naming the expected cycle count. A
-marker belonging to a *different* wave of the same experiment SHALL NOT
+marker belonging to a _different_ wave of the same experiment SHALL NOT
 trigger this banner while viewing the current wave. This is read-only
 with respect to scan state: it does not restore the session, it only
 informs the operator that data completeness for that wave's most recent
@@ -444,8 +444,8 @@ per-plate `verification_status` values:
   ("Verification Lookup Failed" — pinned as its own exact title, distinct
   from the other three; a `lookup_failed` plate's image was never
   successfully checked at all, so folding it under "Manual Review Needed"
-  would wrongly tell the operator to *review* a result rather than
-  *retry* the run).
+  would wrongly tell the operator to _review_ a result rather than
+  _retry_ the run).
 - **Green** ("QR Verification Complete") when every plate has status
   `verified` or `swapped`.
 

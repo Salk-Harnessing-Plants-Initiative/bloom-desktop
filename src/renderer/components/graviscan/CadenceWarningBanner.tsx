@@ -7,7 +7,10 @@
  * exceeded) is a separate, unchanged concern — this component only
  * covers the predictive, pre-start warning.
  */
-import { estimateCycleSeconds, type CadenceEstimatorInput } from '../../utils/cadenceEstimator';
+import {
+  estimateCycleSeconds,
+  type CadenceEstimatorInput,
+} from '../../utils/cadenceEstimator';
 
 export interface CadenceWarningBannerProps {
   cadenceContext: CadenceEstimatorInput;
@@ -31,8 +34,8 @@ export function CadenceWarningBanner({
       className="bg-amber-50 border border-amber-300 text-amber-800 rounded p-3 text-sm"
     >
       Predicted scan time (~{estimatedMinutes} min) exceeds the configured
-      interval ({intervalMinutes} min). Reduce wall time by using fewer
-      plates, a lower DPI, or a smaller region — or increase the interval.
+      interval ({intervalMinutes} min). Reduce wall time by using fewer plates,
+      a lower DPI, or a smaller region — or increase the interval.
     </div>
   );
 }
