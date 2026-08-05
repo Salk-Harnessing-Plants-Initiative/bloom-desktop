@@ -863,6 +863,33 @@ describe('useScanSession', () => {
     expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1);
   });
 
+  it('a session where one job errors and the other completes still reaches "all done" (round-2 regression: errored jobs must count toward completion too)', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(2);
+
+    fire('scan-error', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      error: 'sane_start: Invalid argument',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      path: '/out/01.tiff',
+    });
+
+    await waitFor(() => expect(result.current.isScanning).toBe(false));
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(0);
+    await waitFor(() =>
+      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
+    );
+  });
+
   it('startScan() called twice in rapid succession only starts one session', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,

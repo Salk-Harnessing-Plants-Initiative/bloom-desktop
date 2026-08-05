@@ -439,6 +439,23 @@ export function useScanSession(
   useEffect(() => {
     const gravi = (window as any).electron.gravi;
 
+    // Shared by both onScanComplete and onScanError — a job is "accounted
+    // for" (no longer something the session is waiting on) whether it
+    // completed or errored. See the onScanError call site for why errored
+    // jobs must count too.
+    const markJobAccountedFor = (key: string) => {
+      completedKeysRef.current.add(key);
+      const totalJobs = Object.keys(jobTemplateRef.current).length;
+      if (
+        !allDoneFiredRef.current &&
+        completedKeysRef.current.size >= totalJobs
+      ) {
+        allDoneFiredRef.current = true;
+        dispatch({ type: 'SCAN_ENDED' });
+        void finishSession(false);
+      }
+    };
+
     const cleanupComplete = gravi.onScanComplete(
       (data: Record<string, unknown>) => {
         const scannerId = resolveScannerId(data);
@@ -471,16 +488,7 @@ export function useScanSession(
           }
         );
 
-        completedKeysRef.current.add(key);
-        const totalJobs = Object.keys(jobTemplateRef.current).length;
-        if (
-          !allDoneFiredRef.current &&
-          completedKeysRef.current.size >= totalJobs
-        ) {
-          allDoneFiredRef.current = true;
-          dispatch({ type: 'SCAN_ENDED' });
-          void finishSession(false);
-        }
+        markJobAccountedFor(key);
       }
     );
 
@@ -488,13 +496,22 @@ export function useScanSession(
       const scannerId = resolveScannerId(data);
       const plateIndex = resolvePlateIndex(data);
       if (!scannerId || !plateIndex) return;
+      const key = jobKey(scannerId, plateIndex);
       dispatch({
         type: 'JOB_ERROR',
         payload: {
-          key: jobKey(scannerId, plateIndex),
+          key,
           error: (data.error as string) ?? 'Scan error',
         },
       });
+      // An errored job is done being waited on just as much as a completed
+      // one — JOB_ERROR already removes it from state.pendingJobs. Without
+      // also counting it here, a single-mode session where any one job
+      // errors (the rest completing normally) would never reach "all done":
+      // completedKeysRef could never reach the full job count, so
+      // SCAN_ENDED/finishSession would never fire and the session would be
+      // stuck showing isScanning: true forever.
+      markJobAccountedFor(key);
     });
 
     const cleanupCycleComplete = gravi.onCycleComplete?.(() => {
