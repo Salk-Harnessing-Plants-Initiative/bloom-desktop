@@ -509,8 +509,17 @@ other out of order.
       `scan-coordinator.test.ts`'s "regex path rewriting" test. Confirmed
       present on `main` before this tier's work and unaffected by it.
 - [x] 16.3 Run `npx tsc --noEmit`.
-- [ ] 16.4 Run `npm run test:e2e -- tests/e2e/graviscan-ipc.e2e.ts` (full
+- [x] 16.4 Run `npm run test:e2e -- tests/e2e/graviscan-ipc.e2e.ts` (full
       file, not just this tier's new block) and confirm no regressions.
+      **Result:** 15/16 passed, including every Tier 4 test (the
+      `verifyPlates` block, all IPC round-trips, Configure Scanner
+      render/remove). The one failure ("Reset All USB Connections marks
+      rows starting, then settles back to a populated list") is
+      unrelated — it's the pre-existing USB-reset mock-timing test whose
+      own comment already documents it as timing-sensitive (5s bus-release + 5s×2 stagger); reproduced consistently in isolation, most likely
+      due to CPU contention from the concurrently-running dev-server
+      processes needed to keep the Electron renderer bundle servable for
+      Playwright. Not touched by this tier's changes.
 - [x] 16.5 Re-run `./scripts/verify-migrations.sh` and
       `npm run test:db-upgrade` as a final check after all handler
       changes (matching this repo's convention for schema-touching
