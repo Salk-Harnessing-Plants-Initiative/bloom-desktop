@@ -24,6 +24,7 @@ import * as scannerUpsert from './scanner-upsert';
 import * as verifyPlatesHandlers from './verify-plates';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
+import { isValidWaveNumber } from '../database-handlers';
 
 let registered = false;
 
@@ -481,7 +482,12 @@ export function registerGraviScanHandlers(
   // --- Post-scan QR verification ---
   ipcMain.handle(
     'graviscan:verify-plates',
-    (_event, plates: VerifyPlateInput[], experimentId?: unknown) => {
+    (
+      _event,
+      plates: VerifyPlateInput[],
+      experimentId?: unknown,
+      waveNumber?: unknown
+    ) => {
       // Every DB write verifyPlates() performs is keyed on
       // (experiment_id, scanner_id, plate_index). Without an experimentId
       // those writes could hit a *different* experiment's row for the same
@@ -499,6 +505,24 @@ export function registerGraviScanHandlers(
         const error =
           'graviscan:verify-plates requires an experimentId (a non-empty ' +
           'string) — refusing to run verification without an experiment scope';
+        console.error('[GraviScan IPC]', error);
+        return Promise.resolve({
+          success: false,
+          error,
+          results: [],
+          swaps: [],
+        });
+      }
+
+      // waveNumber is optional, but if the caller supplied *something*, it
+      // must be a valid non-negative integer — same validation as every
+      // other waveNumber boundary in this codebase (isValidWaveNumber()),
+      // checked here at the IPC boundary too, not only inside
+      // verifyPlates() itself.
+      if (waveNumber !== undefined && !isValidWaveNumber(waveNumber)) {
+        const error =
+          'graviscan:verify-plates requires waveNumber (when supplied) to ' +
+          'be a non-negative integer';
         console.error('[GraviScan IPC]', error);
         return Promise.resolve({
           success: false,
@@ -558,7 +582,8 @@ export function registerGraviScanHandlers(
         plates,
         experimentId,
         outputDirResult.path,
-        onProgress
+        onProgress,
+        waveNumber as number | undefined
       );
     }
   );

@@ -1341,14 +1341,56 @@ describe('registerGraviScanHandlers', () => {
 
       // The output directory is resolved here and passed in, so
       // verify-plates.ts can do realpath containment without importing
-      // electron itself.
+      // electron itself. waveNumber is appended last (undefined when
+      // omitted) — see verify-plates.ts's own doc comment on why.
       expect(verifyPlatesHandlers.verifyPlates).toHaveBeenCalledWith(
         mockDb,
         plates,
         'exp-1',
         '/home/user/.bloom/graviscan',
-        expect.any(Function)
+        expect.any(Function),
+        undefined
       );
+    });
+
+    it('forwards an explicit waveNumber to verifyPlates', async () => {
+      const plates = [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scan.tif',
+          assignedPlateId: 'Plate_13',
+        },
+      ];
+
+      await mockIpcMain._invoke(
+        'graviscan:verify-plates',
+        plates,
+        'exp-1',
+        2
+      );
+
+      expect(verifyPlatesHandlers.verifyPlates).toHaveBeenCalledWith(
+        mockDb,
+        plates,
+        'exp-1',
+        '/home/user/.bloom/graviscan',
+        expect.any(Function),
+        2
+      );
+    });
+
+    it('rejects an invalid waveNumber before delegating to verifyPlates', async () => {
+      const result = await mockIpcMain._invoke(
+        'graviscan:verify-plates',
+        [],
+        'exp-1',
+        -1
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
+      expect(verifyPlatesHandlers.verifyPlates).not.toHaveBeenCalled();
     });
 
     it('rejects the invocation when the scan output directory cannot be resolved', async () => {

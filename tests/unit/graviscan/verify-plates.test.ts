@@ -58,6 +58,12 @@ function createMockDb() {
       findFirst: vi.fn().mockResolvedValue(null),
       update: vi.fn().mockResolvedValue({}),
     },
+    // Resolves (experimentId, waveNumber) -> the accession linked to that
+    // wave, per add-wave-scoped-metadata-linking. Defaults to "no link" —
+    // individual wave-scoping tests override this per case.
+    graviExperimentWaveMetadata: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
   };
   // Default: a pass-through interactive transaction, so assertions on
   // db.<model>.<op> see the writes issued inside it. Tests that care about
@@ -1416,6 +1422,203 @@ describe('verifyPlates', () => {
     });
   });
 
+  it('omitting waveNumber preserves the existing experiment-wide lookup, unchanged', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('plate_13', 'qr-1'),
+    ]);
+
+    await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    expect(db.graviExperimentWaveMetadata.findUnique).not.toHaveBeenCalled();
+    expect(db.graviPlateSectionMapping.findMany).toHaveBeenCalledWith({
+      where: {
+        plant_qr: { in: ['qr-1'] },
+        plate: {
+          metadata_file: {
+            experiments: { some: { id: 'exp-1' } },
+          },
+        },
+      },
+      include: { plate: true },
+    });
+  });
+
+  it('scopes the lookup to the wave-linked accession when waveNumber is supplied', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviExperimentWaveMetadata.findUnique.mockResolvedValueOnce({
+      accession_id: 'accession-wave-2',
+    });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('plate_13', 'qr-1'),
+    ]);
+
+    await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR,
+      undefined,
+      2
+    );
+
+    expect(db.graviExperimentWaveMetadata.findUnique).toHaveBeenCalledWith({
+      where: {
+        experiment_id_wave_number: { experiment_id: 'exp-1', wave_number: 2 },
+      },
+    });
+    expect(db.graviPlateSectionMapping.findMany).toHaveBeenCalledWith({
+      where: {
+        plant_qr: { in: ['qr-1'] },
+        plate: { metadata_file_id: 'accession-wave-2' },
+      },
+      include: { plate: true },
+    });
+  });
+
+  it('does not match a different wave\'s linked accession plates', async () => {
+    // Same detected QR, but resolved via wave 3's accession — the lookup
+    // filter itself (`metadata_file_id: 'accession-wave-3'`) is what a real
+    // Prisma query would use to exclude wave 2's plates; this test asserts
+    // that filter is actually constructed, not the DB's enforcement of it
+    // (out of scope for a mocked-Prisma unit test).
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviExperimentWaveMetadata.findUnique.mockResolvedValueOnce({
+      accession_id: 'accession-wave-3',
+    });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR,
+      undefined,
+      3
+    );
+
+    expect(db.graviPlateSectionMapping.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          plate: { metadata_file_id: 'accession-wave-3' },
+        }),
+      })
+    );
+    expect(result.results[0].status).toBe('unreadable');
+  });
+
+  it('classifies every plate lookup_failed when waveNumber has no linked metadata, without falling back to unscoped matching', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviExperimentWaveMetadata.findUnique.mockResolvedValueOnce(null);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR,
+      undefined,
+      5
+    );
+
+    expect(result.results[0].status).toBe('lookup_failed');
+    expect(db.graviPlateSectionMapping.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([-1, 1.5, NaN, 'two' as unknown as number, {} as unknown as number])(
+    'rejects an invalid waveNumber (%p) before any decode or DB access',
+    async (badWave) => {
+      setCodes({ '/scans/scan1.tif': ['qr-1'] });
+
+      const result = await verifyPlates(
+        db,
+        [
+          {
+            scannerId: 's1',
+            plateIndex: '00',
+            imagePath: '/scans/scan1.tif',
+            assignedPlateId: 'plate_13',
+          },
+        ],
+        'exp-1',
+        OUTPUT_DIR,
+        undefined,
+        badWave
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
+      expect(mockReadQrCodesBatch).not.toHaveBeenCalled();
+      expect(db.graviExperimentWaveMetadata.findUnique).not.toHaveBeenCalled();
+      expect(db.graviPlateSectionMapping.findMany).not.toHaveBeenCalled();
+    }
+  );
+
+  it('accepts waveNumber: 0 as valid', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviExperimentWaveMetadata.findUnique.mockResolvedValueOnce({
+      accession_id: 'accession-wave-0',
+    });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('plate_13', 'qr-1'),
+    ]);
+
+    const result = await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR,
+      undefined,
+      0
+    );
+
+    expect(result.success).toBe(true);
+    expect(db.graviExperimentWaveMetadata.findUnique).toHaveBeenCalledWith({
+      where: {
+        experiment_id_wave_number: { experiment_id: 'exp-1', wave_number: 0 },
+      },
+    });
+  });
+
   it('refuses to run at all without an experimentId', async () => {
     // GraviScanPlateAssignment is unique on
     // (experiment_id, scanner_id, plate_index) and a scanner is a long-lived
@@ -1668,6 +1871,129 @@ describe('verifyPlates', () => {
         deleted: false,
       },
       data: { plate_barcode: 'plate_16' },
+    });
+  });
+
+  it('scopes every swap-correction write (GraviScan AND GraviScanPlateAssignment) to wave_number when waveNumber was supplied', async () => {
+    // Fixture: two waves share the same (scanner_id, plate_index,
+    // plate_barcode) combination — plate labels are grid-position names,
+    // not globally unique across waves. Only wave 3's rows must be touched.
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviExperimentWaveMetadata.findUnique.mockResolvedValueOnce({
+      accession_id: 'accession-wave-3',
+    });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR,
+      undefined,
+      3
+    );
+
+    for (const call of db.graviScan.updateMany.mock.calls) {
+      expect(call[0].where.wave_number).toBe(3);
+    }
+    for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
+      expect(call[0].where.wave_number).toBe(3);
+    }
+    expect(db.graviScan.updateMany).toHaveBeenCalledWith({
+      where: {
+        experiment_id: 'exp-1',
+        scanner_id: 's1',
+        plate_index: '00',
+        plate_barcode: 'plate_13',
+        deleted: false,
+        wave_number: 3,
+      },
+      data: { plate_barcode: 'plate_16' },
+    });
+  });
+
+  it('does not add a wave_number filter to swap-correction writes when waveNumber was omitted', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-16'], '/scans/scan2.tif': ['qr-13'] });
+    db.graviPlateSectionMapping.findMany
+      .mockResolvedValueOnce([mapping('plate_16', 'qr-16')])
+      .mockResolvedValueOnce([mapping('plate_13', 'qr-13')]);
+
+    await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+        {
+          scannerId: 's1',
+          plateIndex: '11',
+          imagePath: '/scans/scan2.tif',
+          assignedPlateId: 'plate_16',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR
+    );
+
+    for (const call of db.graviScan.updateMany.mock.calls) {
+      expect(call[0].where.wave_number).toBeUndefined();
+    }
+    for (const call of db.graviScanPlateAssignment.updateMany.mock.calls) {
+      expect(call[0].where.wave_number).toBeUndefined();
+    }
+  });
+
+  it('scopes the verification_status write to wave_number when waveNumber was supplied', async () => {
+    setCodes({ '/scans/scan1.tif': ['qr-1'] });
+    db.graviExperimentWaveMetadata.findUnique.mockResolvedValueOnce({
+      accession_id: 'accession-wave-2',
+    });
+    db.graviPlateSectionMapping.findMany.mockResolvedValueOnce([
+      mapping('plate_13', 'qr-1'),
+    ]);
+
+    await verifyPlates(
+      db,
+      [
+        {
+          scannerId: 's1',
+          plateIndex: '00',
+          imagePath: '/scans/scan1.tif',
+          assignedPlateId: 'plate_13',
+        },
+      ],
+      'exp-1',
+      OUTPUT_DIR,
+      undefined,
+      2
+    );
+
+    expect(db.graviScanPlateAssignment.updateMany).toHaveBeenCalledWith({
+      where: {
+        experiment_id: 'exp-1',
+        scanner_id: 's1',
+        plate_index: '00',
+        wave_number: 2,
+      },
+      data: { verification_status: 'verified' },
     });
   });
 

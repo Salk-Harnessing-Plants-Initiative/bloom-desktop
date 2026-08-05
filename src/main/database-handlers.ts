@@ -947,7 +947,7 @@ export async function graviPlateAccessionsDelete(
 /** Largest value Prisma's `Int` column can store (32-bit signed). */
 const INT32_MAX = 2147483647;
 
-function isValidWaveNumber(value: unknown): value is number {
+export function isValidWaveNumber(value: unknown): value is number {
   return (
     typeof value === 'number' &&
     Number.isInteger(value) &&
