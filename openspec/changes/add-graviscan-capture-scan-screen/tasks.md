@@ -366,7 +366,7 @@ features (Decisions 5-6) in one hook, built in dependency order within
 this section rather than split across sections that referenced each
 other out of order.
 
-- [ ] 12.1 Write failing tests in
+- [x] 12.1 Write failing tests in
       `tests/unit/hooks/useScanSession.test.ts` for the reducer core:
       `JOB_COMPLETE` action correctly derives progress from the
       post-update state (no ref-mirroring lag/compensation — design.md
@@ -383,9 +383,9 @@ other out of order.
       when `isActive: false` (design.md Decision 4/Non-Goals);
       verification invocation passes the current `waveNumber` (including
       `waveNumber: 0`) alongside `experimentId`.
-- [ ] 12.2 Implement the reducer core in
+- [x] 12.2 Implement the reducer core in
       `src/renderer/hooks/useScanSession.ts` to satisfy 12.1.
-- [ ] 12.3 Write failing tests (same file) for backend persistence wiring:
+- [x] 12.3 Write failing tests (same file) for backend persistence wiring:
       on `startScan()` success, `database.graviscanSessions.create(...)`
       is called with `experimentId`/`phenotyperId`/mode/interval/
       duration; on each job completion, **`database.graviscans.create(...)`
@@ -408,8 +408,8 @@ other out of order.
       session completion or a successful cancel,
       `database.graviscanSessions.complete(...)` is called with the
       matching `cancelled` flag.
-- [ ] 12.4 Implement this wiring to satisfy 12.3.
-- [ ] 12.5 Write failing tests (same file) for Decision 5 (abnormal-
+- [x] 12.4 Implement this wiring to satisfy 12.3.
+- [x] 12.5 Write failing tests (same file) for Decision 5 (abnormal-
       termination marker): on successful `startScan()`, a `localStorage`
       entry `graviscan:session-in-progress:${experimentId}:${waveNumber}`
       is written with the expected total cycle count; on successful
@@ -420,8 +420,8 @@ other out of order.
       informational state naming the expected cycle count; no marker for
       the current experiment+wave (including one that exists for a
       *different* wave of the same experiment) produces no banner.
-- [ ] 12.6 Implement to satisfy 12.5.
-- [ ] 12.7 Write failing tests (same file) for Decision 6 (wedge-blocks-
+- [x] 12.6 Implement to satisfy 12.5.
+- [x] 12.7 Write failing tests (same file) for Decision 6 (wedge-blocks-
       start): the hook (or the component consuming it) reads active-wedge
       state from `WedgeContext` (Section 11, not a second independent
       `useWedgeEvents()` call) and disables starting while any assigned
@@ -429,7 +429,7 @@ other out of order.
       wedge which occurred **before** this hook/component mounted
       (simulated via context already populated at mount time) still
       correctly blocks Start.
-- [ ] 12.8 Implement to satisfy 12.7.
+- [x] 12.8 Implement to satisfy 12.7.
 
 ## 13. Hook: useTestScan (TDD)
 
