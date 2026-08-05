@@ -51,6 +51,7 @@ interface MockScan {
   contrast?: number;
   gamma?: number;
   seconds_per_rot?: number;
+  deleted?: boolean;
   images: MockImage[];
   experiment?: MockExperiment;
   phenotyper?: MockPhenotyper;
@@ -68,6 +69,7 @@ vi.mock('@salk-hpi/bloom-js', () => ({
 
 vi.mock('@salk-hpi/bloom-fs', () => ({
   uploadImages: vi.fn(),
+  concurrentMap: vi.fn(),
 }));
 
 // Mock config-store
@@ -79,7 +81,7 @@ vi.mock('../../src/main/config-store', () => ({
 // Import after mocking
 import { createClient } from '@supabase/supabase-js';
 import { SupabaseUploader, SupabaseStore } from '@salk-hpi/bloom-js';
-import { uploadImages } from '@salk-hpi/bloom-fs';
+import { uploadImages, concurrentMap } from '@salk-hpi/bloom-fs';
 import { loadEnvConfig, getScansDir } from '../../src/main/config-store';
 
 // Import the module under test (will fail until implemented)
@@ -182,6 +184,28 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
           error: null,
         }),
       },
+      // Default: verification always finds the object present, so
+      // existing tests (not concerned with verification) still see
+      // images marked 'uploaded'. Tests exercising verification itself
+      // override these per-test.
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: { object_path: 'cyl-images/found.png' },
+              error: null,
+            }),
+          }),
+        }),
+      }),
+      storage: {
+        from: vi.fn().mockReturnValue({
+          list: vi.fn().mockResolvedValue({
+            data: [{ name: 'found.png' }],
+            error: null,
+          }),
+        }),
+      },
     };
     (createClient as Mock).mockReturnValue(mockSupabaseClient);
 
@@ -228,6 +252,24 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
     // Setup mock config
     (loadEnvConfig as Mock).mockReturnValue(mockCredentials);
     (getScansDir as Mock).mockReturnValue(mockCredentials.scans_dir);
+
+    // Default concurrentMap: functionally equivalent to bloom-fs's real
+    // implementation (runs asyncFunc for every item, bounded concurrency
+    // doesn't matter for correctness in these tests). Tests that need to
+    // assert the real nWorkers bound do so via toHaveBeenCalledWith.
+    (concurrentMap as Mock).mockImplementation(
+      async (
+        array: unknown[],
+        _nWorkers: number,
+        asyncFunc: (item: unknown, index: number) => Promise<unknown>
+      ) => {
+        const results = [];
+        for (let i = 0; i < array.length; i++) {
+          results.push(await asyncFunc(array[i], i));
+        }
+        return results;
+      }
+    );
 
     // Setup mock Prisma client
     mockPrismaClient = {
@@ -1066,6 +1108,359 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
             phenotyper: true,
           },
         });
+      });
+    });
+
+    /**
+     * add-cylinderscan-delete-upload-integrity, tasks.md 3.1/3.3/3.5/3.7.
+     * See design.md Decisions 7-10 for the full rationale — an earlier
+     * draft also attempted retry-time re-verification of already-
+     * 'uploaded' images; that was found unimplementable during review and
+     * is explicitly out of scope (Decision 9).
+     */
+    describe('soft-delete guard (Decision: Upload Excludes Soft-Deleted Scans)', () => {
+      it('rejects uploadScan for a deleted scan without calling the upload function', async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          deleted: true,
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan('scan-123');
+
+        expect(result.success).toBe(false);
+        expect(uploadImages).not.toHaveBeenCalled();
+        expect(mockPrismaClient.image.update).not.toHaveBeenCalled();
+      });
+
+      it('uploadBatch skips a deleted scan while still processing the others', async () => {
+        mockPrismaClient.scan.findUnique.mockImplementation(
+          ({ where }: { where: { id: string } }) => {
+            if (where.id === 'scan-deleted') {
+              return Promise.resolve({
+                ...mockScan,
+                id: 'scan-deleted',
+                deleted: true,
+              });
+            }
+            return Promise.resolve(mockScan);
+          }
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const results = await uploader.uploadBatch(['scan-deleted', 'scan-123']);
+
+        expect(results).toHaveLength(2);
+        expect(results[0].success).toBe(false);
+        expect(results[1].success).toBe(true);
+        expect(results[1].uploaded).toBe(3);
+      });
+    });
+
+    describe('retry-skip filter and index-safety (Decisions 9 & 10)', () => {
+      function scanWithMixedStatuses(): MockScan {
+        return {
+          ...mockScan,
+          images: [
+            { ...mockScan.images[0], id: 'img-A', status: 'uploaded' },
+            { ...mockScan.images[1], id: 'img-B', status: 'failed' },
+            { ...mockScan.images[2], id: 'img-C', status: 'pending' },
+          ],
+        };
+      }
+
+      it('only passes non-uploaded images to the bloom-fs upload call', async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue(
+          scanWithMixedStatuses()
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan('scan-123');
+
+        const callArgs = (uploadImages as Mock).mock.calls[0];
+        const imagePaths = callArgs[0] as string[];
+        expect(imagePaths).toHaveLength(2);
+        expect(result.total).toBe(2);
+      });
+
+      it("never touches an already-'uploaded' image's status", async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue(
+          scanWithMixedStatuses()
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const updatedImageIds = (
+          mockPrismaClient.image.update as Mock
+        ).mock.calls.map((call) => call[0].where.id);
+        expect(updatedImageIds).not.toContain('img-A');
+      });
+
+      it('applies status updates to the correct image, not by stale array position', async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue(
+          scanWithMixedStatuses()
+        );
+        // bloom-fs reports: filtered index 0 (img-B) succeeds, index 1
+        // (img-C) fails. A naive scan.images[index] implementation would
+        // apply these to img-A (index 0) and img-B (index 1) instead.
+        (uploadImages as Mock).mockImplementation(
+          async (
+            _paths: string[],
+            metadata: unknown[],
+            _uploader: unknown,
+            _store: unknown,
+            opts?: {
+              result?: (
+                index: number,
+                m: unknown,
+                created: number | null,
+                error: unknown
+              ) => void;
+            }
+          ) => {
+            await opts?.result?.(0, metadata[0], 1, null);
+            await opts?.result?.(1, metadata[1], null, new Error('failed'));
+          }
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const updateCalls = (mockPrismaClient.image.update as Mock).mock.calls;
+        const statusById = new Map(
+          updateCalls.map((call) => [call[0].where.id, call[0].data.status])
+        );
+        expect(statusById.get('img-B')).toBe('uploaded');
+        expect(statusById.get('img-C')).toBe('failed');
+        expect(statusById.has('img-A')).toBe(false);
+      });
+
+      it('marks only the filtered subset as uploading, not the already-uploaded image', async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue(
+          scanWithMixedStatuses()
+        );
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const uploadingCalls = (
+          mockPrismaClient.image.update as Mock
+        ).mock.calls.filter((call) => call[0].data.status === 'uploading');
+        const uploadingIds = uploadingCalls.map((call) => call[0].where.id);
+        expect(uploadingIds).not.toContain('img-A');
+        expect(uploadingIds.sort()).toEqual(['img-B', 'img-C']);
+      });
+
+      it('an all-uploaded scan makes zero bloom-fs calls and leaves every status untouched', async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          images: mockScan.images.map((img) => ({
+            ...img,
+            status: 'uploaded' as const,
+          })),
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan('scan-123');
+
+        expect(uploadImages).not.toHaveBeenCalled();
+        expect(mockPrismaClient.image.update).not.toHaveBeenCalled();
+        expect(result.total).toBe(0);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe('storage-existence verification (Decision 7)', () => {
+      it('marks the image uploaded when the object is confirmed present', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan('scan-123');
+
+        expect(result.uploaded).toBe(3);
+        expect(mockPrismaClient.image.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: { status: 'uploaded' } })
+        );
+      });
+
+      it('marks the image failed with a distinguishing message when confirmed missing', async () => {
+        mockSupabaseClient.storage.from.mockReturnValue({
+          list: vi.fn().mockResolvedValue({ data: [], error: null }),
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan('scan-123');
+
+        expect(result.uploaded).toBe(0);
+        expect(result.failed).toBe(3);
+        expect(result.errors[0]).toContain('not found in storage');
+      });
+
+      it('treats a null object_path lookup as inconclusive, not confirmed-missing', async () => {
+        vi.useFakeTimers();
+        mockSupabaseClient.from.mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const uploadPromise = uploader.uploadScan('scan-123');
+        await vi.runAllTimersAsync();
+        const result = await uploadPromise;
+
+        expect(result.failed).toBe(3);
+        expect(result.errors[0]).toContain('verification could not be confirmed');
+        expect(result.errors[0]).not.toContain('not found in storage');
+        vi.useRealTimers();
+      });
+
+      it('retries a transient verification failure and succeeds on a later attempt', async () => {
+        vi.useFakeTimers();
+        let callCount = 0;
+        mockSupabaseClient.from.mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockImplementation(() => {
+                callCount++;
+                if (callCount < 3) {
+                  return Promise.resolve({
+                    data: null,
+                    error: new Error('network error'),
+                  });
+                }
+                return Promise.resolve({
+                  data: { object_path: 'cyl-images/found.png' },
+                  error: null,
+                });
+              }),
+            }),
+          }),
+        });
+        // Single-image scan to keep the attempt count deterministic.
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          images: [mockScan.images[0]],
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const uploadPromise = uploader.uploadScan('scan-123');
+        await vi.runAllTimersAsync();
+        const result = await uploadPromise;
+
+        expect(callCount).toBe(3);
+        expect(result.uploaded).toBe(1);
+        vi.useRealTimers();
+      });
+
+      it('marks failed with a distinct message after exhausting all verification retries', async () => {
+        vi.useFakeTimers();
+        mockSupabaseClient.from.mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi
+                .fn()
+                .mockResolvedValue({ data: null, error: new Error('down') }),
+            }),
+          }),
+        });
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          images: [mockScan.images[0]],
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const uploadPromise = uploader.uploadScan('scan-123');
+        await vi.runAllTimersAsync();
+        const result = await uploadPromise;
+
+        expect(result.failed).toBe(1);
+        expect(result.errors[0]).toContain('verification could not be confirmed');
+        vi.useRealTimers();
+      });
+
+      it('bounds verification concurrency at the same nWorkers as the upload phase', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        expect(concurrentMap).toHaveBeenCalledWith(
+          expect.any(Array),
+          4,
+          expect.any(Function)
+        );
+      });
+    });
+
+    describe('uploadScan awaits verification before returning (Decision 8)', () => {
+      it('does not resolve while a verification call is still pending, and reflects final status once it resolves', async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          images: [mockScan.images[0], mockScan.images[1]],
+        });
+
+        let resolveVerify: (value: unknown) => void = () => {};
+        const verifyPromise = new Promise((resolve) => {
+          resolveVerify = resolve;
+        });
+        let lookupCallCount = 0;
+        mockSupabaseClient.from.mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockImplementation(() => {
+                lookupCallCount++;
+                // First image's lookup resolves immediately; second's
+                // stays pending until the test manually resolves it.
+                if (lookupCallCount === 1) {
+                  return Promise.resolve({
+                    data: { object_path: 'cyl-images/found.png' },
+                    error: null,
+                  });
+                }
+                return verifyPromise.then(() => ({
+                  data: { object_path: 'cyl-images/found.png' },
+                  error: null,
+                }));
+              }),
+            }),
+          }),
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+
+        let settled = false;
+        const uploadPromise = uploader
+          .uploadScan('scan-123')
+          .then((result) => {
+            settled = true;
+            return result;
+          });
+
+        // Flush microtasks without resolving verifyPromise.
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        resolveVerify(undefined);
+        const result = await uploadPromise;
+
+        expect(settled).toBe(true);
+        expect(result.uploaded).toBe(2);
       });
     });
   });

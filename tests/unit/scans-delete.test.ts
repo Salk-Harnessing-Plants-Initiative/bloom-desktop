@@ -13,9 +13,12 @@
  * `deleteMany()`/`create()` calls against shared tables (Experiment,
  * Phenotyper), causing intermittent FK-constraint failures unrelated to
  * either file's actual logic. `beforeAll` provisions this file's schema
- * via `prisma migrate deploy` so no separate local setup step is needed
- * beyond having `BLOOM_DATABASE_URL` (any valid value) set for the
- * `@prisma/client` import to resolve.
+ * by copying the already-migrated `prisma/dev.db` (both this repo's local
+ * setup convention and CI's `pr-checks.yml` run `prisma migrate deploy`
+ * against `dev.db` before any test file runs) — cheap and avoids the
+ * flakiness of spawning `prisma migrate deploy` as a subprocess while ~70
+ * other test files are also starting up in parallel (observed
+ * intermittent ENOENT/timeout failures under that load).
  */
 import {
   describe,
@@ -27,7 +30,6 @@ import {
   afterEach,
 } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -40,6 +42,13 @@ import type { ScannerSettings } from '../../src/types/scanner';
 
 // Resolved by Prisma relative to prisma/schema.prisma, not this file's cwd.
 const TEST_DB_RELATIVE_URL = 'file:./dev-scans-delete-test.db';
+const SOURCE_DB_ABSOLUTE_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  'prisma',
+  'dev.db'
+);
 const TEST_DB_ABSOLUTE_PATH = path.join(
   __dirname,
   '..',
@@ -114,11 +123,14 @@ function makeScannerSettings(
 }
 
 beforeAll(async () => {
-  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
-    env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_RELATIVE_URL },
-    stdio: 'ignore',
-    shell: true,
-  });
+  if (!fs.existsSync(SOURCE_DB_ABSOLUTE_PATH)) {
+    throw new Error(
+      `${SOURCE_DB_ABSOLUTE_PATH} does not exist — run ` +
+        `BLOOM_DATABASE_URL="file:./dev.db" npx prisma migrate deploy first ` +
+        `(CI does this in a dedicated setup step before tests run).`
+    );
+  }
+  fs.copyFileSync(SOURCE_DB_ABSOLUTE_PATH, TEST_DB_ABSOLUTE_PATH);
   await prisma.$connect();
 });
 

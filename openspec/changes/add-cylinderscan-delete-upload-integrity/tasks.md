@@ -91,13 +91,13 @@ filtered-index correctness, fresh-upload verification with a bounded-retry
 third outcome, and an explicit await so verification work can't outlive
 `uploadScan()`'s return.
 
-- [ ] 3.1 Write failing unit tests for the soft-delete guard: `uploadScan()`
+- [x] 3.1 Write failing unit tests for the soft-delete guard: `uploadScan()`
       on a scan with `deleted: true` returns `{ success: false }` without
       calling the upload function; `uploadBatch()` skips a deleted scan in
       the batch while still processing the others.
-- [ ] 3.2 Implement the soft-delete guard in `uploadScan`/`uploadBatch`.
+- [x] 3.2 Implement the soft-delete guard in `uploadScan`/`uploadBatch`.
       Confirm 3.1 passes.
-- [ ] 3.3 Write failing unit tests for the retry-skip filter and its
+- [x] 3.3 Write failing unit tests for the retry-skip filter and its
       index-safety (design.md Decisions 9 & 10):
       - A scan with images [A `'uploaded'`, B `'failed'`, C `'pending'`]:
         only B and C are passed to the `bloom-fs` upload call; `total`
@@ -117,13 +117,13 @@ third outcome, and an explicit await so verification work can't outlive
         returns `total: 0`, and leaves every image's status untouched (no
         re-verification is attempted for already-`'uploaded'` images —
         this is intentional, not a gap to fill in this task).
-- [ ] 3.4 Implement the filtered `imagesToUpload` array (design.md
+- [x] 3.4 Implement the filtered `imagesToUpload` array (design.md
       Decision 10): build it once from `scan.images.filter(img =>
       img.status !== 'uploaded')`, pass it (not `scan.images`) to
       `uploadImagesFn`, index into it (not `scan.images`) from the
       `result`/`before`/`onProgress` callbacks, and filter the
       "mark as uploading" loop the same way. Confirm 3.3 passes.
-- [ ] 3.5 Write failing unit tests for storage-existence verification,
+- [x] 3.5 Write failing unit tests for storage-existence verification,
       covering all outcomes from the `upload` spec's "Upload Verifies
       Storage Object Existence Before Marking Uploaded" requirement (all
       of these apply only to images freshly uploaded in the current call —
@@ -146,7 +146,7 @@ third outcome, and an explicit await so verification work can't outlive
       - Mock the Supabase client (`this.supabase`, a full
         `SupabaseClient` — not `this.store`, which has no read method) for
         all of the above — do not hit a real network in these tests.
-- [ ] 3.6 Implement storage-existence verification using `this.supabase`
+- [x] 3.6 Implement storage-existence verification using `this.supabase`
       (typing it properly, e.g. `SupabaseClient<Database>`, rather than
       leaving it `any`, given this tier exists because of undetected
       Supabase-call bugs): `this.supabase.from('cyl_images').select
@@ -156,7 +156,7 @@ third outcome, and an explicit await so verification work can't outlive
       responsibility is to return a three-way outcome (present / missing /
       inconclusive-after-retries); mapping that to an `Image.status` write
       is the caller's job. Confirm 3.5 passes.
-- [ ] 3.7 Write a failing test for the awaited-verification correctness
+- [x] 3.7 Write a failing test for the awaited-verification correctness
       property (design.md Decision 8, `upload` spec's "Upload Awaits
       Verification Before Returning"). Be precise about the mock target —
       a test that mocks a delay inside the existing `uploadImagesFn` mock
@@ -182,7 +182,7 @@ third outcome, and an explicit await so verification work can't outlive
         resolve, and that the returned `UploadResult`'s counts reflect
         every image's final, post-verification status — not just the one
         image whose promise was manually controlled.
-- [ ] 3.8 Implement the fix: inside `uploadImagesFn`'s `result` callback,
+- [x] 3.8 Implement the fix: inside `uploadImagesFn`'s `result` callback,
       only synchronously record `(index, created, error)` into an
       in-memory list — do not perform verification there. After
       `await this.uploadImagesFn(...)` returns, run verification and the
@@ -197,11 +197,11 @@ third outcome, and an explicit await so verification work can't outlive
       the whole pass and discard every other entry's already-completed
       status write. Only return `uploadScan()`'s result once every entry
       has settled. Confirm 3.7 passes.
-- [ ] 3.9 Add a documentation comment to `nWorkers: 4` matching
+- [x] 3.9 Add a documentation comment to `nWorkers: 4` matching
       `graviscan-upload.ts`'s existing rationale (3 round-trips per image:
       insert RPC → file upload → update RPC). No behavior change — no test
       needed beyond confirming existing upload tests still pass.
-- [ ] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before moving to duplicate-check work.
 
 ## 4. Duplicate-scan check (#120) + dead-code removal
