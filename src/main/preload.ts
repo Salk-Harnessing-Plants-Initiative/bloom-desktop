@@ -39,6 +39,7 @@ import type {
   ImageCreateData,
   ScanFilters,
   PaginatedScanFilters,
+  ScansExportProgress,
 } from '../types/database';
 // eslint-disable-next-line import/no-unresolved
 import type { GraviWedgeEvent } from '../types/graviscan';
@@ -229,6 +230,15 @@ const databaseAPI: DatabaseAPI = {
     upload: (scanId: string) => ipcRenderer.invoke('db:scans:upload', scanId),
     uploadBatch: (scanIds: string[]) =>
       ipcRenderer.invoke('db:scans:uploadBatch', scanIds),
+    export: (scanIds: string[], destinationDir: string) =>
+      ipcRenderer.invoke('db:scans:export', { scanIds, destinationDir }),
+    onExportProgress: (callback: (progress: ScansExportProgress) => void) => {
+      const listener = (_event: unknown, progress: ScansExportProgress) =>
+        callback(progress);
+      ipcRenderer.on('db:scans:export-progress', listener);
+      return () =>
+        ipcRenderer.removeListener('db:scans:export-progress', listener);
+    },
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),

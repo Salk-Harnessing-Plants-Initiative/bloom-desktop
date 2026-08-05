@@ -25,27 +25,60 @@ vi.mock('electron', () => ({
   ipcRenderer: mockIpcRenderer,
 }));
 
-const TARGETS: Array<{
-  namespace: 'python' | 'camera' | 'daq';
-  method: string;
+interface Target {
+  /** Human-readable label for the describe block, e.g. "python.onStatus". */
+  label: string;
   channel: string;
-}> = [
-  { namespace: 'python', method: 'onStatus', channel: 'python:status' },
-  { namespace: 'python', method: 'onError', channel: 'python:error' },
-  { namespace: 'camera', method: 'onTrigger', channel: 'camera:trigger' },
+  /** Reaches the listener-registering method on the exposed API, however deep it lives. */
+  get: (exposedAPI: any) => (callback: (data: unknown) => void) => () => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+}
+
+const TARGETS: Target[] = [
   {
-    namespace: 'camera',
-    method: 'onImageCaptured',
+    label: 'python.onStatus',
+    channel: 'python:status',
+    get: (api) => api.python.onStatus,
+  },
+  {
+    label: 'python.onError',
+    channel: 'python:error',
+    get: (api) => api.python.onError,
+  },
+  {
+    label: 'camera.onTrigger',
+    channel: 'camera:trigger',
+    get: (api) => api.camera.onTrigger,
+  },
+  {
+    label: 'camera.onImageCaptured',
     channel: 'camera:image-captured',
+    get: (api) => api.camera.onImageCaptured,
   },
-  { namespace: 'daq', method: 'onInitialized', channel: 'daq:initialized' },
   {
-    namespace: 'daq',
-    method: 'onPositionChanged',
-    channel: 'daq:position-changed',
+    label: 'daq.onInitialized',
+    channel: 'daq:initialized',
+    get: (api) => api.daq.onInitialized,
   },
-  { namespace: 'daq', method: 'onHome', channel: 'daq:home' },
-  { namespace: 'daq', method: 'onError', channel: 'daq:error' },
+  {
+    label: 'daq.onPositionChanged',
+    channel: 'daq:position-changed',
+    get: (api) => api.daq.onPositionChanged,
+  },
+  {
+    label: 'daq.onHome',
+    channel: 'daq:home',
+    get: (api) => api.daq.onHome,
+  },
+  {
+    label: 'daq.onError',
+    channel: 'daq:error',
+    get: (api) => api.daq.onError,
+  },
+  {
+    label: 'database.scans.onExportProgress',
+    channel: 'db:scans:export-progress',
+    get: (api) => api.database.scans.onExportProgress,
+  },
 ];
 
 describe('preload listener cleanup', () => {
@@ -56,15 +89,15 @@ describe('preload listener cleanup', () => {
     await import('../../src/main/preload');
   });
 
-  for (const { namespace, method, channel } of TARGETS) {
-    describe(`${namespace}.${method}`, () => {
+  for (const target of TARGETS) {
+    describe(target.label, () => {
       it('returns a cleanup function that removes the registered listener', () => {
         const callback = vi.fn();
-        const cleanup = exposedAPI[namespace][method](callback);
+        const cleanup = target.get(exposedAPI)(callback);
 
         expect(cleanup).toBeTypeOf('function');
         expect(mockIpcRenderer.on).toHaveBeenCalledWith(
-          channel,
+          target.channel,
           expect.any(Function)
         );
         const registeredListener = mockIpcRenderer.on.mock.calls[0][1];
@@ -72,13 +105,13 @@ describe('preload listener cleanup', () => {
         cleanup();
 
         expect(mockIpcRenderer.removeListener).toHaveBeenCalledWith(
-          channel,
+          target.channel,
           registeredListener
         );
       });
 
       it('is idempotent — calling cleanup twice does not throw', () => {
-        const cleanup = exposedAPI[namespace][method](vi.fn());
+        const cleanup = target.get(exposedAPI)(vi.fn());
 
         expect(() => {
           cleanup();

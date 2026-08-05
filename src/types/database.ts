@@ -161,6 +161,27 @@ export interface PaginatedScansResponse {
   pageSize: number;
 }
 
+/** One scan the export batch could not copy — enough detail to identify and re-attempt it. */
+export interface ScansExportFailure {
+  scanId: string;
+  experimentName: string;
+  captureDate: Date;
+  reason: string;
+}
+
+export interface ScansExportData {
+  exportedFiles: number;
+  exportedScans: number;
+  skippedFiles: number;
+  failedScans: ScansExportFailure[];
+}
+
+export interface ScansExportProgress {
+  totalFiles: number;
+  completedFiles: number;
+  currentScanId: string;
+}
+
 // ============================================
 // Create Input Types (for IPC)
 // ============================================

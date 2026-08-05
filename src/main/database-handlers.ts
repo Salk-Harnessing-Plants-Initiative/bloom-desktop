@@ -5,10 +5,19 @@
  * for all models to the renderer process.
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { getDatabase } from './database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { ImageUploader, UploadResult } from './image-uploader';
+import { resolveScanPath } from './scan-protocol';
+import { loadEnvConfig } from './config-store';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+// Matches the `.bloom/.env` path convention used by `main.ts` and
+// `image-uploader.ts` for the machine config that holds `scans_dir`.
+const ENV_PATH = path.join(os.homedir(), '.bloom', '.env');
 
 /**
  * Standard response format for database operations
@@ -1102,13 +1111,224 @@ export async function listGraviMetadata(
   }
 }
 
+/** One scan the export batch could not copy — enough detail to identify and re-attempt it. */
+export interface ScansExportFailure {
+  scanId: string;
+  experimentName: string;
+  captureDate: Date;
+  reason: string;
+}
+
+export interface ScansExportData {
+  exportedFiles: number;
+  exportedScans: number;
+  skippedFiles: number;
+  failedScans: ScansExportFailure[];
+}
+
+export interface ScansExportProgress {
+  totalFiles: number;
+  completedFiles: number;
+  currentScanId: string;
+}
+
+/**
+ * Export selected scans' files to `destinationDir`, preserving each scan's
+ * relative `path` under the destination.
+ *
+ * `scansDir` is injected (rather than read from config internally) so tests
+ * can point it at a temp directory — mirrors `resolveScanPath`'s own
+ * dependency-injection style.
+ *
+ * Files are copied via `.tmp`-then-`fs.renameSync`, one at a time, in the
+ * SAME order they're listed (`metadata.json` first) — this must stay fully
+ * sequential (never `Promise.all` over the file list) because the
+ * metadata-before-frames guarantee is about *completion* order, not just the
+ * order copies are started in. A per-file failure marks only that scan as
+ * failed (in `failedScans`, with whatever files already succeeded left in
+ * place — see design.md's accepted residual risk) and does not touch other
+ * scans in the batch.
+ */
+export async function scansExport(
+  db: Db,
+  scansDir: string,
+  params: { scanIds: string[]; destinationDir: string },
+  onProgress?: (progress: ScansExportProgress) => void
+): Promise<DatabaseResponse<ScansExportData>> {
+  try {
+    const { scanIds, destinationDir } = params;
+    if (!Array.isArray(scanIds) || scanIds.length === 0) {
+      return { success: false, error: 'scanIds must be a non-empty array' };
+    }
+    if (!isNonEmptyString(destinationDir)) {
+      return {
+        success: false,
+        error: 'destinationDir must be a non-empty string',
+      };
+    }
+
+    try {
+      fs.mkdirSync(destinationDir, { recursive: true });
+      fs.accessSync(destinationDir, fs.constants.W_OK);
+    } catch (error) {
+      return {
+        success: false,
+        error: `Destination directory is not writable: ${errorMessage(error)}`,
+      };
+    }
+
+    const scans = await db.scan.findMany({
+      where: { id: { in: scanIds }, deleted: false },
+      include: { experiment: true },
+      orderBy: { capture_date: 'desc' },
+    });
+
+    const failedScans: ScansExportFailure[] = [];
+
+    // Pass 1: resolve + containment-check every scan's source and
+    // destination path, and list its files, before copying anything. A scan
+    // that fails here goes straight to `failedScans` and never contributes
+    // to `totalFiles` — progress reporting only covers scans whose files
+    // are actually going to be attempted.
+    const processable: Array<{
+      scanId: string;
+      resolvedSource: string;
+      resolvedDest: string;
+      files: string[];
+    }> = [];
+
+    for (const scan of scans) {
+      const fail = (reason: string) =>
+        failedScans.push({
+          scanId: scan.id,
+          experimentName: scan.experiment.name,
+          captureDate: scan.capture_date,
+          reason,
+        });
+
+      const resolvedSource = resolveScanPath(
+        path.join(scansDir, scan.path),
+        scansDir
+      );
+      if (!resolvedSource) {
+        fail('Scan path escapes the configured scans directory');
+        continue;
+      }
+
+      const resolvedDest = resolveScanPath(
+        path.join(destinationDir, scan.path),
+        destinationDir
+      );
+      if (!resolvedDest) {
+        fail('Scan path escapes the destination directory');
+        continue;
+      }
+
+      let files: string[];
+      try {
+        files = fs.readdirSync(resolvedSource);
+      } catch (error) {
+        fail(`Could not read scan source folder: ${errorMessage(error)}`);
+        continue;
+      }
+
+      // metadata.json first, so it's always written (and renamed into
+      // place) before any NNN.png frame from the same scan.
+      files.sort((a, b) => {
+        if (a === 'metadata.json') return -1;
+        if (b === 'metadata.json') return 1;
+        return 0;
+      });
+
+      processable.push({
+        scanId: scan.id,
+        resolvedSource,
+        resolvedDest,
+        files,
+      });
+    }
+
+    const totalFiles = processable.reduce((sum, p) => sum + p.files.length, 0);
+    let completedFiles = 0;
+    let exportedFiles = 0;
+    let exportedScans = 0;
+    let skippedFiles = 0;
+
+    // Pass 2: sequential, per-file copy. Deliberately not parallelized —
+    // see this function's doc comment on why completion order matters.
+    for (const entry of processable) {
+      const scan = scans.find((s) => s.id === entry.scanId)!;
+      fs.mkdirSync(entry.resolvedDest, { recursive: true });
+
+      let scanFailureReason: string | null = null;
+
+      for (const filename of entry.files) {
+        const finalFile = path.join(entry.resolvedDest, filename);
+        const tmpFile = `${finalFile}.tmp`;
+
+        try {
+          // Unconditional: a stray .tmp from an earlier crashed attempt at
+          // this exact file must not linger just because this run happens
+          // to skip the file (final already present some other way).
+          if (fs.existsSync(tmpFile)) {
+            fs.unlinkSync(tmpFile);
+          }
+
+          if (fs.existsSync(finalFile)) {
+            skippedFiles++;
+          } else {
+            fs.copyFileSync(path.join(entry.resolvedSource, filename), tmpFile);
+            fs.renameSync(tmpFile, finalFile);
+            exportedFiles++;
+          }
+        } catch (error) {
+          scanFailureReason ??= errorMessage(error);
+        }
+
+        completedFiles++;
+        onProgress?.({
+          totalFiles,
+          completedFiles,
+          currentScanId: entry.scanId,
+        });
+      }
+
+      if (scanFailureReason) {
+        failedScans.push({
+          scanId: scan.id,
+          experimentName: scan.experiment.name,
+          captureDate: scan.capture_date,
+          reason: scanFailureReason,
+        });
+      } else {
+        exportedScans++;
+      }
+    }
+
+    return {
+      success: true,
+      data: { exportedFiles, exportedScans, skippedFiles, failedScans },
+    };
+  } catch (error) {
+    console.error('[DB] Failed to export scans:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
 /**
  * Register all database IPC handlers
  *
  * Handlers follow naming convention: db:{model}:{action}
  * All handlers return DatabaseResponse for consistent error handling
+ *
+ * @param getMainWindow - Needed only by `db:scans:export`, to push progress
+ *   events via `webContents.send`. Called fresh at send-time (not cached),
+ *   matching `graviscan:download-images`'s convention, since the window may
+ *   close mid-export.
  */
-export function registerDatabaseHandlers() {
+export function registerDatabaseHandlers(
+  getMainWindow?: () => BrowserWindow | null
+) {
   const db = getDatabase();
 
   // ============================================
@@ -1794,6 +2014,23 @@ export function registerDatabaseHandlers() {
           error: error instanceof Error ? error.message : 'Unknown error',
         };
       }
+    }
+  );
+
+  ipcMain.handle(
+    'db:scans:export',
+    (
+      _event,
+      params: { scanIds: string[]; destinationDir: string }
+    ): Promise<DatabaseResponse<ScansExportData>> => {
+      const scansDir = loadEnvConfig(ENV_PATH).scans_dir;
+      const onProgress = (progress: ScansExportProgress) => {
+        const win = getMainWindow?.();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('db:scans:export-progress', progress);
+        }
+      };
+      return scansExport(db, scansDir, params, onProgress);
     }
   );
 
