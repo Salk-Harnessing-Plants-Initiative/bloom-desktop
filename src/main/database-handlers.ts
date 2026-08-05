@@ -1150,7 +1150,7 @@ export interface ScansExportProgress {
  * can point it at a temp directory — mirrors `resolveScanPath`'s own
  * dependency-injection style.
  *
- * Files are copied via `.tmp`-then-`fs.renameSync`, one at a time, in the
+ * Files are copied via `.tmp`-then-`fs.promises.rename`, one at a time, in the
  * SAME order they're listed (`metadata.json` first) — this must stay fully
  * sequential (never `Promise.all` over the file list) because the
  * metadata-before-frames guarantee is about *completion* order, not just the
