@@ -51,19 +51,36 @@ editable inputs at all times — auto-fill pre-populates these fields, it
 SHALL NOT render them as read-only text or otherwise prevent the operator
 from correcting an auto-filled value.
 
-A position SHALL be treated as operator-overridden whenever its currently
-**persisted** `GraviScanPlateAssignment` values differ from what a fresh
-recomputation of the current wave's auto-fill would produce for that
-position — this is a derived comparison, not a stored or purely in-memory
-flag, so it SHALL correctly identify an override even immediately after the
-renderer remounts (e.g. after navigating away and back), not only within
-the same continuous session. If the auto-fill effect re-runs for any reason
-(wave change, experiment change, scanner reassignment) while a position is
-operator-overridden by this definition, that position's current persisted
-values SHALL be preserved, not overwritten by the fresh auto-fill
-computation. Switching wave or experiment SHALL recompute the auto-fill
-baseline from scratch, so a new wave's positions are never compared
-against, or overwritten by, the previous wave's persisted values.
+When the auto-fill effect re-runs for a reason **other than a wave
+change** (e.g. a scanner reassignment while staying on the same wave), a
+position that already has a persisted `GraviScanPlateAssignment` row SHALL
+be treated as operator-overridden whenever its persisted values differ
+from what a fresh recomputation of the current wave's auto-fill would
+produce, and SHALL be preserved rather than overwritten. A position with
+**no persisted row yet** SHALL NOT be treated as overridden merely
+because "no value" trivially differs from a computed one — it SHALL
+always be populated by the fresh auto-fill computation. This is a derived
+comparison, not a stored or purely in-memory flag, so it SHALL correctly
+identify an override even immediately after the renderer remounts (e.g.
+after navigating away and back), not only within the same continuous
+session.
+
+Switching wave or experiment SHALL **unconditionally** overwrite every
+position with the newly-selected wave's fresh auto-fill computation (or
+empty it, if the new wave has no link) — the persisted-vs-computed
+override comparison above SHALL NOT be applied across a wave/experiment
+switch, only to same-wave re-fires. This holds regardless of whether the
+new wave has no metadata link, its own metadata link, or a link to a
+different accession than the previous wave — in every case, the previous
+wave's persisted values SHALL NOT be compared against, loaded into, or
+otherwise influence the new wave's positions.
+
+Entering or changing `plantBarcode` manually, in either mode, SHALL
+trigger a case-insensitive match against the currently-loaded
+`GraviPlateAccession` list; on a match, `transplantDate` and `customNote`
+SHALL be auto-populated from that plate's row (still subject to further
+manual override per the paragraph above). A barcode with no match SHALL
+leave `transplantDate`/`customNote` unchanged.
 
 If no wave metadata is linked for the current `(experimentId, waveNumber)`,
 plate positions SHALL default to empty, editable fields (manual entry) —
@@ -131,6 +148,40 @@ no-link-exists case.
   be compared against, loaded into, or otherwise influence wave 3's
   positions
 
+#### Scenario: Switching to a wave with its own different metadata still resets, not compares
+
+- **GIVEN** wave 2 has an operator-overridden value at scanner/position
+  `(sc-1, 00)`
+- **AND** wave 3 has its **own** `GraviExperimentWaveMetadata` link, to a
+  different accession than wave 2's
+- **WHEN** the operator switches to wave 3
+- **THEN** position `(sc-1, 00)` SHALL show wave 3's own fresh auto-fill
+  value
+- **AND** wave 2's persisted value SHALL NOT be treated as an "override"
+  of wave 3's fresh computation merely because it differs from it — the
+  wave switch is an unconditional reset, not a comparison
+
+#### Scenario: A brand-new position is never mistaken for an override
+
+- **GIVEN** the current wave has linked metadata, and a plate position has
+  no prior persisted `GraviScanPlateAssignment` row at all (first time
+  this scanner/position has been assigned)
+- **WHEN** auto-fill runs
+- **THEN** the position SHALL be populated with the freshly computed
+  auto-fill value
+- **AND** it SHALL NOT be treated as operator-overridden
+
+#### Scenario: Manual barcode entry auto-populates matching plate metadata
+
+- **GIVEN** the currently-loaded `GraviPlateAccession` list includes a
+  plate with `plate_id: "Plate_09"`, `transplant_date`, and `custom_note`
+- **WHEN** the operator manually types `"plate_09"` (any casing) into a
+  position's barcode field
+- **THEN** that position's `transplantDate`/`customNote` SHALL be
+  auto-populated from the matching plate's row
+- **WHEN** the operator instead types a barcode with no match
+- **THEN** `transplantDate`/`customNote` SHALL remain unchanged
+
 #### Scenario: No linked metadata falls back to manual, empty entry
 
 - **GIVEN** the current wave has no `GraviExperimentWaveMetadata` link
@@ -179,10 +230,16 @@ message before `startScan()` is ever called — the screen SHALL NOT rely
 solely on an upstream form-level minimum-interval clamp to prevent this.
 
 "Start Scan" SHALL be disabled while any scanner currently assigned to this
-session has an active, unacknowledged wedge (per Tier 3's `useWedgeEvents`)
-— starting a new scan against a jammed/paused scanner is more likely to
-compound the problem than to help, and the existing globally-mounted
-`WedgeBanner` remains the operator's mechanism to acknowledge/retry it.
+session has an active, unacknowledged wedge. This SHALL reflect the same
+wedge state the globally-mounted `WedgeBanner` shows — a wedge that
+occurred while the operator was on a different screen SHALL still block
+"Start Scan" the moment the operator navigates to Capture Scan, not only
+wedges that occur while already on this screen (a separate, independent
+wedge subscription local to this screen would miss the former case).
+Starting a new scan against a jammed/paused scanner is more likely to
+compound the problem than to help; the existing `WedgeBanner` remains the
+operator's mechanism to acknowledge/retry it, and clearing the wedge
+there re-enables "Start Scan" here.
 
 If the current wave has no linked wave metadata (per the "GraviScan Plate
 Assignment Auto-Fill and Manual Override" requirement) and no plate
@@ -228,6 +285,17 @@ continuous run has already completed.
 - **THEN** "Start Scan" SHALL become enabled again (assuming no other
   blocking condition)
 
+#### Scenario: A wedge that occurred while away still blocks Start on return
+
+- **GIVEN** a scanner assigned to this session wedges while the operator
+  is viewing a different page (e.g. Browse Scans), and `WedgeBanner`
+  correctly shows the entry there
+- **WHEN** the operator navigates to the Capture Scan screen
+- **THEN** "Start Scan" SHALL already be disabled on arrival, reflecting
+  the wedge that occurred before this screen was mounted — the screen
+  SHALL NOT show "Start Scan" as enabled merely because its own view of
+  wedge state only began accumulating at mount time
+
 #### Scenario: Missing wave metadata warns before scan start, not only after
 
 - **GIVEN** the current wave has no linked wave metadata and no plate
@@ -257,14 +325,19 @@ the moment of a full quit SHALL be lost from the app's perspective (though
 already-completed `GraviScan`/`GraviImage` rows and image files remain in
 the database/filesystem regardless).
 
-When `getScanStatus()` returns `isActive: false` on mount, the screen SHALL
-additionally query the most recent `GraviScanSession` for the current
-experiment. If that session has `completed_at: null` and
-`cancelled: false` — an existing, previously-unused signal that a session
-was abandoned mid-run rather than finished or explicitly cancelled — the
-screen SHALL show a non-blocking informational banner naming that session
-and its last-known cycle count. This is read-only: it does not restore the
-session, it only informs the operator that data completeness for that
+On successfully starting a scan, the screen SHALL record a local marker
+(e.g. `localStorage`, keyed by the current `experimentId` and
+`waveNumber`) naming the expected total cycle count. This marker SHALL be
+removed when the scan is cancelled successfully or completes normally.
+When `getScanStatus()` returns `isActive: false` on mount, the screen
+SHALL check for a marker matching the **currently selected**
+`experimentId`/`waveNumber`; if one is present, the previous session for
+that exact wave never cleanly finished, and the screen SHALL show a
+non-blocking informational banner naming the expected cycle count. A
+marker belonging to a *different* wave of the same experiment SHALL NOT
+trigger this banner while viewing the current wave. This is read-only
+with respect to scan state: it does not restore the session, it only
+informs the operator that data completeness for that wave's most recent
 session should be checked before being trusted downstream (e.g. before
 upload).
 
@@ -288,16 +361,26 @@ upload).
 
 #### Scenario: An abnormally-terminated session is surfaced, not silently dropped
 
-- **GIVEN** a `GraviScanSession` exists for the current experiment with
-  `completed_at: null` and `cancelled: false` (e.g. the app crashed or was
-  force-quit mid-scan)
-- **AND** `getScanStatus()` returns `isActive: false` (matching a fresh
-  app launch)
-- **WHEN** the operator views the Capture Scan screen
-- **THEN** a non-blocking informational banner SHALL name that session and
-  its last-known cycle count
-- **AND** no such banner SHALL appear if the most recent session has
-  `completed_at` set or `cancelled: true`
+- **GIVEN** a scan was started for wave 3 (a marker was recorded) and the
+  app was force-quit before it cancelled or completed
+- **AND** `getScanStatus()` returns `isActive: false` after relaunch
+  (matching a fresh app launch)
+- **WHEN** the operator selects wave 3 on the Capture Scan screen
+- **THEN** a non-blocking informational banner SHALL name the expected
+  cycle count recorded when that scan started
+- **AND** no such banner SHALL appear if the marker was already removed
+  (clean completion or successful cancel)
+
+#### Scenario: An abnormal-termination marker is scoped to its own wave
+
+- **GIVEN** wave 3's scan was force-quit mid-run (its marker still exists)
+- **AND** wave 4 of the same experiment later completed cleanly (its own
+  marker was recorded and removed normally)
+- **WHEN** the operator selects wave 4 on the Capture Scan screen
+- **THEN** no abnormal-termination banner SHALL appear for wave 4
+- **WHEN** the operator instead selects wave 3
+- **THEN** the abnormal-termination banner SHALL appear, naming wave 3's
+  expected cycle count
 
 ---
 

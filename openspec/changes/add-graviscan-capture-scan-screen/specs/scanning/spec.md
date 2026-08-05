@@ -245,7 +245,7 @@ linked metadata" below.
   experiment-wide matching described in "experimentId scopes both the plate
   lookup and every DB write"
 
-#### Scenario: Every value that reaches a query scope is validated as a string
+#### Scenario: Every value that reaches a query scope is validated by type, not truthiness
 
 - **GIVEN** the `graviscan:verify-plates` IPC payload is untyped at the
   boundary, so `experimentId` and each plate's `scannerId`, `plateIndex`,
