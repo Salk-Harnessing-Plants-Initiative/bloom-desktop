@@ -59,7 +59,7 @@ export function Home({ mode = null }: HomeProps) {
 
       {/* Python Backend Status */}
       <div className="mt-8">
-        <PythonStatus />
+        <PythonStatus mode={mode} />
       </div>
     </div>
   );

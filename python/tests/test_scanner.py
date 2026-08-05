@@ -383,6 +383,120 @@ class TestMockScanner:
         scanner.cleanup()
 
 
+class TestScannerThreadSafety:
+    """Regression tests for issue #40 — verify-and-document, not a lock.
+
+    Investigation (2026-08-03) confirmed `Scanner.perform_scan()`/
+    `cleanup()` are only ever called from
+    `python.ipc_handler.handle_scanner_command()`, itself only ever called
+    from `handle_command()`, itself only ever called from
+    `run_ipc_loop()`'s strictly sequential `for line in sys.stdin` loop.
+    The only other thread in the process, `_streaming_thread` (target:
+    `streaming_worker()`), never touches `Scanner`/`is_scanning`/
+    `_scanner_instance`. These tests exist IN PLACE OF a `threading.Lock`,
+    per the 2026-08-03 decision — if any of them starts failing,
+    re-evaluate whether a lock is now warranted; don't just loosen the
+    test.
+    """
+
+    def test_streaming_worker_never_touches_scanner_state(self):
+        """streaming_worker() (the camera-streaming background thread)
+        must never reference Scanner, is_scanning, or _scanner_instance."""
+        import inspect
+
+        from python import ipc_handler
+
+        source = inspect.getsource(ipc_handler.streaming_worker)
+        assert "Scanner" not in source
+        assert "is_scanning" not in source
+        assert "_scanner_instance" not in source
+
+    def test_perform_scan_from_main_thread_is_allowed(self, small_scan_settings):
+        """The belt-and-suspenders main-thread check (#40) does not
+        reject normal single-threaded usage."""
+        settings = ScannerSettings(**small_scan_settings)
+        scanner = Scanner(settings)
+        scanner.initialize()
+
+        result = scanner.perform_scan()  # must not raise
+        assert result.success is True
+
+        scanner.cleanup()  # must not raise
+
+    def test_perform_scan_from_another_thread_is_rejected(self, small_scan_settings):
+        """perform_scan() called from a thread other than the main IPC
+        thread raises RuntimeError immediately — the runtime tripwire for
+        the single-threaded invariant this decision relies on."""
+        import threading
+
+        settings = ScannerSettings(**small_scan_settings)
+        scanner = Scanner(settings)
+        scanner.initialize()
+
+        errors = []
+
+        def call_from_thread():
+            try:
+                scanner.perform_scan()
+            except Exception as e:  # noqa: BLE001 - capturing for assertion below
+                errors.append(e)
+
+        thread = threading.Thread(target=call_from_thread)
+        thread.start()
+        thread.join()
+
+        assert len(errors) == 1
+        assert isinstance(errors[0], RuntimeError)
+        assert "main IPC thread" in str(errors[0])
+
+        scanner.cleanup()
+
+    def test_cleanup_from_another_thread_is_rejected(self, small_scan_settings):
+        """cleanup() called from a thread other than the main IPC thread
+        raises RuntimeError immediately, same as perform_scan()."""
+        import threading
+
+        settings = ScannerSettings(**small_scan_settings)
+        scanner = Scanner(settings)
+        scanner.initialize()
+
+        errors = []
+
+        def call_from_thread():
+            try:
+                scanner.cleanup()
+            except Exception as e:  # noqa: BLE001 - capturing for assertion below
+                errors.append(e)
+
+        thread = threading.Thread(target=call_from_thread)
+        thread.start()
+        thread.join()
+
+        assert len(errors) == 1
+        assert isinstance(errors[0], RuntimeError)
+        assert "main IPC thread" in str(errors[0])
+
+        # Real cleanup from the main thread should still work.
+        scanner.cleanup()
+
+    def test_cleanup_rejected_immediately_during_active_scan(self, small_scan_settings):
+        """Scanner-api spec: 'Scan-in-progress cleanup is rejected
+        immediately'. Confirmed via scanner.py:105-106 this already
+        exists in code — this test just adds the coverage that was
+        missing."""
+        settings = ScannerSettings(**small_scan_settings)
+        scanner = Scanner(settings)
+        scanner.initialize()
+
+        scanner.is_scanning = True
+        try:
+            with pytest.raises(RuntimeError, match="Cannot cleanup during active scan"):
+                scanner.cleanup()
+        finally:
+            scanner.is_scanning = False
+            scanner.cleanup()
+
+
 class TestScannerEdgeCases:
     """Test scanner edge cases and error handling."""
 

@@ -19,6 +19,12 @@ import type { ImageStatus } from '../types/database';
 import { loadEnvConfig } from './config-store';
 import path from 'path';
 import os from 'os';
+import type {
+  TypedSupabaseClient,
+  SupabaseUploader,
+  SupabaseStore,
+} from '@salk-hpi/bloom-js';
+import type { uploadImages } from '@salk-hpi/bloom-fs';
 
 // Default env path for credentials
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -93,14 +99,10 @@ type ScanWithRelations = Prisma.ScanGetPayload<{
  */
 export class ImageUploader {
   private prisma: PrismaClient;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private supabase: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private uploader: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private store: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private uploadImagesFn: any = null;
+  private supabase: TypedSupabaseClient | null = null;
+  private uploader: SupabaseUploader | null = null;
+  private store: SupabaseStore | null = null;
+  private uploadImagesFn: typeof uploadImages | null = null;
   private authenticated = false;
 
   constructor(prisma: PrismaClient) {
