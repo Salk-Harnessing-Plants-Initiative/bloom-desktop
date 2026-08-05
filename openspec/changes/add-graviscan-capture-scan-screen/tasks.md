@@ -456,7 +456,7 @@ other out of order.
       or more distinct non-green statuses simultaneously (e.g. one
       `unreadable` + one `lookup_failed`, no `duplicate_qr`) surfaces
       **both** causes' detail text. Implement to satisfy.
-- [ ] 14.3 `ScanFormSection.tsx` — failing tests in
+- [x] 14.3 `ScanFormSection.tsx` — failing tests in
       `tests/unit/components/ScanFormSection.test.tsx`: plate fields
       render as editable inputs in both auto-fill and manual modes (no
       read-only `<span>` for `plantBarcode` when auto-filled); `selected`
