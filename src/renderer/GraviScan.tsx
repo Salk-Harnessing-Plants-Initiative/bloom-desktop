@@ -55,11 +55,11 @@ export function GraviScan() {
     (async () => {
       const result = unwrapGraviResult<{
         success: boolean;
-        data?: { resolution?: number } | null;
+        config?: { resolution?: number } | null;
       }>(await window.electron.gravi.getConfig());
       if (cancelled) return;
-      if (result?.success && result.data?.resolution) {
-        setResolution(result.data.resolution);
+      if (result?.success && result.config?.resolution) {
+        setResolution(result.config.resolution);
       }
     })();
     return () => {

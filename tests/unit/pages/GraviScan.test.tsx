@@ -146,7 +146,7 @@ describe('GraviScan screen composition', () => {
       ...win.electron.gravi,
       getConfig: vi
         .fn()
-        .mockResolvedValue({ success: true, data: { success: true, data: { resolution: 1200 } } }),
+        .mockResolvedValue({ success: true, data: { success: true, config: { resolution: 1200 } } }),
       detectScanners: vi.fn().mockResolvedValue({
         success: true,
         data: { success: true, scanners: [{ scanner_id: 'sc-1', sane_name: 'epkowa:usb:001:005' }] },
