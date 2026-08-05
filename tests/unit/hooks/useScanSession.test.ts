@@ -425,6 +425,31 @@ describe('useScanSession', () => {
     );
   });
 
+  it('startScan() builds output_path with a _cy1_ marker so the coordinator can rewrite it per cycle (regression: identical path was reused every cycle, silently overwriting prior scans)', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    expect(startScan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scanners: expect.arrayContaining([
+          expect.objectContaining({
+            plates: expect.arrayContaining([
+              expect.objectContaining({
+                plate_index: '00',
+                output_path: expect.stringMatching(/_cy1_/),
+              }),
+            ]),
+          }),
+        ]),
+      })
+    );
+  });
+
   it('each job completion calls graviscans.create with all fields graviscansCreate requires', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
@@ -671,6 +696,31 @@ describe('useScanSession', () => {
     );
 
     await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+    expect(result.current.abnormalTermination).toBeNull();
+  });
+
+  it('a fresh successful startScan() clears a pre-existing abnormalTermination banner (regression: banner persisted indefinitely once shown)', async () => {
+    localStorage.setItem(
+      'graviscan:session-in-progress:exp-1:0',
+      JSON.stringify({ expectedCycles: 6 })
+    );
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: false },
+    });
+
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+
+    await waitFor(() =>
+      expect(result.current.abnormalTermination).toEqual({ expectedCycles: 6 })
+    );
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+
     expect(result.current.abnormalTermination).toBeNull();
   });
 
@@ -932,6 +982,24 @@ describe('useScanSession', () => {
 
     expect(startScan).toHaveBeenCalledTimes(1);
     expect(graviscanSessionsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicking Start while a scan is already in progress surfaces an error instead of silently no-oping (regression)', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+    expect(result.current.isScanning).toBe(true);
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    expect(startScan).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBe('A scan is already in progress.');
   });
 
   it('a getOutputDir() promise rejection (not just a resolved failure) surfaces an error instead of throwing unhandled', async () => {

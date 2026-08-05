@@ -321,6 +321,7 @@ export function useScanSession(
   ]);
 
   const clearAbnormalMarker = useCallback(() => {
+    setAbnormalTermination(null);
     if (!experimentId) return;
     localStorage.removeItem(abnormalMarkerKey(experimentId, waveNumber));
   }, [experimentId, waveNumber]);
@@ -632,7 +633,13 @@ export function useScanSession(
     // a physical scan the first call's hardware may still be running.
     // `isScanning` alone doesn't cover this — it stays false for this
     // entire async setup, only flipping true once 'START' dispatches.
-    if (isStartingRef.current || stateRef.current.isScanning) return;
+    if (isStartingRef.current || stateRef.current.isScanning) {
+      dispatch({
+        type: 'ERROR',
+        payload: { error: 'A scan is already in progress.' },
+      });
+      return;
+    }
     isStartingRef.current = true;
     try {
       if (!canStartScan) {
@@ -692,7 +699,7 @@ export function useScanSession(
         );
         const gridMode = gridModes[scannerId];
         const plates = assignments.map((a) => {
-          const outputPath = `${outputDir}/${experimentId}/wave${waveNumber}/${scannerId}/${a.plateIndex}_${timestamp}.tiff`;
+          const outputPath = `${outputDir}/${experimentId}/wave${waveNumber}/${scannerId}/${a.plateIndex}_cy1_${timestamp}.tiff`;
           jobs[jobKey(scannerId, a.plateIndex)] = {
             scannerId,
             plateIndex: a.plateIndex,
@@ -775,6 +782,7 @@ export function useScanSession(
       jobTemplateRef.current = jobs;
       completedKeysRef.current = new Set();
       allDoneFiredRef.current = false;
+      setAbnormalTermination(null);
       dispatch({
         type: 'START',
         payload: {
