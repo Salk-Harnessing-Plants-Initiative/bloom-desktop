@@ -49,18 +49,38 @@ then load that accession's plates via
 `plantBarcode`, `transplantDate`, and `customNote` SHALL be rendered as
 editable inputs at all times — auto-fill pre-populates these fields, it
 SHALL NOT render them as read-only text or otherwise prevent the operator
-from correcting an auto-filled value. A per-position dirty flag SHALL be
-set whenever the operator edits any of `plantBarcode`/`transplantDate`/
-`customNote`/`selected` for that position. If the auto-fill effect re-runs
-for any reason (wave change, experiment change, scanner reassignment) while
-a position's dirty flag is set, that position's current values SHALL be
-preserved, not overwritten by the fresh auto-fill computation. Every
-position's dirty flag SHALL be cleared when the operator switches wave or
-experiment (a new wave's auto-fill is a fresh start).
+from correcting an auto-filled value.
+
+A position SHALL be treated as operator-overridden whenever its currently
+**persisted** `GraviScanPlateAssignment` values differ from what a fresh
+recomputation of the current wave's auto-fill would produce for that
+position — this is a derived comparison, not a stored or purely in-memory
+flag, so it SHALL correctly identify an override even immediately after the
+renderer remounts (e.g. after navigating away and back), not only within
+the same continuous session. If the auto-fill effect re-runs for any reason
+(wave change, experiment change, scanner reassignment) while a position is
+operator-overridden by this definition, that position's current persisted
+values SHALL be preserved, not overwritten by the fresh auto-fill
+computation. Switching wave or experiment SHALL recompute the auto-fill
+baseline from scratch, so a new wave's positions are never compared
+against, or overwritten by, the previous wave's persisted values.
 
 If no wave metadata is linked for the current `(experimentId, waveNumber)`,
 plate positions SHALL default to empty, editable fields (manual entry) —
-the screen SHALL NOT reuse another wave's auto-filled values.
+the screen SHALL NOT load or display any other wave's previously-persisted
+assignment for the current scanner/position.
+
+A linked accession that resolves to zero `GraviPlateAccession` rows SHALL
+be visually distinguished (e.g. a warning-styled note naming the linked
+accession) from the "no wave metadata link exists at all" empty state, so
+an operator can tell an intentionally-manual wave apart from a likely
+misconfigured link.
+
+If `listGraviMetadata()` or `graviPlateAccessions.list()` rejects or
+resolves with `{ success: false }`, the plate grid SHALL retain its
+last-known state and show an inline error — it SHALL NOT crash, and SHALL
+NOT silently render an empty grid indistinguishable from the
+no-link-exists case.
 
 #### Scenario: Auto-fill populates fields from the current wave's linked metadata
 
@@ -75,33 +95,70 @@ the screen SHALL NOT reuse another wave's auto-filled values.
 #### Scenario: Operator can edit an auto-filled field
 
 - **GIVEN** a plate position was auto-filled with `plantBarcode: "Plate_04"`
-- **WHEN** the operator changes the field to `"Plate_04b"`
+- **WHEN** the operator changes the field to `"Plate_04b"` and it persists
 - **THEN** the input SHALL accept the edit
-- **AND** that position's dirty flag SHALL be set
+- **AND** the position's persisted value (`"Plate_04b"`) now differs from
+  what a fresh auto-fill recomputation would produce (`"Plate_04"`),
+  which is what identifies it as operator-overridden
 
 #### Scenario: A manual edit survives an auto-fill re-run
 
-- **GIVEN** a plate position's dirty flag is set after a manual edit (per
-  the scenario above)
+- **GIVEN** a plate position holds a persisted, operator-overridden value
+  (per the scenario above)
 - **WHEN** the auto-fill effect re-runs (e.g. because a different scanner
   was assigned)
 - **THEN** the edited position's values SHALL be unchanged
-- **AND** other, non-dirty positions SHALL be freshly auto-filled
+- **AND** other positions, whose persisted values still match a fresh
+  auto-fill computation, SHALL be freshly auto-filled
 
-#### Scenario: Dirty flags clear on wave switch
+#### Scenario: A manual edit survives navigating away and back
 
-- **GIVEN** one or more plate positions have their dirty flag set for wave 2
+- **GIVEN** a plate position holds a persisted, operator-overridden value
+- **WHEN** the operator navigates away from `/capture-scan` and back,
+  remounting the screen
+- **THEN** the position SHALL still show the operator's overridden value,
+  not the wave's auto-fill value — because the override is derived from a
+  persisted-vs-computed comparison made fresh on every mount, not from
+  in-memory-only state that a remount would otherwise reset
+
+#### Scenario: Switching wave recomputes the auto-fill baseline from scratch
+
+- **GIVEN** one or more plate positions hold operator-overridden values for
+  wave 2
 - **WHEN** the operator switches to wave 3
-- **THEN** all dirty flags SHALL be cleared
-- **AND** wave 3's positions SHALL be freshly auto-filled (or left empty, if
-  wave 3 has no linked metadata) without inheriting wave 2's manual edits
+- **THEN** wave 3's positions SHALL be freshly auto-filled (or left empty,
+  if wave 3 has no linked metadata) — wave 2's persisted values SHALL NOT
+  be compared against, loaded into, or otherwise influence wave 3's
+  positions
 
 #### Scenario: No linked metadata falls back to manual, empty entry
 
 - **GIVEN** the current wave has no `GraviExperimentWaveMetadata` link
 - **WHEN** the operator views the plate assignment grid
 - **THEN** all fields SHALL be empty and editable
-- **AND** no other wave's auto-filled values SHALL appear
+- **AND** no other wave's previously-persisted assignment SHALL appear —
+  including a wave that has its own persisted `GraviScanPlateAssignment`
+  rows from an earlier session
+
+#### Scenario: A linked accession with zero plates is distinguished from no link
+
+- **GIVEN** the current wave has a `GraviExperimentWaveMetadata` link, but
+  the linked accession has zero `GraviPlateAccession` rows
+- **WHEN** the operator views the plate assignment grid
+- **THEN** the grid SHALL show a warning-styled note naming the linked
+  accession, distinct in appearance from the plain "no link exists" empty
+  state
+
+#### Scenario: A metadata-lookup failure does not crash or silently empty the grid
+
+- **GIVEN** `listGraviMetadata()` or `graviPlateAccessions.list()` rejects
+  or resolves with `{ success: false }`
+- **WHEN** the plate assignment grid attempts to auto-fill
+- **THEN** the grid SHALL retain its last-known state and show an inline
+  error
+- **AND** it SHALL NOT crash
+- **AND** it SHALL NOT render as a plain empty grid indistinguishable from
+  the "no link exists" case
 
 ---
 
@@ -120,6 +177,21 @@ value SHALL be validated as a positive integer greater than zero. A
 zero-or-negative interval SHALL be rejected with an inline validation
 message before `startScan()` is ever called — the screen SHALL NOT rely
 solely on an upstream form-level minimum-interval clamp to prevent this.
+
+"Start Scan" SHALL be disabled while any scanner currently assigned to this
+session has an active, unacknowledged wedge (per Tier 3's `useWedgeEvents`)
+— starting a new scan against a jammed/paused scanner is more likely to
+compound the problem than to help, and the existing globally-mounted
+`WedgeBanner` remains the operator's mechanism to acknowledge/retry it.
+
+If the current wave has no linked wave metadata (per the "GraviScan Plate
+Assignment Auto-Fill and Manual Override" requirement) and no plate
+positions have been manually filled in, the screen SHALL show a
+non-blocking inline warning before the operator starts a scan — this
+warning SHALL NOT be the operator's only signal of the condition; today,
+absent this warning, the first indication would otherwise arrive only via
+the post-scan QR verification banner, after a potentially long unattended
+continuous run has already completed.
 
 #### Scenario: Cancel awaits the IPC call and surfaces a rejection
 
@@ -146,6 +218,27 @@ solely on an upstream form-level minimum-interval clamp to prevent this.
 - **THEN** the screen SHALL show an inline validation error
 - **AND** `startScan()` SHALL NOT be called with an interval of `0`
 
+#### Scenario: Start Scan is disabled while a scanner has an active wedge
+
+- **GIVEN** a scanner assigned to this session has an active,
+  unacknowledged wedge event
+- **WHEN** the operator views the Capture Scan screen
+- **THEN** the "Start Scan" control SHALL be disabled
+- **WHEN** the wedge is later acknowledged/retried and clears
+- **THEN** "Start Scan" SHALL become enabled again (assuming no other
+  blocking condition)
+
+#### Scenario: Missing wave metadata warns before scan start, not only after
+
+- **GIVEN** the current wave has no linked wave metadata and no plate
+  positions have been manually filled in
+- **WHEN** the operator views the Capture Scan screen before clicking
+  "Start"
+- **THEN** a non-blocking inline warning SHALL be visible, naming the
+  condition
+- **AND** this warning SHALL NOT be gated behind starting and completing a
+  scan first
+
 ---
 
 ### Requirement: GraviScan Session Restore on Renderer Navigation
@@ -164,6 +257,17 @@ the moment of a full quit SHALL be lost from the app's perspective (though
 already-completed `GraviScan`/`GraviImage` rows and image files remain in
 the database/filesystem regardless).
 
+When `getScanStatus()` returns `isActive: false` on mount, the screen SHALL
+additionally query the most recent `GraviScanSession` for the current
+experiment. If that session has `completed_at: null` and
+`cancelled: false` — an existing, previously-unused signal that a session
+was abandoned mid-run rather than finished or explicitly cancelled — the
+screen SHALL show a non-blocking informational banner naming that session
+and its last-known cycle count. This is read-only: it does not restore the
+session, it only informs the operator that data completeness for that
+session should be checked before being trusted downstream (e.g. before
+upload).
+
 #### Scenario: Navigating away and back during an active scan restores progress
 
 - **GIVEN** a continuous scan is in progress with 6 of 12 jobs completed
@@ -181,6 +285,19 @@ the database/filesystem regardless).
   `getScanStatus()`'s `{ isActive: false }` response after a restart)
 - **AND** this SHALL NOT be treated as a bug by this tier's tests — it is
   documented, expected behavior (see design.md Non-Goals)
+
+#### Scenario: An abnormally-terminated session is surfaced, not silently dropped
+
+- **GIVEN** a `GraviScanSession` exists for the current experiment with
+  `completed_at: null` and `cancelled: false` (e.g. the app crashed or was
+  force-quit mid-scan)
+- **AND** `getScanStatus()` returns `isActive: false` (matching a fresh
+  app launch)
+- **WHEN** the operator views the Capture Scan screen
+- **THEN** a non-blocking informational banner SHALL name that session and
+  its last-known cycle count
+- **AND** no such banner SHALL appear if the most recent session has
+  `completed_at` set or `cancelled: true`
 
 ---
 
@@ -223,16 +340,25 @@ per-plate `verification_status` values:
 
 - **Red** ("Duplicate QR Codes Detected") when any plate has status
   `duplicate_qr`.
-- **Amber** ("Some Plates Unreadable" / "Manual Review Needed" /
-  "Plate Mismatch Detected") when, absent any `duplicate_qr`, any plate has
-  status `unreadable`, `needs_review`, `incorrect`, or `lookup_failed`.
+- **Amber**, when, absent any `duplicate_qr`, any plate has status
+  `unreadable` ("Some Plates Unreadable"), `needs_review` ("Manual Review
+  Needed"), `incorrect` ("Plate Mismatch Detected"), or `lookup_failed`
+  ("Verification Lookup Failed" — pinned as its own exact title, distinct
+  from the other three; a `lookup_failed` plate's image was never
+  successfully checked at all, so folding it under "Manual Review Needed"
+  would wrongly tell the operator to *review* a result rather than
+  *retry* the run).
 - **Green** ("QR Verification Complete") when every plate has status
   `verified` or `swapped`.
 
 `incorrect` and `lookup_failed` SHALL each render their own distinct label
 and detail text — neither SHALL be collapsed into the `unreadable` label,
 since they indicate different operator remedies (re-image the plate vs.
-retry the run).
+retry the run). When a batch contains two or more distinct non-green
+statuses simultaneously (e.g. one `unreadable` and one `lookup_failed`,
+with no `duplicate_qr` present), the banner SHALL surface **all**
+applicable causes' detail text, not silently pick one by an undefined
+priority order.
 
 #### Scenario: Duplicate QR codes produce the red banner
 
@@ -257,6 +383,17 @@ retry the run).
 - **THEN** it SHALL show an amber state with a label distinct from "QR
   Unreadable", indicating the lookup itself failed and the run should be
   retried
+
+#### Scenario: A mixed batch of non-green statuses surfaces every applicable cause
+
+- **GIVEN** a completed scan's verification results include one plate with
+  status `unreadable` and a different plate with status `lookup_failed`,
+  and no plate has status `duplicate_qr`
+- **WHEN** the verification banner renders
+- **THEN** it SHALL show an amber state
+- **AND** the detail text SHALL name **both** the unreadable plate and the
+  lookup-failed plate, with their respective distinct remedies — neither
+  cause SHALL be silently omitted in favor of the other
 
 #### Scenario: All plates verified renders the green banner
 

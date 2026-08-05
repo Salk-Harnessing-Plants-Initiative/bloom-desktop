@@ -18,11 +18,16 @@ Two questions were added to the roadmap's Tier 4 section after
 this proposal: (1) issue #162 — QR verification (`verify-plates.ts`) has no
 `waveNumber` anywhere in its call chain today, and this tier is the first
 renderer caller, so it threads `waveNumber` through rather than deferring
-again; (2) draft PR #212's prior-art suggests `usePlateAssignments` should
-consume the now-available `listGraviMetadata` handler for per-wave
-auto-fill — this proposal includes it, going beyond that draft by also
-fixing a real UX gap it and the reference implementation both have (see
-design.md Decision 3).
+again (#162's other ask, case-insensitive plate-id comparison, is already
+fixed on `main` by PR #270 — not this proposal's concern); (2) draft PR
+#212's prior-art suggests `usePlateAssignments` should consume the
+now-available `listGraviMetadata` handler for per-wave auto-fill — this
+proposal includes it, going beyond that draft by also fixing a real UX gap
+it and the reference implementation both have (see design.md Decision 3),
+and by closing three related, currently-open draft PRs' bugs in the same
+files this tier rebuilds from scratch: #216 (stale plate assignments
+across waves), #213 (scanner status stuck on "Connecting..."), and #223
+(dropped transplant_date/custom_note on manual pick).
 
 ## What Changes
 
@@ -35,35 +40,53 @@ design.md Decision 3).
   reference implementation's UX, not ported, to avoid its confirmed bugs
   (hardcoded `/tmp` fallback, fire-and-forget `cancelScan()`,
   divide-by-zero cycle-count math, a ref-mirroring state pattern shaped
-  like the coordinator livelock found during the backend port, and a
+  like the coordinator livelock found during the backend port, a
   `verifyPlates` status-enum mismatch between declared type and live
-  usage).
+  usage, and — found during this proposal's own review — three related
+  bugs from open draft PRs #216/#213/#223 targeting these same hooks).
 - Five new presentational components: `ScanControlSection`,
   `ScanFormSection`, `ScannerStatusPanel`, `CadenceWarningBanner`,
   `QRVerificationBanner`, plus a pure `cadenceEstimator.ts` utility — no
   port of the reference's dead `ScannerConfigSection`/`useScannerConfig`
   (confirmed 1,508 lines of unused code via `git grep`).
-- **BREAKING**: none. `verify-plates.ts`'s IPC handler, `verifyPlates()`,
-  and its preload binding gain an **optional** `waveNumber` parameter —
-  additive; every existing caller/test that omits it keeps today's
-  behavior unchanged.
+- **BREAKING**: none. `verifyPlates()`, its IPC handler, and its preload
+  binding gain an **optional** `waveNumber` parameter, appended as the
+  *last* parameter in each signature (not grouped next to `experimentId`)
+  — the only placement that doesn't risk silently rebinding an existing
+  positional argument at `verifyPlates()`'s ~50 existing call sites.
+  Every existing caller/test that omits it keeps today's behavior
+  unchanged.
 - Wave-scoped QR verification (issue #162): when `waveNumber` is supplied,
-  the plate lookup resolves the wave's linked accession via
+  the plate *lookup* resolves the wave's linked accession via
   `GraviExperimentWaveMetadata` and scopes the `GraviPlateSectionMapping`
   lookup to that accession directly, rather than the existing
-  experiment-wide (legacy single-accession-relation) scope.
+  experiment-wide (legacy single-accession-relation) scope. The
+  swap-correction `GraviScan` *write* is scoped to the same wave (via
+  `GraviScan.wave_number`, which already exists), so a wave-precise read
+  is never paired with an experiment-wide write that could touch another
+  wave's scan history. `GraviScanPlateAssignment.verification_status`
+  remains current-state-only (no `wave_number` column, an existing,
+  separate design predating this proposal) — an accepted, named
+  limitation (design.md Decision 2/Risks), not a schema change.
 - Plate auto-fill via `listGraviMetadata` (already fully wired,
   zero renderer callers today), with a fix over both the reference
   implementation and draft PR #212: auto-filled fields stay editable
-  (not read-only text) and a per-position dirty-tracking mechanism
-  preserves manual overrides across auto-fill re-runs instead of silently
-  discarding them.
+  (not read-only text), and manual overrides are derived by comparing
+  persisted assignment values against a freshly recomputed auto-fill
+  baseline — surviving renderer remount/navigation, unlike an in-memory
+  dirty flag — rather than being silently discarded on the next auto-fill
+  run.
 - Session restore scoped honestly to renderer navigation/remount while the
   main process stays alive — matching what the reference implementation's
   "restoration across app restart" claim actually delivers (its
   main-process `scanSession` is in-memory and never rehydrated on
   `app.on('ready')`). True cross-app-restart durability is an explicit
-  non-goal (design.md).
+  non-goal (design.md). A lightweight, read-only addition surfaces an
+  orphaned `GraviScanSession` (crash/quit mid-run) as an informational
+  banner on mount, without restoring it.
+- "Start Scan" is disabled while any assigned scanner has an active,
+  unacknowledged wedge (consumes Tier 3's `useWedgeEvents`/`WedgeBanner`
+  mechanism, does not modify it).
 - Predictive cadence warning computes `platesPerScanner` from each
   scanner's real `gridMode` (already returned by `getScannerStatus()`
   today), closing a spec-conformance gap the reference implementation
@@ -89,9 +112,16 @@ design.md Decision 3).
   `src/renderer/utils/cadenceEstimator.ts` (new), `src/renderer/App.tsx`,
   `src/renderer/Layout.tsx`, `src/main/graviscan/verify-plates.ts`,
   `src/main/graviscan/register-handlers.ts`, `src/main/preload.ts`,
-  `src/types/electron.d.ts`, `src/types/graviscan.ts` (unify
-  `VerificationStatus` with the backend's `VerifyStatus` enum),
-  `tests/unit/graviscan/*`, `tests/e2e/renderer-database-ipc.e2e.ts`.
+  `src/types/electron.d.ts`, `src/types/graviscan.ts` (new
+  `VerificationStatus` type — no such type exists in this repo today;
+  this is a creation, not a "unification" of anything currently present),
+  `tests/unit/graviscan/{verify-plates,register-handlers}.test.ts`,
+  `tests/unit/renderer/{cadenceEstimator,hooks/*,components/*}.test.ts`
+  (new), `tests/e2e/graviscan-ipc.e2e.ts` (the actual existing home for
+  `gravi.*` IPC round-trip E2E coverage — not
+  `renderer-database-ipc.e2e.ts`, which covers the separate `db:*`
+  namespace and its own static coverage gate, unrelated to
+  `graviscan:*` handlers).
 - **Not affected, left as-is on purpose**: `graviscan:ensure-dir` and
   `graviscan:list-scan-files` preload wiring (Tier 5); `WedgeBanner`/
   `useWedgeEvents` (Tier 3, already globally mounted — this screen

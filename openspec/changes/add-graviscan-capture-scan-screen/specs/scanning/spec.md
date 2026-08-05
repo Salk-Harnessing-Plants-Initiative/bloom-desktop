@@ -18,8 +18,12 @@ unchanged from before this parameter existed (see "experimentId scopes both
 the plate lookup and every DB write" below). When `waveNumber` is supplied,
 the plate lookup SHALL be scoped to the accession linked to that specific
 `(experimentId, waveNumber)` pair via `GraviExperimentWaveMetadata`, not to
-every accession ever linked to the experiment — see "Wave-scoped plate lookup"
-and "Wave-scoped lookup with no linked metadata" below.
+every accession ever linked to the experiment, AND every swap-correction
+`GraviScan` write SHALL be additionally scoped to that same
+`wave_number` — a wave-scoped lookup SHALL NOT be paired with an
+experiment-wide (cross-wave) write — see "Wave-scoped plate lookup",
+"Wave-scoped swap-correction writes", and "Wave-scoped lookup with no
+linked metadata" below.
 
 #### Scenario: Detected plate matches assigned plate
 
@@ -62,8 +66,8 @@ and "Wave-scoped lookup with no linked metadata" below.
   This is a deliberate departure from production: `incorrect` (QR read
   successfully, wrong plate) and `unreadable` (QR could not be read at all)
   are distinct, actionable-differently outcomes for an operator and SHALL
-  remain distinguishable in persisted data. This tier's `QRVerificationBanner`
-  gives `incorrect` its own label, not reusing "QR Unreadable".
+  remain distinguishable in persisted data. A future renderer consuming this
+  status SHALL give `incorrect` its own label, not reuse "QR Unreadable".
 
 #### Scenario: The plate-id lookup itself fails for a plate
 
@@ -196,6 +200,37 @@ and "Wave-scoped lookup with no linked metadata" below.
 - **AND** a QR code belonging to a plate from a *different* wave's linked
   accession SHALL NOT match, even if that other accession is also linked to
   the same experiment (for a different wave)
+
+#### Scenario: Wave-scoped swap-correction writes
+
+- **GIVEN** an `experimentId` and a `waveNumber` are both passed to
+  `graviscan:verify-plates`
+- **AND** a swap is detected between two positions
+- **AND** another wave of the same experiment has historical `GraviScan`
+  rows sharing the same `(scanner_id, plate_index, plate_barcode)` values
+  as the swap being corrected (plate labels are grid-position names, not
+  globally unique across waves)
+- **WHEN** the swap correction's `GraviScan` `updateMany` runs
+- **THEN** its `where` clause SHALL include `wave_number: waveNumber` in
+  addition to `experiment_id`/`scanner_id`/`plate_barcode`
+- **AND** the other wave's historical `GraviScan` rows SHALL NOT be
+  touched by this correction, even though they share every other matching
+  field
+- **NOTE**: without this, a wave-precise lookup paired with an
+  experiment-wide write would be a regression relative to today's
+  behavior, not just an incomplete improvement — before wave-scoping
+  existed, lookup and write were at least both experiment-wide and
+  therefore consistent with each other; making the lookup wave-precise
+  while leaving the write's blast radius unchanged introduces a new way
+  to silently corrupt a different wave's historical data that could not
+  happen before this change.
+- **NOTE**: `GraviScanPlateAssignment.verification_status` itself has no
+  `wave_number` column and remains current-state-only — a second
+  verification run for the same scanner/position under a different wave
+  still overwrites the first run's `verification_status` with no
+  wave-attributable trace of either run. This is an accepted, named
+  limitation of this change (see the Tier 4 proposal's design.md), not
+  something this scenario claims to fix.
 
 #### Scenario: Wave-scoped lookup with no linked metadata
 
@@ -391,12 +426,15 @@ and "Wave-scoped lookup with no linked metadata" below.
   so swap corrections are reflected in both the Bloom (Supabase) and Box
   uploads
 - **NOTE**: **Nothing in this change enforces this ordering, and no code in
-  this change implements it.** This tier's `GraviScan.tsx` screen invokes
-  `verify-plates` as a distinct, explicit step after scan completion, but
-  does not yet block or sequence `upload-all-scans` against it. This
-  scenario exists so the ordering constraint is not silently lost; it is a
-  requirement on future orchestration work, not a claim about current
-  behavior.
+  this change implements it.** `main` has no renderer, and
+  `graviscan:upload-all-scans` neither knows nor asks whether verification
+  has run. This scenario exists so the ordering constraint is not silently
+  lost between now and whenever that orchestration is built; it is a
+  requirement on that future work, not a claim about current behavior.
+  (This tier's `GraviScan.tsx` screen does invoke `verify-plates` as a
+  distinct, explicit step after scan completion, but still does not block
+  or sequence `upload-all-scans` against it — the gap this NOTE describes
+  remains open after this tier, not just before it.)
 
 #### Scenario: verification_status does not gate uploads (documented, deferred to a separate proposal)
 
@@ -410,6 +448,11 @@ and "Wave-scoped lookup with no linked metadata" below.
   can override
 - **NOTE**: deferred deliberately. Choosing severity thresholds and
   warn-vs-block behavior is a product decision with operator-workflow
-  consequences (a blocked upload on a rig mid-experiment is disruptive).
-  This tier's `QRVerificationBanner` surfaces the outcome to the operator
-  but does not gate the upload button or flow.
+  consequences (a blocked upload on a rig mid-experiment is disruptive),
+  and it needs the renderer surface that does not exist on `main` yet.
+  Recording it here so the gap is a known, tracked one rather than an
+  oversight: today a misidentified plate's data reaches both destinations
+  with no barrier. (This tier's `QRVerificationBanner` surfaces the
+  outcome to the operator but still does not gate the upload button or
+  flow — the renderer surface now exists, the gating decision is still
+  not made.)
