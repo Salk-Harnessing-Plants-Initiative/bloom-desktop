@@ -413,10 +413,10 @@ window.electron.database.scans.getRecent(options?: {
 // Returns: DatabaseResponse<ScanWithRelations[]>
 // Note: Returns scans from today, sorted by capture_date (most recent first)
 
-// Get most recent scan date for a plant in an experiment
-window.electron.database.scans.getMostRecentScanDate(plantId: string, experimentId: string)
-// Returns: DatabaseResponse<Date | null>
-// Note: Used for duplicate scan prevention
+// Check for a duplicate scan at the same plant/experiment/wave/age
+window.electron.database.scans.checkDuplicate(plantId: string, experimentId: string, waveNumber: number, plantAgeDays: number)
+// Returns: DatabaseResponse<boolean>
+// Note: Used for duplicate scan prevention (excludes soft-deleted scans)
 ```
 
 ### Phenotypers

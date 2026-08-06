@@ -13,6 +13,9 @@ import * as os from 'os';
 import {
   writeMetadataJson,
   buildMetadataObject,
+  markMetadataDeleted,
+  isScanMetadataDeleted,
+  type ScanMetadataJson,
 } from '../../src/main/cylinderscan/scan-metadata-json';
 import type { ScannerSettings } from '../../src/types/scanner';
 import type { CameraSettings } from '../../src/types/camera';
@@ -483,6 +486,86 @@ describe('scan-metadata-json', () => {
       const lines = raw.split('\n');
       const indentedLines = lines.filter((l) => l.startsWith('  '));
       expect(indentedLines.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ========================================
+  // markMetadataDeleted tests
+  // ========================================
+
+  describe('markMetadataDeleted', () => {
+    it('adds deleted: true to an existing metadata.json', () => {
+      const outputDir = path.join(testDir, 'scan-delete');
+      fs.mkdirSync(outputDir, { recursive: true });
+      const settings = makeScannerSettings({ output_path: outputDir });
+      writeMetadataJson(outputDir, settings);
+
+      markMetadataDeleted(outputDir);
+
+      const content = JSON.parse(
+        fs.readFileSync(path.join(outputDir, 'metadata.json'), 'utf-8')
+      );
+      expect(content.deleted).toBe(true);
+    });
+
+    it('preserves all other fields unchanged', () => {
+      const outputDir = path.join(testDir, 'scan-delete-preserve');
+      fs.mkdirSync(outputDir, { recursive: true });
+      const settings = makeScannerSettings({ output_path: outputDir });
+      writeMetadataJson(outputDir, settings);
+      const before = JSON.parse(
+        fs.readFileSync(path.join(outputDir, 'metadata.json'), 'utf-8')
+      );
+
+      markMetadataDeleted(outputDir);
+
+      const after = JSON.parse(
+        fs.readFileSync(path.join(outputDir, 'metadata.json'), 'utf-8')
+      );
+      const afterRest = { ...after };
+      delete afterRest.deleted;
+      expect(afterRest).toEqual(before);
+    });
+
+    it('writes atomically (no .tmp file remains on success)', () => {
+      const outputDir = path.join(testDir, 'scan-delete-atomic');
+      fs.mkdirSync(outputDir, { recursive: true });
+      const settings = makeScannerSettings({ output_path: outputDir });
+      writeMetadataJson(outputDir, settings);
+
+      markMetadataDeleted(outputDir);
+
+      expect(fs.existsSync(path.join(outputDir, 'metadata.json.tmp'))).toBe(
+        false
+      );
+    });
+
+    it('throws if metadata.json does not exist', () => {
+      const outputDir = path.join(testDir, 'scan-delete-missing');
+      fs.mkdirSync(outputDir, { recursive: true });
+
+      expect(() => markMetadataDeleted(outputDir)).toThrow();
+    });
+  });
+
+  // ========================================
+  // isScanMetadataDeleted tests
+  // ========================================
+
+  describe('isScanMetadataDeleted', () => {
+    it('returns true when deleted is true', () => {
+      const json = { deleted: true } as ScanMetadataJson;
+      expect(isScanMetadataDeleted(json)).toBe(true);
+    });
+
+    it('returns false when deleted is false', () => {
+      const json = { deleted: false } as ScanMetadataJson;
+      expect(isScanMetadataDeleted(json)).toBe(false);
+    });
+
+    it('returns false when deleted is absent (legacy file)', () => {
+      const json = {} as ScanMetadataJson;
+      expect(isScanMetadataDeleted(json)).toBe(false);
     });
   });
 });

@@ -39,6 +39,7 @@ import type {
   ImageCreateData,
   ScanFilters,
   PaginatedScanFilters,
+  ScansExportProgress,
 } from '../types/database';
 // eslint-disable-next-line import/no-unresolved
 import type { GraviWedgeEvent } from '../types/graviscan';
@@ -217,11 +218,18 @@ const databaseAPI: DatabaseAPI = {
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>
       ipcRenderer.invoke('db:scans:create', data),
-    getMostRecentScanDate: (plantId: string, experimentId: string) =>
+    checkDuplicate: (
+      plantId: string,
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ) =>
       ipcRenderer.invoke(
-        'db:scans:getMostRecentScanDate',
+        'db:scans:checkDuplicate',
         plantId,
-        experimentId
+        experimentId,
+        waveNumber,
+        plantAgeDays
       ),
     getRecent: (options?: { limit?: number; experimentId?: string }) =>
       ipcRenderer.invoke('db:scans:getRecent', options),
@@ -229,6 +237,15 @@ const databaseAPI: DatabaseAPI = {
     upload: (scanId: string) => ipcRenderer.invoke('db:scans:upload', scanId),
     uploadBatch: (scanIds: string[]) =>
       ipcRenderer.invoke('db:scans:uploadBatch', scanIds),
+    export: (scanIds: string[], destinationDir: string) =>
+      ipcRenderer.invoke('db:scans:export', { scanIds, destinationDir }),
+    onExportProgress: (callback: (progress: ScansExportProgress) => void) => {
+      const listener = (_event: unknown, progress: ScansExportProgress) =>
+        callback(progress);
+      ipcRenderer.on('db:scans:export-progress', listener);
+      return () =>
+        ipcRenderer.removeListener('db:scans:export-progress', listener);
+    },
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),

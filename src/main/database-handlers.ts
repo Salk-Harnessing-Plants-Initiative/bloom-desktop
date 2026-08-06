@@ -5,10 +5,14 @@
  * for all models to the renderer process.
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron';
 import { getDatabase } from './database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { ImageUploader, UploadResult } from './image-uploader';
+import { resolveScanPath } from './scan-protocol';
+import { getScansDir } from './config-store';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // This file is shared code and must not import from graviscan/ directly
 // (enforced by @typescript-eslint/no-restricted-imports). GraviScan-specific
@@ -90,6 +94,16 @@ function naturalCompare(a: string, b: string): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
+}
+
+/** `fs.promises` has no direct equivalent to `fs.existsSync`. */
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.promises.access(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // -----------------------------------------------------------------------
@@ -1119,13 +1133,376 @@ export async function listGraviMetadata(
   }
 }
 
+/** One scan the export batch could not copy — enough detail to identify and re-attempt it. */
+export interface ScansExportFailure {
+  scanId: string;
+  experimentName: string;
+  captureDate: Date;
+  reason: string;
+}
+
+export interface ScansExportData {
+  exportedFiles: number;
+  exportedScans: number;
+  skippedFiles: number;
+  failedScans: ScansExportFailure[];
+}
+
+export interface ScansExportProgress {
+  totalFiles: number;
+  completedFiles: number;
+  currentScanId: string;
+}
+
+/**
+ * Export selected scans' files to `destinationDir`, preserving each scan's
+ * relative `path` under the destination.
+ *
+ * `scansDir` is injected (rather than read from config internally) so tests
+ * can point it at a temp directory — mirrors `resolveScanPath`'s own
+ * dependency-injection style.
+ *
+ * Files are copied via `.tmp`-then-`fs.promises.rename`, one at a time, in the
+ * SAME order they're listed (`metadata.json` first) — this must stay fully
+ * sequential (never `Promise.all` over the file list) because the
+ * metadata-before-frames guarantee is about *completion* order, not just the
+ * order copies are started in. A per-file failure marks only that scan as
+ * failed (in `failedScans`, with whatever files already succeeded left in
+ * place — see design.md's accepted residual risk) and does not touch other
+ * scans in the batch.
+ */
+export async function scansExport(
+  db: Db,
+  scansDir: string,
+  params: { scanIds: string[]; destinationDir: string },
+  onProgress?: (progress: ScansExportProgress) => void
+): Promise<DatabaseResponse<ScansExportData>> {
+  try {
+    const { scanIds, destinationDir } = params;
+    if (!Array.isArray(scanIds) || scanIds.length === 0) {
+      return { success: false, error: 'scanIds must be a non-empty array' };
+    }
+    if (!isNonEmptyString(destinationDir)) {
+      return {
+        success: false,
+        error: 'destinationDir must be a non-empty string',
+      };
+    }
+
+    try {
+      await fs.promises.mkdir(destinationDir, { recursive: true });
+      // fs.access(W_OK) is well-known to be unreliable for detecting a
+      // genuinely write-protected/read-only external drive on Windows —
+      // exactly the USB-drive scenario this feature targets. A real
+      // write-then-delete probe is the only check that's actually trustworthy
+      // here.
+      const probePath = path.join(
+        destinationDir,
+        `.bloom-export-write-probe-${Date.now()}`
+      );
+      await fs.promises.writeFile(probePath, '');
+      await fs.promises.unlink(probePath);
+    } catch (error) {
+      return {
+        success: false,
+        error: `Destination directory is not writable: ${errorMessage(error)}`,
+      };
+    }
+
+    const scans = await db.scan.findMany({
+      where: { id: { in: scanIds }, deleted: false },
+      include: { experiment: true },
+      orderBy: { capture_date: 'desc' },
+    });
+
+    const failedScans: ScansExportFailure[] = [];
+
+    // Pass 1: resolve + containment-check every scan's source and
+    // destination path, and list its files, before copying anything. A scan
+    // that fails here goes straight to `failedScans` and never contributes
+    // to `totalFiles` — progress reporting only covers scans whose files
+    // are actually going to be attempted.
+    const processable: Array<{
+      scanId: string;
+      resolvedSource: string;
+      resolvedDest: string;
+      files: string[];
+    }> = [];
+
+    for (const scan of scans) {
+      const fail = (reason: string) =>
+        failedScans.push({
+          scanId: scan.id,
+          experimentName: scan.experiment.name,
+          captureDate: scan.capture_date,
+          reason,
+        });
+
+      const resolvedSource = resolveScanPath(
+        path.join(scansDir, scan.path),
+        scansDir
+      );
+      if (!resolvedSource) {
+        fail('Scan path escapes the configured scans directory');
+        continue;
+      }
+
+      const resolvedDest = resolveScanPath(
+        path.join(destinationDir, scan.path),
+        destinationDir
+      );
+      if (!resolvedDest) {
+        fail('Scan path escapes the destination directory');
+        continue;
+      }
+
+      let files: string[];
+      try {
+        files = await fs.promises.readdir(resolvedSource);
+      } catch (error) {
+        fail(`Could not read scan source folder: ${errorMessage(error)}`);
+        continue;
+      }
+
+      // metadata.json first, so it's always written (and renamed into
+      // place) before any NNN.png frame from the same scan.
+      files.sort((a, b) => {
+        if (a === 'metadata.json') return -1;
+        if (b === 'metadata.json') return 1;
+        return 0;
+      });
+
+      processable.push({
+        scanId: scan.id,
+        resolvedSource,
+        resolvedDest,
+        files,
+      });
+    }
+
+    const totalFiles = processable.reduce((sum, p) => sum + p.files.length, 0);
+    let completedFiles = 0;
+    let exportedFiles = 0;
+    let exportedScans = 0;
+    let skippedFiles = 0;
+
+    // Pass 2: sequential, per-file copy. Deliberately not parallelized —
+    // see this function's doc comment on why completion order matters.
+    for (const entry of processable) {
+      const scan = scans.find((s) => s.id === entry.scanId)!;
+      await fs.promises.mkdir(entry.resolvedDest, { recursive: true });
+
+      let scanFailureReason: string | null = null;
+
+      for (const filename of entry.files) {
+        const finalFile = path.join(entry.resolvedDest, filename);
+        const tmpFile = `${finalFile}.tmp`;
+
+        try {
+          // Unconditional: a stray .tmp from an earlier crashed attempt at
+          // this exact file must not linger just because this run happens
+          // to skip the file (final already present some other way).
+          if (await pathExists(tmpFile)) {
+            await fs.promises.unlink(tmpFile);
+          }
+
+          if (await pathExists(finalFile)) {
+            skippedFiles++;
+          } else {
+            await fs.promises.copyFile(
+              path.join(entry.resolvedSource, filename),
+              tmpFile
+            );
+            await fs.promises.rename(tmpFile, finalFile);
+            exportedFiles++;
+          }
+        } catch (error) {
+          scanFailureReason ??= errorMessage(error);
+        }
+
+        completedFiles++;
+        onProgress?.({
+          totalFiles,
+          completedFiles,
+          currentScanId: entry.scanId,
+        });
+
+        // Stop this scan's remaining files as soon as one fails — critically,
+        // this is what stops a metadata.json failure from being masked by a
+        // LATER frame file still copying successfully, which would produce
+        // exactly the "frames present, metadata missing" state the
+        // metadata-first reordering above exists to prevent. It also means a
+        // mid-batch failure leaves a contiguous, diagnosable prefix of files
+        // rather than scattered gaps.
+        if (scanFailureReason) {
+          completedFiles +=
+            entry.files.length - entry.files.indexOf(filename) - 1;
+          onProgress?.({
+            totalFiles,
+            completedFiles,
+            currentScanId: entry.scanId,
+          });
+          break;
+        }
+      }
+
+      if (scanFailureReason) {
+        failedScans.push({
+          scanId: scan.id,
+          experimentName: scan.experiment.name,
+          captureDate: scan.capture_date,
+          reason: scanFailureReason,
+        });
+      } else {
+        exportedScans++;
+      }
+    }
+
+    return {
+      success: true,
+      data: { exportedFiles, exportedScans, skippedFiles, failedScans },
+    };
+  } catch (error) {
+    console.error('[DB] Failed to export scans:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Soft-delete a scan (sets `deleted: true`) and keep its on-disk
+ * `metadata.json` in sync with the same flag, per
+ * add-cylinderscan-delete-upload-integrity's "Scan Delete IPC Handler"
+ * requirement. `scan.path` can be absolute (legacy/pilot-imported scans)
+ * or relative to `scansDir` — mirrors the same guard
+ * `image-uploader.ts:255-257` uses for `Image.path`. A missing
+ * `metadata.json` (e.g. a legacy scan captured before metadata.json
+ * support existed) logs a warning but does not fail the delete.
+ *
+ * `markMetadataDeleted` is injected rather than imported directly: this
+ * file is shared code and must not import from `cylinderscan/` (enforced
+ * by `@typescript-eslint/no-restricted-imports`) — only `main.ts` (the
+ * orchestrator) may import mode-specific modules, so `main.ts` supplies
+ * the real implementation when it calls `registerDatabaseHandlers()`.
+ */
+export async function scansDelete(
+  db: Db,
+  id: string,
+  scansDir: string,
+  markMetadataDeleted: (outputDir: string) => void
+): Promise<DatabaseResponse> {
+  try {
+    const scan = await db.scan.update({
+      where: { id },
+      data: { deleted: true },
+    });
+    logDatabaseOperation('DELETE', 'Scan', `id=${id} (soft delete)`);
+
+    const outputDir = path.isAbsolute(scan.path)
+      ? scan.path
+      : path.join(scansDir, scan.path);
+    try {
+      markMetadataDeleted(outputDir);
+    } catch (error) {
+      // ENOENT is the expected, benign case: a legacy scan captured before
+      // metadata.json support existed. Anything else (corrupt JSON,
+      // permission denied) is a real integrity problem masked by the same
+      // exception shape — log it louder so it doesn't read as routine.
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        console.warn(
+          `[DB] Scan ${id}: no metadata.json found at ${outputDir} (legacy scan) — soft-delete proceeded without syncing it.`,
+          error
+        );
+      } else {
+        console.error(
+          `[DB] Scan ${id}: metadata.json at ${outputDir} could not be read/updated — soft-delete proceeded, but this file may need manual attention.`,
+          error
+        );
+      }
+    }
+
+    return { success: true, data: scan };
+  } catch (error) {
+    console.error('[DB] Failed to delete scan:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Checks whether a non-deleted scan already exists matching
+ * `(plant_id, experiment_id, wave_number, plant_age_days)` — backs
+ * `db:scans:checkDuplicate`, replacing the imprecise same-day/
+ * (plant_id+experiment_id) check `getMostRecentScanDate` used to back.
+ * Each of the four fields is validated independently; a malformed
+ * argument returns an error rather than `{ data: false }`, since the
+ * latter would read as "no duplicate" rather than "the check could not
+ * run."
+ */
+export async function checkDuplicateScan(
+  db: Db,
+  plantId: string,
+  experimentId: string,
+  waveNumber: number,
+  plantAgeDays: number
+): Promise<DatabaseResponse<boolean>> {
+  try {
+    if (!isNonEmptyString(plantId)) {
+      return { success: false, error: 'plantId must be a non-empty string' };
+    }
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    if (!isValidWaveNumber(waveNumber)) {
+      return {
+        success: false,
+        error: 'waveNumber must be a non-negative integer',
+      };
+    }
+    if (!isValidWaveNumber(plantAgeDays)) {
+      return {
+        success: false,
+        error: 'plantAgeDays must be a non-negative integer',
+      };
+    }
+
+    const scan = await db.scan.findFirst({
+      where: {
+        plant_id: plantId,
+        experiment_id: experimentId,
+        wave_number: waveNumber,
+        plant_age_days: plantAgeDays,
+        deleted: false,
+      },
+      select: { id: true },
+    });
+
+    return { success: true, data: scan !== null };
+  } catch (error) {
+    console.error('[DB] Failed to check for duplicate scan:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
 /**
  * Register all database IPC handlers
  *
  * Handlers follow naming convention: db:{model}:{action}
  * All handlers return DatabaseResponse for consistent error handling
+ *
+ * @param deps.markMetadataDeleted - Injected by `main.ts`, since this
+ * file (shared code) is not allowed to import `cylinderscan/` directly.
+ * See `scansDelete()`'s doc comment.
+ * @param deps.getMainWindow - Needed only by `db:scans:export`, to push
+ *   progress events via `webContents.send`. Called fresh at send-time (not
+ *   cached), matching `graviscan:download-images`'s convention, since the
+ *   window may close mid-export.
  */
-export function registerDatabaseHandlers() {
+export function registerDatabaseHandlers(deps: {
+  markMetadataDeleted: (outputDir: string) => void;
+  getMainWindow?: () => BrowserWindow | null;
+}) {
   const db = getDatabase();
 
   // ============================================
@@ -1815,6 +2192,23 @@ export function registerDatabaseHandlers() {
   );
 
   ipcMain.handle(
+    'db:scans:export',
+    (
+      _event,
+      params: { scanIds: string[]; destinationDir: string }
+    ): Promise<DatabaseResponse<ScansExportData>> => {
+      const scansDir = getScansDir();
+      const onProgress = (progress: ScansExportProgress) => {
+        const win = deps.getMainWindow?.();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('db:scans:export-progress', progress);
+        }
+      };
+      return scansExport(db, scansDir, params, onProgress);
+    }
+  );
+
+  ipcMain.handle(
     'db:scans:get',
     async (_event, id: string): Promise<DatabaseResponse> => {
       try {
@@ -1844,34 +2238,21 @@ export function registerDatabaseHandlers() {
   );
 
   ipcMain.handle(
-    'db:scans:getMostRecentScanDate',
+    'db:scans:checkDuplicate',
     async (
       _event,
       plantId: string,
-      experimentId: string
-    ): Promise<DatabaseResponse<string | null>> => {
-      try {
-        const scan = await db.scan.findFirst({
-          where: {
-            plant_id: plantId,
-            experiment_id: experimentId,
-            deleted: false,
-          },
-          orderBy: { capture_date: 'desc' },
-          select: { capture_date: true },
-        });
-
-        return {
-          success: true,
-          data: scan?.capture_date?.toISOString() || null,
-        };
-      } catch (error) {
-        console.error('[DB] Failed to get most recent scan date:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ): Promise<DatabaseResponse<boolean>> => {
+      return checkDuplicateScan(
+        db,
+        plantId,
+        experimentId,
+        waveNumber,
+        plantAgeDays
+      );
     }
   );
 
@@ -1951,26 +2332,14 @@ export function registerDatabaseHandlers() {
   );
 
   /**
-   * Soft delete a scan by setting deleted=true
-   * Does NOT delete associated Image records
+   * Soft delete a scan by setting deleted=true, and keep metadata.json
+   * on disk in sync with the same flag. Does NOT delete associated Image
+   * records or any files (see scansDelete()).
    */
   ipcMain.handle(
     'db:scans:delete',
     async (_event, id: string): Promise<DatabaseResponse> => {
-      try {
-        const scan = await db.scan.update({
-          where: { id },
-          data: { deleted: true },
-        });
-        logDatabaseOperation('DELETE', 'Scan', `id=${id} (soft delete)`);
-        return { success: true, data: scan };
-      } catch (error) {
-        console.error('[DB] Failed to delete scan:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
+      return scansDelete(db, id, getScansDir(), deps.markMetadataDeleted);
     }
   );
 

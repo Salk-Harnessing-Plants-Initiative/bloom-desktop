@@ -156,36 +156,37 @@ export function CaptureScan() {
     return cleanup;
   }, []);
 
-  // Check for duplicate scans (same plant + experiment + today)
+  // Check for duplicate scans (same plant + experiment + wave + age —
+  // add-cylinderscan-delete-upload-integrity, replacing the previous
+  // same-day/(plant+experiment)-only check)
   useEffect(() => {
-    const checkDuplicateScan = async () => {
+    const checkForDuplicateScan = async () => {
       if (!metadata.plantQrCode.trim() || !metadata.experimentId.trim()) {
         setDuplicateScanWarning(null);
         return;
       }
 
+      // Wave number / plant age are string form state — validate before
+      // calling the IPC handler, matching the blank-field guard above.
+      const waveValidation = validateWaveNumber(metadata.waveNumber);
+      const ageValidation = validatePlantAgeDays(metadata.plantAgeDays);
+      if (!waveValidation.isValid || !ageValidation.isValid) {
+        setDuplicateScanWarning(null);
+        return;
+      }
+
       try {
-        const result =
-          await window.electron.database.scans.getMostRecentScanDate(
-            metadata.plantQrCode,
-            metadata.experimentId
-          );
+        const result = await window.electron.database.scans.checkDuplicate(
+          metadata.plantQrCode,
+          metadata.experimentId,
+          waveValidation.value!,
+          ageValidation.value!
+        );
 
         if (result.success && result.data) {
-          // Compare dates (ignoring time)
-          const scanDate = new Date(result.data);
-          const today = new Date();
-
-          const isSameDay =
-            scanDate.getFullYear() === today.getFullYear() &&
-            scanDate.getMonth() === today.getMonth() &&
-            scanDate.getDate() === today.getDate();
-
-          if (isSameDay) {
-            setDuplicateScanWarning('This plant was already scanned today');
-          } else {
-            setDuplicateScanWarning(null);
-          }
+          setDuplicateScanWarning(
+            'A scan already exists for this plant, experiment, wave, and age'
+          );
         } else {
           setDuplicateScanWarning(null);
         }
@@ -196,13 +197,18 @@ export function CaptureScan() {
     };
 
     // Initial check
-    checkDuplicateScan();
+    checkForDuplicateScan();
 
     // Poll every 2 seconds
-    const intervalId = setInterval(checkDuplicateScan, 2000);
+    const intervalId = setInterval(checkForDuplicateScan, 2000);
 
     return () => clearInterval(intervalId);
-  }, [metadata.plantQrCode, metadata.experimentId]);
+  }, [
+    metadata.plantQrCode,
+    metadata.experimentId,
+    metadata.waveNumber,
+    metadata.plantAgeDays,
+  ]);
 
   // Load machine config on mount
   useEffect(() => {

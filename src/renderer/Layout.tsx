@@ -151,6 +151,31 @@ const browseScansLink = {
   ),
 };
 
+/**
+ * The shared "Export Scans" link — same CylinderScan-only data layer as
+ * browseScansLink above, hidden in graviscan mode for the same reason.
+ */
+const exportScansLink = {
+  to: '/export',
+  label: 'Export Scans',
+  icon: (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="w-6 h-6 inline mr-2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+      />
+    </svg>
+  ),
+};
+
 /** Capture-specific links (cylinderscan mode only) */
 const captureLinks = [
   {
@@ -295,10 +320,10 @@ export function Layout({ mode = null }: LayoutProps) {
   const showCaptureLinks = mode === 'cylinderscan';
   const showGraviscanLinks = mode === 'graviscan';
   const links = showCaptureLinks
-    ? [...alwaysLinks, browseScansLink, ...captureLinks]
+    ? [...alwaysLinks, browseScansLink, exportScansLink, ...captureLinks]
     : showGraviscanLinks
       ? [...alwaysLinks, ...graviscanLinks]
-      : [...alwaysLinks, browseScansLink];
+      : [...alwaysLinks, browseScansLink, exportScansLink];
 
   // Load scanner name from scanner identity service
   useEffect(() => {
