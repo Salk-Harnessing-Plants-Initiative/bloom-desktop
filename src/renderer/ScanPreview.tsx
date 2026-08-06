@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { ScanWithRelations } from '../types/database';
 import { pathToFileUrl } from '../utils/file-url';
 import { isAbsolutePath } from '../utils/scan-path';
+import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 
 // Zoom levels as specified in design.md
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
 
 export function ScanPreview() {
   const { scanId } = useParams<{ scanId: string }>();
+  const navigate = useNavigate();
 
   // Data state
   const [scan, setScan] = useState<ScanWithRelations | null>(null);
@@ -28,6 +30,11 @@ export function ScanPreview() {
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Delete state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Fetch scan data
   const fetchScan = useCallback(async () => {
@@ -164,6 +171,26 @@ export function ScanPreview() {
       setUploadError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!scanId) return;
+    setShowDeleteConfirm(false);
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const result = await window.electron.database.scans.delete(scanId);
+      if (result.success) {
+        navigate('/browse-scans');
+      } else {
+        setDeleteError(result.error || 'Failed to delete scan');
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -322,10 +349,13 @@ export function ScanPreview() {
               </button>
             </div>
 
-            {/* Upload button */}
+            {/* Upload + Delete buttons */}
             <div className="flex items-center gap-2">
               {uploadError && (
                 <span className="text-sm text-red-600">{uploadError}</span>
+              )}
+              {deleteError && (
+                <span className="text-sm text-red-600">{deleteError}</span>
               )}
               <span className="text-sm text-gray-600">
                 {getUploadStatus().text}
@@ -338,6 +368,15 @@ export function ScanPreview() {
                 title="Upload to Bloom"
               >
                 {isUploading ? 'Uploading...' : 'Upload'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isUploading || isDeleting}
+                className="px-3 py-1 text-sm border rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Delete scan"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
@@ -502,6 +541,15 @@ export function ScanPreview() {
           </div>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <DeleteConfirmModal
+          plantId={scan.plant_id}
+          captureDate={formatDate(scan.capture_date)}
+          onConfirm={confirmDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }

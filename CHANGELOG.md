@@ -68,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CylinderScan delete/upload data-integrity hardening (#79, #105, #120)
+  - `db:scans:delete` now also marks the scan's on-disk `metadata.json` as `deleted: true`, keeping it in sync with the (still soft-delete-only) database row
+  - Delete affordance added to `ScanPreview.tsx`; both it and `BrowseScans.tsx` now share a real `DeleteConfirmModal` (Plant ID + capture date) instead of `BrowseScans`' previous generic `window.confirm()`
+  - `BrowseScans.tsx`'s Delete button is now also disabled while that scan's upload is in flight
+  - `image-uploader.ts`: `uploadScan`/`uploadBatch` now skip soft-deleted scans; retry now skips images already marked `'uploaded'` instead of resending them (closing a duplicate-remote-row risk), with a regression test guarding the filtered-array index-safety this depends on
+  - `image-uploader.ts`: freshly-uploaded images are now independently verified against Supabase storage (not just trusted from bloom-fs's callback) before being marked `'uploaded'` locally, with a bounded 3-attempt retry distinguishing confirmed-missing from a transient lookup failure — closes a real incident where a failed-then-retried upload was marked succeeded without the bytes actually landing in storage
+  - `db:scans:checkDuplicate` replaces the old same-day/(plant_id + experiment_id) duplicate warning in `CaptureScan.tsx` with the correct `(plant_id, experiment_id, wave_number, plant_age_days)` key; `db:scans:getMostRecentScanDate` removed as dead code
+  - See `openspec/changes/add-cylinderscan-delete-upload-integrity/` for full design rationale and follow-up issues filed for out-of-scope items (local↔cloud UUID traceability, a widened upload-audit/reconciliation tool, Basler acquisition-metadata readback)
 - GraviScan `retry-scanner` reporting success when a respawned worker silently fails to come online (#283)
   - `retryScanner()` now checks `coordinator.getScannerStatuses()` immediately after `addScanner()` resolves and returns `{ success: false, error }` if the scanner isn't reported `'ready'` — `addScanner()`/`spawnSingleScanner()` never throw on spawn failure, so a resolved promise alone didn't mean the worker actually came online
   - Retry outcome log lines (`scanLog()`) now also include `session_id`, for cross-session log correlation

@@ -10,14 +10,9 @@ import { getDatabase } from './database';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { ImageUploader, UploadResult } from './image-uploader';
 import { resolveScanPath } from './scan-protocol';
-import { loadEnvConfig } from './config-store';
+import { getScansDir } from './config-store';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
-
-// Matches the `.bloom/.env` path convention used by `main.ts` and
-// `image-uploader.ts` for the machine config that holds `scans_dir`.
-const ENV_PATH = path.join(os.homedir(), '.bloom', '.env');
 
 /**
  * Standard response format for database operations
@@ -1357,19 +1352,140 @@ export async function scansExport(
 }
 
 /**
+ * Soft-delete a scan (sets `deleted: true`) and keep its on-disk
+ * `metadata.json` in sync with the same flag, per
+ * add-cylinderscan-delete-upload-integrity's "Scan Delete IPC Handler"
+ * requirement. `scan.path` can be absolute (legacy/pilot-imported scans)
+ * or relative to `scansDir` — mirrors the same guard
+ * `image-uploader.ts:255-257` uses for `Image.path`. A missing
+ * `metadata.json` (e.g. a legacy scan captured before metadata.json
+ * support existed) logs a warning but does not fail the delete.
+ *
+ * `markMetadataDeleted` is injected rather than imported directly: this
+ * file is shared code and must not import from `cylinderscan/` (enforced
+ * by `@typescript-eslint/no-restricted-imports`) — only `main.ts` (the
+ * orchestrator) may import mode-specific modules, so `main.ts` supplies
+ * the real implementation when it calls `registerDatabaseHandlers()`.
+ */
+export async function scansDelete(
+  db: Db,
+  id: string,
+  scansDir: string,
+  markMetadataDeleted: (outputDir: string) => void
+): Promise<DatabaseResponse> {
+  try {
+    const scan = await db.scan.update({
+      where: { id },
+      data: { deleted: true },
+    });
+    logDatabaseOperation('DELETE', 'Scan', `id=${id} (soft delete)`);
+
+    const outputDir = path.isAbsolute(scan.path)
+      ? scan.path
+      : path.join(scansDir, scan.path);
+    try {
+      markMetadataDeleted(outputDir);
+    } catch (error) {
+      // ENOENT is the expected, benign case: a legacy scan captured before
+      // metadata.json support existed. Anything else (corrupt JSON,
+      // permission denied) is a real integrity problem masked by the same
+      // exception shape — log it louder so it doesn't read as routine.
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        console.warn(
+          `[DB] Scan ${id}: no metadata.json found at ${outputDir} (legacy scan) — soft-delete proceeded without syncing it.`,
+          error
+        );
+      } else {
+        console.error(
+          `[DB] Scan ${id}: metadata.json at ${outputDir} could not be read/updated — soft-delete proceeded, but this file may need manual attention.`,
+          error
+        );
+      }
+    }
+
+    return { success: true, data: scan };
+  } catch (error) {
+    console.error('[DB] Failed to delete scan:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Checks whether a non-deleted scan already exists matching
+ * `(plant_id, experiment_id, wave_number, plant_age_days)` — backs
+ * `db:scans:checkDuplicate`, replacing the imprecise same-day/
+ * (plant_id+experiment_id) check `getMostRecentScanDate` used to back.
+ * Each of the four fields is validated independently; a malformed
+ * argument returns an error rather than `{ data: false }`, since the
+ * latter would read as "no duplicate" rather than "the check could not
+ * run."
+ */
+export async function checkDuplicateScan(
+  db: Db,
+  plantId: string,
+  experimentId: string,
+  waveNumber: number,
+  plantAgeDays: number
+): Promise<DatabaseResponse<boolean>> {
+  try {
+    if (!isNonEmptyString(plantId)) {
+      return { success: false, error: 'plantId must be a non-empty string' };
+    }
+    if (!isNonEmptyString(experimentId)) {
+      return {
+        success: false,
+        error: 'experimentId must be a non-empty string',
+      };
+    }
+    if (!isValidWaveNumber(waveNumber)) {
+      return {
+        success: false,
+        error: 'waveNumber must be a non-negative integer',
+      };
+    }
+    if (!isValidWaveNumber(plantAgeDays)) {
+      return {
+        success: false,
+        error: 'plantAgeDays must be a non-negative integer',
+      };
+    }
+
+    const scan = await db.scan.findFirst({
+      where: {
+        plant_id: plantId,
+        experiment_id: experimentId,
+        wave_number: waveNumber,
+        plant_age_days: plantAgeDays,
+        deleted: false,
+      },
+      select: { id: true },
+    });
+
+    return { success: true, data: scan !== null };
+  } catch (error) {
+    console.error('[DB] Failed to check for duplicate scan:', error);
+    return { success: false, error: errorMessage(error) };
+  }
+}
+
+/**
  * Register all database IPC handlers
  *
  * Handlers follow naming convention: db:{model}:{action}
  * All handlers return DatabaseResponse for consistent error handling
  *
- * @param getMainWindow - Needed only by `db:scans:export`, to push progress
- *   events via `webContents.send`. Called fresh at send-time (not cached),
- *   matching `graviscan:download-images`'s convention, since the window may
- *   close mid-export.
+ * @param deps.markMetadataDeleted - Injected by `main.ts`, since this
+ * file (shared code) is not allowed to import `cylinderscan/` directly.
+ * See `scansDelete()`'s doc comment.
+ * @param deps.getMainWindow - Needed only by `db:scans:export`, to push
+ *   progress events via `webContents.send`. Called fresh at send-time (not
+ *   cached), matching `graviscan:download-images`'s convention, since the
+ *   window may close mid-export.
  */
-export function registerDatabaseHandlers(
-  getMainWindow?: () => BrowserWindow | null
-) {
+export function registerDatabaseHandlers(deps: {
+  markMetadataDeleted: (outputDir: string) => void;
+  getMainWindow?: () => BrowserWindow | null;
+}) {
   const db = getDatabase();
 
   // ============================================
@@ -2064,9 +2180,9 @@ export function registerDatabaseHandlers(
       _event,
       params: { scanIds: string[]; destinationDir: string }
     ): Promise<DatabaseResponse<ScansExportData>> => {
-      const scansDir = loadEnvConfig(ENV_PATH).scans_dir;
+      const scansDir = getScansDir();
       const onProgress = (progress: ScansExportProgress) => {
-        const win = getMainWindow?.();
+        const win = deps.getMainWindow?.();
         if (win && !win.isDestroyed()) {
           win.webContents.send('db:scans:export-progress', progress);
         }
@@ -2105,34 +2221,21 @@ export function registerDatabaseHandlers(
   );
 
   ipcMain.handle(
-    'db:scans:getMostRecentScanDate',
+    'db:scans:checkDuplicate',
     async (
       _event,
       plantId: string,
-      experimentId: string
-    ): Promise<DatabaseResponse<string | null>> => {
-      try {
-        const scan = await db.scan.findFirst({
-          where: {
-            plant_id: plantId,
-            experiment_id: experimentId,
-            deleted: false,
-          },
-          orderBy: { capture_date: 'desc' },
-          select: { capture_date: true },
-        });
-
-        return {
-          success: true,
-          data: scan?.capture_date?.toISOString() || null,
-        };
-      } catch (error) {
-        console.error('[DB] Failed to get most recent scan date:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ): Promise<DatabaseResponse<boolean>> => {
+      return checkDuplicateScan(
+        db,
+        plantId,
+        experimentId,
+        waveNumber,
+        plantAgeDays
+      );
     }
   );
 
@@ -2212,26 +2315,14 @@ export function registerDatabaseHandlers(
   );
 
   /**
-   * Soft delete a scan by setting deleted=true
-   * Does NOT delete associated Image records
+   * Soft delete a scan by setting deleted=true, and keep metadata.json
+   * on disk in sync with the same flag. Does NOT delete associated Image
+   * records or any files (see scansDelete()).
    */
   ipcMain.handle(
     'db:scans:delete',
     async (_event, id: string): Promise<DatabaseResponse> => {
-      try {
-        const scan = await db.scan.update({
-          where: { id },
-          data: { deleted: true },
-        });
-        logDatabaseOperation('DELETE', 'Scan', `id=${id} (soft delete)`);
-        return { success: true, data: scan };
-      } catch (error) {
-        console.error('[DB] Failed to delete scan:', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        };
-      }
+      return scansDelete(db, id, getScansDir(), deps.markMetadataDeleted);
     }
   );
 

@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-scanner-event-listener-leak. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Event Listener Lifecycle
 
 Scanner event listeners SHALL be properly cleaned up when component unmounts or dependencies change to prevent memory leaks and duplicate event handling.
@@ -3885,4 +3887,3 @@ The `PythonStatus` component SHALL only render when the configured scanner mode 
 - **WHEN** the Home page renders `<PythonStatus mode={mode} />`
 - **THEN** the component SHALL render `null`
 - **AND** no "Python Backend Status" heading or Camera/DAQ content SHALL appear anywhere on the Home page
-

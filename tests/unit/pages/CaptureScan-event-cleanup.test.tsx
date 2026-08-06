@@ -34,8 +34,8 @@ describe.skip('CaptureScan Event Listener Cleanup', () => {
         },
         database: {
           scans: {
-            getMostRecentScanDate: vi.fn(() =>
-              Promise.resolve({ success: true, data: null })
+            checkDuplicate: vi.fn(() =>
+              Promise.resolve({ success: true, data: false })
             ),
           },
         },
