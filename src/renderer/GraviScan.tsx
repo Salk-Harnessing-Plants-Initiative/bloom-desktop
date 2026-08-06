@@ -154,7 +154,7 @@ export function GraviScan() {
     assignmentsByScanner: plateAssignments.assignmentsByScanner,
     isContinuous: continuousMode.isContinuous,
     intervalMinutes: continuousMode.intervalMinutes,
-    durationHours: continuousMode.durationHours,
+    durationMinutes: continuousMode.durationMinutes,
     onRestoreWaveNumber: setWaveNumber,
   });
 

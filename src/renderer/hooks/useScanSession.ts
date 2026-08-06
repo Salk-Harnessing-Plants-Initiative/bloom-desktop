@@ -22,7 +22,7 @@ export interface UseScanSessionParams {
   assignmentsByScanner: Record<string, PlateAssignment[]>;
   isContinuous: boolean;
   intervalMinutes: number;
-  durationHours: number;
+  durationMinutes: number;
   /** Called when on-mount restore (design.md Decision 4) finds an active
    * session whose waveNumber differs from the caller's own — `waveNumber`
    * is owned by `useWaveNumber`, not this hook, so restoration is surfaced
@@ -295,7 +295,7 @@ export function useScanSession(
     assignmentsByScanner,
     isContinuous,
     intervalMinutes,
-    durationHours,
+    durationMinutes,
     onRestoreWaveNumber,
   } = params;
 
@@ -784,7 +784,7 @@ export function useScanSession(
       }
 
       const intervalSeconds = Math.round(intervalMinutes * 60);
-      const durationSeconds = Math.round(durationHours * 3600);
+      const durationSeconds = Math.round(durationMinutes * 60);
       const totalCycles = isContinuous
         ? intervalSeconds > 0
           ? Math.ceil(durationSeconds / intervalSeconds)
@@ -882,7 +882,7 @@ export function useScanSession(
     assignmentsByScanner,
     isContinuous,
     intervalMinutes,
-    durationHours,
+    durationMinutes,
   ]);
 
   const cancelScan = useCallback(async () => {

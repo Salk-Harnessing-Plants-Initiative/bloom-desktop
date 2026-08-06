@@ -17,8 +17,8 @@ export interface UseContinuousModeResult {
   setIsContinuous: (value: boolean) => void;
   intervalMinutes: number;
   setIntervalMinutes: (value: number) => void;
-  durationHours: number;
-  setDurationHours: (value: number) => void;
+  durationMinutes: number;
+  setDurationMinutes: (value: number) => void;
   /** Real-time validation error, or `null` if the current interval is
    * safe to start a continuous scan with. Checked before `startScan()`
    * is ever called — the screen does not rely solely on an upstream
@@ -43,7 +43,7 @@ export function useContinuousMode(
   const [intervalMinutes, setIntervalMinutes] = useState(
     MIN_SCAN_INTERVAL_MINUTES
   );
-  const [durationHours, setDurationHours] = useState(1);
+  const [durationMinutes, setDurationMinutes] = useState(60);
 
   const validate = useCallback((): string | null => {
     if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
@@ -74,8 +74,8 @@ export function useContinuousMode(
     setIsContinuous,
     intervalMinutes,
     setIntervalMinutes,
-    durationHours,
-    setDurationHours,
+    durationMinutes,
+    setDurationMinutes,
     validate,
     cadenceContext,
   };

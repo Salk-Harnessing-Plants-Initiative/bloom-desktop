@@ -38,8 +38,8 @@ function continuousMode(
     setIsContinuous: vi.fn(),
     intervalMinutes: 5,
     setIntervalMinutes: vi.fn(),
-    durationHours: 1,
-    setDurationHours: vi.fn(),
+    durationMinutes: 60,
+    setDurationMinutes: vi.fn(),
     validate: vi.fn().mockReturnValue(null),
     cadenceContext: {
       platesPerScanner: 2,
@@ -340,7 +340,7 @@ describe('ScanControlSection', () => {
 
   it('interval/duration inputs only render once continuous mode is on, and edits call their setters', async () => {
     const setIntervalMinutes = vi.fn();
-    const setDurationHours = vi.fn();
+    const setDurationMinutes = vi.fn();
     const user = userEvent.setup();
     const { rerender } = render(
       <ScanControlSection
@@ -357,7 +357,7 @@ describe('ScanControlSection', () => {
           continuousMode: continuousMode({
             isContinuous: true,
             setIntervalMinutes,
-            setDurationHours,
+            setDurationMinutes,
           }),
         })}
       />
@@ -370,8 +370,20 @@ describe('ScanControlSection', () => {
 
     const durationInput = screen.getByLabelText(/duration/i);
     await user.clear(durationInput);
-    await user.type(durationInput, '2');
-    expect(setDurationHours).toHaveBeenCalled();
+    await user.type(durationInput, '120');
+    expect(setDurationMinutes).toHaveBeenCalled();
+  });
+
+  it('labels Duration in minutes, matching the Interval field\'s unit and the production rig\'s convention (regression: mismatched hours/minutes units confused a live tester)', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          continuousMode: continuousMode({ isContinuous: true }),
+        })}
+      />
+    );
+    expect(screen.getByLabelText(/duration.*minutes/i)).toBeInTheDocument();
+    expect(screen.queryByText(/duration.*hours/i)).not.toBeInTheDocument();
   });
 
   it('renders the CadenceWarningBanner using the continuousMode context when continuous mode is selected', () => {

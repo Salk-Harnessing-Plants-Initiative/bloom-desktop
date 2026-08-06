@@ -41,7 +41,7 @@ function baseParams(
     },
     isContinuous: false,
     intervalMinutes: 5,
-    durationHours: 1,
+    durationMinutes: 60,
     ...overrides,
   };
 }
@@ -404,7 +404,7 @@ describe('useScanSession', () => {
           baseParams({
             isContinuous: true,
             intervalMinutes: 10,
-            durationHours: 2,
+            durationMinutes: 120,
           })
         ),
       { wrapper: wedgeWrapper }
@@ -457,7 +457,7 @@ describe('useScanSession', () => {
           baseParams({
             isContinuous: true,
             intervalMinutes: 60,
-            durationHours: 3,
+            durationMinutes: 180,
           })
         ),
       { wrapper: wedgeWrapper }
@@ -655,7 +655,7 @@ describe('useScanSession', () => {
             waveNumber: 2,
             isContinuous: true,
             intervalMinutes: 10,
-            durationHours: 1,
+            durationMinutes: 60,
           })
         ),
       { wrapper: wedgeWrapper }

@@ -58,8 +58,8 @@ const {
     setIsContinuous: vi.fn(),
     intervalMinutes: 5,
     setIntervalMinutes: vi.fn(),
-    durationHours: 1,
-    setDurationHours: vi.fn(),
+    durationMinutes: 60,
+    setDurationMinutes: vi.fn(),
     validate: vi.fn().mockReturnValue(null),
     cadenceContext: {
       platesPerScanner: 2,

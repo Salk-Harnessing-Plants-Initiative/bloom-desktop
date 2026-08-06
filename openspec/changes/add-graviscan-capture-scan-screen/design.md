@@ -639,6 +639,38 @@ this simpler static-text version already answers. `nextScanAt` stays
 tracked in state for a future countdown if operators want more precision
 later.
 
+### Decision 9 — Continuous-scan Duration field: minutes, not hours
+
+Auditing against the production branch
+(`fix/v600-wedge-followups-metadata_propogation_followup`) for parity gaps
+after Decision 8 surfaced found another real, previously-unexamined one:
+production's `useContinuousMode.ts` uses `scanIntervalMinutes` AND
+`scanDurationMinutes` — minutes for both fields. Our build's
+`useContinuousMode.ts` used `intervalMinutes` but `durationHours`
+(defaulting to `1`) — an inconsistent-units UI choice never compared
+against the reference implementation, and never called out as a
+deliberate divergence anywhere in this file. This directly confused a
+live tester: they set only the interval field, left Duration at its
+default "1" without registering it meant 1 *hour*, and the resulting
+continuous scan ran far longer than they expected.
+
+**Decision:** rename `durationHours`/`setDurationHours` to
+`durationMinutes`/`setDurationMinutes` throughout (`useContinuousMode.ts`,
+`useScanSession.ts`'s param and `durationSeconds` computation,
+`GraviScan.tsx`'s wiring, `ScanControlSection.tsx`'s form field/label).
+Default changes from `1` (hour) to `60` (minutes) — the same actual
+default duration as before (1 hour) and matching production's own
+`scanDurationMinutes` default of `60` (confirmed via
+`git show origin/fix/v600-wedge-followups-metadata_propogation_followup:
+src/renderer/hooks/useContinuousMode.ts`), so this is a units/label fix
+with no change to default session-length behavior.
+
+**Alternatives considered:** leave hours, add a clarifying label/tooltip
+instead. Rejected — matching production's unit convention removes the
+mismatch entirely rather than papering over it, and this screen's own
+Interval field already uses minutes, so hours-for-Duration was
+internally inconsistent even setting production aside.
+
 ## Architecture
 
 ```

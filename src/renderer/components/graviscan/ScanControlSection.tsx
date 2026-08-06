@@ -165,12 +165,12 @@ export function ScanControlSection({
               />
             </label>
             <label className="flex items-center gap-1">
-              Duration (hours)
+              Duration (minutes)
               <input
                 type="number"
-                value={continuousMode.durationHours}
+                value={continuousMode.durationMinutes}
                 onChange={(e) =>
-                  continuousMode.setDurationHours(Number(e.target.value))
+                  continuousMode.setDurationMinutes(Number(e.target.value))
                 }
               />
             </label>

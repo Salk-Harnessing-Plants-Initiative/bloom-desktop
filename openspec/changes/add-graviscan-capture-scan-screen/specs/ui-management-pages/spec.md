@@ -231,7 +231,12 @@ no-link-exists case.
 ### Requirement: GraviScan Scan Session Controls
 
 The Capture Scan screen SHALL provide Start, Cancel, and continuous-mode
-(interval/duration) controls.
+(interval/duration) controls. The Interval and Duration fields SHALL use
+the same unit (minutes) — an operator SHALL NOT be required to convert
+between units to reason about how long a continuous session will run,
+and this SHALL match the production rig's own convention (`interval` and
+`duration` both in minutes) so operators moving between the two are not
+misled by a mismatched default.
 
 `handleCancelScan` SHALL be `async`, awaited by its click handler, and
 wrapped in a `try`/`catch`. A rejection SHALL surface an inline error banner
@@ -289,6 +294,14 @@ per-scanner progress resets from 100% back to 0% at a cycle boundary.
   successfully
 - **THEN** pending jobs SHALL be cleared, `isScanning` SHALL become `false`,
   and scanner states SHALL return to idle
+
+#### Scenario: Duration is entered in minutes, consistent with Interval
+
+- **GIVEN** the operator opens the continuous-mode form
+- **WHEN** the operator views the Interval and Duration fields
+- **THEN** both SHALL be labeled and interpreted in minutes
+- **AND** `startScan()`'s computed `duration_seconds` SHALL equal
+  `durationMinutes * 60`, not a value derived from hours
 
 #### Scenario: A zero interval is rejected before starting a continuous scan
 

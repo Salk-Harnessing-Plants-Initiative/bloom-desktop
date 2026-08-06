@@ -564,3 +564,38 @@ session.
       timing), zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 17.4 Re-run `openspec validate add-graviscan-capture-scan-screen
       --strict`.
+
+## 18. Continuous-scan Duration field: minutes not hours (TDD, found auditing production-branch parity)
+
+Found while auditing the production branch
+(`fix/v600-wedge-followups-metadata_propogation_followup`) for parity
+gaps (design.md Decision 9): its `useContinuousMode.ts` uses minutes for
+both `scanIntervalMinutes` and `scanDurationMinutes`; ours used minutes
+for interval but hours for duration, an inconsistency nobody had compared
+against the reference. Confirmed to directly cause operator confusion
+during 16.6 smoke testing — Duration was left at its default "1",
+silently meaning 1 hour rather than the 1 minute a user reasoning by
+analogy with the Interval field would expect.
+
+- [x] 18.1 Write failing tests: `tests/unit/hooks/useScanSession.test.ts`
+      (rename `durationHours` params to `durationMinutes`, update expected
+      `duration_seconds` values — same underlying seconds, computed as
+      `durationMinutes * 60` instead of `durationHours * 3600`),
+      `tests/unit/components/ScanControlSection.test.tsx` and
+      `tests/unit/pages/GraviScan.test.tsx` (update mock shape and any
+      label assertions to "Duration (minutes)"). Confirmed red: 5 tests
+      failed against the unchanged implementation before proceeding.
+- [x] 18.2 Rename `durationHours`/`setDurationHours` to
+      `durationMinutes`/`setDurationMinutes` in
+      `useContinuousMode.ts` (default `1` → `60`, same actual default
+      session length), `useScanSession.ts` (param + `durationSeconds =
+      Math.round(durationMinutes * 60)`), `GraviScan.tsx` (wiring), and
+      `ScanControlSection.tsx` (form field + label, "Duration (hours)" →
+      "Duration (minutes)").
+- [x] 18.3 Run the full unit suite, `npx tsc --noEmit`, and lint; confirm
+      no regressions beyond the already-documented pre-existing failures.
+      **Result:** 1608 passed (+1 new test), same 4 pre-existing failure
+      files as 16.2/17.3, zero new failures. `tsc --noEmit` and lint both
+      clean.
+- [x] 18.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+      --strict`.
