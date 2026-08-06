@@ -36,6 +36,8 @@ import {
   ScanFilters,
   PaginatedScanFilters,
   PaginatedScansResponse,
+  ScansExportData,
+  ScansExportProgress,
 } from './database';
 import { UploadResult } from '../main/image-uploader';
 import {
@@ -384,6 +386,24 @@ export interface DatabaseAPI {
     uploadBatch: (
       scanIds: string[]
     ) => Promise<DatabaseResponse<UploadResult[]>>;
+    /**
+     * Export selected scans' files to a destination directory, preserving
+     * each scan's relative path under the destination. Non-destructive:
+     * files already present at the destination are skipped, not
+     * overwritten. See `onExportProgress` for progress updates.
+     */
+    export: (
+      scanIds: string[],
+      destinationDir: string
+    ) => Promise<DatabaseResponse<ScansExportData>>;
+    /**
+     * Subscribe to progress updates for an in-progress `export()` call.
+     * Returns a cleanup function that MUST be called (e.g. on unmount) to
+     * remove the underlying IPC listener.
+     */
+    onExportProgress: (
+      callback: (progress: ScansExportProgress) => void
+    ) => () => void;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;
