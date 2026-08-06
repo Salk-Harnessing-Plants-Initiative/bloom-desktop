@@ -40,6 +40,20 @@ export interface ScanMetadataJson {
   contrast: number;
   gamma: number;
   seconds_per_rot: number;
+  /**
+   * Set to true when the scan is soft-deleted. Absent (or false) means
+   * not deleted — use isScanMetadataDeleted() rather than reading this
+   * field directly, since legacy files predate it.
+   */
+  deleted?: boolean;
+}
+
+/**
+ * Returns whether a scan's metadata marks it as deleted. Treats an
+ * absent `deleted` key (legacy metadata.json files) the same as `false`.
+ */
+export function isScanMetadataDeleted(json: ScanMetadataJson): boolean {
+  return json.deleted === true;
 }
 
 /**
@@ -107,6 +121,24 @@ export function buildMetadataObject(
  * @param settings - Scanner settings to extract metadata from
  * @param captureDate - Timestamp for the scan (defaults to now)
  */
+/**
+ * Write a JSON value to `finalPath` atomically: write to a `.tmp` sibling
+ * first, then rename over the final path. Prevents partial/corrupt files
+ * from a crash mid-write. Cleans up a stale `.tmp` from a previous failed
+ * write before starting.
+ */
+function atomicWriteJson(finalPath: string, data: unknown): void {
+  const json = JSON.stringify(data, null, 2) + '\n';
+  const tmpPath = `${finalPath}.tmp`;
+
+  if (fs.existsSync(tmpPath)) {
+    fs.unlinkSync(tmpPath);
+  }
+
+  fs.writeFileSync(tmpPath, json, 'utf-8');
+  fs.renameSync(tmpPath, finalPath);
+}
+
 export function writeMetadataJson(
   outputDir: string,
   settings: ScannerSettings,
@@ -118,17 +150,19 @@ export function writeMetadataJson(
   }
 
   const metadata = buildMetadataObject(settings, captureDate);
-  const json = JSON.stringify(metadata, null, 2) + '\n';
+  atomicWriteJson(path.join(outputDir, 'metadata.json'), metadata);
+}
 
+/**
+ * Marks an existing metadata.json as deleted (`deleted: true`), preserving
+ * all other fields. Throws if metadata.json doesn't exist at `outputDir` —
+ * callers should catch this for legacy scans predating metadata.json
+ * support and log a warning rather than fail the delete.
+ */
+export function markMetadataDeleted(outputDir: string): void {
   const finalPath = path.join(outputDir, 'metadata.json');
-  const tmpPath = path.join(outputDir, 'metadata.json.tmp');
-
-  // Clean up stale .tmp from a previous failed write
-  if (fs.existsSync(tmpPath)) {
-    fs.unlinkSync(tmpPath);
-  }
-
-  // Atomic write: write to .tmp, then rename
-  fs.writeFileSync(tmpPath, json, 'utf-8');
-  fs.renameSync(tmpPath, finalPath);
+  const existing: ScanMetadataJson = JSON.parse(
+    fs.readFileSync(finalPath, 'utf-8')
+  );
+  atomicWriteJson(finalPath, { ...existing, deleted: true });
 }

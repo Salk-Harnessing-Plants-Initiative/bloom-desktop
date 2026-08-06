@@ -16,6 +16,7 @@ import { Phenotypers } from './Phenotypers';
 import { Accessions } from './Accessions';
 import { Experiments } from './Experiments';
 import { BrowseScans } from './BrowseScans';
+import { Export } from './Export';
 import { ScanPreview } from './ScanPreview';
 import { MachineConfiguration } from './MachineConfiguration';
 import { ConfigureScanner } from './ConfigureScanner';
@@ -75,6 +76,7 @@ export default function App() {
           {/* Browse routes — always visible */}
           <Route path="browse-scans" element={<BrowseScans />} />
           <Route path="scan/:scanId" element={<ScanPreview />} />
+          <Route path="export" element={<Export />} />
 
           {/* Config */}
           <Route path="machine-config" element={<MachineConfiguration />} />

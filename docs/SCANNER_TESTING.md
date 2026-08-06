@@ -53,7 +53,7 @@ DATA:{"success": true, "initialized": false, "camera_status": "unknown", "daq_st
 ### 2. Initialize Scanner
 
 ```bash
-echo '{"command":"scanner","action":"initialize","settings":{"camera":{"serial_number":null,"exposure_time":10000,"gain":0.0,"gamma":1.0,"width":640,"height":480,"pixel_format":"Mono8","trigger_mode":"software","num_frames":72},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":36.0},"num_frames":72,"output_path":"./scans"}}' | ./dist/bloom-hardware --ipc
+echo '{"command":"scanner","action":"initialize","settings":{"camera":{"exposure_time":10000,"gain":100,"camera_ip_address":"mock","gamma":1.0},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0},"num_frames":72,"output_path":"./scans"}}' | ./dist/bloom-hardware --ipc
 ```
 
 Expected output:
@@ -80,7 +80,7 @@ DATA:{"success": true, "initialized": true}
 ./dist/bloom-hardware --ipc
 
 # Then type these commands (one per line):
-{"command":"scanner","action":"initialize","settings":{"camera":{"serial_number":null,"exposure_time":10000,"gain":0.0,"gamma":1.0,"width":640,"height":480,"pixel_format":"Mono8","trigger_mode":"software","num_frames":72},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":36.0},"num_frames":72,"output_path":"./scans"}}
+{"command":"scanner","action":"initialize","settings":{"camera":{"exposure_time":10000,"gain":100,"camera_ip_address":"mock","gamma":1.0},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0},"num_frames":72,"output_path":"./scans"}}
 {"command":"scanner","action":"scan"}
 {"command":"scanner","action":"status"}
 {"command":"scanner","action":"cleanup"}
@@ -104,15 +104,10 @@ Once the Electron app is running, you can test the Scanner from the renderer pro
   // 2. Initialize Scanner with camera and DAQ settings
   const scannerSettings = {
     camera: {
-      serial_number: null,
       exposure_time: 10000,
-      gain: 0.0,
+      gain: 100, // GainRaw integer, ~9.9 dB for the acA2000-50gm
+      camera_ip_address: 'mock',
       gamma: 1.0,
-      width: 640,
-      height: 480,
-      pixel_format: 'Mono8',
-      trigger_mode: 'software',
-      num_frames: 72,
     },
     daq: {
       device_name: 'cDAQ1Mod1',
@@ -121,10 +116,15 @@ Once the Electron app is running, you can test the Scanner from the renderer pro
       dir_pin: 1,
       steps_per_revolution: 6400,
       num_frames: 72,
-      seconds_per_rot: 36.0,
+      seconds_per_rot: 7.0,
     },
     num_frames: 72,
     output_path: './scans',
+    // Optional: if provided, the scan is automatically saved to the database
+    // and metadata.json is written alongside the images. See "Metadata &
+    // metadata.json" below.
+    // metadata: { experiment_id, phenotyper_id, scanner_name, plant_id,
+    //             plant_age_days, wave_number, accession_name?, scan_path? },
   };
 
   await window.electron.scanner.initialize(scannerSettings);
@@ -177,16 +177,18 @@ The Scanner accepts configuration settings for both camera and DAQ:
 
 ### Camera Settings
 
-| Setting         | Type   | Default      | Description                       |
-| --------------- | ------ | ------------ | --------------------------------- |
-| `serial_number` | string | `null`       | Camera serial number (null=first) |
-| `exposure_time` | number | `10000`      | Exposure time in microseconds     |
-| `gain`          | number | `0.0`        | Camera gain                       |
-| `width`         | number | `640`        | Image width in pixels             |
-| `height`        | number | `480`        | Image height in pixels            |
-| `pixel_format`  | string | `"Mono8"`    | Pixel format (Mono8/Mono12)       |
-| `trigger_mode`  | string | `"software"` | Trigger mode                      |
-| `num_frames`    | number | `72`         | Number of frames to capture       |
+This is the real, current `CameraSettings` shape (`src/types/camera.ts`) — not the legacy shape (`serial_number`/`width`/`height`/`pixel_format`/`trigger_mode`) this doc previously documented, which does not exist in the current code.
+
+| Setting             | Type   | Default  | Description                                                                                              |
+| ------------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------- |
+| `exposure_time`     | number | `10000`  | Exposure time in microseconds                                                                            |
+| `gain`              | number | `100`    | Camera gain — `GainRaw` integer, ~9.9 dB for the acA2000-50gm (see [CONFIGURATION.md](CONFIGURATION.md)) |
+| `camera_ip_address` | string | `"mock"` | IP address for network camera, or `"mock"` for testing                                                   |
+| `gamma`             | number | `1.0`    | Gamma correction value                                                                                   |
+| `num_frames`        | number | `72`     | Number of frames (optional; scanner-level `num_frames` takes precedence — see below)                     |
+| `seconds_per_rot`   | number | `7.0`    | Time for one complete rotation (optional; DAQ-level setting is authoritative for actual rotation timing) |
+
+`brightness` and `contrast` are **not** part of `CameraSettings` — the acA2000-50gm doesn't support them. See "Metadata & metadata.json" below for why they still appear in `metadata.json`.
 
 ### DAQ Settings
 
@@ -198,18 +200,34 @@ The Scanner accepts configuration settings for both camera and DAQ:
 | `dir_pin`              | number | `1`           | Digital output for direction   |
 | `steps_per_revolution` | number | `6400`        | Steps for full 360° rotation   |
 | `num_frames`           | number | `72`          | Number of frames to capture    |
-| `seconds_per_rot`      | number | `36.0`        | Time for complete rotation     |
+| `seconds_per_rot`      | number | `7.0`         | Time for complete rotation     |
 
 ### Scanner Settings
 
-| Setting       | Type   | Default     | Description                       |
-| ------------- | ------ | ----------- | --------------------------------- |
-| `camera`      | object | (required)  | Camera configuration settings     |
-| `daq`         | object | (required)  | DAQ configuration settings        |
-| `num_frames`  | number | `72`        | Number of frames (overrides both) |
-| `output_path` | string | `"./scans"` | Directory for saved images        |
+| Setting       | Type             | Default     | Description                                                                                                          |
+| ------------- | ---------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| `camera`      | object           | (required)  | Camera configuration settings                                                                                        |
+| `daq`         | object           | (required)  | DAQ configuration settings                                                                                           |
+| `num_frames`  | number           | `72`        | Number of frames (overrides both)                                                                                    |
+| `output_path` | string           | `"./scans"` | Directory for saved images                                                                                           |
+| `metadata`    | object, optional | (none)      | If provided, the scan is saved to the database and `metadata.json` is written — see "Metadata & metadata.json" below |
 
 **Note**: The `num_frames` setting at the scanner level overrides the individual camera and DAQ `num_frames` settings to ensure synchronization.
+
+## Metadata & metadata.json
+
+When `ScannerSettings.metadata` is provided, `src/main/cylinderscan/scan-metadata-json.ts`'s `buildMetadataObject()` writes a `metadata.json` file alongside the captured images (via `writeMetadataJson()`), so scan data is self-describing and portable without requiring the SQLite database.
+
+**`metadata` input fields** (`ScanMetadata`, `src/types/scanner.ts`) — all required unless marked optional: `experiment_id`, `phenotyper_id`, `scanner_name`, `plant_id`, `plant_age_days`, `wave_number`, `accession_name?`, `scan_path?`.
+
+**`metadata.json` output fields** (`ScanMetadataJson`): `metadata_version`, `experiment_id`, `phenotyper_id`, `scanner_name`, `plant_id`, `accession_name?`, `plant_age_days`, `wave_number`, `capture_date`, `num_frames`, `scan_path?`, `exposure_time`, `gain`, `brightness`, `contrast`, `gamma`, `seconds_per_rot`.
+
+Two of these are worth calling out explicitly, since they're easy to get backwards:
+
+- **`brightness` and `contrast` ARE present in `metadata.json`**, always written as fixed `0` values — even though neither field exists in the configurable `CameraSettings` type. This preserves the pilot app's metadata format for backward compatibility (the acA2000-50gm doesn't support these settings at all, so there's nothing real to record; `0` is the identity/no-op value). Do not read their absence from `CameraSettings` as meaning they're absent from `metadata.json` too — they are two different things.
+- **`gain` and `seconds_per_rot` always reflect the actual values used at capture time**, not today's defaults — `buildMetadataObject()` reads them from the `settings` object passed in, never a hardcoded constant. A scan captured under an old default remains fully self-describing and reproducible even after the app's defaults later change.
+
+**Write behavior**: `writeMetadataJson()` uses an atomic write pattern — it writes to `metadata.json.tmp` first, then renames it to `metadata.json`, so a crash or interruption during write can never leave a partial/corrupt `metadata.json` behind. Any stale `.tmp` file left by a previous failed write is cleaned up before the next write attempt.
 
 ## Mock vs Real Hardware
 
@@ -356,7 +374,7 @@ With real hardware:
 
 - **Rotation time**: Based on `seconds_per_rot` / `num_frames`
 - **Capture time**: Based on camera exposure time
-- **Total scan time**: `seconds_per_rot` (e.g., 36 seconds for default settings)
+- **Total scan time**: `seconds_per_rot` (e.g., 7 seconds for default settings)
 
 ### Position Tracking
 
@@ -369,62 +387,7 @@ The scanner maintains accurate position throughout:
 
 ## Troubleshooting
 
-### Issue: "Unknown command: scanner"
-
-**Solution**: Rebuild the Python executable to include scanner handlers:
-
-```bash
-npm run build:python
-```
-
-### Issue: "Scanner not initialized"
-
-**Solution**: Call `initialize()` before other scanner operations:
-
-```javascript
-await window.electron.scanner.initialize({
-  camera: {
-    /* settings */
-  },
-  daq: {
-    /* settings */
-  },
-  num_frames: 72,
-  output_path: './scans',
-});
-```
-
-### Issue: Scan captures fewer frames than expected
-
-**Solution**: Check that scanner completed successfully:
-
-```javascript
-const result = await window.electron.scanner.scan();
-if (!result.success) {
-  console.error('Scan failed:', result.error);
-}
-console.log(`Captured ${result.frames_captured}/${num_frames} frames`);
-```
-
-### Issue: Position doesn't return to zero after scan
-
-**Solution**: The scanner automatically calls `home()` after scanning. If position is not zero, check for errors:
-
-```javascript
-const status = await window.electron.scanner.getStatus();
-if (Math.abs(status.position) > 1) {
-  console.error(`Scanner not at home: ${status.position}°`);
-}
-```
-
-### Issue: Real hardware not detected
-
-**Solution**: Verify:
-
-1. **Camera**: Pylon SDK installed, camera connected and powered
-2. **DAQ**: NI-DAQmx drivers installed, device connected
-3. **Environment**: `BLOOM_USE_MOCK_HARDWARE=false` is set
-4. **Settings**: Device names match your hardware
+See the [Troubleshooting Guide](TROUBLESHOOTING.md#scanner) for scanner-specific issues (unknown command, not-initialized errors, frame-count mismatches, position not returning home, real hardware not detected).
 
 ## Comparison: Scanner vs Manual Control
 
@@ -471,10 +434,21 @@ The Scanner provides:
 4. **Add image preview**: Display captured frames during scanning
 5. **Tune parameters**: Adjust `num_frames`, `seconds_per_rot`, and `steps_per_revolution` for your setup
 
+## Scanner Identity Service
+
+Each scanner instance holds an in-memory `scannerIdentity` (`src/main/main.ts`), initialized from `.env` at startup and re-synced whenever Machine Configuration is saved. It's exposed to the renderer via the `scanner:get-scanner-id` IPC handler, which returns the configured scanner name (or an empty string if unset). This is a fast, file-I/O-free way for UI components to read the current scanner's name — it does not persist independently of `.env`/config; restarting the app re-reads it from there.
+
+## Idle Session Reset
+
+`IdleTimer` (`src/main/idle-timer.ts`) tracks inactivity in the main process and resets in-memory session state (`src/main/session-store.ts`'s `phenotyperId`, `experimentId`, `waveNumber`, `plantAgeDays`, `accessionName`) after a period of inactivity — 10 minutes by default. This exists to prevent scan misattribution in shared lab environments, where a phenotyper might walk away mid-session and someone else could otherwise continue capturing scans under the previous person's session context.
+
+The timer resets on explicit activity events (`session:set`, `scanner:initialize`) and pauses during an active scan (`scanner:scan`) so a long-running scan is never interrupted by an idle timeout. It does **not** reset on page navigation or polling alone.
+
 ## Related Documentation
 
 - [Camera Testing Guide](CAMERA_TESTING.md)
 - [DAQ Testing Guide](DAQ_TESTING.md)
+- [Troubleshooting Guide](TROUBLESHOOTING.md)
 - [GraviScan Scanner Driver Setup](GRAVISCAN_SCANNER_DRIVER_SETUP.md) —
   the Epson flatbed scanner used by GraviScan, a different scanner
   subsystem from the CylinderScan turntable+camera "Scanner" this doc covers

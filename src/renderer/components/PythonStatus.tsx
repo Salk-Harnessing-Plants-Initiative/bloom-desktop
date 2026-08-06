@@ -20,13 +20,28 @@ interface HardwareStatus {
   };
 }
 
-export function PythonStatus() {
+interface PythonStatusProps {
+  mode?: string | null;
+}
+
+export function PythonStatus({ mode = null }: PythonStatusProps) {
   const [version, setVersion] = useState<string>('');
   const [hardware, setHardware] = useState<HardwareStatus | null>(null);
   const [status, setStatus] = useState<string>('Checking...');
   const [error, setError] = useState<string>('');
+  const [isRestarting, setIsRestarting] = useState(false);
 
   useEffect(() => {
+    // Camera/DAQ hardware status is CylinderScan-specific — this component
+    // renders nothing at all in graviscan mode (see the render-level guard
+    // below), so skip the IPC calls/subscriptions entirely too. This check
+    // must live inside the effect, not just at the render level: React's
+    // Rules of Hooks require every hook to run on every render regardless
+    // of where a render-level early return sits, so a render-only gate
+    // would still fire this effect (and its IPC round-trips) in graviscan
+    // mode even though nothing is ever shown.
+    if (mode !== 'cylinderscan') return;
+
     // Get Python version
     window.electron.python
       .getVersion()
@@ -40,18 +55,27 @@ export function PythonStatus() {
       });
 
     // Listen for Python status updates
-    window.electron.python.onStatus((statusMsg) => {
+    const cleanupStatus = window.electron.python.onStatus((statusMsg) => {
       console.log('Python status:', statusMsg);
       setStatus(statusMsg);
     });
 
     // Listen for Python errors
-    window.electron.python.onError((errorMsg) => {
+    const cleanupError = window.electron.python.onError((errorMsg) => {
       console.error('Python error:', errorMsg);
       setError(errorMsg);
       setStatus('Error');
     });
-  }, []);
+
+    return () => {
+      cleanupStatus();
+      cleanupError();
+    };
+  }, [mode]);
+
+  if (mode !== 'cylinderscan') {
+    return null;
+  }
 
   const checkHardware = async () => {
     try {
@@ -64,8 +88,19 @@ export function PythonStatus() {
   };
 
   const restartPython = async () => {
+    setIsRestarting(true);
     try {
-      await window.electron.python.restart();
+      // python:restart never rejects — it always resolves, reporting
+      // failure via { success: false, error }. Ignoring that and assuming
+      // success would show "Restarted" for a restart that actually failed
+      // (e.g. a missing Python executable), with no indication anything
+      // went wrong.
+      const result = await window.electron.python.restart();
+      if (!result.success) {
+        setError(result.error || 'Failed to restart Python process');
+        setStatus('Error');
+        return;
+      }
       setStatus('Restarted');
       setError('');
       // Re-fetch version after restart
@@ -73,6 +108,8 @@ export function PythonStatus() {
       setVersion(res.version);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsRestarting(false);
     }
   };
 
@@ -167,9 +204,10 @@ export function PythonStatus() {
           </button>
           <button
             onClick={restartPython}
-            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+            disabled={isRestarting}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Restart Python
+            {isRestarting ? 'Restarting...' : 'Restart Python'}
           </button>
         </div>
       </div>

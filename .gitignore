@@ -64,6 +64,7 @@ eggs/
 lib/
 lib64/
 !scripts/lib/
+!tests/integration/lib/
 parts/
 sdist/
 var/

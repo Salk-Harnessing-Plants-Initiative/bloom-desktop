@@ -39,6 +39,7 @@ import type {
   ImageCreateData,
   ScanFilters,
   PaginatedScanFilters,
+  ScansExportProgress,
 } from '../types/database';
 // eslint-disable-next-line import/no-unresolved
 import type { GraviWedgeEvent } from '../types/graviscan';
@@ -53,12 +54,14 @@ const pythonAPI: PythonAPI = {
   checkHardware: () => ipcRenderer.invoke('python:check-hardware'),
   restart: () => ipcRenderer.invoke('python:restart'),
   onStatus: (callback: (status: string) => void) => {
-    ipcRenderer.on('python:status', (_event, status: string) =>
-      callback(status)
-    );
+    const listener = (_event: unknown, status: string) => callback(status);
+    ipcRenderer.on('python:status', listener);
+    return () => ipcRenderer.removeListener('python:status', listener);
   },
   onError: (callback: (error: string) => void) => {
-    ipcRenderer.on('python:error', (_event, error: string) => callback(error));
+    const listener = (_event: unknown, error: string) => callback(error);
+    ipcRenderer.on('python:error', listener);
+    return () => ipcRenderer.removeListener('python:error', listener);
   },
 };
 
@@ -76,12 +79,14 @@ const cameraAPI: CameraAPI = {
   getStatus: () => ipcRenderer.invoke('camera:get-status'),
   getSettings: () => ipcRenderer.invoke('camera:get-settings'),
   onTrigger: (callback: () => void) => {
-    ipcRenderer.on('camera:trigger', () => callback());
+    const listener = () => callback();
+    ipcRenderer.on('camera:trigger', listener);
+    return () => ipcRenderer.removeListener('camera:trigger', listener);
   },
   onImageCaptured: (callback: (image: CapturedImage) => void) => {
-    ipcRenderer.on('camera:image-captured', (_event, image: CapturedImage) =>
-      callback(image)
-    );
+    const listener = (_event: unknown, image: CapturedImage) => callback(image);
+    ipcRenderer.on('camera:image-captured', listener);
+    return () => ipcRenderer.removeListener('camera:image-captured', listener);
   },
   startStream: (settings?: Partial<CameraSettings>) =>
     ipcRenderer.invoke('camera:start-stream', settings),
@@ -108,19 +113,25 @@ const daqAPI: DAQAPI = {
   home: () => ipcRenderer.invoke('daq:home'),
   getStatus: () => ipcRenderer.invoke('daq:get-status'),
   onInitialized: (callback: () => void) => {
-    ipcRenderer.on('daq:initialized', () => callback());
+    const listener = () => callback();
+    ipcRenderer.on('daq:initialized', listener);
+    return () => ipcRenderer.removeListener('daq:initialized', listener);
   },
   onPositionChanged: (callback: (position: number) => void) => {
-    ipcRenderer.on(
-      'daq:position-changed',
-      (_event, data: { position: number }) => callback(data.position)
-    );
+    const listener = (_event: unknown, data: { position: number }) =>
+      callback(data.position);
+    ipcRenderer.on('daq:position-changed', listener);
+    return () => ipcRenderer.removeListener('daq:position-changed', listener);
   },
   onHome: (callback: () => void) => {
-    ipcRenderer.on('daq:home', () => callback());
+    const listener = () => callback();
+    ipcRenderer.on('daq:home', listener);
+    return () => ipcRenderer.removeListener('daq:home', listener);
   },
   onError: (callback: (error: string) => void) => {
-    ipcRenderer.on('daq:error', (_event, error: string) => callback(error));
+    const listener = (_event: unknown, error: string) => callback(error);
+    ipcRenderer.on('daq:error', listener);
+    return () => ipcRenderer.removeListener('daq:error', listener);
   },
 };
 
@@ -207,11 +218,18 @@ const databaseAPI: DatabaseAPI = {
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>
       ipcRenderer.invoke('db:scans:create', data),
-    getMostRecentScanDate: (plantId: string, experimentId: string) =>
+    checkDuplicate: (
+      plantId: string,
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ) =>
       ipcRenderer.invoke(
-        'db:scans:getMostRecentScanDate',
+        'db:scans:checkDuplicate',
         plantId,
-        experimentId
+        experimentId,
+        waveNumber,
+        plantAgeDays
       ),
     getRecent: (options?: { limit?: number; experimentId?: string }) =>
       ipcRenderer.invoke('db:scans:getRecent', options),
@@ -219,6 +237,15 @@ const databaseAPI: DatabaseAPI = {
     upload: (scanId: string) => ipcRenderer.invoke('db:scans:upload', scanId),
     uploadBatch: (scanIds: string[]) =>
       ipcRenderer.invoke('db:scans:uploadBatch', scanIds),
+    export: (scanIds: string[], destinationDir: string) =>
+      ipcRenderer.invoke('db:scans:export', { scanIds, destinationDir }),
+    onExportProgress: (callback: (progress: ScansExportProgress) => void) => {
+      const listener = (_event: unknown, progress: ScansExportProgress) =>
+        callback(progress);
+      ipcRenderer.on('db:scans:export-progress', listener);
+      return () =>
+        ipcRenderer.removeListener('db:scans:export-progress', listener);
+    },
   },
   phenotypers: {
     list: () => ipcRenderer.invoke('db:phenotypers:list'),

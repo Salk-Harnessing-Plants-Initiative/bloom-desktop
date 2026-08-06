@@ -6,6 +6,7 @@ import type {
   PaginatedScanFilters,
   ExperimentWithRelations,
 } from '../types/database';
+import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -31,6 +32,9 @@ export function BrowseScans() {
   const [error, setError] = useState<string | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState<string | null>(null);
   const [uploadInProgress, setUploadInProgress] = useState<string | null>(null);
+  const [scanPendingDelete, setScanPendingDelete] =
+    useState<ScanWithImageSummary | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(
     new Set()
   );
@@ -98,19 +102,26 @@ export function BrowseScans() {
     fetchScans();
   }, [fetchScans]);
 
-  const handleDelete = async (scanId: string) => {
-    if (
-      !window.confirm(
-        'Are you sure you want to delete this scan? This action cannot be undone.'
-      )
-    ) {
-      return;
-    }
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = setTimeout(() => setSuccessMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [successMessage]);
+
+  const handleDelete = (scan: ScanWithImageSummary) => {
+    setScanPendingDelete(scan);
+  };
+
+  const confirmDelete = async () => {
+    if (!scanPendingDelete) return;
+    const scanId = scanPendingDelete.id;
+    setScanPendingDelete(null);
 
     setDeleteInProgress(scanId);
     try {
       const result = await window.electron.database.scans.delete(scanId);
       if (result.success) {
+        setSuccessMessage('Scan deleted successfully');
         // Refresh the list
         fetchScans();
       } else {
@@ -348,6 +359,13 @@ export function BrowseScans() {
         </div>
       )}
 
+      {/* Success Message */}
+      {successMessage && (
+        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-sm text-green-700">{successMessage}</p>
+        </div>
+      )}
+
       {/* Batch Actions */}
       {selectedScanIds.size > 0 && (
         <div className="mb-4 flex items-center gap-4">
@@ -539,8 +557,11 @@ export function BrowseScans() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(scan.id)}
-                        disabled={deleteInProgress === scan.id}
+                        onClick={() => handleDelete(scan)}
+                        disabled={
+                          deleteInProgress === scan.id ||
+                          uploadInProgress === scan.id
+                        }
                         className="text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Delete scan"
                       >
@@ -613,6 +634,15 @@ export function BrowseScans() {
             </button>
           </div>
         </div>
+      )}
+
+      {scanPendingDelete && (
+        <DeleteConfirmModal
+          plantId={scanPendingDelete.plant_id}
+          captureDate={formatDate(scanPendingDelete.capture_date)}
+          onConfirm={confirmDelete}
+          onCancel={() => setScanPendingDelete(null)}
+        />
       )}
     </div>
   );

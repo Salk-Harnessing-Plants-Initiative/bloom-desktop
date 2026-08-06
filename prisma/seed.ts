@@ -3,11 +3,56 @@
  *
  * Populates the database with test data for development.
  * Run with: npm run prisma:seed
+ *
+ * Also copies real fixture images (tests/fixtures/sample_scan/) into the
+ * configured scans_dir so seeded scans have actual image bytes on disk —
+ * without this, ScanPreview would show every seeded scan as a broken/
+ * missing image, since the DB records alone don't put any files in place.
  */
 
 import { PrismaClient } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { loadEnvConfig } from '../src/main/config-store';
 
 const prisma = new PrismaClient();
+
+const FIXTURES_DIR = path.join(
+  __dirname,
+  '..',
+  'tests',
+  'fixtures',
+  'sample_scan'
+);
+const ENV_PATH = path.join(os.homedir(), '.bloom', '.env');
+
+/**
+ * Copy the real fixture PNGs (1.png..72.png) into place for one seeded
+ * scan, renamed to match its Image records' frame_NNNN.png convention.
+ */
+function seedScanImages(scansDir: string, relativeScanPath: string): void {
+  if (!fs.existsSync(FIXTURES_DIR)) {
+    console.warn(
+      `⚠ Skipping image copy for ${relativeScanPath} — fixtures not found at ${FIXTURES_DIR}`
+    );
+    return;
+  }
+
+  const destDir = path.join(scansDir, relativeScanPath);
+  fs.mkdirSync(destDir, { recursive: true });
+
+  for (let i = 0; i < 72; i++) {
+    const src = path.join(FIXTURES_DIR, `${i + 1}.png`);
+    const dest = path.join(
+      destDir,
+      `frame_${i.toString().padStart(4, '0')}.png`
+    );
+    fs.copyFileSync(src, dest);
+  }
+
+  console.log(`✓ Copied 72 real images to ${destDir}`);
+}
 
 async function main() {
   console.log('🌱 Seeding database...');
@@ -171,6 +216,19 @@ async function main() {
   }
   await prisma.image.createMany({ data: images });
   console.log(`✓ Created ${images.length} images for scan`);
+
+  // Copy real fixture images into place so ScanPreview has actual bytes to
+  // load for scan1, not just DB metadata pointing at nothing. (scan2 has
+  // no Image records above, so there's nothing for ScanPreview to list for
+  // it regardless — no point copying files it'll never reference.)
+  const { scans_dir: scansDir } = loadEnvConfig(ENV_PATH);
+  if (scansDir) {
+    seedScanImages(scansDir, scan1.path);
+  } else {
+    console.warn(
+      '⚠ No scans_dir configured yet (run Machine Configuration first) — skipping image copy.'
+    );
+  }
 
   console.log('\n✅ Database seeded successfully!');
 }

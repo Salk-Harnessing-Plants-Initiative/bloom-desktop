@@ -36,6 +36,8 @@ import {
   ScanFilters,
   PaginatedScanFilters,
   PaginatedScansResponse,
+  ScansExportData,
+  ScansExportProgress,
 } from './database';
 import { UploadResult } from '../main/image-uploader';
 import {
@@ -118,21 +120,25 @@ export interface PythonAPI {
 
   /**
    * Restart the Python subprocess
-   * @returns Promise resolving when restart is complete
+   * @returns Promise resolving when restart is complete. `error` is
+   *   present when `success` is `false` (see main.ts's `python:restart`
+   *   handler, which never rejects — it always resolves).
    */
-  restart: () => Promise<{ success: boolean }>;
+  restart: () => Promise<{ success: boolean; error?: string }>;
 
   /**
    * Register callback for Python status updates
    * @param callback - Function to call with status messages
+   * @returns Cleanup function to remove the listener
    */
-  onStatus: (callback: (status: string) => void) => void;
+  onStatus: (callback: (status: string) => void) => () => void;
 
   /**
    * Register callback for Python errors
    * @param callback - Function to call with error messages
+   * @returns Cleanup function to remove the listener
    */
-  onError: (callback: (error: string) => void) => void;
+  onError: (callback: (error: string) => void) => () => void;
 }
 
 /**
@@ -185,14 +191,16 @@ export interface CameraAPI {
   /**
    * Register callback for camera trigger events
    * @param callback - Function to call when camera is triggered
+   * @returns Cleanup function to remove the listener
    */
-  onTrigger: (callback: () => void) => void;
+  onTrigger: (callback: () => void) => () => void;
 
   /**
    * Register callback for captured images
    * @param callback - Function to call with captured image data
+   * @returns Cleanup function to remove the listener
    */
-  onImageCaptured: (callback: (image: CapturedImage) => void) => void;
+  onImageCaptured: (callback: (image: CapturedImage) => void) => () => void;
 
   /**
    * Start streaming frames from the camera
@@ -275,26 +283,30 @@ export interface DAQAPI {
   /**
    * Register callback for DAQ initialization events
    * @param callback - Function to call when DAQ is initialized
+   * @returns Cleanup function to remove the listener
    */
-  onInitialized: (callback: () => void) => void;
+  onInitialized: (callback: () => void) => () => void;
 
   /**
    * Register callback for position change events
    * @param callback - Function to call with new position in degrees
+   * @returns Cleanup function to remove the listener
    */
-  onPositionChanged: (callback: (position: number) => void) => void;
+  onPositionChanged: (callback: (position: number) => void) => () => void;
 
   /**
    * Register callback for home events
    * @param callback - Function to call when turntable reaches home position
+   * @returns Cleanup function to remove the listener
    */
-  onHome: (callback: () => void) => void;
+  onHome: (callback: () => void) => () => void;
 
   /**
    * Register callback for DAQ errors
    * @param callback - Function to call with error messages
+   * @returns Cleanup function to remove the listener
    */
-  onError: (callback: (error: string) => void) => void;
+  onError: (callback: (error: string) => void) => () => void;
 }
 
 /**
@@ -345,10 +357,12 @@ export interface DatabaseAPI {
     };
     get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
     create: (data: ScanCreateData) => Promise<DatabaseResponse<Scan>>;
-    getMostRecentScanDate: (
+    checkDuplicate: (
       plantId: string,
-      experimentId: string
-    ) => Promise<DatabaseResponse<string | null>>;
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ) => Promise<DatabaseResponse<boolean>>;
     getRecent: (options?: {
       limit?: number;
       experimentId?: string;
@@ -375,6 +389,24 @@ export interface DatabaseAPI {
     uploadBatch: (
       scanIds: string[]
     ) => Promise<DatabaseResponse<UploadResult[]>>;
+    /**
+     * Export selected scans' files to a destination directory, preserving
+     * each scan's relative path under the destination. Non-destructive:
+     * files already present at the destination are skipped, not
+     * overwritten. See `onExportProgress` for progress updates.
+     */
+    export: (
+      scanIds: string[],
+      destinationDir: string
+    ) => Promise<DatabaseResponse<ScansExportData>>;
+    /**
+     * Subscribe to progress updates for an in-progress `export()` call.
+     * Returns a cleanup function that MUST be called (e.g. on unmount) to
+     * remove the underlying IPC listener.
+     */
+    onExportProgress: (
+      callback: (progress: ScansExportProgress) => void
+    ) => () => void;
   };
   phenotypers: {
     list: () => Promise<DatabaseResponse<Phenotyper[]>>;

@@ -42,8 +42,8 @@ const mockPythonAPI = {
   getVersion: vi.fn().mockResolvedValue({ version: '1.0.0' }),
   checkHardware: vi.fn().mockResolvedValue({ camera: false, daq: false }),
   restart: vi.fn().mockResolvedValue({ success: true }),
-  onStatus: vi.fn(),
-  onError: vi.fn(),
+  onStatus: vi.fn().mockReturnValue(vi.fn()),
+  onError: vi.fn().mockReturnValue(vi.fn()),
 };
 
 // Basic mock for database API - individual tests can override
@@ -55,6 +55,22 @@ const mockDatabaseAPI = {
   phenotypers: {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     create: vi.fn().mockResolvedValue({ success: true, data: {} }),
+  },
+  scans: {
+    list: vi.fn().mockResolvedValue({
+      success: true,
+      data: { scans: [], total: 0, page: 1, pageSize: 100 },
+    }),
+    export: vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 0,
+        skippedFiles: 0,
+        failedScans: [],
+      },
+    }),
+    onExportProgress: vi.fn().mockReturnValue(vi.fn()),
   },
   accessions: {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
@@ -77,6 +93,7 @@ if ((global as any).window) {
     database: mockDatabaseAPI,
     config: {
       getMode: vi.fn().mockResolvedValue({ mode: 'cylinderscan' }),
+      browseDirectory: vi.fn().mockResolvedValue(null),
     },
   };
 }

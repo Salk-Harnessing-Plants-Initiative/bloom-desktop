@@ -25,17 +25,45 @@ const COMMAND_TIMEOUT_MS = 180000; // 3 minutes - scanner scans can take longer 
 /**
  * Events emitted by PythonProcess:
  *   - 'status': (message: string) => void - Status update from Python
- *   - 'error': (error: string) => void - Error from Python
- *   - 'data': (data: any) => void - JSON data response from Python
+ *   - 'error': (error: string, id?: number) => void - Error from Python.
+ *     `id` correlates to a specific in-flight sendCommand() request when
+ *     present (#47); undefined for unattributable errors (e.g. a raw
+ *     stderr line, or an async streaming-thread error).
+ *   - 'data': (data: any) => void - JSON data response from Python. May
+ *     include an `id` field correlating it to a specific sendCommand()
+ *     request (#47).
  *   - 'image': (dataUri: string) => void - Base64-encoded image (data:image/jpeg;base64,...)
  *   - 'exit': (code: number | null) => void - Process exited
  *   - 'raw': (line: string) => void - Unrecognized output line
  */
+interface PendingRequest {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resolve: (value: any) => void;
+  reject: (reason: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
 export class PythonProcess extends EventEmitter {
   private process: ChildProcess | null = null;
   private pythonPath: string;
   private scriptArgs: string[];
   private stdoutChunks: Buffer[] = [];
+  private nextRequestId = 1;
+  private pendingRequests = new Map<number, PendingRequest>();
+
+  // Incremented on every start() call and captured by that call's own
+  // 'exit' handler closure. restart()'s stop() doesn't wait for the old
+  // process's real OS-level exit — if that exit event arrives late (after
+  // a new process has already started), the handler compares its
+  // captured generation against the current one to recognize itself as
+  // stale and no-op, rather than nulling out the new process reference
+  // or rejecting the new generation's in-flight requests.
+  private generation = 0;
+
+  // Memoizes an in-flight restart() so concurrent calls (e.g. a user
+  // double-clicking "Restart Python") share the same stop()-then-start()
+  // operation instead of racing two independent ones.
+  private restartPromise: Promise<void> | null = null;
 
   /**
    * Create a new Python process manager.
@@ -47,6 +75,51 @@ export class PythonProcess extends EventEmitter {
     super();
     this.pythonPath = pythonPath;
     this.scriptArgs = scriptArgs;
+    this.registerCorrelationListeners();
+  }
+
+  /**
+   * Registers the persistent listeners that correlate incoming `data`/
+   * `error` events to the `pendingRequests` map, keyed by request id
+   * (#47). Registered once, in the constructor — unlike the old
+   * per-call `once('data'/'error', ...)` pattern, these listeners never
+   * consume an event meant for a different in-flight command.
+   */
+  private registerCorrelationListeners(): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.on('data', (data: any) => {
+      const id = data?.id;
+      if (id === undefined || id === null) return;
+      const pending = this.pendingRequests.get(id);
+      if (!pending) return; // Stale (already timed out) or unrelated id.
+      clearTimeout(pending.timeoutId);
+      this.pendingRequests.delete(id);
+      pending.resolve(data);
+    });
+
+    this.on('error', (message: string, id?: number) => {
+      if (id !== undefined && id !== null) {
+        const pending = this.pendingRequests.get(id);
+        if (pending) {
+          clearTimeout(pending.timeoutId);
+          this.pendingRequests.delete(id);
+          pending.reject(new Error(message));
+        }
+        return;
+      }
+      // Unattributable error (e.g. a raw stderr line, a fatal top-level
+      // exception, or an untagged streaming-thread error) — reject every
+      // currently-pending request rather than leaving them all to time out.
+      this.rejectAllPending(new Error(message));
+    });
+  }
+
+  private rejectAllPending(error: Error): void {
+    for (const [id, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeoutId);
+      this.pendingRequests.delete(id);
+      pending.reject(error);
+    }
   }
 
   /**
@@ -56,6 +129,8 @@ export class PythonProcess extends EventEmitter {
     if (this.process) {
       throw new Error('Process already started');
     }
+
+    const myGeneration = ++this.generation;
 
     return new Promise((resolve, reject) => {
       try {
@@ -95,8 +170,20 @@ export class PythonProcess extends EventEmitter {
 
         // Handle process exit
         this.process.on('exit', (code: number | null) => {
-          this.emit('exit', code);
+          // A stale exit event from a process generation already
+          // superseded by a subsequent restart() — ignore entirely, so
+          // it can't null out the new process reference or misattribute
+          // a rejection to the new generation's in-flight requests.
+          if (myGeneration !== this.generation) return;
+
+          // Reject every in-flight command immediately rather than leaving
+          // each one to individually time out — the process is confirmed
+          // gone, so no pending command will ever get a real response.
           this.process = null;
+          this.rejectAllPending(
+            new Error(`Python process exited with code ${code}`)
+          );
+          this.emit('exit', code);
         });
 
         // Handle process errors
@@ -113,11 +200,20 @@ export class PythonProcess extends EventEmitter {
 
   /**
    * Stop the Python subprocess.
+   *
+   * Rejects any currently-pending requests immediately, rather than
+   * relying on the real (possibly delayed, possibly asynchronous) process
+   * `exit` event to do it — that event's generation guard (see `start()`)
+   * intentionally no-ops once a subsequent `start()` has begun a new
+   * generation, so without this, a request that was genuinely orphaned by
+   * this `stop()` call would otherwise sit waiting for its own
+   * `COMMAND_TIMEOUT_MS` (3 minutes) instead of failing fast.
    */
   stop(): void {
     if (this.process) {
       this.process.kill();
       this.process = null;
+      this.rejectAllPending(new Error('Python process stopped'));
     }
     // Clear stdout buffer
     this.stdoutChunks = [];
@@ -125,8 +221,23 @@ export class PythonProcess extends EventEmitter {
 
   /**
    * Restart the Python subprocess.
+   *
+   * Concurrent calls (e.g. a user double-clicking "Restart Python" with
+   * no disabled-while-restarting UI guard) share the same in-flight
+   * restart rather than racing two independent stop()-then-start()
+   * sequences against each other.
    */
   async restart(): Promise<void> {
+    if (this.restartPromise) {
+      return this.restartPromise;
+    }
+    this.restartPromise = this.performRestart().finally(() => {
+      this.restartPromise = null;
+    });
+    return this.restartPromise;
+  }
+
+  private async performRestart(): Promise<void> {
     this.stop();
     await new Promise((resolve) => setTimeout(resolve, 100)); // Brief delay
     await this.start();
@@ -134,6 +245,12 @@ export class PythonProcess extends EventEmitter {
 
   /**
    * Send a command to the Python subprocess.
+   *
+   * The command is tagged with an incrementing request id (#47), so its
+   * response — matched via the persistent `data`/`error` listeners set up
+   * in {@link registerCorrelationListeners} — resolves/rejects only this
+   * call's promise, even if other `sendCommand()` calls are in flight
+   * concurrently.
    *
    * @param command - Command object to send as JSON
    * @returns Promise that resolves with the response data
@@ -144,41 +261,19 @@ export class PythonProcess extends EventEmitter {
       throw new Error('Process not started');
     }
 
+    const id = this.nextRequestId++;
+
     return new Promise((resolve, reject) => {
-      // Declare timeout ID before handlers to avoid TDZ reference issues.
-      // Must be `let` (not `const`) because it is declared before handlers but assigned after.
-      // eslint-disable-next-line prefer-const
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-      // Set up one-time listeners for response
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const dataHandler = (data: any) => {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
-        this.removeListener('data', dataHandler);
-        this.removeListener('error', errorHandler);
-        resolve(data);
-      };
-
-      const errorHandler = (error: string) => {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
-        this.removeListener('data', dataHandler);
-        this.removeListener('error', errorHandler);
-        reject(new Error(error));
-      };
-
-      this.once('data', dataHandler);
-      this.once('error', errorHandler);
-
-      // Send command as line-delimited JSON
-      const commandJson = JSON.stringify(command);
-      this.process.stdin!.write(`${commandJson}\n`);
-
-      // Timeout for command response
-      timeoutId = setTimeout(() => {
-        this.removeListener('data', dataHandler);
-        this.removeListener('error', errorHandler);
+      const timeoutId = setTimeout(() => {
+        this.pendingRequests.delete(id);
         reject(new Error('Command timeout'));
       }, COMMAND_TIMEOUT_MS);
+
+      this.pendingRequests.set(id, { resolve, reject, timeoutId });
+
+      // Send command as line-delimited JSON, tagged with its request id.
+      const commandJson = JSON.stringify({ ...command, id });
+      this.process!.stdin!.write(`${commandJson}\n`);
     });
   }
 
@@ -243,8 +338,24 @@ export class PythonProcess extends EventEmitter {
       const message = line.substring(7);
       this.emit('status', message);
     } else if (line.startsWith('ERROR:')) {
-      const message = line.substring(6);
-      this.emit('error', message);
+      // The Python side (#47) sends a JSON envelope: {"message": "...",
+      // "id"?: number}, the id present only when correlated to a specific
+      // command. Fall back to treating the raw text as the message for
+      // any non-JSON payload (defensive — shouldn't happen with the
+      // current send_error(), but keeps this parser robust either way).
+      const rawPayload = line.substring(6);
+      let message = rawPayload;
+      let id: number | undefined;
+      try {
+        const parsed = JSON.parse(rawPayload);
+        if (parsed && typeof parsed.message === 'string') {
+          message = parsed.message;
+          id = typeof parsed.id === 'number' ? parsed.id : undefined;
+        }
+      } catch {
+        // Not JSON — use the raw text as-is, with no id.
+      }
+      this.emit('error', message, id);
     } else if (line.startsWith('DATA:')) {
       const jsonStr = line.substring(5);
       try {
