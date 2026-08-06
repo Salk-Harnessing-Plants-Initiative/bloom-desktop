@@ -24,6 +24,26 @@ describe('DeleteConfirmModal', () => {
     expect(screen.getByText(/Feb 17, 2026 10:30 AM/)).toBeInTheDocument();
   });
 
+  it('warns that already-uploaded cloud data is not removed by delete', () => {
+    // Design.md Decision 14: delete is local-only and never touches cloud
+    // storage, so a researcher relying on delete-then-rescan to redo a scan
+    // can leave two independently-valid image sets in Supabase with no
+    // marker of which is authoritative. Surface that at the moment of the
+    // destructive click, not just in design docs a lab tech will never read.
+    render(
+      <DeleteConfirmModal
+        plantId="PLANT-001"
+        captureDate="Feb 17, 2026 10:30 AM"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByText(/already uploaded.*not.*removed/i)
+    ).toBeInTheDocument();
+  });
+
   it('has Cancel and Delete buttons', () => {
     render(
       <DeleteConfirmModal

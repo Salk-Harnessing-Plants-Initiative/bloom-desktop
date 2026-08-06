@@ -242,6 +242,7 @@ describe('scansDelete', () => {
     // legacy scan captured before metadata.json support existed.
     const scan = await seedScan({ path: relativeScanPath });
 
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = await scansDelete(
       prisma,
       scan.id,
@@ -252,6 +253,45 @@ describe('scansDelete', () => {
     expect(result.success).toBe(true);
     const updated = await prisma.scan.findUnique({ where: { id: scan.id } });
     expect(updated?.deleted).toBe(true);
+    // Expected, legacy-scan case: a plain warning, not an error-level log.
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('no metadata.json found'),
+      expect.anything()
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('still soft-deletes and returns success, but logs at error level, when metadata.json exists but is corrupted', async () => {
+    const relativeScanPath = path.join('2026-03-05', 'PLANT-004', 'uuid-4');
+    const outputDir = path.join(scansDir, relativeScanPath);
+    fs.mkdirSync(outputDir, { recursive: true });
+    // Corrupt JSON — distinct from the "file doesn't exist" legacy case;
+    // markMetadataDeleted's JSON.parse throws the same way for both, but
+    // scansDelete should tell them apart when deciding how loudly to log.
+    fs.writeFileSync(path.join(outputDir, 'metadata.json'), '{not valid json');
+    const scan = await seedScan({ path: relativeScanPath });
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await scansDelete(
+      prisma,
+      scan.id,
+      scansDir,
+      markMetadataDeleted
+    );
+
+    expect(result.success).toBe(true);
+    const updated = await prisma.scan.findUnique({ where: { id: scan.id } });
+    expect(updated?.deleted).toBe(true);
+    // Unexpected, real problem: logged louder than the plain-missing case,
+    // and not confused with it.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('could not be read'),
+      expect.anything()
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it('returns an error when the scan does not exist', async () => {

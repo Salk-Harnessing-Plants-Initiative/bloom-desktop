@@ -38,8 +38,11 @@ export function DeleteConfirmModal({
         <p className="text-sm text-gray-600 mb-4">
           Captured: <span className="font-medium">{captureDate}</span>
         </p>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500 mb-1">
           This action cannot be undone.
+        </p>
+        <p className="text-sm text-gray-500 mb-6">
+          Already uploaded images are not removed from cloud storage.
         </p>
         <div className="flex justify-end gap-3">
           <button

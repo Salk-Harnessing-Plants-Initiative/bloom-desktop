@@ -608,6 +608,30 @@ permanent inconsistency — noted here so that follow-up isn't a surprise.
 
 ## Risks / Trade-offs
 
+- **Verification runs only after the whole batch's upload phase resolves,
+  not per-image as each upload completes** — found during PR review
+  (2026-08-05). `uploadScan()`'s `result` callback only records
+  `(index, created, error)` synchronously during the upload phase (per
+  Decision 8's design); the actual verify-and-write pass runs afterward,
+  bounded by `concurrentMap`. This means an image uploaded successfully
+  early in a large batch sits at local status `'uploading'` — not yet
+  confirmed `'uploaded'` — for however long the rest of the batch takes,
+  not just milliseconds. If the app is killed in that window, the retry-
+  skip filter (`status !== 'uploaded'`, Decision 9) will re-include that
+  image on the next attempt, since its local status was never advanced,
+  creating a duplicate remote row. **Not fixed in this tier**: verifying
+  each image as its own upload completes (inside the `result` callback
+  itself) was the design this section deliberately avoided, because
+  `bloom-fs` doesn't await that callback internally — an `await` there
+  would run unboundedly, up to the scan's full image count, defeating the
+  concurrency cap Decision 8 exists to enforce. A correct fix needs a
+  bounded, streaming producer/consumer pattern (start verifying an image
+  as soon as it's recorded, without waiting for the batch), which is a
+  more invasive change than fits this review cycle. This is the same
+  class of "already-uploaded but not locally confirmed" gap the #298
+  follow-up (widened audit/reconciliation tool) already needs to detect
+  and repair for other reasons — it is the natural place to also close
+  this crash-window case, rather than a narrower fix bolted on here.
 - **Storage-existence verification adds one to several round-trips per
   uploaded image** (the object_path lookup, the storage check, and up to 3
   bounded retries on a transient failure — Decision 7). Acceptable given

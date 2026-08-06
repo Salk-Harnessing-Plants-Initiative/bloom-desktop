@@ -1139,10 +1139,21 @@ export async function scansDelete(
     try {
       markMetadataDeleted(outputDir);
     } catch (error) {
-      console.warn(
-        `[DB] Could not update metadata.json for scan ${id} at ${outputDir}:`,
-        error
-      );
+      // ENOENT is the expected, benign case: a legacy scan captured before
+      // metadata.json support existed. Anything else (corrupt JSON,
+      // permission denied) is a real integrity problem masked by the same
+      // exception shape — log it louder so it doesn't read as routine.
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        console.warn(
+          `[DB] Scan ${id}: no metadata.json found at ${outputDir} (legacy scan) — soft-delete proceeded without syncing it.`,
+          error
+        );
+      } else {
+        console.error(
+          `[DB] Scan ${id}: metadata.json at ${outputDir} could not be read/updated — soft-delete proceeded, but this file may need manual attention.`,
+          error
+        );
+      }
     }
 
     return { success: true, data: scan };

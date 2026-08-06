@@ -525,14 +525,43 @@ export class ImageUploader {
             `[Upload] Unexpected error processing image ${image.id}:`,
             unexpectedError
           );
+          const errorMsg =
+            unexpectedError instanceof Error
+              ? unexpectedError.message
+              : 'Unknown error';
           result.failed++;
-          result.errors.push(
-            `Image ${image.id}: ${
-              unexpectedError instanceof Error
-                ? unexpectedError.message
-                : 'Unknown error'
-            }`
-          );
+          result.errors.push(`Image ${image.id}: ${errorMsg}`);
+
+          // Write a terminal status even on an unexpected exception (e.g. a
+          // throw from the Supabase client that escapes the {data,error}
+          // tuple pattern verifyUploadedObject branches on) — otherwise the
+          // image is left at 'uploading' forever, and the next retry's
+          // status !== 'uploaded' filter would re-upload it, reintroducing
+          // the duplicate-remote-row risk this tier exists to close. Wrapped
+          // in its own try/catch so a second DB failure here doesn't escape
+          // and abort the rest of this concurrentMap pass.
+          try {
+            const failedStatus: ImageStatus = 'failed';
+            await this.prisma.image.update({
+              where: { id: image.id },
+              data: { status: failedStatus },
+            });
+          } catch (writeError) {
+            console.error(
+              `[Upload] Could not write failed status for image ${image.id} after unexpected error:`,
+              writeError
+            );
+          }
+
+          onProgress?.({
+            current: entry.index + 1,
+            total: imagesToUpload.length,
+            percentage: Math.round(
+              ((entry.index + 1) / imagesToUpload.length) * 100
+            ),
+            imageId: image.id,
+            status: 'failed',
+          });
         }
       }
     );

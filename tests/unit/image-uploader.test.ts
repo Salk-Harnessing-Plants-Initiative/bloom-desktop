@@ -1410,6 +1410,31 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
           expect.any(Function)
         );
       });
+
+      it('writes a terminal failed status when verification itself throws unexpectedly, instead of leaving the image stuck at uploading', async () => {
+        // Simulates a genuine unexpected exception escaping the {data,error}
+        // tuple pattern Supabase normally returns (e.g. a network-level
+        // throw) — not a value verifyUploadedObject's own logic branches on.
+        mockSupabaseClient.storage.from.mockReturnValue({
+          list: vi
+            .fn()
+            .mockRejectedValue(new Error('unexpected network failure')),
+        });
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          images: [mockScan.images[0]],
+        });
+
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        const result = await uploader.uploadScan('scan-123');
+
+        expect(result.failed).toBe(1);
+        expect(result.uploaded).toBe(0);
+        expect(mockPrismaClient.image.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: { status: 'failed' } })
+        );
+      });
     });
 
     describe('uploadScan awaits verification before returning (Decision 8)', () => {
