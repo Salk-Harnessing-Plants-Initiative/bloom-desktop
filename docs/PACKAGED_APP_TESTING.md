@@ -219,77 +219,7 @@ ls -la ./scans/<experiment-id>/<plant-id>_<timestamp>/
 
 ## Troubleshooting
 
-### Database Not Initializing
-
-**Symptom:** App starts but no database logs appear
-
-**Solution:**
-
-1. Check that schema is applied: `BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma db push`
-2. Verify database file exists: `ls -la ~/.bloom/data/bloom.db`
-3. Run with logs: `"out/.../Bloom Desktop" 2>&1 | grep Database`
-
-### Foreign Key Constraint Error
-
-**Symptom:** Error when saving scan: `Foreign key constraint violated`
-
-**Cause:** The Experiment ID or Phenotyper ID doesn't exist in the database
-
-**Solution:**
-
-1. Open Prisma Studio: `BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma studio`
-2. Verify the Experiment and Phenotyper exist
-3. Copy the exact UUID `id` values (not human-readable names)
-4. Use those UUIDs in the Capture Scan form
-
-### No Images Saved
-
-**Symptom:** Scan is saved but Image table is empty
-
-**Cause:** Mock scanner doesn't create actual image files when `num_frames = 0`
-
-**Expected Behavior:** This is normal for mock mode. Real hardware scans will create `.png`/`.jpg`/`.tiff` files that get saved to the database.
-
-**To Verify it Works:** Check the logs for:
-
-```
-[Scanner] Saving scan to database: { ..., frames: 0, ... }
-[Scanner] Successfully saved scan to database: { scan_id: '...', image_count: 0 }
-```
-
-### Prisma Studio Shows Empty Database
-
-**Cause:** You're viewing the dev database (`prisma/dev.db`) instead of the production database
-
-**Solution:** Always specify the production database URL:
-
-```bash
-BLOOM_DATABASE_URL="file:$HOME/.bloom/data/bloom.db" npx prisma studio
-```
-
-### Packaged App Not Found
-
-**Symptom:** `out/` directory doesn't exist or is empty
-
-**Solution:** Run the packaging command:
-
-```bash
-npm run package
-```
-
-Wait 1-2 minutes for it to complete.
-
-### Old Package (Changes Not Reflected)
-
-**Symptom:** Code changes don't appear in the packaged app
-
-**Solution:** Rebuild the package after every code change:
-
-```bash
-npm run package
-```
-
-The packaged app is a snapshot. Unlike `npm run dev`, it doesn't auto-reload.
+See the [Troubleshooting Guide](TROUBLESHOOTING.md#packaged-app-database) for packaged-app database issues (initialization failures, foreign key errors, missing images, stale/empty Prisma Studio views, packaging not found or stale).
 
 ## CI/CD Testing
 
@@ -328,3 +258,4 @@ npm run seed:production
 - [DATABASE.md](./DATABASE.md) - Database schema and architecture
 - [PACKAGING.md](./PACKAGING.md) - How Prisma packaging works
 - [SCANNER_DATABASE_INTEGRATION_PLAN.md](./SCANNER_DATABASE_INTEGRATION_PLAN.md) - Integration design
+- [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - Consolidated hardware & packaged-app troubleshooting

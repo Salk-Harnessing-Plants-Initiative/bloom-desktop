@@ -33,7 +33,7 @@ DATA:{"success": true, "initialized": false, "position": 0, "mock": true, "avail
 ### 2. Initialize DAQ
 
 ```bash
-echo '{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":36.0}}' | ./dist/bloom-hardware --ipc
+echo '{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0}}' | ./dist/bloom-hardware --ipc
 ```
 
 Expected output:
@@ -55,7 +55,7 @@ DATA:{"success": true, "initialized": true}
 ./dist/bloom-hardware --ipc
 
 # Then type these commands (one per line):
-{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":36.0}}
+{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0}}
 {"command":"daq","action":"rotate","degrees":90}
 {"command":"daq","action":"status"}
 {"command":"daq","action":"home"}
@@ -86,7 +86,7 @@ Once the Electron app is running, you can test the DAQ from the renderer process
     dir_pin: 1,
     steps_per_revolution: 6400,
     num_frames: 72,
-    seconds_per_rot: 36.0,
+    seconds_per_rot: 7.0,
   });
   console.log('✅ DAQ initialized');
 
@@ -137,7 +137,7 @@ The DAQ accepts the following configuration settings:
 | `dir_pin`              | number | `1`           | Digital output line for direction signal |
 | `steps_per_revolution` | number | `6400`        | Steps for full 360° rotation             |
 | `num_frames`           | number | `72`          | Number of frames to capture              |
-| `seconds_per_rot`      | number | `36.0`        | Time for complete rotation               |
+| `seconds_per_rot`      | number | `7.0`         | Time for complete rotation               |
 
 ## Mock vs Real DAQ
 
@@ -282,43 +282,7 @@ await window.electron.daq.home();           // Position: 0°
 
 ## Troubleshooting
 
-### Issue: "Unknown command: daq"
-
-**Solution**: Rebuild the Python executable to include DAQ handlers:
-
-```bash
-npm run build:python
-```
-
-### Issue: "DAQ not initialized"
-
-**Solution**: Call `initialize()` before other DAQ operations:
-
-```javascript
-await window.electron.daq.initialize({
-  /* settings */
-});
-```
-
-### Issue: Position doesn't update
-
-**Solution**: Check that operations return `success: true`:
-
-```javascript
-const result = await window.electron.daq.rotate(90);
-if (!result.success) {
-  console.error('Rotation failed:', result.error);
-}
-```
-
-### Issue: Real DAQ not detected
-
-**Solution**: Verify:
-
-1. NI-DAQmx drivers are installed
-2. Device is connected and powered
-3. Device name matches your hardware
-4. `BLOOM_USE_MOCK_DAQ=false` is set
+See the [Troubleshooting Guide](TROUBLESHOOTING.md#daq) for DAQ-specific issues (unknown command, not-initialized errors, position not updating, real DAQ not detected).
 
 ## Integration with Camera
 
@@ -362,5 +326,6 @@ await window.electron.daq.home();
 ## Related Documentation
 
 - [Camera Testing Guide](CAMERA_TESTING.md)
+- [Troubleshooting Guide](TROUBLESHOOTING.md)
 - [Python Backend API](../python/README.md)
 - [Integration Tests](../tests/integration/)

@@ -18,9 +18,11 @@ npm run test:ipc
 # - Error handling and timeouts
 ```
 
-### Camera Integration Test
+### Camera Integration Tests
 
-Tests camera interface with mock camera.
+Two separate scripts cover different parts of the camera interface — they are not interchangeable, and neither supersedes the other.
+
+**Streaming** (frame streaming/capture performance):
 
 ```bash
 npm run test:camera
@@ -32,6 +34,15 @@ npm run test:camera
 # - Frame rate performance (5-40 FPS)
 # - Stream start/stop
 # - Mock camera generates valid frames
+```
+
+**Connect/capture/configure/disconnect** (full connection lifecycle):
+
+```bash
+npm run test:camera:connect
+
+# What it tests:
+# - Camera status, connect, capture, configure, and disconnect
 ```
 
 ### DAQ Integration Test
@@ -101,6 +112,7 @@ npm run test:package:database
 # Run all integration tests sequentially
 npm run test:ipc
 npm run test:camera
+npm run test:camera:connect
 npm run test:daq
 npm run test:scanner
 npm run test:scanner-database

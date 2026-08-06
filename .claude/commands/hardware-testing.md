@@ -15,7 +15,7 @@ npm run test:camera
 # What it tests:
 # - Camera connection and initialization
 # - Frame streaming and capture
-# - Camera settings (exposure, gain, brightness)
+# - Camera settings (exposure, gain, gamma)
 # - Graceful disconnect handling
 ```
 
@@ -135,7 +135,7 @@ npm run start
 
 # In the app:
 # 1. Navigate to camera settings
-# 2. Adjust exposure, gain, brightness
+# 2. Adjust exposure, gain, gamma
 # 3. Start live preview
 # 4. Verify frame rate and image quality
 
@@ -285,7 +285,7 @@ Mock implementations simulate real hardware behavior:
 
 Update mocks when:
 
-1. Adding new hardware features (e.g., camera brightness control)
+1. Adding new hardware features (e.g., a new Pylon camera parameter)
 2. Changing hardware interface (e.g., new IPC commands)
 3. Fixing bugs in real hardware driver (reproduce in mock for test)
 
