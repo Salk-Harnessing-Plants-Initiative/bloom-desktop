@@ -1314,18 +1314,17 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
     expect(result.error).toBeDefined();
   });
 
-  test('should get most recent scan date for plant and experiment from renderer', async () => {
-    // Seed scientist and experiment
+  test('should detect a duplicate scan matching plant/experiment/wave/age from renderer', async () => {
     const scientist = await prisma.scientist.create({
       data: {
-        name: 'Recent Scan Scientist',
-        email: 'recentscan@test.com',
+        name: 'Duplicate Check Scientist',
+        email: 'dupcheck@test.com',
       },
     });
 
     const experiment = await prisma.experiment.create({
       data: {
-        name: 'Recent Scan Experiment',
+        name: 'Duplicate Check Experiment',
         species: 'Arabidopsis thaliana',
         scientist_id: scientist.id,
       },
@@ -1333,35 +1332,8 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
 
     const phenotyper = await prisma.phenotyper.create({
       data: {
-        name: 'Recent Scan Phenotyper',
-        email: 'recentscanpheno@test.com',
-      },
-    });
-
-    // Create 3 scans for the same plant on different dates
-    const today = new Date();
-    const threeDaysAgo = new Date(today);
-    threeDaysAgo.setDate(today.getDate() - 3);
-    const fiveDaysAgo = new Date(today);
-    fiveDaysAgo.setDate(today.getDate() - 5);
-
-    await prisma.scan.create({
-      data: {
-        experiment_id: experiment.id,
-        phenotyper_id: phenotyper.id,
-        scanner_name: 'Scanner1',
-        plant_id: 'PLANT_RECENT_TEST',
-        path: '/test/scans/scan1',
-        capture_date: fiveDaysAgo,
-        num_frames: 36,
-        exposure_time: 100,
-        gain: 1.0,
-        brightness: 0.5,
-        contrast: 1.0,
-        gamma: 1.0,
-        seconds_per_rot: 10.0,
-        wave_number: 1,
-        plant_age_days: 14,
+        name: 'Duplicate Check Phenotyper',
+        email: 'dupcheckpheno@test.com',
       },
     });
 
@@ -1370,9 +1342,8 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
         experiment_id: experiment.id,
         phenotyper_id: phenotyper.id,
         scanner_name: 'Scanner1',
-        plant_id: 'PLANT_RECENT_TEST',
-        path: '/test/scans/scan2',
-        capture_date: today,
+        plant_id: 'PLANT_DUP_TEST',
+        path: '/test/scans/dup1',
         num_frames: 36,
         exposure_time: 100,
         gain: 1.0,
@@ -1380,28 +1351,8 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
         contrast: 1.0,
         gamma: 1.0,
         seconds_per_rot: 10.0,
-        wave_number: 1,
-        plant_age_days: 14,
-      },
-    });
-
-    await prisma.scan.create({
-      data: {
-        experiment_id: experiment.id,
-        phenotyper_id: phenotyper.id,
-        scanner_name: 'Scanner1',
-        plant_id: 'PLANT_RECENT_TEST',
-        path: '/test/scans/scan3',
-        capture_date: threeDaysAgo,
-        num_frames: 36,
-        exposure_time: 100,
-        gain: 1.0,
-        brightness: 0.5,
-        contrast: 1.0,
-        gamma: 1.0,
-        seconds_per_rot: 10.0,
-        wave_number: 1,
-        plant_age_days: 14,
+        wave_number: 2,
+        plant_age_days: 21,
       },
     });
 
@@ -1409,29 +1360,26 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
       ({ expId, plantId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.scans.getMostRecentScanDate(plantId, expId);
+        ).electron.database.scans.checkDuplicate(plantId, expId, 2, 21);
       },
-      { expId: experiment.id, plantId: 'PLANT_RECENT_TEST' }
+      { expId: experiment.id, plantId: 'PLANT_DUP_TEST' }
     );
 
     expect(result.success).toBe(true);
-    // Should return the most recent date (today)
-    const returnedDate = new Date(result.data);
-    expect(returnedDate.toDateString()).toBe(today.toDateString());
+    expect(result.data).toBe(true);
   });
 
-  test('should return null when no scans exist for plant and experiment', async () => {
-    // Seed scientist and experiment
+  test('should not flag a duplicate when wave_number or plant_age_days differs', async () => {
     const scientist = await prisma.scientist.create({
       data: {
-        name: 'No Scan Scientist',
-        email: 'noscan@test.com',
+        name: 'No Duplicate Scientist',
+        email: 'nodup@test.com',
       },
     });
 
     const experiment = await prisma.experiment.create({
       data: {
-        name: 'No Scan Experiment',
+        name: 'No Duplicate Experiment',
         species: 'Arabidopsis thaliana',
         scientist_id: scientist.id,
       },
@@ -1441,13 +1389,13 @@ test.describe('Renderer Database IPC - Scans (with Filters)', () => {
       ({ expId, plantId }) => {
         return (
           window as WindowWithElectron
-        ).electron.database.scans.getMostRecentScanDate(plantId, expId);
+        ).electron.database.scans.checkDuplicate(plantId, expId, 2, 21);
       },
       { expId: experiment.id, plantId: 'PLANT_NEVER_SCANNED' }
     );
 
     expect(result.success).toBe(true);
-    expect(result.data).toBeNull();
+    expect(result.data).toBe(false);
   });
 });
 

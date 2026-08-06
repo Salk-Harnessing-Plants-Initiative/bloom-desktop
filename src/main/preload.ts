@@ -217,11 +217,18 @@ const databaseAPI: DatabaseAPI = {
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>
       ipcRenderer.invoke('db:scans:create', data),
-    getMostRecentScanDate: (plantId: string, experimentId: string) =>
+    checkDuplicate: (
+      plantId: string,
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ) =>
       ipcRenderer.invoke(
-        'db:scans:getMostRecentScanDate',
+        'db:scans:checkDuplicate',
         plantId,
-        experimentId
+        experimentId,
+        waveNumber,
+        plantAgeDays
       ),
     getRecent: (options?: { limit?: number; experimentId?: string }) =>
       ipcRenderer.invoke('db:scans:getRecent', options),

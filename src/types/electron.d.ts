@@ -352,10 +352,12 @@ export interface DatabaseAPI {
     };
     get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
     create: (data: ScanCreateData) => Promise<DatabaseResponse<Scan>>;
-    getMostRecentScanDate: (
+    checkDuplicate: (
       plantId: string,
-      experimentId: string
-    ) => Promise<DatabaseResponse<string | null>>;
+      experimentId: string,
+      waveNumber: number,
+      plantAgeDays: number
+    ) => Promise<DatabaseResponse<boolean>>;
     getRecent: (options?: {
       limit?: number;
       experimentId?: string;
