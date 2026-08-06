@@ -40,12 +40,14 @@ import {
 import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
 import { waitForAppReady } from './helpers/app-ready';
 import {
   createTestBloomConfig,
   cleanupTestBloomConfig,
+  getBloomDir,
 } from './helpers/bloom-config';
 import type { ElectronAPI } from '../../src/types/electron';
 
@@ -2507,6 +2509,163 @@ test.describe('Renderer Database IPC - Scans Upload', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
     expect(result.error).toContain('Missing Bloom credentials');
+  });
+});
+
+test.describe('Renderer Database IPC - Scans Export', () => {
+  test("db:scans:export copies a scan's files to the destination directory", async () => {
+    // This beforeEach's createTestBloomConfig() call (no override) points
+    // scans_dir at bloom-config.ts's default, ~/.bloom/e2e-test-scans.
+    const scansDir = path.join(getBloomDir(), 'e2e-test-scans');
+    const destinationDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'bloom-e2e-scans-export-dest-')
+    );
+
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Export Test Scientist',
+        email: `export-sci-${Date.now()}@test.com`,
+      },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Export Test Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        experiment_type: 'cylinderscan',
+      },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Export Test Phenotyper',
+        email: `export-pheno-${Date.now()}@test.com`,
+      },
+    });
+
+    const scanPath = '2026-01-05/PLANT-EXPORT-001/scan-export-001';
+    const sourceDir = path.join(scansDir, scanPath);
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, 'metadata.json'), '{"frames":1}');
+    fs.writeFileSync(path.join(sourceDir, '001.png'), 'frame-data');
+
+    const scan = await prisma.scan.create({
+      data: {
+        plant_id: 'PLANT-EXPORT-001',
+        accession_name: 'Col-0',
+        capture_date: new Date('2026-01-05T09:00:00'),
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        wave_number: 1,
+        plant_age_days: 14,
+        scanner_name: 'TestScanner',
+        path: scanPath,
+        num_frames: 1,
+        exposure_time: 1000,
+        gain: 1.5,
+        gamma: 1.0,
+        brightness: 50,
+        contrast: 50,
+        seconds_per_rot: 60,
+        deleted: false,
+      },
+    });
+
+    const result = await window.evaluate(
+      ({ scanId, destinationDir }) => {
+        return (window as WindowWithElectron).electron.database.scans.export(
+          [scanId],
+          destinationDir
+        );
+      },
+      { scanId: scan.id, destinationDir }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.exportedScans).toBe(1);
+    expect(result.data.exportedFiles).toBe(2);
+    expect(result.data.skippedFiles).toBe(0);
+    expect(result.data.failedScans).toEqual([]);
+
+    expect(
+      fs.readFileSync(
+        path.join(destinationDir, scanPath, 'metadata.json'),
+        'utf-8'
+      )
+    ).toBe('{"frames":1}');
+    expect(
+      fs.readFileSync(path.join(destinationDir, scanPath, '001.png'), 'utf-8')
+    ).toBe('frame-data');
+
+    fs.rmSync(destinationDir, { recursive: true, force: true });
+  });
+
+  test('db:scans:export records a scan whose path escapes scans_dir as failed, without writing any file', async () => {
+    const destinationDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'bloom-e2e-scans-export-dest-')
+    );
+
+    const scientist = await prisma.scientist.create({
+      data: {
+        name: 'Export Test Scientist 2',
+        email: `export-sci2-${Date.now()}@test.com`,
+      },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Export Test Experiment 2',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+        experiment_type: 'cylinderscan',
+      },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Export Test Phenotyper 2',
+        email: `export-pheno2-${Date.now()}@test.com`,
+      },
+    });
+
+    const scan = await prisma.scan.create({
+      data: {
+        plant_id: 'PLANT-EXPORT-EVIL',
+        accession_name: 'Col-0',
+        capture_date: new Date('2026-01-05T09:00:00'),
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        wave_number: 1,
+        plant_age_days: 14,
+        scanner_name: 'TestScanner',
+        path: '../../etc/passwd',
+        num_frames: 1,
+        exposure_time: 1000,
+        gain: 1.5,
+        gamma: 1.0,
+        brightness: 50,
+        contrast: 50,
+        seconds_per_rot: 60,
+        deleted: false,
+      },
+    });
+
+    const result = await window.evaluate(
+      ({ scanId, destinationDir }) => {
+        return (window as WindowWithElectron).electron.database.scans.export(
+          [scanId],
+          destinationDir
+        );
+      },
+      { scanId: scan.id, destinationDir }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.exportedScans).toBe(0);
+    expect(result.data.failedScans).toHaveLength(1);
+    expect(result.data.failedScans[0].scanId).toBe(scan.id);
+    expect(
+      fs.existsSync(path.join(destinationDir, '..', 'etc', 'passwd'))
+    ).toBe(false);
+
+    fs.rmSync(destinationDir, { recursive: true, force: true });
   });
 });
 

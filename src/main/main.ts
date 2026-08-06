@@ -1186,7 +1186,10 @@ app.on('ready', async () => {
     console.log('[Main] Initializing database...');
     await initializeDatabaseAsync();
     console.log('[Main] Database initialized, registering handlers...');
-    registerDatabaseHandlers({ markMetadataDeleted });
+    registerDatabaseHandlers({
+      markMetadataDeleted,
+      getMainWindow: () => mainWindow,
+    });
     console.log('[Main] Database initialized and handlers registered');
 
     // Initialize GraviScan handlers if mode is graviscan

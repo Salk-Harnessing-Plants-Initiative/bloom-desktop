@@ -56,6 +56,22 @@ const mockDatabaseAPI = {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     create: vi.fn().mockResolvedValue({ success: true, data: {} }),
   },
+  scans: {
+    list: vi.fn().mockResolvedValue({
+      success: true,
+      data: { scans: [], total: 0, page: 1, pageSize: 100 },
+    }),
+    export: vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 0,
+        skippedFiles: 0,
+        failedScans: [],
+      },
+    }),
+    onExportProgress: vi.fn().mockReturnValue(vi.fn()),
+  },
   accessions: {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     create: vi.fn().mockResolvedValue({ success: true, data: {} }),
@@ -77,6 +93,7 @@ if ((global as any).window) {
     database: mockDatabaseAPI,
     config: {
       getMode: vi.fn().mockResolvedValue({ mode: 'cylinderscan' }),
+      browseDirectory: vi.fn().mockResolvedValue(null),
     },
   };
 }
