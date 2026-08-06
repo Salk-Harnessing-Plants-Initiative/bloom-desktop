@@ -251,7 +251,7 @@ third outcome, and an explicit await so verification work can't outlive
       pre-existing baseline (4 files / 7 tests, all path-separator/timing
       issues unrelated to this change — confirmed via `git stash` diffing
       against the Section 3 baseline commit).
-- [ ] 6.2 Run the full E2E suite (`npm run test:e2e` or equivalent) —
+- [x] 6.2 Run the full E2E suite (`npm run test:e2e` or equivalent) —
       confirm `renderer-database-ipc.e2e.ts`'s new test passes and existing
       delete/upload/duplicate-check E2E coverage (`scan-preview.e2e.ts`,
       any BrowseScans delete E2E, the rewritten
@@ -270,6 +270,10 @@ third outcome, and an explicit await so verification work can't outlive
       errored immediately regardless of DB), the user was asked directly
       and chose to let CI's headless run be the real E2E verification for
       this PR rather than run it locally a third time.
+      **Confirmed via CI**: all three "Test - E2E Dev Build" platform jobs
+      (Windows, macOS, Ubuntu) passed on PR #304's final CI run before
+      merge, including `renderer-database-ipc.e2e.ts`'s new `checkDuplicate`
+      coverage and the rewritten `plant-barcode-validation.e2e.ts` scenarios.
 - [x] 6.3 Run `npx tsc --noEmit` and `npm run lint` clean.
 - [x] 6.4 Manually verify the IPC coverage gate would pass (per the repo's
       "IPC coverage gate" convention: confirm `db:scans:checkDuplicate` has
