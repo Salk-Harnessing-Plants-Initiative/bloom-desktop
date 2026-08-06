@@ -229,8 +229,8 @@ if grep -q "\[Database\] Production mode" "$LOG_FILE"; then
   echo "  [PASS] Production mode detected"
 fi
 
-if grep -q "\[Database\] Created symlink" "$LOG_FILE"; then
-  echo "  [PASS] node_modules symlink created"
+if grep -q "\[fs-symlink-or-copy\] Created symlink\|\[fs-symlink-or-copy\] Copied" "$LOG_FILE"; then
+  echo "  [PASS] node_modules symlink/copy created"
 fi
 
 if grep -q "\[Database\] Initialized at:" "$LOG_FILE"; then

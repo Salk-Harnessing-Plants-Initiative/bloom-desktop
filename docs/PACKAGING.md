@@ -189,10 +189,13 @@ function loadPrismaClient(): typeof PrismaClientType {
     const prismaClientSymlink = path.join(prismaModuleDir, 'client');
     const prismaClientActual = path.join(resourcesPath, 'client');
 
-    if (!fs.existsSync(prismaClientSymlink)) {
+    if (!fs.existsSync(prismaModuleDir)) {
       fs.mkdirSync(prismaModuleDir, { recursive: true });
-      fs.symlinkSync(prismaClientActual, prismaClientSymlink, 'dir');
     }
+    // Falls back to a real recursive copy if symlink creation fails (e.g.
+    // Windows without Developer Mode/admin privilege — the default state
+    // for most accounts). See ensureSymlinkOrCopy() in fs-symlink-or-copy.ts.
+    ensureSymlinkOrCopy(prismaClientActual, prismaClientSymlink, 'dir');
 
     // Use createRequire to bypass webpack's bundled require
     const nodeRequire = createRequire(prismaPath);
@@ -206,26 +209,33 @@ function loadPrismaClient(): typeof PrismaClientType {
 
 - **Type-only import**: `import type { PrismaClient }` ensures TypeScript has types but webpack doesn't bundle the module
 - **Dynamic require with createRequire**: `createRequire(prismaPath)` bypasses webpack's bundled require to load from absolute paths
-- **Runtime symlink creation**: Creates `node_modules/@prisma/client` symlink so Prisma's internal `require('@prisma/client/...')` calls resolve correctly
+- **Runtime symlink creation, with a copy fallback**: Creates a `node_modules/@prisma/client` symlink so Prisma's internal `require('@prisma/client/...')` calls resolve correctly; falls back to a real recursive copy if symlink creation fails (Windows without Developer Mode/admin privilege)
 - **Node.js module resolution**: When Prisma's index.js requires `@prisma/client/runtime/library.js`, Node searches for `node_modules` directories and finds our symlink
 - **Multiple fallback paths**: Handles different Electron Forge versions and configurations
 - **Detailed logging**: Console logs show exactly which path was checked and used
 - **Graceful errors**: If Prisma isn't found, error message shows all attempted paths
 
-**Why the symlink is necessary**:
+**Why the symlink (or copy fallback) is necessary**:
 
 ```
-Without symlink:
+Without symlink or copy:
   Prisma's index.js: require('@prisma/client/runtime/library.js')
   → Node.js searches for node_modules/@prisma/client
   → Not found! Error: Cannot find module '@prisma/client/runtime/library.js'
 
-With symlink:
+With symlink (macOS/Linux, or Windows with Developer Mode/admin):
   Runtime creates: Resources/node_modules/@prisma/client -> Resources/client
   Prisma's index.js: require('@prisma/client/runtime/library.js')
   → Node.js searches for node_modules/@prisma/client
   → Finds symlink at Resources/node_modules/@prisma/client
   → Resolves to Resources/client/runtime/library.js
+  → ✅ Success!
+
+With copy fallback (Windows without Developer Mode/admin — the default):
+  fs.symlinkSync() throws EPERM, so ensureSymlinkOrCopy() instead runs
+  fs.cpSync(Resources/client, Resources/node_modules/@prisma/client, { recursive: true })
+  → Resources/node_modules/@prisma/client is now a real directory, not a symlink
+  → Node.js's require() resolution works identically either way
   → ✅ Success!
 ```
 

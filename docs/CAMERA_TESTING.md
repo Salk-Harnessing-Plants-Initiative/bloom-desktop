@@ -4,14 +4,17 @@ This guide explains how to test the camera interface functionality with the mock
 
 ## Quick Test
 
-The fastest way to test the camera functionality is using the integration test:
+There are two integration test scripts, covering different parts of the camera interface — they are not interchangeable, and neither supersedes the other:
 
 ```bash
-# Run the full integration test
+# Tests the streaming workflow: frame streaming and capture, frame rate
+# performance (5-40 FPS), stream start/stop, mock camera frame generation
 npm run test:camera
-```
 
-This tests the complete camera workflow: status, connect, capture, configure, and disconnect.
+# Tests the connect/capture/configure/disconnect workflow: status, connect,
+# capture, configure, and graceful disconnect
+npm run test:camera:connect
+```
 
 ## Manual Command-Line Testing
 
@@ -157,71 +160,7 @@ cp your-images/*.png tests/fixtures/sample_scan/
 
 ## Troubleshooting
 
-### "Camera module not available"
-
-This means the Python camera modules weren't included in the build. Fix:
-
-```bash
-# Verify the camera modules are in python/hardware/
-ls python/hardware/
-
-# Rebuild with the updated spec file
-npm run build:python
-```
-
-### "Python process startup timeout" in Development Mode
-
-If `npm start` shows timeout errors, the Python executable may be taking >5s to start (common with PyInstaller on macOS).
-
-**Fixed in latest version**: Timeout increased to 15s. Update to latest code:
-
-```bash
-git pull
-npm start
-```
-
-### "Camera command error: missing required arguments"
-
-This happens if you call `capture()` or `configure()` before connecting to the camera.
-
-**Solution**: Always connect before capturing:
-
-```javascript
-// ✅ Correct workflow
-await window.electron.camera.connect(settings);
-const image = await window.electron.camera.capture();
-```
-
-### Camera capture returns error in integration test
-
-If you're writing custom tests, ensure the camera instance persists between commands. The Python IPC handler maintains camera state between calls, so you must:
-
-1. Connect once: `{"command":"camera","action":"connect",...}`
-2. Capture using same process: `{"command":"camera","action":"capture"}`
-3. Don't create new process between commands
-
-### No Images Captured / Blank Images
-
-Make sure the camera is connected before capturing:
-
-```javascript
-// ❌ Wrong - camera not connected
-const image = await window.electron.camera.capture();
-
-// ✅ Correct - connect first
-await window.electron.camera.connect(settings);
-const image = await window.electron.camera.capture();
-```
-
-### Integration Test Works But Dev Mode Fails
-
-This is usually a webpack bundling issue. Try:
-
-```bash
-# Clean rebuild
-rm -rf .webpack node_modules/.cache
-npm start
-```
+See the [Troubleshooting Guide](TROUBLESHOOTING.md#camera) for camera-specific issues (module not available, startup timeout, missing-arguments errors, blank images, dev-mode-vs-integration-test mismatches).
 
 ## Next Steps
 

@@ -10,6 +10,7 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { createRequire } from 'module';
+import { ensureSymlinkOrCopy } from './fs-symlink-or-copy';
 
 /**
  * Load Prisma Client from the correct location based on environment.
@@ -95,27 +96,18 @@ function loadPrismaClient(): typeof PrismaClientType {
     const prismaClientSymlink = path.join(prismaModuleDir, 'client');
     const prismaClientActual = path.join(resourcesPath, 'client');
 
-    if (!fs.existsSync(prismaClientSymlink)) {
-      try {
-        // Create node_modules/@prisma directories if they don't exist
-        if (!fs.existsSync(prismaModuleDir)) {
-          fs.mkdirSync(prismaModuleDir, { recursive: true });
-          console.log('[Database] Created directory:', prismaModuleDir);
-        }
-
-        // Create symlink from node_modules/@prisma/client -> client
-        fs.symlinkSync(prismaClientActual, prismaClientSymlink, 'dir');
-        console.log(
-          '[Database] Created symlink:',
-          prismaClientSymlink,
-          '->',
-          prismaClientActual
-        );
-      } catch (error) {
-        console.error('[Database] Failed to create symlink:', error);
-        // Continue anyway - might still work
-      }
+    // Create node_modules/@prisma directories if they don't exist
+    if (!fs.existsSync(prismaModuleDir)) {
+      fs.mkdirSync(prismaModuleDir, { recursive: true });
+      console.log('[Database] Created directory:', prismaModuleDir);
     }
+
+    // Link node_modules/@prisma/client -> client. Falls back to a real copy
+    // if symlink creation fails (e.g. Windows without Developer Mode/admin
+    // privilege, which is the default state for most accounts) — a symlink
+    // failure here previously left require() unable to resolve the module
+    // at all, failing database init on every packaged Windows install.
+    ensureSymlinkOrCopy(prismaClientActual, prismaClientSymlink, 'dir');
 
     // Use createRequire to bypass webpack's require and load from absolute path
     // This is necessary because webpack's bundled require() can't load modules
