@@ -9,6 +9,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
+    globalSetup: ['./tests/unit/global-setup.ts'],
     setupFiles: ['./tests/unit/setup.ts'],
     passWithNoTests: true, // Don't fail when no tests found
     // Exclude integration tests (run via Playwright/ts-node, not vitest)

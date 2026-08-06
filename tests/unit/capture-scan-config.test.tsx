@@ -32,7 +32,7 @@ const mockScannerOnError = vi.fn().mockReturnValue(() => {});
 const mockSessionGet = vi.fn();
 const mockSessionSet = vi.fn();
 const mockGetRecentScans = vi.fn();
-const mockGetMostRecentScanDate = vi.fn();
+const mockCheckDuplicate = vi.fn();
 const mockDetectCameras = vi.fn();
 const mockExperimentGet = vi.fn();
 const mockExperimentGetAccession = vi.fn();
@@ -77,7 +77,7 @@ beforeEach(() => {
   });
   mockSessionSet.mockResolvedValue(undefined);
   mockGetRecentScans.mockResolvedValue({ success: true, data: [] });
-  mockGetMostRecentScanDate.mockResolvedValue({ success: false });
+  mockCheckDuplicate.mockResolvedValue({ success: true, data: false });
   mockDetectCameras.mockResolvedValue({ success: true, cameras: [] });
   // Provide experiment with accession so barcode validation passes
   mockExperimentGet.mockResolvedValue({
@@ -128,7 +128,7 @@ beforeEach(() => {
     database: {
       scans: {
         getRecent: mockGetRecentScans,
-        getMostRecentScanDate: mockGetMostRecentScanDate,
+        checkDuplicate: mockCheckDuplicate,
       },
       experiments: {
         get: mockExperimentGet,
@@ -737,5 +737,159 @@ describe('CaptureScan Config Integration', () => {
     // Should fall back to defaults: 72 frames, 7.0 seconds
     expect(initArgs.daq.num_frames).toBe(72);
     expect(initArgs.daq.seconds_per_rot).toBe(7.0);
+  });
+});
+
+/**
+ * add-cylinderscan-delete-upload-integrity, tasks.md 4.5/4.8 — the
+ * duplicate-scan check now uses db:scans:checkDuplicate with the 4-field
+ * key (plant_id, experiment_id, wave_number, plant_age_days), replacing
+ * the previous same-day/(plant+experiment)-only check that used
+ * db:scans:getMostRecentScanDate (removed as dead code, tasks.md 4.7).
+ */
+describe('CaptureScan duplicate-scan check', () => {
+  it('calls checkDuplicate with plant_id, experiment_id, wave_number, and plant_age_days', async () => {
+    await fillFormAndStartScan();
+
+    await waitFor(() => {
+      expect(mockCheckDuplicate).toHaveBeenCalledWith(
+        'PLANT-001',
+        'exp-1',
+        1,
+        14
+      );
+    });
+  });
+
+  it('shows a warning when checkDuplicate reports a match', async () => {
+    mockCheckDuplicate.mockResolvedValue({ success: true, data: true });
+
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('duplicate-scan-warning')).toBeInTheDocument();
+    });
+
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    expect(startButton).toBeDisabled();
+  });
+
+  it('clears the warning when the wave number changes away from a duplicate match', async () => {
+    mockCheckDuplicate.mockResolvedValue({ success: true, data: true });
+
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('duplicate-scan-warning')).toBeInTheDocument();
+    });
+
+    mockCheckDuplicate.mockResolvedValue({ success: true, data: false });
+    const waveInput = screen.getByPlaceholderText('e.g., 1');
+    await act(async () => {
+      fireEvent.change(waveInput, { target: { value: '2' } });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('duplicate-scan-warning')
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('clears the warning when the plant ID changes away from a duplicate match', async () => {
+    mockCheckDuplicate.mockResolvedValue({ success: true, data: true });
+
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('duplicate-scan-warning')).toBeInTheDocument();
+    });
+
+    mockCheckDuplicate.mockResolvedValue({ success: true, data: false });
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-002' } });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId('duplicate-scan-warning')
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not call checkDuplicate when wave number is invalid/unparsed', async () => {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    const waveInput = screen.getByPlaceholderText('e.g., 1');
+    // Wait for the session-restored default ('1', from mockSessionGet's
+    // resolved value) to actually land in the DOM before overwriting it.
+    // Without this, restoring the session is a race with the fireEvent
+    // below: if it resolves after the input is set to 'not-a-number', it
+    // silently reverts the field back to a valid '1', producing a fully
+    // valid metadata combination that DOES call checkDuplicate —
+    // intermittently failing this test for reasons unrelated to the
+    // invalid-wave-number behavior actually under test.
+    await waitFor(() => expect(waveInput).toHaveValue('1'));
+    await act(async () => {
+      fireEvent.change(waveInput, { target: { value: 'not-a-number' } });
+    });
+
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    // Give the polling effect a chance to run before asserting it didn't call.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(mockCheckDuplicate).not.toHaveBeenCalled();
+  });
+
+  it('stops polling checkDuplicate after unmount', async () => {
+    // A bare `expect(clearIntervalSpy).toHaveBeenCalled()` is satisfied by
+    // @testing-library/dom's own internal `waitFor` polling below (it uses
+    // the same global setInterval/clearInterval to poll its condition),
+    // completely independent of whether CaptureScan's own effect cleans up
+    // its 2000ms duplicate-check interval. Identify that specific interval
+    // by its distinctive 2000ms delay and assert clearInterval was called
+    // with THAT id, not just "called for any reason."
+    const setIntervalSpy = vi.spyOn(global, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+
+    const { unmount } = renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+
+    const duplicateCheckCall = setIntervalSpy.mock.calls.find(
+      (call) => call[1] === 2000
+    );
+    expect(duplicateCheckCall).toBeDefined();
+    const duplicateCheckIntervalId =
+      setIntervalSpy.mock.results[
+        setIntervalSpy.mock.calls.indexOf(duplicateCheckCall!)
+      ].value;
+
+    unmount();
+
+    expect(clearIntervalSpy).toHaveBeenCalledWith(duplicateCheckIntervalId);
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
   });
 });
