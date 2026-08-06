@@ -265,6 +265,14 @@ absent this warning, the first indication would otherwise arrive only via
 the post-scan QR verification banner, after a potentially long unattended
 continuous run has already completed.
 
+While a continuous (multi-cycle) scan is running, the screen SHALL show
+the current cycle number and total configured cycle count. While the
+coordinator is between cycles (waiting for the next scheduled scan), the
+screen SHALL show a non-blocking indicator naming that waiting state.
+This is the operator's only in-app signal distinguishing "cycle 2 just
+started, this is correct" from "the session silently ended" when
+per-scanner progress resets from 100% back to 0% at a cycle boundary.
+
 #### Scenario: Cancel awaits the IPC call and surfaces a rejection
 
 - **GIVEN** a scan is in progress
@@ -321,6 +329,30 @@ continuous run has already completed.
   condition
 - **AND** this warning SHALL NOT be gated behind starting and completing a
   scan first
+
+#### Scenario: Cycle counter is visible during a multi-cycle continuous scan
+
+- **GIVEN** a continuous scan is running with `currentCycle: 2` and
+  `totalCycles: 3`
+- **WHEN** the operator views the Capture Scan screen
+- **THEN** a "Cycle 2 of 3" indicator SHALL be visible
+
+#### Scenario: Cycle counter is not shown for a single-cycle session
+
+- **GIVEN** a scan is running with `totalCycles: 1` (a single-shot,
+  non-continuous session)
+- **WHEN** the operator views the Capture Scan screen
+- **THEN** no cycle-count indicator SHALL be shown
+
+#### Scenario: Waiting-for-next-cycle indicator appears between cycles
+
+- **GIVEN** a continuous scan's coordinator state is `waiting` (one
+  cycle's scans finished, the next cycle's interval wait is in progress)
+- **WHEN** the operator views the Capture Scan screen
+- **THEN** a non-blocking "waiting for next cycle" indicator SHALL be
+  visible
+- **AND** it SHALL NOT be shown while the coordinator state is `scanning`
+  or `idle`
 
 ---
 

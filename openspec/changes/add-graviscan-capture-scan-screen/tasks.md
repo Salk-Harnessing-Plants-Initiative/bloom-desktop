@@ -538,3 +538,29 @@ other out of order.
       the automated suites above.
 - [x] 16.7 Run `openspec validate add-graviscan-capture-scan-screen
 --strict` and resolve any issues.
+
+## 17. Cycle-progress visibility during continuous mode (TDD, found during 16.6)
+
+Live smoke testing of 16.6 surfaced a real gap (design.md Decision 8):
+`currentCycle`/`totalCycles`/`coordinatorState` were already tracked in
+`useScanSession` state but never rendered, leaving the operator with no
+way to tell a correct cycle-boundary progress reset from a broken
+session.
+
+- [x] 17.1 Write failing tests in `tests/unit/components/
+      ScanControlSection.test.tsx`: a `"Cycle 2 of 3"`-style indicator
+      renders when `isScanning && totalCycles > 1`; it does NOT render
+      when `totalCycles <= 1` (single-shot sessions); a "waiting for next
+      cycle" indicator renders when `coordinatorState === 'waiting'` and
+      NOT when `'scanning'` or `'idle'`.
+- [x] 17.2 Implement both indicators in `ScanControlSection.tsx`, derived
+      purely from existing `scanSession` state — no new IPC, no polling,
+      no live-ticking countdown (design.md Decision 8 explicitly defers
+      a `nextScanAt`-based countdown).
+- [x] 17.3 Run the full unit suite, `npx tsc --noEmit`, and lint; confirm
+      no regressions beyond the already-documented pre-existing failures.
+      **Result:** 1607 passed, same 4 pre-existing failure files as
+      documented in 16.2 (Windows path-separator + flaky AccessionForm
+      timing), zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 17.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+      --strict`.

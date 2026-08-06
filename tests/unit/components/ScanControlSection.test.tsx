@@ -235,6 +235,66 @@ describe('ScanControlSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows a "Cycle X of Y" indicator while a multi-cycle continuous scan is running (regression: cycle-boundary progress reset had no explanation)', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          scanSession: scanSession({
+            isScanning: true,
+            currentCycle: 2,
+            totalCycles: 3,
+          }),
+        })}
+      />
+    );
+    expect(screen.getByText(/cycle 2 of 3/i)).toBeInTheDocument();
+  });
+
+  it('does not show a cycle-count indicator for a single-cycle (non-continuous) session', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          scanSession: scanSession({
+            isScanning: true,
+            currentCycle: 1,
+            totalCycles: 1,
+          }),
+        })}
+      />
+    );
+    expect(screen.queryByText(/cycle 1 of 1/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a waiting-for-next-cycle indicator when coordinatorState is "waiting"', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          scanSession: scanSession({
+            isScanning: true,
+            coordinatorState: 'waiting',
+          }),
+        })}
+      />
+    );
+    expect(screen.getByText(/waiting for next cycle/i)).toBeInTheDocument();
+  });
+
+  it('does not show the waiting-for-next-cycle indicator while actively scanning', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          scanSession: scanSession({
+            isScanning: true,
+            coordinatorState: 'scanning',
+          }),
+        })}
+      />
+    );
+    expect(
+      screen.queryByText(/waiting for next cycle/i)
+    ).not.toBeInTheDocument();
+  });
+
   it('Test Scan button invokes useTestScan.testAllScanners', async () => {
     const run = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();

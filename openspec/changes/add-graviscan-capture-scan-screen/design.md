@@ -607,6 +607,38 @@ separate follow-up. Rejected per user decision — this tier already
 rebuilds `useScannerStatus` from scratch, so carrying `gridMode` through
 costs little.
 
+### Decision 8 — Cycle-progress visibility during continuous mode
+
+Live manual smoke testing (tasks.md 16.6) surfaced a real operator-facing
+blind spot: `useScanSession` already tracks `currentCycle`/`totalCycles`/
+`coordinatorState` (added when fixing the round-4 continuous-mode
+premature-completion bug — cycle-level "all done" detection was firing
+`finishSession()` after the first cycle instead of waiting for the
+backend's own `interval-complete` event), but nothing in the UI ever
+rendered them. An operator watching per-scanner progress bars reset from
+100% back to 0% between cycles had no way to tell "cycle 2 started, this
+is correct" from "the session silently reset/broke," short of reading the
+main-process terminal log.
+
+**Decision:** `ScanControlSection.tsx` renders two small, purely
+state-derived indicators, no new IPC or polling required:
+
+- A `"Cycle {currentCycle} of {totalCycles}"` line, shown only while
+  `isScanning && totalCycles > 1` (single-shot sessions always have
+  `totalCycles === 1` and gain nothing from a "Cycle 1 of 1" label).
+- A `"Waiting for next cycle..."` line, shown while
+  `coordinatorState === 'waiting'` (the interval-wait gap between one
+  cycle's scans finishing and the next cycle's starting).
+
+**Alternatives considered:** a live-ticking countdown to the next
+scheduled scan time, using `nextScanAt`. Rejected for this pass — it
+needs a `setInterval` tick (no existing precedent in this codebase) and
+locale/timezone-dependent formatting, both of which add real test
+surface (fake timers, locale mocking) for a "how in-progress" signal
+this simpler static-text version already answers. `nextScanAt` stays
+tracked in state for a future countdown if operators want more precision
+later.
+
 ## Architecture
 
 ```

@@ -118,6 +118,21 @@ export function ScanControlSection({
         />
       )}
 
+      {scanSession.isScanning && scanSession.totalCycles > 1 && (
+        <div data-testid="cycle-progress" className="text-sm text-gray-600">
+          Cycle {scanSession.currentCycle} of {scanSession.totalCycles}
+        </div>
+      )}
+
+      {scanSession.coordinatorState === 'waiting' && (
+        <div
+          data-testid="waiting-next-cycle"
+          className="bg-gray-50 border border-gray-300 text-gray-700 rounded p-2 text-sm"
+        >
+          Waiting for next cycle...
+        </div>
+      )}
+
       {overtimeMs !== null && (
         <div
           data-testid="overtime-banner"
