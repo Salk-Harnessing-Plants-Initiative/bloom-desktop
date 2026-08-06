@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-scanner-identity-service. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Scanner Identity Service
 
 The application SHALL maintain runtime scanner identity state, initialized from persistent configuration and updated when configuration changes, accessible via IPC.
@@ -108,4 +110,3 @@ The Python IPC handler SHALL process scanner commands (and all other commands) s
 - **GIVEN** a scan is currently in progress (`is_scanning` is `True`)
 - **WHEN** `cleanup()` is called
 - **THEN** it SHALL raise immediately, without waiting for the scan to complete
-
