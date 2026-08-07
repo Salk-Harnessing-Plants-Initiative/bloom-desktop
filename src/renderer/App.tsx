@@ -20,6 +20,7 @@ import { Export } from './Export';
 import { ScanPreview } from './ScanPreview';
 import { MachineConfiguration } from './MachineConfiguration';
 import { ConfigureScanner } from './ConfigureScanner';
+import { GraviScan } from './GraviScan';
 import { useAppMode } from './hooks/useAppMode';
 
 export default function App() {
@@ -61,7 +62,10 @@ export default function App() {
           )}
 
           {mode === 'graviscan' && (
-            <Route path="configure-scanner" element={<ConfigureScanner />} />
+            <>
+              <Route path="configure-scanner" element={<ConfigureScanner />} />
+              <Route path="capture-scan" element={<GraviScan />} />
+            </>
           )}
 
           {/* Data entry routes — available for all modes */}

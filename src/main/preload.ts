@@ -312,18 +312,25 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:graviscanSessions:complete', args),
   },
   graviscanPlateAssignments: {
-    list: (experimentId: string, scannerId: string) =>
+    list: (experimentId: string, scannerId: string, waveNumber?: number) =>
       ipcRenderer.invoke(
         'db:graviscanPlateAssignments:list',
         experimentId,
-        scannerId
+        scannerId,
+        waveNumber
       ),
-    upsertMany: (experimentId: string, scannerId: string, assignments: any) =>
+    upsertMany: (
+      experimentId: string,
+      scannerId: string,
+      assignments: any,
+      waveNumber?: number
+    ) =>
       ipcRenderer.invoke(
         'db:graviscanPlateAssignments:upsertMany',
         experimentId,
         scannerId,
-        assignments
+        assignments,
+        waveNumber
       ),
   },
   graviPlateAccessions: {
@@ -430,6 +437,18 @@ const graviAPI = {
   downloadImages: (params: any) =>
     ipcRenderer.invoke('graviscan:download-images', params),
 
+  // Post-scan QR verification (Tier 4, issue #162). No scanOutputDir
+  // parameter here — unlike verifyPlates() itself (the main-process
+  // function), the IPC handler resolves the output directory internally
+  // via imageHandlers.getOutputDir(), the same way it always has.
+  verifyPlates: (plates: any, experimentId: string, waveNumber?: number) =>
+    ipcRenderer.invoke(
+      'graviscan:verify-plates',
+      plates,
+      experimentId,
+      waveNumber
+    ),
+
   // Event listeners with cleanup functions
   onScanStarted: (callback: (event: any) => void) => {
     const listener = (_event: unknown, data: any) => callback(data);
@@ -509,6 +528,24 @@ const graviAPI = {
     ipcRenderer.on('graviscan:wedge-detected', listener);
     return () =>
       ipcRenderer.removeListener('graviscan:wedge-detected', listener);
+  },
+  onVerifyStarted: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('graviscan:verify-started', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:verify-started', listener);
+  },
+  onVerifyResult: (callback: (result: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:verify-result', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:verify-result', listener);
+  },
+  onVerifyComplete: (callback: (data: any) => void) => {
+    const listener = (_event: unknown, data: any) => callback(data);
+    ipcRenderer.on('graviscan:verify-complete', listener);
+    return () =>
+      ipcRenderer.removeListener('graviscan:verify-complete', listener);
   },
 };
 /* eslint-enable @typescript-eslint/no-explicit-any */

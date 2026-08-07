@@ -138,6 +138,7 @@ model GraviScan {
   session    GraviScanSession? @relation(fields: [session_id], references: [id])
   images     GraviImage[]
 
+  @@unique([session_id, scanner_id, plate_index, cycle_number])
   @@index([experiment_id])
   @@index([phenotyper_id])
   @@index([scanner_id])
@@ -186,11 +187,18 @@ model GraviScanPlateAssignment {
   // which SQLite always appends at the end) so `prisma db push`'s column
   // order matches `prisma migrate deploy`'s — see scripts/verify-migrations.sh.
   previous_plate_barcode String?
+  // Scopes this row to a specific experiment wave. Added after
+  // previous_plate_barcode for the same append-only reason. Existing rows
+  // default to 0, matching GraviScan.wave_number's own default — before
+  // this column existed, this table held one shared row per position
+  // across every wave, which caused real stale-cross-wave-data and
+  // silent-override-loss bugs (see the GraviScan Tier 4 OpenSpec change).
+  wave_number             Int       @default(0)
 
   experiment Experiment   @relation(fields: [experiment_id], references: [id])
   scanner    GraviScanner @relation(fields: [scanner_id], references: [id])
 
-  @@unique([experiment_id, scanner_id, plate_index])
+  @@unique([experiment_id, scanner_id, plate_index, wave_number])
   @@index([experiment_id])
   @@index([scanner_id])
 }

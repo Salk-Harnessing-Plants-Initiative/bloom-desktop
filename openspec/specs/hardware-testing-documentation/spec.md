@@ -1,8 +1,11 @@
 # hardware-testing-documentation Specification
 
 ## Purpose
+
 TBD - created by archiving change add-cylinderscan-packaging-ci. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Undocumented Hardware-Adjacent Features Are Documented
 
 Real, shipped CylinderScan features that affect hardware testing, operation, or data model but have no coverage in the hardware validation docs SHALL be documented, even if added after those docs were first written. This requirement covers documentation completeness only — it does not change or restate the behavior of the underlying features, which are already specified elsewhere (`scanner-api` for scanner identity, `scanning` for idle-session-reset and `experiment_type`).
@@ -30,4 +33,3 @@ A single `docs/TROUBLESHOOTING.md` SHALL exist, consolidating troubleshooting gu
 
 - **WHEN** a developer encounters a camera, DAQ, or scanner hardware issue during testing
 - **THEN** `docs/TROUBLESHOOTING.md` exists and links to or contains guidance for that component
-
