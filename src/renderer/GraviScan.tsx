@@ -45,8 +45,10 @@ export function GraviScan() {
     (async () => {
       try {
         const session = await window.electron.session.get();
-        if (session.experimentId !== null) setExperimentId(session.experimentId);
-        if (session.phenotyperId !== null) setPhenotyperId(session.phenotyperId);
+        if (session.experimentId !== null)
+          setExperimentId(session.experimentId);
+        if (session.phenotyperId !== null)
+          setPhenotyperId(session.phenotyperId);
         if (session.waveNumber !== null) setWaveNumber(session.waveNumber);
       } catch (error) {
         console.error('Failed to load session state:', error);

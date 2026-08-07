@@ -651,7 +651,7 @@ production's `useContinuousMode.ts` uses `scanIntervalMinutes` AND
 against the reference implementation, and never called out as a
 deliberate divergence anywhere in this file. This directly confused a
 live tester: they set only the interval field, left Duration at its
-default "1" without registering it meant 1 *hour*, and the resulting
+default "1" without registering it meant 1 _hour_, and the resulting
 continuous scan ran far longer than they expected.
 
 **Decision:** rename `durationHours`/`setDurationHours` to

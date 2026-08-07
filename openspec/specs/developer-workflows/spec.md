@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-claude-commands. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Linting and Formatting Command
 
 The system SHALL provide a `/lint` command that documents all linting and formatting workflows for TypeScript and Python code.
@@ -701,4 +703,3 @@ Main-process code that links a dependency (e.g. the Prisma client) to a path req
 - **GIVEN** `fs.symlinkSync()` succeeds
 - **WHEN** database initialization runs
 - **THEN** no fallback copy is attempted
-

@@ -548,7 +548,7 @@ way to tell a correct cycle-boundary progress reset from a broken
 session.
 
 - [x] 17.1 Write failing tests in `tests/unit/components/
-      ScanControlSection.test.tsx`: a `"Cycle 2 of 3"`-style indicator
+ScanControlSection.test.tsx`: a `"Cycle 2 of 3"`-style indicator
       renders when `isScanning && totalCycles > 1`; it does NOT render
       when `totalCycles <= 1` (single-shot sessions); a "waiting for next
       cycle" indicator renders when `coordinatorState === 'waiting'` and
@@ -563,7 +563,7 @@ session.
       documented in 16.2 (Windows path-separator + flaky AccessionForm
       timing), zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 17.4 Re-run `openspec validate add-graviscan-capture-scan-screen
-      --strict`.
+--strict`.
 
 ## 18. Continuous-scan Duration field: minutes not hours (TDD, found auditing production-branch parity)
 
@@ -589,7 +589,7 @@ analogy with the Interval field would expect.
       `durationMinutes`/`setDurationMinutes` in
       `useContinuousMode.ts` (default `1` → `60`, same actual default
       session length), `useScanSession.ts` (param + `durationSeconds =
-      Math.round(durationMinutes * 60)`), `GraviScan.tsx` (wiring), and
+Math.round(durationMinutes * 60)`), `GraviScan.tsx` (wiring), and
       `ScanControlSection.tsx` (form field + label, "Duration (hours)" →
       "Duration (minutes)").
 - [x] 18.3 Run the full unit suite, `npx tsc --noEmit`, and lint; confirm
@@ -598,4 +598,4 @@ analogy with the Interval field would expect.
       files as 16.2/17.3, zero new failures. `tsc --noEmit` and lint both
       clean.
 - [x] 18.4 Re-run `openspec validate add-graviscan-capture-scan-screen
-      --strict`.
+--strict`.

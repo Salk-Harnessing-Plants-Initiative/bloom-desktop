@@ -374,7 +374,7 @@ describe('ScanControlSection', () => {
     expect(setDurationMinutes).toHaveBeenCalled();
   });
 
-  it('labels Duration in minutes, matching the Interval field\'s unit and the production rig\'s convention (regression: mismatched hours/minutes units confused a live tester)', () => {
+  it("labels Duration in minutes, matching the Interval field's unit and the production rig's convention (regression: mismatched hours/minutes units confused a live tester)", () => {
     render(
       <ScanControlSection
         {...baseProps({
