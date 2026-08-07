@@ -93,6 +93,7 @@
     "eslint-plugin-import": "^2.29.0",
     "fork-ts-checker-webpack-plugin": "^7.2.13",
     "happy-dom": "^20.0.5",
+    "js-yaml": "4.1.0",
     "node-loader": "^2.0.0",
     "postcss": "^8.4.35",
     "postcss-loader": "^8.1.0",
