@@ -6,13 +6,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from '../../../src/renderer/Layout';
+import { UploadStatusProvider } from '../../../src/renderer/contexts/UploadStatusContext';
 import type { GraviWedgeEvent } from '../../../src/types/graviscan';
 
 let wedgeListeners: Array<(event: GraviWedgeEvent) => void>;
+let uploadProgressListeners: Array<(data: unknown) => void>;
 
 beforeEach(() => {
   vi.clearAllMocks();
   wedgeListeners = [];
+  uploadProgressListeners = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
   if (win) {
@@ -33,23 +36,35 @@ beforeEach(() => {
         onIntervalComplete: vi.fn(() => () => {}),
         onCancelled: vi.fn(() => () => {}),
         retryScanner: vi.fn().mockResolvedValue({ success: true }),
+        onUploadProgress: vi.fn((cb: (data: unknown) => void) => {
+          uploadProgressListeners.push(cb);
+          return () => {};
+        }),
       },
     };
   }
 });
 
+function fireUploadProgress(data: unknown) {
+  act(() => {
+    uploadProgressListeners.forEach((cb) => cb(data));
+  });
+}
+
 function renderLayout(mode: string | null) {
   return render(
     <MemoryRouter initialEntries={['/']}>
-      <Routes>
-        <Route path="/" element={<Layout mode={mode} />}>
-          <Route index element={<div>Home content</div>} />
-          <Route
-            path="configure-scanner"
-            element={<div>Configure Scanner content</div>}
-          />
-        </Route>
-      </Routes>
+      <UploadStatusProvider>
+        <Routes>
+          <Route path="/" element={<Layout mode={mode} />}>
+            <Route index element={<div>Home content</div>} />
+            <Route
+              path="configure-scanner"
+              element={<div>Configure Scanner content</div>}
+            />
+          </Route>
+        </Routes>
+      </UploadStatusProvider>
     </MemoryRouter>
   );
 }
@@ -69,6 +84,40 @@ describe('Layout nav links', () => {
 
     expect(
       screen.queryByRole('link', { name: /configure scanner/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows "Metadata" and "Browse GraviScans" links, and hides the shared "Browse Scans" link, in graviscan mode — while "Experiments" remains visible', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    expect(screen.getByRole('link', { name: /metadata/i })).toHaveAttribute(
+      'href',
+      '/metadata'
+    );
+    expect(
+      screen.getByRole('link', { name: /browse graviscans/i })
+    ).toHaveAttribute('href', '/browse-graviscans');
+    expect(
+      screen.queryByRole('link', { name: /^browse scans$/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /^experiments$/i })
+    ).toBeInTheDocument();
+  });
+
+  it('shows the shared "Browse Scans" link and no GraviScan-specific links in cylinderscan mode', async () => {
+    renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    expect(
+      screen.getByRole('link', { name: /^browse scans$/i })
+    ).toHaveAttribute('href', '/browse-scans');
+    expect(
+      screen.queryByRole('link', { name: /metadata/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /browse graviscans/i })
     ).not.toBeInTheDocument();
   });
 });
@@ -114,5 +163,96 @@ describe('Layout wedge banner wiring', () => {
     // scan screen (design.md Decision 4).
     expect(screen.getByTestId('wedge-entry-sc-1')).toBeInTheDocument();
     expect(screen.getByText('Home content')).toBeInTheDocument();
+  });
+});
+
+describe('Layout upload-status indicator', () => {
+  it('renders nothing when there is no in-flight/recent upload', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    expect(
+      screen.queryByTestId('upload-status-indicator')
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders progress while in flight', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    fireUploadProgress({
+      completedImages: 2,
+      totalImages: 5,
+      failedImages: 0,
+      currentExperiment: 'Exp',
+    });
+
+    expect(screen.getByTestId('upload-status-indicator')).toBeInTheDocument();
+    expect(screen.getByText(/2/)).toBeInTheDocument();
+  });
+
+  it('has a dismiss control that hides it until the next event, and does not auto-dismiss on a timer', async () => {
+    vi.useFakeTimers();
+    try {
+      renderLayout('graviscan');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      fireUploadProgress({
+        completedImages: 2,
+        totalImages: 5,
+        failedImages: 0,
+        currentExperiment: 'Exp',
+      });
+
+      const dismissButton = screen.getByRole('button', { name: /dismiss/i });
+      act(() => {
+        dismissButton.click();
+      });
+      expect(
+        screen.queryByTestId('upload-status-indicator')
+      ).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60000);
+      });
+      // Still hidden after a long wait — no auto-dismiss timer to undo the
+      // manual dismiss, and no new event fired either.
+      expect(
+        screen.queryByTestId('upload-status-indicator')
+      ).not.toBeInTheDocument();
+
+      fireUploadProgress({
+        completedImages: 4,
+        totalImages: 5,
+        failedImages: 0,
+        currentExperiment: 'Exp',
+      });
+      expect(screen.getByTestId('upload-status-indicator')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('persists across a route change (stays visible on Configure Scanner, not just Home)', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+    fireUploadProgress({
+      completedImages: 1,
+      totalImages: 5,
+      failedImages: 0,
+      currentExperiment: 'Exp',
+    });
+    expect(screen.getByTestId('upload-status-indicator')).toBeInTheDocument();
+
+    const link = screen.getByRole('link', { name: /configure scanner/i });
+    act(() => {
+      link.click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Configure Scanner content')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('upload-status-indicator')).toBeInTheDocument();
   });
 });

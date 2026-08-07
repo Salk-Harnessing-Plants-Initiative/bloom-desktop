@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ExperimentForm } from './components/ExperimentForm';
+import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
 
 interface Scientist {
   id: string;
@@ -16,11 +17,58 @@ interface ExperimentWithScientist {
   id: string;
   name: string;
   species: string;
+  experiment_type?: string;
   scientist?: Scientist | null;
   accession?: Accession | null;
 }
 
-export function Experiments() {
+interface ExperimentsProps {
+  mode?: string;
+}
+
+function ExperimentWaveLinks({ experimentId }: { experimentId: string }) {
+  const { links, linkError, unlink } = useWaveMetadataLinks(experimentId);
+  const [unlinkingWave, setUnlinkingWave] = useState<number | null>(null);
+
+  const handleUnlink = async (waveNumber: number, accessionName: string) => {
+    if (unlinkingWave !== null) return;
+    const message =
+      waveNumber === 0
+        ? `Unlink wave ${waveNumber} from "${accessionName}"? This does not preserve a record of what was linked at scan time. This experiment's default accession was originally set to this same file; unlinking wave 0 does not change that default.`
+        : `Unlink wave ${waveNumber} from "${accessionName}"? This does not preserve a record of what was linked at scan time.`;
+    if (window.confirm(message)) {
+      setUnlinkingWave(waveNumber);
+      try {
+        await unlink(waveNumber);
+      } finally {
+        setUnlinkingWave(null);
+      }
+    }
+  };
+
+  if (links.length === 0) return null;
+
+  return (
+    <>
+      <ul>
+        {links.map((l) => (
+          <li key={l.wave_number}>
+            Wave {l.wave_number}: {l.accession.name}
+            <button
+              onClick={() => handleUnlink(l.wave_number, l.accession.name)}
+              disabled={unlinkingWave !== null}
+            >
+              {unlinkingWave === l.wave_number ? 'Unlinking...' : 'Unlink'}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {linkError && <p className="text-sm text-red-600">{linkError}</p>}
+    </>
+  );
+}
+
+export function Experiments({ mode }: ExperimentsProps = {}) {
   const [experiments, setExperiments] = useState<ExperimentWithScientist[]>([]);
   const [scientists, setScientists] = useState<Scientist[]>([]);
   const [accessions, setAccessions] = useState<Accession[]>([]);
@@ -33,6 +81,27 @@ export function Experiments() {
   const [isAttaching, setIsAttaching] = useState(false);
   const [attachSuccess, setAttachSuccess] = useState<string | null>(null);
   const [attachError, setAttachError] = useState<string | null>(null);
+
+  // Wave-scoped metadata-link state (graviscan branch of the attach panel)
+  const [graviAccessions, setGraviAccessions] = useState<Accession[]>([]);
+  const [waveNumber, setWaveNumber] = useState<number>(0);
+  const attachExperiment = experiments.find((e) => e.id === attachExperimentId);
+  const isGraviscanAttach = attachExperiment?.experiment_type === 'graviscan';
+  const { link, linkError, suggestedNextWave } = useWaveMetadataLinks(
+    attachExperimentId || 'none'
+  );
+
+  useEffect(() => {
+    setWaveNumber(suggestedNextWave);
+  }, [suggestedNextWave]);
+
+  useEffect(() => {
+    window.electron.database.graviPlateAccessions.listFiles().then((result) => {
+      if (result.success) {
+        setGraviAccessions((result.data as Accession[]) ?? []);
+      }
+    });
+  }, []);
 
   const fetchExperiments = useCallback(async () => {
     try {
@@ -100,7 +169,7 @@ export function Experiments() {
   };
 
   const handleAttachAccession = async () => {
-    if (!attachExperimentId || !attachAccessionId) {
+    if (!attachExperimentId) {
       return;
     }
 
@@ -109,6 +178,16 @@ export function Experiments() {
     setAttachError(null);
 
     try {
+      if (isGraviscanAttach) {
+        if (!attachAccessionId) return;
+        const linked = await link(waveNumber, attachAccessionId);
+        if (linked) {
+          setAttachSuccess('Metadata file successfully linked.');
+        }
+        return;
+      }
+
+      if (!attachAccessionId) return;
       const result = await window.electron.database.experiments.attachAccession(
         attachExperimentId,
         attachAccessionId
@@ -162,6 +241,9 @@ export function Experiments() {
                 <div className="flex justify-between items-center">
                   <span>{getExperimentDisplay(experiment)}</span>
                 </div>
+                {experiment.experiment_type === 'graviscan' && (
+                  <ExperimentWaveLinks experimentId={experiment.id} />
+                )}
               </li>
             ))}
           </ul>
@@ -175,6 +257,7 @@ export function Experiments() {
           scientists={scientists}
           accessions={accessions}
           onSuccess={handleExperimentCreated}
+          mode={mode}
         />
       </div>
 
@@ -210,31 +293,64 @@ export function Experiments() {
             </select>
           </div>
 
-          <div className="mb-4">
-            <label
-              htmlFor="attach-accession-select"
-              className="text-xs font-bold block mb-1"
-            >
-              Select Accession File:
-            </label>
-            <select
-              id="attach-accession-select"
-              className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
-              value={attachAccessionId}
-              onChange={(e) => setAttachAccessionId(e.target.value)}
-              disabled={accessions.length === 0}
-            >
-              {accessions.length === 0 ? (
-                <option value="">No accessions available</option>
-              ) : (
-                accessions.map((acc) => (
+          {isGraviscanAttach ? (
+            <div className="mb-4">
+              <label htmlFor="wave-number-attach-input">
+                Wave Number to Link
+              </label>
+              <input
+                id="wave-number-attach-input"
+                aria-label="Wave Number to Link"
+                type="number"
+                min={0}
+                value={waveNumber}
+                onChange={(e) => setWaveNumber(Number(e.target.value))}
+              />
+              <label htmlFor="attach-gravi-accession-select">
+                Metadata File
+              </label>
+              <select
+                id="attach-gravi-accession-select"
+                aria-label="Metadata File"
+                value={attachAccessionId}
+                onChange={(e) => setAttachAccessionId(e.target.value)}
+              >
+                <option value="">-- Select a metadata file --</option>
+                {graviAccessions.map((acc) => (
                   <option key={acc.id} value={acc.id}>
-                    {acc.name} - {acc.id}
+                    {acc.name}
                   </option>
-                ))
-              )}
-            </select>
-          </div>
+                ))}
+              </select>
+              {linkError && <p className="text-sm text-red-600">{linkError}</p>}
+            </div>
+          ) : (
+            <div className="mb-4">
+              <label
+                htmlFor="attach-accession-select"
+                className="text-xs font-bold block mb-1"
+              >
+                Select Accession File:
+              </label>
+              <select
+                id="attach-accession-select"
+                className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
+                value={attachAccessionId}
+                onChange={(e) => setAttachAccessionId(e.target.value)}
+                disabled={accessions.length === 0}
+              >
+                {accessions.length === 0 ? (
+                  <option value="">No accessions available</option>
+                ) : (
+                  accessions.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name} - {acc.id}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          )}
 
           <div className="flex justify-center">
             <button
@@ -242,14 +358,14 @@ export function Experiments() {
               className="block p-2 rounded-md bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleAttachAccession}
               disabled={
-                isAttaching ||
-                !attachExperimentId ||
-                !attachAccessionId ||
-                experiments.length === 0 ||
-                accessions.length === 0
+                isAttaching || !attachExperimentId || !attachAccessionId
               }
             >
-              {isAttaching ? 'Attaching...' : 'Attach Accession'}
+              {isAttaching
+                ? 'Attaching...'
+                : isGraviscanAttach
+                  ? 'Link'
+                  : 'Attach Accession'}
             </button>
           </div>
 

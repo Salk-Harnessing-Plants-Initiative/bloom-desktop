@@ -1,6 +1,32 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { WedgeBanner } from './components/WedgeBanner';
+import { useUploadStatus } from './contexts/UploadStatusContext';
+
+/** Matches the real graviscan:upload-progress payload (src/main/box-backup.ts's BoxBackupProgress). */
+interface UploadProgressData {
+  totalImages: number;
+  completedImages: number;
+  failedImages: number;
+  currentExperiment: string;
+}
+
+function UploadStatusBanner() {
+  const { status } = useUploadStatus();
+  const [dismissed, setDismissed] = useState<unknown>(null);
+
+  if (!status || status === dismissed) return null;
+
+  const progress = status as UploadProgressData;
+  return (
+    <div data-testid="upload-status-indicator">
+      <span>
+        Upload progress: {progress.completedImages}/{progress.totalImages}
+      </span>
+      <button onClick={() => setDismissed(status)}>Dismiss</button>
+    </div>
+  );
+}
 
 /** Maps scanner_mode values to human-readable labels */
 function modeLabel(mode: string | null): string {
@@ -32,46 +58,6 @@ const alwaysLinks = [
           strokeLinecap="round"
           strokeLinejoin="round"
           d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
-        />
-      </svg>
-    ),
-  },
-  {
-    to: '/browse-scans',
-    label: 'Browse Scans',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-        className="w-6 h-6 inline mr-2"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
-        />
-      </svg>
-    ),
-  },
-  {
-    to: '/export',
-    label: 'Export Scans',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-        className="w-6 h-6 inline mr-2"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
         />
       </svg>
     ),
@@ -137,6 +123,58 @@ const alwaysLinks = [
     ),
   },
 ];
+
+/**
+ * The shared "Browse Scans" link — CylinderScan's Scan/Image data layer, not
+ * mode-agnostic. Shown in every mode except graviscan, which has its own
+ * dedicated Browse GraviScans link instead (that shared data would always be
+ * empty for a GraviScan-mode user).
+ */
+const browseScansLink = {
+  to: '/browse-scans',
+  label: 'Browse Scans',
+  icon: (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="w-6 h-6 inline mr-2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
+      />
+    </svg>
+  ),
+};
+
+/**
+ * The shared "Export Scans" link — same CylinderScan-only data layer as
+ * browseScansLink above, hidden in graviscan mode for the same reason.
+ */
+const exportScansLink = {
+  to: '/export',
+  label: 'Export Scans',
+  icon: (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="w-6 h-6 inline mr-2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+      />
+    </svg>
+  ),
+};
 
 /** Capture-specific links (cylinderscan mode only) */
 const captureLinks = [
@@ -229,6 +267,46 @@ const graviscanLinks = [
       </svg>
     ),
   },
+  {
+    to: '/metadata',
+    label: 'Metadata',
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+        className="w-6 h-6 inline mr-2"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+        />
+      </svg>
+    ),
+  },
+  {
+    to: '/browse-graviscans',
+    label: 'Browse GraviScans',
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+        className="w-6 h-6 inline mr-2"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
+        />
+      </svg>
+    ),
+  },
 ];
 
 interface LayoutProps {
@@ -242,10 +320,10 @@ export function Layout({ mode = null }: LayoutProps) {
   const showCaptureLinks = mode === 'cylinderscan';
   const showGraviscanLinks = mode === 'graviscan';
   const links = showCaptureLinks
-    ? [...alwaysLinks, ...captureLinks]
+    ? [...alwaysLinks, browseScansLink, exportScansLink, ...captureLinks]
     : showGraviscanLinks
       ? [...alwaysLinks, ...graviscanLinks]
-      : alwaysLinks;
+      : [...alwaysLinks, browseScansLink, exportScansLink];
 
   // Load scanner name from scanner identity service
   useEffect(() => {
@@ -326,6 +404,7 @@ export function Layout({ mode = null }: LayoutProps) {
       {/* Main content */}
       <div className="flex-1 overflow-auto">
         {showGraviscanLinks && <WedgeBanner />}
+        <UploadStatusBanner />
         <Outlet />
       </div>
     </div>

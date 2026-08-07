@@ -17,7 +17,15 @@
  *   BLOOM_DATABASE_URL="file:./dev.db" npx prisma migrate deploy
  * first.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import {
   graviscansCreate,
@@ -38,6 +46,7 @@ import {
   linkGraviMetadata,
   unlinkGraviMetadata,
   listGraviMetadata,
+  setAuditLogger,
 } from '../../../src/main/database-handlers';
 
 const prisma = new PrismaClient();
@@ -164,8 +173,12 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+const mockAuditLogger = vi.fn();
+
 beforeEach(async () => {
   await cleanDatabase();
+  vi.clearAllMocks();
+  setAuditLogger(mockAuditLogger);
 });
 
 describe('database.graviscans.*', () => {
@@ -1315,6 +1328,25 @@ describe('database.experiments.linkGraviMetadata', () => {
     expect(row?.accession_id).toBe(metadataFileId);
   });
 
+  it('writes a scanLog line naming the experiment, wave, and accession file name on success', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile('batch3.xlsx');
+
+    await linkGraviMetadata(prisma, experiment.id, 2, metadataFileId);
+
+    expect(mockAuditLogger).toHaveBeenCalledTimes(1);
+    const [message] = mockAuditLogger.mock.calls[0];
+    expect(message).toContain(experiment.id);
+    expect(message).toContain('2');
+    expect(message).toContain('batch3.xlsx');
+  });
+
+  it('does not write a scanLog line on a validation failure', async () => {
+    const result = await linkGraviMetadata(prisma, '', 0, 'irrelevant');
+    expect(result.success).toBe(false);
+    expect(mockAuditLogger).not.toHaveBeenCalled();
+  });
+
   it('accepts wave 0 as a valid boundary value', async () => {
     const experiment = await createGraviscanExperiment();
     const metadataFileId = await createValidGraviMetadataFile();
@@ -1539,6 +1571,21 @@ describe('database.experiments.unlinkGraviMetadata', () => {
     expect(row).toBeNull();
   });
 
+  it('writes a scanLog line naming the experiment, wave, and unlinked accession file name on success', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile('batch3.xlsx');
+    await linkGraviMetadata(prisma, experiment.id, 3, metadataFileId);
+    mockAuditLogger.mockClear();
+
+    await unlinkGraviMetadata(prisma, experiment.id, 3);
+
+    expect(mockAuditLogger).toHaveBeenCalledTimes(1);
+    const [message] = mockAuditLogger.mock.calls[0];
+    expect(message).toContain(experiment.id);
+    expect(message).toContain('3');
+    expect(message).toContain('batch3.xlsx');
+  });
+
   it('returns a friendly error for a non-existent link, not a raw Prisma error', async () => {
     const experiment = await createGraviscanExperiment();
 
@@ -1553,6 +1600,7 @@ describe('database.experiments.unlinkGraviMetadata', () => {
       'Nothing to unlink — wave 5 has no metadata file linked'
     );
     expect(result.error).not.toMatch(/prisma|record to delete/i);
+    expect(mockAuditLogger).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -1,0 +1,85 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
+import {
+  UploadStatusProvider,
+  useUploadStatus,
+} from '../../../src/renderer/contexts/UploadStatusContext';
+
+let progressListeners: Array<(data: unknown) => void>;
+let unsubscribe: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  progressListeners = [];
+  unsubscribe = vi.fn();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const win = global.window as any;
+  win.electron.gravi = {
+    ...win.electron.gravi,
+    onUploadProgress: vi.fn((cb: (data: unknown) => void) => {
+      progressListeners.push(cb);
+      return unsubscribe;
+    }),
+  };
+});
+
+function fireProgress(data: unknown) {
+  act(() => {
+    progressListeners.forEach((cb) => cb(data));
+  });
+}
+
+function Consumer() {
+  const { status } = useUploadStatus();
+  return <div data-testid="status">{JSON.stringify(status)}</div>;
+}
+
+describe('UploadStatusContext', () => {
+  it('subscribes to onUploadProgress exactly once', () => {
+    render(
+      <UploadStatusProvider>
+        <Consumer />
+      </UploadStatusProvider>
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gravi = (global.window as any).electron.gravi;
+    expect(gravi.onUploadProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes the latest progress to consumers', () => {
+    render(
+      <UploadStatusProvider>
+        <Consumer />
+      </UploadStatusProvider>
+    );
+    fireProgress({ completed: 2, total: 5 });
+
+    expect(screen.getByTestId('status').textContent).toContain('"completed":2');
+  });
+
+  it('keeps the latest known state for a consumer mounted after the event fired', () => {
+    const { rerender } = render(
+      <UploadStatusProvider>
+        <div />
+      </UploadStatusProvider>
+    );
+    fireProgress({ completed: 3, total: 5 });
+
+    rerender(
+      <UploadStatusProvider>
+        <Consumer />
+      </UploadStatusProvider>
+    );
+
+    expect(screen.getByTestId('status').textContent).toContain('"completed":3');
+  });
+
+  it('cleans up the subscription on unmount', () => {
+    const { unmount } = render(
+      <UploadStatusProvider>
+        <Consumer />
+      </UploadStatusProvider>
+    );
+    unmount();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+});
