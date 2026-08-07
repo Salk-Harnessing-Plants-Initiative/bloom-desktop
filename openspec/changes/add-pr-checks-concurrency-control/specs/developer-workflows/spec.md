@@ -40,7 +40,7 @@ The `pr-checks.yml` workflow SHALL declare a top-level `concurrency` group keyed
 
 ### Requirement: CI Job Timeout Bounds
 
-The `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` jobs in `pr-checks.yml` SHALL each declare an explicit `timeout-minutes` value, set with headroom above their observed typical duration. Because CI Concurrency Control queues `push`-to-`main` runs behind each other rather than running them in parallel, a hung job can now delay the start of a subsequently-queued `main` commit's entire CI run, not just its own — previously, independent parallel runs meant a hang only affected its own push. Without an explicit bound, that delay could extend up to GitHub's 6-hour per-job default.
+The `build-python`, `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` jobs in `pr-checks.yml` SHALL each declare an explicit `timeout-minutes` value, set with headroom above their observed typical duration. Because CI Concurrency Control queues `push`-to-`main` runs behind each other rather than running them in parallel, a hung job can now delay the start of a subsequently-queued `main` commit's entire CI run, not just its own — previously, independent parallel runs meant a hang only affected its own push. Without an explicit bound, that delay could extend up to GitHub's 6-hour per-job default. `build-python` is included because `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` all declare `needs: build-python`: an unbounded hang there would prevent all four downstream jobs from ever starting, regardless of their own timeout values, defeating the point of bounding them at all.
 
 #### Scenario: A hung job is terminated instead of blocking the queue indefinitely
 
@@ -49,15 +49,22 @@ The `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` job
 - **THEN** GitHub Actions terminates the job and marks the run as timed out
 - **AND** a subsequent push to `main` queued behind it is no longer blocked by an indefinite hang once that run concludes (by timeout, rather than never)
 
+#### Scenario: A hung upstream build cannot bypass the downstream jobs' bounds
+
+- **GIVEN** `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` all declare `needs: build-python`
+- **WHEN** `build-python` hangs on a `push`-to-`main` run
+- **THEN** `build-python`'s own `timeout-minutes` terminates it before GitHub's 6-hour default would otherwise apply
+- **AND** none of the four downstream jobs are left waiting indefinitely on an upstream dependency that itself has no bound
+
 #### Scenario: Timeout values leave headroom for normal runs
 
-- **GIVEN** `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` have observed typical durations of roughly 2-4 minutes, 24-34 minutes (with a real non-hung outlier at 46 minutes), 4-6 minutes, and 11 minutes respectively (see `design.md` for the underlying data and its caveats)
+- **GIVEN** `build-python`, `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` have observed typical durations of roughly 1-2 minutes, 2-4 minutes, 24-34 minutes (with a real non-hung outlier at 46 minutes), 4-6 minutes, and 11 minutes respectively (see `design.md` for the underlying data and its caveats)
 - **WHEN** each job runs normally
-- **THEN** its configured `timeout-minutes` (15, 90, 20, and 30 respectively) is above the observed range, including the worst real data point found for `test-e2e-dev`
+- **THEN** its configured `timeout-minutes` (10, 15, 90, 20, and 30 respectively) is above the observed range, including the worst real data point found for `test-e2e-dev`
 - **AND** a normal run is never falsely terminated for running long
 
 #### Scenario: Timeout values are enforced by the same regression test
 
 - **GIVEN** a developer edits `.github/workflows/pr-checks.yml`
-- **WHEN** the edit removes the `timeout-minutes` key from any of the four affected jobs
+- **WHEN** the edit removes the `timeout-minutes` key from any of the five affected jobs, or adds one to a job outside this set
 - **THEN** `tests/unit/pr-checks-workflow.test.ts` fails, surfacing the regression before it reaches CI

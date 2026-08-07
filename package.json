@@ -73,6 +73,7 @@
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@types/xlsx": "^0.0.35",
