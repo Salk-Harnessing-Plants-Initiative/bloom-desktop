@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change fix-upload-database-registration. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Upload Creates Database Records
 
 The ImageUploader SHALL create records in the Supabase `image_metadata` table for each uploaded image, in addition to uploading files to Supabase Storage.
@@ -249,4 +251,3 @@ timing.
   verification and status write has completed
 - **AND** the returned `UploadResult`'s `uploaded`/`failed` counts SHALL
   reflect the final, post-verification status of every attempted image
-
