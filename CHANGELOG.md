@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI disk space management to prevent ENOSPC errors on Ubuntu runners
   - Uses `jlumbroso/free-disk-space` action to free ~20GB
   - Preserves xvfb for headless GUI tests
+- CI concurrency control for `pr-checks.yml` to stop redundant full-matrix runs from piling up on scarce macOS/Windows runners (closes [#307](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/307))
+  - `concurrency` group keyed by workflow + ref; `cancel-in-progress` differentiated by trigger — cancels stale `pull_request` runs, but queues (rather than cancels) `push`-to-`main` runs to preserve each commit's completed CI record where possible
+  - Known limitation, documented in-repo: GitHub Actions' default one-pending-run queue depth means a 3rd+ overlapping push to `main` can still silently evict an earlier queued run before it starts; runner contention is still avoided either way
+  - `timeout-minutes` added to `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` (evidence-based values from observed run durations), since queuing means a hung job can now block the next queued `main` push's CI, not just its own
+  - See `openspec/changes/add-pr-checks-concurrency-control/` for full design rationale
 - GitHub Copilot review command for fetching PR comments via GraphQL
 - CylinderScan batch scan export page ([PR #300](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/300), closes [#77](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/77), roadmap Tier 3)
   - Export/experiment/date grouped scan selection (checkbox tree), target-directory picker, whole-scan-folder copy preserving `metadata.json` and all images verbatim
