@@ -97,6 +97,18 @@ async function launchElectronApp() {
 
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
+
+  // TEMPORARY DIAGNOSTIC: see tests/e2e/accession-excel-upload.e2e.ts for
+  // context (E2E CI hang investigation, PR #290). Added here to get real
+  // error visibility into the still-failing wave-linking Unlink timeout —
+  // remove once resolved.
+  window.on('pageerror', (err) => {
+    console.log(`[renderer pageerror] ${err.stack || err.message}`);
+  });
+  window.on('console', (msg) => {
+    console.log(`[renderer console:${msg.type()}] ${msg.text()}`);
+  });
+
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   await waitForAppReady(window);
 }

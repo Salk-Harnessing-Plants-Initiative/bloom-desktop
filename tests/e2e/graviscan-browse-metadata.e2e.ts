@@ -93,6 +93,19 @@ async function launchElectronApp() {
 
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
+
+  // TEMPORARY DIAGNOSTIC: see tests/e2e/accession-excel-upload.e2e.ts for
+  // context (E2E CI hang investigation, PR #290). Added here too because
+  // this file's Metadata-navigation tests are still failing after the
+  // exceljs/require() fix, and this file previously had no error capture
+  // at all — remove once resolved.
+  window.on('pageerror', (err) => {
+    console.log(`[renderer pageerror] ${err.stack || err.message}`);
+  });
+  window.on('console', (msg) => {
+    console.log(`[renderer console:${msg.type()}] ${msg.text()}`);
+  });
+
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   await waitForAppReady(window);
 }
