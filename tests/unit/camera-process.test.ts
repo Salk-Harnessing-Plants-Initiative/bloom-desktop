@@ -6,7 +6,7 @@
  * @vitest-environment node
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { spawn } from 'child_process';
 
 vi.mock('child_process', () => ({
@@ -92,27 +92,50 @@ describe('CameraProcess.detectCameras', () => {
 });
 
 describe('CameraProcess unrecognized-line warning (#318)', () => {
-  it('does not warn for a FRAME: line — CameraProcess.parseLine() handles it before it ever reaches the base class raw/warning path', async () => {
-    const warnSpy = vi
-      .spyOn(console, 'warn')
-      .mockImplementation(() => undefined);
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let dataHandler: (data: Buffer) => void;
+
+  beforeEach(async () => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    // Clear prior calls so `.mock.results.at(-1)` below always refers to
+    // THIS test's spawn() call, regardless of how many other tests in this
+    // file call .start() before or after it (a fixed index like
+    // `.mock.results[0]` would silently break if a test calling .start()
+    // were ever added earlier in the file).
+    vi.mocked(spawn).mockClear();
 
     const camera = new CameraProcess('/fake/python', ['--ipc']);
     const startPromise = camera.start();
     camera.emit('status', 'IPC handler ready');
     await startPromise;
 
-    const mockProc = vi.mocked(spawn).mock.results[0].value as {
+    const results = vi.mocked(spawn).mock.results;
+    const mockProc = results[results.length - 1].value as {
       stdout: { on: ReturnType<typeof vi.fn> };
     };
-    const dataHandler = mockProc.stdout.on.mock.calls.find(
+    const handler = mockProc.stdout.on.mock.calls.find(
       ([event]) => event === 'data'
     )?.[1] as ((data: Buffer) => void) | undefined;
-    expect(dataHandler).toBeDefined();
+    expect(handler).toBeDefined();
+    dataHandler = handler!;
+  });
 
-    dataHandler!(Buffer.from('FRAME:data:image/jpeg;base64,abc123\n'));
-
-    expect(warnSpy).not.toHaveBeenCalled();
+  afterEach(() => {
     warnSpy.mockRestore();
   });
+
+  it.each([
+    ['FRAME:', 'FRAME:data:image/jpeg;base64,abc123'],
+    ['TRIGGER_CAMERA', 'TRIGGER_CAMERA'],
+    ['IMAGE (space)', 'IMAGE data:image/png;base64,abc123'],
+    ['IMAGE_PATH (space)', 'IMAGE_PATH /tmp/scan/001.png'],
+  ])(
+    'does not warn for a %s line — CameraProcess.parseLine() handles it before it ever reaches the base class raw/warning path',
+    (_label, line) => {
+      dataHandler(Buffer.from(`${line}\n`));
+
+      expect(warnSpy).not.toHaveBeenCalled();
+    }
+  );
 });

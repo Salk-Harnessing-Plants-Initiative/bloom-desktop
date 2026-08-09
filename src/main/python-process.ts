@@ -120,7 +120,12 @@ export class PythonProcess extends EventEmitter {
         ) || UNRECOGNIZED_LINE_WARNING_ALLOWLIST.includes(line);
       if (isAllowlisted) return;
 
-      const preview = line.slice(0, UNRECOGNIZED_LINE_WARNING_PREVIEW_LENGTH);
+      // Code-point-safe truncation: line.slice() operates on UTF-16 code
+      // units and could split a surrogate pair (e.g. an emoji) in half,
+      // producing a mojibake/replacement-char preview.
+      const preview = Array.from(line)
+        .slice(0, UNRECOGNIZED_LINE_WARNING_PREVIEW_LENGTH)
+        .join('');
       console.warn(`[PythonProcess] Unrecognized protocol line: ${preview}`);
     });
   }

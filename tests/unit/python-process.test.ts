@@ -476,17 +476,27 @@ describe('handleStdout', () => {
     });
 
     it('warns for a lowercase "warning:" line (case-sensitive allowlist)', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
       mockProc.stdout.emit('data', Buffer.from('warning:lowercase\n'));
 
+      expect(rawSpy).toHaveBeenCalledWith('warning:lowercase');
       expect(warnSpy).toHaveBeenCalledTimes(1);
     });
 
     it('warns for a "WARNINGLY:" line (false-prefix trap)', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
       mockProc.stdout.emit(
         'data',
         Buffer.from('WARNINGLY:not actually the WARNING: prefix\n')
       );
 
+      expect(rawSpy).toHaveBeenCalledWith(
+        'WARNINGLY:not actually the WARNING: prefix'
+      );
       expect(warnSpy).toHaveBeenCalledTimes(1);
     });
 

@@ -17,7 +17,7 @@ This is split out from `fix-camera-streaming-stdout-race` (rather than bundled w
 
 - Affected specs: `ipc-reliability` — ADDED "Unrecognized Protocol Line Visibility".
 - Affected code: `src/main/python-process.ts`.
-- Affected tests: `tests/unit/python-process.test.ts`.
+- Affected tests: `tests/unit/python-process.test.ts`; `tests/unit/camera-process.test.ts` (adds coverage confirming `CameraProcess`'s own recognized prefixes — `FRAME:`, `TRIGGER_CAMERA`, `IMAGE `, `IMAGE_PATH ` — never reach the base class's warning path; also switches that file's `child_process` mock from `spawn: vi.fn().mockReturnValue({...})`, which returns the _same_ mock object on every call, to `spawn: vi.fn(() => ({...}))`, a fresh one each time — needed because these new tests, unlike the pre-existing ones, actually call `.start()` and inspect the spawned mock's recorded calls).
 - Not affected: GraviScan (`src/main/graviscan/scanner-subprocess.ts`, `python/graviscan/scan_worker.py`) — confirmed its `EVENT:` protocol lines never pass through `PythonProcess.parseLine()`, so this change cannot cause warning spam on GraviScan's normal operation.
 - Depends on nothing from `fix-camera-streaming-stdout-race` and can be implemented/merged independently, in either order.
 - Tracked by [#318](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/318).
