@@ -1,6 +1,7 @@
 import 'tailwindcss/tailwind.css';
 import './App.css';
 
+import { lazy, Suspense } from 'react';
 import {
   MemoryRouter as Router,
   Routes,
@@ -22,9 +23,19 @@ import { MachineConfiguration } from './MachineConfiguration';
 import { ConfigureScanner } from './ConfigureScanner';
 import { BrowseGraviScans } from './BrowseGraviScans';
 import { ExperimentDetail } from './ExperimentDetail';
-import { Metadata } from './Metadata';
 import { useAppMode } from './hooks/useAppMode';
 import { UploadStatusProvider } from './contexts/UploadStatusContext';
+
+// Lazy-loaded: Metadata pulls in exceljs, which has a `require()` call
+// that survives webpack bundling and throws "require is not defined" in
+// Electron's sandboxed renderer. Statically importing it here poisoned
+// the *entire* app on every launch, in every mode. Lazy-loading confines
+// that crash to only when a GraviScan-mode user actually opens Metadata —
+// exceljs's webpack resolution still needs a real fix (see PR #290 /
+// tier5-e2e-ci-mystery notes) before Metadata's Excel import will work.
+const Metadata = lazy(() =>
+  import('./Metadata').then((m) => ({ default: m.Metadata }))
+);
 
 export default function App() {
   const { mode, isLoading } = useAppMode();
@@ -79,7 +90,14 @@ export default function App() {
                   path="graviscan-experiment/:experimentId"
                   element={<ExperimentDetail />}
                 />
-                <Route path="metadata" element={<Metadata />} />
+                <Route
+                  path="metadata"
+                  element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <Metadata />
+                    </Suspense>
+                  }
+                />
               </>
             )}
 
