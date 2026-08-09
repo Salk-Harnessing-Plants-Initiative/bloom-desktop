@@ -1,8 +1,11 @@
 # scan-export Specification
 
 ## Purpose
+
 TBD - created by archiving change add-cylinderscan-export-page. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Export Scans Page
 
 The system SHALL provide an "Export Scans" page (route `export`, reachable from the main navigation) that lists every non-deleted scan across all scanners, grouped by experiment and capture day.
@@ -138,4 +141,3 @@ The system SHALL report export outcomes to the user via a transient banner, dist
 **When** the failure occurs
 **Then** the export handler returns a failure result with an error message
 **And** the renderer shows a transient error banner instead of leaving the export button stuck in a loading state
-
