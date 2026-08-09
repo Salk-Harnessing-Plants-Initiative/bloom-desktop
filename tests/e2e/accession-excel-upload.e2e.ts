@@ -114,6 +114,19 @@ async function launchElectronApp() {
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 
+  // TEMPORARY DIAGNOSTIC: surface renderer-side crashes. A prior CI run
+  // showed the app becoming "ready" (main-process IPC resolves fine) while
+  // the page's DOM stayed completely empty (not even the Loading state) —
+  // consistent with the renderer bundle throwing at script-evaluation time,
+  // before React ever mounts. Remove once the E2E CI hang investigation
+  // (PR #290) is resolved.
+  window.on('pageerror', (err) => {
+    console.log(`[renderer pageerror] ${err.stack || err.message}`);
+  });
+  window.on('console', (msg) => {
+    console.log(`[renderer console:${msg.type()}] ${msg.text()}`);
+  });
+
   // Wait for window to be ready
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });
   await waitForAppReady(window);
