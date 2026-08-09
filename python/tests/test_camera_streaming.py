@@ -503,14 +503,21 @@ class TestStreamingWorkflow:
     def test_stop_stream_returns_promptly_while_streaming(self, monkeypatch):
         """Regression test for design.md's stdout-lock/streaming-lock
         separation: stop_stream must return promptly even when dispatched
-        while a frame write is genuinely in flight, not just "shortly after"
-        starting (which would almost always land during the worker's
-        time.sleep() between frames rather than during an actual write, and
-        so wouldn't reliably exercise this property).
+        right as the streaming worker is about to write a frame, not just
+        "shortly after" starting (which would almost always land during the
+        worker's time.sleep() between frames instead, most of its 200ms
+        period).
 
         A test-only hook signals immediately before the streaming worker's
         send_frame() call, so stop_stream is dispatched right as a frame
-        write is happening — deterministically, not by timing luck.
+        write is beginning. This is biased toward — not a mathematical
+        guarantee of — landing mid-write: unlike test_protocol_io.py's
+        gap_open/resume handshake, nothing here actually pauses the worker
+        inside its write, so there's still a small window where the write
+        completes before stop_stream's own command reaches the lock. Even
+        then, the assertion (returns success, well under the 2s join
+        timeout) remains a meaningful regression test for the
+        _stdout_lock/_streaming_lock deadlock class design.md describes.
         """
         from python.ipc_handler import handle_command
         import python.ipc_handler as ipc

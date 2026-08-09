@@ -39,6 +39,15 @@ class _InterleavingStdout:
     payload, it signals `gap_open` and blocks on `resume` (bounded) before
     writing the second half — deterministically opening a race window a
     concurrent writer can land in.
+
+    Opening the window isn't enough by itself: a second writer whose path to
+    write_line() does real work first (e.g. constructing a MockCamera, which
+    stats the filesystem before ever printing anything) might not reach this
+    object's write() until well after the paused writer would have resumed
+    and finished on its own — silently turning the "race" into two writes
+    that never actually overlap, regardless of whether the real lock exists.
+    `write_entered` lets a test detect that the second writer has genuinely
+    reached the write before releasing the first one, closing that gap.
     """
 
     def __init__(self, split_threshold: int = 100):
@@ -46,10 +55,28 @@ class _InterleavingStdout:
         self.chunks: list[tuple[str, str]] = []  # [(thread_name, text), ...]
         self.gap_open = threading.Event()
         self.resume = threading.Event()
+        # Set on every write() entry, regardless of payload size. A caller
+        # blocked acquiring _stdout_lock (the "green"/fixed case) never
+        # reaches this method at all, so waiting on this event is a
+        # zero-cost no-op there (see wait_for_contender_or_timeout()) — it
+        # only matters for detecting that an UNLOCKED second writer has
+        # genuinely reached the write, which is what makes the "red"/unfixed
+        # case's interleaving deterministic instead of a scheduling gamble.
+        self.write_entered = threading.Event()
         self._append_lock = threading.Lock()
         self.fail_next_write = False
 
+    def wait_for_contender_or_timeout(self, timeout: float = 0.5) -> None:
+        """Give a second writer every chance to reach write() before the
+        paused first writer is released, without hanging when the fix is in
+        place (there, the second writer blocks on the real lock upstream and
+        never reaches this fake at all, so this always times out harmlessly
+        in that case — see class docstring)."""
+        self.write_entered.wait(timeout=timeout)
+
     def write(self, text):
+        self.write_entered.set()
+
         if self.fail_next_write:
             self.fail_next_write = False
             raise BrokenPipeError("simulated write failure")
@@ -100,15 +127,19 @@ def test_concurrent_frame_and_data_do_not_interleave(capsys, monkeypatch):
 
         opened = fake_stdout.gap_open.wait(timeout=2.0)
         assert opened, "fake stdout never opened its write gap — test setup is broken"
+        fake_stdout.write_entered.clear()  # drop A's own signal from the wait above
 
         thread_b = threading.Thread(
             target=lambda: protocol_io.write_line(small_data), name="main-thread"
         )
         thread_b.start()
-        # Release A's pause immediately after dispatching B — do NOT wait for
-        # B to finish first. Once _stdout_lock exists, B blocks acquiring it
-        # for A's entire paused write, so waiting for B here would hang the
-        # test itself.
+        # Give B a chance to actually reach the write before releasing A.
+        # Bounded and harmless either way: if the fix is in place, B blocks
+        # on the real lock upstream and this always times out — see
+        # _InterleavingStdout's docstring. Do NOT wait for B to finish
+        # outright: once _stdout_lock exists, B blocks acquiring it for A's
+        # entire paused write, so that would hang the test itself.
+        fake_stdout.wait_for_contender_or_timeout()
         fake_stdout.resume.set()
 
         thread_a.join(timeout=5.0)
@@ -139,11 +170,13 @@ def test_concurrent_frame_and_error_do_not_interleave(capsys, monkeypatch):
 
         opened = fake_stdout.gap_open.wait(timeout=2.0)
         assert opened, "fake stdout never opened its write gap — test setup is broken"
+        fake_stdout.write_entered.clear()
 
         thread_b = threading.Thread(
             target=lambda: protocol_io.write_line(small_error), name="main-thread"
         )
         thread_b.start()
+        fake_stdout.wait_for_contender_or_timeout()
         fake_stdout.resume.set()
 
         thread_a.join(timeout=5.0)
@@ -182,6 +215,7 @@ def test_hardware_diagnostic_does_not_interleave_with_frame(capsys, monkeypatch)
 
         opened = fake_stdout.gap_open.wait(timeout=2.0)
         assert opened, "fake stdout never opened its write gap — test setup is broken"
+        fake_stdout.write_entered.clear()
 
         settings = CameraSettings(
             exposure_time=10000,
@@ -193,6 +227,11 @@ def test_hardware_diagnostic_does_not_interleave_with_frame(capsys, monkeypatch)
             target=lambda: MockCamera(settings), name="main-thread"
         )
         thread_b.start()
+        # MockCamera(settings) does real filesystem work (checking
+        # TEST_IMAGES_DIR) before ever calling write_line() — unlike the
+        # other two tests, B is not "instantly" at the write, so this wait
+        # is load-bearing here, not just defensive.
+        fake_stdout.wait_for_contender_or_timeout()
         fake_stdout.resume.set()
 
         thread_a.join(timeout=5.0)
