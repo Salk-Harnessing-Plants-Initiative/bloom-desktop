@@ -7,16 +7,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { spawn } from 'child_process';
 
 vi.mock('child_process', () => ({
-  spawn: vi.fn().mockReturnValue({
+  spawn: vi.fn(() => ({
     stdout: { on: vi.fn() },
     stderr: { on: vi.fn() },
     stdin: { write: vi.fn() },
     on: vi.fn(),
     kill: vi.fn(),
     killed: false,
-  }),
+  })),
 }));
 
 import { CameraProcess } from '../../src/main/cylinderscan/camera-process';
@@ -87,5 +88,31 @@ describe('CameraProcess.detectCameras', () => {
     await expect(camera.detectCameras()).rejects.toThrow(
       'Failed to detect cameras: Camera not connected'
     );
+  });
+});
+
+describe('CameraProcess unrecognized-line warning (#318)', () => {
+  it('does not warn for a FRAME: line — CameraProcess.parseLine() handles it before it ever reaches the base class raw/warning path', async () => {
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+
+    const camera = new CameraProcess('/fake/python', ['--ipc']);
+    const startPromise = camera.start();
+    camera.emit('status', 'IPC handler ready');
+    await startPromise;
+
+    const mockProc = vi.mocked(spawn).mock.results[0].value as {
+      stdout: { on: ReturnType<typeof vi.fn> };
+    };
+    const dataHandler = mockProc.stdout.on.mock.calls.find(
+      ([event]) => event === 'data'
+    )?.[1] as ((data: Buffer) => void) | undefined;
+    expect(dataHandler).toBeDefined();
+
+    dataHandler!(Buffer.from('FRAME:data:image/jpeg;base64,abc123\n'));
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });
