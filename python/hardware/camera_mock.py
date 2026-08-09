@@ -25,6 +25,11 @@ try:
 except ImportError:
     from camera_types import CameraSettings  # type: ignore[no-redef]
 
+try:
+    from protocol_io import write_line  # type: ignore[import-not-found]
+except ImportError:
+    from python.protocol_io import write_line  # Development/test path
+
 
 def _get_test_images_dir() -> pathlib.Path:
     """Get test images directory, handling both source and bundled execution.
@@ -86,11 +91,8 @@ class MockCamera:
         """
         if not TEST_IMAGES_DIR.exists():
             # If no test images exist, generate simple test patterns
-            print(
-                f"WARNING: Test images directory not found at {TEST_IMAGES_DIR}",
-                flush=True,
-            )
-            print("Generating synthetic test patterns instead", flush=True)
+            write_line(f"WARNING: Test images directory not found at {TEST_IMAGES_DIR}")
+            write_line("Generating synthetic test patterns instead")
             return self._generate_test_patterns()
 
         image_files = glob.glob(str(TEST_IMAGES_DIR / "*.png"))
@@ -107,11 +109,8 @@ class MockCamera:
         image_files.sort(key=lambda x: int(pathlib.Path(x).stem))
 
         if not image_files:
-            print(
-                f"WARNING: No PNG files found in {TEST_IMAGES_DIR}",
-                flush=True,
-            )
-            print("Generating synthetic test patterns instead", flush=True)
+            write_line(f"WARNING: No PNG files found in {TEST_IMAGES_DIR}")
+            write_line("Generating synthetic test patterns instead")
             return self._generate_test_patterns()
 
         images = []
@@ -119,7 +118,7 @@ class MockCamera:
             try:
                 images.append(iio.imread(img_file))
             except Exception as e:
-                print(f"WARNING: Failed to load {img_file}: {e}", flush=True)
+                write_line(f"WARNING: Failed to load {img_file}: {e}")
 
         # Type ignore needed: imageio.imread() has imprecise type hints that don't match np.ndarray
         return images if images else self._generate_test_patterns()  # type: ignore[return-value]
@@ -153,13 +152,13 @@ class MockCamera:
             True if successful
         """
         self.is_open = True
-        print("STATUS:Mock camera opened", flush=True)
+        write_line("STATUS:Mock camera opened")
         return True
 
     def close(self) -> None:
         """Close the mock camera connection."""
         self.is_open = False
-        print("STATUS:Mock camera closed", flush=True)
+        write_line("STATUS:Mock camera closed")
 
     def grab_frame(self) -> np.ndarray:
         """Grab a single frame from the mock camera.

@@ -6,6 +6,7 @@ to verify the camera streaming feature works correctly.
 
 import base64
 import json
+import threading
 import time
 from io import BytesIO
 
@@ -498,3 +499,56 @@ class TestStreamingWorkflow:
             time.sleep(0.2)
             captured = self.capsys.readouterr()
             assert "FRAME:" not in captured.out, f"Cycle {cycle}: Frames after stopping"
+
+    def test_stop_stream_returns_promptly_while_streaming(self, monkeypatch):
+        """Regression test for design.md's stdout-lock/streaming-lock
+        separation: stop_stream must return promptly even when dispatched
+        while a frame write is genuinely in flight, not just "shortly after"
+        starting (which would almost always land during the worker's
+        time.sleep() between frames rather than during an actual write, and
+        so wouldn't reliably exercise this property).
+
+        A test-only hook signals immediately before the streaming worker's
+        send_frame() call, so stop_stream is dispatched right as a frame
+        write is happening — deterministically, not by timing luck.
+        """
+        from python.ipc_handler import handle_command
+        import python.ipc_handler as ipc
+
+        start_cmd = {
+            "command": "camera",
+            "action": "start_stream",
+            "settings": {
+                "exposure_time": 10000,
+                "gain": 100,
+                "camera_ip_address": "192.168.1.100",
+                "num_frames": 1,
+            },
+        }
+        handle_command(start_cmd)
+        self.capsys.readouterr()
+
+        frame_in_flight = threading.Event()
+        real_send_frame = ipc.send_frame
+
+        def send_frame_with_signal(frame_data):
+            frame_in_flight.set()
+            real_send_frame(frame_data)
+
+        monkeypatch.setattr(ipc, "send_frame", send_frame_with_signal)
+
+        assert frame_in_flight.wait(
+            timeout=2.0
+        ), "streaming worker never reached send_frame() — test setup is broken"
+
+        start_time = time.time()
+        handle_command({"command": "camera", "action": "stop_stream"})
+        elapsed = time.time() - start_time
+
+        captured = self.capsys.readouterr()
+        data = parse_data_response(captured.out)
+        assert data["success"] is True
+        assert data["streaming"] is False
+        assert (
+            elapsed < 2.0
+        ), f"stop_stream took {elapsed:.2f}s while a frame was in flight — expected well under the 2s join timeout"

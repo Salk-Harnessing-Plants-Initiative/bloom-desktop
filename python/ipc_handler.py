@@ -31,6 +31,15 @@ try:
 except ImportError:
     __version__ = "0.1.0"
 
+# Import the shared, lock-protected stdout writer (#316) — every write
+# reachable while the camera-streaming background thread may be active must
+# go through this, so a large FRAME: write and a concurrent STATUS:/ERROR:/
+# DATA: write can never interleave at the byte level.
+try:
+    from protocol_io import write_line  # type: ignore[import-not-found]
+except ImportError:
+    from python.protocol_io import write_line  # Development/test path
+
 # Import camera modules
 # Try both import paths for compatibility with bundled and development environments
 try:
@@ -145,7 +154,7 @@ def send_status(message: str) -> None:
     Args:
         message: Status message to send
     """
-    print(f"STATUS:{message}", flush=True)
+    write_line(f"STATUS:{message}")
 
 
 def send_error(message: str, tag_request: bool = True) -> None:
@@ -162,7 +171,7 @@ def send_error(message: str, tag_request: bool = True) -> None:
     payload: Dict[str, Any] = {"message": message}
     if tag_request and _current_request_id is not None:
         payload["id"] = _current_request_id
-    print(f"ERROR:{json.dumps(payload)}", flush=True)
+    write_line(f"ERROR:{json.dumps(payload)}")
 
 
 def send_data(data: Dict[str, Any]) -> None:
@@ -178,7 +187,7 @@ def send_data(data: Dict[str, Any]) -> None:
     payload = dict(data)
     if _current_request_id is not None:
         payload["id"] = _current_request_id
-    print(f"DATA:{json.dumps(payload)}", flush=True)
+    write_line(f"DATA:{json.dumps(payload)}")
 
 
 def send_frame(frame_data: str) -> None:
@@ -187,7 +196,7 @@ def send_frame(frame_data: str) -> None:
     Args:
         frame_data: Base64-encoded image data with data URI prefix
     """
-    print(f"FRAME:{frame_data}", flush=True)
+    write_line(f"FRAME:{frame_data}")
 
 
 def check_hardware() -> Dict[str, Any]:
@@ -337,10 +346,7 @@ def detect_cameras() -> list[Dict[str, Any]]:
                             camera_info["friendly_name"] = friendly_name
                             cameras.append(camera_info)
                         except Exception as e:
-                            print(
-                                f"WARNING: Failed to get info for camera: {e}",
-                                flush=True,
-                            )
+                            write_line(f"WARNING: Failed to get info for camera: {e}")
 
             finally:
                 os.dup2(old_stderr, stderr_fd)
@@ -349,7 +355,7 @@ def detect_cameras() -> list[Dict[str, Any]]:
     except Exception as e:
         # Failed to import pypylon or enumerate devices
         # This is expected on systems without Pylon SDK or cameras
-        print(f"INFO:Camera enumeration not available: {e}", flush=True)
+        write_line(f"INFO:Camera enumeration not available: {e}")
 
     return cameras
 

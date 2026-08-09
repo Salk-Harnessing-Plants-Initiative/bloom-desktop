@@ -11,6 +11,11 @@ try:
 except ImportError:
     from daq_types import DAQSettings  # type: ignore[import-not-found,no-redef]
 
+try:
+    from protocol_io import write_line  # type: ignore[import-not-found]
+except ImportError:
+    from python.protocol_io import write_line  # Development/test path
+
 
 class MockDAQ:
     """Mock DAQ that simulates turntable rotation without hardware."""
@@ -33,10 +38,10 @@ class MockDAQ:
             True if successful
         """
         if self.is_initialized:
-            print("STATUS:Mock DAQ already initialized", flush=True)
+            write_line("STATUS:Mock DAQ already initialized")
             return True
 
-        print("STATUS:Initializing mock DAQ", flush=True)
+        write_line("STATUS:Initializing mock DAQ")
         # Simulate initialization delay
         time.sleep(0.1)
 
@@ -44,7 +49,7 @@ class MockDAQ:
         self.current_position = 0.0
         self.total_steps = 0
 
-        print("STATUS:Mock DAQ initialized successfully", flush=True)
+        write_line("STATUS:Mock DAQ initialized successfully")
         return True
 
     def rotate(self, degrees: float) -> bool:
@@ -66,10 +71,7 @@ class MockDAQ:
         steps_needed = int(abs(degrees) * self.settings.steps_per_revolution / 360.0)
         direction = 1 if degrees >= 0 else -1
 
-        print(
-            f"STATUS:Mock DAQ rotating {degrees:.2f}° ({steps_needed} steps)",
-            flush=True,
-        )
+        write_line(f"STATUS:Mock DAQ rotating {degrees:.2f}° ({steps_needed} steps)")
 
         # Simulate rotation time based on steps
         rotation_time = abs(degrees) / 360.0 * self.settings.seconds_per_rot
@@ -79,9 +81,8 @@ class MockDAQ:
         self.current_position = (self.current_position + degrees) % 360.0
         self.total_steps += steps_needed * direction
 
-        print(
-            f"STATUS:Mock DAQ rotation complete. Position: {self.current_position:.2f}°",
-            flush=True,
+        write_line(
+            f"STATUS:Mock DAQ rotation complete. Position: {self.current_position:.2f}°"
         )
         return True
 
@@ -111,7 +112,7 @@ class MockDAQ:
         # Calculate degrees
         degrees = (num_steps / self.settings.steps_per_revolution) * 360.0 * direction
 
-        print(f"STATUS:Mock DAQ stepping {num_steps} steps", flush=True)
+        write_line(f"STATUS:Mock DAQ stepping {num_steps} steps")
 
         # Simulate step time
         step_time = num_steps / self.settings.steps_per_revolution * 0.1
@@ -121,9 +122,8 @@ class MockDAQ:
         self.current_position = (self.current_position + degrees) % 360.0
         self.total_steps += num_steps * direction
 
-        print(
-            f"STATUS:Mock DAQ step complete. Position: {self.current_position:.2f}°",
-            flush=True,
+        write_line(
+            f"STATUS:Mock DAQ step complete. Position: {self.current_position:.2f}°"
         )
         return True
 
@@ -139,14 +139,14 @@ class MockDAQ:
         if not self.is_initialized:
             raise RuntimeError("DAQ not initialized. Call initialize() first.")
 
-        print("STATUS:Mock DAQ homing to 0°", flush=True)
+        write_line("STATUS:Mock DAQ homing to 0°")
 
         # Simulate homing time
         time.sleep(0.2)
 
         self.current_position = 0.0
 
-        print("STATUS:Mock DAQ homing complete", flush=True)
+        write_line("STATUS:Mock DAQ homing complete")
         return True
 
     def cleanup(self) -> None:
@@ -154,11 +154,11 @@ class MockDAQ:
         if not self.is_initialized:
             return
 
-        print("STATUS:Cleaning up mock DAQ", flush=True)
+        write_line("STATUS:Cleaning up mock DAQ")
         time.sleep(0.05)  # Simulate cleanup delay
 
         self.is_initialized = False
-        print("STATUS:Mock DAQ cleanup complete", flush=True)
+        write_line("STATUS:Mock DAQ cleanup complete")
 
     def get_position(self) -> float:
         """Get current turntable position in degrees.

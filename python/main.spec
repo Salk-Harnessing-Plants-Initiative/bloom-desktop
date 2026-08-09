@@ -48,6 +48,11 @@ a = Analysis(
         'python.hardware.daq_types',
         'python.hardware.scanner',
         'python.hardware.scanner_types',
+        # Shared, lock-protected stdout writer (#316) — ipc_handler.py and the
+        # hardware.* modules above all import this via the same try/except
+        # dual-path pattern, so it needs the same explicit declaration.
+        'protocol_io',
+        'python.protocol_io',
         # GraviScan modules — SANE scanner backend
         'sane',  # Optional: warns if missing on macOS/Windows, does not fail build
         'graviscan',
