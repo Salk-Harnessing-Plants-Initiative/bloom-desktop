@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-claude-commands. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Linting and Formatting Command
 
 The system SHALL provide a `/lint` command that documents all linting and formatting workflows for TypeScript and Python code.
@@ -770,4 +772,3 @@ The `build-python`, `test-integration`, `test-e2e-dev`, `test-make`, and `test-m
 - **GIVEN** a developer edits `.github/workflows/pr-checks.yml`
 - **WHEN** the edit removes the `timeout-minutes` key from any of the five affected jobs, or adds one to a job outside this set
 - **THEN** `tests/unit/pr-checks-workflow.test.ts` fails, surfacing the regression before it reaches CI
-
