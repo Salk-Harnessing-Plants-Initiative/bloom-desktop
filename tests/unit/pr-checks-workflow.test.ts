@@ -12,12 +12,25 @@ const WORKFLOW_PATH = path.join(
   'pr-checks.yml'
 );
 
+interface WorkflowJob {
+  'timeout-minutes'?: number;
+  strategy?: {
+    matrix?: Record<string, unknown>;
+  };
+  steps?: Array<{
+    name?: string;
+    run?: string;
+    with?: Record<string, unknown>;
+    [key: string]: unknown;
+  }>;
+}
+
 interface WorkflowFile {
   concurrency: {
     group: string;
     'cancel-in-progress': string;
   };
-  jobs: Record<string, { 'timeout-minutes'?: number } | undefined>;
+  jobs: Record<string, WorkflowJob | undefined>;
 }
 
 const EXPECTED_TIMEOUTS: Record<string, number> = {
@@ -74,5 +87,40 @@ describe('pr-checks.yml timeout-minutes on jobs exposed to main-push queuing', (
       .map(([name]) => name);
 
     expect(unexpectedlyBounded).toEqual([]);
+  });
+});
+
+describe('pr-checks.yml test-e2e-dev sharding', () => {
+  it('declares a 4-way shard matrix dimension', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-e2e-dev'];
+
+    expect(job?.strategy?.matrix?.shard).toEqual([1, 2, 3, 4]);
+  });
+
+  it('passes --shard=${{ matrix.shard }}/4 to every Playwright invocation step', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-e2e-dev'];
+    const playwrightSteps = (job?.steps ?? []).filter((step) =>
+      step.run?.includes('test:e2e')
+    );
+
+    expect(playwrightSteps.length).toBeGreaterThan(0);
+    for (const step of playwrightSteps) {
+      expect(step.run).toContain('--shard=${{ matrix.shard }}/4');
+    }
+  });
+
+  it('includes the shard index in the failure-artifact upload name, alongside the OS', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-e2e-dev'];
+    const uploadStep = (job?.steps ?? []).find(
+      (step) => step.name === 'Upload Playwright test results'
+    );
+
+    expect(uploadStep).toBeDefined();
+    const artifactName = uploadStep?.with?.name;
+    expect(artifactName).toContain('${{ matrix.os }}');
+    expect(artifactName).toContain('${{ matrix.shard }}');
   });
 });
