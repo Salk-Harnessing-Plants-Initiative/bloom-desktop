@@ -990,11 +990,48 @@ child (found: [object Date])`, crashing the Metadata page whenever
       Windows path-separator baseline failures, no new failures. No app
       code change was needed beyond `BrowseGraviScans.tsx` — the main
       process, preload bridge, and IPC wiring were all already correct.
+      **CI-confirmed the fix itself works**: the same test now gets
+      past the "Box backup unavailable" wait in ~1s (previously a full
+      30s timeout) and successfully reaches the Metadata page (whose
+      date rendering — 14.3's fix — is also visibly correct in the
+      failure screenshot). It still fails, but now at a *different*,
+      later assertion — see 14.8.
 
-- [ ] 14.7 Diagnostic-only test instrumentation — main-process
+- [ ] 14.8 **Candidate bug 6 — found while confirming 14.6, not yet
+      fixed.** The same test's final assertion,
+      `expect(window.locator('[data-testid="upload-status-indicator"]')).toBeVisible()`
+      (line 297), now fails fast (~1s, not a timeout) with "element(s)
+      not found". Traced why: `UploadStatusBanner`
+      (`src/renderer/Layout.tsx` ~line 22) only renders once
+      `useUploadStatus()`'s `status` has received at least one
+      `onUploadProgress` event. But this test's environment is
+      deliberately built for deterministic CI failure on both upload
+      paths _before_ either ever calls `onProgress`: `runBoxBackup`
+      (`src/main/box-backup.ts` ~line 364) returns as soon as
+      `isRcloneInstalled()` is false — before its only two `onProgress`
+      calls (~lines 475, 527); `uploadAllPendingScans`
+      (`src/main/graviscan-upload.ts` ~line 660) returns as soon as
+      `validateBloomConfig` rejects the test's intentionally-empty
+      `BLOOM_SCANNER_USERNAME`/`PASSWORD`/`BLOOM_ANON_KEY` — before ever
+      querying for images or calling `onProgress`. `seedExperimentWithMetadata()`
+      (this test file, ~line 156) also never creates a `GraviImage` row,
+      so even without the credentials short-circuit, the Bloom path's
+      own `scans.length === 0` early return would skip `onProgress` too.
+      Net effect: with this test's exact setup, `onUploadProgress` can
+      never fire on any code path, so the indicator can never appear —
+      this looks like a genuine gap in the test's own fixture/design
+      (not proven to be an app bug) rather than a fourth instance of the
+      3-bugs-behind-each-other pattern. Not yet investigated to a fix;
+      flagging for a decision on approach (e.g. seed a `GraviImage` row
+      and/or synthetically emit an `onUploadProgress` event via the test
+      harness, vs. taking a harder look at whether the app itself should
+      surface _some_ immediate status even on the short-circuit paths)
+      before implementing.
+
+- [ ] 14.9 Diagnostic-only test instrumentation — main-process
       stdout/stderr piping and `pageerror`/`console` listeners in
       several `tests/e2e/*.e2e.ts` files (extended to
       `graviscan-browse-metadata.e2e.ts` during 14.6's investigation) —
       is still in place. Decide whether to keep permanently (it proved
-      genuinely useful four times over now) or trim back now that 14.3
-      and 14.6 have both landed and the suite is fully green.
+      genuinely useful four times over now) or trim back once 14.8
+      lands and the suite is fully green.
