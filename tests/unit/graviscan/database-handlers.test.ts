@@ -1074,6 +1074,29 @@ describe('database.graviPlateAccessions.*', () => {
       );
       expect(result.success).toBe(false);
     });
+
+    it('returns transplant_date as a real Date over IPC when set', async () => {
+      const created = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Dated File' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            transplant_date: '2026-07-01T00:00:00.000Z',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'Q1' }],
+          },
+        ]
+      );
+      const result = await graviPlateAccessionsList(
+        prisma,
+        created.data!.metadataFileId
+      );
+      const plates = result.data ?? [];
+      // Structured clone preserves Date instances over IPC; renderer
+      // callers must format it, not assume string.
+      expect(plates[0].transplant_date).toBeInstanceOf(Date);
+    });
   });
 
   describe('listFiles', () => {
@@ -1105,6 +1128,9 @@ describe('database.graviPlateAccessions.*', () => {
       const linkedFile = files.find((f) => f.name === 'Linked File');
       expect(linkedFile?.plateCount).toBe(1);
       expect(linkedFile?.experimentNames).toContain('Experiment A');
+      // createdAt travels over IPC as a real Date (structured clone
+      // preserves it); renderer callers must format it, not assume string.
+      expect(linkedFile?.createdAt).toBeInstanceOf(Date);
     });
   });
 

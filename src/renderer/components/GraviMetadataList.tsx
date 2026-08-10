@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 interface MetadataFile {
   id: string;
   name: string;
-  createdAt: string;
+  createdAt: string | Date;
   plateCount: number;
   experimentNames: string[];
 }
@@ -17,9 +17,17 @@ interface Section {
 interface Plate {
   plate_id: string;
   accession: string;
-  transplant_date?: string | null;
+  transplant_date?: string | Date | null;
   custom_note?: string | null;
   sections: Section[];
+}
+
+// Electron's IPC structured clone preserves Date instances (Prisma's
+// DateTime maps to Date), so these fields arrive as either a Date or an
+// already-serialized string depending on the caller.
+function formatDate(value: string | Date | null | undefined): string {
+  if (value == null) return '';
+  return typeof value === 'string' ? value : value.toISOString();
 }
 
 export function GraviMetadataList() {
@@ -75,7 +83,7 @@ export function GraviMetadataList() {
             >
               {file.name}
             </span>
-            <span> {file.createdAt}</span>
+            <span> {formatDate(file.createdAt)}</span>
             <span> {file.experimentNames.join(', ')}</span>
             <span> {file.plateCount} plates</span>
             <button onClick={() => handleDelete(file.id)}>Delete</button>
@@ -95,7 +103,7 @@ export function GraviMetadataList() {
                               {plate.accession}
                             </td>
                             <td rowSpan={plate.sections.length}>
-                              {plate.transplant_date}
+                              {formatDate(plate.transplant_date)}
                             </td>
                             <td rowSpan={plate.sections.length}>
                               {plate.custom_note}

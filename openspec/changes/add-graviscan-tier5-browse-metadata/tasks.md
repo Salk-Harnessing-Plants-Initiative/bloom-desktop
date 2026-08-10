@@ -820,23 +820,52 @@ per-test failures. TDD used for both real fixes below.
       `experimentId` so every call site watching the same experiment
       shares one cache. `useWaveMetadataLinks`'s public API is
       unchanged. Verified via CI: the wave-linking E2E test now passes.
-- [ ] 14.3 **New, third, independent bug surfaced once 14.1/14.2 cleared
-      the way** — not yet fixed. `Error: Objects are not valid as a React
+- [x] 14.3 **New, third, independent bug surfaced once 14.1/14.2 cleared
+      the way** — now fixed. `Error: Objects are not valid as a React
       child (found: [object Date])`, crashing the Metadata page whenever
       `GraviMetadataList` actually renders. `database-handlers.ts`'s
       `graviPlateAccessionsListFiles()` (~line 831) sends Prisma's raw
       `createdAt` field (a real `Date` object) straight over IPC —
       Electron's structured-clone IPC preserves `Date` instances rather
       than stringifying them. `GraviMetadataList.tsx`'s own local
-      `MetadataFile` interface declares `createdAt: string` (never
-      validated against the real runtime shape) and renders
+      `MetadataFile` interface declared `createdAt: string` (never
+      validated against the real runtime shape) and rendered
       `{file.createdAt}` directly as a JSX child at line 78, which React
       refuses for a raw `Date`. The existing unit test
-      (`tests/unit/components/GraviMetadataList.test.tsx`) mocks
-      `createdAt` as an ISO string, masking this entirely — a new test
-      needs a real `Date` object (or to go through the real handler) to
-      catch it. All three bugs were invisible until the ones before them
-      stopped blocking the render path first.
+      (`tests/unit/components/GraviMetadataList.test.tsx`) mocked
+      `createdAt` as an ISO string, masking this entirely. A sweep of
+      sibling `graviPlateAccessions*` handlers found the identical bug
+      pattern one field over: `graviPlateAccessionsList()`'s
+      `transplant_date` (also Prisma `DateTime?`) hit the same
+      `GraviMetadataList.tsx` render path via the `Plate` interface's
+      `{plate.transplant_date}` (line ~98), just never exercised by CI
+      because no seeded plate in the E2E fixtures set a transplant date.
+      Fixed both call sites by widening the renderer's types to
+      `string | Date` and adding a `formatDate()` helper that renders a
+      `Date` via `toISOString()` (matching the raw-string display the
+      code already used for pre-serialized values, so on-screen output
+      is unchanged) instead of passing the value straight to JSX — kept
+      the `Date` flowing over IPC as-is rather than serializing in the
+      main process, since Electron's structured clone already preserves
+      it correctly and no other consumer needs a different shape.
+      TDD: `tests/unit/components/GraviMetadataList.test.tsx`'s mocks for
+      `createdAt` and `transplant_date` now use real `Date` objects
+      (matching actual IPC payload shape) instead of pre-formatted
+      strings; confirmed RED (`Objects are not valid as a React child`)
+      against the old renderer code, then GREEN after the `formatDate()`
+      fix, all 4 tests passing. Added two regression-lock assertions in
+      `tests/unit/graviscan/database-handlers.test.ts`
+      (`toBeInstanceOf(Date)` on `listFiles()`'s `createdAt` and on a new
+      `list()` test for `transplant_date`) documenting the real runtime
+      contract so a future accidental serialization change is caught
+      immediately rather than three bugs deep again. Verified locally:
+      `npx tsc --noEmit -p .` clean, `npm run lint` clean, `npx prettier
+      --check` clean, both affected unit test files green (4/4 and
+      86/86), and the full `tests/unit` suite shows only the 5
+      pre-existing Windows path-separator failures already documented
+      above (unrelated: `image-uploader.test.ts`,
+      `scan-coordinator.test.ts`) — no new failures introduced. Pushed to
+      CI for the authoritative real-Electron E2E confirmation (see 14.4).
 - [ ] 14.4 Once 14.3 is fixed, confirm 12.4 (full E2E suite, all 3 OSes)
       finally goes green, and complete 12.6 (manual golden-path
       walkthrough) if feasible.

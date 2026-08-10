@@ -3,11 +3,14 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GraviMetadataList } from '../../../src/renderer/components/GraviMetadataList';
 
+// createdAt is a real Date instance here, not a string: Electron's IPC
+// structured clone preserves Date objects, matching what the main process
+// actually sends (Prisma's DateTime maps to Date).
 function makeFile(overrides: Record<string, unknown> = {}) {
   return {
     id: 'file-1',
     name: 'batch3.xlsx',
-    createdAt: '2026-08-01T00:00:00.000Z',
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
     plateCount: 2,
     experimentNames: ['Drought Study'],
     ...overrides,
@@ -27,7 +30,7 @@ describe('GraviMetadataList', () => {
         {
           plate_id: 'P1',
           accession: 'Col-0',
-          transplant_date: '2026-07-01T00:00:00.000Z',
+          transplant_date: new Date('2026-07-01T00:00:00.000Z'),
           custom_note: 'note',
           sections: [
             { plate_section_id: 'S1', plant_qr: 'QR1', medium: 'Soil' },
@@ -55,6 +58,7 @@ describe('GraviMetadataList', () => {
     });
     expect(screen.getByText(/drought study/i)).toBeInTheDocument();
     expect(screen.getByText(/2 plates/i)).toBeInTheDocument();
+    expect(screen.getByText('2026-08-01T00:00:00.000Z')).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('combobox', { name: /sort/i })
@@ -75,6 +79,7 @@ describe('GraviMetadataList', () => {
     });
     expect(screen.getByText('S1')).toBeInTheDocument();
     expect(screen.getByText('QR1')).toBeInTheDocument();
+    expect(screen.getByText('2026-07-01T00:00:00.000Z')).toBeInTheDocument();
   });
 
   it('surfaces the blocked-deletion error without removing the entry', async () => {
