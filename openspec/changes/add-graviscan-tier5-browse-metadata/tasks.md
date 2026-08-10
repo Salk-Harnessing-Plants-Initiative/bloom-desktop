@@ -890,18 +890,29 @@ child (found: [object Date])`, crashing the Metadata page whenever
       same spec file fail, deterministically and identically on all 3
       OSes, for reasons unrelated to 14.3's Date bug.
 
-      Candidate bug 4 — `"Metadata" and "Browse GraviScans" workflow
-      steps/nav resolve to the new routes...` fails at
-      `window.waitForURL(/\/metadata$/)` (line 262) with a 30s timeout.
-      `App.tsx` renders routes inside a `MemoryRouter`
+      **Candidate bug 4 — confirmed as a test bug, fixed.**
+      `"Metadata" and "Browse GraviScans" workflow steps/nav resolve to
+      the new routes...` failed at `window.waitForURL(/\/metadata$/)`
+      (line 262) with a 30s timeout. Downloaded the CI run's
+      `playwright-results-ubuntu-latest` artifact and inspected
+      `test-failed-1.png`: it shows the app correctly on the Metadata
+      page (sidebar "Metadata" item active, "Spreadsheet File" / "Choose
+      File" content rendered) at the moment of timeout — proving
+      navigation itself works and only the assertion is broken. Root
+      cause: `App.tsx` renders routes inside a `MemoryRouter`
       (`src/renderer/App.tsx` ~line 61), which never touches the real
-      window/page URL — so `waitForURL` targeting a route path can never
-      resolve regardless of whether navigation itself is correct. This
-      is the only `waitForURL` call anywhere in `tests/e2e/` (grepped);
-      every other E2E test asserts on rendered content instead. Looks
-      like a test-authoring mismatch with the app's actual routing
-      architecture, not an app bug — unconfirmed, not yet investigated
-      to the same root-cause standard as 14.1-3.
+      window/page URL, so `waitForURL` targeting a route path can never
+      resolve regardless of correctness. Confirmed this is the only
+      `waitForURL` call anywhere in `tests/e2e/` — every other test
+      asserts on rendered content instead. Fixed by replacing it with
+      `await window.waitForSelector('h1:has-text("Metadata")')`,
+      matching `Metadata.tsx`'s actual `<h1>Metadata</h1>` (line 13) and
+      the same pattern the "global upload-progress indicator" test
+      already uses successfully. No app code changed — this was a
+      test-only fix. Verified locally: `tsc --noEmit`, `eslint`, and
+      `prettier --check` all clean on the changed file; pushed for CI
+      confirmation (E2E tests can't run locally without launching
+      Electron, which this session was told not to do without asking).
 
       Candidate bug 5 — `global upload-progress indicator persists
       across navigation...` fails earlier, at

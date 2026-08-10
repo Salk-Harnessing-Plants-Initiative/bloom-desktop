@@ -257,9 +257,13 @@ test.describe('BrowseGraviScans / ExperimentDetail / Metadata (Tier 5)', () => {
     await expect(browseLink).toHaveAttribute('href', '/browse-graviscans');
 
     // Home page's workflow-step cards navigate to the same routes.
+    // App.tsx renders routes inside a MemoryRouter, which never touches
+    // the real window/page URL, so `waitForURL` can never resolve here
+    // regardless of whether navigation itself is correct — assert on
+    // rendered content instead, like every other test in this suite.
     await window.click('text=Home');
     await window.click('[data-testid="workflow-step-3"]');
-    await window.waitForURL(/\/metadata$/);
+    await window.waitForSelector('h1:has-text("Metadata")');
   });
 
   test('global upload-progress indicator persists across navigation from Browse GraviScans to Metadata', async () => {
