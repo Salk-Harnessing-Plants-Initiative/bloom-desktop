@@ -4,7 +4,7 @@
 
 Issue #323's own root-causing (a direct A/B comparison between a failing run and a passing run with no overlapping code changes) ruled out any specific PR's changes and pointed at resource accumulation — orphaned Electron Helper and Python (`bloom-hardware`) subprocesses — across the 264 sequential E2E tests run in the single Playwright worker the project's testing strategy requires. Following that lead into the code: `closeElectronApp()`/`waitForProcessExit()` in `tests/e2e/helpers/electron-cleanup.ts` only tracks and force-kills the **main** Electron process PID, never its descendants — a structural gap that plausibly explains the runner's own orphan-cleanup step finding 3+ leftover `bloom-hardware`/`Electron Helper` processes per run.
 
-Worth being precise about what's established versus inferred: the issue's own evidence shows orphan counts on a *passing* run (6+) exceeding a *failing* run (3), so orphan accumulation alone doesn't cleanly predict which run crosses the 60s timeout — this change closes a real, independently-verifiable structural gap (main-process-only cleanup) rather than a proven single root cause, and its actual effect is measured in `tasks.md` section 4 against CI evidence, not asserted here.
+Worth being precise about what's established versus inferred: the issue's own evidence shows orphan counts on a _passing_ run (6+) exceeding a _failing_ run (3), so orphan accumulation alone doesn't cleanly predict which run crosses the 60s timeout — this change closes a real, independently-verifiable structural gap (main-process-only cleanup) rather than a proven single root cause, and its actual effect is measured in `tasks.md` section 4 against CI evidence, not asserted here.
 
 ## What Changes
 
@@ -17,7 +17,7 @@ Worth being precise about what's established versus inferred: the issue's own ev
 
 ## Residual gap (not fixed by this change)
 
-Neither the descendant-cleanup fix nor sharding eliminates the *cascade* mechanism itself: if a teardown timeout occurs for any other reason inside a shard, the same `undefined`-reference poisoning of subsequent tests in that shard would still happen. This change reduces the frequency (fix 1) and blast radius (fix 2) of the reported symptom; it is not a guarantee the symptom can never recur. Given issue #323's own framing ("not blocking any specific PR... worth root-causing since it costs wasted CI time"), this is treated as an acceptable, evidence-measured mitigation rather than a claimed complete fix.
+Neither the descendant-cleanup fix nor sharding eliminates the _cascade_ mechanism itself: if a teardown timeout occurs for any other reason inside a shard, the same `undefined`-reference poisoning of subsequent tests in that shard would still happen. This change reduces the frequency (fix 1) and blast radius (fix 2) of the reported symptom; it is not a guarantee the symptom can never recur. Given issue #323's own framing ("not blocking any specific PR... worth root-causing since it costs wasted CI time"), this is treated as an acceptable, evidence-measured mitigation rather than a claimed complete fix.
 
 ## Impact
 

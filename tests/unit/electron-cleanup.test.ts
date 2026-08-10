@@ -12,9 +12,11 @@ import {
  * plain `node -e` processes) matching the real flat fan-out of the Electron
  * main process (Electron Helper + the Python `bloom-hardware` subprocess).
  */
-function spawnSyntheticTree(
-  childCount: number
-): Promise<{ rootPid: number; childPids: number[]; rootProcess: ChildProcess }> {
+function spawnSyntheticTree(childCount: number): Promise<{
+  rootPid: number;
+  childPids: number[];
+  rootProcess: ChildProcess;
+}> {
   return new Promise((resolve, reject) => {
     const script = `
       const { spawn } = require('child_process');
@@ -35,7 +37,11 @@ function spawnSyntheticTree(
       rootProcess.stdout?.off('data', onData);
       try {
         const parsed = JSON.parse(buffer.slice(0, newlineIdx));
-        resolve({ rootPid: parsed.pid, childPids: parsed.children, rootProcess });
+        resolve({
+          rootPid: parsed.pid,
+          childPids: parsed.children,
+          rootProcess,
+        });
       } catch (err) {
         reject(err);
       }
@@ -106,7 +112,13 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
 
     await killDescendants(snapshot);
 
+    // SIGKILL delivery isn't synchronous with process.kill() returning —
+    // poll briefly rather than asserting immediately, to avoid a race on a
+    // loaded CI runner (this doesn't affect production correctness: the
+    // real closeElectronApp() has its own unconditional sleep(500) after
+    // killDescendants(), which already provides this grace period).
     for (const pid of childPids) {
+      await waitUntil(() => !isProcessRunning(pid));
       expect(isProcessRunning(pid)).toBe(false);
     }
   });
@@ -126,6 +138,7 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     await expect(killDescendants(snapshot)).resolves.toBeUndefined();
 
     // The other, still-running descendant must still be killed.
+    await waitUntil(() => !isProcessRunning(childPids[1]));
     expect(isProcessRunning(childPids[1])).toBe(false);
   });
 
@@ -144,7 +157,9 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
       for (const pid of pids) {
         result.set(
           pid,
-          pid === mismatched.pid ? `${mismatched.name}-not-the-same` : matched.name
+          pid === mismatched.pid
+            ? `${mismatched.name}-not-the-same`
+            : matched.name
         );
       }
       return result;
@@ -152,6 +167,7 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
 
     await killDescendants(snapshot, false, { readCurrentNames });
 
+    await waitUntil(() => !isProcessRunning(matched.pid));
     expect(isProcessRunning(matched.pid)).toBe(false);
     expect(isProcessRunning(mismatched.pid)).toBe(true);
   });
@@ -184,6 +200,7 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     await killDescendants(snapshot);
 
     for (const pid of childPids) {
+      await waitUntil(() => !isProcessRunning(pid));
       expect(isProcessRunning(pid)).toBe(false);
     }
   });
@@ -193,9 +210,10 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     spawnedPids.push(rootPid, ...childPids);
 
     const stubApp = {
-      process: () => ({ pid: rootPid }) as ReturnType<
-        NonNullable<Parameters<typeof closeElectronApp>[0]>['process']
-      >,
+      process: () =>
+        ({ pid: rootPid }) as ReturnType<
+          NonNullable<Parameters<typeof closeElectronApp>[0]>['process']
+        >,
       close: () => Promise.reject(new Error('boom')),
     } as unknown as Parameters<typeof closeElectronApp>[0];
 
@@ -204,6 +222,7 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     ).resolves.toBeUndefined();
 
     for (const pid of childPids) {
+      await waitUntil(() => !isProcessRunning(pid));
       expect(isProcessRunning(pid)).toBe(false);
     }
 
@@ -215,9 +234,10 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     spawnedPids.push(rootPid);
 
     const stubApp = {
-      process: () => ({ pid: rootPid }) as ReturnType<
-        NonNullable<Parameters<typeof closeElectronApp>[0]>['process']
-      >,
+      process: () =>
+        ({ pid: rootPid }) as ReturnType<
+          NonNullable<Parameters<typeof closeElectronApp>[0]>['process']
+        >,
       close: async () => {
         process.kill(rootPid, 'SIGTERM');
       },
@@ -230,7 +250,11 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     };
 
     await expect(
-      closeElectronApp(stubApp, { timeout: 2000 }, { snapshotDescendants: throwingSnapshot, killDescendants })
+      closeElectronApp(
+        stubApp,
+        { timeout: 2000 },
+        { snapshotDescendants: throwingSnapshot, killDescendants }
+      )
     ).resolves.toBeUndefined();
 
     expect(isProcessRunning(rootPid)).toBe(false);
