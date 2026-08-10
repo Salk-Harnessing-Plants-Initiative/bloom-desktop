@@ -53,6 +53,12 @@ vi.mock('../../../src/main/graviscan/verify-plates', () => ({
     .mockResolvedValue({ success: true, results: [], swaps: [] }),
 }));
 
+vi.mock('../../../src/main/graviscan/excel-parser', () => ({
+  parseExcelWorkbook: vi
+    .fn()
+    .mockResolvedValue({ sheetNames: [], sheets: {} }),
+}));
+
 // Mock fs for realpath validation
 vi.mock('fs', () => ({
   realpathSync: vi.fn((p: string) => p), // identity by default
@@ -69,6 +75,7 @@ import * as sessionHandlers from '../../../src/main/graviscan/session-handlers';
 import * as imageHandlers from '../../../src/main/graviscan/image-handlers';
 import * as scannerUpsert from '../../../src/main/graviscan/scanner-upsert';
 import * as verifyPlatesHandlers from '../../../src/main/graviscan/verify-plates';
+import * as excelParser from '../../../src/main/graviscan/excel-parser';
 import {
   registerGraviScanHandlers,
   _resetRegistration,
@@ -98,6 +105,7 @@ const CHANNELS = [
   'graviscan:get-scanner-status',
   'graviscan:ensure-dir',
   'graviscan:list-scan-files',
+  'graviscan:parse-excel-file',
 ];
 
 function createMockIpcMain() {
@@ -156,7 +164,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 22 IPC channels', () => {
+  it('registers all 23 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -165,7 +173,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(22);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(23);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }
@@ -236,6 +244,30 @@ describe('registerGraviScanHandlers', () => {
     it('graviscan:cancel-scan delegates to cancelScan', async () => {
       await mockIpcMain._invoke('graviscan:cancel-scan');
       expect(sessionHandlers.cancelScan).toHaveBeenCalled();
+    });
+
+    it('graviscan:parse-excel-file passes the buffer through and wraps the result', async () => {
+      vi.mocked(excelParser.parseExcelWorkbook).mockResolvedValueOnce({
+        sheetNames: ['Sheet1'],
+        sheets: { Sheet1: { headers: ['A'], rows: [['1']] } },
+      });
+      const arrayBuffer = new Uint8Array([1, 2, 3]).buffer;
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:parse-excel-file',
+        arrayBuffer
+      );
+
+      expect(excelParser.parseExcelWorkbook).toHaveBeenCalledWith(
+        Buffer.from(arrayBuffer)
+      );
+      expect(result).toEqual({
+        success: true,
+        data: {
+          sheetNames: ['Sheet1'],
+          sheets: { Sheet1: { headers: ['A'], rows: [['1']] } },
+        },
+      });
     });
 
     it('graviscan:retry-scanner wires the coordinator, db, sessionFns, and scannerId through to retryScanner, returning its result directly (not wrapHandler-wrapped)', async () => {

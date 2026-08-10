@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-
-interface WaveMetadataLink {
-  wave_number: number;
-  accession_id: string;
-  accession: { id: string; name: string };
-}
+import { useCallback, useContext, useEffect } from 'react';
+import { WaveMetadataLinksContext } from '../contexts/WaveMetadataLinksContext';
 
 /**
  * Wraps experiments.{listGraviMetadata,linkGraviMetadata,unlinkGraviMetadata}
  * for a single experiment. Shared by Experiments.tsx and ExperimentDetail.tsx
  * (design.md Decision 5) so fetch/mutate/error logic lives in one place.
+ *
+ * State itself lives in `WaveMetadataLinksProvider`, keyed by experimentId —
+ * not in this hook's own useState — so every call site watching the *same*
+ * experimentId (e.g. Experiments.tsx's attach panel and each row's
+ * `ExperimentWaveLinks`) shares one cache. A link/unlink from any one of
+ * them is immediately visible to all the others.
  *
  * `link`/`unlink` return a boolean so callers can distinguish success from
  * failure instead of assuming success — a caller that ignores the return
@@ -17,75 +18,41 @@ interface WaveMetadataLink {
  * on failure.
  */
 export function useWaveMetadataLinks(experimentId: string) {
-  const [links, setLinks] = useState<WaveMetadataLink[]>([]);
-  const [linkError, setLinkError] = useState<string | null>(null);
-
-  // Tracks the experimentId this hook instance is currently showing, so an
-  // in-flight request for a stale experimentId (e.g. after a route param or
-  // selected-experiment change) can't overwrite state with the wrong
-  // experiment's data once it resolves.
-  const currentExperimentId = useRef(experimentId);
-  currentExperimentId.current = experimentId;
-
-  const refetch = useCallback(async () => {
-    const requestedFor = experimentId;
-    const result =
-      await window.electron.database.experiments.listGraviMetadata(
-        experimentId
-      );
-    if (currentExperimentId.current !== requestedFor) return;
-    if (result.success) {
-      setLinks(result.data ?? []);
-    }
-  }, [experimentId]);
+  const ctx = useContext(WaveMetadataLinksContext);
+  if (!ctx) {
+    throw new Error(
+      'useWaveMetadataLinks must be used within a WaveMetadataLinksProvider'
+    );
+  }
+  const { linksByExperiment, errorsByExperiment, ensureFetched, link, unlink } =
+    ctx;
 
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    ensureFetched(experimentId);
+  }, [experimentId, ensureFetched]);
 
-  const link = useCallback(
-    async (waveNumber: number, accessionId: string) => {
-      const requestedFor = experimentId;
-      const result =
-        await window.electron.database.experiments.linkGraviMetadata(
-          experimentId,
-          waveNumber,
-          accessionId
-        );
-      if (currentExperimentId.current !== requestedFor) return false;
-      if (result.success) {
-        setLinkError(null);
-        await refetch();
-        return true;
-      }
-      setLinkError(result.error ?? 'Failed to link metadata file');
-      return false;
-    },
-    [experimentId, refetch]
+  const links = linksByExperiment[experimentId] ?? [];
+  const linkError = errorsByExperiment[experimentId] ?? null;
+
+  const boundLink = useCallback(
+    (waveNumber: number, accessionId: string) =>
+      link(experimentId, waveNumber, accessionId),
+    [link, experimentId]
   );
 
-  const unlink = useCallback(
-    async (waveNumber: number) => {
-      const requestedFor = experimentId;
-      const result =
-        await window.electron.database.experiments.unlinkGraviMetadata(
-          experimentId,
-          waveNumber
-        );
-      if (currentExperimentId.current !== requestedFor) return false;
-      if (result.success) {
-        setLinkError(null);
-        setLinks((prev) => prev.filter((l) => l.wave_number !== waveNumber));
-        return true;
-      }
-      setLinkError(result.error ?? 'Failed to unlink metadata file');
-      return false;
-    },
-    [experimentId]
+  const boundUnlink = useCallback(
+    (waveNumber: number) => unlink(experimentId, waveNumber),
+    [unlink, experimentId]
   );
 
   const suggestedNextWave =
     links.length === 0 ? 0 : Math.max(...links.map((l) => l.wave_number)) + 1;
 
-  return { links, linkError, link, unlink, suggestedNextWave };
+  return {
+    links,
+    linkError,
+    link: boundLink,
+    unlink: boundUnlink,
+    suggestedNextWave,
+  };
 }

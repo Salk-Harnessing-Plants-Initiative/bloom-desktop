@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Experiments } from '../../../src/renderer/Experiments';
+import { WaveMetadataLinksProvider } from '../../../src/renderer/contexts/WaveMetadataLinksContext';
+
+function renderPage(mode: 'graviscan' | 'cylinderscan') {
+  return render(
+    <WaveMetadataLinksProvider>
+      <Experiments mode={mode} />
+    </WaveMetadataLinksProvider>
+  );
+}
 
 function makeExperiment(overrides: Record<string, unknown> = {}) {
   return {
@@ -73,7 +82,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       ],
     });
     const user = userEvent.setup();
-    render(<Experiments mode="graviscan" />);
+    renderPage('graviscan');
 
     await waitFor(() => {
       expect(screen.getByText(/wave 1: batch3\.xlsx/i)).toBeInTheDocument();
@@ -102,7 +111,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       ],
     });
     const user = userEvent.setup();
-    render(<Experiments mode="graviscan" />);
+    renderPage('graviscan');
     await waitFor(() => screen.getByText(/wave 0: batch3\.xlsx/i));
 
     await user.click(screen.getByRole('button', { name: /unlink/i }));
@@ -127,7 +136,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       ],
     });
     const user = userEvent.setup();
-    render(<Experiments mode="graviscan" />);
+    renderPage('graviscan');
     await waitFor(() => screen.getByText(/wave 1: batch3\.xlsx/i));
 
     await user.click(screen.getByRole('button', { name: /unlink/i }));
@@ -158,7 +167,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       ],
     });
     const user = userEvent.setup();
-    render(<Experiments mode="graviscan" />);
+    renderPage('graviscan');
     await waitFor(() => screen.getByText(/wave 1: batch3\.xlsx/i));
 
     const unlinkButton = screen.getByRole('button', { name: /^unlink$/i });
@@ -177,7 +186,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       data: [makeExperiment({ experiment_type: 'cylinderscan' })],
     });
     const user = userEvent.setup();
-    render(<Experiments mode="cylinderscan" />);
+    renderPage('cylinderscan');
     await waitFor(() => expect(listExperiments).toHaveBeenCalled());
 
     expect(
@@ -206,7 +215,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       ],
     });
     const user = userEvent.setup();
-    render(<Experiments mode="graviscan" />);
+    renderPage('graviscan');
     await waitFor(() => expect(listFiles).toHaveBeenCalled());
 
     const waveInput = screen.getByLabelText(
@@ -244,7 +253,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       error: 'Wave already linked',
     });
     const user = userEvent.setup();
-    render(<Experiments mode="graviscan" />);
+    renderPage('graviscan');
     await waitFor(() => screen.getByText(/wave 1: batch3\.xlsx/i));
     await waitFor(() => expect(listFiles).toHaveBeenCalled());
 
@@ -254,7 +263,12 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/wave already linked/i)).toBeInTheDocument();
+      // Rendered by both the attach panel and the row's own
+      // ExperimentWaveLinks — expected now that they share state via
+      // WaveMetadataLinksProvider (PR #290 / tier5-e2e-ci-mystery notes).
+      expect(screen.getAllByText(/wave already linked/i).length).toBeGreaterThan(
+        0
+      );
     });
     expect(screen.getByText(/wave 1: batch3\.xlsx/i)).toBeInTheDocument();
     expect(

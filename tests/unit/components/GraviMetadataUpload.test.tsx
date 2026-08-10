@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ExcelJS from 'exceljs';
 import { GraviMetadataUpload } from '../../../src/renderer/components/GraviMetadataUpload';
+import { parseExcelWorkbook } from '../../../src/main/graviscan/excel-parser';
 
 const HEADERS = [
   'Plate ID',
@@ -41,6 +42,25 @@ describe('GraviMetadataUpload', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = global.window as any;
     win.electron.database.graviPlateAccessions = { createWithSections };
+    // The component now delegates parsing to the main process (exceljs's
+    // browser bundle isn't actually renderer-safe — see excel-parser.ts).
+    // Route the mocked IPC call through the real parser so these tests
+    // still exercise real parsing behavior against real .xlsx buffers.
+    win.electron.gravi = {
+      parseExcelFile: vi.fn(async (buffer: ArrayBuffer) => {
+        try {
+          return {
+            success: true,
+            data: await parseExcelWorkbook(Buffer.from(buffer)),
+          };
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }),
+    };
   });
 
   function renderUpload() {

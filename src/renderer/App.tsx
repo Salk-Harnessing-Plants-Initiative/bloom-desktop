@@ -25,14 +25,10 @@ import { BrowseGraviScans } from './BrowseGraviScans';
 import { ExperimentDetail } from './ExperimentDetail';
 import { useAppMode } from './hooks/useAppMode';
 import { UploadStatusProvider } from './contexts/UploadStatusContext';
+import { WaveMetadataLinksProvider } from './contexts/WaveMetadataLinksContext';
 
-// Lazy-loaded: Metadata pulls in exceljs, which has a `require()` call
-// that survives webpack bundling and throws "require is not defined" in
-// Electron's sandboxed renderer. Statically importing it here poisoned
-// the *entire* app on every launch, in every mode. Lazy-loading confines
-// that crash to only when a GraviScan-mode user actually opens Metadata —
-// exceljs's webpack resolution still needs a real fix (see PR #290 /
-// tier5-e2e-ci-mystery notes) before Metadata's Excel import will work.
+// Lazy-loaded: Metadata is GraviScan-only, so there's no reason to bundle
+// it (and its Excel-parsing UI) into every mode's initial load.
 const Metadata = lazy(() =>
   import('./Metadata').then((m) => ({ default: m.Metadata }))
 );
@@ -62,63 +58,74 @@ export default function App() {
 
   return (
     <UploadStatusProvider>
-      <Router initialEntries={['/']}>
-        <Routes>
-          <Route path="/" element={<Layout mode={mode} />}>
-            <Route index element={<Home mode={mode} />} />
+      <WaveMetadataLinksProvider>
+        <Router initialEntries={['/']}>
+          <Routes>
+            <Route path="/" element={<Layout mode={mode} />}>
+              <Route index element={<Home mode={mode} />} />
 
-            {/* Capture routes — conditional on scanner mode */}
-            {mode === 'cylinderscan' && (
-              <>
-                <Route path="camera-settings" element={<CameraSettings />} />
-                <Route path="capture-scan" element={<CaptureScan />} />
-                <Route path="accessions" element={<Accessions />} />
-              </>
-            )}
+              {/* Capture routes — conditional on scanner mode */}
+              {mode === 'cylinderscan' && (
+                <>
+                  <Route
+                    path="camera-settings"
+                    element={<CameraSettings />}
+                  />
+                  <Route path="capture-scan" element={<CaptureScan />} />
+                  <Route path="accessions" element={<Accessions />} />
+                </>
+              )}
 
-            {mode === 'graviscan' && (
-              <>
-                <Route
-                  path="configure-scanner"
-                  element={<ConfigureScanner />}
-                />
-                <Route
-                  path="browse-graviscans"
-                  element={<BrowseGraviScans />}
-                />
-                <Route
-                  path="graviscan-experiment/:experimentId"
-                  element={<ExperimentDetail />}
-                />
-                <Route
-                  path="metadata"
-                  element={
-                    <Suspense fallback={<div>Loading...</div>}>
-                      <Metadata />
-                    </Suspense>
-                  }
-                />
-              </>
-            )}
+              {mode === 'graviscan' && (
+                <>
+                  <Route
+                    path="configure-scanner"
+                    element={<ConfigureScanner />}
+                  />
+                  <Route
+                    path="browse-graviscans"
+                    element={<BrowseGraviScans />}
+                  />
+                  <Route
+                    path="graviscan-experiment/:experimentId"
+                    element={<ExperimentDetail />}
+                  />
+                  <Route
+                    path="metadata"
+                    element={
+                      <Suspense fallback={<div>Loading...</div>}>
+                        <Metadata />
+                      </Suspense>
+                    }
+                  />
+                </>
+              )}
 
-            {/* Data entry routes — available for all modes */}
-            <Route path="scientists" element={<Scientists />} />
-            <Route path="phenotypers" element={<Phenotypers />} />
-            <Route path="experiments" element={<Experiments mode={mode} />} />
+              {/* Data entry routes — available for all modes */}
+              <Route path="scientists" element={<Scientists />} />
+              <Route path="phenotypers" element={<Phenotypers />} />
+              <Route
+                path="experiments"
+                element={<Experiments mode={mode} />}
+              />
 
-            {/* Browse routes — always visible */}
-            <Route path="browse-scans" element={<BrowseScans />} />
-            <Route path="scan/:scanId" element={<ScanPreview />} />
-            <Route path="export" element={<Export />} />
+              {/* Browse routes — always visible */}
+              <Route path="browse-scans" element={<BrowseScans />} />
+              <Route path="scan/:scanId" element={<ScanPreview />} />
+              <Route path="export" element={<Export />} />
 
-            {/* Config */}
-            <Route path="machine-config" element={<MachineConfiguration />} />
+              {/* Config */}
+              <Route
+                path="machine-config"
+                element={<MachineConfiguration />}
+              />
 
-            {/* Catch-all redirect */}
-            <Route path="*" element={<Navigate to="/" />} />
-          </Route>
-        </Routes>
-      </Router>
+              {/* Catch-all redirect */}
+              <Route path="*" element={<Navigate to="/" />} />
+            </Route>
+          </Routes>
+        </Router>
+      </WaveMetadataLinksProvider>
     </UploadStatusProvider>
   );
 }

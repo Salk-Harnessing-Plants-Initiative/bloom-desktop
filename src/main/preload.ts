@@ -433,6 +433,8 @@ const graviAPI = {
     ipcRenderer.invoke('graviscan:ensure-dir', dirPath),
   listScanFiles: (dirPath?: string) =>
     ipcRenderer.invoke('graviscan:list-scan-files', dirPath),
+  parseExcelFile: (buffer: ArrayBuffer) =>
+    ipcRenderer.invoke('graviscan:parse-excel-file', buffer),
 
   // Event listeners with cleanup functions
   onScanStarted: (callback: (event: any) => void) => {

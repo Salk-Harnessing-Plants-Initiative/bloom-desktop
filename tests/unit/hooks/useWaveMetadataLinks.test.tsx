@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useWaveMetadataLinks } from '../../../src/renderer/hooks/useWaveMetadataLinks';
+import { WaveMetadataLinksProvider } from '../../../src/renderer/contexts/WaveMetadataLinksContext';
 
 function makeLink(waveNumber: number, accessionName = 'file.xlsx') {
   return {
@@ -35,7 +36,9 @@ describe('useWaveMetadataLinks', () => {
       data: [makeLink(0), makeLink(2)],
     });
 
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
 
     await waitFor(() => expect(result.current.links).toHaveLength(2));
     expect(listGraviMetadata).toHaveBeenCalledWith('exp-1');
@@ -47,21 +50,27 @@ describe('useWaveMetadataLinks', () => {
       data: [makeLink(0), makeLink(2)],
     });
 
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
 
     await waitFor(() => expect(result.current.links).toHaveLength(2));
     expect(result.current.suggestedNextWave).toBe(3);
   });
 
   it('suggestedNextWave is 0 when links is empty', async () => {
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
 
     await waitFor(() => expect(listGraviMetadata).toHaveBeenCalled());
     expect(result.current.suggestedNextWave).toBe(0);
   });
 
   it('link() calls linkGraviMetadata and refetches links on success', async () => {
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
     await waitFor(() => expect(listGraviMetadata).toHaveBeenCalledTimes(1));
 
     listGraviMetadata.mockResolvedValue({
@@ -84,7 +93,9 @@ describe('useWaveMetadataLinks', () => {
       success: false,
       error: 'Wave already linked',
     });
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
     await waitFor(() => expect(listGraviMetadata).toHaveBeenCalledTimes(1));
 
     await act(async () => {
@@ -100,7 +111,9 @@ describe('useWaveMetadataLinks', () => {
       success: true,
       data: [makeLink(0), makeLink(2)],
     });
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
     await waitFor(() => expect(result.current.links).toHaveLength(2));
 
     await act(async () => {
@@ -121,7 +134,9 @@ describe('useWaveMetadataLinks', () => {
       success: true,
       data: [makeLink(0)],
     });
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
     await waitFor(() => expect(result.current.links).toHaveLength(1));
 
     await act(async () => {
@@ -133,7 +148,9 @@ describe('useWaveMetadataLinks', () => {
   });
 
   it('link() resolves true on success and false on failure', async () => {
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
     await waitFor(() => expect(listGraviMetadata).toHaveBeenCalledTimes(1));
 
     let linkResult: boolean | undefined;
@@ -157,7 +174,9 @@ describe('useWaveMetadataLinks', () => {
       success: true,
       data: [makeLink(0)],
     });
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'));
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
     await waitFor(() => expect(result.current.links).toHaveLength(1));
 
     unlinkGraviMetadata.mockResolvedValue({ success: false, error: 'nope' });
@@ -188,7 +207,10 @@ describe('useWaveMetadataLinks', () => {
 
     const { result, rerender } = renderHook(
       ({ experimentId }) => useWaveMetadataLinks(experimentId),
-      { initialProps: { experimentId: 'exp-1' } }
+      {
+        initialProps: { experimentId: 'exp-1' },
+        wrapper: WaveMetadataLinksProvider,
+      }
     );
 
     rerender({ experimentId: 'exp-2' });

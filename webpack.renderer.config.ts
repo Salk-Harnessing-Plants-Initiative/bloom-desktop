@@ -27,15 +27,5 @@ export const rendererConfig: Configuration = {
   plugins,
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css'],
-    alias: {
-      // exceljs's default `main` entry is Node-oriented and retains a
-      // require() call that survives bundling, throwing
-      // "ReferenceError: require is not defined" in Electron's sandboxed
-      // renderer. Its package.json already ships a purpose-built browser
-      // bundle (the `browser` field) — alias directly to it since
-      // webpack's default `resolve.mainFields` for this build doesn't
-      // pick it up on its own.
-      exceljs: require.resolve('exceljs/dist/exceljs.min.js'),
-    },
   },
 };

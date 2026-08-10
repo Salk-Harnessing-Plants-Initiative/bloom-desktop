@@ -1,7 +1,7 @@
 /**
  * GraviScan IPC Handler Registration
  *
- * Wraps pure handler functions with ipcMain.handle() for 22 IPC channels.
+ * Wraps pure handler functions with ipcMain.handle() for 23 IPC channels.
  * This is the ONLY file where ipcMain.handle() calls exist for GraviScan.
  *
  * This is also where coordinator-aware orchestration around the DB-only
@@ -22,6 +22,7 @@ import * as sessionHandlers from './session-handlers';
 import * as imageHandlers from './image-handlers';
 import * as scannerUpsert from './scanner-upsert';
 import * as verifyPlatesHandlers from './verify-plates';
+import * as excelParser from './excel-parser';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
 
@@ -561,6 +562,14 @@ export function registerGraviScanHandlers(
         onProgress
       );
     }
+  );
+
+  // --- Metadata spreadsheet parsing ---
+  // Runs in the main process, not the renderer — see excel-parser.ts's
+  // doc comment for why (exceljs's browser bundle isn't actually
+  // renderer-safe).
+  ipcMain.handle('graviscan:parse-excel-file', (_event, buffer: ArrayBuffer) =>
+    wrapHandler(() => excelParser.parseExcelWorkbook(Buffer.from(buffer)))()
   );
 }
 

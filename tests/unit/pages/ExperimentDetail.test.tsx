@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ExperimentDetail } from '../../../src/renderer/ExperimentDetail';
+import { WaveMetadataLinksProvider } from '../../../src/renderer/contexts/WaveMetadataLinksContext';
 
 function makeScan(overrides: Record<string, unknown> = {}) {
   return {
@@ -73,14 +74,18 @@ describe('ExperimentDetail', () => {
 
   function renderPage(experimentId = 'exp-1') {
     return render(
-      <MemoryRouter initialEntries={[`/graviscan-experiment/${experimentId}`]}>
-        <Routes>
-          <Route
-            path="/graviscan-experiment/:experimentId"
-            element={<ExperimentDetail />}
-          />
-        </Routes>
-      </MemoryRouter>
+      <WaveMetadataLinksProvider>
+        <MemoryRouter
+          initialEntries={[`/graviscan-experiment/${experimentId}`]}
+        >
+          <Routes>
+            <Route
+              path="/graviscan-experiment/:experimentId"
+              element={<ExperimentDetail />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </WaveMetadataLinksProvider>
     );
   }
 

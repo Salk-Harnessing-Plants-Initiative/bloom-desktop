@@ -9,6 +9,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { BrowseGraviScans } from '../../../src/renderer/BrowseGraviScans';
+import { WaveMetadataLinksProvider } from '../../../src/renderer/contexts/WaveMetadataLinksContext';
 
 function makeExperiment(overrides: Record<string, unknown> = {}) {
   return {
@@ -91,9 +92,11 @@ describe('BrowseGraviScans', () => {
 
   function renderPage() {
     return render(
-      <MemoryRouter>
-        <BrowseGraviScans />
-      </MemoryRouter>
+      <WaveMetadataLinksProvider>
+        <MemoryRouter>
+          <BrowseGraviScans />
+        </MemoryRouter>
+      </WaveMetadataLinksProvider>
     );
   }
 

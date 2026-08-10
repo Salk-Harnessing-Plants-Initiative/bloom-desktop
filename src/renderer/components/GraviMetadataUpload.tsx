@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import ExcelJS from 'exceljs';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const PREVIEW_ROW_LIMIT = 20;
@@ -35,39 +34,15 @@ function guessMapping(headers: string[]): Record<string, string> {
   return mapping;
 }
 
-function parseWorksheet(worksheet: ExcelJS.Worksheet): ParsedSheet {
-  const headerRow = worksheet.getRow(1);
-  const headers: string[] = [];
-  headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-    headers[colNumber - 1] = String(cell.value ?? '');
-  });
-
-  const rows: string[][] = [];
-  worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    const values: string[] = [];
-    for (let i = 1; i <= headers.length; i++) {
-      const cell = row.getCell(i);
-      const value = cell.value;
-      values[i - 1] =
-        value instanceof Date
-          ? value.toISOString().split('T')[0]
-          : value !== null && value !== undefined
-            ? String(value)
-            : '';
-    }
-    rows.push(values);
-  });
-
-  return { headers, rows };
-}
-
 export function GraviMetadataUpload({
   onUploadComplete,
 }: GraviMetadataUploadProps) {
   const [error, setError] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<string[]>([]);
-  const [workbook, setWorkbook] = useState<ExcelJS.Workbook | null>(null);
+  const [sheetsByName, setSheetsByName] = useState<Record<
+    string,
+    ParsedSheet
+  > | null>(null);
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [selectedSheet, setSelectedSheet] = useState<string>('');
   const [sheet, setSheet] = useState<ParsedSheet | null>(null);
@@ -76,7 +51,7 @@ export function GraviMetadataUpload({
   const [done, setDone] = useState(false);
 
   const reset = () => {
-    setWorkbook(null);
+    setSheetsByName(null);
     setSheetNames([]);
     setSelectedSheet('');
     setSheet(null);
@@ -86,10 +61,12 @@ export function GraviMetadataUpload({
     setRowErrors([]);
   };
 
-  const loadSheet = (wb: ExcelJS.Workbook, sheetName: string): boolean => {
-    const worksheet = wb.getWorksheet(sheetName);
-    if (!worksheet) return false;
-    const parsed = parseWorksheet(worksheet);
+  const loadSheet = (
+    sheets: Record<string, ParsedSheet>,
+    sheetName: string
+  ): boolean => {
+    const parsed = sheets[sheetName];
+    if (!parsed) return false;
     if (parsed.rows.length === 0) {
       setError('No data to import — the sheet has no data rows');
       setSheet(null);
@@ -117,26 +94,30 @@ export function GraviMetadataUpload({
     }
 
     const buffer = await file.arrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
-    if (wb.worksheets.length === 0) {
+    const result = await window.electron.gravi.parseExcelFile(buffer);
+    if (!result.success || !result.data) {
+      setError(result.error || 'Failed to parse spreadsheet');
+      return;
+    }
+    const { sheetNames: parsedSheetNames, sheets } = result.data;
+    if (parsedSheetNames.length === 0) {
       setError('No data to import — the file has no sheets');
       return;
     }
 
     setFileName(file.name);
-    setWorkbook(wb);
-    setSheetNames(wb.worksheets.map((ws) => ws.name));
-    const firstSheetName = wb.worksheets[0].name;
+    setSheetsByName(sheets);
+    setSheetNames(parsedSheetNames);
+    const firstSheetName = parsedSheetNames[0];
     setSelectedSheet(firstSheetName);
-    loadSheet(wb, firstSheetName);
+    loadSheet(sheets, firstSheetName);
   };
 
   const handleSheetChange = (sheetName: string) => {
     setSelectedSheet(sheetName);
     setRowErrors([]);
-    if (workbook) {
-      loadSheet(workbook, sheetName);
+    if (sheetsByName) {
+      loadSheet(sheetsByName, sheetName);
     }
   };
 

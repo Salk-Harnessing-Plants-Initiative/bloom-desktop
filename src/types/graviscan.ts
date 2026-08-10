@@ -448,6 +448,23 @@ export interface ScanSessionJob {
   durationMs?: number;
 }
 
+/** A single parsed worksheet from a metadata spreadsheet upload. */
+export interface ParsedSheet {
+  headers: string[];
+  rows: string[][];
+}
+
+/**
+ * Result of `graviscan:parse-excel-file` (`excel-parser.ts#parseExcelWorkbook`).
+ * Parsing runs in the main process — exceljs's browser bundle has a
+ * require() call that survives webpack bundling and throws in the
+ * renderer's sandbox.
+ */
+export interface ParsedWorkbook {
+  sheetNames: string[];
+  sheets: Record<string, ParsedSheet>;
+}
+
 export interface ScanSessionState {
   isActive: boolean;
   isContinuous: boolean;

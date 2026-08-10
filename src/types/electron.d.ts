@@ -51,6 +51,7 @@ import {
   GetScanStatusResult,
   GraviConfigInput,
   GraviWedgeEvent,
+  ParsedWorkbook,
 } from './graviscan';
 import type {
   GraviScanCreateInput,
@@ -716,6 +717,18 @@ export interface GraviAPI {
   listScanFiles: (
     dirPath?: string
   ) => Promise<{ success: boolean; files: string[]; error?: string }>;
+  /**
+   * Parses an uploaded metadata spreadsheet in the main process (exceljs
+   * has a require() call embedded in its own "browser" bundle that throws
+   * in the renderer's sandbox — see excel-parser.ts).
+   */
+  parseExcelFile: (
+    buffer: ArrayBuffer
+  ) => Promise<{
+    success: boolean;
+    data?: ParsedWorkbook;
+    error?: string;
+  }>;
 
   // Event listeners (return cleanup functions)
   onScanStarted: (callback: (event: any) => void) => () => void;
