@@ -913,8 +913,12 @@ child (found: [object Date])`, crashing the Metadata page whenever
       `prettier --check` all clean on the changed file; pushed for CI
       confirmation (E2E tests can't run locally without launching
       Electron, which this session was told not to do without asking).
+      **CI-confirmed, all 3 OSes**: this test now passes deterministically
+      (ubuntu 4.4s, macOS 7.0s, Windows 6.4s — no timeout, no retry
+      needed).
 
-      Candidate bug 5 — `global upload-progress indicator persists
+      **Candidate bug 5 — untouched, per explicit direction to fix bug 4
+      only, not bug 5.** `global upload-progress indicator persists
       across navigation...` fails earlier, at
       `window.waitForSelector('text=Box backup unavailable')` (line 273)
       after clicking "Backup to Box", before the test ever reaches its
