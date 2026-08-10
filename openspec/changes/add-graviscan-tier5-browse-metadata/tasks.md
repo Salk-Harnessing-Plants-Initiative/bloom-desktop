@@ -770,3 +770,78 @@ round, since nothing beyond the two items below surfaced.
       files in isolation — check gate after 13.12. (Clean; 41/41 across
       `ExperimentDetail.test.tsx`/`Experiments.test.tsx`/
       `BrowseGraviScans.test.tsx`.)
+
+## 14. E2E CI investigation (12.4's blocker) — three real bugs found in sequence, two fixed
+
+12.4 (full E2E suite) was blocked by every single test failing on this
+branch's CI, from the first test, in unrelated files, across all 3 OSes.
+Root-caused via diagnostic instrumentation (temporary `pageerror`/`console`
+capture + main-process stdout/stderr piping added to E2E spec files,
+still in place — genuinely useful, kept rather than reverted) rather than
+guesswork. Historical framing in earlier drafts of this doc (an
+`app.on('ready')`/`waitUntilReady()` timeout) was **wrong** — never
+verified against real error text, since no prior CI run ever printed
+per-test failures. TDD used for both real fixes below.
+
+- [x] 14.1 **exceljs crashes the entire renderer on every launch,
+      `ReferenceError: require is not defined`.**
+      `App.tsx` statically imported `Metadata.tsx` →
+      `GraviMetadataUpload.tsx` → `exceljs`; exceljs's own "browser"
+      bundle (`dist/exceljs.min.js`) still has an internal Browserify
+      module-loader fallback that calls the real Node `require()` for an
+      unbundled dependency, which doesn't exist in Electron's sandboxed
+      renderer. This crashed the renderer script before `ReactDOM.render()`
+      ever ran — for every mode, every route, every test, not just
+      Metadata. A first attempt (webpack `resolve.alias` pointing at the
+      browser bundle) reduced but did not fix this — the browser bundle
+      itself is the broken one. Real fix: moved parsing into the main
+      process (new `graviscan:parse-excel-file` IPC channel,
+      `src/main/graviscan/excel-parser.ts`, real Node `require()` — no
+      bundling involved) and `GraviMetadataUpload.tsx` now sends the raw
+      file buffer and gets back plain parsed data.
+      `App.tsx`'s `Metadata` route stayed lazy-loaded (a legitimate
+      bundle-size win independent of this bug now). Verified: zero
+      `exceljs`/`ExcelJS` references and zero raw `require()` calls
+      anywhere in the packaged renderer bundle (`electron-forge package`
+      + `asar extract` + grep); zero `pageerror` events in CI afterward.
+- [x] 14.2 **Linking a wave via the attach panel never updated that
+      experiment's own row display.** `Experiments.tsx`'s attach panel
+      and each row's `ExperimentWaveLinks` each ran an independent
+      `useWaveMetadataLinks(experimentId)` instance with its own
+      `useState` — two separate copies of "what's linked" for the same
+      experiment. Linking through the attach panel only refetched its
+      own copy; the row's copy never learned anything changed. This is
+      what made `graviscan-experiments-wave-linking.e2e.ts`'s
+      link-then-unlink test hang forever waiting for the newly-linked
+      wave's Unlink button to appear. Fixed by moving the hook's state
+      into a new `WaveMetadataLinksProvider`
+      (`src/renderer/contexts/WaveMetadataLinksContext.tsx`, mirroring
+      the existing `UploadStatusContext` precedent), keyed by
+      `experimentId` so every call site watching the same experiment
+      shares one cache. `useWaveMetadataLinks`'s public API is
+      unchanged. Verified via CI: the wave-linking E2E test now passes.
+- [ ] 14.3 **New, third, independent bug surfaced once 14.1/14.2 cleared
+      the way** — not yet fixed. `Error: Objects are not valid as a React
+      child (found: [object Date])`, crashing the Metadata page whenever
+      `GraviMetadataList` actually renders. `database-handlers.ts`'s
+      `graviPlateAccessionsListFiles()` (~line 831) sends Prisma's raw
+      `createdAt` field (a real `Date` object) straight over IPC —
+      Electron's structured-clone IPC preserves `Date` instances rather
+      than stringifying them. `GraviMetadataList.tsx`'s own local
+      `MetadataFile` interface declares `createdAt: string` (never
+      validated against the real runtime shape) and renders
+      `{file.createdAt}` directly as a JSX child at line 78, which React
+      refuses for a raw `Date`. The existing unit test
+      (`tests/unit/components/GraviMetadataList.test.tsx`) mocks
+      `createdAt` as an ISO string, masking this entirely — a new test
+      needs a real `Date` object (or to go through the real handler) to
+      catch it. All three bugs were invisible until the ones before them
+      stopped blocking the render path first.
+- [ ] 14.4 Once 14.3 is fixed, confirm 12.4 (full E2E suite, all 3 OSes)
+      finally goes green, and complete 12.6 (manual golden-path
+      walkthrough) if feasible.
+- [ ] 14.5 Diagnostic-only test instrumentation (`electron-main
+      stdout`/`stderr` piping and `pageerror`/`console` listeners in
+      several `tests/e2e/*.e2e.ts` files) is still in place — decide
+      whether to keep permanently (it proved genuinely useful three times
+      over) or trim back once 14.3 lands and the suite is fully green.
