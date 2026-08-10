@@ -91,6 +91,20 @@ async function launchElectronApp() {
     } as Record<string, string>,
   });
 
+  // TEMPORARY DIAGNOSTIC: main-process console.log/warn/error (e.g.
+  // '[GraviScan:UPLOAD]', '[BoxBackup]') never appeared in CI output for
+  // this file's Box-backup test, because this file only ever captured
+  // renderer-side pageerror/console below, never the Electron main
+  // process's own stdout/stderr. Added per the pattern in
+  // tests/e2e/accession-excel-upload.e2e.ts — remove once the Box-backup
+  // investigation (candidate bug 5, PR #290) is resolved.
+  electronApp.process().stdout?.on('data', (data) => {
+    console.log(`[electron-main stdout] ${data.toString().trimEnd()}`);
+  });
+  electronApp.process().stderr?.on('data', (data) => {
+    console.log(`[electron-main stderr] ${data.toString().trimEnd()}`);
+  });
+
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
 
