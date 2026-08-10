@@ -865,9 +865,59 @@ child (found: [object Date])`, crashing the Metadata page whenever
       above (unrelated: `image-uploader.test.ts`,
       `scan-coordinator.test.ts`) — no new failures introduced. Pushed to
       CI for the authoritative real-Electron E2E confirmation (see 14.4).
+      The first push's CI run also failed Lint (this branch had drifted
+      behind `main` since before `main`'s own PR #319 Prettier-drift fix,
+      so `format:check` failed on files this branch never touched) and
+      showed a `Test - TypeScript Unit` failure in
+      `ExperimentDetail.test.tsx` unrelated to this change (doesn't
+      import anything touched here; passed 3/3 locally in isolation; a
+      _different_ unrelated test file failed wholesale on the prior CI
+      run before this fix too) — consistent with pre-existing CI-only
+      flakiness in that job, not a regression. Merged `origin/main`
+      (4 commits, all CI/docs/formatting, no conflicts) to pick up PR
+      #319; that alone didn't fully resolve it since a later commit on
+      `main` itself (the pr-checks-concurrency-control archive) re-drifted
+      the same file, so fixed that directly too (whitespace-only).
+      **CI-confirmed on the resulting push, all 3 OSes**: the exact test
+      14.3 was written to fix,
+      `graviscan-browse-metadata.e2e.ts` › "Metadata page lists the
+      seeded file", now passes deterministically on ubuntu-latest,
+      macos-latest, and windows-latest — the `[object Date]` crash is
+      gone.
 - [ ] 14.4 Once 14.3 is fixed, confirm 12.4 (full E2E suite, all 3 OSes)
       finally goes green, and complete 12.6 (manual golden-path
-      walkthrough) if feasible.
+      walkthrough) if feasible. **Not yet green.** Two more tests in the
+      same spec file fail, deterministically and identically on all 3
+      OSes, for reasons unrelated to 14.3's Date bug.
+
+      Candidate bug 4 — `"Metadata" and "Browse GraviScans" workflow
+      steps/nav resolve to the new routes...` fails at
+      `window.waitForURL(/\/metadata$/)` (line 262) with a 30s timeout.
+      `App.tsx` renders routes inside a `MemoryRouter`
+      (`src/renderer/App.tsx` ~line 61), which never touches the real
+      window/page URL — so `waitForURL` targeting a route path can never
+      resolve regardless of whether navigation itself is correct. This
+      is the only `waitForURL` call anywhere in `tests/e2e/` (grepped);
+      every other E2E test asserts on rendered content instead. Looks
+      like a test-authoring mismatch with the app's actual routing
+      architecture, not an app bug — unconfirmed, not yet investigated
+      to the same root-cause standard as 14.1-3.
+
+      Candidate bug 5 — `global upload-progress indicator persists
+      across navigation...` fails earlier, at
+      `window.waitForSelector('text=Box backup unavailable')` (line 273)
+      after clicking "Backup to Box", before the test ever reaches its
+      actual Metadata-navigation assertion. Unrelated to Metadata/Date
+      entirely; looks like a distinct pre-existing issue in the
+      Box-backup/rclone friendly-error-message path. Not investigated.
+
+      Neither was reachable before 14.3 landed (the whole page crashed
+      first), so — consistent with 14.1/14.2/14.3's pattern — these were
+      always latent, just never exposed until now. Left for a follow-up
+      decision rather than fixed unilaterally, since both are outside
+      14.3's actual scope (the `[object Date]` crash) and the second one
+      touches an entirely different feature area.
+
 - [ ] 14.5 Diagnostic-only test instrumentation (`electron-main
 stdout`/`stderr` piping and `pageerror`/`console` listeners in
       several `tests/e2e/*.e2e.ts` files) is still in place — decide
