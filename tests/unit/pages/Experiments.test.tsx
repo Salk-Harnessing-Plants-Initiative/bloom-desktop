@@ -266,9 +266,9 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       // Rendered by both the attach panel and the row's own
       // ExperimentWaveLinks — expected now that they share state via
       // WaveMetadataLinksProvider (PR #290 / tier5-e2e-ci-mystery notes).
-      expect(screen.getAllByText(/wave already linked/i).length).toBeGreaterThan(
-        0
-      );
+      expect(
+        screen.getAllByText(/wave already linked/i).length
+      ).toBeGreaterThan(0);
     });
     expect(screen.getByText(/wave 1: batch3\.xlsx/i)).toBeInTheDocument();
     expect(

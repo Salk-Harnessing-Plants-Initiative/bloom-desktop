@@ -67,10 +67,7 @@ export default function App() {
               {/* Capture routes — conditional on scanner mode */}
               {mode === 'cylinderscan' && (
                 <>
-                  <Route
-                    path="camera-settings"
-                    element={<CameraSettings />}
-                  />
+                  <Route path="camera-settings" element={<CameraSettings />} />
                   <Route path="capture-scan" element={<CaptureScan />} />
                   <Route path="accessions" element={<Accessions />} />
                 </>
@@ -104,10 +101,7 @@ export default function App() {
               {/* Data entry routes — available for all modes */}
               <Route path="scientists" element={<Scientists />} />
               <Route path="phenotypers" element={<Phenotypers />} />
-              <Route
-                path="experiments"
-                element={<Experiments mode={mode} />}
-              />
+              <Route path="experiments" element={<Experiments mode={mode} />} />
 
               {/* Browse routes — always visible */}
               <Route path="browse-scans" element={<BrowseScans />} />
@@ -115,10 +109,7 @@ export default function App() {
               <Route path="export" element={<Export />} />
 
               {/* Config */}
-              <Route
-                path="machine-config"
-                element={<MachineConfiguration />}
-              />
+              <Route path="machine-config" element={<MachineConfiguration />} />
 
               {/* Catch-all redirect */}
               <Route path="*" element={<Navigate to="/" />} />

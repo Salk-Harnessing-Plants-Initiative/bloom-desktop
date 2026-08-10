@@ -722,9 +722,7 @@ export interface GraviAPI {
    * has a require() call embedded in its own "browser" bundle that throws
    * in the renderer's sandbox — see excel-parser.ts).
    */
-  parseExcelFile: (
-    buffer: ArrayBuffer
-  ) => Promise<{
+  parseExcelFile: (buffer: ArrayBuffer) => Promise<{
     success: boolean;
     data?: ParsedWorkbook;
     error?: string;

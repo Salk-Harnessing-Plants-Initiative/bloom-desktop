@@ -54,9 +54,7 @@ vi.mock('../../../src/main/graviscan/verify-plates', () => ({
 }));
 
 vi.mock('../../../src/main/graviscan/excel-parser', () => ({
-  parseExcelWorkbook: vi
-    .fn()
-    .mockResolvedValue({ sheetNames: [], sheets: {} }),
+  parseExcelWorkbook: vi.fn().mockResolvedValue({ sheetNames: [], sheets: {} }),
 }));
 
 // Mock fs for realpath validation
