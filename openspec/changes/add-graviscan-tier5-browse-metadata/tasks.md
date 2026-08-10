@@ -802,8 +802,7 @@ per-test failures. TDD used for both real fixes below.
       `App.tsx`'s `Metadata` route stayed lazy-loaded (a legitimate
       bundle-size win independent of this bug now). Verified: zero
       `exceljs`/`ExcelJS` references and zero raw `require()` calls
-      anywhere in the packaged renderer bundle (`electron-forge package`
-      + `asar extract` + grep); zero `pageerror` events in CI afterward.
+      anywhere in the packaged renderer bundle (`electron-forge package` + `asar extract` + grep); zero `pageerror` events in CI afterward.
 - [x] 14.2 **Linking a wave via the attach panel never updated that
       experiment's own row display.** `Experiments.tsx`'s attach panel
       and each row's `ExperimentWaveLinks` each ran an independent
@@ -822,7 +821,7 @@ per-test failures. TDD used for both real fixes below.
       unchanged. Verified via CI: the wave-linking E2E test now passes.
 - [x] 14.3 **New, third, independent bug surfaced once 14.1/14.2 cleared
       the way** — now fixed. `Error: Objects are not valid as a React
-      child (found: [object Date])`, crashing the Metadata page whenever
+child (found: [object Date])`, crashing the Metadata page whenever
       `GraviMetadataList` actually renders. `database-handlers.ts`'s
       `graviPlateAccessionsListFiles()` (~line 831) sends Prisma's raw
       `createdAt` field (a real `Date` object) straight over IPC —
@@ -860,7 +859,7 @@ per-test failures. TDD used for both real fixes below.
       contract so a future accidental serialization change is caught
       immediately rather than three bugs deep again. Verified locally:
       `npx tsc --noEmit -p .` clean, `npm run lint` clean, `npx prettier
-      --check` clean, both affected unit test files green (4/4 and
+--check` clean, both affected unit test files green (4/4 and
       86/86), and the full `tests/unit` suite shows only the 5
       pre-existing Windows path-separator failures already documented
       above (unrelated: `image-uploader.test.ts`,
@@ -870,7 +869,7 @@ per-test failures. TDD used for both real fixes below.
       finally goes green, and complete 12.6 (manual golden-path
       walkthrough) if feasible.
 - [ ] 14.5 Diagnostic-only test instrumentation (`electron-main
-      stdout`/`stderr` piping and `pageerror`/`console` listeners in
+stdout`/`stderr` piping and `pageerror`/`console` listeners in
       several `tests/e2e/*.e2e.ts` files) is still in place — decide
       whether to keep permanently (it proved genuinely useful three times
       over) or trim back once 14.3 lands and the suite is fully green.
