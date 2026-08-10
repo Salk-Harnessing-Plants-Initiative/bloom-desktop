@@ -22,6 +22,15 @@ Commit as one unit (1.1-1.10) — 1.1-1.7 are intentionally failing tests, not i
     Re-run `npm run test:unit` (full suite) and confirm 1.7's two end-to-end cases now pass, with no regression elsewhere.
 - [x] 1.10 Run `npm run lint` and `npx tsc --noEmit` (or the project's typecheck command) on the modified/new files.
 
+## 1a. Post-implementation fix: enumerate the full descendant tree, not just direct children
+
+This PR's first real CI run (see PR #324) exposed that the "flat, one-level fan-out" premise behind 1.1-1.10 was wrong: the Windows runner's own orphan-cleanup step reported a leftover `bloom-hardware` process in every E2E shard, pass or fail — meaning direct-children-only enumeration was silently missing it in real CI despite passing locally. Root cause: `python/main.spec` builds `bloom-hardware` as a PyInstaller **onefile** executable, whose bootloader can run the real interpreter as a further child process rather than in-process — so the process Electron actually needs cleaned up can be a grandchild, not a direct child. See `design.md`'s "Round 4" note for the full account, including why 3 rounds of source-code-based review didn't catch this (it's a packaging/runtime question, not a source-code question).
+
+- [x] 1a.1 Add `tests/unit/electron-cleanup.test.ts` cases proving the gap and the fix: extend the synthetic tree helper so the first child can itself spawn further children (modeling the onefile-bootloader nesting), then assert both `snapshotDescendants()` and the full snapshot→kill flow reach those grandchildren, not just the direct children.
+- [x] 1a.2 Rework `snapshotDescendants()` in `tests/e2e/helpers/electron-cleanup.ts` to read the full system process table once (unfiltered `ps -eo pid,ppid,comm` / `Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name`), build a parent→children adjacency list, and breadth-first-walk from the main PID to collect every transitive descendant. `killDescendants()` and the name-recheck logic are unchanged — they already operate generically on whatever list they're given, regardless of depth.
+- [x] 1a.3 Run `npm run test:unit` (full suite), `npm run lint`, `npx tsc --noEmit` — confirm green, including the new grandchild-coverage cases, with no regression elsewhere.
+- [ ] 1a.4 Push and confirm on a subsequent CI run that Windows E2E shards no longer report a leftover `bloom-hardware` orphan in the runner's cleanup step (this is the actual falsifiable claim — task 4's manual verification below supersedes and subsumes this).
+
 ## 2. CI E2E sharding
 
 Commit as one unit (2.1-2.4).

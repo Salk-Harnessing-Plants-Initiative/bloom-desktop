@@ -13,18 +13,23 @@
  * See: openspec/changes/fix-e2e-test-cleanup-race-condition/proposal.md
  *
  * ROOT CAUSE (descendants): the above only ever tracked the main Electron
- * PID. Its direct children (Electron Helper processes, and the Python
+ * PID. Its descendant processes (Electron Helper processes, and the Python
  * `bloom-hardware` subprocess) were never tracked or killed, so they could
  * outlive the test that spawned them and accumulate across a long-running
- * Playwright worker.
+ * Playwright worker. The descendant tree is NOT reliably one level deep:
+ * `bloom-hardware` is a PyInstaller onefile build (see `python/main.spec`),
+ * whose bootloader can itself run the real interpreter as a further child
+ * process rather than in-process, depending on platform/build — so a
+ * direct-children-only enumeration can silently miss it. Enumerate the
+ * FULL transitive descendant tree instead.
  *
- * SOLUTION: snapshot the main process's direct children *before* it closes
- * (their parent-child relationship becomes unrecoverable once the main
- * process exits — POSIX reparents them, and Windows' PID-based tree lookups
- * stop working), then force-kill the previously-snapshotted PIDs after the
- * main process's own teardown completes, unconditionally (even if that
- * teardown itself threw), guarding against a snapshotted PID having been
- * recycled for an unrelated process in the interim.
+ * SOLUTION: snapshot the main process's full descendant tree *before* it
+ * closes (the parent-child relationships become unrecoverable once the
+ * main process exits — POSIX reparents them, and Windows' PID-based tree
+ * lookups stop working), then force-kill the previously-snapshotted PIDs
+ * after the main process's own teardown completes, unconditionally (even
+ * if that teardown itself threw), guarding against a snapshotted PID
+ * having been recycled for an unrelated process in the interim.
  *
  * See: openspec/changes/fix-e2e-worker-teardown-flake/design.md
  */
@@ -42,9 +47,10 @@ export interface DescendantProcess {
 
 /**
  * Safely close an Electron app and wait for the process to fully terminate.
- * Also snapshots and force-kills its direct child processes (Electron
- * Helper, the Python subprocess), which the main process's own close/exit
- * handling does not clean up on its own.
+ * Also snapshots and force-kills its full descendant process tree
+ * (Electron Helper, the Python subprocess, and any of their own children),
+ * which the main process's own close/exit handling does not clean up on
+ * its own.
  *
  * @param electronApp - The Playwright ElectronApplication instance
  * @param options - Configuration options
@@ -129,14 +135,21 @@ export async function closeElectronApp(
   await sleep(500);
 }
 
+interface ProcessTableRow {
+  pid: number;
+  ppid: number;
+  name: string;
+}
+
 /**
- * Snapshot the direct child processes of `pid` (name + PID), while `pid` is
- * still alive. Must be called BEFORE the main process exits — once it's
- * gone, POSIX reparents its children and this lookup can no longer find
- * them. Never throws: any failure is logged (if verbose) and swallowed,
- * returning an empty list.
+ * Snapshot the FULL transitive descendant tree of `pid` (children,
+ * grandchildren, etc. — not just direct children), while `pid` is still
+ * alive. Must be called BEFORE the main process exits — once it's gone,
+ * POSIX reparents its children and this lookup can no longer find them.
+ * Never throws: any failure is logged (if verbose) and swallowed, returning
+ * an empty list.
  *
- * @param pid - The parent PID whose direct children to enumerate
+ * @param pid - The ancestor PID whose descendants to enumerate
  * @param verbose - Whether to log progress (default: false)
  */
 export async function snapshotDescendants(
@@ -144,27 +157,8 @@ export async function snapshotDescendants(
   verbose = false
 ): Promise<DescendantProcess[]> {
   try {
-    if (process.platform === 'win32') {
-      const { stdout } = await execFileAsync('powershell.exe', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `Get-CimInstance Win32_Process -Filter "ParentProcessId=${pid}" | Select-Object ProcessId, Name | ConvertTo-Json`,
-      ]);
-      return parseWindowsProcessJson(stdout);
-    }
-
-    const { stdout } = await execFileAsync('ps', ['-eo', 'pid,ppid,comm']);
-    const result: DescendantProcess[] = [];
-    for (const line of stdout.trim().split('\n').slice(1)) {
-      const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
-      if (!match) continue;
-      const [, pidStr, ppidStr, name] = match;
-      if (Number(ppidStr) === pid) {
-        result.push({ pid: Number(pidStr), name: name.trim() });
-      }
-    }
-    return result;
+    const table = await readProcessTable();
+    return collectDescendants(pid, table);
   } catch (error) {
     if (verbose) {
       console.warn(
@@ -174,6 +168,83 @@ export async function snapshotDescendants(
     }
     return [];
   }
+}
+
+/**
+ * Read the full system process table (pid, ppid, name) in one query.
+ */
+async function readProcessTable(): Promise<ProcessTableRow[]> {
+  if (process.platform === 'win32') {
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      'Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name | ConvertTo-Json',
+    ]);
+    const trimmed = stdout.trim();
+    if (!trimmed) return [];
+    const parsed = JSON.parse(trimmed);
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return rows
+      .filter(
+        (
+          row
+        ): row is {
+          ProcessId: number;
+          ParentProcessId: number;
+          Name: string;
+        } => typeof row?.ProcessId === 'number'
+      )
+      .map((row) => ({
+        pid: row.ProcessId,
+        ppid: row.ParentProcessId,
+        name: String(row.Name),
+      }));
+  }
+
+  const { stdout } = await execFileAsync('ps', ['-eo', 'pid,ppid,comm']);
+  const result: ProcessTableRow[] = [];
+  for (const line of stdout.trim().split('\n').slice(1)) {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const [, pidStr, ppidStr, name] = match;
+    result.push({
+      pid: Number(pidStr),
+      ppid: Number(ppidStr),
+      name: name.trim(),
+    });
+  }
+  return result;
+}
+
+/**
+ * Walk `table` breadth-first from `rootPid`, collecting every transitive
+ * descendant (not just direct children).
+ */
+function collectDescendants(
+  rootPid: number,
+  table: ProcessTableRow[]
+): DescendantProcess[] {
+  const childrenByParent = new Map<number, ProcessTableRow[]>();
+  for (const row of table) {
+    const siblings = childrenByParent.get(row.ppid) ?? [];
+    siblings.push(row);
+    childrenByParent.set(row.ppid, siblings);
+  }
+
+  const result: DescendantProcess[] = [];
+  const queue = [rootPid];
+  const visited = new Set<number>([rootPid]);
+  while (queue.length > 0) {
+    const currentPid = queue.shift()!;
+    for (const child of childrenByParent.get(currentPid) ?? []) {
+      if (visited.has(child.pid)) continue; // guard against a corrupt/cyclic table
+      visited.add(child.pid);
+      result.push({ pid: child.pid, name: child.name });
+      queue.push(child.pid);
+    }
+  }
+  return result;
 }
 
 /**

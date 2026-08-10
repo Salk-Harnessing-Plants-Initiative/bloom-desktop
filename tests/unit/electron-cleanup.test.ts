@@ -8,27 +8,95 @@ import {
 } from '../e2e/helpers/electron-cleanup';
 
 /**
- * Spawns a synthetic 3-process tree (root + `childCount` direct children, all
- * plain `node -e` processes) matching the real flat fan-out of the Electron
- * main process (Electron Helper + the Python `bloom-hardware` subprocess).
+ * Run by each direct child of the synthetic root. Takes the number of its
+ * own children ("grandchildren" of the root) to spawn as its first CLI arg.
+ * If that count is > 0, it spawns them, reports their PIDs on one JSON
+ * stdout line, and idles; otherwise it just idles with no stdout output.
+ * Models a PyInstaller onefile executable (like the real `bloom-hardware`)
+ * whose bootloader can itself run the real interpreter as a further child
+ * process, not just a direct child of Electron's main PID.
  */
-function spawnSyntheticTree(childCount: number): Promise<{
+const CHILD_SCRIPT = `
+  const { spawn } = require('child_process');
+  const grandchildCount = Number(process.argv[1] || 0);
+  const grandchildren = [];
+  for (let i = 0; i < grandchildCount; i++) {
+    grandchildren.push(
+      spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }).pid
+    );
+  }
+  if (grandchildCount > 0) {
+    process.stdout.write(JSON.stringify(grandchildren) + '\\n');
+  }
+  setInterval(() => {}, 1000);
+`;
+
+/**
+ * Builds the root process's script: spawns `childCount` direct children
+ * (each running CHILD_SCRIPT), where the first child is also told to spawn
+ * `grandchildCount` of its own children. Reports {pid, children,
+ * grandchildren} as one JSON stdout line once everything is up.
+ */
+function buildRootScript(childCount: number, grandchildCount: number): string {
+  const childScriptLiteral = JSON.stringify(CHILD_SCRIPT);
+  return `
+    const { spawn } = require('child_process');
+    const childScript = ${childScriptLiteral};
+    const children = [];
+    let grandchildren = [];
+    let pending = 0;
+
+    function report() {
+      process.stdout.write(JSON.stringify({ pid: process.pid, children, grandchildren }) + '\\n');
+    }
+
+    for (let i = 0; i < ${childCount}; i++) {
+      const isFirst = i === 0;
+      const gcCount = isFirst ? ${grandchildCount} : 0;
+      const c = spawn(process.execPath, ['-e', childScript, String(gcCount)], {
+        stdio: isFirst && gcCount > 0 ? ['ignore', 'pipe', 'ignore'] : 'ignore',
+      });
+      children.push(c.pid);
+      if (isFirst && gcCount > 0) {
+        pending++;
+        let buf = '';
+        c.stdout.on('data', (chunk) => {
+          buf += chunk.toString();
+          const idx = buf.indexOf('\\n');
+          if (idx === -1) return;
+          grandchildren = JSON.parse(buf.slice(0, idx));
+          pending--;
+          if (pending === 0) report();
+        });
+      }
+    }
+    if (pending === 0) report();
+    setInterval(() => {}, 1000);
+  `;
+}
+
+/**
+ * Spawns a synthetic process tree (root + `childCount` direct children, all
+ * plain `node -e` processes) matching the real fan-out of the Electron main
+ * process (Electron Helper + the Python `bloom-hardware` subprocess).
+ *
+ * When `grandchildCount` > 0, the FIRST child also spawns that many of its
+ * own children — see `CHILD_SCRIPT`.
+ */
+function spawnSyntheticTree(
+  childCount: number,
+  grandchildCount = 0
+): Promise<{
   rootPid: number;
   childPids: number[];
+  grandchildPids: number[];
   rootProcess: ChildProcess;
 }> {
   return new Promise((resolve, reject) => {
-    const script = `
-      const { spawn } = require('child_process');
-      const children = [];
-      for (let i = 0; i < ${childCount}; i++) {
-        const c = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
-        children.push(c.pid);
-      }
-      process.stdout.write(JSON.stringify({ pid: process.pid, children }) + '\\n');
-      setInterval(() => {}, 1000);
-    `;
-    const rootProcess = spawn(process.execPath, ['-e', script]);
+    const rootProcess = spawn(process.execPath, [
+      '-e',
+      buildRootScript(childCount, grandchildCount),
+    ]);
     let buffer = '';
     const onData = (chunk: Buffer) => {
       buffer += chunk.toString();
@@ -40,6 +108,7 @@ function spawnSyntheticTree(childCount: number): Promise<{
         resolve({
           rootPid: parsed.pid,
           childPids: parsed.children,
+          grandchildPids: parsed.grandchildren ?? [],
           rootProcess,
         });
       } catch (err) {
@@ -97,6 +166,23 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     forceKill(rootProcess.pid!);
   });
 
+  it('1.1b captures transitive descendants (grandchildren), not just direct children', async () => {
+    const { rootPid, childPids, grandchildPids, rootProcess } =
+      await spawnSyntheticTree(2, 2);
+    spawnedPids.push(rootPid, ...childPids, ...grandchildPids);
+    expect(grandchildPids).toHaveLength(2);
+
+    const snapshot = await snapshotDescendants(rootPid);
+    const snapshotPids = snapshot.map((d) => d.pid).sort((a, b) => a - b);
+    const expectedPids = [...childPids, ...grandchildPids].sort(
+      (a, b) => a - b
+    );
+
+    expect(snapshotPids).toEqual(expectedPids);
+
+    forceKill(rootProcess.pid!);
+  });
+
   it('1.2 kills pre-snapshotted descendants after the root has already died (production order)', async () => {
     const { rootPid, childPids } = await spawnSyntheticTree(2);
     spawnedPids.push(rootPid, ...childPids);
@@ -118,6 +204,27 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     // real closeElectronApp() has its own unconditional sleep(500) after
     // killDescendants(), which already provides this grace period).
     for (const pid of childPids) {
+      await waitUntil(() => !isProcessRunning(pid));
+      expect(isProcessRunning(pid)).toBe(false);
+    }
+  });
+
+  it('1.2b kills transitive descendants (grandchildren), not just direct children', async () => {
+    const { rootPid, childPids, grandchildPids } = await spawnSyntheticTree(
+      2,
+      2
+    );
+    spawnedPids.push(rootPid, ...childPids, ...grandchildPids);
+
+    const snapshot = await snapshotDescendants(rootPid);
+    expect(snapshot).toHaveLength(childPids.length + grandchildPids.length);
+
+    forceKill(rootPid);
+    await waitUntil(() => !isProcessRunning(rootPid));
+
+    await killDescendants(snapshot);
+
+    for (const pid of [...childPids, ...grandchildPids]) {
       await waitUntil(() => !isProcessRunning(pid));
       expect(isProcessRunning(pid)).toBe(false);
     }

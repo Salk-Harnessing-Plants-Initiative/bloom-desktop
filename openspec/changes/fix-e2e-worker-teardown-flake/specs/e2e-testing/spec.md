@@ -2,7 +2,7 @@
 
 ### Requirement: Test Cleanup and Isolation
 
-The system SHALL ensure E2E tests clean up resources and do not interfere with each other, including proper process termination verification for both the main Electron process and its direct child processes.
+The system SHALL ensure E2E tests clean up resources and do not interfere with each other, including proper process termination verification for both the main Electron process and its full descendant process tree.
 
 #### Scenario: App closes after test
 
@@ -14,9 +14,9 @@ The system SHALL ensure E2E tests clean up resources and do not interfere with e
 
 #### Scenario: Descendant processes are snapshotted before the main process exits
 
-- **GIVEN** an E2E test's Electron instance has spawned direct child processes (Electron Helper processes, and the Python `bloom-hardware` subprocess)
+- **GIVEN** an E2E test's Electron instance has spawned descendant processes (Electron Helper processes, and the Python `bloom-hardware` subprocess, which may itself run as a further child process rather than in-process)
 - **WHEN** `closeElectronApp()` begins cleanup
-- **THEN** the helper SHALL enumerate the main process's direct child PIDs, together with each child's process name, **before** requesting the main process to close
+- **THEN** the helper SHALL enumerate every transitive descendant PID of the main process, not just its direct children, together with each descendant's process name, **before** requesting the main process to close
 
 #### Scenario: Descendant processes are terminated after the main process's own teardown completes, even if that teardown threw an error
 
