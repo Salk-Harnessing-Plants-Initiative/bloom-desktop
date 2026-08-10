@@ -237,7 +237,12 @@ export function BrowseGraviScans() {
     setBackingUp(true);
     setBackupMessage(null);
     try {
-      const result = await window.electron.gravi.uploadAllScans();
+      const response = await window.electron.gravi.uploadAllScans();
+      if (response.success === false) {
+        setBackupMessage(`Box backup failed: ${response.error}`);
+        return;
+      }
+      const result = response.data;
       if (result.errors?.includes('rclone not installed')) {
         setBackupMessage('Box backup unavailable (rclone not installed)');
       } else if (result.failed > 0) {

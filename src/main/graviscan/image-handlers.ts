@@ -180,10 +180,7 @@ export async function readScanImage(
  * callback (the IPC layer forwards it to the 'graviscan:upload-progress'
  * channel; it does not distinguish source, matching the existing wiring).
  */
-export async function uploadAllScans(
-  db: PrismaClient,
-  onProgress?: (progress: unknown) => void
-): Promise<{
+export interface UploadAllScansResult {
   success: boolean;
   uploaded: number;
   skipped: number;
@@ -196,7 +193,12 @@ export async function uploadAllScans(
    * active, rather than that only being visible in main-process logs.
    */
   metadataLinkingAvailable: boolean;
-}> {
+}
+
+export async function uploadAllScans(
+  db: PrismaClient,
+  onProgress?: (progress: unknown) => void
+): Promise<UploadAllScansResult> {
   if (uploadInProgress) {
     console.log('[GraviScan:UPLOAD] Upload already in progress — skipping');
     return {

@@ -52,6 +52,7 @@ import {
   GraviConfigInput,
   GraviWedgeEvent,
   ParsedWorkbook,
+  UploadAllScansResult,
 } from './graviscan';
 import type {
   GraviScanCreateInput,
@@ -709,7 +710,10 @@ export interface GraviAPI {
   // Image operations
   getOutputDir: () => Promise<any>;
   readScanImage: (filePath: string, opts?: any) => Promise<any>;
-  uploadAllScans: () => Promise<any>;
+  uploadAllScans: () => Promise<
+    | { success: true; data: UploadAllScansResult }
+    | { success: false; error: string }
+  >;
   downloadImages: (params: any) => Promise<any>;
   ensureDir: (
     dirPath?: string

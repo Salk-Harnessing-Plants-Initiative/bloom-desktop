@@ -917,24 +917,84 @@ child (found: [object Date])`, crashing the Metadata page whenever
       (ubuntu 4.4s, macOS 7.0s, Windows 6.4s — no timeout, no retry
       needed).
 
-      **Candidate bug 5 — untouched, per explicit direction to fix bug 4
-      only, not bug 5.** `global upload-progress indicator persists
-      across navigation...` fails earlier, at
-      `window.waitForSelector('text=Box backup unavailable')` (line 273)
-      after clicking "Backup to Box", before the test ever reaches its
-      actual Metadata-navigation assertion. Unrelated to Metadata/Date
-      entirely; looks like a distinct pre-existing issue in the
-      Box-backup/rclone friendly-error-message path. Not investigated.
-
       Neither was reachable before 14.3 landed (the whole page crashed
       first), so — consistent with 14.1/14.2/14.3's pattern — these were
-      always latent, just never exposed until now. Left for a follow-up
-      decision rather than fixed unilaterally, since both are outside
-      14.3's actual scope (the `[object Date]` crash) and the second one
-      touches an entirely different feature area.
+      always latent, just never exposed until now.
 
-- [ ] 14.5 Diagnostic-only test instrumentation (`electron-main
-stdout`/`stderr` piping and `pageerror`/`console` listeners in
-      several `tests/e2e/*.e2e.ts` files) is still in place — decide
-      whether to keep permanently (it proved genuinely useful three times
-      over) or trim back once 14.3 lands and the suite is fully green.
+- [x] 14.6 **Candidate bug 5 — root-caused and fixed, TDD.**
+      `global upload-progress indicator persists across navigation...`
+      hung at `window.waitForSelector('text=Box backup unavailable')`
+      after clicking "Backup to Box", never reaching its actual
+      Metadata-navigation assertion.
+
+      This file had no main-process stdout/stderr capture at all (only
+      renderer-side `pageerror`/`console`), so the first step was adding
+      that instrumentation (per `accession-excel-upload.e2e.ts`'s
+      pattern) and pushing to CI to gather real evidence, per
+      systematic-debugging's "gather evidence before hypothesizing"
+      step. The resulting log showed `uploadAllScans()` (main process)
+      completing correctly and fast — under 30ms — with
+      `Box result: { success: false, ..., errors: ['rclone not
+      installed'] }`, exactly as expected. So the backend was never the
+      problem; something after that was silently wrong. Downloaded the
+      CI run's screenshot for the failing test and found the page
+      **had** rendered a message — just the wrong one: `"Uploaded
+      undefined image(s), undefined skipped"` instead of the rclone
+      message.
+
+      Root cause: `register-handlers.ts`'s `wrapHandler` envelopes
+      every IPC handler's return value as
+      `{success: true, data: T} | {success: false, error: string}`
+      (`graviscan:upload-all-scans` → `wrapHandler(() =>
+      imageHandlers.uploadAllScans(...))`). `BrowseGraviScans.tsx`'s
+      `handleBackupToBox` (~line 240) never unwrapped this envelope —
+      it read `result.errors`/`result.failed`/`result.uploaded`/
+      `result.skipped` directly off the top-level response instead of
+      `response.data.*`, so every field was `undefined` and the code
+      fell straight through to the final `else` branch regardless of
+      what actually happened. The exact same file's `getScanStatus`
+      caller (~line 203) already unwraps this envelope correctly
+      (`if (result.success) { setScanActive(result.data.isActive) }`),
+      so this was an inconsistency with the file's own established
+      convention, not a novel pattern. Compounding factor:
+      `uploadAllScans` was typed `Promise<any>` in `electron.d.ts`, so
+      TypeScript had no way to catch the missing `.data` — the same
+      "type declared but never checked against the real runtime shape"
+      class of bug as 14.3 and its `transplant_date` sibling.
+
+      TDD: extracted `uploadAllScans`'s inline return type into a named
+      `UploadAllScansResult` interface
+      (`src/main/graviscan/image-handlers.ts`) and mirrored it in
+      `src/types/graviscan.ts` (matching this codebase's existing
+      pattern of independent renderer-side type mirrors, e.g.
+      `GetScanStatusResult`); gave `electron.d.ts`'s `uploadAllScans`
+      the real `{success, data} | {success, error}` envelope type
+      instead of `any`. `tests/unit/pages/BrowseGraviScans.test.tsx`'s
+      three existing Box-backup-UI tests mocked `uploadAllScans` with
+      the *unwrapped* shape (`{success, uploaded, skipped, failed,
+      errors}` with no `.data` nesting) — exactly the same test-mock-
+      never-validated-against-real-shape pattern as 14.3's
+      `GraviMetadataList.test.tsx`. Updated all three mocks to the real
+      envelope shape and added a fourth test for the previously
+      untested `wrapHandler`-level failure path
+      (`{success: false, error}`, e.g. a thrown exception in the main
+      process). Confirmed RED against the un-fixed component — one test
+      reproduced the exact `"Uploaded undefined image(s), undefined
+      skipped"` text from the CI screenshot. Fixed `handleBackupToBox`
+      to check `response.success` first and read the real fields off
+      `response.data`, with a new branch surfacing a friendly message
+      for the `wrapHandler`-failure case (previously unhandled
+      entirely). Confirmed GREEN: all 21 tests in the file pass.
+      Verified locally: `tsc --noEmit`, `eslint`, `prettier --check` all
+      clean; full `tests/unit` suite shows only the same 5 pre-existing
+      Windows path-separator baseline failures, no new failures. No app
+      code change was needed beyond `BrowseGraviScans.tsx` — the main
+      process, preload bridge, and IPC wiring were all already correct.
+
+- [ ] 14.7 Diagnostic-only test instrumentation — main-process
+      stdout/stderr piping and `pageerror`/`console` listeners in
+      several `tests/e2e/*.e2e.ts` files (extended to
+      `graviscan-browse-metadata.e2e.ts` during 14.6's investigation) —
+      is still in place. Decide whether to keep permanently (it proved
+      genuinely useful four times over now) or trim back now that 14.3
+      and 14.6 have both landed and the suite is fully green.

@@ -296,6 +296,21 @@ export interface GetScanStatusResult {
 }
 
 /**
+ * Result of `graviscan:upload-all-scans`
+ * (`image-handlers.ts#uploadAllScans`) — the data payload nested under the
+ * IPC-wide `{success, data}`/`{success, error}` envelope, not the envelope
+ * itself.
+ */
+export interface UploadAllScansResult {
+  success: boolean;
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+  metadataLinkingAvailable: boolean;
+}
+
+/**
  * Scanner state during scan operations.
  */
 export type ScannerState =

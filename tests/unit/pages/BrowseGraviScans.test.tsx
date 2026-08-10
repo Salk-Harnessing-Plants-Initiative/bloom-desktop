@@ -43,12 +43,21 @@ describe('BrowseGraviScans', () => {
       data: { experiments: [], total: 0 },
     });
     downloadImages = vi.fn().mockResolvedValue({ success: true });
+    // graviscan:upload-all-scans goes through register-handlers.ts's
+    // wrapHandler, which always envelopes the real result as
+    // {success: true, data: <UploadAllScansResult>} (or {success: false,
+    // error} if the handler threw) — the inner `success` field belongs to
+    // the upload/backup outcome itself, not the envelope.
     uploadAllScans = vi.fn().mockResolvedValue({
       success: true,
-      uploaded: 3,
-      skipped: 0,
-      failed: 0,
-      errors: [],
+      data: {
+        success: true,
+        uploaded: 3,
+        skipped: 0,
+        failed: 0,
+        errors: [],
+        metadataLinkingAvailable: false,
+      },
     });
     getScanStatus = vi
       .fn()
@@ -290,7 +299,17 @@ describe('BrowseGraviScans', () => {
       ).toBeDisabled();
 
       await act(async () => {
-        resolveUpload({ success: true, uploaded: 2, skipped: 1, failed: 0 });
+        resolveUpload({
+          success: true,
+          data: {
+            success: true,
+            uploaded: 2,
+            skipped: 1,
+            failed: 0,
+            errors: [],
+            metadataLinkingAvailable: false,
+          },
+        });
       });
 
       await waitFor(() => {
@@ -301,10 +320,14 @@ describe('BrowseGraviScans', () => {
     it('shows the failed count and first error on partial failure', async () => {
       uploadAllScans.mockResolvedValue({
         success: true,
-        uploaded: 1,
-        skipped: 0,
-        failed: 1,
-        errors: ['Network timeout'],
+        data: {
+          success: false,
+          uploaded: 1,
+          skipped: 0,
+          failed: 1,
+          errors: ['Network timeout'],
+          metadataLinkingAvailable: false,
+        },
       });
       const user = userEvent.setup();
       renderPage();
@@ -322,10 +345,14 @@ describe('BrowseGraviScans', () => {
     it('shows a friendly "rclone not installed" message instead of the generic error', async () => {
       uploadAllScans.mockResolvedValue({
         success: true,
-        uploaded: 0,
-        skipped: 0,
-        failed: 1,
-        errors: ['rclone not installed'],
+        data: {
+          success: false,
+          uploaded: 0,
+          skipped: 0,
+          failed: 1,
+          errors: ['rclone not installed'],
+          metadataLinkingAvailable: false,
+        },
       });
       const user = userEvent.setup();
       renderPage();
@@ -338,6 +365,26 @@ describe('BrowseGraviScans', () => {
       await waitFor(() => {
         expect(
           screen.getByText(/box backup unavailable \(rclone not installed\)/i)
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('shows a friendly message when the IPC handler itself throws', async () => {
+      uploadAllScans.mockResolvedValue({
+        success: false,
+        error: 'Database connection lost',
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/box backup failed.*database connection lost/i)
         ).toBeInTheDocument();
       });
     });
