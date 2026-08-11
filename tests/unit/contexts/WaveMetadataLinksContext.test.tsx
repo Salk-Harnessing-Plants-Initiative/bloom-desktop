@@ -225,8 +225,12 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     // branch) already surfaces an error via errorsByExperiment; silently
     // leaving stale wave-link data on screen with zero indication anything
     // went wrong would be the one inconsistent exception.
+    // The message must not imply a working retry mechanism — there is no
+    // manual refresh affordance and fetchedIds is never cleared, so "please
+    // retry" would be a lie; instead it should tell the user the on-screen
+    // data may be stale.
     expect(result.current.linkError).toBe(
-      'Could not refresh metadata links — please retry.'
+      'Could not refresh metadata links — the displayed wave links may be out of date.'
     );
 
     // Bumping the version again afterward must not resurrect the

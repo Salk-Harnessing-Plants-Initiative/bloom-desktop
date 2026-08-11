@@ -10,7 +10,11 @@ vi.mock('child_process', () => ({
 }));
 
 import { spawn } from 'child_process';
-import { rcloneCopyFiles, csvEscape } from '../../src/main/box-backup';
+import {
+  rcloneCopyFiles,
+  csvEscape,
+  runBoxBackup,
+} from '../../src/main/box-backup';
 
 const mockSpawn = vi.mocked(spawn);
 
@@ -62,6 +66,79 @@ describe('rcloneCopyFiles', () => {
     fakeProc.emit('close', 0);
     const result = await resultPromise;
     expect(result.success).toBe(true);
+  });
+});
+
+describe('runBoxBackup', () => {
+  let sourceDir: string;
+  let sourceFile: string;
+  let db: {
+    graviScan: { findMany: ReturnType<typeof vi.fn> };
+    graviImage: { updateMany: ReturnType<typeof vi.fn> };
+  };
+
+  beforeEach(() => {
+    sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'box-backup-test-src-'));
+    sourceFile = path.join(sourceDir, 'exp1_st_20260101T000000_cy1_S1_00.tif');
+    fs.writeFileSync(sourceFile, 'fake tiff bytes');
+    mockSpawn.mockReset();
+
+    db = {
+      graviScan: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            experiment: { name: 'ExpA', accession: null },
+            wave_number: 0,
+            plate_barcode: 'P1',
+            plate_index: '1',
+            grid_mode: '2grid',
+            capture_date: new Date('2026-01-01'),
+            transplant_date: null,
+            custom_note: null,
+            images: [{ id: 'img1', path: sourceFile }],
+          },
+        ]),
+      },
+      graviImage: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+
+    // Distinguish the three distinct rclone invocations by argv shape:
+    // `rclone version` (isRcloneInstalled), `rclone copy ... --use-json-log
+    // --log-level INFO` (rcloneCopyFiles, images — 7 args), and
+    // `rclone copy ... --copy-links` (rcloneCopyFile, the metadata CSV — 4
+    // args). Image copy always succeeds; CSV copy is made to fail so the
+    // test isolates the CSV-specific bug from an image-copy failure.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        queueMicrotask(() => proc.emit('close', 0));
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+  });
+
+  afterEach(() => {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('marks the whole backup as failed when the metadata CSV copy fails, even though every image copied successfully', async () => {
+    // Images can copy fine while the per-wave metadata.csv upload fails
+    // (e.g. a transient rclone error on that one file) — the operator
+    // needs `result.success === false` to know something didn't make it
+    // to Box, not a silent partial failure indistinguishable from full
+    // success.
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e) => e.includes('metadata'))).toBe(true);
   });
 });
 

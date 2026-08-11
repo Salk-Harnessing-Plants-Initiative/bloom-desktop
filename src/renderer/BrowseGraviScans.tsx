@@ -55,7 +55,7 @@ function ExperimentRow({
   boxProgress?: BoxBackupProgress;
 }) {
   const navigate = useNavigate();
-  const { links } = useWaveMetadataLinks(experiment.id);
+  const { links, linkError } = useWaveMetadataLinks(experiment.id);
   const [selectedWave, setSelectedWave] = useState<string>('');
   const [divergedWaves, setDivergedWaves] = useState<number[]>([]);
 
@@ -109,6 +109,7 @@ function ExperimentRow({
           </option>
         ))}
       </select>
+      {linkError && <p className="text-sm text-red-600">{linkError}</p>}
       <button onClick={handleDownload}>Download</button>
       {divergedWaves.length > 0 && (
         <p>
@@ -241,23 +242,28 @@ export function BrowseGraviScans() {
       if (result.boxErrors?.includes('rclone not installed')) {
         // Box-specific and reported as such regardless of Bloom's outcome,
         // but Bloom runs independently — note it too rather than silently
-        // dropping real Bloom uploads/failures from the message.
+        // dropping real Bloom uploads/failures from the message. An
+        // explicit "up to date" note (not blank) when Bloom succeeded with
+        // nothing pending avoids leaving the operator to wonder whether
+        // Bloom was even checked.
         const bloomNote = !result.bloomSuccess
           ? ` Bloom also failed: ${result.bloomErrors?.[0] ?? 'unknown error'}.`
           : result.bloomUploaded > 0
             ? ` Bloom: ${result.bloomUploaded} uploaded.`
-            : '';
+            : ' Bloom: up to date (nothing to upload).';
         setBackupMessage(
           `Box backup unavailable (rclone not installed).${bloomNote}`
         );
-      } else if (result.uploaded > 0 && result.errors?.length > 0) {
-        // Bloom and Box run independently (Promise.allSettled) and their
-        // counts are additive, so one target can fully succeed while the
-        // other fails outright — e.g. {uploaded: 2, failed: 0, errors:
-        // ['Authentication failed: ...']}. Name which system(s) actually
-        // failed rather than a generic "Box backup" message, so an operator
-        // never mistakes a Bloom (database) failure for a Box (offsite
-        // copy) one or vice versa.
+      } else if (!result.bloomSuccess || !result.boxSuccess) {
+        // Bloom and Box run independently (Promise.allSettled), so either
+        // can fail alone or both can fail together (e.g. a network outage
+        // taking out both at once) — checked directly on the per-target
+        // success flags, not gated on `uploaded > 0`, so a total dual
+        // failure (nothing uploaded at all) still names both systems
+        // instead of falling through to a generic message that only shows
+        // the first error and attributes it to neither. Name which
+        // system(s) actually failed so an operator never mistakes a Bloom
+        // (database) failure for a Box (offsite copy) one or vice versa.
         const failures: string[] = [];
         if (!result.bloomSuccess) {
           failures.push(
@@ -269,8 +275,16 @@ export function BrowseGraviScans() {
             `Box failed: ${result.boxErrors?.[0] ?? 'unknown error'}`
           );
         }
+        // Defense-in-depth: if a target's own success flag and its error
+        // array ever disagree (e.g. box-backup.ts forgetting to set
+        // success:false alongside a pushed error), fall back to the raw
+        // merged error rather than showing an empty, unattributed message.
+        const summary =
+          failures.length > 0
+            ? failures.join('; ')
+            : (result.errors?.[0] ?? 'unknown error');
         setBackupMessage(
-          `${result.uploaded} uploaded, ${result.errors.length} error(s) — ${failures.join('; ')}`
+          `${result.uploaded} uploaded, ${result.errors?.length ?? 0} error(s) — ${summary}`
         );
       } else if (!result.success) {
         // Whole-operation failures that never got as far as uploading or

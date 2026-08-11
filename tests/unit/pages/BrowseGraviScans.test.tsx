@@ -132,6 +132,31 @@ describe('BrowseGraviScans', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows a wave-metadata link error on the experiment row instead of silently leaving the wave selector stale', async () => {
+    // WaveMetadataLinksContext already surfaces IPC/retry failures via
+    // linkError (round 2/3 fixes) — but ExperimentRow only destructured
+    // `links`, never `linkError`, so a failed/stale fetch here (the exact
+    // page an operator uses to decide which wave to download) showed
+    // nothing was wrong at all.
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    listGraviMetadata.mockResolvedValue({
+      success: false,
+      error: 'Database is locked',
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Drought Study')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/database is locked/i)).toBeInTheDocument();
+    });
+  });
+
   it('Next/Previous pagination controls call browseByExperiment with an updated offset', async () => {
     browseByExperiment.mockResolvedValue({
       success: true,
@@ -404,7 +429,7 @@ describe('BrowseGraviScans', () => {
       });
     });
 
-    it('shows a friendly "rclone not installed" message instead of the generic error', async () => {
+    it('shows a friendly "rclone not installed" message instead of the generic error, noting Bloom was up to date', async () => {
       uploadAllScans.mockResolvedValue({
         success: true,
         data: {
@@ -433,6 +458,12 @@ describe('BrowseGraviScans', () => {
       await waitFor(() => {
         expect(
           screen.getByText(/box backup unavailable \(rclone not installed\)/i)
+        ).toBeInTheDocument();
+        // Bloom succeeded but had nothing pending — an operator seeing
+        // only the Box message and no Bloom mention at all couldn't tell
+        // that apart from "Bloom wasn't even checked".
+        expect(
+          screen.getByText(/bloom.*up to date.*nothing to upload/i)
         ).toBeInTheDocument();
       });
     });
@@ -663,7 +694,10 @@ describe('BrowseGraviScans', () => {
           success: false,
           uploaded: 5,
           skipped: 0,
-          failed: 0,
+          // uploadAllScans()'s merge formula is failed: bloomResult.failed
+          // + boxResult.errors.length — always >=1 whenever boxErrors is
+          // non-empty, so failed:0 here would be an impossible real shape.
+          failed: 1,
           errors: ['rclone exited with code 1'],
           metadataLinkingAvailable: false,
           bloomSuccess: true,
@@ -689,6 +723,54 @@ describe('BrowseGraviScans', () => {
         ).toBeInTheDocument();
       });
       expect(screen.queryByText(/bloom failed/i)).not.toBeInTheDocument();
+    });
+
+    it('names BOTH systems when Bloom and Box fail simultaneously with nothing uploaded, instead of falling through to a generic message', async () => {
+      // Round 3's "uploaded > 0 && errors.length > 0" gate skips this case
+      // entirely (uploaded is 0), so a genuine dual failure — e.g. a lab
+      // network outage that takes out both Bloom auth and the Box network
+      // call at once — fell through to the generic `!result.success`
+      // branch, which shows only errors[0] (Bloom's) and names neither
+      // system. That's the exact conflation round 3 was meant to fix, in
+      // its worst-case form.
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 0,
+          skipped: 0,
+          failed: 1,
+          errors: [
+            'Authentication failed: Bloom session expired',
+            'Network timeout',
+          ],
+          metadataLinkingAvailable: false,
+          bloomSuccess: false,
+          boxSuccess: false,
+          bloomUploaded: 0,
+          boxUploaded: 0,
+          bloomErrors: ['Authentication failed: Bloom session expired'],
+          boxErrors: ['Network timeout'],
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            /bloom failed.*authentication failed: bloom session expired/i
+          )
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(/box failed.*network timeout/i)
+        ).toBeInTheDocument();
+      });
     });
 
     it('shows a friendly message when the IPC call itself rejects', async () => {

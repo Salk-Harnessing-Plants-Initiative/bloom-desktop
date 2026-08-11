@@ -85,7 +85,8 @@ export function WaveMetadataLinksProvider({
           );
           setErrorsByExperiment((prev) => ({
             ...prev,
-            [experimentId]: 'Could not refresh metadata links — please retry.',
+            [experimentId]:
+              'Could not refresh metadata links — the displayed wave links may be out of date.',
           }));
           return;
         }

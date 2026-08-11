@@ -562,6 +562,7 @@ export async function runBoxBackup(
             result.errors.push(
               `${expName}/wave_${waveNum} metadata: ${csvResult.error}`
             );
+            result.success = false;
             console.error(
               `[BoxBackup] Failed to copy metadata for ${expName}/wave_${waveNum}:`,
               csvResult.error
