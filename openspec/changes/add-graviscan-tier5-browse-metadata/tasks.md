@@ -2655,3 +2655,122 @@ false` — correctly stays empty) is internally consistent with
       change — confirmed as an intentional consequence of the fix, not
       a regression, since `erroredFiles`'s full-path semantics are now
       what `runBoxBackup`'s own classification loop relies on.
+
+## 28. Round-14 `/review-pr` response — 1 blocking + 2 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against round 13's fix commit
+(`2257d33`). Two reviewers (Scientific Rigor and Behavioural
+Correctness), working independently, both found the SAME severe bug:
+27.2's fix disambiguated the _bookkeeping_ for basename collisions
+(each image's own `box_status`/CSV-attribution) but never touched the
+_physical_ symlink-staging layer, which is still keyed by resolved
+basename — so two genuinely-existing, same-basename files from
+different source directories still silently lose one of them forever,
+with BOTH marked uploaded. Two other reviewers (Code Quality, Security)
+independently flagged the same naming/typing drift on
+`onFileComplete`. Fixed all of it with TDD. Fix commit: `550dcf4`.
+
+- [x] 28.1 **BLOCKING (independently found by Scientific Rigor and
+      Behavioural Correctness — 2 of 5 reviewers, from different
+      angles) — 27.2's full-path-keying fix closed the BOOKKEEPING
+      side of basename collisions but left the PHYSICAL side wide open,
+      causing silent, permanent data loss for one of the two colliding
+      images.** `rcloneCopyFiles`'s resolution loop stages every
+      resolved file at `path.join(tmpDir, path.basename(resolvedPath))`
+      — when two images in the same wave resolve to files with the
+      identical basename (the exact "different source directories, or
+      genuine duplicate DB rows" scenario 27.2's own comment names as
+      motivation), `ensureSymlinkOrCopy`'s `fs.existsSync(linkPath)`
+      guard makes the SECOND symlink attempt a silent no-op — its real
+      bytes never reach the staging directory, so rclone only ever
+      sees and uploads the FIRST image's file, under one shared
+      filename, with no error logged for either. Since 27.2 now
+      correctly finds neither image in `erroredFiles` (rclone reported
+      no failure — it was never even told about the second file), BOTH
+      images get marked `box_status: 'uploaded'` (the second one
+      permanently, since `'uploaded'` status excludes it from all
+      future retry queries) and BOTH get a `metadata.csv` row naming
+      the one physical file that's actually in Box — a stronger,
+      more dangerous defect than "duplicate CSV row": one image's
+      actual pixel content is gone, undetectably, while both the DB
+      and the CSV assert success. Fixed by detecting the collision
+      directly in the resolution loop: before staging a resolved file,
+      check whether its resolved basename was already claimed by a
+      DIFFERENT original path earlier in the same call; if so, route
+      the later image through the SAME safe "unresolvable" path a
+      genuinely-missing file already uses (`missingFilePaths`, which
+      becomes `erroredFiles`, which becomes `box_status: 'failed'` and
+      exclusion from `metadata.csv`) instead of silently overwriting
+      the first image's staged symlink — reusing existing,
+      already-tested failure-handling machinery rather than inventing
+      new disambiguation logic (e.g. renaming staged files), which
+      would have required also tracking a name mapping back to what
+      Box actually received. A `console.warn` surfaces the collision
+      for operator visibility. Verified with a new test using two
+      files that BOTH genuinely exist on disk in different directories
+      (unlike the existing 27.2 collision test, which left one file
+      deliberately unresolvable) — confirmed failing (both marked
+      uploaded) before the fix, passing (at most one marked uploaded)
+      after.
+- [x] 28.2 **IMPORTANT (independently found by Code Quality and
+      Security — 2 of 5 reviewers) — `rcloneCopyFiles`'s
+      `onFileComplete` callback parameter was still typed/named as if
+      it receives a bare filename (`onFileComplete?: (filename:
+string) => void`), but 27.2's keying change means it has
+      received a FULL ORIGINAL PATH since that round.** Currently
+      inert (the sole caller, in `runBoxBackup`, discards the
+      argument entirely), but a live trap for whichever future change
+      wires this into a progress display or log line, expecting
+      "filename" to mean what it says — silently displaying/logging a
+      full local filesystem path in a shared-lab-environment app
+      instead. Fixed by renaming the parameter to `originalPath` and
+      updating its type-comment, and renaming the two call-site local
+      variables that hold this value (`originalName` → `originalPath`)
+      to match.
+- [x] 28.3 **IMPORTANT (independently found by Scientific Rigor and
+      Behavioural Correctness) — the `proc.on('error', ...)` handler's
+      `resolve()` call still returned `erroredFiles: new Set()`,
+      discarding any already-known missing/errored files, unlike
+      every other exit path in the function (which 27.2 updated to
+      thread `missingFilePaths`/`erroredFiles` through). Directly
+      contradicts 27.2's own stated rationale for hoisting these
+      collections above the `try` block.** Currently harmless in
+      practice (this path also always sets `error`, which forces the
+      same conservative "mark the whole wave failed" branch in
+      `runBoxBackup` regardless of `erroredFiles`'s contents) but a
+      latent inconsistency. Fixed by using the already-in-scope
+      `erroredFiles` local (which is `missingFilePaths` plus any
+      per-file errors already parsed from stderr before the spawn
+      error fired) instead of a fresh empty `Set`.
+- [x] 28.4 **Deliberately deferred — Scientific Rigor's retry-lifecycle
+      CSV-overwrite gap.** Confirmed real and deterministic (any wave
+      with a partial failure that's later retried will have its
+      regenerated `metadata.csv` describe only the newly-retried
+      subset, silently dropping already-uploaded siblings from an
+      earlier run's more complete CSV that it overwrites) — but
+      explicitly confirmed by the same reviewer as PRE-EXISTING and
+      UNCHANGED by round 13 or round 14 (the per-run DB query scope
+      and the unconditional CSV overwrite are both untouched by this
+      cycle's fixes). Fixing it requires a query-strategy or CSV-merge
+      redesign — a larger-scope change than a review-round bug fix;
+      recommended as a dedicated follow-up given it's the more likely
+      of the two data-integrity gaps found this round to cause real
+      data loss in practice (the fixed 28.1 requires an actual
+      basename collision, which is rare; this one triggers on any
+      ordinary partial-failure-then-retry sequence).
+- [x] 28.5 **Deliberately deferred — no per-image failure detail
+      surfaced in the UI.** `result.errors`/`BrowseGraviScans.tsx`
+      remain wave-level aggregates only ("N/M files failed"); an
+      operator has no way to see which specific file failed, even in
+      the ordinary (non-collision) per-file-error case. Pre-existing,
+      not a regression from this round's fixes; a UX feature addition
+      (what to show, where) rather than a bug fix with one obvious
+      answer.
+- [x] 28.6 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1570/1572 real tests passing; the two
+      failures (`electron-cleanup.test.ts`'s descendant-snapshot
+      timing tests, untouched by this round's diff) passed cleanly on
+      an isolated rerun, confirming a one-off local timing flake under
+      system load, not a regression. `tests/unit/box-backup.test.ts`:
+      31/31 passing (30 pre-existing + 1 new this round).
