@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUnsavedChanges } from '../contexts/UnsavedChangesContext';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
@@ -51,7 +51,21 @@ export function GraviMetadataUpload({
   const [fileName, setFileName] = useState<string>('');
   const [done, setDone] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const { setHasUnsavedChanges } = useUnsavedChanges();
+  const { setHasUnsavedChanges, setBlockNavigation } = useUnsavedChanges();
+
+  // Rows with every required field blank (e.g. a trailing blank Excel row)
+  // don't trigger the partial-row validation error below and are silently
+  // excluded by handleImport's plate-grouping loop — surface a count here
+  // so the operator knows rows were dropped instead of just importing fewer
+  // plates than the sheet appears to contain.
+  const blankRowCount = useMemo(() => {
+    if (!sheet) return 0;
+    const colIndex = (field: string) =>
+      mapping[field] !== undefined ? Number(mapping[field]) : -1;
+    return sheet.rows.filter((row) =>
+      REQUIRED_FIELDS.every((f) => (row[colIndex(f)] ?? '').trim() === '')
+    ).length;
+  }, [sheet, mapping]);
 
   // A parsed sheet with its column mapping is real, easy-to-lose work
   // (the operator may have had to manually fix auto-mapping) — flag it so
@@ -63,9 +77,22 @@ export function GraviMetadataUpload({
     setHasUnsavedChanges(sheet !== null && !done);
   }, [sheet, done, setHasUnsavedChanges]);
 
+  // While the createWithSections IPC call is actually in flight, a
+  // confirm-and-leave would let its response (setError/setDone, both
+  // scheduled after the awaited call) resolve against an unmounted
+  // component, and an operator who assumes the failed-silently import
+  // never happened could resubmit and create a duplicate record — so
+  // this is a hard block, not a dismissable confirm.
   useEffect(() => {
-    return () => setHasUnsavedChanges(false);
-  }, [setHasUnsavedChanges]);
+    setBlockNavigation(isImporting);
+  }, [isImporting, setBlockNavigation]);
+
+  useEffect(() => {
+    return () => {
+      setHasUnsavedChanges(false);
+      setBlockNavigation(false);
+    };
+  }, [setHasUnsavedChanges, setBlockNavigation]);
 
   const reset = () => {
     setSheetsByName(null);
@@ -251,6 +278,12 @@ export function GraviMetadataUpload({
 
       {sheet && (
         <div>
+          {blankRowCount > 0 && (
+            <p>
+              {blankRowCount} row{blankRowCount === 1 ? '' : 's'} with no data
+              in any required field will be skipped
+            </p>
+          )}
           {ALL_FIELDS.map((field) => (
             <div key={field}>
               <label htmlFor={`mapping-${field}`}>{field}</label>

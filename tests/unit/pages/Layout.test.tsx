@@ -25,6 +25,18 @@ function FakeUnsavedMetadataPage() {
   return <div>Metadata content</div>;
 }
 
+/** Stands in for GraviMetadataUpload.tsx while its createWithSections IPC
+ * call is actually in flight — a stronger signal than "has unsaved
+ * changes" (see UnsavedChangesContext.tsx's blockNavigation doc comment). */
+function FakeImportingMetadataPage() {
+  const { setBlockNavigation } = useUnsavedChanges();
+  useEffect(() => {
+    setBlockNavigation(true);
+    return () => setBlockNavigation(false);
+  }, [setBlockNavigation]);
+  return <div>Metadata content</div>;
+}
+
 let wedgeListeners: Array<(event: GraviWedgeEvent) => void>;
 let uploadProgressListeners: Array<(data: unknown) => void>;
 
@@ -67,9 +79,9 @@ function fireUploadProgress(data: unknown) {
   });
 }
 
-function renderLayout(mode: string | null) {
+function renderLayout(mode: string | null, initialPath = '/') {
   return render(
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <UploadStatusProvider>
         <UnsavedChangesProvider>
           <Routes>
@@ -80,6 +92,10 @@ function renderLayout(mode: string | null) {
                 element={<div>Configure Scanner content</div>}
               />
               <Route path="metadata" element={<FakeUnsavedMetadataPage />} />
+              <Route
+                path="metadata-importing"
+                element={<FakeImportingMetadataPage />}
+              />
             </Route>
           </Routes>
         </UnsavedChangesProvider>
@@ -362,5 +378,55 @@ describe('Layout unsaved-changes nav guard', () => {
       expect(screen.getByText('Home content')).toBeInTheDocument();
     });
     expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('hard-blocks navigation (alert, not a dismissable confirm) while an import is actually in flight', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderLayout('graviscan', '/metadata-importing');
+    await waitFor(() => screen.getByText('Metadata content'));
+
+    act(() => {
+      screen.getByRole('link', { name: /^home$/i }).click();
+    });
+
+    expect(alertSpy).toHaveBeenCalled();
+    // A dismissable confirm (which the user could accept) must never even
+    // be offered while a write is actually in flight — the whole point is
+    // that "leave anyway" isn't a safe option here.
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('Metadata content')).toBeInTheDocument();
+  });
+
+  it('does not prompt for a NavLink click that targets the current route', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderLayout('graviscan', '/metadata');
+    await waitFor(() => screen.getByText('Metadata content'));
+
+    act(() => {
+      screen.getByRole('link', { name: /^metadata$/i }).click();
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('Metadata content')).toBeInTheDocument();
+  });
+
+  it('the machine-config keyboard shortcut respects the same guard', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderLayout('graviscan', '/metadata');
+    await waitFor(() => screen.getByText('Metadata content'));
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          ctrlKey: true,
+          shiftKey: true,
+          code: 'Comma',
+        })
+      );
+    });
+
+    // Declined — navigation must not have happened.
+    expect(screen.getByText('Metadata content')).toBeInTheDocument();
   });
 });

@@ -83,6 +83,17 @@ describe('csvEscape', () => {
     expect(csvEscape('P1-section-3')).toBe('P1-section-3');
   });
 
+  it.each(['A=1', '3+4', 'x@y'])(
+    'does not treat a formula-trigger character as unsafe unless it is the leading character (%s)',
+    (value) => {
+      // The regex is anchored with ^ — only a *leading* =, +, -, or @
+      // opens a formula in Excel/Sheets. A mid-string occurrence (already
+      // covered for '-' by 'Col-0'/'P1-section-3' above) must pass
+      // through unescaped for '=', '+', and '@' too.
+      expect(csvEscape(value)).toBe(value);
+    }
+  );
+
   it('still quotes values containing commas after neutralizing a formula trigger', () => {
     const escaped = csvEscape('=A1,B1');
     expect(escaped).toBe('"\'=A1,B1"');

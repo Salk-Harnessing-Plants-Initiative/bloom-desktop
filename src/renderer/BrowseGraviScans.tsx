@@ -240,9 +240,17 @@ export function BrowseGraviScans() {
       const result = response.data;
       if (result.errors?.includes('rclone not installed')) {
         setBackupMessage('Box backup unavailable (rclone not installed)');
-      } else if (result.uploaded > 0 && result.failed > 0) {
+      } else if (result.uploaded > 0 && result.errors?.length > 0) {
+        // Bloom and Box run independently (Promise.allSettled) and their
+        // counts are additive, so one target can fully succeed
+        // (contributing to `uploaded`, nothing to `failed`) while the other
+        // fails outright (contributing only an error string) — e.g.
+        // {uploaded: 2, failed: 0, errors: ['Authentication failed: ...']}.
+        // Checking `errors.length` here (not just `result.failed`) ensures
+        // that real, successfully-backed-up files are never reported as a
+        // total failure.
         setBackupMessage(
-          `Box backup completed with ${result.uploaded} uploaded, ${result.failed} error(s): ${result.errors?.[0] ?? ''}`
+          `Box backup completed with ${result.uploaded} uploaded, ${result.errors.length} error(s): ${result.errors[0]}`
         );
       } else if (!result.success) {
         // Whole-operation failures that never got as far as uploading or

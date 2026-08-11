@@ -251,6 +251,33 @@ describe('GraviMetadataUpload', () => {
     expect(createWithSections).not.toHaveBeenCalled();
   });
 
+  it('warns how many rows were skipped when a row has no data in any required field', async () => {
+    // A row where every required field is blank doesn't trigger the
+    // partial-row validation error (filled === 0, not 0 < filled <
+    // required.length) — it's silently excluded downstream by the
+    // plate-grouping loop's `if (!plateId) continue`. That's the right
+    // behavior for e.g. a trailing blank Excel row, but the operator
+    // previously had no way to know rows were dropped at all.
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+      ['', '', '', '', '', '', ''],
+    ]);
+    renderUpload();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+    expect(screen.getByText(/1 row.*skipped/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => {
+      expect(createWithSections).toHaveBeenCalledTimes(1);
+    });
+    const [, plates] = createWithSections.mock.calls[0];
+    expect(plates).toHaveLength(1);
+  });
+
   it('surfaces an error instead of a false "Done uploading!" when no column headers auto-map', async () => {
     // Simulates a spreadsheet whose headers don't exactly match the
     // expected field names (e.g. "PlateID" instead of "Plate ID") and
@@ -312,7 +339,7 @@ describe('GraviMetadataUpload', () => {
     expect(p1.sections).toHaveLength(2);
   });
 
-  it('disables Import while a submission is in flight and ignores a second click', async () => {
+  it('disables the Import button while a submission is in flight, preventing a duplicate click', async () => {
     let resolveCreate: (value: unknown) => void = () => {};
     createWithSections.mockReturnValue(
       new Promise((resolve) => {
@@ -331,10 +358,13 @@ describe('GraviMetadataUpload', () => {
     await user.click(importButton);
     expect(importButton).toBeDisabled();
 
-    // A second click while the first request is still in flight must not
-    // fire a duplicate call — the button being disabled already prevents a
-    // real click, but user-event still won't dispatch on a disabled
-    // element, so this also documents the guard's intent.
+    // user-event won't dispatch a click on a disabled element at all
+    // (matching real browser behavior), so this only proves the disabled
+    // attribute itself is what prevents the duplicate IPC call — it does
+    // not exercise handleImport's own `isImporting` re-entrancy guard,
+    // which is unreachable through the DOM given the button is the
+    // feature's only entry point. That guard is defense-in-depth, not
+    // independently covered by a test.
     await user.click(importButton);
     expect(createWithSections).toHaveBeenCalledTimes(1);
 

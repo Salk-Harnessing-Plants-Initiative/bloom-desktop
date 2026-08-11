@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { WedgeBanner } from './components/WedgeBanner';
 import { useUploadStatus } from './contexts/UploadStatusContext';
 import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
@@ -326,16 +326,35 @@ interface LayoutProps {
 
 export function Layout({ mode = null }: LayoutProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [scannerName, setScannerName] = useState<string>('');
-  const { hasUnsavedChanges } = useUnsavedChanges();
+  const { hasUnsavedChanges, blockNavigation } = useUnsavedChanges();
 
-  const confirmNavAway = (event: React.MouseEvent) => {
+  // Shared by every navigation surface (sidebar links, the machine-config
+  // keyboard shortcut) — a click/shortcut that doesn't actually change
+  // route needs neither the hard block nor the confirm below.
+  // Returns whether navigation may proceed.
+  const guardNavigation = (): boolean => {
+    if (blockNavigation) {
+      window.alert(
+        'An import is still in progress. Please wait for it to finish before navigating away.'
+      );
+      return false;
+    }
     if (
       hasUnsavedChanges &&
       !window.confirm(
         'You have an unsaved metadata import in progress. Leave anyway?'
       )
     ) {
+      return false;
+    }
+    return true;
+  };
+
+  const confirmNavAway = (event: React.MouseEvent, to: string) => {
+    if (to === location.pathname) return;
+    if (!guardNavigation()) {
       event.preventDefault();
     }
   };
@@ -379,13 +398,14 @@ export function Layout({ mode = null }: LayoutProps) {
       // (Shift+Comma produces different event.key on different layouts)
       if (modifier && event.shiftKey && event.code === 'Comma') {
         event.preventDefault();
-        navigate('/machine-config');
+        if (location.pathname === '/machine-config') return;
+        if (guardNavigation()) navigate('/machine-config');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate]);
+  }, [navigate, location.pathname, blockNavigation, hasUnsavedChanges]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -402,7 +422,7 @@ export function Layout({ mode = null }: LayoutProps) {
               key={link.to}
               to={link.to}
               end
-              onClick={confirmNavAway}
+              onClick={(event) => confirmNavAway(event, link.to)}
               className={({ isActive }) =>
                 `flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors ${
                   isActive

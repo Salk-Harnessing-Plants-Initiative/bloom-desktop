@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useWaveMetadataLinks } from '../../../src/renderer/hooks/useWaveMetadataLinks';
-import { WaveMetadataLinksProvider } from '../../../src/renderer/contexts/WaveMetadataLinksContext';
+import {
+  MAX_REFETCH_RETRIES,
+  WaveMetadataLinksProvider,
+} from '../../../src/renderer/contexts/WaveMetadataLinksContext';
 
 function makeLink(waveNumber: number, accessionName = 'file.xlsx') {
   return {
@@ -153,6 +156,80 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     expect(result.current.row.links.map((l) => l.wave_number).sort()).toEqual([
       0, 2,
     ]);
+  });
+
+  it("surfaces an error when refetch's own IPC call fails, instead of silently leaving links empty", async () => {
+    // link()/unlink() already report their own IPC failures via
+    // errorsByExperiment; refetch() (used for the initial fetch, and
+    // internally by ensureFetched/link) had no else branch on
+    // `result.success`, so a failed listGraviMetadata call was
+    // indistinguishable from "no links yet" — no error, an empty array.
+    listGraviMetadata.mockResolvedValue({
+      success: false,
+      error: 'Database is locked',
+    });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+
+    await waitFor(() =>
+      expect(result.current.linkError).toBe('Database is locked')
+    );
+    expect(result.current.links).toHaveLength(0);
+  });
+
+  it('caps the stale-version retry loop in refetch() instead of recursing forever under adversarial rapid mutation', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const pending: { resolve: (v: unknown) => void }[] = [];
+    for (let i = 0; i <= MAX_REFETCH_RETRIES; i++) {
+      listGraviMetadata.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            pending.push({ resolve });
+          })
+      );
+    }
+
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+    await waitFor(() => expect(listGraviMetadata).toHaveBeenCalledTimes(1));
+
+    for (let i = 0; i <= MAX_REFETCH_RETRIES; i++) {
+      // Supersede this attempt's in-flight refetch before it resolves,
+      // forcing refetch() to detect staleness and retry — real
+      // interleaving would be a concurrent link()/unlink() from a
+      // different UI surface; this test fires them back-to-back so every
+      // single attempt loses the race.
+      await act(async () => {
+        await result.current.unlink(1000 + i);
+      });
+      await act(async () => {
+        pending[i].resolve({ success: true, data: [] });
+      });
+      if (i < MAX_REFETCH_RETRIES) {
+        await waitFor(() =>
+          expect(listGraviMetadata).toHaveBeenCalledTimes(i + 2)
+        );
+      }
+    }
+
+    // The final attempt (index MAX_REFETCH_RETRIES) was also superseded,
+    // but the cap must stop it from recursing into yet another call.
+    expect(listGraviMetadata).toHaveBeenCalledTimes(MAX_REFETCH_RETRIES + 1);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+
+    // Bumping the version again afterward must not resurrect the
+    // recursion — proves refetch actually gave up rather than merely
+    // being slow to retry.
+    await act(async () => {
+      await result.current.unlink(9999);
+    });
+    expect(listGraviMetadata).toHaveBeenCalledTimes(MAX_REFETCH_RETRIES + 1);
+
+    consoleError.mockRestore();
   });
 
   it('keeps two different experimentIds independent', async () => {

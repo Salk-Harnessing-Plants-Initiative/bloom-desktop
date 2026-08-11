@@ -176,6 +176,16 @@ describe('BrowseGraviScans', () => {
     expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
   });
 
+  it('disables Next when total exactly equals one page (PAGE_SIZE = 20) — the boundary of offset + PAGE_SIZE >= total', async () => {
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 20 },
+    });
+    renderPage();
+    await waitFor(() => expect(browseByExperiment).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
+  });
+
   it('disables Next when there are zero results', async () => {
     browseByExperiment.mockResolvedValue({
       success: true,
@@ -486,6 +496,43 @@ describe('BrowseGraviScans', () => {
         expect(screen.getByText(/3 uploaded/i)).toBeInTheDocument();
         expect(screen.getByText(/1 error/i)).toBeInTheDocument();
       });
+    });
+
+    it('reports a partial-success message, not "Box backup failed", when Box uploads succeed but Bloom fails (uploaded>0, failed:0)', async () => {
+      // uploadAllScans() merges Bloom + Box results with success:
+      // bloomResult.success && boxResult.success, but uploaded/failed are
+      // additive across both targets. So Box fully succeeding (its
+      // filesCopied contribute to `uploaded`, its empty errors contribute
+      // nothing to `failed`) while Bloom fails outright (contributing 0 to
+      // `uploaded`/`failed` but an error string) produces exactly this
+      // shape: success:false, uploaded>0, failed:0. That must not be
+      // reported as "Box backup failed" — real files were backed up.
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 2,
+          skipped: 0,
+          failed: 0,
+          errors: ['Authentication failed: Bloom session expired'],
+          metadataLinkingAvailable: false,
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/2 uploaded/i)).toBeInTheDocument();
+        expect(
+          screen.getByText(/authentication failed: bloom session expired/i)
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/^box backup failed/i)).not.toBeInTheDocument();
     });
 
     it('shows a friendly message when the IPC call itself rejects', async () => {

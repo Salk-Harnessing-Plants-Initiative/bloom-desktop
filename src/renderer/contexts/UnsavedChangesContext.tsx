@@ -3,11 +3,24 @@ import { createContext, ReactNode, useContext, useState } from 'react';
 interface UnsavedChangesContextValue {
   hasUnsavedChanges: boolean;
   setHasUnsavedChanges: (value: boolean) => void;
+  /**
+   * Stronger than `hasUnsavedChanges`: an async write (e.g. the metadata
+   * import's `createWithSections` IPC call) is actually in flight, not
+   * just pending-and-safe-to-abandon. Navigating away mid-write would let
+   * the promise resolve against an unmounted component (a silently lost
+   * setError/onUploadComplete call) and risks a confused operator
+   * re-submitting and creating a duplicate record — so this is a hard
+   * block, not a confirm-and-proceed.
+   */
+  blockNavigation: boolean;
+  setBlockNavigation: (value: boolean) => void;
 }
 
 const UnsavedChangesContext = createContext<UnsavedChangesContextValue>({
   hasUnsavedChanges: false,
   setHasUnsavedChanges: () => {},
+  blockNavigation: false,
+  setBlockNavigation: () => {},
 });
 
 /**
@@ -20,10 +33,16 @@ const UnsavedChangesContext = createContext<UnsavedChangesContextValue>({
  */
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [blockNavigation, setBlockNavigation] = useState(false);
 
   return (
     <UnsavedChangesContext.Provider
-      value={{ hasUnsavedChanges, setHasUnsavedChanges }}
+      value={{
+        hasUnsavedChanges,
+        setHasUnsavedChanges,
+        blockNavigation,
+        setBlockNavigation,
+      }}
     >
       {children}
     </UnsavedChangesContext.Provider>

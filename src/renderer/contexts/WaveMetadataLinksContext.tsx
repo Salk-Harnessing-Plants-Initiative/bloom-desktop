@@ -22,6 +22,13 @@ interface WaveMetadataLinksContextValue {
 const WaveMetadataLinksContext =
   createContext<WaveMetadataLinksContextValue | null>(null);
 
+// Bounds refetch()'s stale-version retry (see versions/bumpVersion below) so
+// pathological rapid-fire mutations on one experimentId can't recurse
+// forever — each retry only fires because *something else* bumped the
+// version first, so this is a defense against an adversarial/looping
+// caller, not normal usage.
+export const MAX_REFETCH_RETRIES = 5;
+
 /**
  * Centralizes wave<->metadata-file link state per experimentId so every
  * `useWaveMetadataLinks(id)` call site for the *same* experiment shares
@@ -60,7 +67,7 @@ export function WaveMetadataLinksProvider({
   }, []);
 
   const refetch = useCallback(
-    async (experimentId: string) => {
+    async (experimentId: string, attempt = 0) => {
       const version = bumpVersion(experimentId);
       const result =
         await window.electron.database.experiments.listGraviMetadata(
@@ -72,12 +79,24 @@ export function WaveMetadataLinksProvider({
         // it was queried before a concurrent unlink() committed
         // server-side). Refetch again rather than either applying stale
         // data or dropping this refetch's own update entirely.
-        return refetch(experimentId);
+        if (attempt >= MAX_REFETCH_RETRIES) {
+          console.error(
+            `[WaveMetadataLinks] refetch(${experimentId}) superseded ${attempt + 1} times in a row — giving up`
+          );
+          return;
+        }
+        return refetch(experimentId, attempt + 1);
       }
       if (result.success) {
         setLinksByExperiment((prev) => ({
           ...prev,
           [experimentId]: result.data ?? [],
+        }));
+        setErrorsByExperiment((prev) => ({ ...prev, [experimentId]: null }));
+      } else {
+        setErrorsByExperiment((prev) => ({
+          ...prev,
+          [experimentId]: result.error ?? 'Failed to load metadata links',
         }));
       }
     },
