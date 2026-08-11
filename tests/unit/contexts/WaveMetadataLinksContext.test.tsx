@@ -256,12 +256,20 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     // The message must not imply a working retry mechanism — there is no
     // manual refresh affordance and fetchedIds is never cleared, so "please
     // retry" would be a lie. It must also leave the user an actual next
-    // step — but "reload the app" is itself not real: main.ts strips the
-    // default menu (menuBarVisible=false, setMenu(null)) and registers no
-    // reload accelerator, so there is no in-app reload in the packaged
-    // build. The only real recourse is fully quitting and reopening.
+    // step — but "reload the app" is itself not reliable: main.ts's
+    // setMenu(null)/menuBarVisible=false strips the default menu (and its
+    // Reload item/accelerator) on Windows/Linux, where BrowserWindow.
+    // setMenu() applies; macOS ignores per-window setMenu (its menu bar is
+    // process-wide via Menu.setApplicationMenu, never called here) so a
+    // default Reload may still exist there — inconsistent across
+    // platforms either way, so "quit and reopen" is the one instruction
+    // that reliably works everywhere. Unlike a harmless-but-unreliable
+    // "reload", quitting is a real, disruptive action (it kills any
+    // active scan/backup, per main.ts's before-quit handler), so the
+    // message must warn about that cost too, not just state it as a
+    // low-stakes suggestion.
     expect(result.current.linkError).toBe(
-      'Could not refresh metadata links — the displayed wave links may be out of date. Quit and reopen the app to refresh them.'
+      'Could not refresh metadata links — the displayed wave links may be out of date. Quit and reopen the app to refresh them (this will interrupt any active scan or backup).'
     );
 
     // Bumping the version again afterward must not resurrect the

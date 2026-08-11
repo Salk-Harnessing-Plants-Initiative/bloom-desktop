@@ -180,11 +180,15 @@ describe('BrowseGraviScans', () => {
 
     const downloadButton = screen.getByRole('button', { name: /^download$/i });
     expect(downloadButton).toBeDisabled();
-    // The tooltip must match the visible red error text right above the
-    // button, not an independently-worded explanation — two different,
-    // disconnected strings for one disabled state reads as two unrelated
-    // problems rather than one.
-    expect(downloadButton).toHaveAttribute('title', 'Database is locked');
+    // The tooltip must start with the same visible red error text right
+    // above the button, not an independently-worded, disconnected
+    // explanation — but it must still say what capability is actually
+    // blocked (unlike the raw fetch error alone), since that reasoning
+    // was the whole point of the original custom tooltip.
+    expect(downloadButton).toHaveAttribute(
+      'title',
+      'Database is locked — Download is disabled until this is resolved (wave/accession divergence cannot be checked).'
+    );
   });
 
   it('Next/Previous pagination controls call browseByExperiment with an updated offset', async () => {

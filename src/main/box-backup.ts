@@ -589,6 +589,20 @@ export async function runBoxBackup(
               // operator-facing "N uploaded" message doesn't overstate
               // what's actually in Box.
               result.filesCopied -= uploadedIds.length;
+              // The live per-callback counters have the identical defect:
+              // completedImages was incremented (and broadcast via
+              // onProgress) as each file copied, before the CSV attempt.
+              // Correct and re-emit so the global upload banner and each
+              // experiment row's "Box N/M" indicator don't keep showing a
+              // stale, now-inaccurate "fully completed" count.
+              completedImages -= uploadedIds.length;
+              failedImages += uploadedIds.length;
+              onProgress?.({
+                totalImages,
+                completedImages,
+                failedImages,
+                currentExperiment: expName,
+              });
             }
           }
         } finally {

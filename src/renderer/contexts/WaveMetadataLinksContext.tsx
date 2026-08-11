@@ -86,7 +86,7 @@ export function WaveMetadataLinksProvider({
           setErrorsByExperiment((prev) => ({
             ...prev,
             [experimentId]:
-              'Could not refresh metadata links — the displayed wave links may be out of date. Quit and reopen the app to refresh them.',
+              'Could not refresh metadata links — the displayed wave links may be out of date. Quit and reopen the app to refresh them (this will interrupt any active scan or backup).',
           }));
           return;
         }

@@ -113,7 +113,11 @@ function ExperimentRow({
       <button
         onClick={handleDownload}
         disabled={!!linkError}
-        title={linkError ?? undefined}
+        title={
+          linkError
+            ? `${linkError} — Download is disabled until this is resolved (wave/accession divergence cannot be checked).`
+            : undefined
+        }
       >
         Download
       </button>

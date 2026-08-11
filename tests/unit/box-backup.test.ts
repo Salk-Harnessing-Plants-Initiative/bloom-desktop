@@ -191,12 +191,18 @@ describe('runBoxBackup', () => {
       },
     ]);
 
-    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
 
     const calls = db.graviImage.updateMany.mock.calls;
     const lastCall = calls[calls.length - 1];
     expect([...lastCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
     expect(lastCall[0].data.box_status).toBe('failed');
+    // Distinguishes "reverts the whole uploadedIds array" from a
+    // hardcoded `-= 1`, which would coincidentally also yield 0 in the
+    // single-image test above but not here (2 added, only 1 subtracted).
+    expect(result.filesCopied).toBe(0);
   });
 
   it('leaves images at box_status:"uploaded" when both the image copy and the metadata CSV copy succeed', async () => {
@@ -223,6 +229,10 @@ describe('runBoxBackup', () => {
     const calls = db.graviImage.updateMany.mock.calls;
     expect(calls).toHaveLength(1);
     expect(calls[0][0].data.box_status).toBe('uploaded');
+    // Positive control for the sibling revert tests: filesCopied CAN be
+    // nonzero, so their `=== 0` assertions prove a real decrement
+    // happened rather than the counter never having been incremented.
+    expect(result.filesCopied).toBe(1);
   });
 
   it('does not count reverted images in filesCopied, so the summary count matches what is actually durable in Box', async () => {
@@ -238,6 +248,135 @@ describe('runBoxBackup', () => {
     );
 
     expect(result.filesCopied).toBe(0);
+  });
+
+  it('also corrects the live completedImages/failedImages progress counters on a CSV-only failure, not just the final result', async () => {
+    // result.filesCopied is fixed, but the separate per-callback
+    // completedImages/failedImages counters (broadcast live via
+    // onProgress to Layout.tsx's global banner and BrowseGraviScans'
+    // per-row "Box N/M" indicator) are a different code path with the
+    // exact same "counted before the CSV attempt, never corrected on CSV
+    // failure" defect — an operator could see "Box 1/1" (implying full
+    // success) on a row whose image was just reverted to box_status:
+    // 'failed' and excluded from the visible upload count.
+    // The default mock's image-copy branch just closes with code 0 and
+    // never emits rclone's per-file "Copied" info log line, so
+    // onFileComplete (and therefore onProgress) never fires at all under
+    // it — emit that line here so completedImages actually increments
+    // before the CSV failure, giving this test something real to correct.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'info',
+                msg: `${path.basename(sourceFile)}: Copied (new)`,
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 0);
+        });
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+
+    const progressUpdates: Array<{
+      totalImages: number;
+      completedImages: number;
+      failedImages: number;
+    }> = [];
+
+    await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0],
+      (progress) => progressUpdates.push({ ...progress })
+    );
+
+    const lastUpdate = progressUpdates[progressUpdates.length - 1];
+    expect(lastUpdate.completedImages).toBe(0);
+    expect(lastUpdate.failedImages).toBe(1);
+  });
+
+  it('reverts only the images that copied successfully (not the ones that already failed their own copy) when a partially-failed wave also fails its metadata CSV copy', async () => {
+    // Distinguishes `filesCopied -= uploadedIds.length` from a broken
+    // variant that also subtracts failedIds.length (double-counting) or
+    // reverts failedIds a second time — every existing CSV-failure test
+    // has failedIds empty, so this is the only test that can catch that
+    // class of bug.
+    const sourceFile2 = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(sourceFile2, 'fake tiff bytes 2');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: sourceFile2 },
+        ],
+      },
+    ]);
+    // img2's filename must appear in rcloneCopyFiles' erroredFiles set to
+    // simulate a partial per-file copy failure. Since this test file
+    // mocks child_process.spawn (not rcloneCopyFiles itself), drive that
+    // via the JSON log line rcloneCopyFiles parses for per-file errors.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'error',
+                msg: `${path.basename(sourceFile2)}: simulated copy error`,
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 0);
+        });
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
+
+    // img1 copied fine then got reverted for the CSV failure; img2 was
+    // already marked 'failed' from its own copy failure and must not be
+    // touched again by the revert.
+    const revertCall = db.graviImage.updateMany.mock.calls.find(
+      (call) =>
+        call[0].data.box_status === 'failed' &&
+        call[0].where.id.in.includes('img1')
+    );
+    expect(revertCall[0].where.id.in).toEqual(['img1']);
+    expect(result.filesCopied).toBe(0);
+    expect(result.errors.some((e) => e.includes('1/2 files failed'))).toBe(
+      true
+    );
+    expect(result.errors.some((e) => e.includes('metadata'))).toBe(true);
   });
 });
 
