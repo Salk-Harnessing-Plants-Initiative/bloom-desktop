@@ -29,6 +29,20 @@ const WaveMetadataLinksContext =
 // caller, not normal usage.
 export const MAX_REFETCH_RETRIES = 5;
 
+// `error ?? fallback` only substitutes on null/undefined — an empty or
+// whitespace-only string is neither, so it would be used as-is instead
+// of falling back, producing either a bare leading em dash (refetch's
+// message) or a fully silent failure (link()/unlink()'s consumers all
+// guard rendering with `{linkError && ...}`, so an empty string renders
+// nothing at all). `.trim()` must run BEFORE the `||` check, not after
+// selecting which string to use, or a whitespace-only error slips through.
+function formatBackendError(
+  error: string | undefined,
+  fallback: string
+): string {
+  return error?.trim() || fallback;
+}
+
 /**
  * Centralizes wave<->metadata-file link state per experimentId so every
  * `useWaveMetadataLinks(id)` call site for the *same* experiment shares
@@ -110,11 +124,11 @@ export function WaveMetadataLinksProvider({
         // (a bare [.!?]$ regex still doubles up on "(see logs)." or
         // "Failed. "). Joining with an em dash instead of a second
         // sentence sidesteps the collision entirely, regardless of how
-        // the source string ends. `?? fallback` only substitutes on
-        // null/undefined, so an empty string (falsy but not nullish)
-        // needs `||` instead, or it produces a bare leading em dash.
-        const rawError =
-          result.error?.trim() || 'Failed to load metadata links';
+        // the source string ends.
+        const rawError = formatBackendError(
+          result.error,
+          'Failed to load metadata links'
+        );
         setErrorsByExperiment((prev) => ({
           ...prev,
           [experimentId]: `${rawError} — Quit and reopen the app to retry (this will interrupt any active scan or backup).`,
@@ -148,7 +162,10 @@ export function WaveMetadataLinksProvider({
       }
       setErrorsByExperiment((prev) => ({
         ...prev,
-        [experimentId]: result.error ?? 'Failed to link metadata file',
+        [experimentId]: formatBackendError(
+          result.error,
+          'Failed to link metadata file'
+        ),
       }));
       return false;
     },
@@ -179,7 +196,10 @@ export function WaveMetadataLinksProvider({
       }
       setErrorsByExperiment((prev) => ({
         ...prev,
-        [experimentId]: result.error ?? 'Failed to unlink metadata file',
+        [experimentId]: formatBackendError(
+          result.error,
+          'Failed to unlink metadata file'
+        ),
       }));
       return false;
     },

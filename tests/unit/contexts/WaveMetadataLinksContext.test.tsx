@@ -239,6 +239,60 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     );
   });
 
+  it('falls back to a generic message instead of a blob of whitespace when the backend error is whitespace-only', async () => {
+    // `result.error || fallback` alone (without `.trim()` first) would
+    // treat a whitespace-only string as truthy and use it verbatim,
+    // producing "   — Quit and reopen..." — the same class of garbled
+    // message the empty-string fix above addresses, just for a string
+    // that isn't literally empty. `.trim()` must run BEFORE the `||`
+    // check, not after selecting which string to use.
+    listGraviMetadata.mockResolvedValue({ success: false, error: '   ' });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+
+    await waitFor(() =>
+      expect(result.current.linkError).toBe(
+        'Failed to load metadata links — Quit and reopen the app to retry (this will interrupt any active scan or backup).'
+      )
+    );
+  });
+
+  it('falls back to a generic message instead of a bare em dash when link() fails with an empty error string', async () => {
+    // link()/unlink() had the same `result.error ?? fallback` bug
+    // refetch() was fixed for, but with a worse outcome: every consumer
+    // guards rendering with `{linkError && ...}`, so an empty string
+    // renders NOTHING instead of a garbled message — a link/unlink
+    // failure would be completely invisible to the operator, and
+    // BrowseGraviScans' Download button (`disabled={!!linkError}`)
+    // would stay enabled, implying success that never happened.
+    linkGraviMetadata.mockResolvedValue({ success: false, error: '' });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+    await waitFor(() => expect(result.current.links).toEqual([]));
+
+    await act(async () => {
+      await result.current.link(0, 'acc-0');
+    });
+
+    expect(result.current.linkError).toBe('Failed to link metadata file');
+  });
+
+  it('falls back to a generic message instead of a bare em dash when unlink() fails with an empty error string', async () => {
+    unlinkGraviMetadata.mockResolvedValue({ success: false, error: '' });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+    await waitFor(() => expect(result.current.links).toEqual([]));
+
+    await act(async () => {
+      await result.current.unlink(0);
+    });
+
+    expect(result.current.linkError).toBe('Failed to unlink metadata file');
+  });
+
   it('clears a prior linkError once a subsequent link() succeeds, instead of leaving it stuck', async () => {
     // The error-disabled state (e.g. BrowseGraviScans' Download button)
     // must be reactive in both directions — a stale permanently-set

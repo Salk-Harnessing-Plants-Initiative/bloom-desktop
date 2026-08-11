@@ -76,7 +76,12 @@ export function rcloneCopyFiles(
   filePaths: string[],
   boxDestination: string,
   onFileComplete?: (filename: string) => void
-): Promise<{ success: boolean; erroredFiles: Set<string>; error?: string }> {
+): Promise<{
+  success: boolean;
+  erroredFiles: Set<string>;
+  error?: string;
+  resolvedNames: Map<string, string>;
+}> {
   return new Promise((resolve) => {
     // Create a temp directory with symlinks to the files we want to copy
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'graviscan-backup-'));
@@ -97,11 +102,21 @@ export function rcloneCopyFiles(
       // never trusted as "known" would otherwise silently drop that
       // file's real error (see resolvedToOriginalName.get() below).
       const resolvedToOriginalName = new Map<string, string>();
+      // Inverse of resolvedToOriginalName, keyed by original basename —
+      // returned to the caller so it can build metadata.csv using the
+      // SAME resolved name this call determined, instead of resolving
+      // the path a second time itself. Two independent resolutions of
+      // the same path can legitimately disagree if disk state changes
+      // between them (e.g. a rename completing in between) — resolving
+      // once, here, and threading the result through the return value
+      // closes that gap rather than merely narrowing it.
+      const originalToResolvedName = new Map<string, string>();
       for (const filePath of filePaths) {
         const resolvedPath = resolveGraviScanPath(filePath);
         if (resolvedPath) {
           const fileName = path.basename(resolvedPath);
           resolvedToOriginalName.set(fileName, path.basename(filePath));
+          originalToResolvedName.set(path.basename(filePath), fileName);
           const linkPath = path.join(tmpDir, fileName);
           // Windows restricts unprivileged symlink creation (requires
           // admin or Developer Mode — the default state on most lab
@@ -138,6 +153,7 @@ export function rcloneCopyFiles(
           success: false,
           erroredFiles: missingFileNames,
           error: `None of the ${filePaths.length} image files exist on disk`,
+          resolvedNames: originalToResolvedName,
         });
         return;
       }
@@ -228,7 +244,11 @@ export function rcloneCopyFiles(
         }
 
         if (code === 0 && erroredFiles.size === 0) {
-          resolve({ success: true, erroredFiles });
+          resolve({
+            success: true,
+            erroredFiles,
+            resolvedNames: originalToResolvedName,
+          });
         } else {
           resolve({
             success: false,
@@ -237,6 +257,7 @@ export function rcloneCopyFiles(
               code !== 0
                 ? (waveLevelErrorMsg ?? `rclone exited with code ${code}`)
                 : undefined,
+            resolvedNames: originalToResolvedName,
           });
         }
       });
@@ -251,6 +272,7 @@ export function rcloneCopyFiles(
           success: false,
           erroredFiles: new Set(),
           error: err.message,
+          resolvedNames: originalToResolvedName,
         });
       });
     } catch (err) {
@@ -262,6 +284,7 @@ export function rcloneCopyFiles(
       resolve({
         success: false,
         erroredFiles: new Set(),
+        resolvedNames: new Map(),
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -486,14 +509,18 @@ export async function runBoxBackup(
         accession,
         transplant_date: scan.transplant_date,
         custom_note: scan.custom_note,
-        // rcloneCopyFiles uploads files under their *resolved* on-disk
-        // basename (see resolveGraviScanPath's _et_-rename fallback) —
-        // metadata.csv must name the file Box actually received, not the
-        // possibly-stale DB path, or the CSV silently stops matching the
-        // folder contents it describes.
-        image_filename: path.basename(
-          resolveGraviScanPath(img.path) ?? img.path
-        ),
+        // Placeholder — overwritten with the RESOLVED on-disk basename
+        // once rcloneCopyFiles runs for this wave (see the
+        // resolvedNames-based patch loop below), or the row is dropped
+        // entirely if the file can't be found at all. Resolving here
+        // too (this loop runs for every wave up front, long before that
+        // wave's own rcloneCopyFiles call) would mean two independent
+        // filesystem reads of the same path at two different times,
+        // which can disagree if disk state changes in between (e.g. a
+        // rename completing) — resolving once, at actual-upload time,
+        // and threading the result back avoids that gap entirely rather
+        // than merely narrowing it.
+        image_filename: path.basename(img.path),
       });
     }
   }
@@ -534,6 +561,24 @@ export async function runBoxBackup(
           currentExperiment: expName,
         });
       });
+
+      // Patch each scanRow's image_filename with the RESOLVED basename
+      // rcloneCopyFiles actually used, using the exact same resolution
+      // this call already performed — not a second, independently-timed
+      // one. An image whose original basename has no entry in
+      // resolvedNames was never found on disk under any name variant
+      // (resolveGraviScanPath returned null), so it was never even
+      // attempted for upload; exportableScanRowIndexes excludes it from
+      // metadata.csv below rather than naming a file Box never received.
+      const exportableScanRowIndexes = new Set<number>();
+      for (let i = 0; i < data.imagePaths.length; i++) {
+        const originalBasename = path.basename(data.imagePaths[i]);
+        const resolvedBasename = copyResult.resolvedNames.get(originalBasename);
+        if (resolvedBasename) {
+          data.scanRows[i].image_filename = resolvedBasename;
+          exportableScanRowIndexes.add(i);
+        }
+      }
 
       // Per-file status: mark only files that didn't error as uploaded
       const uploadedIds: string[] = [];
@@ -607,9 +652,14 @@ export async function runBoxBackup(
         });
       }
 
-      // Export and copy metadata CSV per wave
-      if (data.scanRows.length > 0) {
-        const csvContent = exportMetadataCSV(expName, data.scanRows);
+      // Export and copy metadata CSV per wave — excluding rows for
+      // images that were never found on disk (see
+      // exportableScanRowIndexes above).
+      const exportableScanRows = data.scanRows.filter((_, i) =>
+        exportableScanRowIndexes.has(i)
+      );
+      if (exportableScanRows.length > 0) {
+        const csvContent = exportMetadataCSV(expName, exportableScanRows);
         const tmpCsvPath = path.join(
           os.tmpdir(),
           `graviscan-metadata-${safeName}-wave${waveNum}.csv`

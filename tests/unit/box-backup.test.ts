@@ -900,6 +900,49 @@ describe('runBoxBackup', () => {
     expect(csvContent).toContain(path.basename(renamedActualPath));
     expect(csvContent).not.toContain(path.basename(staleDbPath));
   });
+
+  it('excludes an image from the exported metadata.csv (and does not crash) when it cannot be found on disk under any name variant', async () => {
+    // resolveGraviScanPath returns null when a file is missing under
+    // every extension/rename variant it tries — that image was never
+    // found on disk, so it was never even attempted for upload, let
+    // alone actually placed in Box. Falling back to the stale DB path's
+    // own basename for such a row (as an earlier version of this fix
+    // did) made metadata.csv claim provenance for a file that doesn't
+    // exist under ANY name in that folder — a stronger, more misleading
+    // claim than "we don't know." Excluding the row entirely keeps the
+    // CSV accurate to what Box actually received.
+    const neverExistsPath = path.join(
+      sourceDir,
+      'exp4_st_20260104T000000_cy1_S1_00.tif'
+    );
+    // Deliberately never created on disk.
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: neverExistsPath },
+        ],
+      },
+    ]);
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const csvCall = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+    expect(csvCall).toBeDefined();
+    const csvContent = csvCall![1] as string;
+    expect(csvContent).toContain(path.basename(sourceFile));
+    expect(csvContent).not.toContain(path.basename(neverExistsPath));
+  });
 });
 
 describe('csvEscape', () => {
