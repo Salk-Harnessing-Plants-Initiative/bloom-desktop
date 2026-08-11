@@ -86,7 +86,20 @@ npx openspec archive fix-code-review-findings --yes    # depends on specs from a
 npx openspec archive fix-copilot-review-findings --yes
 ```
 
-### Step 6: Verify Archives
+### Step 6: Fix Prettier Formatting Introduced by the Archive
+
+**`npx openspec archive` does not run Prettier on the spec files it writes or rewrites.** Every archive operation is a real, recurring source of `Lint - Node.js` CI failures on the _next_ PR that touches `openspec/` — not a one-off. This has actually happened twice on this repo: once via a change's own archival commit (fixed separately in #319), and again immediately after, when `openspec archive fix-camera-streaming-stdout-race` rewrote `openspec/specs/ipc-reliability/spec.md` and reintroduced the identical class of drift (missing blank lines around headers) the very next day.
+
+Run this **every time**, immediately after archiving and before committing — do not treat it as optional or as something to check only if CI later complains:
+
+```bash
+npx prettier --check "openspec/**/*.md"
+# If it reports drift:
+npx prettier --write "openspec/**/*.md"
+npx prettier --check "openspec/**/*.md"   # confirm clean before committing
+```
+
+### Step 7: Verify Archives
 
 ```bash
 # List archived proposals
@@ -98,7 +111,7 @@ npx openspec validate --strict
 
 ## Complete Cleanup Script
 
-**This is a convenience wrapper around Steps 1-6 above — it does not skip the safety gate.** Supply the PR number explicitly; do not auto-detect it with `gh pr list --state merged --limit 1`, which picks whichever PR _anywhere in the repo_ merged most recently and may not be the one you mean to clean up.
+**This is a convenience wrapper around Steps 1-7 above — it does not skip the safety gate.** Supply the PR number explicitly; do not auto-detect it with `gh pr list --state merged --limit 1`, which picks whichever PR _anywhere in the repo_ merged most recently and may not be the one you mean to clean up.
 
 ```bash
 # 1. Set the PR number explicitly (caller-supplied, not auto-detected)
@@ -134,7 +147,12 @@ npx openspec list
 # For each change_id above: verify tasks.md has no remaining `- [ ]`, then:
 #   npx openspec archive <change-id> --yes
 
-# 8. Verify
+# 8. Fix Prettier drift the archive step just introduced — `openspec archive`
+#    does not format the files it writes, and this reliably reintroduces the
+#    exact class of Lint - Node.js failure #319 fixed. Not optional.
+npx prettier --check "openspec/**/*.md" || npx prettier --write "openspec/**/*.md"
+
+# 9. Verify
 npx openspec validate --strict
 git status
 ```
@@ -193,7 +211,15 @@ npx openspec archive <change-id>
 ls openspec/changes/archive/
 ```
 
-### 5. Commit Archives
+### 5. Fix Prettier Formatting Before Committing
+
+`openspec archive` doesn't format the files it writes/rewrites — check and fix before staging anything:
+
+```bash
+npx prettier --check "openspec/**/*.md" || npx prettier --write "openspec/**/*.md"
+```
+
+### 6. Commit Archives
 
 ```bash
 # Stage archive changes
@@ -223,6 +249,8 @@ When you run `openspec archive <change-id>`, OpenSpec:
 2. **Copies specs** from `openspec/changes/<change-id>/specs/` to `openspec/specs/` (if not already there)
 3. **Updates spec purpose** with archive date and change reference
 4. **Preserves history** - all proposal documents, tasks, and design docs
+
+**What it does NOT do:** run Prettier on any of the above. The merged/rewritten spec files routinely come out with missing blank lines around headers (the same class of drift #319 fixed) — always run Step 6/Step 5's Prettier check afterward, every single time, not just when CI happens to catch it.
 
 ## Troubleshooting
 
@@ -280,6 +308,21 @@ git commit -m "chore: Archive OpenSpec proposals"
 git push origin main
 ```
 
+### "Lint - Node.js fails on the next PR, in a spec file I never touched"
+
+**Cause**: A prior `openspec archive` run rewrote that spec file without formatting it. This is not hypothetical — it has happened twice on this repo already (once in a change's own archival commit, fixed by #319; then again the very next day when archiving `fix-camera-streaming-stdout-race` reintroduced the same drift in `openspec/specs/ipc-reliability/spec.md`).
+
+**Solution**: Run `npx prettier --check "openspec/**/*.md"` right now, on `main`, regardless of what you're currently working on — don't wait for it to surface as someone else's confusing CI failure on an unrelated PR:
+
+```bash
+npx prettier --write "openspec/**/*.md"
+git add openspec/
+git commit -m "style: fix Prettier formatting drift introduced by openspec archive"
+git push origin main
+```
+
+**Prevention**: Always run Step 6 (Commands) / Step 5 (Manual Cleanup) — the Prettier check — as a mandatory part of every archive, not a troubleshooting afterthought.
+
 ## GitHub CLI Shortcuts
 
 ```bash
@@ -307,8 +350,9 @@ gh pr view --web
 4. **Archive in dependency order** — parent changes before children that modify the same specs
 5. **Archive OpenSpec proposals promptly** (within a day of merge)
 6. **Verify archives** with `openspec validate --specs`
-7. **Commit archive changes** to main branch and push
-8. **Keep main clean** - delete stale branches regularly
+7. **Run `npx prettier --check "openspec/**/\*.md"`after every archive, unconditionally** —`openspec archive`does not format what it writes, and this has already caused real`Lint - Node.js`failures on unrelated later PRs twice. Fix with`--write` before committing, every time, not just when you happen to notice.
+8. **Commit archive changes** to main branch and push
+9. **Keep main clean** - delete stale branches regularly
 
 ## Post-Cleanup Verification
 
@@ -320,4 +364,5 @@ After cleanup, verify:
 - [ ] Main is up to date: `git status` shows "up to date with origin/main"
 - [ ] OpenSpec proposals archived: `openspec list` shows no active changes
 - [ ] Specs updated: New specs in `openspec/specs/` (if applicable)
+- [ ] **Prettier clean**: `npx prettier --check "openspec/**/*.md"` passes — run this even if nothing else seems off; `openspec archive` silently introduces drift often enough that skipping this check is how it reaches CI on someone else's PR
 - [ ] Archive committed: No uncommitted changes in `openspec/`

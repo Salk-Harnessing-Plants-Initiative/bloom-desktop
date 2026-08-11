@@ -19,6 +19,11 @@ from .daq import DAQ
 from .daq_mock import MockDAQ
 from .scanner_types import ScannerSettings, ScanResult
 
+try:
+    from protocol_io import write_line  # type: ignore[import-not-found]
+except ImportError:
+    from python.protocol_io import write_line  # Development/test path
+
 # Time to wait after rotation for turntable to settle before capturing image
 STABILIZATION_WAIT_SECONDS = 0.05  # 50ms
 
@@ -62,34 +67,34 @@ class Scanner:
             RuntimeError: If initialization fails
         """
         if self.is_initialized:
-            print("STATUS:Scanner already initialized", flush=True)
+            write_line("STATUS:Scanner already initialized")
             return
 
         try:
             # Initialize camera
             if self._use_mock:
-                print("STATUS:Using mock camera for scanner", flush=True)
+                write_line("STATUS:Using mock camera for scanner")
                 self.camera = MockCamera(self.settings.camera)
             else:
-                print("STATUS:Using real camera for scanner", flush=True)
+                write_line("STATUS:Using real camera for scanner")
                 self.camera = Camera(self.settings.camera)
 
             self.camera.open()
-            print("STATUS:Scanner camera initialized", flush=True)
+            write_line("STATUS:Scanner camera initialized")
 
             # Initialize DAQ
             if self._use_mock:
-                print("STATUS:Using mock DAQ for scanner", flush=True)
+                write_line("STATUS:Using mock DAQ for scanner")
                 self.daq = MockDAQ(self.settings.daq)
             else:
-                print("STATUS:Using real DAQ for scanner", flush=True)
+                write_line("STATUS:Using real DAQ for scanner")
                 self.daq = DAQ(self.settings.daq)
 
             self.daq.initialize()
-            print("STATUS:Scanner DAQ initialized", flush=True)
+            write_line("STATUS:Scanner DAQ initialized")
 
             self.is_initialized = True
-            print("STATUS:Scanner initialized successfully", flush=True)
+            write_line("STATUS:Scanner initialized successfully")
 
         except Exception as e:
             error_msg = f"Scanner initialization failed: {str(e)}"
@@ -118,8 +123,10 @@ class Scanner:
         try:
             if self.camera is not None:
                 self.camera.close()
-                print("STATUS:Scanner camera cleaned up", flush=True)
+                write_line("STATUS:Scanner camera cleaned up")
         except Exception as e:
+            # stderr — a separate OS pipe from stdout, so it cannot interleave
+            # with a FRAME: write regardless of locking (#316 design.md).
             print(
                 f"WARNING:Scanner camera cleanup failed: {str(e)}",
                 file=sys.stderr,
@@ -129,7 +136,7 @@ class Scanner:
         try:
             if self.daq is not None:
                 self.daq.cleanup()
-                print("STATUS:Scanner DAQ cleaned up", flush=True)
+                write_line("STATUS:Scanner DAQ cleaned up")
         except Exception as e:
             print(
                 f"WARNING:Scanner DAQ cleanup failed: {str(e)}",
@@ -140,7 +147,7 @@ class Scanner:
         self.camera = None
         self.daq = None
         self.is_initialized = False
-        print("STATUS:Scanner cleanup complete", flush=True)
+        write_line("STATUS:Scanner cleanup complete")
 
     def perform_scan(
         self, on_frame: Optional[Callable[[int, float], None]] = None
@@ -196,14 +203,13 @@ class Scanner:
             # Calculate rotation per frame
             degrees_per_frame = 360.0 / num_frames
 
-            print(
-                f"STATUS:Starting scan: {num_frames} frames, {degrees_per_frame:.2f}° per frame",
-                flush=True,
+            write_line(
+                f"STATUS:Starting scan: {num_frames} frames, {degrees_per_frame:.2f}° per frame"
             )
 
             # Home the turntable
             self.daq.home()
-            print("STATUS:Turntable homed to 0°", flush=True)
+            write_line("STATUS:Turntable homed to 0°")
 
             # Capture frames
             for frame_idx in range(num_frames):
@@ -217,9 +223,8 @@ class Scanner:
                 position = self.daq.get_position()
 
                 # Capture image
-                print(
-                    f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°",
-                    flush=True,
+                write_line(
+                    f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
                 )
                 image = self.camera.grab_frame()
 
@@ -244,14 +249,13 @@ class Scanner:
 
             # Return to home
             self.daq.home()
-            print("STATUS:Turntable returned to home position", flush=True)
+            write_line("STATUS:Turntable returned to home position")
 
             # Report results
             success = frames_captured == num_frames
             if success:
-                print(
-                    f"STATUS:Scan completed successfully: {frames_captured}/{num_frames} frames",
-                    flush=True,
+                write_line(
+                    f"STATUS:Scan completed successfully: {frames_captured}/{num_frames} frames"
                 )
             else:
                 print(
