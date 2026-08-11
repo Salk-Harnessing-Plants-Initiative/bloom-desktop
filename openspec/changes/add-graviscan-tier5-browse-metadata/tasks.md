@@ -1829,3 +1829,107 @@ undefined}`) instead of a separately-worded message.
       `npm run test:unit`: 1544/1544 real tests passing, only the same
       pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
       local-setup flake (unrelated, unaffected).
+
+## 21. Round-7 `/review-pr` response — 1 blocking + 1 important finding, all fixed
+
+Ran the same 5-subagent adversarial team against round 6's fix commit
+(`69d8634`), explicitly asked to be suspicious of the same fix leaving
+yet another gap of the same shape (rounds 4→5→6 each caught the previous
+round's own fix reintroducing a variant of the bug it was fixing). Found
+exactly that pattern once more, plus a message-content regression. Fixed
+both with TDD, plus a scientific-rigor concern about the round-6 message
+itself — commit `0d72d02`.
+
+- [x] 21.1 **BLOCKING — round 6's `filesCopied` fix (20.1) left a
+      sibling counter with the identical defect.** `completedImages`/
+      `failedImages` are incremented per-file during the image-copy step
+      and broadcast live via `onProgress` — to `Layout.tsx`'s persistent
+      global upload banner and `BrowseGraviScans.tsx`'s per-row "Box
+      N/M" indicator — entirely independently of `result.filesCopied`.
+      When the CSV copy then fails and those images are reverted to
+      `box_status: 'failed'`, this live counter was never corrected or
+      re-broadcast: an operator could see "Box 1/1" on a row (implying
+      complete success) while the page-level summary correctly said "0
+      uploaded" for the same operation — two contradictory numbers
+      on-screen simultaneously. Confirmed independently by 2 of 5
+      reviewers. Fixed by decrementing `completedImages`, incrementing
+      `failedImages`, and re-emitting `onProgress` in the same revert
+      branch that already corrects `result.filesCopied`.
+- [x] 21.2 **IMPORTANT — round 6's tooltip fix (20.3) achieved string
+      consistency by deleting information, and did so with inconsistent
+      falsiness semantics.** `title={linkError ?? undefined}` used a
+      nullish check while `disabled={!!linkError}` and the visible error
+      `<p>` both use truthy checks — latent (all current error producers
+      happen to be non-empty strings today) but a real divergence for a
+      hypothetical empty-string error. Confirmed independently by 3 of 5
+      reviewers. Separately, reusing the raw `linkError` string as the
+      _entire_ tooltip lost the specific "why Download is blocked"
+      reasoning the original (mismatched) tooltip had — an operator
+      hovering now sees only the raw fetch error (e.g. "Database is
+      locked") with no indication that divergence-checking specifically
+      is what's blocked. Fixed both at once:
+      `` `${linkError} — Download is disabled until this is resolved
+(wave/accession divergence cannot be checked).` `` behind a truthy
+      `linkError ? ... : undefined` check — the tooltip now leads with
+      the same visible error text (no more disconnected messages) while
+      restoring the lost consequence-specific reasoning.
+- [x] 21.3 **Scientific-rigor finding, addressed directly**: round 6's
+      "Quit and reopen the app" message is more actionable than round
+      5's inert-but-false "Reload the app" — but unlike a harmless lie,
+      quitting is a real, disruptive action: `main.ts`'s `before-quit`
+      handler unconditionally stops the camera/Python/DAQ subprocesses,
+      so quitting mid-scan or mid-backup would interrupt it with zero
+      warning in the message itself. Appended "(this will interrupt any
+      active scan or backup)" so the instruction's real cost is stated
+      up front rather than discovered the hard way.
+- [x] 21.4 **Reviewed and deliberately not changed** (a code-comment
+      accuracy nit, not a functional bug): the claim "no in-app reload
+      exists" is solid for Windows/Linux (`BrowserWindow.setMenu(null)`
+      strips the accelerator-hosting menu there) but `setMenu()` is
+      documented as not supported on macOS, where the menu bar is
+      process-wide via `Menu.setApplicationMenu()` (never called in this
+      codebase) — so a default Reload may still exist on macOS
+      specifically. This doesn't change the fix: "quit and reopen" is
+      still correct and works identically on all three platforms, it's
+      just not the _only_ thing that would have worked on macOS.
+      Reworded the test's explanatory comment to state this precisely
+      instead of a blanket claim.
+- [x] 21.5 Test-hardening, all gaps confirmed real by tracing the actual
+      code and mock behavior (not hypothetical):
+  1. Added a positive-control assertion (`filesCopied` **can** be `1` on
+     full success) alongside the existing revert tests' `=== 0`
+     assertions — without it, a broken variant that never increments
+     `filesCopied` at all would pass every existing test coincidentally.
+  2. Added `expect(result.filesCopied).toBe(0)` to the 2-image revert
+     test specifically — the single-image test alone can't distinguish
+     `-= uploadedIds.length` from a hardcoded `-= 1` (both yield 0 for
+     n=1).
+  3. Added a mixed-failure test: one image fails its own copy
+     (`failedIds`), the other succeeds then gets reverted on CSV
+     failure (`uploadedIds`) — the only scenario able to catch a
+     double-counting bug (e.g. subtracting `failedIds.length` too,
+     which every prior CSV-failure test coincidentally couldn't catch
+     since `failedIds` was always empty in those runs).
+  4. Added a test for the `completedImages`/`failedImages` progress-
+     counter fix (21.1), including making the shared mock actually emit
+     rclone's per-file "Copied" info-log line — the existing shared mock
+     never did, so `onProgress` had never fired at all in any test
+     until now.
+- [x] 21.6 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean. Full
+      `npm run test:unit`: 1546/1546 real tests passing, only the same
+      pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
+      local-setup flake (unrelated, unaffected).
+- [x] 21.7 CI note: the push that triggered this round's review
+      (`3247057`) hit a one-off `Test - TypeScript Unit` failure in
+      `tests/unit/scans-export.test.ts`'s `cleanDatabase()` — a
+      `PrismaClientKnownRequestError` (foreign key violation on
+      `experiment.deleteMany()`) in a file this entire session has never
+      touched. This exact failure signature matches a pre-existing,
+      already-documented category of test-isolation flakiness (see
+      `tests/unit/global-setup.ts`'s own doc comment describing
+      GraviScan-family rows entangled with `Experiment`'s FK under
+      shared-`dev.db` test runs) — `Test - TypeScript Unit` had passed
+      cleanly on every prior push this session. Not investigated further
+      as a regression; the round-7 push provides a fresh CI run to
+      confirm it doesn't recur.
