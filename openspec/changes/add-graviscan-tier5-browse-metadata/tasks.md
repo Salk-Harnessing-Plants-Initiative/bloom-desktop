@@ -2375,3 +2375,147 @@ undefined`) may be over-conservative for ordinary partial
       only the same pre-existing `database-handlers.test.ts`
       `BLOOM_DATABASE_URL` local-setup flake (unrelated file, unaffected
       by this round's changes).
+
+## 26. Round-12 `/review-pr` response — 1 blocking + 2 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against round 11's fix commit
+(`1a6481b`). Four of five reviewers independently converged on the same
+root cause: round 11's CSV-filename fix resolved each image's on-disk
+path a second time, earlier and separately from `rcloneCopyFiles`'s own
+resolution — narrowing the CSV/Box mismatch window instead of closing
+it, and (per one reviewer) doing so via an unguarded call that could
+throw and abort the entire backup run. A fifth angle (Scientific Rigor)
+found a second, unrelated BLOCKING issue: `link()`/`unlink()` still had
+the exact empty-string bug round 11 fixed in `refetch()`, with a worse,
+fully silent failure mode. Testing Strategy's live mutation testing
+also proved two of round 11's own tests had narrower coverage than the
+fixes they were meant to lock in. Fixed all of it with TDD. Fix commit:
+`227e31c`.
+
+- [x] 26.1 **BLOCKING (Scientific Rigor + Code Quality, independently) —
+      `link()` and `unlink()` in `WaveMetadataLinksContext.tsx` still
+      used `result.error ?? fallback`, reproducing round 11's
+      empty-string bug (25.2) with a worse outcome.** Every consumer
+      guards rendering with `{linkError && ...}` (`BrowseGraviScans.tsx`,
+      `Experiments.tsx`, `ExperimentDetail.tsx`), so an empty-string
+      error renders **nothing** — a link/unlink failure would be
+      completely invisible, not just garbled. Worse, `BrowseGraviScans`'
+      Download button is gated with `disabled={!!linkError}`, so an
+      empty-string error leaves it enabled, implying success that never
+      happened. Confirmed reachable in production, not just theoretical:
+      `linkGraviMetadata`/`unlinkGraviMetadata`'s catch-block
+      `errorMessage()` helper returns `''` verbatim for any thrown
+      `Error` with an empty `.message` (the `'Unknown error'` fallback
+      only covers non-`Error` throws). Fixed by extracting the
+      `?.trim() || fallback` logic round 11 wrote once into a shared
+      `formatBackendError()` helper and using it in all three of
+      `refetch()`/`link()`/`unlink()` — directly closing the
+      duplication that caused this exact fix to be applied in only one
+      of three identical-shape call sites the first time. Verified with
+      new tests for both `link()` and `unlink()` failing with an empty
+      `error` string.
+- [x] 26.2 **IMPORTANT (converged independently across Code Quality,
+      Security, Behavioural Correctness, and Testing Strategy — 4 of 5
+      reviewers) — the CSV-filename fix (25.1) called
+      `resolveGraviScanPath()` a second time, earlier and independently
+      of `rcloneCopyFiles`'s own resolution, narrowing the exact race it
+      was written to close rather than eliminating it.** `runBoxBackup`
+      built every wave's `scanRows` synchronously up front (calling
+      `resolveGraviScanPath` once per image right there), while
+      `rcloneCopyFiles` resolves the same paths again, per wave,
+      sequentially, `await`ed one wave at a time — for any wave other
+      than the first, this could be a long time later. Since
+      `resolveGraviScanPath` re-reads live filesystem state
+      (`fs.existsSync`, `fs.readdirSync`) each time it's called, a
+      rename completing in that gap could make the two calls disagree,
+      reproducing the CSV/Box mismatch 25.1 exists to prevent — just
+      with a narrower window instead of a guaranteed occurrence.
+      Separately, one reviewer found the new call site had no
+      try/catch (unlike the pre-existing call inside
+      `rcloneCopyFiles`, which the surrounding `try` already covered) —
+      `fs.readdirSync` throws on real conditions (EACCES, a
+      disconnected network/removable drive), which would abort
+      `runBoxBackup` entirely rather than degrading gracefully for just
+      that file. Fixed by removing the second resolution entirely:
+      `rcloneCopyFiles` now returns a `resolvedNames: Map<string,
+string>` (original basename → resolved basename) built from the
+      SAME resolution it already performs internally: `runBoxBackup`
+      patches each wave's `scanRows` with this returned mapping right
+      after `rcloneCopyFiles` resolves for that wave, instead of
+      resolving independently beforehand. This closes the race
+      entirely (one resolution, one source of truth) rather than
+      narrowing it, and removes the unguarded call site altogether
+      rather than wrapping it — there is no longer a second call to
+      guard.
+- [x] 26.3 **IMPORTANT (Scientific Rigor, confirmed and fixed as part of
+      26.2's redesign) — `metadata.csv` still listed rows for images
+      that were never found on disk under any name variant, naming a
+      file that exists in Box under no name at all.** When
+      `resolveGraviScanPath` returns `null` (file genuinely missing,
+      not just renamed), the pre-fix `?? img.path` fallback used the
+      stale DB basename for that row — a stronger, more misleading
+      provenance claim than "unknown," since the file doesn't exist
+      under that name OR the resolved name anywhere in Box. Fixed as a
+      consequence of 26.2's redesign: a scanRow is only included in the
+      exported CSV if its image's original basename has an entry in
+      `rcloneCopyFiles`'s returned `resolvedNames` map (i.e. the file
+      was actually found on disk); unresolvable images are excluded
+      from the CSV entirely rather than guessing a name. Verified with
+      a new test asserting a genuinely-nonexistent path both (a) does
+      not crash `runBoxBackup`, confirmed via mutation testing the
+      redesign really does call `resolveGraviScanPath` only once per
+      file now, and (b) is excluded from the CSV while a sibling
+      resolvable image in the same wave still appears correctly.
+- [x] 26.4 **Test-coverage gaps found via live mutation testing
+      (Testing Strategy), closed alongside the above fixes.** (a) Round
+      11's CSV-drift test never exercised the `?? img.path` fallback
+      branch — mutating it away (`resolveGraviScanPath(img.path) ??
+img.path` → `resolveGraviScanPath(img.path)`) still passed all 25
+      tests, since the fixture always had a resolvable file; closed by
+      26.3's own test. (b) Round 11's empty-string
+      `WaveMetadataLinksContext` test didn't isolate `.trim()` from a
+      plain falsy check — mutating `result.error?.trim() || fallback`
+      to `result.error || fallback` (dropping `.trim()`) still passed,
+      since `''` is falsy either way; only a pre-existing, unrelated
+      test happened to catch it incidentally. Closed by adding a
+      dedicated whitespace-only (`'   '`) test case, which the no-trim
+      mutant fails but the real fix passes.
+- [x] 26.5 **Deliberately deferred — Scientific Rigor's "first-wins"
+      heuristic concern.** `waveLevelErrorMsg`'s first-wins semantics
+      (25.3) is a good fix for the tested scenario (a fatal error
+      followed by generic cancellation noise) but isn't a universally
+      sound heuristic — rclone's own retry behavior means a plausible
+      ordering exists where an early, low-value transient message
+      occupies the "first" slot ahead of a later, more diagnostic
+      global error. Not implemented: no concrete counter-example from
+      real rclone output is available to design against, filtering by
+      known-generic substrings would be guessing at rclone's full
+      vocabulary of transient-vs-fatal messages, and first-wins is
+      still strictly better than the last-wins behavior it replaced for
+      every scenario this cycle has actually observed. Revisit if a
+      real case surfaces where first-wins picks the wrong message.
+- [x] 26.6 **Deliberately deferred — inconsistent silent-skip UX between
+      `runBoxBackup()` and `downloadImages()` for unresolvable
+      images.** Both paths now handle unresolvable files without
+      crashing or corrupting output (excluded from `runBoxBackup`'s CSV
+      per 26.3; already `continue`d past in `downloadImages`), but
+      neither surfaces an operator-visible "N images could not be
+      located" signal. A real gap, but a UX-design addition (what
+      signal, where, how prominent) rather than a bug fix with an
+      obvious single answer — out of scope for this pass.
+- [x] 26.7 **Deliberately deferred — pre-existing duplicate-resolution
+      collision, now more visible.** If two DB image rows resolve to
+      the same physical file, `resolvedToOriginalName`/
+      `originalToResolvedName` (both keyed by resolved/original
+      basename respectively) silently keep only the last-seen mapping,
+      and the CSV would list two rows with the same `image_filename`.
+      This map collision predates this round's changes; narrow,
+      unverified-as-live edge case (requires anomalous duplicate DB
+      data) — noted for awareness, not fixed.
+- [x] 26.8 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1567/1568 real tests passing; the one
+      failure (`electron-cleanup.test.ts`'s descendant-snapshot test, a
+      real-child-process timing test untouched by this round's diff)
+      passed cleanly on an isolated rerun, confirming a one-off local
+      timing flake, not a regression.
