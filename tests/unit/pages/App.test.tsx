@@ -63,12 +63,17 @@ const mockGraviAPI = {
   retryScanner: vi.fn().mockResolvedValue({ success: true }),
   // BrowseGraviScans (Tier 5) — mounted for real when its nav link is
   // clicked in this file's real App -> Layout -> Route tree.
+  // wrapHandler's real envelope: {success: true, data: <UploadAllScansResult>}
   uploadAllScans: vi.fn().mockResolvedValue({
     success: true,
-    uploaded: 0,
-    skipped: 0,
-    failed: 0,
-    errors: [],
+    data: {
+      success: true,
+      uploaded: 0,
+      skipped: 0,
+      failed: 0,
+      errors: [],
+      metadataLinkingAvailable: false,
+    },
   }),
   downloadImages: vi.fn().mockResolvedValue({ success: true }),
 };

@@ -3,6 +3,13 @@ import { useParams } from 'react-router-dom';
 import { useResizableColumns } from './hooks/useResizableColumns';
 import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
 
+/** Last path segment, so the Filename column shows the real TIFF name
+ * (e.g. "exp1_st_..._cy1_S1_00.tif") instead of the database row id. */
+function basename(filePath: string): string {
+  const segments = filePath.split(/[/\\]/);
+  return segments[segments.length - 1] || filePath;
+}
+
 interface GraviScanRow {
   id: string;
   scanner_id: string;
@@ -89,7 +96,7 @@ function FileRow({
         onClick={handleClick}
         style={{ cursor: 'pointer' }}
       >
-        <span style={{ width: widths.filename }}>{scan.id}</span>
+        <span style={{ width: widths.filename }}>{basename(scan.path)}</span>
         <span style={{ width: widths.plate }}>{scan.plate_index}</span>
         <span style={{ width: widths.wave }}>Wave {scan.wave_number}</span>
         <span data-testid={`verification-badge-${scan.id}`}>

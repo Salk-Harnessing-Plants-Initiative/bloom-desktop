@@ -5,9 +5,10 @@ import {
   useEffect,
   useState,
 } from 'react';
+import { BoxBackupProgress } from '../../types/graviscan';
 
 interface UploadStatusContextValue {
-  status: unknown;
+  status: BoxBackupProgress | null;
 }
 
 const UploadStatusContext = createContext<UploadStatusContextValue>({
@@ -20,10 +21,10 @@ const UploadStatusContext = createContext<UploadStatusContextValue>({
  * navigates away from BrowseGraviScans mid-upload (design.md Decision 7).
  */
 export function UploadStatusProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<unknown>(null);
+  const [status, setStatus] = useState<BoxBackupProgress | null>(null);
 
   useEffect(() => {
-    const off = window.electron.gravi.onUploadProgress((data: unknown) => {
+    const off = window.electron.gravi.onUploadProgress((data) => {
       setStatus(data);
     });
     return off;

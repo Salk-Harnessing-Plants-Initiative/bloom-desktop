@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
+import { BoxBackupProgress } from '../types/graviscan';
 
 interface GraviExperimentRow {
   id: string;
@@ -12,13 +13,6 @@ interface GraviExperimentRow {
   graviScans?: unknown[];
   resolution?: number;
   grid_mode?: string;
-}
-
-interface UploadProgress {
-  totalImages: number;
-  completedImages: number;
-  failedImages: number;
-  currentExperiment?: string;
 }
 
 interface Filters {
@@ -58,7 +52,7 @@ function ExperimentRow({
   boxProgress,
 }: {
   experiment: GraviExperimentRow;
-  boxProgress?: UploadProgress;
+  boxProgress?: BoxBackupProgress;
 }) {
   const navigate = useNavigate();
   const { links } = useWaveMetadataLinks(experiment.id);
@@ -152,7 +146,7 @@ export function BrowseGraviScans() {
   const [backingUp, setBackingUp] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [boxProgress, setBoxProgress] = useState<
-    Record<string, UploadProgress>
+    Record<string, BoxBackupProgress>
   >({});
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -224,12 +218,11 @@ export function BrowseGraviScans() {
   }, []);
 
   useEffect(() => {
-    const off = window.electron.gravi.onUploadProgress((data: unknown) => {
-      const progress = data as UploadProgress;
+    const off = window.electron.gravi.onUploadProgress((progress) => {
       if (!progress.currentExperiment) return;
       setBoxProgress((prev) => ({
         ...prev,
-        [progress.currentExperiment as string]: progress,
+        [progress.currentExperiment]: progress,
       }));
     });
     return off;

@@ -4,6 +4,15 @@ import userEvent from '@testing-library/user-event';
 import ExcelJS from 'exceljs';
 import { GraviMetadataUpload } from '../../../src/renderer/components/GraviMetadataUpload';
 import { parseExcelWorkbook } from '../../../src/main/graviscan/excel-parser';
+import {
+  UnsavedChangesProvider,
+  useUnsavedChanges,
+} from '../../../src/renderer/contexts/UnsavedChangesContext';
+
+function UnsavedChangesProbe() {
+  const { hasUnsavedChanges } = useUnsavedChanges();
+  return <div data-testid="unsaved-probe">{String(hasUnsavedChanges)}</div>;
+}
 
 const HEADERS = [
   'Plate ID',
@@ -65,6 +74,15 @@ describe('GraviMetadataUpload', () => {
 
   function renderUpload() {
     return render(<GraviMetadataUpload onUploadComplete={onUploadComplete} />);
+  }
+
+  function renderUploadWithUnsavedProbe() {
+    return render(
+      <UnsavedChangesProvider>
+        <UnsavedChangesProbe />
+        <GraviMetadataUpload onUploadComplete={onUploadComplete} />
+      </UnsavedChangesProvider>
+    );
   }
 
   function getFileInput() {
@@ -156,6 +174,48 @@ describe('GraviMetadataUpload', () => {
       expect(screen.getByLabelText(/^plate id$/i)).toBeInTheDocument();
     });
     expect(screen.getByLabelText(/^accession$/i)).toBeInTheDocument();
+  });
+
+  it('flags unsaved changes once a sheet is parsed, and clears them on unmount', async () => {
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+    ]);
+    const { rerender } = renderUploadWithUnsavedProbe();
+    expect(screen.getByTestId('unsaved-probe')).toHaveTextContent('false');
+
+    await user.upload(getFileInput(), file);
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-probe')).toHaveTextContent('true');
+    });
+
+    // Re-render without GraviMetadataUpload (as a route change away from
+    // Metadata would do) — its cleanup must not leave the flag stuck true
+    // for whatever page comes next, still watched by the same probe.
+    rerender(
+      <UnsavedChangesProvider>
+        <UnsavedChangesProbe />
+      </UnsavedChangesProvider>
+    );
+    expect(screen.getByTestId('unsaved-probe')).toHaveTextContent('false');
+  });
+
+  it('clears the unsaved-changes flag once the import completes', async () => {
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+    ]);
+    renderUploadWithUnsavedProbe();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-probe')).toHaveTextContent('true');
+    });
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-probe')).toHaveTextContent('false');
+    });
   });
 
   it('rejects a valid-type file whose sheet has zero data rows', async () => {

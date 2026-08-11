@@ -94,6 +94,67 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     expect(listGraviMetadata).toHaveBeenCalledTimes(1);
   });
 
+  it('does not let a slow, stale link()-triggered refetch revert a concurrent unlink() from a different consumer', async () => {
+    // The two consumers are separate UI surfaces (Experiments.tsx's attach
+    // panel and a row's own Unlink button) that mutate the same
+    // experimentId independently. link() re-fetches the full list after
+    // its own mutation; unlink() applies a local optimistic filter with no
+    // refetch. If link()'s refetch was in flight *before* unlink() applied
+    // its update, the refetch's now-stale snapshot (queried before the
+    // unlink took effect server-side) can land *after* unlink's update and
+    // silently revert it — this test reproduces exactly that interleaving.
+    listGraviMetadata.mockResolvedValueOnce({
+      success: true,
+      data: [makeLink(0), makeLink(1)],
+    });
+    const { result } = renderHook(() => useTwoConsumers('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+    await waitFor(() => expect(result.current.row.links).toHaveLength(2));
+
+    let resolveStaleRefetch: (value: unknown) => void = () => {};
+    // The refetch link() triggers gets this stale, pending response once;
+    // if it has to retry (because it discovers it was superseded), the
+    // retry hits this default instead — a fresh, correct snapshot as if
+    // queried *after* both mutations have committed server-side.
+    listGraviMetadata.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveStaleRefetch = resolve;
+        })
+    );
+    listGraviMetadata.mockResolvedValue({
+      success: true,
+      data: [makeLink(0), makeLink(2)],
+    });
+
+    // Not wrapped in act(): link() performs no synchronous state update
+    // before its first await, so nothing needs flushing yet — it's left
+    // pending on the not-yet-resolved refetch.
+    const linkPromise = result.current.attachPanel.link(2, 'acc-2');
+
+    await act(async () => {
+      await result.current.row.unlink(1);
+    });
+    expect(result.current.row.links.map((l) => l.wave_number)).toEqual([0]);
+
+    // The refetch triggered by link() resolves *after* unlink() already
+    // applied, but with data queried *before* the unlink took effect
+    // server-side (wave 1 still present) — a real, if unlucky, IPC
+    // ordering outcome.
+    await act(async () => {
+      resolveStaleRefetch({
+        success: true,
+        data: [makeLink(0), makeLink(1), makeLink(2)],
+      });
+      await linkPromise;
+    });
+
+    expect(result.current.row.links.map((l) => l.wave_number).sort()).toEqual([
+      0, 2,
+    ]);
+  });
+
   it('keeps two different experimentIds independent', async () => {
     listGraviMetadata.mockImplementation((id: string) =>
       Promise.resolve({

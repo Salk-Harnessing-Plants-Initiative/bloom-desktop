@@ -54,6 +54,7 @@ import {
   ParsedWorkbook,
   UploadAllScansResult,
   ReadScanImageResult,
+  BoxBackupProgress,
 } from './graviscan';
 import type {
   GraviScanCreateInput,
@@ -748,7 +749,7 @@ export interface GraviAPI {
   onOvertime: (callback: (data: any) => void) => () => void;
   onCancelled: (callback: () => void) => () => void;
   onScanError: (callback: (data: any) => void) => () => void;
-  onUploadProgress: (callback: (data: any) => void) => () => void;
+  onUploadProgress: (callback: (data: BoxBackupProgress) => void) => () => void;
   onDownloadProgress: (callback: (data: any) => void) => () => void;
   onWedgeDetected: (callback: (event: GraviWedgeEvent) => void) => () => void;
 }

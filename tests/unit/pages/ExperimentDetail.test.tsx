@@ -330,6 +330,23 @@ describe('ExperimentDetail', () => {
       removeSpy.mockRestore();
     });
 
+    it('shows the actual TIFF filename (basename of scan.path), not the database id', async () => {
+      experimentDetail.mockResolvedValue({
+        success: true,
+        data: {
+          scans: [makeScan({ path: '/scans/exp1_st_20260101_cy1_S1_00.tif' })],
+          verificationStatusMap: {},
+        },
+      });
+      renderPage();
+      await waitFor(() => screen.getByText('Drought Study'));
+
+      expect(
+        screen.getByText('exp1_st_20260101_cy1_S1_00.tif')
+      ).toBeInTheDocument();
+      expect(screen.queryByText('scan-1')).not.toBeInTheDocument();
+    });
+
     it('renders real Date objects (as returned by IPC, not strings) without throwing', async () => {
       // ipcRenderer.invoke's structured-clone preserves capture_date/
       // transplant_date as real Date instances, not the ISO strings other

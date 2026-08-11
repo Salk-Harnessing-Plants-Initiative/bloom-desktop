@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { resolveGraviScanPath } from './graviscan-path-utils';
+import { ensureSymlinkOrCopy } from './fs-symlink-or-copy';
 
 const RCLONE_REMOTE = 'Box';
 const BOX_BASE_PATH = 'GraviScan-Backups';
@@ -29,13 +30,17 @@ const BOX_BASE_PATH = 'GraviScan-Backups';
 /**
  * Escape a value for inclusion in a CSV field.
  * Wraps in double-quotes and escapes inner quotes when the value
- * contains commas, double-quotes, or newlines.
+ * contains commas, double-quotes, or newlines. Also neutralizes CSV/
+ * formula injection: this file is uploaded to Box for humans to open in
+ * Excel/Sheets, which treats a leading =, +, -, or @ as a formula —
+ * prefixing with a single quote forces it to be read as literal text.
  */
-function csvEscape(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return '"' + value.replace(/"/g, '""') + '"';
+export function csvEscape(value: string): string {
+  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  if (safe.includes(',') || safe.includes('"') || safe.includes('\n')) {
+    return '"' + safe.replace(/"/g, '""') + '"';
   }
-  return value;
+  return safe;
 }
 
 export interface BoxBackupProgress {
@@ -67,7 +72,7 @@ function isRcloneInstalled(): Promise<boolean> {
  * Run rclone copy for a list of source files to a Box destination folder.
  * Uses a temp directory with symlinks to copy only the specific files.
  */
-function rcloneCopyFiles(
+export function rcloneCopyFiles(
   filePaths: string[],
   boxDestination: string,
   onFileComplete?: (filename: string) => void
@@ -85,7 +90,13 @@ function rcloneCopyFiles(
         if (resolvedPath) {
           const fileName = path.basename(resolvedPath);
           const linkPath = path.join(tmpDir, fileName);
-          fs.symlinkSync(resolvedPath, linkPath);
+          // Windows restricts unprivileged symlink creation (requires
+          // admin or Developer Mode — the default state on most lab
+          // machines), and this path was never exercised by CI (rclone
+          // itself isn't installed on any CI runner), so a raw
+          // fs.symlinkSync() call here would go undetected until it broke
+          // Box backup entirely on real hardware.
+          ensureSymlinkOrCopy(resolvedPath, linkPath, 'file');
           symlinksCreated++;
         } else {
           missingFiles.push(filePath);

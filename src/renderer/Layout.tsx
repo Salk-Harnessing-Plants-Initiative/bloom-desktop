@@ -2,26 +2,37 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { WedgeBanner } from './components/WedgeBanner';
 import { useUploadStatus } from './contexts/UploadStatusContext';
+import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
+import { BoxBackupProgress } from '../types/graviscan';
 
-/** Matches the real graviscan:upload-progress payload (src/main/box-backup.ts's BoxBackupProgress). */
-interface UploadProgressData {
-  totalImages: number;
-  completedImages: number;
-  failedImages: number;
-  currentExperiment: string;
+function isSameProgress(
+  a: BoxBackupProgress | null,
+  b: BoxBackupProgress | null
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.totalImages === b.totalImages &&
+    a.completedImages === b.completedImages &&
+    a.failedImages === b.failedImages &&
+    a.currentExperiment === b.currentExperiment
+  );
 }
 
 function UploadStatusBanner() {
   const { status } = useUploadStatus();
-  const [dismissed, setDismissed] = useState<unknown>(null);
+  const [dismissed, setDismissed] = useState<BoxBackupProgress | null>(null);
 
-  if (!status || status === dismissed) return null;
+  // Compared by value, not reference: each graviscan:upload-progress IPC
+  // delivery is a fresh object (structured clone), so a harmless
+  // duplicate/retry event with identical content would otherwise silently
+  // undo the user's dismiss action.
+  if (!status || isSameProgress(status, dismissed)) return null;
 
-  const progress = status as UploadProgressData;
   return (
     <div data-testid="upload-status-indicator">
       <span>
-        Upload progress: {progress.completedImages}/{progress.totalImages}
+        Upload progress: {status.completedImages}/{status.totalImages}
       </span>
       <button onClick={() => setDismissed(status)}>Dismiss</button>
     </div>
@@ -316,6 +327,18 @@ interface LayoutProps {
 export function Layout({ mode = null }: LayoutProps) {
   const navigate = useNavigate();
   const [scannerName, setScannerName] = useState<string>('');
+  const { hasUnsavedChanges } = useUnsavedChanges();
+
+  const confirmNavAway = (event: React.MouseEvent) => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm(
+        'You have an unsaved metadata import in progress. Leave anyway?'
+      )
+    ) {
+      event.preventDefault();
+    }
+  };
 
   const showCaptureLinks = mode === 'cylinderscan';
   const showGraviscanLinks = mode === 'graviscan';
@@ -379,6 +402,7 @@ export function Layout({ mode = null }: LayoutProps) {
               key={link.to}
               to={link.to}
               end
+              onClick={confirmNavAway}
               className={({ isActive }) =>
                 `flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors ${
                   isActive

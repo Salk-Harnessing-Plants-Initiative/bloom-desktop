@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useUnsavedChanges } from '../contexts/UnsavedChangesContext';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const PREVIEW_ROW_LIMIT = 20;
@@ -50,6 +51,21 @@ export function GraviMetadataUpload({
   const [fileName, setFileName] = useState<string>('');
   const [done, setDone] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const { setHasUnsavedChanges } = useUnsavedChanges();
+
+  // A parsed sheet with its column mapping is real, easy-to-lose work
+  // (the operator may have had to manually fix auto-mapping) — flag it so
+  // Layout.tsx's sidebar nav confirms before a click away silently
+  // discards it. Cleared once done/reset, and unconditionally on unmount
+  // so navigating past a confirmed "leave anyway" doesn't leave the flag
+  // stuck for whatever page comes next.
+  useEffect(() => {
+    setHasUnsavedChanges(sheet !== null && !done);
+  }, [sheet, done, setHasUnsavedChanges]);
+
+  useEffect(() => {
+    return () => setHasUnsavedChanges(false);
+  }, [setHasUnsavedChanges]);
 
   const reset = () => {
     setSheetsByName(null);

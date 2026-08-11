@@ -51,9 +51,18 @@ describe('UploadStatusContext', () => {
         <Consumer />
       </UploadStatusProvider>
     );
-    fireProgress({ completed: 2, total: 5 });
+    // Matches the real graviscan:upload-progress payload shape
+    // (box-backup.ts's BoxBackupProgress) — not an arbitrary placeholder.
+    fireProgress({
+      totalImages: 5,
+      completedImages: 2,
+      failedImages: 0,
+      currentExperiment: 'Exp',
+    });
 
-    expect(screen.getByTestId('status').textContent).toContain('"completed":2');
+    expect(screen.getByTestId('status').textContent).toContain(
+      '"completedImages":2'
+    );
   });
 
   it('keeps the latest known state for a consumer mounted after the event fired', () => {
@@ -62,7 +71,12 @@ describe('UploadStatusContext', () => {
         <div />
       </UploadStatusProvider>
     );
-    fireProgress({ completed: 3, total: 5 });
+    fireProgress({
+      totalImages: 5,
+      completedImages: 3,
+      failedImages: 0,
+      currentExperiment: 'Exp',
+    });
 
     rerender(
       <UploadStatusProvider>
@@ -70,7 +84,9 @@ describe('UploadStatusContext', () => {
       </UploadStatusProvider>
     );
 
-    expect(screen.getByTestId('status').textContent).toContain('"completed":3');
+    expect(screen.getByTestId('status').textContent).toContain(
+      '"completedImages":3'
+    );
   });
 
   it('cleans up the subscription on unmount', () => {

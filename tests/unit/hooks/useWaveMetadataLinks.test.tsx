@@ -193,6 +193,12 @@ describe('useWaveMetadataLinks', () => {
     expect(unlinkResult).toBe(true);
   });
 
+  // Note: this only exercises two *different* experimentId keys, which
+  // can't clobber each other regardless of any staleness guard (the
+  // context state is keyed per experimentId). The actual at-risk race —
+  // two consumers mutating the *same* experimentId concurrently, e.g. the
+  // attach panel's link() and a row's own unlink() — is covered in
+  // tests/unit/contexts/WaveMetadataLinksContext.test.tsx instead.
   it('ignores a stale refetch response after experimentId changes', async () => {
     const resolvers: Record<
       string,

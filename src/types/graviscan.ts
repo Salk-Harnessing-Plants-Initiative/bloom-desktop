@@ -324,6 +324,22 @@ export interface ReadScanImageResult {
 }
 
 /**
+ * Payload of the `graviscan:upload-progress` push event
+ * (`box-backup.ts`'s `BoxBackupProgress`, forwarded verbatim by
+ * `uploadAllScans`'s `onProgress` callback). Previously untyped (`any`),
+ * which let three independent, unlinked hand-typed mirrors of this same
+ * shape drift across `BrowseGraviScans.tsx`, `Layout.tsx`, and this file's
+ * own main-process source of truth with no compiler check tying them
+ * together.
+ */
+export interface BoxBackupProgress {
+  totalImages: number;
+  completedImages: number;
+  failedImages: number;
+  currentExperiment: string;
+}
+
+/**
  * Scanner state during scan operations.
  */
 export type ScannerState =
