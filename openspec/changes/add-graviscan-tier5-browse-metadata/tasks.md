@@ -2519,3 +2519,139 @@ img.path` → `resolveGraviScanPath(img.path)`) still passed all 25
       real-child-process timing test untouched by this round's diff)
       passed cleanly on an isolated rerun, confirming a one-off local
       timing flake, not a regression.
+
+## 27. Round-13 `/review-pr` response — 3 blocking findings (all converging on the same root cause), all fixed
+
+Ran the same 5-subagent adversarial team against round 12's fix commit
+(`227e31c`). All 5 reviewers converged — independently, from different
+angles (Code Quality, Security, Behavioural Correctness, Testing
+Strategy each found it; Scientific Rigor found a related sibling) — on
+the same underlying design flaw: round 12's `exportableScanRowIndexes`
+mechanism and its supporting maps were keyed by basename or by
+resolution-success alone, not by the image's actual, unique identity
+and actual upload outcome. Testing Strategy additionally performed live
+mutation testing that caught a real gap in round 12's own test
+coverage. Fixed all of it with a single redesign — key everything by
+the full original path (already unique) instead of basename, and tie
+CSV-exportability directly to the same per-file upload-success
+classification the DB status update already uses. Fix commit:
+`2257d33`.
+
+- [x] 27.1 **BLOCKING (independently found by Scientific Rigor, Code
+      Quality, and Testing Strategy — 3 of 5 reviewers, one of whom
+      live-reproduced it) — `exportableScanRowIndexes` only checked
+      whether a file was found on disk, not whether it was actually
+      uploaded.** `resolvedNames` (26.2's own mechanism) only proves
+      `resolveGraviScanPath` located the file — it says nothing about
+      whether the subsequent `rclone copy` succeeded. A file that
+      resolves fine but then hits a genuine per-file transfer error
+      (network blip, quota, permissions — arguably the _more common_
+      real-world failure mode, per Code Quality) was still included in
+      `metadata.csv`, even though that same image is correctly marked
+      `box_status: 'failed'` two code blocks later. This directly
+      contradicted round 12's own stated purpose ("CSV must match what
+      Box actually received") via the exact failure mode round 12 was
+      supposed to close, just triggered a different way. Fixed by
+      combining the CSV-exportability computation into the SAME loop
+      that already classifies each image as `uploadedIds`/`failedIds`
+      — a row is exportable if and only if its image is NOT in
+      `erroredFiles`, using the identical per-file truth the DB update
+      already relies on, rather than a second, independently-computed
+      condition that could (and did) diverge from it. The total-wave-
+      failure branch was also updated to leave `exportableScanRowIndexes`
+      empty, so a wave force-marked entirely failed no longer exports a
+      CSV describing images that were never confirmed uploaded.
+- [x] 27.2 **BLOCKING (independently found by Security, Code Quality,
+      and Behavioural Correctness — 3 of 5 reviewers, with Behavioural
+      Correctness tracing the full downstream consequence) —
+      `originalToResolvedName`/`resolvedToOriginalName`/`missingFileNames`
+      were all keyed by original BASENAME, not by the image's unique
+      full path, letting two images in the same wave that happen to
+      share a basename (different source directories, or a genuine
+      duplicate DB row — `GraviImage.path` has no unique constraint)
+      silently cross-contaminate each other's outcome.** Concretely: if
+      image A is permanently unresolvable and image B shares A's
+      basename while genuinely resolving and uploading fine, B would
+      inherit A's `erroredFiles` membership (both keyed by the same
+      basename) and be marked `box_status: 'failed'` forever despite
+      never actually failing — or, in `metadata.csv`, B's row could be
+      silently paired with A's stale, wrong `image_filename` (right
+      filename, wrong row — worse than a duplicate, a genuine
+      provenance misattribution in a document uploaded to a shared
+      external service). Fixed by keying `resolvedToOriginalName`,
+      `originalToResolvedName`, `missingFilePaths`, and `erroredFiles`
+      entirely by the image's full original path (already
+      loop-unique, no extra bookkeeping needed) instead of its
+      basename — eliminating the collision class by construction rather
+      than by detecting instances of it. The RESOLVED-basename side of
+      `resolvedToOriginalName` is unaffected (it's inherently tied to
+      the physical filename rclone operates on in the tmp directory);
+      that side's own, separate, narrower collision risk (two different
+      original paths resolving to the same physical file) remains the
+      already-documented deferred item from 26.7.
+- [x] 27.3 **BLOCKING (Testing Strategy, proved via live mutation
+      testing) — round 12's own CSV-exclusion test used only one
+      resolvable image, which cannot distinguish correct per-index
+      patching from a bug that always writes to a fixed index.**
+      Mutating the patch loop to hardcode index 0 left all 26 existing
+      tests passing, including round 12's own "excludes unresolvable
+      image" test — a real sibling of this cycle's recurring
+      "test too weak to catch the mutant" pattern. Fixed by adding a
+      dedicated test with TWO distinct resolvable images at different
+      indices with distinct resolved basenames, asserting each row
+      gets its own correct filename exactly once (not missing, not
+      duplicated onto the other row) — confirmed to fail against a
+      hardcoded-index-0 mutant before the fix, pass after.
+- [x] 27.4 Two additional regression tests added per Testing Strategy's
+      IMPORTANT findings, both passing cleanly against the fixed code:
+      a per-call (per-wave) isolation test proving a resolved filename
+      from one wave can't leak into a different wave that happens to
+      share the same original basename, and the resolved-but-
+      transfer-failed exclusion test from 27.1 itself (which also
+      independently exercises 27.2's fix, since it uses the same
+      per-file `erroredFiles` check).
+- [x] 27.5 **Operational incident, not a code defect — recorded for
+      process awareness.** Mid-round, the Testing Strategy subagent's
+      own live-mutation-testing cleanup (`git checkout --
+src/main/box-backup.ts`, restoring its review target to the
+      exact committed commit) silently discarded this round's
+      in-progress, uncommitted fix work, which was being written
+      concurrently in the same file. Recovered by re-applying the fix
+      from conversation history (no data was unrecoverable, but the
+      work had to be redone). Root cause: a review subagent doing live
+      mutation testing reverts by resetting the WHOLE file to HEAD, not
+      by undoing only its own edits — indistinguishable, from that
+      subagent's view, from a human's or orchestrator's concurrent
+      uncommitted changes on the same file. Going forward: do not begin
+      writing a round's fix in a file while that same round's review
+      subagents (especially Testing Strategy) are still running against
+      it.
+- [x] 27.6 **Deliberately deferred — Testing Strategy's IMPORTANT #4
+      (outer synchronous `catch` block's `resolvedNames` path is
+      untested).** That branch only fires if `ensureSymlinkOrCopy`
+      throws all the way through (both the symlink attempt AND its own
+      internal copy-fallback fail — e.g. a completely full disk). By
+      code inspection the resulting behavior (whatever resolved before
+      the exception is preserved via the hoisted maps introduced in
+      27.2, the wave is marked entirely failed, and
+      `exportableScanRowIndexes` — computed downstream from `success:
+false` — correctly stays empty) is internally consistent with
+      the rest of the total-failure handling. Forcing this exact
+      double-failure in a test requires more invasive mocking than the
+      other fixes in this round justified; narrow enough in real-world
+      likelihood (and already fail-safe by inspection) to defer rather
+      than block this round's convergence on it.
+- [x] 27.7 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1570/1571 real tests passing; the one
+      failure (the same `electron-cleanup.test.ts` descendant-snapshot
+      timing flake as 26.8, untouched by this round's diff) passed
+      cleanly on an isolated rerun. `tests/unit/box-backup.test.ts`:
+      30/30 passing (26 pre-existing + 4 new this round). Two
+      pre-existing assertions in
+      `tests/unit/box-backup.test.ts` that directly checked
+      `erroredFiles.has(basename)` were updated to
+      `erroredFiles.has(fullPath)` to reflect 27.2's intentional keying
+      change — confirmed as an intentional consequence of the fix, not
+      a regression, since `erroredFiles`'s full-path semantics are now
+      what `runBoxBackup`'s own classification loop relies on.
