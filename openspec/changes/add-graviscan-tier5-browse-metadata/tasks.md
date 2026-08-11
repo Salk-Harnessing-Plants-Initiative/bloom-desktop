@@ -1361,3 +1361,152 @@ required.length`); a fully blank row (e.g. a trailing blank Excel
       path-separator baseline failures (`image-uploader.test.ts`,
       `scan-coordinator.test.ts`, `MachineConfiguration.test.tsx` —
       unrelated files, not touched this round), no new failures.
+- [x] 16.13 Pushed commit `b6b27e5` (fix) and `3d7ac5d` (docs). CI run
+      31466023905 failed 3 consecutive times (1 original attempt + 2
+      reruns) — every time on `Test - E2E Dev Build (macos-latest)`
+      alone, every time with the identical
+      `TypeError: Cannot read properties of undefined (reading
+'waitForLoadState')` inside the shared `launchElectronApp()` test
+      helper, but each time in a **completely different, non-overlapping
+      set of unrelated test files** (14, then 3, then 13 flaky tests —
+      touching scientists/phenotypers management, scan-preview,
+      accessions, plant-barcode-validation, renderer-database-ipc, none
+      of which touch any file changed in this round). Every other job in
+      the matrix (TypeScript, lint, Python, Windows/Ubuntu E2E,
+      integration, packaging) passed cleanly on the very first attempt.
+      Diagnosed as macOS runner Electron-launch infrastructure
+      degradation, independently confirmed by two different round-3
+      review subagents (Security & Cross-Platform, Testing Strategy) by
+      reading the actual CI logs. Per explicit user decision (asked via
+      question tool after the 3rd failure): proceeded to round-3 review
+      without a green macOS E2E run rather than continuing to rerun.
+
+## 17. Round-3 `/review-pr` response — 1 blocking + 4 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against round 2's fix commit
+(`b6b27e5`) with the full PR diff for context, per the same "verify the
+previous round's fixes and hunt for regressions" instruction as round 2. Found 1 new blocking issue (round 2's own fix for 16.3 left a
+narrower version of the same mislabeling bug in place) and 4 important
+issues, one of which (16.6's retry-cap error-surfacing) was
+independently flagged by 4 of the 5 subagents. Fixed all 5 with TDD —
+commit `21bd5eb`.
+
+- [x] 17.1 **BLOCKING — `handleBackupToBox`'s round-2 fix corrected the
+      success/failure categorization but not the system attribution.**
+      `{uploaded: 2, failed: 0, errors: ['Authentication failed: Bloom
+session expired']}` (Bloom fails, Box fully succeeds) no longer
+      showed as a total failure after 16.3's fix, but still rendered as
+      "Box backup completed with 2 uploaded, 1 error(s): Authentication
+      failed: Bloom session expired" — a lab technician reads "Box
+      backup completed" as good news while the error text names Bloom
+      (the record-of-truth database) as what actually failed. The
+      sibling `rclone not installed` branch had the same root cause in
+      the other direction: it ignored `bloomSuccess`/`bloomUploaded`
+      entirely, so a successful Bloom upload alongside a missing-rclone
+      Box failure was silently dropped from the message. Fixed by adding
+      `bloomSuccess`, `boxSuccess`, `bloomUploaded`, `boxUploaded`,
+      `bloomErrors`, `boxErrors` to `UploadAllScansResult` (populated in
+      `uploadAllScans()`; consolidated the previously-duplicated
+      interface definition in `image-handlers.ts` to import from
+      `types/graviscan.ts` instead of re-declaring it, closing off a
+      recurrence of the "two independent copies drift apart" bug class
+      from 16.11) and rewriting the renderer's message logic to name
+      Bloom and/or Box explicitly whenever either fails, including a new
+      "Bloom also failed: ..." / "Bloom: N uploaded" note on the
+      rclone-not-installed path. Generic messages ("Backup failed: ...",
+      previously "Box backup failed: ...") are now reserved for
+      whole-operation failures where neither target was actually
+      attempted (the `uploadInProgress` guard, a thrown exception) —
+      renamed since those aren't Box-specific either.
+- [x] 17.2 **IMPORTANT — `WaveMetadataLinksContext`'s retry-cap give-up
+      was silent to the user (flagged independently by 4 of 5 round-3
+      subagents).** 16.6 bounded the recursive stale-version retry but
+      only `console.error`s on giving up — `errorsByExperiment` was left
+      unchanged, unlike every other failure path in the file (including
+      16.7's own fix earlier in the same function), so exhausting the
+      cap left stale wave-link data on screen with zero visible
+      indication anything went wrong. Added a
+      `setErrorsByExperiment` call on the give-up path
+      ("Could not refresh metadata links — please retry.").
+- [x] 17.3 **IMPORTANT — `blankRowCount`'s blank-detection didn't match
+      the plate-grouping loop's actual skip check.** 16.5's operator-
+      facing warning counts a row as blank via `.trim() === ''` on every
+      required field, but the loop that actually builds the plates to
+      submit skipped rows via `if (!plateId) continue` — a
+      whitespace-only Plate ID (`' '`) is truthy, so that row was
+      silently imported as a real plate with a blank/whitespace
+      `plate_id`, contradicting the "will be skipped" warning the
+      operator had just been shown. Aligned the loop's check to
+      `if (!plateId?.trim()) continue`.
+- [x] 17.4 **IMPORTANT — the keyboard-shortcut hard-block path was
+      untested.** 16.1's fix commit explicitly claimed to close "the
+      same gap in the machine-config keyboard shortcut," but the
+      existing keyboard test only exercised the `hasUnsavedChanges` +
+      declined-confirm path — no test dispatched the keyboard shortcut
+      against `blockNavigation` specifically. Added a dedicated test
+      using the existing `FakeImportingMetadataPage` fixture; verified
+      RED by temporarily reverting the keyboard handler's
+      `guardNavigation()` call before confirming the fix.
+- [x] 17.5 **IMPORTANT — one-render-behind indirection between
+      `setIsImporting` and `setBlockNavigation`.** 16.1 synced
+      `blockNavigation` to `isImporting` via a separate `useEffect`,
+      leaving a sub-render-frame window where `isImporting` is true but
+      `blockNavigation` hasn't caught up yet — not humanly triggerable,
+      and not something React Testing Library's `act()` model can
+      actually observe or discriminate in a unit test (effects flush
+      synchronously within the same `act()` call in tests either way),
+      but a real design smell independent of testability. Fixed by
+      setting `blockNavigation` directly and synchronously inside
+      `handleImport` (alongside `setIsImporting`) instead of via a
+      derived effect, and removed the now-redundant effect. No
+      regression test added for this specific fix, honestly, for the
+      reason above — the existing hard-block tests (16.1, 17.4) already
+      cover the resulting behavior once `isImporting`/`blockNavigation`
+      are both settled.
+- [x] 17.6 Also added test coverage (no behavior change) for the
+      all-rows-blank case: confirms the existing round-1 backend guard
+      (15.3, `graviPlateAccessionsCreateWithSections` rejecting an empty
+      `plates` array) is what actually prevents a false "Done
+      uploading!" when every row in a sheet is blank — this was a real
+      code path with no direct test before.
+- [x] 17.7 **Known limitations, deliberately not fixed this round** (all
+      SUGGESTION-level or requiring a larger design decision than this
+      round's scope): - The navigation guard (`guardNavigation()`) is wired into
+      `Layout.tsx`'s sidebar `NavLink`s and its own keyboard handler
+      only, not enforced at the router level. Seven other components
+      call `navigate()` directly (`BrowseGraviScans.tsx`, `Home.tsx`,
+      `ScanPreview.tsx`, `CaptureScan.tsx`, `WorkflowSteps.tsx`) —
+      none are currently reachable _from_ `/metadata` mid-import (no
+      `navigate()` calls exist in `Metadata.tsx` itself, and the app
+      uses `MemoryRouter` with no back/forward), so there is no live
+      bypass today, but nothing structurally prevents a future
+      "Cancel"/"Skip" button added directly to the metadata page from
+      reintroducing the exact bug 16.1 fixed. `useBlocker` (which
+      would close this structurally) requires a data router, which
+      this app doesn't use (documented constraint from earlier in
+      this project). - `createWithSections`'s IPC call has no client-side timeout or
+      cancel — if it hangs (main-process deadlock/busy DB) rather than
+      rejecting, `blockNavigation` stays `true` indefinitely with only
+      a "please wait" alert and no escape hatch. Confirmed via
+      codebase-wide search: no renderer-side IPC call anywhere in this
+      app has a timeout/abort wrapper (`Promise.race` is used exactly
+      once, main-process-only, for camera-stream teardown) — adding
+      one solely here would be a novel, inconsistent one-off pattern
+      rather than following an established project convention. - The blank-row warning (16.5) doesn't distinguish "a few trailing
+      blank rows" (benign) from "every row is blank because no headers
+      mapped" (17.6's scenario) — both read as "N row(s) ... will be
+      skipped." No silent data loss either way (17.6 confirms the
+      backend guard catches the all-blank case), but the intermediate
+      UI state could be clearer.
+- [x] 17.8 Verified locally after all 5 fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean on every
+      touched file; the affected test files (223 tests across
+      `image-handlers.test.ts`, `register-handlers.test.ts`,
+      `graviscan-ipc-integration.test.ts`, `BrowseGraviScans.test.tsx`,
+      `GraviMetadataUpload.test.tsx`, `WaveMetadataLinksContext.test.tsx`,
+      `Layout.test.tsx`, `App.test.tsx`, `preload-gravi.test.ts`) all
+      pass, and a full `tests/unit` run (with `BLOOM_DATABASE_URL` set)
+      shows only the same pre-existing Windows path-separator baseline
+      failures (`config-store.test.ts`, `image-uploader.test.ts`,
+      `scan-coordinator.test.ts` — unrelated files, not touched this
+      round), no new failures.
