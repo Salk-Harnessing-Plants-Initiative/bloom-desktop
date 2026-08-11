@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change harden-cylinderscan-tier1. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Preload Listener Cleanup
 
 Every `on*` subscription method exposed on `window.electron` by `src/main/preload.ts` SHALL return a cleanup function that removes its underlying `ipcRenderer` listener, so renderer components can unsubscribe on unmount without leaking listeners.
@@ -142,4 +144,3 @@ Every stdout write reachable from within the shared `ipc_handler.py` process —
 - **WHEN** the underlying stdout write raises an exception (e.g. a `BrokenPipeError` because the parent process has exited)
 - **THEN** the lock SHALL still be released
 - **AND** a subsequent, unrelated write from another thread SHALL NOT be blocked or deadlocked by the failed write
-
