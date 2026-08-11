@@ -90,17 +90,21 @@ export function ScanFormSection({
                 <div key={plate.plateIndex} className="flex items-center gap-2">
                   <input
                     type="checkbox"
+                    className="w-4"
                     checked={plate.selected}
                     onChange={() => toggleSelected(scannerId, plate.plateIndex)}
                     aria-label={`${getPlateLabel(plate.plateIndex)} selected`}
                   />
-                  <span>{getPlateLabel(plate.plateIndex)}</span>
+                  <span className="w-10">
+                    {getPlateLabel(plate.plateIndex)}
+                  </span>
                   <label htmlFor={inputId} className="sr-only">
                     Plant Barcode
                   </label>
                   <input
                     id={inputId}
                     type="text"
+                    className="flex-1 min-w-0"
                     value={plate.plantBarcode ?? ''}
                     onChange={(e) =>
                       updateField(
@@ -113,6 +117,7 @@ export function ScanFormSection({
                   />
                   <input
                     type="date"
+                    className="flex-1 min-w-0"
                     aria-label="Transplant Date"
                     value={plate.transplantDate ?? ''}
                     onChange={(e) =>
@@ -126,6 +131,7 @@ export function ScanFormSection({
                   />
                   <input
                     type="text"
+                    className="flex-1 min-w-0"
                     aria-label="Custom Note"
                     value={plate.customNote ?? ''}
                     onChange={(e) =>
