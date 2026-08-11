@@ -472,6 +472,12 @@ jobs:
       fail-fast: false # Continue running on other platforms even if one fails
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        # Splits the 264-test E2E suite into 4 shards per OS so no single
+        # Playwright worker (workers: 1, unchanged) accumulates more than
+        # ~1/4 of the suite's sequential Electron launches. Defensive bound
+        # for issue #323 (worker teardown timeout deep into a long run) —
+        # see openspec/changes/fix-e2e-worker-teardown-flake/design.md.
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Checkout code
@@ -553,13 +559,13 @@ jobs:
 
       - name: Run Playwright E2E tests (Linux with Xvfb)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e -- --shard=${{ matrix.shard }}/4
         env:
           CI: true
 
       - name: Run Playwright E2E tests (macOS/Windows)
         if: runner.os != 'Linux'
-        run: npm run test:e2e
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
         env:
           CI: true
 
@@ -571,7 +577,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-results-${{ matrix.os }}
+          name: playwright-results-${{ matrix.os }}-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/
