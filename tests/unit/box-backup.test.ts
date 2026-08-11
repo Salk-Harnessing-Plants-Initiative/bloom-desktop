@@ -103,6 +103,78 @@ describe('rcloneCopyFiles', () => {
     expect(result.erroredFiles.has(path.basename(sourceFile))).toBe(false);
     expect(result.erroredFiles.size).toBe(0);
   });
+
+  it('attributes a real per-file error correctly even when the DB path is stale and resolveGraviScanPath finds the file under its renamed (_et_) basename', async () => {
+    // resolveGraviScanPath exists specifically because the DB can store a
+    // path with only _st_ (start time) while the file on disk has since
+    // been renamed to include _et_ (end time) — a real, documented,
+    // previously-encountered production scenario, not a hypothetical.
+    // rclone copies and logs using the RESOLVED (renamed) basename, but
+    // the knownFileNames guard was built from the ORIGINAL (unresolved,
+    // possibly-stale) basename. In a wave with at least one OTHER
+    // correctly-matched error (so erroredFiles isn't empty and the safe
+    // "mark whole wave failed" fallback doesn't trigger), the renamed
+    // file's real error would fail knownFileNames.has() and be silently
+    // dropped — leaving it (incorrectly) treated as uploaded despite
+    // never actually succeeding.
+    // Deliberately unique from the shared beforeEach's own `sourceFile`
+    // (which the shared hook already writes to disk, which would make
+    // resolveGraviScanPath find it as-is on the very first check and
+    // never exercise the _et_ fallback this test targets).
+    const staleDbPath = path.join(
+      sourceDir,
+      'exp2_st_20260102T000000_cy1_S1_00.tif'
+    );
+    // Deliberately do NOT create staleDbPath — only the renamed file
+    // exists on disk, forcing resolveGraviScanPath's _et_ fallback.
+    const renamedActualPath = path.join(
+      sourceDir,
+      'exp2_st_20260102T000000_et_20260102T000100_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(renamedActualPath, 'fake tiff bytes renamed');
+    const otherFile = path.join(
+      sourceDir,
+      'exp2_st_20260102T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(otherFile, 'fake tiff bytes other');
+
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles(
+      [staleDbPath, otherFile],
+      'ExperimentA/wave_0'
+    );
+    // Both files genuinely fail their own copy — one under its resolved
+    // (renamed) name, one under its original name.
+    fakeProc.stderr.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          level: 'error',
+          msg: `${path.basename(renamedActualPath)}: simulated copy error`,
+        }) + '\n'
+      )
+    );
+    fakeProc.stderr.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          level: 'error',
+          msg: `${path.basename(otherFile)}: simulated copy error`,
+        }) + '\n'
+      )
+    );
+    fakeProc.emit('close', 1);
+
+    const result = await resultPromise;
+    // erroredFiles is keyed by the ORIGINAL (DB-path) basenames — the
+    // same space runBoxBackup's caller-side comparison uses — so the
+    // renamed file's error must show up under its ORIGINAL basename,
+    // not silently vanish.
+    expect(result.erroredFiles.has(path.basename(staleDbPath))).toBe(true);
+    expect(result.erroredFiles.has(path.basename(otherFile))).toBe(true);
+  });
 });
 
 describe('runBoxBackup', () => {
@@ -600,6 +672,119 @@ describe('runBoxBackup', () => {
     // Wave 0's valid completed image must survive wave 1's correction.
     expect(lastUpdate.completedImages).toBe(1);
     expect(lastUpdate.failedImages).toBe(1);
+  });
+
+  it('marks every image in a wave as failed when rclone crashes partway through, even if one file already had a genuinely-matched per-file error', async () => {
+    // A non-empty erroredFiles set does NOT mean "every other file is
+    // confirmed fine" — it only means "these specific files logged a
+    // per-file error." If rclone dies (non-zero exit) after logging a
+    // real error for one file but before ever attempting the others,
+    // those others were never confirmed copied OR skipped — treating
+    // them as "not in erroredFiles, therefore uploaded" reintroduces the
+    // exact silent-data-loss defect fixed once already for the
+    // all-unmatched case, just reached via a wave with one real match.
+    const sourceFile2 = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(sourceFile2, 'fake tiff bytes 2');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: sourceFile2 },
+        ],
+      },
+    ]);
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        // img1 gets a real, correctly-matched per-file error; img2 is
+        // never mentioned at all (rclone crashed before reaching it) —
+        // then the whole process dies with a non-zero exit.
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'error',
+                msg: `${path.basename(sourceFile)}: simulated copy error`,
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 1);
+        });
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
+
+    const failCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'failed'
+    );
+    // Both img1 (genuinely matched) AND img2 (never attempted) must end
+    // up failed — img2 must NOT be silently treated as uploaded just
+    // because it never appeared in erroredFiles.
+    expect([...failCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
+    const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'uploaded'
+    );
+    expect(uploadedCall).toBeUndefined();
+    expect(result.filesCopied).toBe(0);
+  });
+
+  it("surfaces rclone's actual diagnostic message instead of a generic exit-code string, so an operator can tell a credentials/quota problem apart from a transient network blip", async () => {
+    // This wave's image copy dies with a wave-level (unattributable)
+    // error — no per-file match, so waveLevelErrorMsg is what surfaces.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'error',
+                msg: 'Failed to copy: googleapi: Error 401: Invalid Credentials',
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 1);
+        });
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
+
+    expect(
+      result.errors.some((e) =>
+        e.includes('googleapi: Error 401: Invalid Credentials')
+      )
+    ).toBe(true);
   });
 });
 

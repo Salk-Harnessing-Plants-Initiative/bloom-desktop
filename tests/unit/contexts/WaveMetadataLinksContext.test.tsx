@@ -181,33 +181,45 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
 
     await waitFor(() =>
       expect(result.current.linkError).toBe(
-        'Database is locked. Quit and reopen the app to retry (this will interrupt any active scan or backup).'
+        'Database is locked — Quit and reopen the app to retry (this will interrupt any active scan or backup).'
       )
     );
     expect(result.current.links).toHaveLength(0);
   });
 
-  it('does not double up punctuation when the backend error already ends in a period, exclamation point, or question mark', async () => {
-    // Real Prisma/IPC error messages routinely end in their own full
-    // sentence (e.g. "...does not exist in the current database."). The
-    // fixed "Quit and reopen..." suffix must not be blindly concatenated
-    // onto that, or the result reads as a run-on with doubled
-    // punctuation ("...database.. Quit and reopen...") — exactly the
-    // defect already fixed once for the Download button's tooltip.
-    listGraviMetadata.mockResolvedValue({
-      success: false,
-      error: 'The table `main.GraviExperimentWaveMetadata` does not exist.',
-    });
-    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
-      wrapper: WaveMetadataLinksProvider,
-    });
+  it.each([
+    [
+      'a trailing period',
+      'The table `main.GraviExperimentWaveMetadata` does not exist.',
+    ],
+    ['a trailing exclamation point', 'Connection refused!'],
+    ['a trailing question mark', 'Is the database running?'],
+    ['a trailing parenthetical then period', 'Failed to connect (see logs).'],
+    ['trailing whitespace after a period', 'Database is locked. '],
+    ['no trailing punctuation at all', 'Database is locked'],
+  ])(
+    'does not double up punctuation or otherwise garble the message when the backend error ends in %s',
+    async (_label, rawError) => {
+      // Real Prisma/IPC error messages routinely end in their own full
+      // sentence, sometimes with trailing whitespace or a parenthetical
+      // — a regex that only strips a bare trailing [.!?] (as an earlier
+      // version of this fix did) still doubles up on "(see logs)." or
+      // "Failed. " (trailing space defeats a $-anchored regex). Joining
+      // with an em dash instead of a second sentence sidesteps the
+      // problem entirely: no punctuation collision is possible regardless
+      // of how the source string ends.
+      listGraviMetadata.mockResolvedValue({ success: false, error: rawError });
+      const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+        wrapper: WaveMetadataLinksProvider,
+      });
 
-    await waitFor(() =>
-      expect(result.current.linkError).toBe(
-        'The table `main.GraviExperimentWaveMetadata` does not exist. Quit and reopen the app to retry (this will interrupt any active scan or backup).'
-      )
-    );
-  });
+      await waitFor(() =>
+        expect(result.current.linkError).toBe(
+          `${rawError.trim()} — Quit and reopen the app to retry (this will interrupt any active scan or backup).`
+        )
+      );
+    }
+  );
 
   it('clears a prior linkError once a subsequent link() succeeds, instead of leaving it stuck', async () => {
     // The error-disabled state (e.g. BrowseGraviScans' Download button)
@@ -224,7 +236,7 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
 
     await waitFor(() =>
       expect(result.current.linkError).toBe(
-        'Database is locked. Quit and reopen the app to retry (this will interrupt any active scan or backup).'
+        'Database is locked — Quit and reopen the app to retry (this will interrupt any active scan or backup).'
       )
     );
 

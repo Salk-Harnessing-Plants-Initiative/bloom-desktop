@@ -104,15 +104,19 @@ export function WaveMetadataLinksProvider({
         // give-up below, so it needs the same real recourse (and the
         // same warning about what that recourse costs), not just a bare
         // error string with no path forward. Backend/Prisma error text
-        // routinely ends in its own full sentence — strip any trailing
-        // sentence-ending punctuation before appending, or the result
-        // reads as a double-punctuated run-on (the same defect already
-        // fixed once for the Download button's tooltip).
-        const rawError = result.error ?? 'Failed to load metadata links';
-        const normalizedError = rawError.replace(/[.!?]+$/, '');
+        // routinely ends in its own full sentence, sometimes with a
+        // trailing parenthetical or whitespace — stripping trailing
+        // punctuation via regex can't reliably anticipate every shape
+        // (a bare [.!?]$ regex still doubles up on "(see logs)." or
+        // "Failed. "). Joining with an em dash instead of a second
+        // sentence sidesteps the collision entirely, regardless of how
+        // the source string ends.
+        const rawError = (
+          result.error ?? 'Failed to load metadata links'
+        ).trim();
         setErrorsByExperiment((prev) => ({
           ...prev,
-          [experimentId]: `${normalizedError}. Quit and reopen the app to retry (this will interrupt any active scan or backup).`,
+          [experimentId]: `${rawError} — Quit and reopen the app to retry (this will interrupt any active scan or backup).`,
         }));
       }
     },

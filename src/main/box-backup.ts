@@ -85,10 +85,23 @@ export function rcloneCopyFiles(
       let symlinksCreated = 0;
       const missingFiles: string[] = [];
       const missingFileNames = new Set<string>();
+      // resolveGraviScanPath exists because the DB can store a stale path
+      // (e.g. missing the _et_ timestamp inserted after a rename, or the
+      // wrong extension) — the file rclone actually copies and logs uses
+      // the RESOLVED basename, which can differ from the original DB
+      // path's basename. erroredFiles/onFileComplete must still be keyed
+      // by the ORIGINAL basename (the space the caller's data.imagePaths
+      // comparison uses), so track the resolved->original mapping here
+      // and translate every extracted log token through it, rather than
+      // just checking a flat set of original names — a token that's
+      // never trusted as "known" would otherwise silently drop that
+      // file's real error (see resolvedToOriginalName.get() below).
+      const resolvedToOriginalName = new Map<string, string>();
       for (const filePath of filePaths) {
         const resolvedPath = resolveGraviScanPath(filePath);
         if (resolvedPath) {
           const fileName = path.basename(resolvedPath);
+          resolvedToOriginalName.set(fileName, path.basename(filePath));
           const linkPath = path.join(tmpDir, fileName);
           // Windows restricts unprivileged symlink creation (requires
           // admin or Developer Mode — the default state on most lab
@@ -139,68 +152,65 @@ export function rcloneCopyFiles(
         'INFO',
       ]);
 
-      // Known real filenames — an error-level log line's extracted token
-      // is only trustworthy as a PER-FILE error if it actually matches
-      // one of these. rclone also logs global/config failures (auth
-      // expiry, quota exceeded, backend outage) at level:"error" with no
-      // per-file attribution (e.g. "Failed to copy: googleapi: Error
-      // 401..."); blindly trusting that extracted token as a filename
-      // would leave every real file unmatched in erroredFiles, causing
-      // the caller to treat all of them as successfully uploaded —
-      // silent, permanent data loss reported as success.
-      const knownFileNames = new Set(filePaths.map((p) => path.basename(p)));
       const erroredFiles = new Set<string>(missingFileNames);
+      // Captures the raw message from the last unattributed level:"error"
+      // line — a wave-level/global failure (auth expiry, quota exceeded,
+      // backend outage) rather than a specific file's error. Surfaced to
+      // the operator instead of a generic "rclone exited with code N",
+      // which gives no way to tell "retry will fix this" apart from
+      // "re-authenticate rclone first."
+      let waveLevelErrorMsg: string | undefined;
       let stderrBuffer = '';
+      const processLine = (line: string) => {
+        if (!line.trim()) return;
+        try {
+          const entry = JSON.parse(line);
+          if (entry.level === 'error' && entry.msg) {
+            const token = entry.msg.split(':')[0].trim();
+            // Only trustworthy as a PER-FILE error if the extracted
+            // token actually resolves to one of this call's own files
+            // (by its resolved, on-disk name — see
+            // resolvedToOriginalName above). rclone also logs
+            // global/config failures at level:"error" with no per-file
+            // attribution (e.g. "Failed to copy: googleapi: Error
+            // 401..."); blindly trusting that token as a filename would
+            // leave every real file unmatched, causing the caller to
+            // treat all of them as successfully uploaded — silent,
+            // permanent data loss reported as success.
+            const originalName = token
+              ? resolvedToOriginalName.get(token)
+              : undefined;
+            if (originalName) {
+              erroredFiles.add(originalName);
+            } else {
+              waveLevelErrorMsg = entry.msg;
+            }
+          } else if (
+            entry.level === 'info' &&
+            entry.msg &&
+            /: Copied \(/.test(entry.msg)
+          ) {
+            const token = entry.msg.split(':')[0].trim();
+            const originalName = token
+              ? resolvedToOriginalName.get(token)
+              : undefined;
+            if (originalName) onFileComplete?.(originalName);
+          }
+        } catch {
+          // skip non-JSON lines
+        }
+      };
       proc.stderr.on('data', (data: Buffer) => {
         stderrBuffer += data.toString();
         // Parse complete lines as they stream in
         const lines = stderrBuffer.split('\n');
         stderrBuffer = lines.pop() || ''; // keep incomplete last line in buffer
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const entry = JSON.parse(line);
-            if (entry.level === 'error' && entry.msg) {
-              const filename = entry.msg.split(':')[0].trim();
-              if (filename && knownFileNames.has(filename)) {
-                erroredFiles.add(filename);
-              }
-            } else if (
-              entry.level === 'info' &&
-              entry.msg &&
-              /: Copied \(/.test(entry.msg)
-            ) {
-              const filename = entry.msg.split(':')[0].trim();
-              if (filename) onFileComplete?.(filename);
-            }
-          } catch {
-            // skip non-JSON lines
-          }
-        }
+        for (const line of lines) processLine(line);
       });
 
       proc.on('close', (code) => {
         // Parse any remaining buffered line
-        if (stderrBuffer.trim()) {
-          try {
-            const entry = JSON.parse(stderrBuffer);
-            if (entry.level === 'error' && entry.msg) {
-              const filename = entry.msg.split(':')[0].trim();
-              if (filename && knownFileNames.has(filename)) {
-                erroredFiles.add(filename);
-              }
-            } else if (
-              entry.level === 'info' &&
-              entry.msg &&
-              /: Copied \(/.test(entry.msg)
-            ) {
-              const filename = entry.msg.split(':')[0].trim();
-              if (filename) onFileComplete?.(filename);
-            }
-          } catch {
-            // skip
-          }
-        }
+        if (stderrBuffer.trim()) processLine(stderrBuffer);
 
         // Clean up temp dir
         try {
@@ -215,7 +225,10 @@ export function rcloneCopyFiles(
           resolve({
             success: false,
             erroredFiles,
-            error: code !== 0 ? `rclone exited with code ${code}` : undefined,
+            error:
+              code !== 0
+                ? (waveLevelErrorMsg ?? `rclone exited with code ${code}`)
+                : undefined,
           });
         }
       });
@@ -511,14 +524,26 @@ export async function runBoxBackup(
       const uploadedIds: string[] = [];
       const failedIds: string[] = [];
 
-      if (!copyResult.success && copyResult.erroredFiles.size === 0) {
-        // Total rclone failure (no per-file info) — mark ALL as failed,
-        // including any that logged a per-file "Copied" line (and so
-        // already incremented completedImages) before the process died
-        // with no per-file error info (e.g. a network drop mid-transfer).
-        // None of them are durably in Box, so undo that premature credit
-        // rather than leaving an image counted as both completed and
-        // failed at once.
+      if (
+        !copyResult.success &&
+        (copyResult.erroredFiles.size === 0 || copyResult.error !== undefined)
+      ) {
+        // Total rclone failure — mark ALL as failed, including any that
+        // logged a per-file "Copied" line (and so already incremented
+        // completedImages) before the process died. A non-zero exit
+        // means rclone didn't run to completion, so any file NOT in
+        // erroredFiles is indistinguishable from "silently skipped
+        // because already present at the destination" vs. "never
+        // attempted because rclone crashed" — treat the whole wave
+        // conservatively as needing retry rather than inferring success
+        // for anything not explicitly matched. Without the `error !==
+        // undefined` half of this condition, a wave with one
+        // genuinely-matched per-file error AND a crash/quota/auth
+        // failure partway through would still mark every OTHER
+        // (never-attempted) file as uploaded — the same silent-data-loss
+        // defect this whole check exists to prevent, reached via a
+        // different door (a non-empty erroredFiles no longer implies
+        // "every other file is confirmed fine").
         console.error(
           `[BoxBackup] rclone failed entirely for ${expName}/wave_${waveNum} — marking all files as failed`
         );
@@ -550,7 +575,8 @@ export async function runBoxBackup(
         });
         failedImages += failedIds.length;
         result.errors.push(
-          `${expName}/wave_${waveNum}: ${failedIds.length}/${data.imagePaths.length} files failed`
+          `${expName}/wave_${waveNum}: ${failedIds.length}/${data.imagePaths.length} files failed` +
+            (copyResult.error ? ` (${copyResult.error})` : '')
         );
         result.success = false;
         console.error(
