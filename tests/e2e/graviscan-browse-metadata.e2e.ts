@@ -290,10 +290,32 @@ test.describe('BrowseGraviScans / ExperimentDetail / Metadata (Tier 5)', () => {
     // exercises the friendly-message path deterministically.
     await window.waitForSelector('text=Box backup unavailable');
 
+    // The friendly-message path above resolves before any per-image
+    // onUploadProgress event ever fires — runBoxBackup() returns as soon
+    // as it detects rclone is missing, and uploadAllPendingScans() returns
+    // as soon as it detects invalid Bloom credentials (both deliberately,
+    // for CI determinism), each before ever reaching the per-item loop
+    // that calls onProgress. So the global banner this test is actually
+    // about has nothing to react to yet. Simulate a real mid-upload push
+    // over the same 'graviscan:upload-progress' IPC channel the main
+    // process uses (register-handlers.ts), to exercise
+    // UploadStatusContext + Layout.tsx's banner end-to-end independent of
+    // what would normally trigger it.
+    const mainWindow = await electronApp.browserWindow(window);
+    await mainWindow.evaluate((win) => {
+      win.webContents.send('graviscan:upload-progress', {
+        totalImages: 10,
+        completedImages: 4,
+        failedImages: 0,
+        currentExperiment: 'E2E Tier5 Experiment',
+      });
+    });
+    await window.waitForSelector('[data-testid="upload-status-indicator"]');
+
     await window.click('text=Metadata');
     await window.waitForSelector('h1:has-text("Metadata")');
-    await expect(
-      window.locator('[data-testid="upload-status-indicator"]')
-    ).toBeVisible();
+    const indicator = window.locator('[data-testid="upload-status-indicator"]');
+    await expect(indicator).toBeVisible();
+    await expect(indicator).toContainText('4/10');
   });
 });

@@ -997,11 +997,11 @@ child (found: [object Date])`, crashing the Metadata page whenever
       failure screenshot). It still fails, but now at a *different*,
       later assertion — see 14.8.
 
-- [ ] 14.8 **Candidate bug 6 — found while confirming 14.6, not yet
-      fixed.** The same test's final assertion,
+- [x] 14.8 **Candidate bug 6 — root-caused and fixed, test-only.** The
+      same test's final assertion,
       `expect(window.locator('[data-testid="upload-status-indicator"]')).toBeVisible()`
-      (line 297), now fails fast (~1s, not a timeout) with "element(s)
-      not found". Traced why: `UploadStatusBanner`
+      (line 297), failed fast (~1s, not a timeout) with "element(s) not
+      found". Traced why: `UploadStatusBanner`
       (`src/renderer/Layout.tsx` ~line 22) only renders once
       `useUploadStatus()`'s `status` has received at least one
       `onUploadProgress` event. But this test's environment is
@@ -1013,20 +1013,42 @@ child (found: [object Date])`, crashing the Metadata page whenever
       (`src/main/graviscan-upload.ts` ~line 660) returns as soon as
       `validateBloomConfig` rejects the test's intentionally-empty
       `BLOOM_SCANNER_USERNAME`/`PASSWORD`/`BLOOM_ANON_KEY` — before ever
-      querying for images or calling `onProgress`. `seedExperimentWithMetadata()`
-      (this test file, ~line 156) also never creates a `GraviImage` row,
-      so even without the credentials short-circuit, the Bloom path's
-      own `scans.length === 0` early return would skip `onProgress` too.
-      Net effect: with this test's exact setup, `onUploadProgress` can
-      never fire on any code path, so the indicator can never appear —
-      this looks like a genuine gap in the test's own fixture/design
-      (not proven to be an app bug) rather than a fourth instance of the
-      3-bugs-behind-each-other pattern. Not yet investigated to a fix;
-      flagging for a decision on approach (e.g. seed a `GraviImage` row
-      and/or synthetically emit an `onUploadProgress` event via the test
-      harness, vs. taking a harder look at whether the app itself should
-      surface _some_ immediate status even on the short-circuit paths)
-      before implementing.
+      querying for images or calling `onProgress`.
+      `seedExperimentWithMetadata()` (this test file, ~line 156) also
+      never creates a `GraviImage` row, so even without the credentials
+      short-circuit, the Bloom path's own `scans.length === 0` early
+      return would skip `onProgress` too. Net effect: with this test's
+      exact setup, `onUploadProgress` can never fire on any real code
+      path in CI — Box backup requires rclone (a real binary genuinely
+      absent from GitHub-hosted runners) and Bloom upload requires a
+      live, authenticated Salk account (not available/desirable in CI).
+      Concluded this is a gap in the test's own fixture/trigger
+      mechanism, not an app bug: nothing in `design.md` Decision 7
+      requires the banner to appear only via a real backup — its actual
+      job is to display and persist whatever the
+      `graviscan:upload-progress` IPC channel sends, independent of what
+      produced it.
+
+      Fixed by having the test simulate a real mid-upload push directly
+      over that channel — `const mainWindow = await
+      electronApp.browserWindow(window); await
+      mainWindow.evaluate((win) => win.webContents.send(
+      'graviscan:upload-progress', {...}))` — matching exactly what
+      `register-handlers.ts`'s real `onProgress` callback does
+      (`win.webContents.send('graviscan:upload-progress', progress)`).
+      This exercises the real `UploadStatusContext` →
+      `UploadStatusBanner` pipeline end-to-end while keeping the
+      existing "Backup to Box" / "Box backup unavailable" steps intact
+      (this test was the only E2E-level coverage of 14.6's fix, so
+      removing them would have silently dropped that coverage).
+      Strengthened the final assertion to check the actual progress text
+      (`4/10`), not just element presence. No app code changed — this
+      was a test-only fix, the same class as 14.6 (test/fixture design
+      gap exposed only once earlier bugs stopped blocking the render
+      path). Verified locally: `tsc --noEmit`, `eslint`, `prettier
+      --check` all clean on the changed file. Pushed for CI confirmation
+      (can't run real Electron E2E locally per this session's
+      constraints).
 
 - [ ] 14.9 Diagnostic-only test instrumentation — main-process
       stdout/stderr piping and `pageerror`/`console` listeners in
