@@ -153,12 +153,14 @@ export function rcloneCopyFiles(
       ]);
 
       const erroredFiles = new Set<string>(missingFileNames);
-      // Captures the raw message from the last unattributed level:"error"
+      // Captures the raw message from the FIRST unattributed level:"error"
       // line — a wave-level/global failure (auth expiry, quota exceeded,
       // backend outage) rather than a specific file's error. Surfaced to
       // the operator instead of a generic "rclone exited with code N",
       // which gives no way to tell "retry will fix this" apart from
-      // "re-authenticate rclone first."
+      // "re-authenticate rclone first." First, not last: other in-flight
+      // transfers typically log their own generic "context canceled"
+      // errors as the process unwinds after the real failure.
       let waveLevelErrorMsg: string | undefined;
       let stderrBuffer = '';
       const processLine = (line: string) => {
@@ -183,7 +185,13 @@ export function rcloneCopyFiles(
             if (originalName) {
               erroredFiles.add(originalName);
             } else {
-              waveLevelErrorMsg = entry.msg;
+              // First wins, not last: once one fatal error kills the
+              // rclone process, other in-flight transfers typically log
+              // their own generic "context canceled"-style errors as
+              // they unwind. Overwriting keeps replacing the actual
+              // root-cause diagnostic (e.g. a credentials/quota error)
+              // with one of those unhelpful follow-on messages.
+              waveLevelErrorMsg ??= entry.msg;
             }
           } else if (
             entry.level === 'info' &&
@@ -478,7 +486,14 @@ export async function runBoxBackup(
         accession,
         transplant_date: scan.transplant_date,
         custom_note: scan.custom_note,
-        image_filename: path.basename(img.path),
+        // rcloneCopyFiles uploads files under their *resolved* on-disk
+        // basename (see resolveGraviScanPath's _et_-rename fallback) —
+        // metadata.csv must name the file Box actually received, not the
+        // possibly-stale DB path, or the CSV silently stops matching the
+        // folder contents it describes.
+        image_filename: path.basename(
+          resolveGraviScanPath(img.path) ?? img.path
+        ),
       });
     }
   }

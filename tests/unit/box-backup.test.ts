@@ -9,6 +9,22 @@ vi.mock('child_process', () => ({
   spawn: vi.fn(),
 }));
 
+// box-backup.ts imports fs via `import * as fs from 'fs'` (a namespace
+// import), while this test file uses `import fs from 'fs'` (a default
+// import). Those two import styles don't share an object identity under
+// Vitest's transform, so `vi.spyOn(fs, 'writeFileSync')` here silently
+// fails to intercept calls made through box-backup.ts's own binding
+// (confirmed empirically — the spy recorded zero calls even though the
+// write demonstrably ran). Mocking the whole 'fs' module instead
+// intercepts at module resolution, which works regardless of import
+// style; `importOriginal` keeps every other fs call (mkdtempSync,
+// symlinkSync, rmSync, etc.) genuinely real.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  const writeFileSync = vi.fn(actual.writeFileSync);
+  return { ...actual, writeFileSync, default: { ...actual, writeFileSync } };
+});
+
 import { spawn } from 'child_process';
 import {
   rcloneCopyFiles,
@@ -17,6 +33,10 @@ import {
 } from '../../src/main/box-backup';
 
 const mockSpawn = vi.mocked(spawn);
+
+beforeEach(() => {
+  vi.mocked(fs.writeFileSync).mockClear();
+});
 
 class FakeChildProcess extends EventEmitter {
   stderr = new EventEmitter();
@@ -785,6 +805,100 @@ describe('runBoxBackup', () => {
         e.includes('googleapi: Error 401: Invalid Credentials')
       )
     ).toBe(true);
+  });
+
+  it('surfaces the FIRST unattributable rclone error, not the last, when several unrelated transfers fail after the root cause', async () => {
+    // When one fatal error (e.g. bad credentials) kills the whole rclone
+    // process, other in-flight transfers typically log their own
+    // "context canceled"-style errors as they unwind. Keeping "last
+    // wins" would silently overwrite the actual diagnostic with one of
+    // those generic cancellation messages — the opposite of what an
+    // operator debugging a credentials/quota problem needs.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'error',
+                msg: 'Failed to copy: googleapi: Error 401: Invalid Credentials',
+              }) + '\n'
+            )
+          );
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'error',
+                msg: 'Failed to copy: context canceled',
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 1);
+        });
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
+
+    expect(
+      result.errors.some((e) =>
+        e.includes('googleapi: Error 401: Invalid Credentials')
+      )
+    ).toBe(true);
+    expect(result.errors.some((e) => e.includes('context canceled'))).toBe(
+      false
+    );
+  });
+
+  it('uses the resolved (on-disk) filename in the exported metadata.csv, not a stale DB path, so the CSV matches what is actually in Box', async () => {
+    // rcloneCopyFiles uploads the file under its RESOLVED basename (e.g.
+    // the _et_-renamed name) — but exportMetadataCSV built image_filename
+    // straight from the stale DB path. A human opening this wave's Box
+    // folder directly would see a metadata.csv naming a file that
+    // doesn't exist in that same folder — a human-visible provenance
+    // mismatch, not just an internal bookkeeping quirk.
+    const staleDbPath = path.join(
+      sourceDir,
+      'exp3_st_20260103T000000_cy1_S1_00.tif'
+    );
+    const renamedActualPath = path.join(
+      sourceDir,
+      'exp3_st_20260103T000000_et_20260103T000100_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(renamedActualPath, 'fake tiff bytes renamed');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [{ id: 'img1', path: staleDbPath }],
+      },
+    ]);
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const csvCall = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+    expect(csvCall).toBeDefined();
+    const csvContent = csvCall![1] as string;
+    expect(csvContent).toContain(path.basename(renamedActualPath));
+    expect(csvContent).not.toContain(path.basename(staleDbPath));
   });
 });
 

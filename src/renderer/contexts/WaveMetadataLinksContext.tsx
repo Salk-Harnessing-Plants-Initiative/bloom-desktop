@@ -110,10 +110,11 @@ export function WaveMetadataLinksProvider({
         // (a bare [.!?]$ regex still doubles up on "(see logs)." or
         // "Failed. "). Joining with an em dash instead of a second
         // sentence sidesteps the collision entirely, regardless of how
-        // the source string ends.
-        const rawError = (
-          result.error ?? 'Failed to load metadata links'
-        ).trim();
+        // the source string ends. `?? fallback` only substitutes on
+        // null/undefined, so an empty string (falsy but not nullish)
+        // needs `||` instead, or it produces a bare leading em dash.
+        const rawError =
+          result.error?.trim() || 'Failed to load metadata links';
         setErrorsByExperiment((prev) => ({
           ...prev,
           [experimentId]: `${rawError} — Quit and reopen the app to retry (this will interrupt any active scan or backup).`,

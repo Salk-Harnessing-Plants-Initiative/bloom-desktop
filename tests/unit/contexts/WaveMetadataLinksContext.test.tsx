@@ -221,6 +221,24 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     }
   );
 
+  it('falls back to a generic message instead of a bare em dash when the backend error is an empty string', async () => {
+    // `result.error ?? 'fallback'` only substitutes on null/undefined —
+    // an empty string is neither, so a backend resolving
+    // success:false with error:'' produced a garbled leading em dash
+    // with no actual error text ("— Quit and reopen..."). The fallback
+    // must trigger on any falsy-after-trim string, not just nullish ones.
+    listGraviMetadata.mockResolvedValue({ success: false, error: '' });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+
+    await waitFor(() =>
+      expect(result.current.linkError).toBe(
+        'Failed to load metadata links — Quit and reopen the app to retry (this will interrupt any active scan or backup).'
+      )
+    );
+  });
+
   it('clears a prior linkError once a subsequent link() succeeds, instead of leaving it stuck', async () => {
     // The error-disabled state (e.g. BrowseGraviScans' Download button)
     // must be reactive in both directions — a stale permanently-set
