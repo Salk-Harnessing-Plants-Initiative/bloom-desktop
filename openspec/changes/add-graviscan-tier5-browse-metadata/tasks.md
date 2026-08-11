@@ -1471,33 +1471,35 @@ session expired']}` (Bloom fails, Box fully succeeds) no longer
       code path with no direct test before.
 - [x] 17.7 **Known limitations, deliberately not fixed this round** (all
       SUGGESTION-level or requiring a larger design decision than this
-      round's scope): - The navigation guard (`guardNavigation()`) is wired into
-      `Layout.tsx`'s sidebar `NavLink`s and its own keyboard handler
-      only, not enforced at the router level. Seven other components
-      call `navigate()` directly (`BrowseGraviScans.tsx`, `Home.tsx`,
-      `ScanPreview.tsx`, `CaptureScan.tsx`, `WorkflowSteps.tsx`) —
-      none are currently reachable _from_ `/metadata` mid-import (no
-      `navigate()` calls exist in `Metadata.tsx` itself, and the app
-      uses `MemoryRouter` with no back/forward), so there is no live
-      bypass today, but nothing structurally prevents a future
-      "Cancel"/"Skip" button added directly to the metadata page from
-      reintroducing the exact bug 16.1 fixed. `useBlocker` (which
-      would close this structurally) requires a data router, which
-      this app doesn't use (documented constraint from earlier in
-      this project). - `createWithSections`'s IPC call has no client-side timeout or
-      cancel — if it hangs (main-process deadlock/busy DB) rather than
-      rejecting, `blockNavigation` stays `true` indefinitely with only
-      a "please wait" alert and no escape hatch. Confirmed via
-      codebase-wide search: no renderer-side IPC call anywhere in this
-      app has a timeout/abort wrapper (`Promise.race` is used exactly
-      once, main-process-only, for camera-stream teardown) — adding
-      one solely here would be a novel, inconsistent one-off pattern
-      rather than following an established project convention. - The blank-row warning (16.5) doesn't distinguish "a few trailing
-      blank rows" (benign) from "every row is blank because no headers
-      mapped" (17.6's scenario) — both read as "N row(s) ... will be
-      skipped." No silent data loss either way (17.6 confirms the
-      backend guard catches the all-blank case), but the intermediate
-      UI state could be clearer.
+      round's scope):
+  1. The navigation guard (`guardNavigation()`) is wired into
+     `Layout.tsx`'s sidebar `NavLink`s and its own keyboard handler
+     only, not enforced at the router level. Seven other components
+     call `navigate()` directly (`BrowseGraviScans.tsx`, `Home.tsx`,
+     `ScanPreview.tsx`, `CaptureScan.tsx`, `WorkflowSteps.tsx`) — none
+     are currently reachable _from_ `/metadata` mid-import (no
+     `navigate()` calls exist in `Metadata.tsx` itself, and the app
+     uses `MemoryRouter` with no back/forward), so there is no live
+     bypass today, but nothing structurally prevents a future
+     "Cancel"/"Skip" button added directly to the metadata page from
+     reintroducing the exact bug 16.1 fixed. `useBlocker` (which would
+     close this structurally) requires a data router, which this app
+     doesn't use (documented constraint from earlier in this project).
+  2. `createWithSections`'s IPC call has no client-side timeout or
+     cancel — if it hangs (main-process deadlock/busy DB) rather than
+     rejecting, `blockNavigation` stays `true` indefinitely with only
+     a "please wait" alert and no escape hatch. Confirmed via
+     codebase-wide search: no renderer-side IPC call anywhere in this
+     app has a timeout/abort wrapper (`Promise.race` is used exactly
+     once, main-process-only, for camera-stream teardown) — adding one
+     solely here would be a novel, inconsistent one-off pattern rather
+     than following an established project convention.
+  3. The blank-row warning (16.5) doesn't distinguish "a few trailing
+     blank rows" (benign) from "every row is blank because no headers
+     mapped" (17.6's scenario) — both read as "N row(s) ... will be
+     skipped." No silent data loss either way (17.6 confirms the
+     backend guard catches the all-blank case), but the intermediate
+     UI state could be clearer.
 - [x] 17.8 Verified locally after all 5 fixes: `npx tsc --noEmit`,
       `npx eslint`, and `npx prettier --check` all clean on every
       touched file; the affected test files (223 tests across
@@ -1510,3 +1512,28 @@ session expired']}` (Bloom fails, Box fully succeeds) no longer
       failures (`config-store.test.ts`, `image-uploader.test.ts`,
       `scan-coordinator.test.ts` — unrelated files, not touched this
       round), no new failures.
+- [x] 17.9 Pushed commits `21bd5eb` (fix) and `251b655` (docs). CI run
+      31507201343: `Test - E2E Dev Build (macos-latest)` passed on the
+      first attempt; `Test - E2E Dev Build (ubuntu-latest)` failed once
+      on a single unrelated flaky test
+      (`tests/e2e/export-page.e2e.ts`, nothing to do with this PR) and
+      passed on rerun. `Lint - Node.js` failed **three consecutive
+      times** — every time on `npm run format:check` flagging
+      `openspec/specs/ipc-reliability/spec.md`, a file this PR (and
+      this entire multi-round review cycle) has never touched.
+      Investigated thoroughly: the file is byte-for-byte identical
+      between the git blob and the local working tree (confirmed via
+      `git cat-file -p` vs the checked-out file), the exact same
+      Prettier version (3.6.2) is pinned via `package-lock.json` on
+      both sides, and `npm run format:check` (the identical command
+      CI runs, across the full repo glob) passes cleanly locally. This
+      is a genuine, deterministic (not flaky) Linux-vs-Windows Prettier
+      cross-platform discrepancy on a docs file unrelated to any
+      change in this PR — not reproducible or fixable from this
+      Windows development environment. Per the same reasoning already
+      applied to the round-2/round-3 macOS E2E infrastructure
+      flakiness (and the user's explicit decision at that time to
+      proceed without a fully green run), treating this as a separate,
+      pre-existing repo-health issue and proceeding to round-4 review
+      regardless — this check has no bearing on the correctness of any
+      code in this PR.
