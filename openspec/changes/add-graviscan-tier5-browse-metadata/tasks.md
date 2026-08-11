@@ -1537,3 +1537,78 @@ session expired']}` (Bloom fails, Box fully succeeds) no longer
       pre-existing repo-health issue and proceeding to round-4 review
       regardless — this check has no bearing on the correctness of any
       code in this PR.
+
+## 18. Round-4 `/review-pr` response — 1 blocking + 3 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against round 3's fix commit
+(`21bd5eb`) with the full PR diff for context. Found 1 new blocking
+issue (round 3's own dual-attribution fix for 17.1 left a gap when
+both targets fail with zero uploads) and 3 important issues, two
+flagged independently by multiple subagents. Fixed all 4 with TDD.
+
+- [x] 18.1 **BLOCKING — round 3's Bloom/Box attribution fix (17.1) only
+      fired when `result.uploaded > 0 && result.errors?.length > 0`.**
+      When both Bloom and Box fail with zero uploads (a realistic
+      "both services down" scenario), that condition is false, so
+      execution fell through to the generic `!result.success` branch,
+      which shows only `errors[0]` and names neither system —
+      reintroducing, in a different shape, exactly the conflation bug
+      17.1 was meant to close. Changed the gating condition to check
+      the per-target success flags directly
+      (`!result.bloomSuccess || !result.boxSuccess`) instead of
+      `uploaded > 0`, and added a defensive fallback
+      (`failures.join('; ')` if populated, else `errors?.[0] ?? 'unknown error'`)
+      so a future invariant violation degrades to a labeled message
+      instead of a blank one.
+- [x] 18.2 **IMPORTANT — `box-backup.ts`'s pre-existing (round-1-era)
+      metadata-CSV-copy-failure branch pushed to `result.errors` without
+      setting `result.success = false`.** This violated the invariant
+      17.1's new attribution logic implicitly assumed ("every pushed
+      error corresponds to a `bloomSuccess`/`boxSuccess` flip"), so a
+      CSV-only failure (all images copied fine, only the per-wave
+      `metadata.csv` failed) would have produced a `boxSuccess: true`
+      alongside a populated `boxErrors`, and — worse — an empty,
+      unattributed `"N uploaded, M error(s) — "` message once 18.1's
+      fallback also found nothing in `failures`. Root-caused and fixed
+      in `runBoxBackup()` by setting `result.success = false` alongside
+      the existing `errors.push(...)` in that branch. New test in
+      `tests/unit/box-backup.test.ts` (`runBoxBackup` describe block,
+      with new Prisma-like `db` mock and an rclone `spawn` mock that
+      distinguishes the three invocations — version check, image copy,
+      CSV copy — by argv shape) asserts `result.success === false` and
+      a 'metadata'-mentioning error when only the CSV copy fails.
+- [x] 18.3 **IMPORTANT — `BrowseGraviScans.tsx`'s `ExperimentRow` never
+      consumed `linkError` from `useWaveMetadataLinks`.** Every other
+      consumer of the hook (`ExperimentDetail.tsx`, `Experiments.tsx`)
+      renders `linkError` next to the wave selector; this row — the
+      exact page an operator uses to pick which wave to download —
+      silently left the wave dropdown stale on a failed/retry-exhausted
+      metadata fetch with zero on-screen indication. Fixed by
+      destructuring `linkError` alongside `links` and rendering
+      `{linkError && <p className="text-sm text-red-600">{linkError}</p>}`
+      next to the wave `<select>`, matching `Experiments.tsx`'s existing
+      convention.
+- [x] 18.4 **IMPORTANT — the retry-cap give-up message (added in 17.2)
+      said "please retry" but no manual retry affordance exists.**
+      `fetchedIds` is never cleared, so there is no user action that
+      actually re-triggers a fetch for that `experimentId` — the
+      message implied a working mechanism that doesn't exist. Reworded
+      to describe the actual state instead of prescribing a
+      nonexistent action: "Could not refresh metadata links — the
+      displayed wave links may be out of date."
+- [x] 18.5 Also reviewed and confirmed already-adequate (no change
+      needed): the "reject concurrent uploads" test in
+      `tests/unit/graviscan/image-handlers.test.ts` already asserts
+      `bloomSuccess`/`boxSuccess` stay `true` with an explanatory
+      comment (added in round 3, commit `21bd5eb`) — round 4's minor
+      finding about this test predates that fix and no longer applies.
+- [x] 18.6 Verified locally after all 4 fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean on every
+      touched file (`src/main/box-backup.ts`,
+      `src/renderer/BrowseGraviScans.tsx`,
+      `src/renderer/contexts/WaveMetadataLinksContext.tsx`, and their
+      test files). A full `npm run test:unit` run shows only the same
+      pre-existing Windows path-separator baseline failures
+      (`image-uploader.test.ts`, `scan-coordinator.test.ts` — unrelated
+      files, not touched this round, same failure class documented in
+      17.8), no new failures.
