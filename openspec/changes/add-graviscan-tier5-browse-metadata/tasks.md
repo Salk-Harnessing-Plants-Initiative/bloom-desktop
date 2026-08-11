@@ -1253,3 +1253,111 @@ failed:0, errors:['Upload already in progress']}` — matching
       Proceeding to a round-2 `/review-pr` pass per explicit instruction
       to iterate (fix → re-review) until no BLOCKING or IMPORTANT
       findings remain.
+
+## 16. Round-2 `/review-pr` response — 1 blocking + 10 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against just the round-1 fix
+commit diff (with the full PR diff for context), specifically instructed
+to verify the round-1 fixes and hunt for regressions/new gaps. Found 1
+new blocking issue and 10 important issues — no round-1 fix was reverted
+or broken. Fixed all 11 with TDD (failing test confirmed red against the
+pre-fix code, then a minimal fix, then green) — commit `b6b27e5`.
+
+- [x] 16.1 **BLOCKING — a metadata import in flight could be navigated
+      away from mid-write.** `hasUnsavedChanges` only produced a
+      dismissable `window.confirm`, so an operator could accept "Leave
+      anyway?" while `createWithSections`'s IPC call was still pending —
+      its eventual `setError`/`setDone` would resolve against an
+      unmounted component, and a technician who assumed the (silently
+      lost) import never happened could resubmit and create a duplicate
+      record. Added `blockNavigation`/`setBlockNavigation` to
+      `UnsavedChangesContext`, wired `GraviMetadataUpload.tsx` to set it
+      for the duration of `isImporting`, and `Layout.tsx`'s new
+      `guardNavigation()` hard-blocks (via `window.alert`, not a
+      dismissable confirm) both the sidebar `NavLink`s and the
+      machine-config keyboard shortcut while it's true.
+- [x] 16.2 **IMPORTANT — the machine-config keyboard shortcut bypassed
+      the unsaved-changes guard entirely.** `confirmNavAway` guarded the
+      sidebar `NavLink`s' `onClick`, but the `Ctrl/Cmd+Shift+,` shortcut
+      called `navigate('/machine-config')` unconditionally — an operator
+      mid-import could lose their work via the shortcut even though the
+      exact same navigation via a sidebar click was guarded. Now routed
+      through the same `guardNavigation()` used by 16.1's fix.
+- [x] 16.3 **IMPORTANT — `handleBackupToBox` mislabeled a real partial
+      success as a total failure.** Bloom and Box back up in parallel via
+      `Promise.allSettled`; their counts are additive but their
+      success/failure are independent, so Box fully succeeding
+      (contributing to `uploaded`, nothing to `failed`) while Bloom fails
+      outright (contributing only an error string) produces
+      `{success:false, uploaded>0, failed:0, errors:[...]}` — a shape the
+      existing `uploaded > 0 && failed > 0` check didn't catch, so it fell
+      through to the generic "Box backup failed" message despite files
+      genuinely having been backed up. Changed the condition to
+      `uploaded > 0 && errors.length > 0`.
+- [x] 16.4 **IMPORTANT — a `NavLink` click on the current route triggered
+      a spurious "unsaved changes" confirm.** Clicking the already-active
+      sidebar link (a no-op navigation) still ran the unsaved-changes
+      check, needlessly interrupting the operator. `confirmNavAway` now
+      returns early when `to === location.pathname`.
+- [x] 16.5 **IMPORTANT — a spreadsheet row with every required field
+      blank was dropped with no indication.** The partial-row validation
+      only fires when a row is _partially_ filled (`0 < filled <
+required.length`); a fully blank row (e.g. a trailing blank Excel
+      row) is silently excluded downstream by the plate-grouping loop's
+      `if (!plateId) continue`. Correct behavior for a trailing blank
+      row, but the operator had no way to know any rows were dropped.
+      Added a `blankRowCount` (memoized over `sheet`/`mapping`) with a
+      persistent notice shown as soon as the sheet loads.
+- [x] 16.6 **IMPORTANT — `refetch()`'s stale-version retry had no
+      bound.** The version-guard added in round-1 (15.11's fix) retries
+      indefinitely if it keeps losing the race to a concurrent
+      link()/unlink() — fine for the realistic case (a handful of
+      supersessions), but nothing stopped genuinely pathological
+      rapid-fire mutation from recursing forever. Added a
+      `MAX_REFETCH_RETRIES` cap (5); past it, `refetch` logs an error and
+      gives up rather than applying stale data.
+- [x] 16.7 **IMPORTANT — `refetch()` silently swallowed a failed IPC
+      response.** `link()`/`unlink()` both already report their own IPC
+      failures via `errorsByExperiment`, but `refetch()` (used for the
+      initial fetch, and internally by `ensureFetched`/`link`) had no
+      `else` branch on `result.success` — a failed `listGraviMetadata`
+      call was indistinguishable from "no links yet" (empty array, no
+      error). Added the missing `else` branch.
+- [x] 16.8 **IMPORTANT — pagination's `total === PAGE_SIZE` boundary was
+      untested.** Existing tests covered `total: 1` and `total: 0` for
+      disabling Next, and `total: 45` for re-enabling it, but never the
+      exact boundary of the `offset + PAGE_SIZE >= total` comparison
+      (`total: 20`). The existing logic was already correct; added the
+      missing test.
+- [x] 16.9 **IMPORTANT — `csvEscape`'s test coverage only exercised
+      leading trigger characters.** The regex is `^`-anchored (only a
+      _leading_ `=`, `+`, `-`, or `@` opens a formula), and mid-string
+      `-` was already covered (`Col-0`), but mid-string `=`, `+`, and `@`
+      were not. Added a parameterized test for all three.
+- [x] 16.10 **IMPORTANT — the double-submit test's own comment overclaimed
+      what it proved.** The test clicks the Import button twice and
+      asserts a single IPC call, but user-event (matching real browsers)
+      never dispatches `click` on a `disabled` element at all — so the
+      test only proves the `disabled` attribute prevents the duplicate
+      call, not that `handleImport`'s own `isImporting` re-entrancy guard
+      does anything (it's unreachable through the DOM, since the button
+      is the feature's only entry point). Renamed the test and rewrote
+      the comment to state this accurately instead of implying the
+      internal guard was independently verified.
+- [x] 16.11 **IMPORTANT — stale IPC mock shapes in
+      `graviscan-ipc-integration.test.ts` (4th recurrence of this
+      category).** `readScanImage`/`uploadAllScans`/`downloadImages`'s
+      mocks had drifted from their real handler return shapes
+      (`ReadScanImageResult`, `UploadAllScansResult`, and
+      `downloadImages()`'s `{success, total, copied, errors}`) — none of
+      this file's tests exercise these three channels' return values, so
+      nothing caught the drift. Updated all three mocks to match the
+      real shapes and added a comment explaining why this file in
+      particular needs that discipline.
+- [x] 16.12 Verified locally after all 11 fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean on every touched
+      file; the 6 affected test files (87 tests) all pass, and a full
+      `tests/unit` run shows only the same 5 pre-existing Windows
+      path-separator baseline failures (`image-uploader.test.ts`,
+      `scan-coordinator.test.ts`, `MachineConfiguration.test.tsx` —
+      unrelated files, not touched this round), no new failures.
