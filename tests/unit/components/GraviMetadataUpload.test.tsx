@@ -191,6 +191,45 @@ describe('GraviMetadataUpload', () => {
     expect(createWithSections).not.toHaveBeenCalled();
   });
 
+  it('surfaces an error instead of a false "Done uploading!" when no column headers auto-map', async () => {
+    // Simulates a spreadsheet whose headers don't exactly match the
+    // expected field names (e.g. "PlateID" instead of "Plate ID") and
+    // where the operator never manually fixed the mapping: every
+    // required field stays unmapped, so every row's plate_id resolves to
+    // '' and is silently skipped, producing an empty plates array.
+    createWithSections.mockResolvedValue({
+      success: false,
+      error:
+        'No plates found — check that every required column is mapped correctly',
+    });
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    sheet.addRow([
+      'PlateID',
+      'SectionID',
+      'PlantQR',
+      'AccessionName',
+      'GrowthMedium',
+      'TransplantDate',
+    ]);
+    sheet.addRow(['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01']);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const file = new File([buffer], 'metadata.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const user = userEvent.setup();
+    renderUpload();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/no plates found/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/done uploading/i)).not.toBeInTheDocument();
+  });
+
   it('groups rows by Plate ID and calls createWithSections on a fully valid file', async () => {
     const user = userEvent.setup();
     const file = await buildWorkbookFile([
@@ -211,6 +250,41 @@ describe('GraviMetadataUpload', () => {
     expect(plates).toHaveLength(2);
     const p1 = plates.find((p: { plate_id: string }) => p.plate_id === 'P1');
     expect(p1.sections).toHaveLength(2);
+  });
+
+  it('disables Import while a submission is in flight and ignores a second click', async () => {
+    let resolveCreate: (value: unknown) => void = () => {};
+    createWithSections.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+    ]);
+    renderUpload();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+    const importButton = screen.getByRole('button', { name: /^import$/i });
+    await user.click(importButton);
+    expect(importButton).toBeDisabled();
+
+    // A second click while the first request is still in flight must not
+    // fire a duplicate call — the button being disabled already prevents a
+    // real click, but user-event still won't dispatch on a disabled
+    // element, so this also documents the guard's intent.
+    await user.click(importButton);
+    expect(createWithSections).toHaveBeenCalledTimes(1);
+
+    resolveCreate({
+      success: true,
+      data: { metadataFileId: 'file-1', totalPlates: 1 },
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/done uploading/i)).toBeInTheDocument();
+    });
   });
 
   it('shows a completion message, resets, and calls onUploadComplete on success', async () => {

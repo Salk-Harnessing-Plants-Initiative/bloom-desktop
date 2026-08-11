@@ -49,6 +49,7 @@ export function GraviMetadataUpload({
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [fileName, setFileName] = useState<string>('');
   const [done, setDone] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const reset = () => {
     setSheetsByName(null);
@@ -122,77 +123,84 @@ export function GraviMetadataUpload({
   };
 
   const handleImport = async () => {
-    if (!sheet) return;
+    if (!sheet || isImporting) return;
+    setIsImporting(true);
     setRowErrors([]);
 
-    const colIndex = (field: string) =>
-      mapping[field] !== undefined ? Number(mapping[field]) : -1;
+    try {
+      const colIndex = (field: string) =>
+        mapping[field] !== undefined ? Number(mapping[field]) : -1;
 
-    const errors: string[] = [];
-    sheet.rows.forEach((row, i) => {
-      const requiredValues = REQUIRED_FIELDS.map((f) => row[colIndex(f)] ?? '');
-      const filled = requiredValues.filter((v) => v.trim() !== '').length;
-      if (filled > 0 && filled < requiredValues.length) {
-        errors.push(`Row ${i + 2}: some required fields are blank`);
+      const errors: string[] = [];
+      sheet.rows.forEach((row, i) => {
+        const requiredValues = REQUIRED_FIELDS.map(
+          (f) => row[colIndex(f)] ?? ''
+        );
+        const filled = requiredValues.filter((v) => v.trim() !== '').length;
+        if (filled > 0 && filled < requiredValues.length) {
+          errors.push(`Row ${i + 2}: some required fields are blank`);
+        }
+      });
+      if (errors.length > 0) {
+        setRowErrors(errors);
+        return;
       }
-    });
-    if (errors.length > 0) {
-      setRowErrors(errors);
-      return;
-    }
 
-    const plateMap = new Map<
-      string,
-      {
-        plate_id: string;
-        accession: string;
-        transplant_date: string;
-        custom_note: string;
-        sections: {
-          plate_section_id: string;
-          plant_qr: string;
-          medium: string;
-        }[];
-      }
-    >();
+      const plateMap = new Map<
+        string,
+        {
+          plate_id: string;
+          accession: string;
+          transplant_date: string;
+          custom_note: string;
+          sections: {
+            plate_section_id: string;
+            plant_qr: string;
+            medium: string;
+          }[];
+        }
+      >();
 
-    for (const row of sheet.rows) {
-      const plateId = row[colIndex('Plate ID')];
-      if (!plateId) continue;
-      if (!plateMap.has(plateId)) {
-        plateMap.set(plateId, {
-          plate_id: plateId,
-          accession: row[colIndex('Accession')] ?? '',
-          transplant_date: row[colIndex('Transplant Date')] ?? '',
-          custom_note: row[colIndex('Custom Note')] ?? '',
-          sections: [],
+      for (const row of sheet.rows) {
+        const plateId = row[colIndex('Plate ID')];
+        if (!plateId) continue;
+        if (!plateMap.has(plateId)) {
+          plateMap.set(plateId, {
+            plate_id: plateId,
+            accession: row[colIndex('Accession')] ?? '',
+            transplant_date: row[colIndex('Transplant Date')] ?? '',
+            custom_note: row[colIndex('Custom Note')] ?? '',
+            sections: [],
+          });
+        }
+        plateMap.get(plateId)!.sections.push({
+          plate_section_id: row[colIndex('Section ID')] ?? '',
+          plant_qr: row[colIndex('Plant QR')] ?? '',
+          medium: row[colIndex('Medium')] ?? '',
         });
       }
-      plateMap.get(plateId)!.sections.push({
-        plate_section_id: row[colIndex('Section ID')] ?? '',
-        plant_qr: row[colIndex('Plant QR')] ?? '',
-        medium: row[colIndex('Medium')] ?? '',
-      });
+
+      const plates = Array.from(plateMap.values());
+      const result =
+        await window.electron.database.graviPlateAccessions.createWithSections(
+          { name: fileName },
+          plates
+        );
+
+      if (!result.success) {
+        setError(result.error ?? 'Failed to import metadata');
+        return;
+      }
+
+      setDone(true);
+      setTimeout(() => {
+        reset();
+        setDone(false);
+        onUploadComplete();
+      }, 1500);
+    } finally {
+      setIsImporting(false);
     }
-
-    const plates = Array.from(plateMap.values());
-    const result =
-      await window.electron.database.graviPlateAccessions.createWithSections(
-        { name: fileName },
-        plates
-      );
-
-    if (!result.success) {
-      setError(result.error ?? 'Failed to import metadata');
-      return;
-    }
-
-    setDone(true);
-    setTimeout(() => {
-      reset();
-      setDone(false);
-      onUploadComplete();
-    }, 1500);
   };
 
   return (
@@ -275,7 +283,9 @@ export function GraviMetadataUpload({
             </ul>
           )}
 
-          <button onClick={handleImport}>Import</button>
+          <button onClick={handleImport} disabled={isImporting}>
+            {isImporting ? 'Importing...' : 'Import'}
+          </button>
         </div>
       )}
 

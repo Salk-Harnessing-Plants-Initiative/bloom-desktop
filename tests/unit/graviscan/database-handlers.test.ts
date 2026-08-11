@@ -994,6 +994,17 @@ describe('database.graviPlateAccessions.*', () => {
       expect(await prisma.accessions.count()).toBe(0);
     });
 
+    it('rejects an empty plates array without writing anything — prevents a silent zero-plate "success" (e.g. every row mapped to no columns)', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Empty Plates' },
+        []
+      );
+
+      expect(result.success).toBe(false);
+      expect(await prisma.accessions.count()).toBe(0);
+    });
+
     it('rejects a plate missing plate_id/accession without writing anything', async () => {
       const result = await graviPlateAccessionsCreateWithSections(
         prisma,

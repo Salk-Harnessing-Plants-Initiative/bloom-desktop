@@ -39,6 +39,7 @@ describe('GraviMetadataList', () => {
       ],
     });
     deleteFile = vi.fn().mockResolvedValue({ success: true });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = global.window as any;
@@ -102,7 +103,7 @@ describe('GraviMetadataList', () => {
     expect(screen.getByText('batch3.xlsx')).toBeInTheDocument();
   });
 
-  it('removes the entry on a successful delete', async () => {
+  it('removes the entry on a successful delete after confirmation', async () => {
     listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
     const user = userEvent.setup();
     render(<GraviMetadataList />);
@@ -110,8 +111,24 @@ describe('GraviMetadataList', () => {
 
     await user.click(screen.getByRole('button', { name: /delete/i }));
 
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('batch3.xlsx')
+    );
     await waitFor(() => {
       expect(screen.queryByText('batch3.xlsx')).not.toBeInTheDocument();
     });
+  });
+
+  it('does not delete when the confirmation dialog is declined', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByRole('button', { name: /delete/i }));
+
+    expect(deleteFile).not.toHaveBeenCalled();
+    expect(screen.getByText('batch3.xlsx')).toBeInTheDocument();
   });
 });

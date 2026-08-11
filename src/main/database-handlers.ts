@@ -692,6 +692,17 @@ export async function graviPlateAccessionsCreateWithSections(
     if (!Array.isArray(plates)) {
       return { success: false, error: 'plates must be an array' };
     }
+    if (plates.length === 0) {
+      // A spreadsheet whose columns didn't auto-map and were never fixed
+      // manually produces zero recognized plates (every row's plate_id
+      // resolves to '' and is skipped) — without this check the caller
+      // gets a false {success: true} for an import that wrote nothing.
+      return {
+        success: false,
+        error:
+          'No plates found — check that every required column is mapped correctly',
+      };
+    }
     for (const plate of plates) {
       if (
         !isNonEmptyString(plate?.plate_id) ||

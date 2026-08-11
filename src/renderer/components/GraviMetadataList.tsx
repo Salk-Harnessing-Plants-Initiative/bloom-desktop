@@ -60,7 +60,14 @@ export function GraviMetadataList() {
     }
   };
 
-  const handleDelete = async (fileId: string) => {
+  const handleDelete = async (fileId: string, fileName: string) => {
+    if (
+      !window.confirm(
+        `Delete "${fileName}"? This permanently removes all of its plate and section data and cannot be undone.`
+      )
+    ) {
+      return;
+    }
     setDeleteError(null);
     const result =
       await window.electron.database.graviPlateAccessions.delete(fileId);
@@ -86,7 +93,9 @@ export function GraviMetadataList() {
             <span> {formatDate(file.createdAt)}</span>
             <span> {file.experimentNames.join(', ')}</span>
             <span> {file.plateCount} plates</span>
-            <button onClick={() => handleDelete(file.id)}>Delete</button>
+            <button onClick={() => handleDelete(file.id, file.name)}>
+              Delete
+            </button>
 
             {expandedId === file.id && plates[file.id] && (
               <table>

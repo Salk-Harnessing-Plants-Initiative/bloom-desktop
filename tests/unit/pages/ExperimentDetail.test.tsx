@@ -373,6 +373,16 @@ describe('ExperimentDetail', () => {
           expect.anything()
         );
       });
+      // Asserts the <img> itself renders with the resolved dataUri, not
+      // just that the IPC call fired — a prior version of this test only
+      // checked the latter, which didn't catch a double-wrapped IPC
+      // envelope leaving dataUri undefined and the image never rendering.
+      await waitFor(() => {
+        expect(screen.getByAltText('scan-1')).toHaveAttribute(
+          'src',
+          'data:image/jpeg;base64,abc'
+        );
+      });
       expect(screen.getByText('BC-1')).toBeInTheDocument();
     });
 

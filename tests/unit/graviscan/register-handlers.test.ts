@@ -40,7 +40,9 @@ vi.mock('../../../src/main/graviscan/image-handlers', () => ({
   getOutputDir: vi
     .fn()
     .mockReturnValue({ success: true, path: '/home/user/.bloom/graviscan' }),
-  readScanImage: vi.fn().mockResolvedValue({ data: 'base64...' }),
+  readScanImage: vi
+    .fn()
+    .mockResolvedValue({ success: true, dataUri: 'data:image/jpeg;base64,x' }),
   uploadAllScans: vi.fn().mockResolvedValue({ uploaded: 0 }),
   downloadImages: vi.fn().mockResolvedValue({ exported: 0 }),
   ensureDir: vi.fn().mockResolvedValue({ success: true, path: '/scans/s1' }),
@@ -874,13 +876,21 @@ describe('registerGraviScanHandlers', () => {
       );
     });
 
-    it('allows paths within output directory', async () => {
+    it('allows paths within output directory and returns the flat {success, dataUri} shape, not double-wrapped', async () => {
       const result = await mockIpcMain._invoke(
         'graviscan:read-scan-image',
         '/home/user/.bloom/graviscan/exp1/scan.tiff',
         {}
       );
-      expect(result.success).toBe(true);
+      // Must match imageHandlers.readScanImage()'s own {success, dataUri,
+      // error?} contract exactly — the same shape the failure branches
+      // above already return — not wrapHandler's {success, data: {...}}
+      // envelope, which would leave dataUri undefined for every real
+      // caller (ExperimentDetail.tsx reads result.dataUri directly).
+      expect(result).toEqual({
+        success: true,
+        dataUri: 'data:image/jpeg;base64,x',
+      });
       expect(imageHandlers.readScanImage).toHaveBeenCalled();
     });
 

@@ -311,6 +311,19 @@ export interface UploadAllScansResult {
 }
 
 /**
+ * Result of `graviscan:read-scan-image`
+ * (`image-handlers.ts#readScanImage`) — this IS the whole IPC response,
+ * not a payload nested under a further envelope. `readScanImage` never
+ * throws, so `register-handlers.ts` returns it directly rather than
+ * passing it through `wrapHandler`.
+ */
+export interface ReadScanImageResult {
+  success: boolean;
+  dataUri?: string;
+  error?: string;
+}
+
+/**
  * Scanner state during scan operations.
  */
 export type ScannerState =

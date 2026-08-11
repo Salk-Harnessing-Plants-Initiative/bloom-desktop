@@ -358,9 +358,13 @@ export function registerGraviScanHandlers(
       if (!contained.ok) {
         return { success: false, error: OUTSIDE_SCAN_DIR };
       }
-      return wrapHandler(() =>
-        imageHandlers.readScanImage(contained.path, opts)
-      )();
+      // readScanImage() already returns its own {success, dataUri?,
+      // error?} envelope (and never throws — every failure path inside it
+      // is caught internally), matching the shape the two early returns
+      // above already use. Do NOT wrap it in wrapHandler()'s {success,
+      // data} envelope — that would double-nest the result and leave
+      // `dataUri` undefined for every real caller.
+      return imageHandlers.readScanImage(contained.path, opts);
     }
   );
 

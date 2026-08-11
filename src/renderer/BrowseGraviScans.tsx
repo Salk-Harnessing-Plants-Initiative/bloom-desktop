@@ -137,6 +137,7 @@ function ExperimentRow({
 
 export function BrowseGraviScans() {
   const [experiments, setExperiments] = useState<GraviExperimentRow[]>([]);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState<Filters>({
@@ -170,6 +171,7 @@ export function BrowseGraviScans() {
       if (result.success) {
         setError(null);
         setExperiments(result.data.experiments);
+        setTotal(result.data.total);
       } else {
         setError(result.error ?? 'Failed to load GraviScan experiments');
       }
@@ -245,15 +247,28 @@ export function BrowseGraviScans() {
       const result = response.data;
       if (result.errors?.includes('rclone not installed')) {
         setBackupMessage('Box backup unavailable (rclone not installed)');
-      } else if (result.failed > 0) {
+      } else if (result.uploaded > 0 && result.failed > 0) {
         setBackupMessage(
-          `Box backup completed with ${result.failed} error(s): ${result.errors?.[0] ?? ''}`
+          `Box backup completed with ${result.uploaded} uploaded, ${result.failed} error(s): ${result.errors?.[0] ?? ''}`
+        );
+      } else if (!result.success) {
+        // Whole-operation failures that never got as far as uploading or
+        // failing individual images — e.g. the uploadInProgress guard
+        // ({uploaded:0, failed:0, errors:['Upload already in progress']})
+        // — would otherwise match neither branch above nor below and be
+        // misreported as a successful no-op upload.
+        setBackupMessage(
+          `Box backup failed: ${result.errors?.[0] ?? 'unknown error'}`
         );
       } else {
         setBackupMessage(
           `Uploaded ${result.uploaded} image(s), ${result.skipped} skipped`
         );
       }
+    } catch (error) {
+      setBackupMessage(
+        `Box backup failed: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
     } finally {
       setBackingUp(false);
     }
@@ -343,7 +358,12 @@ export function BrowseGraviScans() {
         >
           Previous
         </button>
-        <button onClick={() => setOffset((o) => o + PAGE_SIZE)}>Next</button>
+        <button
+          onClick={() => setOffset((o) => o + PAGE_SIZE)}
+          disabled={offset + PAGE_SIZE >= total}
+        >
+          Next
+        </button>
       </div>
     </div>
   );

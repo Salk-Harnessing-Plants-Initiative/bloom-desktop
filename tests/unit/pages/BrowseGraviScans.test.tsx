@@ -135,7 +135,8 @@ describe('BrowseGraviScans', () => {
   it('Next/Previous pagination controls call browseByExperiment with an updated offset', async () => {
     browseByExperiment.mockResolvedValue({
       success: true,
-      data: { experiments: [makeExperiment()], total: 1 },
+      // total (21) exceeds one page (20) so Next stays enabled at offset 0.
+      data: { experiments: [makeExperiment()], total: 21 },
     });
     const user = userEvent.setup();
     renderPage();
@@ -163,6 +164,45 @@ describe('BrowseGraviScans', () => {
     renderPage();
     await waitFor(() => expect(browseByExperiment).toHaveBeenCalled());
     expect(screen.getByRole('button', { name: /^previous$/i })).toBeDisabled();
+  });
+
+  it('disables Next when the current page reaches the total result count', async () => {
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    renderPage();
+    await waitFor(() => expect(browseByExperiment).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
+  });
+
+  it('disables Next when there are zero results', async () => {
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [], total: 0 },
+    });
+    renderPage();
+    await waitFor(() => expect(browseByExperiment).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled();
+  });
+
+  it('re-enables Next on a later page that still has more results beyond it', async () => {
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 45 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(browseByExperiment).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole('button', { name: /^next$/i }));
+    await waitFor(() =>
+      expect(browseByExperiment).toHaveBeenLastCalledWith(
+        expect.objectContaining({ offset: 20 })
+      )
+    );
+    // offset 20 + PAGE_SIZE 20 = 40, still < total 45 — more results remain.
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeEnabled();
   });
 
   it('shows a friendly message on a browseByExperiment error, without throwing', async () => {
@@ -387,6 +427,85 @@ describe('BrowseGraviScans', () => {
           screen.getByText(/box backup failed.*database connection lost/i)
         ).toBeInTheDocument();
       });
+    });
+
+    it('reports a whole-operation failure instead of a false "Uploaded 0" success message', async () => {
+      // Mirrors uploadAllScans()'s uploadInProgress guard: the inner
+      // domain result reports success:false with nothing uploaded or
+      // failed (it never even attempted an image), which previously
+      // matched neither the rclone-specific nor the failed>0 branch and
+      // fell through to the generic success message.
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 0,
+          skipped: 0,
+          failed: 0,
+          errors: ['Upload already in progress'],
+          metadataLinkingAvailable: false,
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/box backup failed.*upload already in progress/i)
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/uploaded 0 image/i)).not.toBeInTheDocument();
+    });
+
+    it('shows both the success and failure counts on a partial failure', async () => {
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 3,
+          skipped: 0,
+          failed: 1,
+          errors: ['Network timeout'],
+          metadataLinkingAvailable: false,
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/3 uploaded/i)).toBeInTheDocument();
+        expect(screen.getByText(/1 error/i)).toBeInTheDocument();
+      });
+    });
+
+    it('shows a friendly message when the IPC call itself rejects', async () => {
+      uploadAllScans.mockRejectedValue(new Error('IPC channel closed'));
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/box backup failed.*ipc channel closed/i)
+        ).toBeInTheDocument();
+      });
+      expect(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      ).toBeEnabled();
     });
 
     it('updates the per-experiment Box progress indicator from onUploadProgress events', async () => {
