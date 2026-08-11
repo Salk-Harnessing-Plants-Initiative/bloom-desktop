@@ -2047,3 +2047,118 @@ failedImages, currentExperiment}`. `UploadStatusContext.tsx`
       `npm run test:unit`: 1548/1548 real tests passing, only the same
       pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
       local-setup flake (unrelated, unaffected).
+
+## 23. Round-9 `/review-pr` response — 3 blocking + 1 important finding, all fixed
+
+Ran the same 5-subagent adversarial team against round 8's fix commit
+(`7a3c6bc`). Two agents performed actual empirical verification rather
+than mental simulation — one hand-traced `rcloneCopyFiles`'s error
+parser against a real-world rclone error format, the other live-edited
+`box-backup.ts` to test a specific mutation, ran the suite, and reverted
+— surfacing the single most severe finding of this entire review cycle,
+plus a self-inflicted repeat of a bug fixed earlier in the very same
+commit being reviewed. Fixed all of it with TDD — commit `0b42a8b`.
+
+- [x] 23.1 **BLOCKING — the most severe finding of this whole review
+      cycle: `rcloneCopyFiles` could silently report a fully failed Box
+      upload as a full success, permanently.** The per-file error parser
+      trusted ANY `level:"error"` JSON log line's extracted token
+      (`msg.split(':')[0].trim()`) as a real filename with no check that
+      it actually was one. rclone logs global/config failures — an
+      expired auth token, exceeded quota, a backend outage — at
+      `level:"error"` too, but with no per-file attribution (e.g.
+      `"Failed to copy: googleapi: Error 401: Invalid Credentials"`,
+      which extracts to the bogus token `"Failed to copy"`). Since that
+      token matches none of the real filenames, the caller's per-file
+      loop (`erroredFiles.has(filename)`) finds every real file
+      "not errored" and marks the ENTIRE wave `box_status: 'uploaded'`
+      with `result.success` left at its default `true` — a complete
+      backup failure reported as complete success, and because future
+      runs only re-select `box_status in ['pending','failed']`, this
+      data loss is **permanent** with no automatic retry. This is
+      strictly worse than every prior round's finding in this area
+      (those made a real failure temporarily mis-reported or
+      temporarily unretryable; this one makes a real failure
+      permanently indistinguishable from success). Fixed by only
+      trusting an extracted `level:"error"` token as a per-file
+      attribution when it matches one of the call's own known
+      filenames — an unmatched token now correctly falls through to the
+      existing (already-safe, since round 5) "mark ALL as failed" path
+      instead of the per-file loop.
+- [x] 23.2 **BLOCKING — round 8's own plain-fetch-failure fix (22.4)
+      reintroduced the exact punctuation-collision bug fixed for the
+      Download tooltip earlier in that same commit (22.3).** `` `${result
+.error ?? '...'}. Quit and reopen...` `` concatenates the fixed
+      suffix directly onto `result.error`, which for the realistic
+      trigger (a caught Prisma/backend exception, via
+      `database-handlers.ts`'s `errorMessage()`) is raw, unbounded text
+      that routinely ends in its own full sentence and period — e.g.
+      `"...does not exist in the current database."` — producing
+      `"...database.. Quit and reopen..."`. Confirmed independently by 2
+      of 5 subagents; only the test fixture's punctuation-free
+      `'Database is locked'` literal kept this from being caught
+      earlier. Unlike the tooltip (which had a genuinely redundant
+      visible-error paragraph it could just point to instead), this
+      message IS the primary display text with nothing else to point
+      to, so the fix here is different: strip trailing `.`/`!`/`?` from
+      `result.error` before appending the suffix, rather than dropping
+      the interpolation entirely.
+- [x] 23.3 **BLOCKING — the `completedImages`/`failedImages` progress-
+      counter test (22.1) had no coverage proving `waveCompletedImages`
+      resets per wave rather than per experiment or per function call.**
+      Every existing `runBoxBackup` fixture used exactly one wave, so
+      "resets every wave" and "never resets" are observationally
+      identical — confirmed empirically: hoisting the fix's `let
+waveCompletedImages = 0;` out of the per-wave loop and into the
+      per-experiment loop still passed every existing test. Added a
+      genuinely discriminating two-wave test (wave 0 fully succeeds,
+      wave 1 totally fails) and independently reproduced the same
+      empirical mutation-testing methodology to confirm it actually
+      catches that exact mutant before reverting it.
+- [x] 23.4 **IMPORTANT — `Experiments.tsx`'s `ExperimentWaveLinks`
+      early-returned `null` whenever `links.length === 0`, before
+      `linkError` was ever checked.** Indistinguishable from "no waves
+      linked yet" (every experiment's default state) is "the fetch that
+      would tell us failed" — so the single most common trigger for a
+      wave-metadata fetch failure (an experiment with nothing linked
+      yet) showed nothing at all on this page's row, not even the
+      recourse message given across three prior review rounds (19.3,
+      20.4, 22.4). A single-experiment test would have passed vacuously
+      here too — this page's attach panel defaults to the _first_
+      experiment and redundantly renders its own `linkError` for the
+      same shared `experimentId`, masking the row-level bug. Used two
+      experiments (failing only the second's fetch) to properly isolate
+      and fix it: render whenever `links.length > 0 || linkError` is
+      truthy.
+- [x] 23.5 **Reviewed and deliberately deferred** (raised by 1-2 of 5
+      subagents each; a preventive/hygiene concern rather than a live
+      bug, or purely cosmetic):
+  1. `onUploadProgress`'s declared type (`BoxBackupProgress`, in
+     `electron.d.ts`) still claims a single fixed shape even though two
+     shapes (Bloom's and Box's) actually flow through it — round 8's
+     fix (22.2) works around this with a runtime `typeof` guard at the
+     one known-affected consumer, but the type itself doesn't force any
+     _future_ consumer to add the same guard. Flagged as "the actual
+     root cause enabling this whole chain of sibling bugs" by one
+     reviewer. A proper fix (a discriminated union, updating every
+     consumer to narrow) is a real type-safety improvement but doesn't
+     change any currently-observed behavior — deferred as a larger,
+     preventive-only change.
+  2. The two now-similar "quit and reopen" messages use different verbs
+     ("to retry" vs. "to refresh them") despite both describing the
+     identical underlying recourse from the identical `refetch()`
+     function. Each verb is individually sensible in its own trigger
+     context (retry a never-completed fetch vs. refresh already-stale
+     displayed data) — reviewed and kept as-is rather than forcing an
+     artificial consistency.
+  3. Fixed a test comment in `box-backup.test.ts` that incorrectly
+     claimed "CSV is never even attempted once every image failed its
+     own copy" — the metadata CSV step actually still runs
+     unconditionally regardless of whether any image succeeded
+     (pre-existing behavior, not asserted by this test, not changed
+     this round).
+- [x] 23.6 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean. Full
+      `npm run test:unit`: 1552/1552 real tests passing, only the same
+      pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
+      local-setup flake (unrelated, unaffected).
