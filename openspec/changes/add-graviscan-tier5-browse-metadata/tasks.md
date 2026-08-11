@@ -1612,3 +1612,122 @@ flagged independently by multiple subagents. Fixed all 4 with TDD.
       (`image-uploader.test.ts`, `scan-coordinator.test.ts` — unrelated
       files, not touched this round, same failure class documented in
       17.8), no new failures.
+- [x] 18.7 Merged latest `main` into this branch (clean auto-merge, no
+      conflicts), picking up an independently-merged PR (#324, "clean up
+      orphaned descendant processes and shard E2E CI") that directly
+      targets the category of macOS/E2E CI flakiness this review cycle
+      had been treating as pre-existing/unrelated since round 2. Then
+      root-caused and fixed, with TDD, the local Windows baseline
+      failures this branch had been documenting since Section 1
+      (`image-uploader.test.ts`/`scan-coordinator.test.ts`/
+      `config-store.test.ts`: hardcoded POSIX path-separator assertions
+      vs. platform-native `path.join`/`path.dirname` output — rebuilt
+      expectations the same way instead of hardcoding a separator;
+      `electron-cleanup.test.ts`, new from the PR #324 merge: two tests
+      exceeded vitest's default 5000ms timeout on Windows due to
+      `powershell.exe Get-CimInstance` overhead — root-caused via an
+      isolated run with a raised timeout showing all assertions pass,
+      just slower, not a hang — bumped to 20000ms;
+      `MachineConfiguration.test.tsx`: a dangling real 100ms mock timer
+      could resolve after RTL's `cleanup()` had torn down the test
+      environment, surfacing as an unhandled rejection blamed on an
+      unrelated later test — fixed by awaiting the loading state's
+      resolution before the test ends). Commit `cf4996a`, kept separate
+      from feature-code commits since none of it is tier5-specific.
+      Confirmed via 3 repeated full local `npm run test:unit` runs: 0
+      failing assertions (only `database-handlers.test.ts`'s
+      already-documented, pre-existing `BLOOM_DATABASE_URL`
+      local-setup-dependent flake remained, unrelated and unaffected).
+      Pushed (`bca5777` merge, `cf4996a` fixes) — CI run 31521160041
+      passed **fully green for the first time this entire review
+      cycle**, including all three platforms' E2E Dev Build jobs.
+
+## 19. Round-5 `/review-pr` response — 1 blocking + 3 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against round 4's fix commit
+(`5388bab`, never yet reviewed) plus the test-hygiene bolt-on (`cf4996a`),
+with the full PR diff for context. Explicitly instructed agents not to
+critique `cf4996a` as tier5 feature work. Found 1 new blocking issue (a
+real data/metadata-preservation gap in round 4's own fix) and 3 important
+issues, one confirmed independently by 3 of 5 subagents. Fixed all 4 with
+TDD — commit `0633d40`.
+
+- [x] 19.1 **BLOCKING — `box-backup.ts`'s round-4 fix (`result.success =
+false` on CSV failure, 18.2) made the failure visible once, but the
+      wave becomes permanently unretryable.** `runBoxBackup()` selects
+      scans via `images: { some: { box_status: { in: ['pending',
+'failed'] } } }` — there is no separate per-wave CSV-status field.
+      Images are marked `box_status: 'uploaded'` immediately after the
+      image-copy step, _before_ the wave's metadata CSV copy even runs.
+      So when only the CSV copy fails (all images copied fine), that
+      wave has zero pending/failed images left after this run — the next
+      "Backup to Box" click silently excludes it from the query entirely,
+      never retries the CSV, and reports a plain success with no
+      indication anything is still wrong. `metadata.csv` (plate barcode,
+      accession, capture/transplant date) stays **permanently missing**
+      from Box with no in-app recourse short of manual DB intervention —
+      a real, silent metadata-preservation gap, not just a wording issue.
+      Confirmed independently by 2 of 5 subagents (one rated BLOCKING,
+      one IMPORTANT). Fixed by reverting the wave's just-uploaded images
+      back to `box_status: 'failed'` when the CSV copy fails, so the next
+      run re-selects and retries the whole wave (images re-copy
+      redundantly but harmlessly — rclone overwrites identical files —
+      and the CSV gets a real retry). New test in `box-backup.test.ts`
+      asserts the images are reverted to a status the retry query will
+      pick up, not left at `'uploaded'`.
+- [x] 19.2 **IMPORTANT — round 4's "defense-in-depth" `summary` fallback
+      in `BrowseGraviScans.tsx` was provably unreachable dead code.**
+      Confirmed independently by 3 of 5 subagents: entry into the
+      `!result.bloomSuccess || !result.boxSuccess` branch requires one of
+      those exact two conditions, and each is exactly what pushes to
+      `failures` immediately above — `failures.length` can never be `0`
+      inside that branch, so the `result.errors?.[0] ?? 'unknown error'`
+      fallback could never execute, and (correctly) had no test
+      exercising it. Removed the fallback; `setBackupMessage` now uses
+      `failures.join('; ')` unconditionally, with a comment explaining
+      why it's always non-empty instead of a misleading
+      "defense-in-depth" framing.
+- [x] 19.3 **IMPORTANT — the reworded retry-cap message (18.4) was
+      honest but left the user with no actual next step.** `fetchedIds`
+      is never cleared, so nothing short of reloading the app actually
+      re-triggers a fetch for that `experimentId` — the message said the
+      data might be stale but didn't say what to do about it. Appended
+      "Reload the app to refresh them." so the message ends in an action,
+      not just a diagnosis.
+- [x] 19.4 **IMPORTANT — `linkError` (18.3) wasn't consulted by the
+      diverged-wave divergence check, so a failed metadata fetch was
+      silently read as "no divergence" instead of "unknown".**
+      `handleDownload`'s diverged-wave detection filters over `links`,
+      which stays `[]` on a failed fetch — computing zero divergence in
+      that state isn't "confirmed no divergence," it's "never actually
+      checked," and an operator could download a CSV with an unverified
+      (possibly wrong) accession with no warning at all. Fixed by
+      disabling the Download button while `linkError` is set, with a
+      `title` explaining why, rather than letting the check silently
+      report a false negative.
+- [x] 19.5 **Reviewed and deliberately deferred** (SUGGESTION-level,
+      raised by only 1 of 5 subagents, or a larger design decision than
+      this round's scope):
+  1. The dual Bloom/Box failure message names which system(s) failed but
+     doesn't visually or textually distinguish "partial failure, data
+     safe" from "total failure, data may not be recorded anywhere" —
+     severity is inferable by an informed reader but not called out
+     explicitly. Would need product/domain confirmation of the exact
+     safety semantics to word correctly; not attempted this round to
+     avoid asserting an unverified claim.
+  2. Raw rclone stderr (e.g. `rclone exited with code 1: ...`) flows
+     unfiltered into the operator-facing message via `boxErrors[0]` —
+     pre-existing since round 1, not introduced by this round (19.1 just
+     made the CSV-failure path reachable again on retry).
+  3. Minor inconsistency: `result.errors?.length`/`result.errors?.[0]`
+     use optional chaining against fields typed as non-optional in
+     `UploadAllScansResult`, while sibling fields in the same function
+     (`result.uploaded`, `result.bloomUploaded`) are accessed unguarded.
+     Cosmetic only — behavior is identical either way — not worth the
+     touch-everywhere churn for a nit.
+- [x] 19.6 Verified locally after all 4 fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean. Full
+      `npm run test:unit` (run twice): 0 failing assertions both times
+      (only the same pre-existing `database-handlers.test.ts`
+      `BLOOM_DATABASE_URL` local-setup flake, documented in 18.7,
+      appeared once — non-deterministic, unrelated, unaffected).
