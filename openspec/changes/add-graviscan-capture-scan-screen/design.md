@@ -671,6 +671,54 @@ mismatch entirely rather than papering over it, and this screen's own
 Interval field already uses minutes, so hours-for-Duration was
 internally inconsistent even setting production aside.
 
+### Decision 10 — Abnormal-termination marker check must be reactive, not mount-once
+
+Live smoke testing found Decision 5's banner never actually appeared,
+under any circumstance reachable by an operator. Root cause: the
+mount-only restore effect (`useEffect(..., [])`) closes over whatever
+`experimentId`/`waveNumber` it received on the render that scheduled it.
+`GraviScan.tsx`'s `experimentId` always starts `null`
+(`useState<string | null>(null)`) and is only populated asynchronously,
+either via the cross-navigation session-restore added in this same tier
+(`window.electron.session.get()`) or, before that existed, by the
+operator picking from `ExperimentChooser` — either way, strictly after
+this effect's synchronous body has already run and permanently missed
+the `if (experimentId)` check (empty deps means the callback that
+actually executes is fixed to the very first render forever, regardless
+of how many times `experimentId` later changes). This is not a
+first-launch-only edge case: `GraviScan.tsx` does not remount when the
+operator merely switches `waveNumber` via its own selector, so the
+existing "different wave, no banner" / "same wave, banner" tests — all
+of which construct the hook with `experimentId` already present via
+`baseParams()` — never exercised the actual integration timing and so
+never caught this.
+
+**Decision:** split the abnormal-marker check out of the mount-once
+active-session-restore effect into its own effect depending on
+`[experimentId, waveNumber]`. It independently calls `getScanStatus()`
+(a second, harmless call — status reads are cheap and idempotent, not
+worth threading state between two effects to avoid one duplicate IPC
+round trip) and either sets or explicitly clears `abnormalTermination`
+based on whether a marker exists for the _current_ `(experimentId,
+waveNumber)` pair. Explicit clearing (not just "don't set") matters once
+this is reactive: switching from a wave with a marker to one without must
+not leave the previous wave's banner visibly stuck. The active-session
+restore half of Decision 5's original effect is untouched — it doesn't
+depend on `experimentId` at all, so it was never affected by this race,
+and stays mount-once per Decision 4's original intent (restoration is a
+one-time reconciliation, not a reactive sync — that framing was correct
+for that half; it just wasn't correct for the marker-check half sharing
+its body).
+
+**Alternatives considered:** widen the _existing_ effect's deps to
+`[experimentId, waveNumber]` instead of splitting it. Rejected — that
+would also make the active-session restore reactive, re-dispatching
+`RESTORE` (and its `jobTemplateRef`/`completedKeysRef` resets) every time
+the operator changes wave while a session already has its own live
+event-driven state updating via the separate IPC-listener effect,
+risking exactly the kind of stale-snapshot-clobbers-live-state race this
+tier's Decision 1 reducer rewrite was meant to eliminate.
+
 ## Architecture
 
 ```

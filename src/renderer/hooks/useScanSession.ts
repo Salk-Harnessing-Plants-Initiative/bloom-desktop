@@ -606,19 +606,6 @@ export function useScanSession(
         GetScanStatusResult & Record<string, any>
       >(await (window as any).electron.gravi.getScanStatus());
       if (!status?.isActive) {
-        if (experimentId) {
-          const marker = localStorage.getItem(
-            abnormalMarkerKey(experimentId, waveNumber)
-          );
-          if (marker) {
-            try {
-              const parsed = JSON.parse(marker);
-              setAbnormalTermination({ expectedCycles: parsed.expectedCycles });
-            } catch {
-              // Corrupt marker — treat as absent rather than throwing.
-            }
-          }
-        }
         return;
       }
 
@@ -668,6 +655,52 @@ export function useScanSession(
     // Intentionally runs once on mount only — restoration is a one-time
     // reconciliation against main-process state, not a reactive sync.
   }, []);
+
+  // ── Abnormal-termination marker check (design.md Decision 10) ─────────
+  //
+  // Deliberately its own effect, not folded into the mount-once restore
+  // above: `experimentId` is always `null` on this hook's very first
+  // render (GraviScan.tsx's own state starts there, populated only
+  // asynchronously — via the cross-navigation session restore, or an
+  // operator picking from the experiment/wave selectors), so a `[]`-deps
+  // effect can never correctly check a marker keyed by it. This effect
+  // instead depends on `[experimentId, waveNumber]`, re-checking whenever
+  // either becomes known or changes — including reactively clearing a
+  // previously-shown banner when the operator switches to a wave with no
+  // marker of its own, not just leaving it stuck from the prior wave.
+  useEffect(() => {
+    if (!experimentId) return;
+    let cancelled = false;
+    (async () => {
+      const status = unwrapGraviResult<
+        GetScanStatusResult & Record<string, any>
+      >(await (window as any).electron.gravi.getScanStatus());
+      if (cancelled) return;
+      if (status?.isActive) return; // handled by the active-session restore above
+
+      const marker = localStorage.getItem(
+        abnormalMarkerKey(experimentId, waveNumber)
+      );
+      if (!marker) {
+        setAbnormalTermination(null);
+        return;
+      }
+      try {
+        setAbnormalTermination({
+          expectedCycles: JSON.parse(marker).expectedCycles,
+        });
+      } catch {
+        // Corrupt marker — treat as absent rather than throwing.
+        setAbnormalTermination(null);
+      }
+    })().catch(() => {
+      // A status-check failure here shouldn't surface as a blocking
+      // ERROR — this banner is an informational, non-blocking signal.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [experimentId, waveNumber]);
 
   // ── startScan / cancelScan ────────────────────────────────────────────
 

@@ -442,6 +442,22 @@ upload).
 - **THEN** the abnormal-termination banner SHALL appear, naming wave 3's
   expected cycle count
 
+#### Scenario: The abnormal-termination check still runs once experimentId/waveNumber become known asynchronously
+
+- **GIVEN** a marker exists for `(experimentId: "exp-1", waveNumber: 3)`
+- **AND** the Capture Scan screen mounts before that experiment/wave
+  selection is known — e.g. restored moments later via the
+  cross-navigation session mechanism, or picked by the operator from the
+  experiment/wave selectors after the screen has already rendered — not
+  synchronously available on the screen's very first render
+- **WHEN** `experimentId`/`waveNumber` subsequently resolve to `("exp-1",
+3)`
+- **THEN** the banner SHALL still appear, naming the recorded expected
+  cycle count
+- **AND** this SHALL hold regardless of how many renders separate the
+  screen's mount from that resolution — the check SHALL NOT be limited to
+  whatever `experimentId`/`waveNumber` happened to be present at mount
+
 ---
 
 ### Requirement: GraviScan Test Scan

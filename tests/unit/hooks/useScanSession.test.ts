@@ -808,6 +808,56 @@ describe('useScanSession', () => {
     expect(result.current.abnormalTermination).toBeNull();
   });
 
+  it('the abnormal-termination banner still appears once experimentId/waveNumber resolve asynchronously after mount (regression: mount-once effect closure permanently missed a marker that only existed after resolving — matches GraviScan.tsx always starting experimentId at null)', async () => {
+    localStorage.setItem(
+      'graviscan:session-in-progress:exp-1:0',
+      JSON.stringify({ expectedCycles: 6 })
+    );
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: false },
+    });
+
+    const { result, rerender } = renderHook((props) => useScanSession(props), {
+      initialProps: baseParams({ experimentId: null, waveNumber: 0 }),
+      wrapper: wedgeWrapper,
+    });
+
+    // Nothing to find yet — experimentId isn't known.
+    expect(result.current.abnormalTermination).toBeNull();
+
+    // GraviScan.tsx's own async session-restore resolves moments later.
+    rerender(baseParams({ experimentId: 'exp-1', waveNumber: 0 }));
+
+    await waitFor(() =>
+      expect(result.current.abnormalTermination).toEqual({ expectedCycles: 6 })
+    );
+  });
+
+  it('switching to a different wave reactively clears a previously-shown abnormal-termination banner (not just "dont set" — must actively clear)', async () => {
+    localStorage.setItem(
+      'graviscan:session-in-progress:exp-1:3',
+      JSON.stringify({ expectedCycles: 6 })
+    );
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: { isActive: false },
+    });
+
+    const { result, rerender } = renderHook((props) => useScanSession(props), {
+      initialProps: baseParams({ experimentId: 'exp-1', waveNumber: 3 }),
+      wrapper: wedgeWrapper,
+    });
+
+    await waitFor(() =>
+      expect(result.current.abnormalTermination).toEqual({ expectedCycles: 6 })
+    );
+
+    rerender(baseParams({ experimentId: 'exp-1', waveNumber: 4 }));
+
+    await waitFor(() => expect(result.current.abnormalTermination).toBeNull());
+  });
+
   // ── Wedge-blocks-start (task 12.7, Decision 6) ──────────────────────────
 
   it('disables starting while an assigned scanner has an active, unacknowledged wedge', async () => {

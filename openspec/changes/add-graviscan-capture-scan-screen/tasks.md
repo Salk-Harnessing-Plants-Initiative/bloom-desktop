@@ -599,3 +599,32 @@ Math.round(durationMinutes * 60)`), `GraviScan.tsx` (wiring), and
       clean.
 - [x] 18.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 19. Abnormal-termination check must react to async experimentId/waveNumber (TDD, found during 16.6)
+
+Live smoke testing found the Decision 5 banner never appeared under any
+reachable operator scenario (design.md Decision 10): the mount-only
+restore effect's `if (experimentId)` check always saw `null`, since
+`experimentId` is only ever populated asynchronously and the effect's
+empty deps mean it never re-runs once that value resolves.
+
+- [x] 19.1 Write failing tests in `tests/unit/hooks/useScanSession.test.ts`
+      simulating the real integration timing: render the hook with
+      `experimentId: null` initially (matching `GraviScan.tsx`'s actual
+      first render), then rerender with the real `experimentId`/
+      `waveNumber` — assert the banner still appears once a matching
+      marker exists. Also cover: switching from a wave with a marker to
+      one without clears the banner (reactive, not just "don't set").
+      Confirmed red: both failed against the unchanged implementation.
+- [x] 19.2 Split the abnormal-marker check out of the mount-once
+      active-session-restore effect into its own effect depending on
+      `[experimentId, waveNumber]`, per design.md Decision 10. Leave the
+      active-session-restore half untouched (still mount-once, still
+      independent of experimentId).
+- [x] 19.3 Run the full unit suite, `npx tsc --noEmit`, and lint; confirm
+      no regressions beyond the already-documented pre-existing failures.
+      **Result:** 1612 passed (+2 new tests), same pre-existing failure
+      set as 16.2/17.3/18.3, zero new failures. `tsc --noEmit` and lint
+      both clean.
+- [x] 19.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
