@@ -1933,3 +1933,117 @@ itself — commit `0d72d02`.
       cleanly on every prior push this session. Not investigated further
       as a regression; the round-7 push provides a fresh CI run to
       confirm it doesn't recur.
+- [x] 21.8 CI confirmed: the round-7 push (`e6b0ef8`) re-ran
+      `Test - TypeScript Unit` cleanly — 21.7's `scans-export.test.ts`
+      failure did not recur, confirming it was the documented flake, not
+      a regression from this round's work.
+
+## 22. Round-8 `/review-pr` response — 2 blocking + 1 important finding (plus a raised-3x fix), all addressed
+
+Ran the same 5-subagent adversarial team against round 7's fix commit
+(`0d72d02`), explicitly instructed to hunt for any remaining sibling of
+the counter-correction defect this cycle has chased since round 4 —
+this time by tracing the **entire** `runBoxBackup()` function and the
+full `onProgress` consumer chain end to end, not just the branch round 7
+touched. Found exactly that pattern once more (a different branch of the
+same function), plus an independent, pre-existing bug the full-chain
+trace surfaced, plus a self-inflicted regression from round 7's own
+tooltip fix. Fixed all of it with TDD, plus finally closed a UX gap
+raised (and deferred) across three consecutive rounds — commit `7a3c6bc`.
+
+- [x] 22.1 **BLOCKING — the total-rclone-failure branch (non-zero exit,
+      no per-file error info) has the identical uncorrected-counter
+      defect round 7 just fixed for the CSV-failure branch, just in a
+      different failure path.** When rclone dies mid-transfer (e.g. a
+      network drop) after successfully copying and logging some files
+      but before finishing, `copyResult.success === false &&
+copyResult.erroredFiles.size === 0` — the existing "mark ALL as
+      failed" branch pushes every image in the wave (including ones that
+      already fired `onFileComplete` and incremented `completedImages`)
+      into `failedIds`, but never decremented `completedImages` for
+      them. Result: an image could be simultaneously counted
+      "completed" in the live progress display and "failed" in the
+      persisted `box_status` and error count. Fixed by tracking a
+      per-wave `waveCompletedImages` counter (separate from the
+      function-scoped running total) and subtracting it from
+      `completedImages` in this branch, mirroring 21.1's fix for the
+      CSV-failure branch.
+- [x] 22.2 **BLOCKING — a pre-existing, unrelated bug the full-chain
+      trace surfaced: Bloom and Box progress events share one untyped
+      `onProgress`/IPC channel with incompatible field names**
+      (`uploadAllScans`'s own doc comment: "does not distinguish
+      source, matching the existing wiring"). Bloom's `UploadProgress`
+      is `{total, completed, failed, currentFile}`; Box's
+      `BoxBackupProgress` is `{totalImages, completedImages,
+failedImages, currentExperiment}`. `UploadStatusContext.tsx`
+      stored whatever arrived verbatim with no shape check, so every
+      Bloom progress tick would render `Layout.tsx`'s global banner as
+      "Upload progress: undefined/undefined" — directly undermining
+      round 7's own claim that its corrected counters reach that
+      banner. Predates this entire review cycle (not introduced by any
+      round's fix), but found by exactly the kind of full-consumer-chain
+      audit this round asked for. Fixed by ignoring any event that isn't
+      actually Box-shaped (`typeof data?.totalImages !== 'number'`) in
+      `UploadStatusContext.tsx` — the minimal, safe fix; a full
+      redesign (tagging events with a `source` discriminant, or
+      separate channels) is a larger change than this round's scope.
+- [x] 22.3 **IMPORTANT — round 7's own tooltip fix
+      (`` `${linkError} — Download is disabled...` ``, 21.2) produced a
+      self-inflicted double-punctuation run-on.** The same round-7
+      commit also edited the retry-cap message to end in its own
+      parenthetical + period ("...active scan or backup)."), without
+      reconciling that the tooltip's concatenation assumed no trailing
+      punctuation — concatenated, the result was "...backup). —
+      Download is disabled..." (period immediately followed by an
+      em-dash), and more generally, any `linkError` that's already a
+      full sentence produces an awkward run-on. Fixed by replacing
+      concatenation with a fixed, generic tooltip that points back at
+      the visible error text ("— see the error above for details.")
+      instead of duplicating/appending to it — robust to whatever the
+      underlying error string says.
+- [x] 22.4 **Addressed a finding raised and deferred across rounds
+      6/7/8**: the plain `listGraviMetadata`-failure message (as
+      opposed to the rarer retry-cap give-up) had no recourse or warning
+      at all — just the bare backend error string. Since `ensureFetched`
+      only ever calls `refetch` once per `experimentId`, a failure on
+      this very first fetch (a transient DB-lock/IO error being the
+      realistic, and more common, trigger) is just as permanently stuck
+      as the retry-cap path. Added the same "Quit and reopen the app to
+      retry (this will interrupt any active scan or backup)." suffix.
+- [x] 22.5 **Reviewed and deliberately deferred** (raised by 1-2 of 5
+      subagents each; larger design decisions than this round's scope):
+  1. Even with 22.1/21.1's fixes, there's a real (bounded by network-
+     timeout-length, not sub-frame) window where the live progress
+     banner can show a false "fully complete" ratio for a wave whose
+     images copied fine but whose metadata CSV hasn't been attempted
+     yet — because `completedImages` is incremented per-file as each
+     image copies, before the CSV attempt even starts, not after the
+     whole wave (images + CSV) is confirmed durable. A real fix means
+     restructuring progress emission from per-file to per-wave
+     granularity (losing responsiveness for large multi-file waves) or
+     otherwise redesigning what "completed" means mid-wave — a genuine
+     design tradeoff, not a small patch, and risks introducing yet
+     another sibling bug in the same area this cycle has already
+     revisited five times.
+  2. `BrowseGraviScans.tsx`'s per-row "Box N/M" indicator displays the
+     _run-wide_ `totalImages`/`completedImages` (summed across every
+     experiment in the batch) keyed by whichever experiment is
+     "current," not a per-experiment count — in a multi-experiment
+     backup run, every row shows the same batch-wide denominator, and a
+     finished row's display freezes at whatever the global counters
+     were at that instant rather than continuing to reflect reality.
+     Independently found by 2 of 5 subagents. Predates this round (and
+     likely this whole review cycle); fixing it requires computing and
+     threading a per-experiment total through `runBoxBackup`, a
+     non-trivial restructuring.
+  3. The grouping loop's invariant (`imageIds.length === imagePaths
+.length === scanRows.length` per wave) that 21.1/22.1's fixes
+     implicitly depend on is correct today but unenforced — a future
+     change that filters `scanRows` independently (e.g. to exclude
+     images missing accession data) could silently decouple them.
+     No live bug; noted for future readers.
+- [x] 22.6 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean. Full
+      `npm run test:unit`: 1548/1548 real tests passing, only the same
+      pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
+      local-setup flake (unrelated, unaffected).
