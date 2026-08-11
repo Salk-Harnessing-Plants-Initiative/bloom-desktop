@@ -24,6 +24,11 @@ try:
 except ImportError:
     from camera_types import CameraSettings  # type: ignore[no-redef]
 
+try:
+    from protocol_io import write_line  # type: ignore[import-not-found]
+except ImportError:
+    from python.protocol_io import write_line  # Development/test path
+
 
 class Camera:
     """Basler camera control using PyPylon."""
@@ -70,9 +75,7 @@ class Camera:
             self._configure_camera()
 
             self.is_open = True
-            print(
-                f"STATUS:Camera opened at {self.settings.camera_ip_address}", flush=True
-            )
+            write_line(f"STATUS:Camera opened at {self.settings.camera_ip_address}")
             return True
 
         except Exception as e:
@@ -107,7 +110,7 @@ class Camera:
                 self.camera.Close()
             finally:
                 self.is_open = False
-                print("STATUS:Camera closed", flush=True)
+                write_line("STATUS:Camera closed")
 
     def grab_frame(self) -> np.ndarray:
         """Grab a single frame from the camera.
