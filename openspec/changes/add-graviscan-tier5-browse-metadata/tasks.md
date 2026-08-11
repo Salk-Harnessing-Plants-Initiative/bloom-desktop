@@ -771,7 +771,7 @@ round, since nothing beyond the two items below surfaced.
       `ExperimentDetail.test.tsx`/`Experiments.test.tsx`/
       `BrowseGraviScans.test.tsx`.)
 
-## 14. E2E CI investigation (12.4's blocker) — three real bugs found in sequence, two fixed
+## 14. E2E CI investigation (12.4's blocker) — six issues found in sequence, all resolved, 12.4 green
 
 12.4 (full E2E suite) was blocked by every single test failing on this
 branch's CI, from the first test, in unrelated files, across all 3 OSes.
@@ -884,7 +884,7 @@ child (found: [object Date])`, crashing the Metadata page whenever
       seeded file", now passes deterministically on ubuntu-latest,
       macos-latest, and windows-latest — the `[object Date]` crash is
       gone.
-- [ ] 14.4 Once 14.3 is fixed, confirm 12.4 (full E2E suite, all 3 OSes)
+- [x] 14.4 Once 14.3 is fixed, confirm 12.4 (full E2E suite, all 3 OSes)
       finally goes green, and complete 12.6 (manual golden-path
       walkthrough) if feasible. **Not yet green.** Two more tests in the
       same spec file fail, deterministically and identically on all 3
@@ -1050,10 +1050,28 @@ child (found: [object Date])`, crashing the Metadata page whenever
       (can't run real Electron E2E locally per this session's
       constraints).
 
+      **12.4 CONFIRMED GREEN, 2026-08-10**: pushed the 14.8 fix
+      (commit `1cc255a`), CI run 31446298657. First attempt: all 4
+      `graviscan-browse-metadata.e2e.ts` tests passed on all 3 OSes, but
+      the ubuntu and macOS `Test - E2E Dev Build` jobs still failed
+      overall — on `afterEach`/`beforeEach` hook timeouts in unrelated
+      files (`export-page.e2e.ts` on ubuntu; several tests via hook
+      timeout on macOS), a pattern absent from the immediately-prior run
+      (which had a clean "1 failed / 266 passed" before 14.8's fix) —
+      concluded this was transient CI resource contention, not caused by
+      this branch's changes. Re-ran only the two failed jobs
+      (`gh run rerun 31446298657 --failed`): both passed clean on retry.
+      **Final result: the entire `PR Checks` workflow is green,
+      including `All Checks Passed`** — every job, all 3 OSes.
+      12.6 (manual golden-path walkthrough) was not attempted this
+      session per the explicit instruction not to launch the app
+      locally without asking first; CI is the verification method used
+      throughout 14.1-14.8.
+
 - [ ] 14.9 Diagnostic-only test instrumentation — main-process
       stdout/stderr piping and `pageerror`/`console` listeners in
       several `tests/e2e/*.e2e.ts` files (extended to
       `graviscan-browse-metadata.e2e.ts` during 14.6's investigation) —
       is still in place. Decide whether to keep permanently (it proved
-      genuinely useful four times over now) or trim back once 14.8
-      lands and the suite is fully green.
+      genuinely useful four times over now, most recently root-causing
+      14.6) or trim back now that 12.4 is fully green.
