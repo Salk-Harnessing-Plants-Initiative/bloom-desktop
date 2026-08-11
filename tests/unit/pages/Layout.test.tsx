@@ -429,4 +429,29 @@ describe('Layout unsaved-changes nav guard', () => {
     // Declined — navigation must not have happened.
     expect(screen.getByText('Metadata content')).toBeInTheDocument();
   });
+
+  it('the machine-config keyboard shortcut hard-blocks (not a dismissable confirm) while an import is actually in flight', async () => {
+    // Round 2's fix commit specifically claimed this exact scenario — the
+    // keyboard shortcut reaching the same hard block as a NavLink click —
+    // but no test exercised the keyboard path against blockNavigation
+    // (only against hasUnsavedChanges); this closes that gap.
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderLayout('graviscan', '/metadata-importing');
+    await waitFor(() => screen.getByText('Metadata content'));
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          ctrlKey: true,
+          shiftKey: true,
+          code: 'Comma',
+        })
+      );
+    });
+
+    expect(alertSpy).toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.getByText('Metadata content')).toBeInTheDocument();
+  });
 });

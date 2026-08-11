@@ -220,6 +220,14 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     // but the cap must stop it from recursing into yet another call.
     expect(listGraviMetadata).toHaveBeenCalledTimes(MAX_REFETCH_RETRIES + 1);
     expect(consoleError).toHaveBeenCalledTimes(1);
+    // Giving up must be visible to the user, not just logged — every other
+    // failure path in this file (link/unlink/refetch's own !result.success
+    // branch) already surfaces an error via errorsByExperiment; silently
+    // leaving stale wave-link data on screen with zero indication anything
+    // went wrong would be the one inconsistent exception.
+    expect(result.current.linkError).toBe(
+      'Could not refresh metadata links — please retry.'
+    );
 
     // Bumping the version again afterward must not resurrect the
     // recursion — proves refetch actually gave up rather than merely

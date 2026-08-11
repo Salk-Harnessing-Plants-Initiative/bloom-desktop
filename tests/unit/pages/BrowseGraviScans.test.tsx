@@ -358,6 +358,12 @@ describe('BrowseGraviScans', () => {
             failed: 0,
             errors: [],
             metadataLinkingAvailable: false,
+            bloomSuccess: true,
+            boxSuccess: true,
+            bloomUploaded: 1,
+            boxUploaded: 1,
+            bloomErrors: [],
+            boxErrors: [],
           },
         });
       });
@@ -377,6 +383,12 @@ describe('BrowseGraviScans', () => {
           failed: 1,
           errors: ['Network timeout'],
           metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 1,
+          boxUploaded: 0,
+          bloomErrors: [],
+          boxErrors: ['Network timeout'],
         },
       });
       const user = userEvent.setup();
@@ -402,6 +414,12 @@ describe('BrowseGraviScans', () => {
           failed: 1,
           errors: ['rclone not installed'],
           metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 0,
+          boxUploaded: 0,
+          bloomErrors: [],
+          boxErrors: ['rclone not installed'],
         },
       });
       const user = userEvent.setup();
@@ -415,6 +433,85 @@ describe('BrowseGraviScans', () => {
       await waitFor(() => {
         expect(
           screen.getByText(/box backup unavailable \(rclone not installed\)/i)
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('notes successful Bloom uploads alongside the rclone-not-installed message', async () => {
+      // The rclone-not-installed branch previously ignored `uploaded`
+      // entirely — if Bloom uploaded real files while Box failed only
+      // because rclone isn't installed, those Bloom uploads were silently
+      // dropped from the message.
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 5,
+          skipped: 0,
+          failed: 1,
+          errors: ['rclone not installed'],
+          metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 5,
+          boxUploaded: 0,
+          bloomErrors: [],
+          boxErrors: ['rclone not installed'],
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/box backup unavailable \(rclone not installed\)/i)
+        ).toBeInTheDocument();
+        expect(screen.getByText(/bloom.*5 uploaded/i)).toBeInTheDocument();
+      });
+    });
+
+    it('notes a Bloom failure alongside the rclone-not-installed message instead of hiding it', async () => {
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 0,
+          skipped: 0,
+          failed: 2,
+          errors: [
+            'rclone not installed',
+            'Authentication failed: token expired',
+          ],
+          metadataLinkingAvailable: false,
+          bloomSuccess: false,
+          boxSuccess: false,
+          bloomUploaded: 0,
+          boxUploaded: 0,
+          bloomErrors: ['Authentication failed: token expired'],
+          boxErrors: ['rclone not installed'],
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/box backup unavailable \(rclone not installed\)/i)
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            /bloom.*failed.*authentication failed: token expired/i
+          )
         ).toBeInTheDocument();
       });
     });
@@ -434,7 +531,7 @@ describe('BrowseGraviScans', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/box backup failed.*database connection lost/i)
+          screen.getByText(/backup failed.*database connection lost/i)
         ).toBeInTheDocument();
       });
     });
@@ -454,6 +551,12 @@ describe('BrowseGraviScans', () => {
           failed: 0,
           errors: ['Upload already in progress'],
           metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: true,
+          bloomUploaded: 0,
+          boxUploaded: 0,
+          bloomErrors: [],
+          boxErrors: [],
         },
       });
       const user = userEvent.setup();
@@ -466,7 +569,7 @@ describe('BrowseGraviScans', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/box backup failed.*upload already in progress/i)
+          screen.getByText(/backup failed.*upload already in progress/i)
         ).toBeInTheDocument();
       });
       expect(screen.queryByText(/uploaded 0 image/i)).not.toBeInTheDocument();
@@ -482,6 +585,12 @@ describe('BrowseGraviScans', () => {
           failed: 1,
           errors: ['Network timeout'],
           metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 3,
+          boxUploaded: 0,
+          bloomErrors: [],
+          boxErrors: ['Network timeout'],
         },
       });
       const user = userEvent.setup();
@@ -498,7 +607,7 @@ describe('BrowseGraviScans', () => {
       });
     });
 
-    it('reports a partial-success message, not "Box backup failed", when Box uploads succeed but Bloom fails (uploaded>0, failed:0)', async () => {
+    it('attributes a Bloom failure by name, not "Box backup failed", when Box uploads succeed but Bloom fails (uploaded>0, failed:0)', async () => {
       // uploadAllScans() merges Bloom + Box results with success:
       // bloomResult.success && boxResult.success, but uploaded/failed are
       // additive across both targets. So Box fully succeeding (its
@@ -506,7 +615,10 @@ describe('BrowseGraviScans', () => {
       // nothing to `failed`) while Bloom fails outright (contributing 0 to
       // `uploaded`/`failed` but an error string) produces exactly this
       // shape: success:false, uploaded>0, failed:0. That must not be
-      // reported as "Box backup failed" — real files were backed up.
+      // reported as a generic "Box backup failed" — Box actually succeeded;
+      // Bloom (the record-of-truth database) is what failed, and the
+      // message must name it explicitly rather than leaving a technician to
+      // assume the successfully-mentioned system ("Box") is the failing one.
       uploadAllScans.mockResolvedValue({
         success: true,
         data: {
@@ -516,6 +628,12 @@ describe('BrowseGraviScans', () => {
           failed: 0,
           errors: ['Authentication failed: Bloom session expired'],
           metadataLinkingAvailable: false,
+          bloomSuccess: false,
+          boxSuccess: true,
+          bloomUploaded: 0,
+          boxUploaded: 2,
+          bloomErrors: ['Authentication failed: Bloom session expired'],
+          boxErrors: [],
         },
       });
       const user = userEvent.setup();
@@ -529,10 +647,48 @@ describe('BrowseGraviScans', () => {
       await waitFor(() => {
         expect(screen.getByText(/2 uploaded/i)).toBeInTheDocument();
         expect(
-          screen.getByText(/authentication failed: bloom session expired/i)
+          screen.getByText(
+            /bloom failed.*authentication failed: bloom session expired/i
+          )
         ).toBeInTheDocument();
       });
       expect(screen.queryByText(/^box backup failed/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/box failed/i)).not.toBeInTheDocument();
+    });
+
+    it('attributes a Box failure by name when Box fails but Bloom succeeds', async () => {
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 5,
+          skipped: 0,
+          failed: 0,
+          errors: ['rclone exited with code 1'],
+          metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 5,
+          boxUploaded: 0,
+          bloomErrors: [],
+          boxErrors: ['rclone exited with code 1'],
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/5 uploaded/i)).toBeInTheDocument();
+        expect(
+          screen.getByText(/box failed.*rclone exited with code 1/i)
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/bloom failed/i)).not.toBeInTheDocument();
     });
 
     it('shows a friendly message when the IPC call itself rejects', async () => {
@@ -547,7 +703,7 @@ describe('BrowseGraviScans', () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/box backup failed.*ipc channel closed/i)
+          screen.getByText(/backup failed.*ipc channel closed/i)
         ).toBeInTheDocument();
       });
       expect(

@@ -307,7 +307,26 @@ export interface UploadAllScansResult {
   skipped: number;
   failed: number;
   errors: string[];
+  /**
+   * Whether the installed @salk-hpi/bloom-js supports Bloom session/plate-
+   * metadata linking (see graviscan-upload.ts's UploadResult). Surfaced here
+   * so a future renderer can show operators when metadata linking isn't
+   * active, rather than that only being visible in main-process logs.
+   */
   metadataLinkingAvailable: boolean;
+  /**
+   * Per-target success/counts/errors, in addition to the merged fields
+   * above. Bloom (Supabase) and Box (rclone) run independently, so one can
+   * fully succeed while the other fails outright — the renderer needs these
+   * to attribute a failure message to the right system rather than
+   * reporting e.g. a Bloom-only failure as a generic "Box backup failed".
+   */
+  bloomSuccess: boolean;
+  boxSuccess: boolean;
+  bloomUploaded: number;
+  boxUploaded: number;
+  bloomErrors: string[];
+  boxErrors: string[];
 }
 
 /**

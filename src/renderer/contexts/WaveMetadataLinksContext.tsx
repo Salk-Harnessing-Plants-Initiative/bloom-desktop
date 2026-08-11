@@ -83,6 +83,10 @@ export function WaveMetadataLinksProvider({
           console.error(
             `[WaveMetadataLinks] refetch(${experimentId}) superseded ${attempt + 1} times in a row — giving up`
           );
+          setErrorsByExperiment((prev) => ({
+            ...prev,
+            [experimentId]: 'Could not refresh metadata links — please retry.',
+          }));
           return;
         }
         return refetch(experimentId, attempt + 1);

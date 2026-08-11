@@ -278,6 +278,68 @@ describe('GraviMetadataUpload', () => {
     expect(plates).toHaveLength(1);
   });
 
+  it('treats a whitespace-only row the same as a fully blank one — skipped, not imported as a blank plate', async () => {
+    // blankRowCount (shown to the operator) detects blank rows via
+    // `.trim() === ''`, but the plate-grouping loop below previously
+    // checked `if (!plateId) continue` — a whitespace-only Plate ID (' ')
+    // is truthy, so the row was silently imported as a real plate with a
+    // blank/whitespace plate_id, contradicting the "will be skipped"
+    // warning the operator just saw.
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+      [' ', ' ', ' ', ' ', ' ', ' ', ''],
+    ]);
+    renderUpload();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+    expect(screen.getByText(/1 row.*skipped/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => {
+      expect(createWithSections).toHaveBeenCalledTimes(1);
+    });
+    const [, plates] = createWithSections.mock.calls[0];
+    expect(plates).toHaveLength(1);
+    expect(plates[0].plate_id).toBe('P1');
+  });
+
+  it('surfaces the backend "no plates found" error instead of a false success when every row is blank', async () => {
+    // If literally every data row is blank (e.g. an operator uploads a
+    // template with headers only), the plate-grouping loop excludes all of
+    // them and would call createWithSections with an empty plates array.
+    // database-handlers.ts's graviPlateAccessionsCreateWithSections already
+    // rejects that with a clear error (round 1, task 15.3) — this just
+    // confirms the renderer's existing error path surfaces it correctly
+    // rather than silently reporting a no-op import as a success.
+    createWithSections.mockResolvedValue({
+      success: false,
+      error:
+        'No plates found — check that every required column is mapped correctly',
+    });
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['', '', '', '', '', '', ''],
+      ['', '', '', '', '', '', ''],
+    ]);
+    renderUpload();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+    expect(screen.getByText(/2 rows.*skipped/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/no plates found/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/done uploading/i)).not.toBeInTheDocument();
+    const [, plates] = createWithSections.mock.calls[0];
+    expect(plates).toHaveLength(0);
+  });
+
   it('surfaces an error instead of a false "Done uploading!" when no column headers auto-map', async () => {
     // Simulates a spreadsheet whose headers don't exactly match the
     // expected field names (e.g. "PlateID" instead of "Plate ID") and

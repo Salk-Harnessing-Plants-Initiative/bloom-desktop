@@ -77,16 +77,13 @@ export function GraviMetadataUpload({
     setHasUnsavedChanges(sheet !== null && !done);
   }, [sheet, done, setHasUnsavedChanges]);
 
-  // While the createWithSections IPC call is actually in flight, a
+  // blockNavigation itself is set directly in handleImport (see there) —
+  // while the createWithSections IPC call is actually in flight, a
   // confirm-and-leave would let its response (setError/setDone, both
   // scheduled after the awaited call) resolve against an unmounted
   // component, and an operator who assumes the failed-silently import
-  // never happened could resubmit and create a duplicate record — so
-  // this is a hard block, not a dismissable confirm.
-  useEffect(() => {
-    setBlockNavigation(isImporting);
-  }, [isImporting, setBlockNavigation]);
-
+  // never happened could resubmit and create a duplicate record — so this
+  // is a hard block, not a dismissable confirm.
   useEffect(() => {
     return () => {
       setHasUnsavedChanges(false);
@@ -168,6 +165,12 @@ export function GraviMetadataUpload({
   const handleImport = async () => {
     if (!sheet || isImporting) return;
     setIsImporting(true);
+    // Set directly here, not via a useEffect keyed on `isImporting` — that
+    // derived effect runs one render behind the state update it watches, a
+    // window (sub-frame, not humanly triggerable, but a real design smell)
+    // in which a nav click could see blockNavigation still false and get
+    // the dismissable confirm instead of the hard block this exists for.
+    setBlockNavigation(true);
     setRowErrors([]);
 
     try {
@@ -206,7 +209,10 @@ export function GraviMetadataUpload({
 
       for (const row of sheet.rows) {
         const plateId = row[colIndex('Plate ID')];
-        if (!plateId) continue;
+        // .trim() matches blankRowCount's own blank-detection above — a
+        // whitespace-only Plate ID is truthy and would otherwise slip past
+        // the plain `!plateId` check as a real, blank/whitespace plate.
+        if (!plateId?.trim()) continue;
         if (!plateMap.has(plateId)) {
           plateMap.set(plateId, {
             plate_id: plateId,
@@ -243,6 +249,7 @@ export function GraviMetadataUpload({
       }, 1500);
     } finally {
       setIsImporting(false);
+      setBlockNavigation(false);
     }
   };
 

@@ -234,32 +234,54 @@ export function BrowseGraviScans() {
     try {
       const response = await window.electron.gravi.uploadAllScans();
       if (response.success === false) {
-        setBackupMessage(`Box backup failed: ${response.error}`);
+        setBackupMessage(`Backup failed: ${response.error}`);
         return;
       }
       const result = response.data;
-      if (result.errors?.includes('rclone not installed')) {
-        setBackupMessage('Box backup unavailable (rclone not installed)');
+      if (result.boxErrors?.includes('rclone not installed')) {
+        // Box-specific and reported as such regardless of Bloom's outcome,
+        // but Bloom runs independently — note it too rather than silently
+        // dropping real Bloom uploads/failures from the message.
+        const bloomNote = !result.bloomSuccess
+          ? ` Bloom also failed: ${result.bloomErrors?.[0] ?? 'unknown error'}.`
+          : result.bloomUploaded > 0
+            ? ` Bloom: ${result.bloomUploaded} uploaded.`
+            : '';
+        setBackupMessage(
+          `Box backup unavailable (rclone not installed).${bloomNote}`
+        );
       } else if (result.uploaded > 0 && result.errors?.length > 0) {
         // Bloom and Box run independently (Promise.allSettled) and their
-        // counts are additive, so one target can fully succeed
-        // (contributing to `uploaded`, nothing to `failed`) while the other
-        // fails outright (contributing only an error string) — e.g.
-        // {uploaded: 2, failed: 0, errors: ['Authentication failed: ...']}.
-        // Checking `errors.length` here (not just `result.failed`) ensures
-        // that real, successfully-backed-up files are never reported as a
-        // total failure.
+        // counts are additive, so one target can fully succeed while the
+        // other fails outright — e.g. {uploaded: 2, failed: 0, errors:
+        // ['Authentication failed: ...']}. Name which system(s) actually
+        // failed rather than a generic "Box backup" message, so an operator
+        // never mistakes a Bloom (database) failure for a Box (offsite
+        // copy) one or vice versa.
+        const failures: string[] = [];
+        if (!result.bloomSuccess) {
+          failures.push(
+            `Bloom failed: ${result.bloomErrors?.[0] ?? 'unknown error'}`
+          );
+        }
+        if (!result.boxSuccess) {
+          failures.push(
+            `Box failed: ${result.boxErrors?.[0] ?? 'unknown error'}`
+          );
+        }
         setBackupMessage(
-          `Box backup completed with ${result.uploaded} uploaded, ${result.errors.length} error(s): ${result.errors[0]}`
+          `${result.uploaded} uploaded, ${result.errors.length} error(s) — ${failures.join('; ')}`
         );
       } else if (!result.success) {
         // Whole-operation failures that never got as far as uploading or
         // failing individual images — e.g. the uploadInProgress guard
         // ({uploaded:0, failed:0, errors:['Upload already in progress']})
         // — would otherwise match neither branch above nor below and be
-        // misreported as a successful no-op upload.
+        // misreported as a successful no-op upload. Neither target is at
+        // fault here (bloomSuccess/boxSuccess are both true), so this stays
+        // system-agnostic rather than naming Bloom or Box.
         setBackupMessage(
-          `Box backup failed: ${result.errors?.[0] ?? 'unknown error'}`
+          `Backup failed: ${result.errors?.[0] ?? 'unknown error'}`
         );
       } else {
         setBackupMessage(
@@ -268,7 +290,7 @@ export function BrowseGraviScans() {
       }
     } catch (error) {
       setBackupMessage(
-        `Box backup failed: ${error instanceof Error ? error.message : 'unknown error'}`
+        `Backup failed: ${error instanceof Error ? error.message : 'unknown error'}`
       );
     } finally {
       setBackingUp(false);
