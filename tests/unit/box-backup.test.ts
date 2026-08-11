@@ -120,7 +120,7 @@ describe('rcloneCopyFiles', () => {
     expect(result.success).toBe(false);
     // The real file must NOT be silently treated as uploaded just
     // because the bogus extracted token doesn't match its name.
-    expect(result.erroredFiles.has(path.basename(sourceFile))).toBe(false);
+    expect(result.erroredFiles.has(sourceFile)).toBe(false);
     expect(result.erroredFiles.size).toBe(0);
   });
 
@@ -188,12 +188,12 @@ describe('rcloneCopyFiles', () => {
     fakeProc.emit('close', 1);
 
     const result = await resultPromise;
-    // erroredFiles is keyed by the ORIGINAL (DB-path) basenames — the
+    // erroredFiles is keyed by the ORIGINAL (DB-path) full path — the
     // same space runBoxBackup's caller-side comparison uses — so the
-    // renamed file's error must show up under its ORIGINAL basename,
+    // renamed file's error must show up under its ORIGINAL full path,
     // not silently vanish.
-    expect(result.erroredFiles.has(path.basename(staleDbPath))).toBe(true);
-    expect(result.erroredFiles.has(path.basename(otherFile))).toBe(true);
+    expect(result.erroredFiles.has(staleDbPath)).toBe(true);
+    expect(result.erroredFiles.has(otherFile)).toBe(true);
   });
 });
 
@@ -942,6 +942,271 @@ describe('runBoxBackup', () => {
     const csvContent = csvCall![1] as string;
     expect(csvContent).toContain(path.basename(sourceFile));
     expect(csvContent).not.toContain(path.basename(neverExistsPath));
+  });
+
+  it('excludes an image from the exported metadata.csv when it is found on disk but genuinely fails its own rclone transfer', async () => {
+    // resolveGraviScanPath finding the file (resolvedNames has an entry)
+    // only proves the file EXISTS — it says nothing about whether rclone
+    // actually managed to copy it. A resolved file can still hit a real
+    // per-file transfer error (network blip, quota, permissions) and end
+    // up in erroredFiles / box_status:'failed', while an earlier version
+    // of this fix only excluded images that were never found on disk at
+    // all — leaving this, the more common real-world failure mode,
+    // still producing a metadata.csv that names a file Box never
+    // actually received.
+    const sourceFile2 = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(sourceFile2, 'fake tiff bytes 2');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: sourceFile2 },
+        ],
+      },
+    ]);
+    // img2 resolves fine (real file on disk) but genuinely fails its own
+    // rclone transfer; img1 copies successfully. Exit code 0 (not a
+    // total-wave failure) isolates this from the already-covered
+    // total-failure exclusion case.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'error',
+                msg: `${path.basename(sourceFile2)}: simulated copy error`,
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 0);
+        });
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const csvCall = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+    expect(csvCall).toBeDefined();
+    const csvContent = csvCall![1] as string;
+    expect(csvContent).toContain(path.basename(sourceFile));
+    expect(csvContent).not.toContain(path.basename(sourceFile2));
+  });
+
+  it('gives each of two resolvable images in the same wave its own correct filename in metadata.csv, not one filename copied onto both rows', async () => {
+    // A weaker version of this test with only ONE resolvable image can't
+    // distinguish correct per-index patching from a bug that always
+    // writes to (or reads from) a fixed index — confirmed via live
+    // mutation testing (hardcoding index 0 in the patch loop left the
+    // single-image test passing). Two DISTINCT resolvable images with
+    // DISTINCT resolved basenames, at different indices, are needed to
+    // prove each row gets its own image's filename.
+    const sourceFile2 = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(sourceFile2, 'fake tiff bytes 2');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: sourceFile2 },
+        ],
+      },
+    ]);
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const csvCall = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+    expect(csvCall).toBeDefined();
+    const csvContent = csvCall![1] as string;
+    expect(csvContent).toContain(path.basename(sourceFile));
+    expect(csvContent).toContain(path.basename(sourceFile2));
+    // Each filename must appear exactly once — not one of them missing
+    // (dropped) and not one of them duplicated onto both rows.
+    const countOccurrences = (needle: string) =>
+      csvContent.split(needle).length - 1;
+    expect(countOccurrences(path.basename(sourceFile))).toBe(1);
+    expect(countOccurrences(path.basename(sourceFile2))).toBe(1);
+  });
+
+  it("does not let two images with the same original basename (but different full paths) cross-contaminate each other's error status or CSV filename", async () => {
+    // originalToResolvedName/erroredFiles are keyed by the image's FULL
+    // original path specifically to prevent this: two images from
+    // different source directories can share a basename (different
+    // plates/experiments, or a genuine duplicate DB row) while being
+    // distinct files. Keying by basename alone would let one image's
+    // resolution or error outcome silently overwrite and misattribute
+    // onto the other — right filename, wrong row, or a permanently
+    // missing file forcing a real, successfully-uploaded sibling to be
+    // misclassified as failed forever.
+    const otherDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'box-backup-test-src-other-')
+    );
+    const collidingResolvableFile = path.join(
+      otherDir,
+      'exp1_st_20260101T000000_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(collidingResolvableFile, 'fake tiff bytes colliding');
+    // sourceFile (from the shared beforeEach) and collidingResolvableFile
+    // share the exact same basename but live in different directories —
+    // and, critically, sourceFile is deliberately left UNRESOLVABLE here
+    // (deleted) so one of the pair can never resolve while the other
+    // genuinely does.
+    fs.rmSync(sourceFile);
+
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: collidingResolvableFile },
+        ],
+      },
+    ]);
+
+    try {
+      await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+      // img1 (unresolvable) must be marked failed; img2 (genuinely
+      // resolvable, real file) must NOT inherit img1's missing status.
+      const failCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'failed'
+      );
+      expect(failCall[0].where.id.in).toEqual(['img1']);
+      const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'uploaded'
+      );
+      expect(uploadedCall[0].where.id.in).toEqual(['img2']);
+
+      const csvCall = vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+      expect(csvCall).toBeDefined();
+      const csvContent = csvCall![1] as string;
+      // Only img2's row should be exported, naming its own real file —
+      // not img1's basename-colliding, never-resolved path.
+      expect(csvContent).toContain(path.basename(collidingResolvableFile));
+      const rowLines = csvContent
+        .split('\n')
+        .filter((line) => line.includes('exp1_st_20260101T000000_cy1_S1_00'));
+      expect(rowLines).toHaveLength(1);
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not leak a resolved filename from one wave into a different wave that shares the same original basename', async () => {
+    // originalToResolvedName is declared fresh inside each
+    // rcloneCopyFiles() call (one call per wave) — this test guards
+    // against a future change (e.g. a resolution cache added for
+    // performance) that reintroduces cross-wave state leakage. Two
+    // waves each contain an image with the SAME basename but resolving
+    // to DIFFERENT actual files; each wave's CSV must reflect only its
+    // own resolution, never the other wave's.
+    const wave0File = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_et_20260101T000100_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(wave0File, 'fake tiff bytes wave0');
+    fs.rmSync(sourceFile);
+
+    const wave1Dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'box-backup-test-src-wave1-')
+    );
+    const wave1StaleDbPath = path.join(
+      wave1Dir,
+      'exp1_st_20260101T000000_cy1_S1_00.tif'
+    );
+    const wave1File = path.join(
+      wave1Dir,
+      'exp1_st_20260101T000000_et_20260101T999999_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(wave1File, 'fake tiff bytes wave1');
+
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [{ id: 'img1', path: sourceFile }],
+      },
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 1,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [{ id: 'img2', path: wave1StaleDbPath }],
+      },
+    ]);
+
+    try {
+      await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+      const csvCalls = vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.filter((call) => String(call[0]).endsWith('.csv'));
+      expect(csvCalls).toHaveLength(2);
+      const wave0Csv = csvCalls.find((call) =>
+        String(call[0]).includes('wave0')
+      );
+      const wave1Csv = csvCalls.find((call) =>
+        String(call[0]).includes('wave1')
+      );
+      expect(String(wave0Csv![1])).toContain(path.basename(wave0File));
+      expect(String(wave0Csv![1])).not.toContain(path.basename(wave1File));
+      expect(String(wave1Csv![1])).toContain(path.basename(wave1File));
+      expect(String(wave1Csv![1])).not.toContain(path.basename(wave0File));
+    } finally {
+      fs.rmSync(wave1Dir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -86,37 +86,45 @@ export function rcloneCopyFiles(
     // Create a temp directory with symlinks to the files we want to copy
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'graviscan-backup-'));
 
+    // resolveGraviScanPath exists because the DB can store a stale path
+    // (e.g. missing the _et_ timestamp inserted after a rename, or the
+    // wrong extension) — the file rclone actually copies and logs uses
+    // the RESOLVED basename, which can differ from the original DB
+    // path's basename. Keyed by the ORIGINAL FULL PATH, not the original
+    // basename: two different images in the same wave can share a
+    // basename (different source directories, or genuine duplicate DB
+    // rows) while being distinct, unique-by-full-path files — keying by
+    // basename would let one image's resolution/error silently overwrite
+    // and misattribute onto a completely different image's row. The
+    // RESOLVED side is still keyed by basename since that's the actual
+    // physical filename rclone operates on in tmpDir; two different
+    // original paths resolving to the same physical file is a separate,
+    // narrower, already-documented edge case (see resolvedToOriginalName
+    // below), not the one this keying change addresses.
+    // Declared before the try block (not just before use) so the catch
+    // block below can still return whatever was resolved before an
+    // exception, instead of unconditionally discarding it.
+    const resolvedToOriginalName = new Map<string, string>();
+    // Inverse of resolvedToOriginalName, keyed by original full path —
+    // returned to the caller so it can build metadata.csv using the
+    // SAME resolved name this call determined, instead of resolving
+    // the path a second time itself. Two independent resolutions of
+    // the same path can legitimately disagree if disk state changes
+    // between them (e.g. a rename completing in between) — resolving
+    // once, here, and threading the result through the return value
+    // closes that gap rather than merely narrowing it.
+    const originalToResolvedName = new Map<string, string>();
+    const missingFilePaths = new Set<string>();
+
     try {
       let symlinksCreated = 0;
       const missingFiles: string[] = [];
-      const missingFileNames = new Set<string>();
-      // resolveGraviScanPath exists because the DB can store a stale path
-      // (e.g. missing the _et_ timestamp inserted after a rename, or the
-      // wrong extension) — the file rclone actually copies and logs uses
-      // the RESOLVED basename, which can differ from the original DB
-      // path's basename. erroredFiles/onFileComplete must still be keyed
-      // by the ORIGINAL basename (the space the caller's data.imagePaths
-      // comparison uses), so track the resolved->original mapping here
-      // and translate every extracted log token through it, rather than
-      // just checking a flat set of original names — a token that's
-      // never trusted as "known" would otherwise silently drop that
-      // file's real error (see resolvedToOriginalName.get() below).
-      const resolvedToOriginalName = new Map<string, string>();
-      // Inverse of resolvedToOriginalName, keyed by original basename —
-      // returned to the caller so it can build metadata.csv using the
-      // SAME resolved name this call determined, instead of resolving
-      // the path a second time itself. Two independent resolutions of
-      // the same path can legitimately disagree if disk state changes
-      // between them (e.g. a rename completing in between) — resolving
-      // once, here, and threading the result through the return value
-      // closes that gap rather than merely narrowing it.
-      const originalToResolvedName = new Map<string, string>();
       for (const filePath of filePaths) {
         const resolvedPath = resolveGraviScanPath(filePath);
         if (resolvedPath) {
           const fileName = path.basename(resolvedPath);
-          resolvedToOriginalName.set(fileName, path.basename(filePath));
-          originalToResolvedName.set(path.basename(filePath), fileName);
+          resolvedToOriginalName.set(fileName, filePath);
+          originalToResolvedName.set(filePath, fileName);
           const linkPath = path.join(tmpDir, fileName);
           // Windows restricts unprivileged symlink creation (requires
           // admin or Developer Mode — the default state on most lab
@@ -128,7 +136,7 @@ export function rcloneCopyFiles(
           symlinksCreated++;
         } else {
           missingFiles.push(filePath);
-          missingFileNames.add(path.basename(filePath));
+          missingFilePaths.add(filePath);
         }
       }
 
@@ -151,7 +159,7 @@ export function rcloneCopyFiles(
         }
         resolve({
           success: false,
-          erroredFiles: missingFileNames,
+          erroredFiles: missingFilePaths,
           error: `None of the ${filePaths.length} image files exist on disk`,
           resolvedNames: originalToResolvedName,
         });
@@ -168,7 +176,7 @@ export function rcloneCopyFiles(
         'INFO',
       ]);
 
-      const erroredFiles = new Set<string>(missingFileNames);
+      const erroredFiles = new Set<string>(missingFilePaths);
       // Captures the raw message from the FIRST unattributed level:"error"
       // line — a wave-level/global failure (auth expiry, quota exceeded,
       // backend outage) rather than a specific file's error. Surfaced to
@@ -281,10 +289,16 @@ export function rcloneCopyFiles(
       } catch {
         // ignore
       }
+      // Reuses whatever resolvedToOriginalName/missingFilePaths already
+      // accumulated before the exception (both declared above the try
+      // block specifically for this) rather than discarding it — an
+      // exception partway through the resolution loop (e.g.
+      // ensureSymlinkOrCopy failing on a full disk) shouldn't forget
+      // about files that resolved fine earlier in the same loop.
       resolve({
         success: false,
-        erroredFiles: new Set(),
-        resolvedNames: new Map(),
+        erroredFiles: missingFilePaths,
+        resolvedNames: originalToResolvedName,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -562,27 +576,19 @@ export async function runBoxBackup(
         });
       });
 
-      // Patch each scanRow's image_filename with the RESOLVED basename
-      // rcloneCopyFiles actually used, using the exact same resolution
-      // this call already performed — not a second, independently-timed
-      // one. An image whose original basename has no entry in
-      // resolvedNames was never found on disk under any name variant
-      // (resolveGraviScanPath returned null), so it was never even
-      // attempted for upload; exportableScanRowIndexes excludes it from
-      // metadata.csv below rather than naming a file Box never received.
-      const exportableScanRowIndexes = new Set<number>();
-      for (let i = 0; i < data.imagePaths.length; i++) {
-        const originalBasename = path.basename(data.imagePaths[i]);
-        const resolvedBasename = copyResult.resolvedNames.get(originalBasename);
-        if (resolvedBasename) {
-          data.scanRows[i].image_filename = resolvedBasename;
-          exportableScanRowIndexes.add(i);
-        }
-      }
-
-      // Per-file status: mark only files that didn't error as uploaded
+      // Per-file status: mark only files that didn't error as uploaded.
+      // exportableScanRowIndexes is built in lockstep with this — a row
+      // belongs in metadata.csv if and only if its image is actually
+      // confirmed uploaded, not merely "found on disk" (resolvedNames
+      // only proves resolution succeeded; a resolved file can still hit
+      // a genuine per-file rclone transfer error and land in
+      // erroredFiles). Computing both from the same loop, keyed by the
+      // same full original path, is what keeps them from silently
+      // diverging or cross-contaminating on a basename collision the
+      // way an earlier version of this fix did.
       const uploadedIds: string[] = [];
       const failedIds: string[] = [];
+      const exportableScanRowIndexes = new Set<number>();
 
       if (
         !copyResult.success &&
@@ -603,7 +609,10 @@ export async function runBoxBackup(
         // (never-attempted) file as uploaded — the same silent-data-loss
         // defect this whole check exists to prevent, reached via a
         // different door (a non-empty erroredFiles no longer implies
-        // "every other file is confirmed fine").
+        // "every other file is confirmed fine"). None of this wave's
+        // images are confirmed uploaded, so exportableScanRowIndexes
+        // stays empty — metadata.csv is skipped below rather than
+        // describing a wave that wasn't actually backed up.
         console.error(
           `[BoxBackup] rclone failed entirely for ${expName}/wave_${waveNum} — marking all files as failed`
         );
@@ -611,11 +620,16 @@ export async function runBoxBackup(
         completedImages -= waveCompletedImages;
       } else {
         for (let i = 0; i < data.imagePaths.length; i++) {
-          const filename = path.basename(data.imagePaths[i]);
-          if (copyResult.erroredFiles.has(filename)) {
+          const filePath = data.imagePaths[i];
+          if (copyResult.erroredFiles.has(filePath)) {
             failedIds.push(data.imageIds[i]);
           } else {
             uploadedIds.push(data.imageIds[i]);
+            const resolvedBasename = copyResult.resolvedNames.get(filePath);
+            if (resolvedBasename) {
+              data.scanRows[i].image_filename = resolvedBasename;
+              exportableScanRowIndexes.add(i);
+            }
           }
         }
       }
