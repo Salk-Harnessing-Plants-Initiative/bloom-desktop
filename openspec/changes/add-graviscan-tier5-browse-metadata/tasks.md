@@ -1075,3 +1075,178 @@ child (found: [object Date])`, crashing the Metadata page whenever
       is still in place. Decide whether to keep permanently (it proved
       genuinely useful four times over now, most recently root-causing
       14.6) or trim back now that 12.4 is fully green.
+
+## 15. Round-1 `/review-pr` response — 5 blocking + 11 important findings, all fixed
+
+With 12.4 fully green (Section 14), ran the `/review-pr` skill's 5-subagent
+adversarial team (Code Quality, Testing/TDD, Scientific Rigor & UX,
+Security & Cross-Platform, Behavioural Correctness) against the full PR
+diff. Each subagent independently re-verified the 6 already-documented
+bugs are genuinely fixed in the current tree rather than trusting this
+file's own account, then found new issues — several of them recurrences
+of the exact same "untyped/`any` IPC channel, mock never validated
+against the real shape" root cause already named 3+ times in Section 14.
+Posted as a `REQUEST_CHANGES` comment on PR #290 (verdict posted as a
+comment, not an approval/changes-request, since it's the PR author's own
+PR). Fixed all 5 blocking and all 11 important findings below, each with
+TDD (failing test confirmed red against the pre-fix code, then a minimal
+fix, then green) — commits `7b39cb0` (blocking) and `d77189a`
+(important).
+
+- [x] 15.1 **BLOCKING — `readScanImage` double-wrapped IPC envelope broke
+      the TIFF preview entirely.** `register-handlers.ts` wrapped
+      `imageHandlers.readScanImage()`'s own already-enveloped
+      `{success, dataUri, error}` result in `wrapHandler`'s
+      `{success, data}` envelope, leaving `dataUri` undefined for every
+      real caller. `ExperimentDetail.tsx`'s `FileRow` already correctly
+      expected the _unwrapped_ shape, so the fix was main-process only:
+      return `readScanImage()`'s result directly (it never throws — every
+      internal failure path is caught). Tightened `readScanImage`'s type
+      from `Promise<any>` to a named `ReadScanImageResult`. Added an
+      assertion in `ExperimentDetail.test.tsx` that the `<img>` itself
+      renders with the resolved `dataUri`, not just that the IPC call
+      fired — the prior test only checked the latter, which is exactly
+      how this shipped undetected.
+- [x] 15.2 **BLOCKING — `handleBackupToBox` still misreported one
+      failure mode as success.** `uploadAllScans`'s `uploadInProgress`
+      guard resolves normally with `{success:false, uploaded:0,
+failed:0, errors:['Upload already in progress']}` — matching
+      neither the rclone-specific nor the `failed > 0` branch, so it fell
+      through to the generic success message ("Uploaded 0 image(s), 0
+      skipped") when the backup never ran. Added an explicit
+      `!result.success` branch; also now shows the upload count alongside
+      the failure count on partial failures (`N uploaded, M error(s)`,
+      not just the error count), and added a `catch` for a genuinely
+      rejected IPC call (previously `try/finally` only, no `catch`, so a
+      real rejection would reset the button with zero user-facing
+      explanation).
+- [x] 15.3 **BLOCKING — a spreadsheet import could silently "succeed"
+      with zero data written.** If a spreadsheet's headers don't
+      exactly match the expected field names and the operator never
+      manually fixes every mapping, every row's required fields resolve
+      to `''`; row validation only fires on _partial_ fill, so an
+      all-blank row raises no error, and the import loop skips every row.
+      The backend accepted the resulting empty `plates` array with only
+      an `Array.isArray` check, returning `{success: true}` for an import
+      that wrote nothing — the technician sees "Done uploading!" for a
+      no-op. `graviPlateAccessionsCreateWithSections` now rejects an
+      empty `plates` array with a clear error, which the renderer's
+      already-existing `if (!result.success)` path surfaces correctly
+      with no renderer change needed.
+- [x] 15.4 **BLOCKING — deleting a metadata file had no confirmation.**
+      Unlike every other destructive action in this PR (Unlink in
+      `ExperimentDetail.tsx`/`Experiments.tsx`, both `window.confirm`),
+      `GraviMetadataList.tsx`'s `handleDelete` fired immediately on
+      click. The backend blocks deletion while a file is still
+      referenced, so this couldn't corrupt in-use data, but an
+      unreferenced file's plate/section data was one accidental click
+      from permanent, irreversible loss. Added a `window.confirm` naming
+      the file.
+- [x] 15.5 **BLOCKING — pagination had no boundary guard, and
+      discarded the `total` the backend already returns.**
+      `graviscansBrowseByExperiment`'s `total` field was fetched and
+      thrown away; `Next` had no `disabled` condition at all, so clicking
+      past the last page rendered "No GraviScan data is present" —
+      indistinguishable from a genuinely empty result. `Next` is now
+      `disabled={offset + PAGE_SIZE >= total}`.
+- [x] 15.6 **BLOCKING — spreadsheet Import had no double-submit guard.**
+      Every comparable action elsewhere in this PR (Link/Unlink/Backup)
+      guards against re-entrancy; `handleImport`/its button did not, and
+      the backend has no uniqueness check on the accession name, so a
+      rapid double-click could create duplicate metadata-file records
+      from one spreadsheet. Added an `isImporting` guard + `disabled`
+      state (button also now reads "Importing...").
+- [x] 15.7 **IMPORTANT — Box backup used raw `fs.symlinkSync` instead
+      of the codebase's own `ensureSymlinkOrCopy()` fallback.** Windows
+      restricts unprivileged symlink creation (the default state on most
+      lab machines) — exactly the condition `ensureSymlinkOrCopy()`
+      already exists to handle for the identical Prisma-client-staging
+      problem elsewhere in this codebase. This path was never exercised
+      by CI (rclone itself isn't installed on any CI runner, so
+      `isRcloneInstalled()` returns false before ever reaching the
+      symlink call), so it would have silently made Box backup fully
+      non-functional on a stock Windows lab machine with rclone actually
+      installed. New `tests/unit/box-backup.test.ts` exports
+      `rcloneCopyFiles` and forces `fs.symlinkSync` to throw
+      (`vi.spyOn`), confirming the real fallback-to-copy behavior (not
+      just that `ensureSymlinkOrCopy()` itself works, which was already
+      tested elsewhere).
+- [x] 15.8 **IMPORTANT — CSV/formula injection in the Box metadata
+      export.** `csvEscape()` only escaped commas/quotes/newlines;
+      operator-entered `custom_note`/`accession`/`plate_barcode` values
+      starting with `=`, `+`, `-`, or `@` flowed unescaped into
+      `metadata.csv`, uploaded to Box for humans to open in Excel/Sheets
+      — classic formula-injection surface in a shared-lab context. Now
+      prefixes such values with `'` before the existing quote-escaping.
+- [x] 15.9 **IMPORTANT — the "Filename" column showed a UUID, not a
+      filename.** `ExperimentDetail.tsx`'s `FileRow` rendered `scan.id`
+      under the "Filename" header; a scientist couldn't match a table row
+      to the real TIFF on disk or in Box. Now shows
+      `basename(scan.path)`.
+- [x] 15.10 **IMPORTANT — `onUploadProgress`'s payload was untyped
+      (`any`), with three independent, unlinked hand-typed mirrors of the
+      same shape** (`BoxBackupProgress` in `box-backup.ts`,
+      `UploadProgress` in `BrowseGraviScans.tsx`, `UploadProgressData` in
+      `Layout.tsx` — the last consumed via an unchecked `as` cast). The
+      exact same "declared type never checked against the real runtime
+      shape" pattern already named for 14.3/14.6/15.1. Consolidated into
+      one `BoxBackupProgress` type (mirrored in `src/types/graviscan.ts`,
+      matching this codebase's existing renderer-type-mirror convention),
+      typed `onUploadProgress` properly, and removed the unchecked cast.
+- [x] 15.11 **IMPORTANT — same-experiment wave link/unlink race across
+      two independent UI surfaces.** `link()` triggers a full `refetch()`
+      after its own mutation; `unlink()` applies a local optimistic
+      filter with no refetch. If `link()`'s refetch (from e.g. the attach
+      panel) was still in flight when a concurrent `unlink()` (from e.g.
+      a row's own button) applied, the refetch's now-stale snapshot
+      (queried before the unlink committed server-side) could land after
+      and silently revert it. Added a per-experimentId version counter,
+      bumped by every `refetch()` call and by `unlink()`'s own update; a
+      refetch whose version was superseded on completion retries once
+      (rather than either applying stale data or dropping its own
+      update). New test in `WaveMetadataLinksContext.test.tsx`
+      reproduces the exact interleaving with a manually-controlled
+      pending promise.
+- [x] 15.12 **IMPORTANT — the upload-status banner's dismiss compared
+      by object reference.** Every `graviscan:upload-progress` IPC
+      delivery is a fresh object (structured clone), so a harmless
+      duplicate/retry event with _identical_ content would silently undo
+      a dismiss (`status === dismissed` almost never holds across two
+      separate deliveries). Now compares the four payload fields by
+      value.
+- [x] 15.13 **IMPORTANT — no warning navigating away mid-spreadsheet-
+      upload.** `Metadata.tsx` had no unsaved-work guard; sidebar
+      navigation unmounted `GraviMetadataUpload` and silently discarded a
+      parsed sheet + column mapping (often manually fixed, given 15.3).
+      Added `UnsavedChangesContext` (mounted once in `App.tsx`,
+      mirroring `UploadStatusProvider`'s pattern): `GraviMetadataUpload`
+      flags itself while a sheet is parsed and not yet done, clearing on
+      completion and unconditionally on unmount; `Layout.tsx`'s nav
+      `onClick` confirms before allowing navigation away. React has no
+      cancelable-unmount lifecycle hook, so this has to intercept the
+      _navigation_ itself, before the unmount it would cause.
+- [x] 15.14 **IMPORTANT — the same stale-mock-shape pattern recurred a
+      third time** in `App.test.tsx` (`uploadAllScans` mocked with the
+      pre-fix unwrapped shape) and `UploadStatusContext.test.tsx` (a fake
+      `{completed, total}` shape instead of the real
+      `{totalImages, completedImages, failedImages, currentExperiment}`).
+      Harmless today (neither file's tests exercise the affected
+      branches) but the exact landmine class already named twice.
+      Updated both to the real shapes.
+- [x] 15.15 **IMPORTANT — `useWaveMetadataLinks.test.tsx`'s "stale
+      refetch" regression test didn't test the race it claims to.** It
+      only resolves two _different_ `experimentId` keys, which trivially
+      can't clobber each other in a map keyed by id, regardless of
+      whether any real guard exists. Left as-is (still a valid test for
+      what it actually covers) with a comment pointing to 15.11's real
+      same-key race test instead of duplicating it.
+- [x] 15.16 Verified locally after all 16 fixes: `npx tsc --noEmit -p .`,
+      `npm run lint`, `npx prettier --check` all clean; full
+      `tests/unit` suite shows only the same 5 pre-existing Windows
+      path-separator baseline failures (unchanged from Section 14), no
+      new failures. Not yet pushed/CI-confirmed as of writing this
+      entry — see 15.17.
+- [ ] 15.17 Push both fix commits, confirm 12.4 (full E2E suite, all 3
+      OSes) is still green, then run a round-2 `/review-pr` pass and
+      iterate (fix → re-review) until no BLOCKING or IMPORTANT findings
+      remain, per explicit instruction.
