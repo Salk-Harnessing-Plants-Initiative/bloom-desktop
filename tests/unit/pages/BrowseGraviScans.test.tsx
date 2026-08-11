@@ -157,6 +157,30 @@ describe('BrowseGraviScans', () => {
     });
   });
 
+  it('disables Download while the wave-metadata link fetch has failed, instead of silently reporting no divergence', async () => {
+    // handleDownload's diverged-wave check filters over `links`, which
+    // stays [] on a failed fetch — reporting zero divergence isn't "no
+    // divergence", it's "unknown", since we never actually loaded the
+    // wave's real linked accession. Downloading in that state could hand
+    // the operator a CSV whose accession is wrong with no warning at all.
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    listGraviMetadata.mockResolvedValue({
+      success: false,
+      error: 'Database is locked',
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/database is locked/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: /^download$/i })).toBeDisabled();
+  });
+
   it('Next/Previous pagination controls call browseByExperiment with an updated offset', async () => {
     browseByExperiment.mockResolvedValue({
       success: true,

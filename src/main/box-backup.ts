@@ -567,6 +567,20 @@ export async function runBoxBackup(
               `[BoxBackup] Failed to copy metadata for ${expName}/wave_${waveNum}:`,
               csvResult.error
             );
+            // There is no separate per-wave CSV-status field — the next
+            // run's scan-selection query only looks at image box_status.
+            // Leaving these images at 'uploaded' would silently exclude
+            // this wave from every future run, permanently losing
+            // metadata.csv with no further indication anything is wrong.
+            // Revert them to 'failed' so the wave (images + CSV) is
+            // retried next time, even though the images themselves already
+            // copied successfully.
+            if (uploadedIds.length > 0) {
+              await db.graviImage.updateMany({
+                where: { id: { in: uploadedIds } },
+                data: { box_status: 'failed' },
+              });
+            }
           }
         } finally {
           try {

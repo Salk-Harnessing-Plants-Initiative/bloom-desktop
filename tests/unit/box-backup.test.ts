@@ -140,6 +140,25 @@ describe('runBoxBackup', () => {
     expect(result.success).toBe(false);
     expect(result.errors.some((e) => e.includes('metadata'))).toBe(true);
   });
+
+  it('reverts the wave images back to a retryable status when only the metadata CSV copy fails, so the next run retries it instead of silently excluding the wave forever', async () => {
+    // The scan-selection query only looks at box_status ('pending'/'failed')
+    // — there is no separate per-wave CSV-status field. If the images that
+    // copied fine are left at box_status:'uploaded' after a CSV-only
+    // failure, that wave has zero pending/failed images on the next run and
+    // is silently excluded from the query, so the CSV is never retried and
+    // metadata.csv stays permanently missing from Box with no further
+    // indication anything is wrong.
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const calls = db.graviImage.updateMany.mock.calls;
+    // Last call must be the one reverting this wave's images to a status
+    // the next run's `box_status: { in: ['pending', 'failed'] }` filter
+    // will pick up again — not left at 'uploaded'.
+    const lastCall = calls[calls.length - 1];
+    expect(lastCall[0].where.id.in).toEqual(['img1']);
+    expect(['pending', 'failed']).toContain(lastCall[0].data.box_status);
+  });
 });
 
 describe('csvEscape', () => {

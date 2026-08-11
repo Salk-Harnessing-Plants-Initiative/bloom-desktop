@@ -227,10 +227,11 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     // went wrong would be the one inconsistent exception.
     // The message must not imply a working retry mechanism — there is no
     // manual refresh affordance and fetchedIds is never cleared, so "please
-    // retry" would be a lie; instead it should tell the user the on-screen
-    // data may be stale.
+    // retry" would be a lie. It must also leave the user an actual next
+    // step (reloading the app remounts the provider and clears
+    // fetchedIds) rather than just stating the problem with no recourse.
     expect(result.current.linkError).toBe(
-      'Could not refresh metadata links — the displayed wave links may be out of date.'
+      'Could not refresh metadata links — the displayed wave links may be out of date. Reload the app to refresh them.'
     );
 
     // Bumping the version again afterward must not resurrect the

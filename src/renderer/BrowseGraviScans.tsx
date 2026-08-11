@@ -110,7 +110,17 @@ function ExperimentRow({
         ))}
       </select>
       {linkError && <p className="text-sm text-red-600">{linkError}</p>}
-      <button onClick={handleDownload}>Download</button>
+      <button
+        onClick={handleDownload}
+        disabled={!!linkError}
+        title={
+          linkError
+            ? 'Wave-metadata links failed to load — divergence from the default accession cannot be checked right now.'
+            : undefined
+        }
+      >
+        Download
+      </button>
       {divergedWaves.length > 0 && (
         <p>
           {divergedWaves.length > 1
@@ -275,16 +285,11 @@ export function BrowseGraviScans() {
             `Box failed: ${result.boxErrors?.[0] ?? 'unknown error'}`
           );
         }
-        // Defense-in-depth: if a target's own success flag and its error
-        // array ever disagree (e.g. box-backup.ts forgetting to set
-        // success:false alongside a pushed error), fall back to the raw
-        // merged error rather than showing an empty, unattributed message.
-        const summary =
-          failures.length > 0
-            ? failures.join('; ')
-            : (result.errors?.[0] ?? 'unknown error');
+        // `failures` is always non-empty here: entry into this branch
+        // requires !bloomSuccess || !boxSuccess, and each of those exact
+        // conditions is what pushes to `failures` above.
         setBackupMessage(
-          `${result.uploaded} uploaded, ${result.errors?.length ?? 0} error(s) — ${summary}`
+          `${result.uploaded} uploaded, ${result.errors?.length ?? 0} error(s) — ${failures.join('; ')}`
         );
       } else if (!result.success) {
         // Whole-operation failures that never got as far as uploading or
