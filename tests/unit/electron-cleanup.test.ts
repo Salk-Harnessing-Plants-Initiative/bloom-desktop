@@ -5,6 +5,7 @@ import {
   snapshotDescendants,
   killDescendants,
   isProcessRunning,
+  isBootloaderLike,
 } from '../e2e/helpers/electron-cleanup';
 
 /**
@@ -140,6 +141,22 @@ async function waitUntil(
   }
 }
 
+describe('isBootloaderLike', () => {
+  it('matches the real bloom-hardware process name on both platforms', () => {
+    expect(isBootloaderLike('bloom-hardware')).toBe(true);
+    expect(isBootloaderLike('bloom-hardware.exe')).toBe(true);
+    expect(isBootloaderLike('BLOOM-HARDWARE.EXE')).toBe(true);
+  });
+
+  it("does not match Electron's own direct children", () => {
+    expect(isBootloaderLike('Electron Helper')).toBe(false);
+    expect(isBootloaderLike('Electron Helper (GPU)')).toBe(false);
+    expect(isBootloaderLike('Electron Helper (Renderer)')).toBe(false);
+    expect(isBootloaderLike('electron.exe')).toBe(false);
+    expect(isBootloaderLike('node')).toBe(false);
+  });
+});
+
 describe('electron-cleanup: descendant snapshot/kill', () => {
   const spawnedPids: number[] = [];
 
@@ -172,13 +189,39 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     spawnedPids.push(rootPid, ...childPids, ...grandchildPids);
     expect(grandchildPids).toHaveLength(2);
 
-    const snapshot = await snapshotDescendants(rootPid);
+    // The synthetic first child is just a plain "node" process, standing
+    // in for the real bloom-hardware bootloader -- so recursion has to be
+    // permitted explicitly here, since the default only recurses into
+    // names matching /bloom-hardware/i.
+    const snapshot = await snapshotDescendants(rootPid, false, () => true);
     const snapshotPids = snapshot.map((d) => d.pid).sort((a, b) => a - b);
     const expectedPids = [...childPids, ...grandchildPids].sort(
       (a, b) => a - b
     );
 
     expect(snapshotPids).toEqual(expectedPids);
+
+    forceKill(rootProcess.pid!);
+  });
+
+  it('1.1c does NOT recurse into a non-bootloader-like child by default (scoped, not fully transitive)', async () => {
+    const { rootPid, childPids, grandchildPids, rootProcess } =
+      await spawnSyntheticTree(2, 2);
+    spawnedPids.push(rootPid, ...childPids, ...grandchildPids);
+    expect(grandchildPids).toHaveLength(2);
+
+    // Default shouldRecurse (isBootloaderLike) only matches names
+    // containing "bloom-hardware" -- these synthetic children are plain
+    // "node" processes, so the grandchildren must NOT be found. This is
+    // the actual safety property: Electron's own direct children (Helper,
+    // GPU, ...) never have their own sub-processes walked into.
+    const snapshot = await snapshotDescendants(rootPid);
+    const snapshotPids = snapshot.map((d) => d.pid).sort((a, b) => a - b);
+
+    expect(snapshotPids).toEqual([...childPids].sort((a, b) => a - b));
+    for (const gcPid of grandchildPids) {
+      expect(snapshotPids).not.toContain(gcPid);
+    }
 
     forceKill(rootProcess.pid!);
   });
@@ -216,7 +259,7 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     );
     spawnedPids.push(rootPid, ...childPids, ...grandchildPids);
 
-    const snapshot = await snapshotDescendants(rootPid);
+    const snapshot = await snapshotDescendants(rootPid, false, () => true);
     expect(snapshot).toHaveLength(childPids.length + grandchildPids.length);
 
     forceKill(rootPid);

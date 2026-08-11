@@ -183,23 +183,27 @@ interface ProcessTableRow {
 }
 
 /**
- * Snapshot the FULL transitive descendant tree of `pid` (children,
- * grandchildren, etc. — not just direct children), while `pid` is still
- * alive. Must be called BEFORE the main process exits — once it's gone,
- * POSIX reparents its children and this lookup can no longer find them.
- * Never throws: any failure is logged (if verbose) and swallowed, returning
- * an empty list.
+ * Snapshot `pid`'s direct children, plus (only for a child matching
+ * `shouldRecurse`, e.g. the real PyInstaller-onefile `bloom-hardware`
+ * bootloader) that child's own children too — a bounded, targeted walk,
+ * not an unbounded transitive one. Must be called BEFORE the main process
+ * exits — once it's gone, POSIX reparents its children and this lookup can
+ * no longer find them. Never throws: any failure is logged (if verbose)
+ * and swallowed, returning an empty list.
  *
  * @param pid - The ancestor PID whose descendants to enumerate
  * @param verbose - Whether to log progress (default: false)
+ * @param shouldRecurse - Overridable for testing only; production callers
+ *   should omit it (defaults to matching only bloom-hardware-like names).
  */
 export async function snapshotDescendants(
   pid: number,
-  verbose = false
+  verbose = false,
+  shouldRecurse?: (name: string) => boolean
 ): Promise<DescendantProcess[]> {
   try {
     const table = await readProcessTable();
-    return collectDescendants(pid, table);
+    return collectDescendants(pid, table, shouldRecurse);
   } catch (error) {
     if (verbose) {
       console.warn(
@@ -265,12 +269,39 @@ async function readProcessTable(): Promise<ProcessTableRow[]> {
 }
 
 /**
- * Walk `table` breadth-first from `rootPid`, collecting every transitive
- * descendant (not just direct children).
+ * Matches process names that plausibly relaunch as a further child rather
+ * than running in-process (the PyInstaller onefile bootloader case this
+ * transitive walk exists for — see `bloom-hardware`/`python/main.spec`).
+ * Deliberately narrow: Electron's own direct children (Helper, GPU,
+ * Renderer, Crashpad handler, ...) are NOT bootloader-like, so their own
+ * sub-processes — which this code has no detailed knowledge of — are never
+ * walked into. Direct children of the main PID are always included in the
+ * result regardless of this check; it only gates whether we recurse a
+ * level deeper than that.
+ */
+export function isBootloaderLike(name: string): boolean {
+  return /bloom-hardware/i.test(name);
+}
+
+/**
+ * Walk `table` breadth-first from `rootPid`, collecting every direct child,
+ * plus (only for children matching `isBootloaderLike`) their own children
+ * too — not an unbounded transitive walk. Deliberately scoped this way
+ * rather than walking the whole tree: an earlier, fully-transitive version
+ * of this function is suspected of walking into Electron's own internal
+ * process relationships (Crashpad handler, GPU sandbox helpers, ...) that
+ * this code has no detailed knowledge of, and killing something there may
+ * have been the cause of intermittent `worker process exited unexpectedly`
+ * crashes observed in CI after that version shipped — see `design.md`
+ * Decision 1's "Round 6" note.
+ *
+ * @param shouldRecurse - Overridable for testing only; production callers
+ *   should omit it (defaults to `isBootloaderLike`).
  */
 function collectDescendants(
   rootPid: number,
-  table: ProcessTableRow[]
+  table: ProcessTableRow[],
+  shouldRecurse: (name: string) => boolean = isBootloaderLike
 ): DescendantProcess[] {
   const childrenByParent = new Map<number, ProcessTableRow[]>();
   for (const row of table) {
@@ -280,6 +311,9 @@ function collectDescendants(
   }
 
   const result: DescendantProcess[] = [];
+  // Nodes whose CHILDREN we're allowed to look at: starts with just the
+  // root (so its direct children are always found), and only grows to
+  // include a found child if that child itself looks bootloader-like.
   const queue = [rootPid];
   const visited = new Set<number>([rootPid]);
   while (queue.length > 0) {
@@ -288,7 +322,9 @@ function collectDescendants(
       if (visited.has(child.pid)) continue; // guard against a corrupt/cyclic table
       visited.add(child.pid);
       result.push({ pid: child.pid, name: child.name });
-      queue.push(child.pid);
+      if (shouldRecurse(child.name)) {
+        queue.push(child.pid);
+      }
     }
   }
   return result;
