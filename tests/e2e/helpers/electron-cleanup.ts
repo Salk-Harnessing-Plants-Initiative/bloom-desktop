@@ -40,6 +40,13 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
+// Bounds how long any single process-enumeration/re-verification shell-out
+// can block test teardown. Without this, a hung `powershell.exe`/`ps` call
+// (e.g. a stalled WMI/CIM service on an overloaded CI runner) would block
+// `closeElectronApp()` indefinitely instead of degrading gracefully via the
+// existing try/catch around these calls.
+const PROCESS_QUERY_TIMEOUT_MS = 10_000;
+
 export interface DescendantProcess {
   pid: number;
   name: string;
@@ -175,12 +182,16 @@ export async function snapshotDescendants(
  */
 async function readProcessTable(): Promise<ProcessTableRow[]> {
   if (process.platform === 'win32') {
-    const { stdout } = await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      'Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name | ConvertTo-Json',
-    ]);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        'Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name | ConvertTo-Json',
+      ],
+      { timeout: PROCESS_QUERY_TIMEOUT_MS }
+    );
     const trimmed = stdout.trim();
     if (!trimmed) return [];
     const parsed = JSON.parse(trimmed);
@@ -202,7 +213,9 @@ async function readProcessTable(): Promise<ProcessTableRow[]> {
       }));
   }
 
-  const { stdout } = await execFileAsync('ps', ['-eo', 'pid,ppid,comm']);
+  const { stdout } = await execFileAsync('ps', ['-eo', 'pid,ppid,comm'], {
+    timeout: PROCESS_QUERY_TIMEOUT_MS,
+  });
   const result: ProcessTableRow[] = [];
   for (const line of stdout.trim().split('\n').slice(1)) {
     const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
@@ -321,24 +334,27 @@ async function readCurrentNames(
   try {
     if (process.platform === 'win32') {
       const filter = pids.map((p) => `ProcessId=${p}`).join(' or ');
-      const { stdout } = await execFileAsync('powershell.exe', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `Get-CimInstance Win32_Process -Filter "${filter}" | Select-Object ProcessId, Name | ConvertTo-Json`,
-      ]);
+      const { stdout } = await execFileAsync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `Get-CimInstance Win32_Process -Filter "${filter}" | Select-Object ProcessId, Name | ConvertTo-Json`,
+        ],
+        { timeout: PROCESS_QUERY_TIMEOUT_MS }
+      );
       for (const { pid, name } of parseWindowsProcessJson(stdout)) {
         result.set(pid, name);
       }
       return result;
     }
 
-    const { stdout } = await execFileAsync('ps', [
-      '-o',
-      'pid,comm',
-      '-p',
-      pids.join(','),
-    ]);
+    const { stdout } = await execFileAsync(
+      'ps',
+      ['-o', 'pid,comm', '-p', pids.join(',')],
+      { timeout: PROCESS_QUERY_TIMEOUT_MS }
+    );
     for (const line of stdout.trim().split('\n').slice(1)) {
       const match = line.trim().match(/^(\d+)\s+(.+)$/);
       if (!match) continue;

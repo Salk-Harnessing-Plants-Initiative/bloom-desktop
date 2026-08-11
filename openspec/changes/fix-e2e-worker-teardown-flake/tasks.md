@@ -29,7 +29,19 @@ This PR's first real CI run (see PR #324) exposed that the "flat, one-level fan-
 - [x] 1a.1 Add `tests/unit/electron-cleanup.test.ts` cases proving the gap and the fix: extend the synthetic tree helper so the first child can itself spawn further children (modeling the onefile-bootloader nesting), then assert both `snapshotDescendants()` and the full snapshot→kill flow reach those grandchildren, not just the direct children.
 - [x] 1a.2 Rework `snapshotDescendants()` in `tests/e2e/helpers/electron-cleanup.ts` to read the full system process table once (unfiltered `ps -eo pid,ppid,comm` / `Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name`), build a parent→children adjacency list, and breadth-first-walk from the main PID to collect every transitive descendant. `killDescendants()` and the name-recheck logic are unchanged — they already operate generically on whatever list they're given, regardless of depth.
 - [x] 1a.3 Run `npm run test:unit` (full suite), `npm run lint`, `npx tsc --noEmit` — confirm green, including the new grandchild-coverage cases, with no regression elsewhere.
-- [ ] 1a.4 Push and confirm on a subsequent CI run that Windows E2E shards no longer report a leftover `bloom-hardware` orphan in the runner's cleanup step (this is the actual falsifiable claim — task 4's manual verification below supersedes and subsumes this).
+- [x] 1a.4 Push and confirm on a subsequent CI run that Windows E2E shards no longer report a leftover `bloom-hardware` orphan in the runner's cleanup step (task 4's manual verification below supersedes and subsumes this): the immediately following CI run showed a mix of results — see 1b below.
+
+## 1b. Post-implementation fix: CI-robustness issues surfaced by 1a's own CI run
+
+The CI run that validated 1a exposed two more issues, both unrelated to whether the fix's core logic is correct:
+
+- **`scripts/stop-electron-forge.js` failing the whole job on `EPERM`.** One shard passed all 48 of its tests but the job still failed, because this pre-existing script (not part of `electron-cleanup.ts`) only tolerates `ESRCH` (process already gone) when it tries to stop the dev server at job end — not `EPERM`, which Windows can return when a PID has been recycled by a process the script's user can't signal. Unrelated to this PR's core fix, but newly more likely to surface given sharding runs this script 4x as often per OS.
+- **No timeout on the process-enumeration shell-outs.** Two other shards showed the "Run Playwright E2E tests" step stuck `in_progress` for ~57 minutes with no further output, never reaching the stop-server step at all. `readProcessTable()`/`readCurrentNames()`'s `execFileAsync` calls had no `timeout` option — if `powershell.exe`/`Get-CimInstance` ever hangs (e.g. a stalled WMI/CIM service on an overloaded runner), `closeElectronApp()` would block indefinitely instead of degrading gracefully through the existing try/catch. Not confirmed as the cause of these specific hangs (GitHub Actions Windows-runner infrastructure flakiness is also plausible, especially with 4x more concurrent Windows jobs from sharding), but a real robustness gap regardless, and cheap to close.
+
+- [x] 1b.1 `scripts/stop-electron-forge.js`: add an `EPERM` branch alongside the existing `ESRCH` branch, logging and continuing rather than exiting non-zero.
+- [x] 1b.2 Add a `PROCESS_QUERY_TIMEOUT_MS` (10s) `timeout` option to every `execFileAsync` call in `readProcessTable()` and `readCurrentNames()`, on both platforms.
+- [x] 1b.3 Run `npm run test:unit` (full suite), `npm run lint`, `npx tsc --noEmit` — confirm green.
+- [ ] 1b.4 Push and confirm on a subsequent CI run whether the hangs recur. If they do, they're not explained by 1b.2 and need further investigation (most likely candidate: GitHub Actions Windows-runner infrastructure flakiness, exacerbated by 4x higher concurrent Windows job count from sharding — see `design.md` Decision 2's disclosed CI-cost tradeoff).
 
 ## 2. CI E2E sharding
 
