@@ -178,6 +178,34 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     expect(result.current.links).toHaveLength(0);
   });
 
+  it('clears a prior linkError once a subsequent link() succeeds, instead of leaving it stuck', async () => {
+    // The error-disabled state (e.g. BrowseGraviScans' Download button)
+    // must be reactive in both directions — a stale permanently-set
+    // linkError after the underlying problem is resolved would block a
+    // legitimate action for no reason.
+    listGraviMetadata.mockResolvedValue({
+      success: false,
+      error: 'Database is locked',
+    });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+
+    await waitFor(() =>
+      expect(result.current.linkError).toBe('Database is locked')
+    );
+
+    listGraviMetadata.mockResolvedValue({
+      success: true,
+      data: [makeLink(0)],
+    });
+    await act(async () => {
+      await result.current.link(0, 'acc-0');
+    });
+
+    expect(result.current.linkError).toBeNull();
+  });
+
   it('caps the stale-version retry loop in refetch() instead of recursing forever under adversarial rapid mutation', async () => {
     const consoleError = vi
       .spyOn(console, 'error')
@@ -228,10 +256,12 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     // The message must not imply a working retry mechanism — there is no
     // manual refresh affordance and fetchedIds is never cleared, so "please
     // retry" would be a lie. It must also leave the user an actual next
-    // step (reloading the app remounts the provider and clears
-    // fetchedIds) rather than just stating the problem with no recourse.
+    // step — but "reload the app" is itself not real: main.ts strips the
+    // default menu (menuBarVisible=false, setMenu(null)) and registers no
+    // reload accelerator, so there is no in-app reload in the packaged
+    // build. The only real recourse is fully quitting and reopening.
     expect(result.current.linkError).toBe(
-      'Could not refresh metadata links — the displayed wave links may be out of date. Reload the app to refresh them.'
+      'Could not refresh metadata links — the displayed wave links may be out of date. Quit and reopen the app to refresh them.'
     );
 
     // Bumping the version again afterward must not resurrect the

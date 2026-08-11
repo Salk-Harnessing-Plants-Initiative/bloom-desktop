@@ -574,12 +574,21 @@ export async function runBoxBackup(
             // metadata.csv with no further indication anything is wrong.
             // Revert them to 'failed' so the wave (images + CSV) is
             // retried next time, even though the images themselves already
-            // copied successfully.
+            // copied successfully (rclone skips files already present at
+            // the destination, so the re-copy on retry is a cheap
+            // existence check, not a full re-transfer).
             if (uploadedIds.length > 0) {
               await db.graviImage.updateMany({
                 where: { id: { in: uploadedIds } },
                 data: { box_status: 'failed' },
               });
+              // These images are no longer durably backed up as far as
+              // this run's summary is concerned — they were counted above
+              // before the CSV attempt, but the persisted box_status now
+              // says they still need a retry. Undo that count so the
+              // operator-facing "N uploaded" message doesn't overstate
+              // what's actually in Box.
+              result.filesCopied -= uploadedIds.length;
             }
           }
         } finally {

@@ -154,10 +154,90 @@ describe('runBoxBackup', () => {
     const calls = db.graviImage.updateMany.mock.calls;
     // Last call must be the one reverting this wave's images to a status
     // the next run's `box_status: { in: ['pending', 'failed'] }` filter
-    // will pick up again — not left at 'uploaded'.
+    // will pick up again — not left at 'uploaded'. Asserted as the exact
+    // value ('failed', never 'pending') since this string is also shown
+    // directly to operators via the Upload Status filter — a future
+    // regression reverting to the wrong status would be user-visible.
     const lastCall = calls[calls.length - 1];
     expect(lastCall[0].where.id.in).toEqual(['img1']);
-    expect(['pending', 'failed']).toContain(lastCall[0].data.box_status);
+    expect(lastCall[0].data.box_status).toBe('failed');
+  });
+
+  it("reverts ALL of a wave's successfully-copied images, not just the first, when the metadata CSV copy fails", async () => {
+    // The single-image fixture above can't distinguish "reverts the whole
+    // uploadedIds array" from "reverts only uploadedIds[0]" — a real wave
+    // backing up multiple images per plate needs every one of them
+    // reverted, or a partial subset would slip back to 'uploaded' and be
+    // silently excluded from the next retry.
+    const sourceFile2 = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(sourceFile2, 'fake tiff bytes 2');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: sourceFile2 },
+        ],
+      },
+    ]);
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const calls = db.graviImage.updateMany.mock.calls;
+    const lastCall = calls[calls.length - 1];
+    expect([...lastCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
+    expect(lastCall[0].data.box_status).toBe('failed');
+  });
+
+  it('leaves images at box_status:"uploaded" when both the image copy and the metadata CSV copy succeed', async () => {
+    // The revert fix must only fire on CSV failure — this pins down the
+    // complementary "must NOT trigger when it shouldn't" branch, so a
+    // future refactor that moves the revert outside its `if
+    // (!csvResult.success)` guard would be caught here.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else {
+        queueMicrotask(() => proc.emit('close', 0));
+      }
+      return proc as never;
+    });
+
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
+
+    expect(result.success).toBe(true);
+    const calls = db.graviImage.updateMany.mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].data.box_status).toBe('uploaded');
+  });
+
+  it('does not count reverted images in filesCopied, so the summary count matches what is actually durable in Box', async () => {
+    // filesCopied is incremented before the CSV attempt and flows directly
+    // into the operator-facing "N uploaded" message (via
+    // image-handlers.ts's `uploaded: bloomResult.uploaded +
+    // boxResult.filesCopied`) — if it isn't corrected when the same
+    // images are reverted to 'failed', the message overstates how much
+    // actually made it to Box this run, for the exact images the DB now
+    // says still need a retry.
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0]
+    );
+
+    expect(result.filesCopied).toBe(0);
   });
 });
 

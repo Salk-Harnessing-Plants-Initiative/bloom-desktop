@@ -113,11 +113,7 @@ function ExperimentRow({
       <button
         onClick={handleDownload}
         disabled={!!linkError}
-        title={
-          linkError
-            ? 'Wave-metadata links failed to load — divergence from the default accession cannot be checked right now.'
-            : undefined
-        }
+        title={linkError ?? undefined}
       >
         Download
       </button>
