@@ -115,7 +115,7 @@ function ExperimentRow({
         disabled={!!linkError}
         title={
           linkError
-            ? `${linkError} — Download is disabled until this is resolved (wave/accession divergence cannot be checked).`
+            ? 'Download is disabled until this is resolved — see the error above for details.'
             : undefined
         }
       >

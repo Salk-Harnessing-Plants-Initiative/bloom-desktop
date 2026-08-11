@@ -89,6 +89,41 @@ describe('UploadStatusContext', () => {
     );
   });
 
+  it('ignores a Bloom-shaped progress event instead of corrupting status with undefined fields', () => {
+    // uploadAllScans() delivers both Bloom's (`{total, completed, failed,
+    // currentFile}`) and Box's (`{totalImages, completedImages,
+    // failedImages, currentExperiment}`) progress ticks over the same
+    // onUploadProgress channel with no discriminant tag (see
+    // image-handlers.ts's uploadAllScans doc comment). Layout.tsx's
+    // banner renders status.completedImages/status.totalImages — a
+    // Bloom-shaped event landing here would render "undefined/undefined"
+    // instead of being ignored.
+    render(
+      <UploadStatusProvider>
+        <Consumer />
+      </UploadStatusProvider>
+    );
+
+    fireProgress({
+      totalImages: 5,
+      completedImages: 2,
+      failedImages: 0,
+      currentExperiment: 'Exp',
+    });
+    fireProgress({
+      total: 10,
+      completed: 4,
+      failed: 0,
+      currentFile: 'plant1.tif',
+    });
+
+    // The Bloom-shaped event must not overwrite the last real Box status
+    // with a shape lacking totalImages/completedImages.
+    expect(screen.getByTestId('status').textContent).toContain(
+      '"completedImages":2'
+    );
+  });
+
   it('cleans up the subscription on unmount', () => {
     const { unmount } = render(
       <UploadStatusProvider>

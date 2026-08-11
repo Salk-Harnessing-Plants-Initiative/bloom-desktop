@@ -180,14 +180,15 @@ describe('BrowseGraviScans', () => {
 
     const downloadButton = screen.getByRole('button', { name: /^download$/i });
     expect(downloadButton).toBeDisabled();
-    // The tooltip must start with the same visible red error text right
-    // above the button, not an independently-worded, disconnected
-    // explanation — but it must still say what capability is actually
-    // blocked (unlike the raw fetch error alone), since that reasoning
-    // was the whole point of the original custom tooltip.
+    // The tooltip must be a fixed string that points back at the visible
+    // error paragraph rather than concatenating linkError verbatim —
+    // concatenation is fragile against whatever punctuation/length the
+    // underlying error string happens to have (multiple linkError
+    // producers already end in their own full sentences/parentheticals),
+    // and produced an awkward run-on/double-punctuation in practice.
     expect(downloadButton).toHaveAttribute(
       'title',
-      'Database is locked — Download is disabled until this is resolved (wave/accession divergence cannot be checked).'
+      'Download is disabled until this is resolved — see the error above for details.'
     );
   });
 

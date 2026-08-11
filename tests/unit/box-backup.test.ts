@@ -378,6 +378,86 @@ describe('runBoxBackup', () => {
     );
     expect(result.errors.some((e) => e.includes('metadata'))).toBe(true);
   });
+
+  it('does not double-count images as both completed and failed when rclone dies mid-transfer with no per-file error info', async () => {
+    // Total rclone failure (non-zero exit, empty erroredFiles) marks EVERY
+    // image in the wave as failed — including ones that already logged a
+    // per-file "Copied" line (and so already incremented completedImages)
+    // before the process died. Without undoing that credit, the live
+    // progress display could show an image as both "completed" and
+    // "failed" simultaneously, and completedImages would overstate what's
+    // actually durable when everything in this wave just got marked
+    // box_status:'failed'.
+    const sourceFile2 = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(sourceFile2, 'fake tiff bytes 2');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: sourceFile2 },
+        ],
+      },
+    ]);
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        // img1 logs "Copied" (completedImages++ fires for it), then the
+        // whole rclone process dies with a non-zero exit and no per-file
+        // error line — a network drop mid-transfer, not a per-file error.
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'info',
+                msg: `${path.basename(sourceFile)}: Copied (new)`,
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 1);
+        });
+      } else {
+        queueMicrotask(() => proc.emit('close', 1));
+      }
+      return proc as never;
+    });
+
+    const progressUpdates: Array<{
+      totalImages: number;
+      completedImages: number;
+      failedImages: number;
+    }> = [];
+
+    const result = await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0],
+      (progress) => progressUpdates.push({ ...progress })
+    );
+
+    expect(result.success).toBe(false);
+    // Both images end up box_status:'failed' — CSV is never even attempted
+    // once every image failed its own copy.
+    const failCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'failed'
+    );
+    expect([...failCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
+    const lastUpdate = progressUpdates[progressUpdates.length - 1];
+    expect(lastUpdate.completedImages).toBe(0);
+    expect(lastUpdate.failedImages).toBe(2);
+  });
 });
 
 describe('csvEscape', () => {

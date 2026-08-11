@@ -99,9 +99,14 @@ export function WaveMetadataLinksProvider({
         }));
         setErrorsByExperiment((prev) => ({ ...prev, [experimentId]: null }));
       } else {
+        // ensureFetched only ever calls refetch once per experimentId —
+        // a failure here is just as permanently stuck as the retry-cap
+        // give-up below, so it needs the same real recourse (and the
+        // same warning about what that recourse costs), not just a bare
+        // error string with no path forward.
         setErrorsByExperiment((prev) => ({
           ...prev,
-          [experimentId]: result.error ?? 'Failed to load metadata links',
+          [experimentId]: `${result.error ?? 'Failed to load metadata links'}. Quit and reopen the app to retry (this will interrupt any active scan or backup).`,
         }));
       }
     },

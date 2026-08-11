@@ -25,6 +25,15 @@ export function UploadStatusProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const off = window.electron.gravi.onUploadProgress((data) => {
+      // uploadAllScans() delivers both Bloom's ({total, completed,
+      // failed, currentFile}) and Box's (BoxBackupProgress) progress
+      // ticks over this same channel with no discriminant tag — ignore
+      // anything that isn't actually Box-shaped, or this banner (which
+      // only understands BoxBackupProgress) would render
+      // "undefined/undefined" on every Bloom tick.
+      if (typeof data?.totalImages !== 'number') {
+        return;
+      }
       setStatus(data);
     });
     return off;

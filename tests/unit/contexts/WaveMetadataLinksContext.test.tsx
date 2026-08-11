@@ -164,6 +164,13 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     // internally by ensureFetched/link) had no else branch on
     // `result.success`, so a failed listGraviMetadata call was
     // indistinguishable from "no links yet" — no error, an empty array.
+    // This path is just as permanently stuck as the retry-cap give-up
+    // below: ensureFetched only ever calls refetch once per
+    // experimentId, so a failure on this very first fetch (a transient
+    // DB-lock/IO error being the realistic trigger) leaves nothing to
+    // automatically retry it — the same recourse the retry-cap message
+    // gives must appear here too, not just on the rarer superseded-retry
+    // path.
     listGraviMetadata.mockResolvedValue({
       success: false,
       error: 'Database is locked',
@@ -173,7 +180,9 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     });
 
     await waitFor(() =>
-      expect(result.current.linkError).toBe('Database is locked')
+      expect(result.current.linkError).toBe(
+        'Database is locked. Quit and reopen the app to retry (this will interrupt any active scan or backup).'
+      )
     );
     expect(result.current.links).toHaveLength(0);
   });
@@ -192,7 +201,9 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     });
 
     await waitFor(() =>
-      expect(result.current.linkError).toBe('Database is locked')
+      expect(result.current.linkError).toBe(
+        'Database is locked. Quit and reopen the app to retry (this will interrupt any active scan or backup).'
+      )
     );
 
     listGraviMetadata.mockResolvedValue({

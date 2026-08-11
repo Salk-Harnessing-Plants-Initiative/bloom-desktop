@@ -481,8 +481,10 @@ export async function runBoxBackup(
       );
 
       // Copy image files with per-file progress
+      let waveCompletedImages = 0;
       const copyResult = await rcloneCopyFiles(data.imagePaths, boxDest, () => {
         completedImages++;
+        waveCompletedImages++;
         onProgress?.({
           totalImages,
           completedImages,
@@ -496,11 +498,18 @@ export async function runBoxBackup(
       const failedIds: string[] = [];
 
       if (!copyResult.success && copyResult.erroredFiles.size === 0) {
-        // Total rclone failure (no per-file info) — mark ALL as failed
+        // Total rclone failure (no per-file info) — mark ALL as failed,
+        // including any that logged a per-file "Copied" line (and so
+        // already incremented completedImages) before the process died
+        // with no per-file error info (e.g. a network drop mid-transfer).
+        // None of them are durably in Box, so undo that premature credit
+        // rather than leaving an image counted as both completed and
+        // failed at once.
         console.error(
           `[BoxBackup] rclone failed entirely for ${expName}/wave_${waveNum} — marking all files as failed`
         );
         failedIds.push(...data.imageIds);
+        completedImages -= waveCompletedImages;
       } else {
         for (let i = 0; i < data.imagePaths.length; i++) {
           const filename = path.basename(data.imagePaths[i]);
