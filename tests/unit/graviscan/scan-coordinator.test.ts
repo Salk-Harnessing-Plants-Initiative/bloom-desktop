@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
+import path from 'path';
 
 // Mock ScannerSubprocess
 vi.mock('../../../src/main/graviscan/scanner-subprocess', () => {
@@ -446,6 +447,8 @@ describe('ScanCoordinator', () => {
       });
 
       // Create plates with a date-like directory path
+      const inputOutputPath =
+        '/scans/20260410T000000/exp1_st_20260410T120000_cy1_S1_00.tif';
       const platesMap = new Map<string, PlateConfig[]>();
       platesMap.set('scanner-1', [
         {
@@ -453,8 +456,7 @@ describe('ScanCoordinator', () => {
           grid_mode: '2grid' as const,
           resolution: 600,
           // Directory contains 20260410T000000 which matches \d{8}T\d{6}
-          output_path:
-            '/scans/20260410T000000/exp1_st_20260410T120000_cy1_S1_00.tif',
+          output_path: inputOutputPath,
         },
       ]);
 
@@ -462,9 +464,13 @@ describe('ScanCoordinator', () => {
       await vi.advanceTimersByTimeAsync(100_000);
       await scanPromise;
 
-      // The directory portion should NOT have been modified
-      expect(capturedPlates[0].output_path).toContain(
-        '/scans/20260410T000000/'
+      // The directory portion should NOT have been modified. The production
+      // code rebuilds the path via path.join(dir, basename), which
+      // normalizes separators to the host OS's — path.normalize the
+      // expected dirname the same way, rather than hardcoding a POSIX
+      // literal, so this passes on Windows too.
+      expect(path.dirname(capturedPlates[0].output_path)).toBe(
+        path.normalize(path.dirname(inputOutputPath))
       );
       // The filename portion SHOULD have the new timestamp
       expect(capturedPlates[0].output_path).not.toContain('st_20260410T120000');
