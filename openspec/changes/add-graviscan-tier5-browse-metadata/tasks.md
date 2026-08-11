@@ -1731,3 +1731,101 @@ false` on CSV failure, 18.2) made the failure visible once, but the
       (only the same pre-existing `database-handlers.test.ts`
       `BLOOM_DATABASE_URL` local-setup flake, documented in 18.7,
       appeared once — non-deterministic, unrelated, unaffected).
+- [x] 19.7 A second small `main` merge landed mid-round (an OpenSpec
+      archive-housekeeping commit for the already-merged PR #324, moving
+      `openspec/changes/fix-e2e-worker-teardown-flake/` to `archive/` and
+      updating spec docs — no code). Merged cleanly, no conflicts.
+
+## 20. Round-6 `/review-pr` response — 2 blocking + 1 important finding, all fixed
+
+Ran the same 5-subagent adversarial team against round 5's fix commit
+(`0633d40`, never yet reviewed), per the same "verify the previous
+round's fixes" pattern. Found 2 new blocking issues — one a genuine
+regression of the same class of bug round 5 had just fixed, the other a
+factual inaccuracy in round 5's own message copy — and 1 important
+issue, plus several test-coverage gaps confirmed real by tracing the
+actual code. Fixed all of it with TDD — commit `69d8634`.
+
+- [x] 20.1 **BLOCKING — round 5's `box_status` revert fix (19.1) didn't
+      correct `result.filesCopied`, reintroducing a reporting-accuracy
+      gap in the very result object the fix was meant to make
+      trustworthy.** `result.filesCopied += uploadedIds.length` runs
+      _before_ the CSV-copy attempt; when the CSV then fails and those
+      images are reverted to `box_status: 'failed'`, `filesCopied` was
+      never adjusted. That count flows straight through
+      `image-handlers.ts` (`uploaded: bloomResult.uploaded +
+boxResult.filesCopied`) into the exact operator-facing message
+      19.1 was fixing ("N uploaded, M error(s) — Box failed: ..."), so
+      the message could claim images were uploaded in the same run the
+      DB now says still need a retry. Confirmed independently by 2 of 5
+      subagents. Fixed by decrementing `result.filesCopied` by
+      `uploadedIds.length` inside the same revert branch.
+- [x] 20.2 **BLOCKING — round 5's reworded retry-cap message ("Reload
+      the app to refresh them.", 19.3) is not actually true.** Verified
+      directly: `main.ts` sets `mainWindow.menuBarVisible = false` and
+      `mainWindow.setMenu(null)`, stripping Electron's default menu —
+      which is what normally hosts View → Reload and its Ctrl+R/Cmd+R
+      accelerator — and no `globalShortcut` or custom accelerator
+      registers a reload anywhere in the codebase. In the packaged app
+      there is no in-app reload at all; the only real recourse is fully
+      quitting and relaunching. Reworded to "Quit and reopen the app to
+      refresh them." — the action that actually resolves the state.
+- [x] 20.3 **IMPORTANT — the Download button's disabled-state tooltip
+      (19.4) was an independently-authored explanation that didn't
+      match the visible red `linkError` paragraph right above it.** A
+      technician who hovered saw a third, disconnected sentence rather
+      than a restatement of the problem already shown — reads as two
+      unrelated issues instead of one. Fixed by reusing the exact
+      `linkError` string as the tooltip (`title={linkError ??
+undefined}`) instead of a separately-worded message.
+- [x] 20.4 Test-hardening, all gaps confirmed real by tracing the actual
+      code (not hypothetical):
+  1. The `box-backup.test.ts` revert assertion checked
+     `['pending', 'failed']).toContain(...)` — loose enough to pass even
+     if a future edit reverted to the wrong status. Tightened to the
+     exact expected value (`'failed'`), since this string is also shown
+     to operators directly via the Upload Status filter.
+  2. No test proved the revert loop handles more than one image per
+     wave (the shared fixture only had one). Added a 2-image case
+     asserting both ids are reverted.
+  3. No test proved the revert does _not_ fire when the CSV copy also
+     succeeds — the complementary branch a future refactor could
+     accidentally break. Added it.
+  4. No test proved `linkError` actually clears after a later
+     successful mutation — traced that a plausible "does Download ever
+     re-enable" test written directly against `BrowseGraviScans` isn't
+     reachable from that page alone (`ensureFetched` only fetches once
+     per `experimentId`, and this page exposes no `link`/`unlink`
+     action to trigger a second one); moved the test to
+     `WaveMetadataLinksContext.test.tsx`, the layer where `link()`
+     actually clears `errorsByExperiment` on success.
+- [x] 20.5 **Reviewed and deliberately deferred** (raised by 1 of 5
+      subagents each, or a larger design decision than this round's
+      scope):
+  1. A wave whose CSV copy fails for a non-transient reason (e.g. a
+     permanent Box folder permissions issue, not a blip) will now retry
+     forever with the same generic error every run, with no escalation
+     or backoff — unlike `WaveMetadataLinksContext`'s
+     `MAX_REFETCH_RETRIES` pattern elsewhere in this same PR. Re-trying
+     forever is the safer default for a metadata-preservation feature
+     (better than the round-5-fixed alternative of silently giving up),
+     but a stuck-forever case is indistinguishable from a
+     working-as-intended retry to the operator. Would need a
+     per-wave failure counter/backoff, a genuinely new mechanism, not a
+     small fix.
+  2. The plain (non-retry-cap) `listGraviMetadata` failure message in
+     `WaveMetadataLinksContext.tsx` shows the raw backend error
+     (e.g. "Database is locked") with no "quit and reopen" suffix.
+     Unlike 20.2's message, this one isn't factually wrong — the raw
+     backend string is itself informative — so left as-is rather than
+     appending a blanket restart instruction that may not always apply.
+  3. `WaveMetadataLinksProvider`'s context `value` object is a fresh
+     literal every render (not `useMemo`'d), so any experiment's
+     link/error update re-renders every mounted `ExperimentRow`, not
+     just the affected one. A performance nit on a list page, not a
+     correctness issue.
+- [x] 20.6 Verified locally after all 3 fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean. Full
+      `npm run test:unit`: 1544/1544 real tests passing, only the same
+      pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
+      local-setup flake (unrelated, unaffected).
