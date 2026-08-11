@@ -1134,6 +1134,85 @@ describe('runBoxBackup', () => {
     }
   });
 
+  it('does not silently mark BOTH images uploaded when two genuinely-existing files in different directories resolve to the same physical tmpDir basename', async () => {
+    // A narrower, more dangerous variant of the previous test: here BOTH
+    // images actually exist on disk and both resolve successfully (no
+    // missing/unresolvable side at all) — they just happen to share a
+    // basename because they live in different directories (different
+    // plates/experiments). ensureSymlinkOrCopy's `if
+    // (fs.existsSync(linkPath)) return;` guard means the SECOND image's
+    // real bytes are never staged into tmpDir at all — rclone only ever
+    // sees and uploads the FIRST one, under one shared filename. Without
+    // a fix, the classification loop finds neither image in
+    // erroredFiles (rclone reported no error — it never even knew about
+    // the second file), so BOTH get marked box_status:'uploaded' and
+    // BOTH get a metadata.csv row naming the same file, even though one
+    // image's actual pixel content never reached Box at all and is now
+    // permanently unretriable (box_status:'uploaded' means it will
+    // never be selected by a future run's query again).
+    const otherDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'box-backup-test-src-other2-')
+    );
+    const collidingFile = path.join(
+      otherDir,
+      'exp1_st_20260101T000000_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(
+      collidingFile,
+      'fake tiff bytes colliding, genuinely present'
+    );
+    // sourceFile (from the shared beforeEach) is left INTACT this time —
+    // both files genuinely exist and both resolve as-is.
+
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: collidingFile },
+        ],
+      },
+    ]);
+
+    try {
+      await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+      // At most ONE of the two images may be marked uploaded — the other
+      // must be marked failed (so it's retried, rather than silently and
+      // permanently lost).
+      const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'uploaded'
+      );
+      const uploadedIds: string[] = uploadedCall
+        ? uploadedCall[0].where.id.in
+        : [];
+      expect(uploadedIds.length).toBeLessThanOrEqual(1);
+      expect(uploadedIds).not.toEqual(['img1', 'img2']);
+
+      // metadata.csv must not claim two distinct images both succeeded
+      // under the one physical filename Box actually received.
+      const csvCall = vi
+        .mocked(fs.writeFileSync)
+        .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+      if (csvCall) {
+        const csvContent = csvCall[1] as string;
+        const rowLines = csvContent
+          .split('\n')
+          .filter((line) => line.includes('exp1_st_20260101T000000_cy1_S1_00'));
+        expect(rowLines.length).toBeLessThanOrEqual(1);
+      }
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+  });
+
   it('does not leak a resolved filename from one wave into a different wave that shares the same original basename', async () => {
     // originalToResolvedName is declared fresh inside each
     // rcloneCopyFiles() call (one call per wave) — this test guards

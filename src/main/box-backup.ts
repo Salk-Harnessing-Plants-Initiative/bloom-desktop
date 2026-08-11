@@ -75,7 +75,12 @@ function isRcloneInstalled(): Promise<boolean> {
 export function rcloneCopyFiles(
   filePaths: string[],
   boxDestination: string,
-  onFileComplete?: (filename: string) => void
+  // Receives the completed file's ORIGINAL FULL PATH, not a bare
+  // filename — resolvedToOriginalName's values are full paths (see
+  // below), so a future caller wiring this into a progress display
+  // must basename() it themselves if a filename is what they want to
+  // show, rather than assuming this parameter already is one.
+  onFileComplete?: (originalPath: string) => void
 ): Promise<{
   success: boolean;
   erroredFiles: Set<string>;
@@ -97,10 +102,15 @@ export function rcloneCopyFiles(
     // basename would let one image's resolution/error silently overwrite
     // and misattribute onto a completely different image's row. The
     // RESOLVED side is still keyed by basename since that's the actual
-    // physical filename rclone operates on in tmpDir; two different
-    // original paths resolving to the same physical file is a separate,
-    // narrower, already-documented edge case (see resolvedToOriginalName
-    // below), not the one this keying change addresses.
+    // physical filename rclone operates on in tmpDir — two different
+    // original paths resolving to the SAME resolved basename is a
+    // distinct problem this keying change alone does NOT fix (that one
+    // was previously undersold here as "a separate, narrower edge
+    // case," when it's actually a silent-data-loss bug: without the
+    // explicit collision check in the resolution loop below,
+    // ensureSymlinkOrCopy's fs.existsSync(linkPath) guard would make
+    // the second image's symlink a no-op, so only the FIRST image's
+    // bytes ever reach Box while BOTH get marked uploaded).
     // Declared before the try block (not just before use) so the catch
     // block below can still return whatever was resolved before an
     // exception, instead of unconditionally discarding it.
@@ -123,6 +133,28 @@ export function rcloneCopyFiles(
         const resolvedPath = resolveGraviScanPath(filePath);
         if (resolvedPath) {
           const fileName = path.basename(resolvedPath);
+          const claimedBy = resolvedToOriginalName.get(fileName);
+          if (claimedBy !== undefined && claimedBy !== filePath) {
+            // Physical collision: a DIFFERENT original path already
+            // claimed this exact resolved basename earlier in this same
+            // call (e.g. two images from different source directories
+            // whose filenames happen to match). ensureSymlinkOrCopy's
+            // fs.existsSync(linkPath) guard makes a second symlink/copy
+            // to the same tmpDir destination a silent no-op — rclone
+            // would only ever see and upload the FIRST image's bytes,
+            // while this one's real content never reaches Box at all,
+            // yet nothing would report an error for it. Routing it
+            // through the same missing-file path as a genuinely
+            // not-found file (rather than silently reusing the first
+            // image's staged file) means it's correctly marked failed
+            // and retried, instead of falsely marked uploaded.
+            console.warn(
+              `[BoxBackup] Basename collision: "${filePath}" resolves to the same physical filename ("${fileName}") as "${claimedBy}" — treating as unresolved rather than silently overwriting that upload.`
+            );
+            missingFiles.push(filePath);
+            missingFilePaths.add(filePath);
+            continue;
+          }
           resolvedToOriginalName.set(fileName, filePath);
           originalToResolvedName.set(filePath, fileName);
           const linkPath = path.join(tmpDir, fileName);
@@ -203,11 +235,11 @@ export function rcloneCopyFiles(
             // leave every real file unmatched, causing the caller to
             // treat all of them as successfully uploaded — silent,
             // permanent data loss reported as success.
-            const originalName = token
+            const originalPath = token
               ? resolvedToOriginalName.get(token)
               : undefined;
-            if (originalName) {
-              erroredFiles.add(originalName);
+            if (originalPath) {
+              erroredFiles.add(originalPath);
             } else {
               // First wins, not last: once one fatal error kills the
               // rclone process, other in-flight transfers typically log
@@ -223,10 +255,10 @@ export function rcloneCopyFiles(
             /: Copied \(/.test(entry.msg)
           ) {
             const token = entry.msg.split(':')[0].trim();
-            const originalName = token
+            const originalPath = token
               ? resolvedToOriginalName.get(token)
               : undefined;
-            if (originalName) onFileComplete?.(originalName);
+            if (originalPath) onFileComplete?.(originalPath);
           }
         } catch {
           // skip non-JSON lines
@@ -278,7 +310,7 @@ export function rcloneCopyFiles(
         }
         resolve({
           success: false,
-          erroredFiles: new Set(),
+          erroredFiles,
           error: err.message,
           resolvedNames: originalToResolvedName,
         });
