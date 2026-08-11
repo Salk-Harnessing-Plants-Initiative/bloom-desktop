@@ -44,8 +44,25 @@ const execFileAsync = promisify(execFile);
 // can block test teardown. Without this, a hung `powershell.exe`/`ps` call
 // (e.g. a stalled WMI/CIM service on an overloaded CI runner) would block
 // `closeElectronApp()` indefinitely instead of degrading gracefully via the
-// existing try/catch around these calls.
-const PROCESS_QUERY_TIMEOUT_MS = 10_000;
+// existing try/catch around these calls. Kept tight (not e.g. 10s): this
+// runs on EVERY test's teardown, added on top of whatever `electronApp
+// .close()` itself takes for that specific test — a generous per-call
+// budget compounds into enough total overhead to turn an already-slow
+// `close()` (e.g. a test with real disk I/O still flushing) into a
+// `Test timeout ... afterEach hook` failure that would not have occurred
+// pre-fix. A healthy `ps`/`Get-CimInstance` call normally returns in well
+// under a second even under load.
+const PROCESS_QUERY_TIMEOUT_MS = 3_000;
+
+// Bounds how long `electronApp.close()` itself is awaited before giving up
+// and falling through to `waitForProcessExit()`'s own PID-liveness poll
+// (which works independently of `close()` ever resolving). Without this, a
+// slow-to-quit Electron instance (e.g. flushing pending disk I/O) could
+// hold `closeElectronApp()` open indefinitely, with no fallback -- the
+// existing SIGKILL fallback in `waitForProcessExit()` never even gets a
+// chance to run if the `await electronApp.close()` line itself never
+// returns.
+const ELECTRON_CLOSE_TIMEOUT_MS = 15_000;
 
 export interface DescendantProcess {
   pid: number;
@@ -72,13 +89,19 @@ export async function closeElectronApp(
     timeout?: number;
     /** Whether to log progress (default: false) */
     verbose?: boolean;
+    /** Timeout in ms to wait for electronApp.close() to resolve before proceeding anyway (default: 15000). Exposed for testing. */
+    closeTimeout?: number;
   } = {},
   deps: {
     snapshotDescendants: typeof snapshotDescendants;
     killDescendants: typeof killDescendants;
   } = { snapshotDescendants, killDescendants }
 ): Promise<void> {
-  const { timeout = 5000, verbose = false } = options;
+  const {
+    timeout = 5000,
+    verbose = false,
+    closeTimeout = ELECTRON_CLOSE_TIMEOUT_MS,
+  } = options;
 
   if (!electronApp) {
     if (verbose) console.log('[Cleanup] No Electron app to close');
@@ -111,8 +134,19 @@ export async function closeElectronApp(
     const pid = electronApp.process()?.pid;
     if (verbose) console.log(`[Cleanup] Closing Electron app (PID: ${pid})`);
 
-    // Request graceful close
-    await electronApp.close();
+    // Request graceful close, but don't let a slow-to-quit app hold this
+    // open indefinitely -- fall through to the PID-liveness poll below
+    // either way, since that works independently of close() resolving.
+    await Promise.race([
+      electronApp.close(),
+      sleep(closeTimeout).then(() => {
+        if (verbose) {
+          console.warn(
+            `[Cleanup] electronApp.close() did not resolve within ${closeTimeout}ms, proceeding to check process liveness directly`
+          );
+        }
+      }),
+    ]);
 
     // Wait for process to actually exit
     if (pid) {

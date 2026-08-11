@@ -336,6 +336,35 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
     forceKill(rootPid);
   });
 
+  it('1.7c closeElectronApp proceeds to kill descendants even if electronApp.close() never resolves', async () => {
+    const { rootPid, childPids } = await spawnSyntheticTree(2);
+    spawnedPids.push(rootPid, ...childPids);
+
+    const stubApp = {
+      process: () =>
+        ({ pid: rootPid }) as ReturnType<
+          NonNullable<Parameters<typeof closeElectronApp>[0]>['process']
+        >,
+      close: () => new Promise<void>(() => {}), // never resolves
+    } as unknown as Parameters<typeof closeElectronApp>[0];
+
+    const start = Date.now();
+    await expect(
+      closeElectronApp(stubApp, { timeout: 1000, closeTimeout: 300 })
+    ).resolves.toBeUndefined();
+    // Proves closeElectronApp itself doesn't block indefinitely on a hung
+    // close() -- it should return in roughly closeTimeout + the other
+    // (short, timeout: 1000) steps, not hang forever.
+    expect(Date.now() - start).toBeLessThan(5000);
+
+    for (const pid of childPids) {
+      await waitUntil(() => !isProcessRunning(pid));
+      expect(isProcessRunning(pid)).toBe(false);
+    }
+
+    forceKill(rootPid);
+  });
+
   it('1.7b closeElectronApp still tears down the main process when snapshotting throws', async () => {
     const { rootPid } = await spawnSyntheticTree(0);
     spawnedPids.push(rootPid);
