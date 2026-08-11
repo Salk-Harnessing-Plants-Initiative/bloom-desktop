@@ -1246,7 +1246,10 @@ failed:0, errors:['Upload already in progress']}` — matching
       path-separator baseline failures (unchanged from Section 14), no
       new failures. Not yet pushed/CI-confirmed as of writing this
       entry — see 15.17.
-- [ ] 15.17 Push both fix commits, confirm 12.4 (full E2E suite, all 3
-      OSes) is still green, then run a round-2 `/review-pr` pass and
-      iterate (fix → re-review) until no BLOCKING or IMPORTANT findings
-      remain, per explicit instruction.
+- [x] 15.17 Pushed all 3 fix commits (`7b39cb0`, `d77189a`, `d5eee01`).
+      **CI-confirmed, CI run 31461413595**: 12.4 (full E2E suite, all 3
+      OSes) still green, plus every other job (`All Checks Passed`) —
+      the 16 fixes introduced no regressions anywhere in the suite.
+      Proceeding to a round-2 `/review-pr` pass per explicit instruction
+      to iterate (fix → re-review) until no BLOCKING or IMPORTANT
+      findings remain.
