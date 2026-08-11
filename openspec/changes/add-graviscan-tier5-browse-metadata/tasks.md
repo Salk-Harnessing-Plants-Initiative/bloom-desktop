@@ -2244,3 +2244,134 @@ Credentials"`) was parsed for token-matching and then discarded —
       `npm run test:unit`: 1560/1560 real tests passing, only the same
       pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
       local-setup flake (unrelated, unaffected).
+
+## 25. Round-11 `/review-pr` response — 3 findings fixed, 4 deliberately deferred
+
+Ran the same 5-subagent adversarial team against round 10's fix commit
+(`725605b`), explicitly instructed to be maximally suspicious of the
+established "each round's fix leaves a sibling variant of the same bug"
+pattern. Found a genuinely new bug class (CSV metadata drift, never
+previously flagged), one more instance of the punctuation/fallback bug
+family (`?? ` vs `|| ` on an empty string), and a third instance of the
+"last message overwrites first" mistake — this time in error-message
+capture rather than error attribution. Fixed all three with TDD; a
+fourth reviewer's exit-code-semantics concern was reasoned through and
+explicitly declined. Fix commit: `1a6481b`.
+
+- [x] 25.1 **BLOCKING (Scientific Rigor) — `metadata.csv`'s
+      `image_filename` column was built from the stale, unresolved DB
+      path, not the resolved on-disk basename `rcloneCopyFiles` actually
+      uploads the file under.** For any image whose DB-stored path had
+      gone stale (the same `_et_`-rename scenario `resolveGraviScanPath`
+      exists to handle — see 24.1), a human opening that wave's Box
+      folder directly would find a `metadata.csv` naming a file that
+      does not exist anywhere in that same folder — a real,
+      human-visible provenance mismatch between the data and the
+      document describing it, not just an internal bookkeeping quirk.
+      Fixed by resolving each image's path (falling back to the
+      original path if resolution fails) before taking its basename in
+      the `scanRows`-building loop, matching the same resolution
+      `rcloneCopyFiles` already performs. Verified with a test creating
+      a real renamed file on disk and asserting the exported CSV
+      contains the resolved name, not the stale one — this test
+      initially failed for an unrelated infrastructure reason (see
+      25.4), independently root-caused and fixed before the real RED/
+      GREEN cycle could proceed.
+- [x] 25.2 **IMPORTANT (Testing Strategy, proved via mutation testing) —
+      the em-dash fallback introduced in round 10
+      (`result.error ?? 'Failed to load metadata links'`) does not
+      substitute on an empty string.** `??` only triggers on
+      null/undefined; a backend resolving `success: false` with
+      `error: ''` produced a garbled message consisting of a bare
+      leading em dash and no actual error text
+      ("— Quit and reopen the app..."). Fixed by switching to
+      `result.error?.trim() || 'Failed to load metadata links'`, which
+      falls back on any falsy-after-trim value. Added a dedicated test
+      case (`error: ''`) alongside the existing 6-case parameterized
+      punctuation test.
+- [x] 25.3 **IMPORTANT (Behavioural Correctness, proved via mutation
+      testing) — `waveLevelErrorMsg` kept the LAST unattributed
+      level:"error" line, not the first.** When one fatal error (e.g.
+      expired credentials or a quota limit) kills the rclone process,
+      other in-flight transfers typically log their own generic
+      "context canceled"-style errors as they unwind — with "last
+      wins" semantics, one of those uninformative follow-on messages
+      silently overwrote the actual root-cause diagnostic the operator
+      needs to distinguish "re-authenticate first" from "just retry."
+      This is the third instance of an overwrite-vs-preserve mistake in
+      this file this cycle (round 9's punctuation regex, round 10's
+      resolved-basename mapping, now error-message capture), all in the
+      same file. Fixed by changing `waveLevelErrorMsg = entry.msg` to
+      `waveLevelErrorMsg ??= entry.msg`. Verified with a test emitting
+      two distinct unattributed error lines in one wave (a real
+      credentials error, then a generic cancellation) and asserting the
+      credentials error — not the cancellation — is what surfaces.
+- [x] 25.4 **Test-infrastructure root cause, unrelated to the app bug
+      itself but blocking 25.1's RED/GREEN cycle**: `box-backup.ts`
+      imports `fs` via `import * as fs from 'fs'` (a namespace import),
+      while `tests/unit/box-backup.test.ts` used
+      `import fs from 'fs'` (a default import) and spied with
+      `vi.spyOn(fs, 'writeFileSync')`. The two import styles do not
+      share an object identity under this project's Vitest transform,
+      so the spy silently recorded zero calls even though console
+      output proved the write demonstrably ran — a false-negative RED
+      that would have looked like a passing assumption instead of a
+      broken test harness. Root-caused empirically (isolated
+      reproduction confirmed a default-import spy never sees a
+      namespace-import call, and that spying on a namespace import
+      directly throws `Cannot redefine property` in this Node/Vitest
+      combination — neither object-level approach works). Fixed by
+      replacing the object-level spy with a module-level
+      `vi.mock('fs', async (importOriginal) => ...)` that wraps only
+      `writeFileSync` in a `vi.fn` (via `importOriginal`, so every other
+      real fs call — `mkdtempSync`, `symlinkSync`, `rmSync` — is
+      genuinely unaffected), which intercepts at module resolution and
+      is therefore immune to import-style mismatches. Added a top-level
+      `beforeEach` clearing the mock's call history so earlier tests'
+      unrelated `writeFileSync` calls can't leak into a later test's
+      assertions.
+- [x] 25.5 **Deliberately deferred — Scientific Rigor's claim about
+      rclone's real exit-code semantics.** The reviewer argued round
+      10's widened failure condition
+      (`copyResult.erroredFiles.size === 0 || copyResult.error !==
+undefined`) may be over-conservative for ordinary partial
+      failures, if rclone's real (undocumented, in this environment)
+      behavior on an unrelated file's transient error is a non-zero
+      exit code with no accompanying skip-log for files it never
+      touched. Not implemented: even if true, the consequence is a
+      wave being retried when it didn't strictly need to be — safe
+      over-caution — which is categorically less severe than the
+      proven silent-data-loss bugs this whole review cycle exists to
+      fix (24.1, 24.2), and the claim cannot be verified in this
+      environment (rclone isn't installed in CI or available for live
+      testing here). Redesigning defensive, working code around an
+      unverified assumption about a third-party tool's undocumented
+      behavior risks introducing a worse, less-understood regression
+      than the one it would prevent.
+- [x] 25.6 **Deliberately deferred — `resolvedToOriginalName.set()`
+      collision on duplicate DB rows resolving to the same physical
+      file.** A narrow, unverified-as-live edge case (would require two
+      distinct DB image rows whose paths both resolve to the same
+      on-disk file) with no evidence it occurs in practice; the existing
+      behavior (last write wins in the map) is not known to cause data
+      loss since both rows would refer to a file that either uploads or
+      doesn't as a single physical entity.
+- [x] 25.7 **Deliberately deferred — categorizing/interpreting raw
+      rclone diagnostic text for non-technical operators.** A
+      larger-scope UX design effort (e.g. mapping known error substrings
+      to plain-language guidance) rather than a bug fix; out of scope
+      for this review cycle, which surfaces the raw diagnostic text
+      verbatim (24.3) but does not yet interpret it.
+- [x] 25.8 **Deliberately deferred — the dead `erroredFiles.size === 0`
+      disjunct in `runBoxBackup`'s widened failure condition.** Now
+      logically redundant given `copyResult.error`'s invariant (per 2
+      independent reviewers this round and last), but harmless and
+      arguably self-documenting as a fallback if that invariant ever
+      changes; left as-is rather than simplified, to avoid unnecessary
+      churn on defensive-but-correct code.
+- [x] 25.9 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npx eslint --ext .ts,.tsx .`, and `npx prettier --check` all
+      clean. Full `npm run test:unit`: 1563/1563 real tests passing,
+      only the same pre-existing `database-handlers.test.ts`
+      `BLOOM_DATABASE_URL` local-setup flake (unrelated file, unaffected
+      by this round's changes).
