@@ -26,6 +26,15 @@ try {
       } catch (killError) {
         if (killError.code === 'ESRCH') {
           console.log(`Process ${pid} was already terminated`);
+        } else if (killError.code === 'EPERM') {
+          // On Windows, a PID can be recycled by an unrelated (often
+          // system/elevated) process between the dev server exiting and
+          // this cleanup step running, making it unsignalable by this
+          // user. The dev server itself is already gone either way, so
+          // this is not a real failure -- just log and move on.
+          console.log(
+            `Process ${pid} could not be signaled (EPERM) -- likely already exited and its PID was reused`
+          );
         } else {
           throw killError;
         }
