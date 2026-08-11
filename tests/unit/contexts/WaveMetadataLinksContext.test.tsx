@@ -187,6 +187,28 @@ describe('WaveMetadataLinksProvider — cross-component sync', () => {
     expect(result.current.links).toHaveLength(0);
   });
 
+  it('does not double up punctuation when the backend error already ends in a period, exclamation point, or question mark', async () => {
+    // Real Prisma/IPC error messages routinely end in their own full
+    // sentence (e.g. "...does not exist in the current database."). The
+    // fixed "Quit and reopen..." suffix must not be blindly concatenated
+    // onto that, or the result reads as a run-on with doubled
+    // punctuation ("...database.. Quit and reopen...") — exactly the
+    // defect already fixed once for the Download button's tooltip.
+    listGraviMetadata.mockResolvedValue({
+      success: false,
+      error: 'The table `main.GraviExperimentWaveMetadata` does not exist.',
+    });
+    const { result } = renderHook(() => useWaveMetadataLinks('exp-1'), {
+      wrapper: WaveMetadataLinksProvider,
+    });
+
+    await waitFor(() =>
+      expect(result.current.linkError).toBe(
+        'The table `main.GraviExperimentWaveMetadata` does not exist. Quit and reopen the app to retry (this will interrupt any active scan or backup).'
+      )
+    );
+  });
+
   it('clears a prior linkError once a subsequent link() succeeds, instead of leaving it stuck', async () => {
     // The error-disabled state (e.g. BrowseGraviScans' Download button)
     // must be reactive in both directions — a stale permanently-set

@@ -46,7 +46,7 @@ function ExperimentWaveLinks({ experimentId }: { experimentId: string }) {
     }
   };
 
-  if (links.length === 0) return null;
+  if (links.length === 0 && !linkError) return null;
 
   return (
     <>

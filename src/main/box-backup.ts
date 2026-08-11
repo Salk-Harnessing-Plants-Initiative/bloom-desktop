@@ -139,6 +139,16 @@ export function rcloneCopyFiles(
         'INFO',
       ]);
 
+      // Known real filenames — an error-level log line's extracted token
+      // is only trustworthy as a PER-FILE error if it actually matches
+      // one of these. rclone also logs global/config failures (auth
+      // expiry, quota exceeded, backend outage) at level:"error" with no
+      // per-file attribution (e.g. "Failed to copy: googleapi: Error
+      // 401..."); blindly trusting that extracted token as a filename
+      // would leave every real file unmatched in erroredFiles, causing
+      // the caller to treat all of them as successfully uploaded —
+      // silent, permanent data loss reported as success.
+      const knownFileNames = new Set(filePaths.map((p) => path.basename(p)));
       const erroredFiles = new Set<string>(missingFileNames);
       let stderrBuffer = '';
       proc.stderr.on('data', (data: Buffer) => {
@@ -152,7 +162,9 @@ export function rcloneCopyFiles(
             const entry = JSON.parse(line);
             if (entry.level === 'error' && entry.msg) {
               const filename = entry.msg.split(':')[0].trim();
-              if (filename) erroredFiles.add(filename);
+              if (filename && knownFileNames.has(filename)) {
+                erroredFiles.add(filename);
+              }
             } else if (
               entry.level === 'info' &&
               entry.msg &&
@@ -174,7 +186,9 @@ export function rcloneCopyFiles(
             const entry = JSON.parse(stderrBuffer);
             if (entry.level === 'error' && entry.msg) {
               const filename = entry.msg.split(':')[0].trim();
-              if (filename) erroredFiles.add(filename);
+              if (filename && knownFileNames.has(filename)) {
+                erroredFiles.add(filename);
+              }
             } else if (
               entry.level === 'info' &&
               entry.msg &&

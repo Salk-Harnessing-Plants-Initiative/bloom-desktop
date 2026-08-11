@@ -67,6 +67,42 @@ describe('rcloneCopyFiles', () => {
     const result = await resultPromise;
     expect(result.success).toBe(true);
   });
+
+  it('does not silently mark every file as uploaded when rclone logs a wave-level error unattributable to any real filename', async () => {
+    // rclone can log a `level:"error"` line for a global/config failure
+    // (auth-token expiry, quota exceeded, backend outage) with no
+    // per-file attribution — e.g. `{"level":"error","msg":"Failed to
+    // copy: googleapi: Error 401: Invalid Credentials"}`. The parser
+    // extracts a "filename" via `msg.split(':')[0].trim()` regardless of
+    // whether that token is a real file — here it'd be "Failed to copy",
+    // which matches none of the real filenames. If that bogus token is
+    // trusted as a per-file error, every REAL file fails to match it and
+    // gets treated as if it copied fine (erroredFiles.has(realFilename)
+    // is false for all of them), silently reporting a fully successful
+    // upload for a wave that never left the machine — permanent, silent
+    // data loss with no future retry (box_status becomes 'uploaded').
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles([sourceFile], 'ExperimentA/wave_0');
+    fakeProc.stderr.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          level: 'error',
+          msg: 'Failed to copy: googleapi: Error 401: Invalid Credentials',
+        }) + '\n'
+      )
+    );
+    fakeProc.emit('close', 1);
+
+    const result = await resultPromise;
+    expect(result.success).toBe(false);
+    // The real file must NOT be silently treated as uploaded just
+    // because the bogus extracted token doesn't match its name.
+    expect(result.erroredFiles.has(path.basename(sourceFile))).toBe(false);
+    expect(result.erroredFiles.size).toBe(0);
+  });
 });
 
 describe('runBoxBackup', () => {
@@ -448,8 +484,11 @@ describe('runBoxBackup', () => {
     );
 
     expect(result.success).toBe(false);
-    // Both images end up box_status:'failed' — CSV is never even attempted
-    // once every image failed its own copy.
+    // Both images end up box_status:'failed'. Note: the metadata CSV
+    // step still runs unconditionally afterward regardless of whether
+    // any image succeeded (a separate, pre-existing behavior not
+    // asserted here) — this test only checks the image-status/progress
+    // counters, not whether the CSV upload was attempted.
     const failCall = db.graviImage.updateMany.mock.calls.find(
       (call) => call[0].data.box_status === 'failed'
     );
@@ -457,6 +496,110 @@ describe('runBoxBackup', () => {
     const lastUpdate = progressUpdates[progressUpdates.length - 1];
     expect(lastUpdate.completedImages).toBe(0);
     expect(lastUpdate.failedImages).toBe(2);
+  });
+
+  it("does not let one wave's total-rclone-failure correction wipe out an earlier wave's already-valid completed count", async () => {
+    // waveCompletedImages must reset every wave, not every experiment or
+    // function call — with only a single-wave fixture, a version of the
+    // fix that resets per-experiment (or never resets at all) is
+    // indistinguishable from the correct per-wave version, since both
+    // yield 0 for n=1. This wave-0-succeeds-then-wave-1-total-fails
+    // scenario is the one case that can tell them apart: if
+    // waveCompletedImages carried wave 0's contribution into wave 1's
+    // correction, wave 1's failure would incorrectly erase wave 0's
+    // valid completedImages credit too.
+    const sourceFile2 = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(sourceFile2, 'fake tiff bytes 2');
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [{ id: 'img1', path: sourceFile }],
+      },
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 1,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [{ id: 'img2', path: sourceFile2 }],
+      },
+    ]);
+
+    let imageCopyCallCount = 0;
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else if (argv.length > 4) {
+        imageCopyCallCount++;
+        if (imageCopyCallCount === 1) {
+          // Wave 0 (processed first, sorted by wave_number): image
+          // copies cleanly.
+          queueMicrotask(() => {
+            proc.stderr.emit(
+              'data',
+              Buffer.from(
+                JSON.stringify({
+                  level: 'info',
+                  msg: `${path.basename(sourceFile)}: Copied (new)`,
+                }) + '\n'
+              )
+            );
+            proc.emit('close', 0);
+          });
+        } else {
+          // Wave 1: logs "Copied" for its one image, then the whole
+          // rclone process dies with no per-file error info.
+          queueMicrotask(() => {
+            proc.stderr.emit(
+              'data',
+              Buffer.from(
+                JSON.stringify({
+                  level: 'info',
+                  msg: `${path.basename(sourceFile2)}: Copied (new)`,
+                }) + '\n'
+              )
+            );
+            proc.emit('close', 1);
+          });
+        }
+      } else {
+        // Metadata CSV copy for either wave — succeeds, keeping focus on
+        // the image-copy counters.
+        queueMicrotask(() => proc.emit('close', 0));
+      }
+      return proc as never;
+    });
+
+    const progressUpdates: Array<{
+      totalImages: number;
+      completedImages: number;
+      failedImages: number;
+    }> = [];
+
+    await runBoxBackup(
+      db as unknown as Parameters<typeof runBoxBackup>[0],
+      (progress) => progressUpdates.push({ ...progress })
+    );
+
+    const lastUpdate = progressUpdates[progressUpdates.length - 1];
+    // Wave 0's valid completed image must survive wave 1's correction.
+    expect(lastUpdate.completedImages).toBe(1);
+    expect(lastUpdate.failedImages).toBe(1);
   });
 });
 

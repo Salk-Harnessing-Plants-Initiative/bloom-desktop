@@ -275,4 +275,52 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       screen.queryByText(/metadata file successfully linked/i)
     ).not.toBeInTheDocument();
   });
+
+  it('surfaces a wave-metadata fetch error on the row even when that experiment has no links yet', async () => {
+    // ExperimentWaveLinks early-returned null whenever links.length === 0
+    // — which is indistinguishable from "no waves linked yet" (the
+    // default state for every experiment before its first link) from
+    // "the fetch that would tell us failed." That early return fired
+    // BEFORE linkError was ever checked, so the most common trigger for
+    // this failure (an experiment with nothing linked yet) silently
+    // showed nothing at all on that row — not even the recourse message
+    // this exact failure mode was given across several review rounds.
+    //
+    // Two experiments are used deliberately: the page's attach panel
+    // defaults attachExperimentId to the FIRST experiment and renders
+    // its own (unrelated) linkError — a single-experiment version of
+    // this test would pass vacuously via that panel showing the same
+    // error for the same shared experimentId, without ever exercising
+    // ExperimentWaveLinks's own early-return bug. Failing the SECOND
+    // experiment's fetch (not the attach panel's default) isolates the
+    // row-level component specifically.
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [
+        makeExperiment({
+          id: 'exp-1',
+          name: 'Drought Study',
+          experiment_type: 'graviscan',
+        }),
+        makeExperiment({
+          id: 'exp-2',
+          name: 'Salinity Study',
+          experiment_type: 'graviscan',
+        }),
+      ],
+    });
+    listGraviMetadata.mockImplementation((experimentId: string) =>
+      experimentId === 'exp-2'
+        ? Promise.resolve({ success: false, error: 'Database is locked' })
+        : Promise.resolve({ success: true, data: [] })
+    );
+    renderPage('graviscan');
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/salinity study/i).length).toBeGreaterThan(0);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/database is locked/i)).toBeInTheDocument();
+    });
+  });
 });
