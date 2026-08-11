@@ -2162,3 +2162,85 @@ waveCompletedImages = 0;` out of the per-wave loop and into the
       `npm run test:unit`: 1552/1552 real tests passing, only the same
       pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
       local-setup flake (unrelated, unaffected).
+
+## 24. Round-10 `/review-pr` response — 2 blocking + 2 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against round 9's fix commit
+(`0b42a8b`), which had fixed the cycle's most severe finding
+(`rcloneCopyFiles`'s false-success bug). Three independent reviewers
+converged on a real, narrower sibling of that exact same bug class the
+round-9 fix didn't fully close, a fourth found a second distinct sibling
+via the mixed-failure angle, and two performed live mutation testing
+that caught the round-9 punctuation fix reintroducing its own bug class
+for the third time. Fixed all of it with TDD — commit `725605b`.
+
+- [x] 24.1 **BLOCKING — `knownFileNames` was built from unresolved DB
+      paths, but rclone actually copies/logs files under their RESOLVED
+      basename.** `resolveGraviScanPath()` exists specifically to handle
+      a real, previously-encountered, documented production scenario:
+      the DB stores a path with only `_st_` (start time) while the file
+      on disk has since been renamed to include `_et_` (end time), or
+      has a different extension. In a wave containing such a renamed
+      file plus at least one other correctly-matched error (so
+      `erroredFiles` isn't empty and the safe "mark whole wave failed"
+      fallback doesn't trigger), the renamed file's real per-file error
+      would fail the unresolved-name check and be silently dropped —
+      leaving it (incorrectly) marked `box_status: 'uploaded'` despite
+      never actually succeeding. Confirmed independently by 3 of 5
+      subagents. Fixed by tracking a resolved-basename → original
+      -basename map during the existing symlink-staging loop and
+      translating every extracted log token through it (for both the
+      error-attribution and the "Copied" progress-tracking branches),
+      instead of a flat allow-list that only knew about unresolved names.
+- [x] 24.2 **BLOCKING — a non-empty `erroredFiles` set was treated as
+      proof every OTHER file in the wave was confirmed uploaded, which
+      isn't true when rclone crashed partway through.** If rclone logs a
+      real per-file error for one file, then dies (non-zero exit) before
+      ever attempting the rest, those remaining files are
+      indistinguishable from files silently skipped because they already
+      exist at the destination (rclone's own designed cheap-retry
+      behavior) — yet the old condition
+      (`!copyResult.success && copyResult.erroredFiles.size === 0`)
+      only fell back to the safe "mark whole wave failed" path when
+      _zero_ per-file matches existed, so this exact mixed case still
+      pushed every un-mentioned file into `uploadedIds`. Fixed by
+      widening the trigger to any non-zero exit code
+      (`copyResult.error !== undefined`), not just an empty
+      `erroredFiles` set — empirically verified via mutation testing
+      (reverting the widened condition makes the new regression test
+      fail exactly as predicted) that this does not affect the
+      legitimate `code === 0` partial-failure case any existing test
+      already covers.
+- [x] 24.3 **IMPORTANT — the operator-facing wave-failure message never
+      said _why_ a wave failed, only "N/M files failed."** The actual
+      rclone diagnostic text (e.g. `"googleapi: Error 401: Invalid
+Credentials"`) was parsed for token-matching and then discarded —
+      an operator couldn't tell "re-authenticate rclone first" apart
+      from "just a transient network blip, retry is fine," and the
+      `console.error` that _did_ include it is main-process-only,
+      invisible in the packaged app. Fixed by capturing the real
+      message from an unattributed wave-level error line and appending
+      it to the pushed error string.
+- [x] 24.4 **IMPORTANT (self-inflicted, found via independently-run live
+      mutation testing by 2 reviewers) — round 9's punctuation-stripping
+      regex (`/[.!?]+$/`) still doubled up on realistic error shapes it
+      was written to handle.** A trailing parenthetical-then-period
+      (`"...(see logs)."`) or trailing whitespace after punctuation
+      (`"Failed. "`) both defeat a `$`-anchored regex, reproducing the
+      exact "..double-period.. Quit and reopen.." run-on this exact bug
+      class has now needed fixing three times (tooltip → round 8's
+      plain-message fix → round 9's own regex). One reviewer also proved
+      the accompanying test itself was too weak to catch this — a
+      deliberately-broken `/\.$/`-only mutant still passed every
+      assertion in the file. Replaced the strip-and-rejoin approach
+      entirely with an em-dash join
+      (`` `${rawError.trim()} — Quit and reopen...` ``), which cannot
+      collide with the source string's own terminal punctuation
+      regardless of its shape — verified against 6 distinct edge cases
+      (period, `!`, `?`, parenthetical+period, trailing whitespace, no
+      punctuation) in one parameterized test.
+- [x] 24.5 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npx eslint`, and `npx prettier --check` all clean. Full
+      `npm run test:unit`: 1560/1560 real tests passing, only the same
+      pre-existing `database-handlers.test.ts` `BLOOM_DATABASE_URL`
+      local-setup flake (unrelated, unaffected).
