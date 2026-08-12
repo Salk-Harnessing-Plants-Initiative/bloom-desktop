@@ -3360,3 +3360,139 @@ symlinksCreated++;` call was unconditional — never gated behind
       `electron-cleanup.test.ts`) reproduced this run.
       `tests/unit/box-backup.test.ts`: 39/39 passing (37 pre-existing +
       2 new this round).
+
+## 34. Round-20 `/review-pr` response — 0 blocking, 3 important findings, all fixed; explicit architectural-refactor recommendation raised and deliberately deferred pending user decision
+
+Ran the same 5-subagent adversarial team against round 19's fix commit
+(`2ad8a69`). **Zero BLOCKING findings for the first time in this
+sub-feature's 9-round history** — all five reviewers, including
+Behavioural Correctness (the lens that found round 19's own two bugs by
+empirically running tests and inspecting real `tmpDir`/`erroredFiles`
+state), independently traced the highest-risk scenarios (real
+collisions, 3-way duplicate groups, a duplicate's own never-staged
+basename colliding with an unrelated third file, propagation-loop
+ordering) and found them all correct. Three IMPORTANT findings
+converged from multiple independent lenses on the same underlying
+theme: round 19's fix was correct but under-verified at its edges. Fix
+commit: `1714ccf`.
+
+- [x] 34.1 **IMPORTANT (Code Quality) — a pre-existing diagnostic log
+      line silently changed meaning as a side effect of round 19's fix,
+      and now misleadingly under-reports.** `symlinksCreated` used to
+      count every resolved file (winner + duplicates); round 19 correctly
+      narrowed it to count only unique physical files actually staged
+      (to fix the orphan-upload bug), but nobody audited its one
+      remaining consumer: `console.log('...${symlinksCreated}/${filePaths.length}
+files found on disk')`. A wave with a duplicate pair now logs
+      e.g. "1/2 files found on disk" even though both genuinely exist —
+      exactly the kind of misleading diagnostic an operator debugging
+      this feature's own 9-round history would reach for first, reading
+      "1 is missing" when nothing is. Fixed by introducing a separate
+      `resolvedCount` counter (incremented for every resolved file,
+      duplicate or not) for the log line's numerator, leaving
+      `symlinksCreated`'s new, narrower meaning ("unique physical files
+      staged") intact for the early-exit guard that actually needs it —
+      confirmed the two remain equivalent at zero (the guard's only
+      decision point) since the first resolved file in any wave always
+      becomes a winner.
+- [x] 34.2 **IMPORTANT (Testing Strategy, Scientific Rigor —
+      independently converging on the same gap) — the round-19
+      propagation fix's own test used a crashing exit code (`close(1)`),
+      which routes through `runBoxBackup`'s PRE-EXISTING "total rclone
+      failure" branch (any non-zero exit already marks every
+      non-collision image failed, independent of `erroredFiles`) — so
+      the test could not actually distinguish "the fix works" from "the
+      fix doesn't exist and it doesn't matter."** Scientific Rigor
+      independently proved this by hand-tracing the classification
+      logic; Testing Strategy independently proved it empirically by
+      deleting the propagation loop and re-running a hand-written
+      `runBoxBackup`-level probe with the same `close(1)` shape — it
+      still passed. Testing Strategy additionally found the propagation
+      loop's placement (after the close handler's final buffered-line
+      flush) was completely unverified — a mutation swapping the two
+      statements' order passed all 39 existing tests silently. Fixed by
+      adding a new `rcloneCopyFiles`-level test using a CLEAN exit code
+      (`close(0)`) with a genuinely-matched per-file error for the
+      winner, delivered **without a trailing newline** so it can only
+      ever be parsed via the close handler's own buffered-line flush —
+      simultaneously isolating the fix's real, exclusive contribution
+      (the `code===0` per-file-error case) and pinning the ordering
+      dependency. Verified by temporarily swapping the propagation
+      loop's placement back before the flush: confirmed this new test
+      fails (and only this test — the rest of the suite stays green),
+      then manually restored and confirmed `git diff` clean.
+- [x] 34.3 **IMPORTANT (Testing Strategy — real gap, careful to build
+      correctly) — no `runBoxBackup`-level test confirmed a duplicate's
+      DB row actually lands `box_status:'failed'` end-to-end when the
+      winner's transfer fails; naively mirroring the existing
+      `rcloneCopyFiles`-level test's `close(1)` shape at the
+      `runBoxBackup` level would have been VACUOUS**, passing via the
+      same unrelated blanket-failure branch identified in 34.2. Fixed by
+      adding a `runBoxBackup`-level test using the same clean-exit-code
+      construction as 34.2, confirming both the winner and its duplicate
+      end up in the `box_status:'failed'` `updateMany` call and neither
+      in `'uploaded'`. Verified failing (duplicate wrongly `'uploaded'`)
+      when the propagation loop is temporarily removed, passing after
+      restoring it.
+- [x] 34.4 Ported two additional regression tests for scenarios found
+      **already correct** by Behavioural Correctness's own empirical
+      probes (run in a disposable isolated worktree, not part of the
+      committed diff) but previously uncovered by any test in the repo:
+      (a) a third, genuinely distinct file sharing a basename with a
+      literal duplicate's own (never-staged) basename does NOT trigger a
+      false-positive collision, since that basename was never actually
+      written to tmpDir for the third file to conflict with; (b) a
+      failed winner's transfer status propagates to ALL of its literal
+      duplicates in a three-way duplicate group, not just the first
+      (guards against a future accidental early `break`/`return` in the
+      propagation loop). While porting (a), found and fixed a mock-setup
+      bug of my own: the test's initial draft captured
+      `fs.realpathSync` and called it recursively from inside its own
+      `mockImplementationOnce` callback to "pass through" to the real
+      implementation — but since `fs.realpathSync` at that point IS the
+      mock, the recursive call consumes the NEXT queued
+      `mockImplementationOnce` too, silently misaligning every
+      subsequent call's expected return value (this is the exact
+      failure mode the ORIGINAL differently-cased-duplicate test's own
+      comment, several rounds earlier, already warned against — the
+      warning just hadn't been generalized into a rule applied
+      consistently to every new test using this pattern). Fixed by
+      precomputing both real canonical paths BEFORE installing any
+      mock override, matching that original test's established safe
+      pattern, with no call-through/recursion at all.
+- [x] 34.5 **Explicitly raised, not acted on this round — an
+      architectural-refactor recommendation from Code Quality.** Given
+      this sub-feature is now at its 9th/10th consecutive fix and round
+      19's own commit message explicitly stated both of its bugs
+      "predate round 18, traceable to round 14-16's original
+      symlink-staging design," Code Quality applied the
+      systematic-debugging "3+ fixes revealing new problems in different
+      places = architectural issue" heuristic and recommended replacing
+      the current single-pass, map-heavy design (resolution,
+      duplicate/collision classification, physical staging, and
+      bookkeeping all interleaved in one loop, with an ever-growing set
+      of parallel maps reconstructing "which rows share a physical file"
+      after the fact) with an explicit group-based model: resolve +
+      realpath ALL files first, group by real path into
+      `{winnerOriginalPath, winnerFileName, allOriginalPaths}`
+      structures, THEN run staging/collision-detection/error-propagation
+      as simple passes over that group structure — collapsing five
+      overlapping maps into one and making "does X apply to duplicates
+      too" answerable by construction rather than by careful
+      iteration-order reasoning each time. This is a substantial,
+      higher-risk redesign of currently-working, extensively-tested code
+      — a materially different kind of change than the targeted bug
+      fixes every prior round has made, and a scope decision beyond this
+      round's own findings. Not undertaken this round pending an explicit
+      decision on whether to pursue it (see conversation for the
+      recommendation as raised to the user).
+- [x] 34.6 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1585/1586 real tests passing; the one failure
+      (`electron-cleanup.test.ts`'s previously-documented descendant-
+      snapshot timing flake, untouched by this round's diff) confirmed
+      unrelated — `database-handlers.test.ts`'s previously-documented
+      `BLOOM_DATABASE_URL` local-setup issue and `AccessionForm.test.tsx`'s
+      flaky timeout did not reproduce this run.
+      `tests/unit/box-backup.test.ts`: 43/43 passing (39 pre-existing +
+      4 new this round).
