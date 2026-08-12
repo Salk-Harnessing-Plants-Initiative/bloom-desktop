@@ -3602,3 +3602,85 @@ lifetime. Fix commit: `b2529f8`.
       `tests/unit/box-backup.test.ts`: 43/43 passing (unchanged count —
       this round strengthened an existing test's mock setup and
       assertion rather than adding a new one).
+
+## 36. Round-22 `/review-pr` response — CONVERGENCE: 0 blocking, 0 important findings across all 5 reviewers
+
+Ran the same 5-subagent adversarial team against round 21's fix commit
+(`b2529f8`) — a small diff (a pre-existing test's mock-recursion fix,
+plus two documentation-only comments; zero production behavior change).
+**All five reviewers independently reported zero BLOCKING and zero
+IMPORTANT findings — the first round in this sub-feature's 11-round
+history (rounds 12-22) to do so.** This satisfies the standing
+instruction's convergence criterion ("iterate rounds of review and
+fixes until there are not blocking or important issues"). Fix commit:
+`e183750` (a one-clause comment-precision fix; see 36.1).
+
+Notable corroborating evidence from this round, beyond the plain
+zero-count:
+
+- **Testing Strategy** independently reproduced all of round 21's
+  mutation-testing claims from scratch (re-throw instead of fallback →
+  fails; a faithful reproduction of the ORIGINAL round-16 silent-merge
+  bug via a basename-keyed duplicate check → fails; reverting only the
+  strengthened assertion → still passes; reverting only the mock fix
+  while keeping the strengthened assertion → fails, isolating exactly
+  what the assertion catches) and grepped the entire test file for any
+  remaining instance of the recursive-mock-consumption pattern that
+  caused round 21's bug — found none.
+- **Behavioural Correctness** independently grepped all 10
+  `mockImplementationOnce`/`mockImplementation` call sites in the test
+  file (not just the two already fixed) and confirmed every other
+  instance already uses the safe precompute-before-override pattern,
+  then did a fresh, first-principles, no-history-assumed trace of the
+  entire `rcloneCopyFiles` function end-to-end and explicitly signed
+  off: "this is a real 'done,' not fatigue-driven sign-off."
+- **Scientific Rigor** gave an explicit convergence verdict: "I
+  consider this sub-feature (rounds 12-22) converged... remaining items
+  are either explicitly deferred architectural/UX polish or
+  comment-wording nits, not correctness gaps affecting metadata
+  integrity, box_status semantics, or data safety."
+- **Code Quality** and **Security & Cross-Platform** both gave clean
+  9-10/10-equivalent verdicts confirming the production diff is
+  genuinely comment-only with zero behavioral/security/platform
+  surface.
+
+- [x] 36.1 **Fixed (Scientific Rigor, SUGGESTION-tier, applied since it
+      was cheap and correctness-improving) — a new comment claimed
+      `fs.existsSync(linkPath)` and `claimedBasenamesLower.has(...)`
+      are "provably equivalent," but this is only true on the
+      case-insensitive filesystems this app targets (Windows, default
+      macOS).** `claimedBasenamesLower` always explicitly folds case;
+      `fs.existsSync`'s case sensitivity follows the real OS — so on a
+      case-SENSITIVE filesystem (Linux) the two checks could diverge
+      for a differently-cased pair that isn't actually a destination
+      conflict. Scoped the comment's claim explicitly to match the
+      qualifier already used two comments above it in the same
+      function, rather than leaving an unqualified universal claim that
+      could mislead a future reader.
+- [x] 36.2 Verified locally after the fix: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1586/1587 real tests passing; the one
+      failure (`database-handlers.test.ts`'s `BLOOM_DATABASE_URL`
+      local-setup issue, untouched by this round's diff, previously
+      documented) confirmed unrelated.
+      `tests/unit/box-backup.test.ts`: 43/43 passing (unchanged — this
+      round's fix was comment-only).
+- [x] 36.3 **Per the standing instruction's own stated exit
+      condition, this closes the iterative review-and-fix loop for the
+      Box-backup basename-collision/duplicate-detection sub-feature.**
+      Two items remain explicitly open for a decision outside this
+      review cycle's scope, surfaced to the user (not silently
+      dropped, not autonomously acted on): 1. An architectural-refactor recommendation (30.5's successor,
+      first raised at 34.5, reinforced by 35.4's order-dependent-
+      classification finding): replace the current single-pass,
+      multi-map design with an explicit group-based model
+      (resolve + realpath all files first, group by real path, then
+      run staging/collision-detection/error-propagation as simple
+      passes over groups). Not undertaken — a materially larger,
+      higher-risk change than any targeted bug fix in rounds 12-22,
+      and a scope decision beyond what any single review round's
+      findings justify unilaterally. 2. The other previously-deferred items (30.4, 30.5, 32.3, 32.4,
+      and the metadata.csv duplicate-identifying-column gap raised
+      in round 19's review) remain open product/UX follow-ups, not
+      correctness defects — tracked here for whoever picks up the
+      next round of work on this feature.
