@@ -57,6 +57,7 @@ describe('useScanSession', () => {
   let getScanStatus: ReturnType<typeof vi.fn>;
   let getOutputDir: ReturnType<typeof vi.fn>;
   let verifyPlates: ReturnType<typeof vi.fn>;
+  let markJobRecorded: ReturnType<typeof vi.fn>;
   let graviscansCreate: ReturnType<typeof vi.fn>;
   let graviscanSessionsCreate: ReturnType<typeof vi.fn>;
   let graviscanSessionsComplete: ReturnType<typeof vi.fn>;
@@ -102,6 +103,7 @@ describe('useScanSession', () => {
     verifyPlates = vi
       .fn()
       .mockResolvedValue({ success: true, results: [], swaps: [] });
+    markJobRecorded = vi.fn().mockResolvedValue({ success: true });
     graviscansCreate = vi
       .fn()
       .mockResolvedValue({ success: true, data: { id: 'gs-1' } });
@@ -118,6 +120,7 @@ describe('useScanSession', () => {
       getScanStatus,
       getOutputDir,
       verifyPlates,
+      markJobRecorded,
       readScanImage: vi.fn().mockResolvedValue({
         success: true,
         dataUri: 'data:image/tiff;base64,x',
@@ -1291,6 +1294,88 @@ describe('useScanSession', () => {
         resolution: 2400,
       })
     );
+  });
+
+  // ── completedJobsRef restore on remount (task 23.1, design.md Decision 14) ─
+
+  it('marks a job recorded (window.electron.gravi.markJobRecorded) once its DB write succeeds', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+
+    await waitFor(() =>
+      expect(markJobRecorded).toHaveBeenCalledWith('sc-1:00')
+    );
+  });
+
+  it('a job already recorded before a mid-scan remount is still included in QR verification after restore (regression: completedJobsRef was never rebuilt on restore)', async () => {
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isActive: true,
+        experimentId: 'exp-1',
+        phenotyperId: 'pheno-1',
+        waveNumber: 0,
+        resolution: 1200,
+        currentCycle: 1,
+        totalCycles: 1,
+        coordinatorState: 'scanning',
+        scanStartedAt: 1000,
+        nextScanAt: null,
+        jobs: {
+          'sc-1:00': {
+            scannerId: 'sc-1',
+            plateIndex: '00',
+            outputPath: '/out/00.tiff',
+            plantBarcode: 'PLATE_001',
+            transplantDate: null,
+            customNote: null,
+            gridMode: '2grid',
+            status: 'recorded',
+          },
+          'sc-1:01': {
+            scannerId: 'sc-1',
+            plateIndex: '01',
+            outputPath: '/out/01.tiff',
+            plantBarcode: 'PLATE_002',
+            transplantDate: null,
+            customNote: null,
+            gridMode: '2grid',
+            status: 'pending',
+          },
+        },
+      },
+    });
+
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+
+    await waitFor(() => expect(result.current.isScanning).toBe(true));
+    // Only the still-pending job restores into pendingJobs.
+    expect(result.current.pendingJobs['sc-1:00']).toBeUndefined();
+    expect(result.current.pendingJobs['sc-1:01']).toBeDefined();
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01.tiff',
+    });
+
+    await waitFor(() => expect(verifyPlates).toHaveBeenCalled());
+    const plates = verifyPlates.mock.calls[0][0] as Array<{
+      plateIndex: string;
+    }>;
+    expect(plates.map((p) => p.plateIndex).sort()).toEqual(['00', '01']);
   });
 
   it('a failed database.graviscans.create() (recordCompletedJob) surfaces an error rather than failing silently', async () => {

@@ -721,3 +721,41 @@ abnormal-termination marker (design.md Decision 13).
       and lint both clean.
 - [x] 22.6 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 23. Restore completedJobsRef on remount; wire up the already-built markJobRecorded (TDD, found during /review-pr round 5)
+
+`/review-pr` found `completedJobsRef` — the only source `runVerification()`
+reads at session end — is never rebuilt on remount, silently excluding
+already-completed plates from QR verification after a navigate-away-and-back.
+Implementing that surfaced a prerequisite gap: nothing calls the already-wired
+`markJobRecorded()`, so the backend's own per-job status never leaves
+`'pending'` for the RESTORE path to read in the first place (design.md
+Decision 14).
+
+- [x] 23.1 Write failing tests in `tests/unit/hooks/useScanSession.test.ts`:
+      after a job completes, `window.electron.gravi.markJobRecorded(key)` is
+      called with the completed job's key; simulate a remount mid-scan via
+      `getScanStatus()` returning one job with `status: 'recorded'` (already
+      done) and one with `status: 'pending'` — confirm only the pending one
+      appears in `pendingJobs`, and confirm that when the session later ends,
+      `verifyPlates(...)` is called with a plate entry for the
+      already-`'recorded'` job too (not just jobs that completed after the
+      remount).
+- [x] 23.2 Add the `markJobRecorded` mock to this test file's shared
+      `beforeEach` gravi mock (matching the existing pattern for
+      `getScanStatus`/`getOutputDir`/etc.).
+- [x] 23.3 Call `window.electron.gravi.markJobRecorded(key)` in the
+      `onScanComplete` handler once `recordCompletedJob()` resolves,
+      fire-and-forget with its own `.catch(() => {})`. In the RESTORE effect,
+      populate `completedJobsRef.current` from any `status.jobs` entry whose
+      status is `'recorded'` or `'complete'`, using `job.imagePath ??
+    job.outputPath` since the backend never separately stores the real
+      captured path. Run 23.1's tests green.
+- [x] 23.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1639 passed, same 5 pre-existing failure files
+      (config-store, electron-cleanup, image-uploader, AccessionForm,
+      scan-coordinator path-separator), zero new failures. `tsc --noEmit`
+      and lint both clean.
+- [x] 23.5 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.

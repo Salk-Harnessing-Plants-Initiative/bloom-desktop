@@ -513,16 +513,26 @@ export function useScanSession(
         // Always recorded, even on a duplicated/retried event for a job
         // already removed from `pendingJobs` — the backend's own upsert is
         // what makes the repeat safe (tasks.md 12.3), not a hook-side guard.
-        void recordCompletedJob(job, imagePath, cycleNumber).catch(
-          (err: unknown) => {
+        void recordCompletedJob(job, imagePath, cycleNumber)
+          .then(() => {
+            // Advances the backend's own per-job status past 'pending' so a
+            // later remount's RESTORE effect can tell this job apart from
+            // one still genuinely in flight (design.md Decision 14). A
+            // failure here only risks this specific job not being
+            // recognized as already-done on a *future* remount — the
+            // completed-job record itself already landed via
+            // recordCompletedJob above, so it's a quieter, non-blocking
+            // failure mode, not a data-loss one.
+            void gravi.markJobRecorded?.(key).catch(() => {});
+          })
+          .catch((err: unknown) => {
             dispatch({
               type: 'ERROR',
               payload: {
                 error: `Failed to save captured plate ${key}: ${err instanceof Error ? err.message : String(err)}`,
               },
             });
-          }
-        );
+          });
 
         markJobAccountedFor(key);
       }
@@ -621,11 +631,25 @@ export function useScanSession(
 
       const jobs: Record<string, ScanSessionJob> = status.jobs ?? {};
       const pendingJobs: Record<string, ScanSessionJob> = {};
+      const restoredCompletedJobs: Record<string, ScanSessionJob> = {};
       for (const [key, job] of Object.entries(jobs)) {
         if (job.status === 'pending' || job.status === 'scanning') {
           pendingJobs[key] = job;
+        } else if (job.status === 'recorded' || job.status === 'complete') {
+          // markJobRecorded() (design.md Decision 14) is what makes this
+          // status reachable at all — without it every job would still
+          // report 'pending' here, indistinguishable from one genuinely
+          // still in flight. The backend never separately stores the real
+          // captured path, only the deterministic path assigned at job
+          // creation, which the scanner always writes to.
+          restoredCompletedJobs[key] = {
+            ...job,
+            status: 'complete',
+            imagePath: job.imagePath ?? job.outputPath,
+          };
         }
       }
+      completedJobsRef.current = restoredCompletedJobs;
 
       if (
         typeof status.waveNumber === 'number' &&

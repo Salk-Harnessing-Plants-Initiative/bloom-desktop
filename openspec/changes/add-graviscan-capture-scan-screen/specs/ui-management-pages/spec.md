@@ -419,6 +419,13 @@ phenotyper/wave/resolution) when the operator navigates away and back to
 by calling `getScanStatus()` on mount and rehydrating from its
 `isActive: true` response.
 
+On each job completion, the screen SHALL call `markJobRecorded()` so the
+main process's own record of that job's status advances past `pending` —
+restoring in-progress-scan state on a later remount SHALL correctly exclude
+jobs that had already completed before the remount from the restored
+`pendingJobs`, and SHALL make each such job available to the eventual QR
+verification call the same as a job that completes after the remount.
+
 This restoration SHALL NOT be presented as surviving a full application
 restart: the underlying `ScanSessionState` is an in-memory main-process
 value with no disk/DB rehydration on app launch, so a scan in progress at
@@ -449,6 +456,14 @@ upload).
   `/capture-scan`
 - **THEN** the screen SHALL show the scan as still in progress, with the
   6/12 completed-job count and elapsed/countdown timers restored
+
+#### Scenario: A job that completed before a remount is still included in QR verification after restore
+
+- **GIVEN** a continuous scan is in progress with 6 of 12 jobs completed
+- **WHEN** the operator navigates to another page and back to
+  `/capture-scan`, and the session subsequently ends normally
+- **THEN** the QR verification call SHALL include all 12 jobs' plates, not
+  only the 6 that completed after the remount
 
 #### Scenario: A full app restart does not restore an in-progress scan
 

@@ -844,6 +844,60 @@ before the current hook instance existed has no "selector was disabled"
 history to lean on, and it leaves the underlying live-mirroring shape in
 place for the next piece of context someone adds to this hook.
 
+### Decision 14 — Restore `completedJobsRef` on remount, which requires actually calling the already-wired `markJobRecorded`
+
+`/review-pr` (round 5) found the mount-time RESTORE path rebuilds
+`jobTemplateRef`/`completedKeysRef` from the backend's `status.jobs`, but
+never touches `completedJobsRef` — the only thing `runVerification()` reads
+at session end. Navigate away and back mid-scan, and every plate that
+completed before the remount is silently excluded from QR verification.
+
+Implementing the literal fix (populate `completedJobsRef` from any
+already-completed job in `status.jobs`) uncovered a second, prerequisite gap:
+`session-handlers.ts`'s `ScanSessionState.jobs[key].status` never actually
+leaves `'pending'` in real operation. `markJobRecorded()`/
+`markScanJobRecorded()` (the mechanism that transitions a job to
+`'recorded'`) are fully wired end-to-end — preload, IPC handler, session-state
+mutator — but **`useScanSession.ts` never calls
+`window.electron.gravi.markJobRecorded()`**. Without a caller, every job in
+`status.jobs` reports `'pending'` forever, regardless of how many have
+actually completed — the existing RESTORE effect's own `pendingJobs` filter
+(`status === 'pending' || 'scanning'`) would restore **every** job as pending,
+not just the genuinely-incomplete ones, on top of `completedJobsRef` staying
+empty. This is the same "fully-wired handler, zero real caller" pattern this
+proposal has found and closed several times already (Decision 2 point 4's
+`graviscans.create()` wiring, Decision 11's per-scanner test results) — fixing
+`completedJobsRef` alone would be dead code with no real job ever reaching a
+non-`'pending'` status to restore from.
+
+**Decision:** both pieces land together, as one unit:
+
+1. In the `onScanComplete` IPC handler, once `recordCompletedJob()` resolves
+   successfully, call `window.electron.gravi.markJobRecorded(key)`
+   (fire-and-forget, `.catch(() => {})` — a failure here means a future
+   remount might not recognize this job as already-done, not that anything
+   about the just-completed scan itself is lost; `completedJobsRef` in this
+   same renderer session already has it).
+2. In the RESTORE effect, for every job in `status.jobs` whose `status` is
+   `'recorded'` or `'complete'` (accepting both — `'recorded'` is what the
+   real backend now produces per point 1; `'complete'` is accepted too since
+   nothing prevents a future caller from using it, and it costs nothing to
+   recognize), populate `completedJobsRef.current[key] = { ...job, status:
+'complete', imagePath: job.imagePath ?? job.outputPath }`. The backend
+   never separately stores the actual on-disk path a completed job's image
+   landed at (only the intended `outputPath` set at job creation) — falling
+   back to `outputPath` is safe because the scanner always writes to exactly
+   that deterministic, per-job path (the same assumption task 2.3/2.4's
+   idempotent `graviscans.create()` already depends on).
+
+**Alternatives considered:** have the RESTORE effect infer "already
+completed" purely from `jobTemplateRef`/`completedKeysRef`'s own
+reconstruction (i.e., treat every non-pending key as completed without a
+dedicated backend status). Rejected — `completedKeysRef` only needs to know
+which keys are no longer outstanding, a binary signal; `runVerification`
+additionally needs each completed job's actual barcode/plateIndex/imagePath
+payload, which only a real per-job record (not just its key) can supply.
+
 ## Architecture
 
 ```
