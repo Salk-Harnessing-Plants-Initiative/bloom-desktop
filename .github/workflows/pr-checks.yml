@@ -13,6 +13,21 @@ permissions:
   contents: read # Read repository contents
   pull-requests: write # Write PR comments (for future coverage reports)
 
+# Redundant runs for the same ref are grouped so they don't run in parallel.
+# - pull_request pushes: cancel-in-progress=true — only the latest commit's
+#   result matters before merge, so a new push cancels the stale run.
+# - push-to-main: cancel-in-progress=false — pushes queue sequentially instead,
+#   so a commit's run isn't cancelled once it starts running or is next in
+#   queue. NOTE: GitHub Actions only holds one pending run per group by
+#   default, so a 3rd+ overlapping push can still silently evict an earlier
+#   push's still-pending (not yet started) run — see the "CI Concurrency
+#   Control" requirement, currently in openspec/changes/
+#   add-pr-checks-concurrency-control/specs/developer-workflows/spec.md
+#   (moves to openspec/specs/developer-workflows/spec.md once archived).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # ==============================================================================
   # This workflow runs multiple jobs across different operating systems:
@@ -269,6 +284,13 @@ jobs:
   build-python:
     name: Build - Python Executable
     runs-on: ${{ matrix.os }}
+    # Bounds a hung job so it can't indefinitely block a subsequently-queued
+    # push-to-main run (see the concurrency block above). test-integration,
+    # test-e2e-dev, test-make, and test-make-windows all `needs: build-python`,
+    # so an unbounded hang here would defeat their own timeout-minutes bounds.
+    # Evidence-based value in openspec/changes/add-pr-checks-concurrency-control/
+    # design.md ("CI Job Timeout Bounds").
+    timeout-minutes: 10
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -301,6 +323,11 @@ jobs:
     needs: build-python
     name: Test - Integration (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Bounds a hung job so it can't indefinitely block a subsequently-queued
+    # push-to-main run (see the concurrency block above). Evidence-based value
+    # in openspec/changes/add-pr-checks-concurrency-control/design.md
+    # ("CI Job Timeout Bounds" in specs/developer-workflows/spec.md there).
+    timeout-minutes: 15
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -436,10 +463,21 @@ jobs:
     needs: build-python
     name: Test - E2E Dev Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Bounds a hung job so it can't indefinitely block a subsequently-queued
+    # push-to-main run (see the concurrency block above). Evidence-based value
+    # in openspec/changes/add-pr-checks-concurrency-control/design.md
+    # ("CI Job Timeout Bounds" in specs/developer-workflows/spec.md there).
+    timeout-minutes: 90
     strategy:
       fail-fast: false # Continue running on other platforms even if one fails
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        # Splits the 264-test E2E suite into 4 shards per OS so no single
+        # Playwright worker (workers: 1, unchanged) accumulates more than
+        # ~1/4 of the suite's sequential Electron launches. Defensive bound
+        # for issue #323 (worker teardown timeout deep into a long run) —
+        # see openspec/changes/fix-e2e-worker-teardown-flake/design.md.
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Checkout code
@@ -521,13 +559,13 @@ jobs:
 
       - name: Run Playwright E2E tests (Linux with Xvfb)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e -- --shard=${{ matrix.shard }}/4
         env:
           CI: true
 
       - name: Run Playwright E2E tests (macOS/Windows)
         if: runner.os != 'Linux'
-        run: npm run test:e2e
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
         env:
           CI: true
 
@@ -539,7 +577,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-results-${{ matrix.os }}
+          name: playwright-results-${{ matrix.os }}-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/
@@ -607,6 +645,11 @@ jobs:
     needs: build-python
     name: Test - Make (macOS)
     runs-on: macos-latest
+    # Bounds a hung job so it can't indefinitely block a subsequently-queued
+    # push-to-main run (see the concurrency block above). Evidence-based value
+    # in openspec/changes/add-pr-checks-concurrency-control/design.md
+    # ("CI Job Timeout Bounds" in specs/developer-workflows/spec.md there).
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -677,6 +720,11 @@ jobs:
     needs: build-python
     name: Test - Make (Windows)
     runs-on: windows-latest
+    # Bounds a hung job so it can't indefinitely block a subsequently-queued
+    # push-to-main run (see the concurrency block above). Evidence-based value
+    # in openspec/changes/add-pr-checks-concurrency-control/design.md
+    # ("CI Job Timeout Bounds" in specs/developer-workflows/spec.md there).
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code

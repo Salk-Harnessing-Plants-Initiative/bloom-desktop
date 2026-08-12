@@ -64,10 +64,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI disk space management to prevent ENOSPC errors on Ubuntu runners
   - Uses `jlumbroso/free-disk-space` action to free ~20GB
   - Preserves xvfb for headless GUI tests
+- CI concurrency control for `pr-checks.yml` to stop redundant full-matrix runs from piling up on scarce macOS/Windows runners (closes [#307](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/307))
+  - `concurrency` group keyed by workflow + ref; `cancel-in-progress` differentiated by trigger — cancels stale `pull_request` runs, but queues (rather than cancels) `push`-to-`main` runs to preserve each commit's completed CI record where possible
+  - Known limitation, documented in-repo: GitHub Actions' default one-pending-run queue depth means a 3rd+ overlapping push to `main` can still silently evict an earlier queued run before it starts; runner contention is still avoided either way
+  - `timeout-minutes` added to `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` (evidence-based values from observed run durations), since queuing means a hung job can now block the next queued `main` push's CI, not just its own
+  - See `openspec/changes/add-pr-checks-concurrency-control/` for full design rationale
 - GitHub Copilot review command for fetching PR comments via GraphQL
+- CylinderScan batch scan export page ([PR #300](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/300), closes [#77](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/77), roadmap Tier 3)
+  - Export/experiment/date grouped scan selection (checkbox tree), target-directory picker, whole-scan-folder copy preserving `metadata.json` and all images verbatim
+  - Rebuilt on current IPC/data conventions rather than ported file-for-file; carries forward the pilot's soft-deleted-scan filtering
+  - Metadata-first copy ordering with fail-fast on error, so a failed `metadata.json` copy can't silently leave orphaned image frames
+  - See `openspec/changes/archive/2026-08-06-add-cylinderscan-export-page/` for full design rationale; [#302](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/302) filed for a deferred progress-visibility gap (navigating away mid-export)
 
 ### Fixed
 
+- CylinderScan correctness & security hardening ([PR #280](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/280), roadmap Tier 1)
+  - Replaced `webSecurity: false` with a custom protocol handler + path-traversal validation for local scan-image access (#93)
+  - Added cleanup functions to all 8 preload listeners that were missing them (#96)
+  - Replaced `any`-typed fields in `image-uploader.ts` with proper `bloom-fs`/`bloom-js` types (#97)
+  - Added request/response correlation to `sendCommand` in `python-process.ts`, closing an IPC race (#47)
+  - Added thread-safety guards around `Scanner.is_scanning` check-then-set points in `python/hardware/scanner.py` (#40)
+  - `PythonStatus.tsx` and `python/ipc_handler.py`'s `check_hardware()` are now mode-aware, suppressing Camera/DAQ warnings in GraviScan mode (#198)
+  - Added `app.requestSingleInstanceLock()` to prevent multiple concurrent app instances corrupting shared SQLite/hardware state (#249)
+  - See `openspec/changes/archive/2026-08-05-harden-cylinderscan-tier1/` for full design rationale; [#282](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/282) and [#287](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/287) filed for out-of-scope gaps found during review
+- CylinderScan packaging CI + hardware-doc currency ([PR #305](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/305), roadmap Tier 5a)
+  - New CI jobs exercise `npm run make` end-to-end on both macOS and Windows, asserting installer artifacts are produced and the packaged app actually renders and initializes its database (#251, #57) — CylinderScan's first Windows packaged-app verification
+  - Fixed a real Windows packaging bug found while adding this coverage: unprivileged symlink creation is restricted on Windows, breaking Prisma client resolution on every packaged install; `database.ts` now falls back to a real copy via a new `ensureSymlinkOrCopy()` helper
+  - Corrected drifted hardware-validation docs (`CAMERA_TESTING.md`, `DAQ_TESTING.md`, `SCANNER_TESTING.md`, `CONFIGURATION.md`) against already-accepted specs, and added a consolidated `docs/TROUBLESHOOTING.md` (#180)
+  - See `openspec/changes/archive/2026-08-06-add-cylinderscan-packaging-ci/` for full design rationale; [#293](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/293)–[#296](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/296) and [#303](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/303) filed for out-of-scope follow-ups
 - CylinderScan delete/upload data-integrity hardening (#79, #105, #120)
   - `db:scans:delete` now also marks the scan's on-disk `metadata.json` as `deleted: true`, keeping it in sync with the (still soft-delete-only) database row
   - Delete affordance added to `ScanPreview.tsx`; both it and `BrowseScans.tsx` now share a real `DeleteConfirmModal` (Plant ID + capture date) instead of `BrowseScans`' previous generic `window.confirm()`

@@ -12,6 +12,11 @@ try:
 except ImportError:
     from daq_types import DAQSettings  # type: ignore[import-not-found,no-redef]
 
+try:
+    from protocol_io import write_line  # type: ignore[import-not-found]
+except ImportError:
+    from python.protocol_io import write_line  # Development/test path
+
 # Optional NI-DAQmx support
 try:
     import nidaqmx
@@ -20,7 +25,7 @@ try:
     DAQ_AVAILABLE = True
 except ImportError:
     DAQ_AVAILABLE = False
-    print("STATUS:NI-DAQmx not available, DAQ control disabled", flush=True)
+    write_line("STATUS:NI-DAQmx not available, DAQ control disabled")
 
 # DAQ timeout configuration
 DAQ_RETRY_MAX_ATTEMPTS = 1000  # Maximum retry attempts for DAQ wait_until_done
@@ -60,11 +65,11 @@ class DAQ:
             )
 
         if self.is_initialized:
-            print("STATUS:DAQ already initialized", flush=True)
+            write_line("STATUS:DAQ already initialized")
             return True
 
         try:
-            print("STATUS:Initializing DAQ", flush=True)
+            write_line("STATUS:Initializing DAQ")
 
             # Create NI-DAQ task
             self.task = nidaqmx.Task("bloom_daq_task")
@@ -83,7 +88,7 @@ class DAQ:
             self.is_initialized = True
             self.current_position = 0.0
 
-            print("STATUS:DAQ initialized successfully", flush=True)
+            write_line("STATUS:DAQ initialized successfully")
             return True
 
         except Exception as e:
@@ -111,7 +116,7 @@ class DAQ:
         steps_needed = int(abs(degrees) * self.settings.steps_per_revolution / 360.0)
         direction = 1 if degrees >= 0 else -1
 
-        print(f"STATUS:DAQ rotating {degrees:.2f}° ({steps_needed} steps)", flush=True)
+        write_line(f"STATUS:DAQ rotating {degrees:.2f}° ({steps_needed} steps)")
 
         # Execute the steps
         self.step(steps_needed, direction)
@@ -119,9 +124,8 @@ class DAQ:
         # Update position
         self.current_position = (self.current_position + degrees) % 360.0
 
-        print(
-            f"STATUS:DAQ rotation complete. Position: {self.current_position:.2f}°",
-            flush=True,
+        write_line(
+            f"STATUS:DAQ rotation complete. Position: {self.current_position:.2f}°"
         )
         return True
 
@@ -171,7 +175,7 @@ class DAQ:
         if not self.is_initialized:
             raise RuntimeError("DAQ not initialized. Call initialize() first.")
 
-        print("STATUS:DAQ homing to 0°", flush=True)
+        write_line("STATUS:DAQ homing to 0°")
 
         # Calculate degrees to home (always take shortest path)
         degrees_to_home = -self.current_position
@@ -185,7 +189,7 @@ class DAQ:
             self.rotate(degrees_to_home)
 
         self.current_position = 0.0
-        print("STATUS:DAQ homing complete", flush=True)
+        write_line("STATUS:DAQ homing complete")
         return True
 
     def cleanup(self) -> None:
@@ -193,18 +197,18 @@ class DAQ:
         if not self.is_initialized:
             return
 
-        print("STATUS:Cleaning up DAQ", flush=True)
+        write_line("STATUS:Cleaning up DAQ")
 
         if self.task:
             try:
                 self.task.close()
             except Exception as e:
-                print(f"WARNING:Error closing DAQ task: {e}", flush=True)
+                write_line(f"WARNING:Error closing DAQ task: {e}")
             finally:
                 self.task = None
 
         self.is_initialized = False
-        print("STATUS:DAQ cleanup complete", flush=True)
+        write_line("STATUS:DAQ cleanup complete")
 
     def get_position(self) -> float:
         """Get current turntable position in degrees.
