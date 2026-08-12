@@ -334,6 +334,175 @@ describe('rcloneCopyFiles', () => {
     expect(result.erroredFiles.has(sourceFile)).toBe(true);
     expect(result.erroredFiles.has(dupPath)).toBe(true);
   });
+
+  it("propagates the winner's failure to its duplicate even when the winner's error line arrives with no trailing newline, exercised via a clean rclone exit code rather than a crash", async () => {
+    // Two things the previous "propagates..." test's close(1)/crash
+    // scenario cannot actually prove, both found during round-20 review:
+    //
+    // 1. runBoxBackup's own pre-existing "total rclone failure" branch
+    //    (triggered by ANY non-zero exit code, independent of
+    //    erroredFiles) already marks every non-collision image in a wave
+    //    as failed — so a close(1) scenario would produce the identical
+    //    "both failed" outcome even WITHOUT this round's propagation fix.
+    //    Using close(0) here instead is the only way to isolate the
+    //    propagation fix's real, exclusive contribution: a per-file
+    //    error attributed to the winner with an otherwise-successful
+    //    (code 0) rclone exit, which is the ONLY shape of failure this
+    //    fix actually needs to handle.
+    // 2. The propagation loop's placement — AFTER the close handler's own
+    //    `if (stderrBuffer.trim()) processLine(stderrBuffer);` flush —
+    //    is load-bearing but was previously unverified: if the winner's
+    //    error line arrives without a trailing newline (a real
+    //    possibility if rclone's stderr pipe closes mid-line), it never
+    //    reaches the streaming 'data' handler's line-splitting at all
+    //    and is ONLY ever parsed via that final buffered-line flush.
+    //    Omitting the trailing '\n' below forces the error through that
+    //    exact path, so this test would fail if the propagation loop
+    //    were ever accidentally moved before the flush.
+    const dupPath = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_00_completely_different_name.tif'
+    );
+    fs.writeFileSync(dupPath, 'fake tiff bytes, same physical content');
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
+
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles(
+      [sourceFile, dupPath],
+      'ExperimentA/wave_0'
+    );
+    // Deliberately no trailing '\n' — see comment above.
+    fakeProc.stderr.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          level: 'error',
+          msg: `${path.basename(sourceFile)}: simulated copy error`,
+        })
+      )
+    );
+    fakeProc.emit('close', 0);
+
+    const result = await resultPromise;
+    expect(result.erroredFiles.has(sourceFile)).toBe(true);
+    expect(result.erroredFiles.has(dupPath)).toBe(true);
+  });
+
+  it('propagates a failed winner transfer to ALL of its literal duplicates, not just the first, in a three-way duplicate group', async () => {
+    // The propagation loop is a plain `for...of` over every tracked
+    // duplicate — nothing about its structure limits it to a single
+    // duplicate per winner. A group of three (one winner, two
+    // duplicates) is the smallest case that could reveal an accidental
+    // early exit (a stray `break`/`return`) that a two-way test cannot.
+    const dupPathB = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_00_dup_b.tif'
+    );
+    const dupPathC = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_00_dup_c.tif'
+    );
+    fs.writeFileSync(dupPathB, 'fake tiff bytes, same physical content');
+    fs.writeFileSync(dupPathC, 'fake tiff bytes, same physical content');
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    // Forces all three paths to the same physical identity.
+    vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
+
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles(
+      [sourceFile, dupPathB, dupPathC],
+      'ExperimentA/wave_0'
+    );
+    fakeProc.stderr.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          level: 'error',
+          msg: `${path.basename(sourceFile)}: simulated copy error`,
+        }) + '\n'
+      )
+    );
+    fakeProc.emit('close', 1);
+
+    const result = await resultPromise;
+    expect(result.erroredFiles.has(sourceFile)).toBe(true);
+    expect(result.erroredFiles.has(dupPathB)).toBe(true);
+    expect(result.erroredFiles.has(dupPathC)).toBe(true);
+  });
+
+  it("does not falsely flag a genuine collision when a third file shares a basename with a literal duplicate's own, never-staged basename", async () => {
+    // A literal duplicate never gets its own basename staged into tmpDir
+    // (see the earlier "does not stage a second physical file..." test)
+    // — it entirely piggybacks on the winner's already-staged file under
+    // the WINNER's basename. A third, genuinely distinct physical file
+    // that happens to share ITS basename with the duplicate's own
+    // (never-materialized) basename must NOT be flagged as colliding
+    // with anything: that basename was never actually written to tmpDir
+    // at all, so there is no real destination-slot conflict for the
+    // third file to safely stage into. Flagging it here would be a
+    // false-positive collision blocking a perfectly safe upload — a
+    // worse regression than the bug this scenario guards against.
+    const dupBasename =
+      'exp1_st_20260101T000000_cy1_S1_00_completely_different_name.tif';
+    const dupPath = path.join(sourceDir, dupBasename);
+    fs.writeFileSync(
+      dupPath,
+      'fake tiff bytes, same physical content as sourceFile'
+    );
+    // Genuinely distinct file, in a different directory, that happens to
+    // share dupPath's own basename string.
+    const otherDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'box-backup-test-src-third-')
+    );
+    const thirdFile = path.join(otherDir, dupBasename);
+    fs.writeFileSync(thirdFile, 'fake tiff bytes, genuinely different content');
+
+    // Both computed BEFORE any mockImplementationOnce override is
+    // installed, using the still-real passthrough implementation, so
+    // neither queued override below ever needs to call through to
+    // fs.realpathSync itself — recursing into fs.realpathSync from
+    // inside its own mockImplementationOnce callback would consume the
+    // NEXT queued override too (the same mock function reference is
+    // invoked again), silently corrupting the call-order alignment this
+    // test depends on.
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    const canonicalThirdFile = fs.realpathSync(thirdFile);
+    // Call order matches filePaths order below: sourceFile (its own
+    // real path), dupPath (forced to sourceFile's real path -> literal
+    // duplicate), thirdFile (its own, genuinely distinct real path).
+    vi.mocked(fs.realpathSync)
+      .mockImplementationOnce(() => canonicalSourceFile)
+      .mockImplementationOnce(() => canonicalSourceFile)
+      .mockImplementationOnce(() => canonicalThirdFile);
+
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles(
+      [sourceFile, dupPath, thirdFile],
+      'ExperimentA/wave_0'
+    );
+
+    try {
+      // Two physical files staged: the winner (sourceFile) and the
+      // genuinely distinct third file — the duplicate contributes
+      // nothing to tmpDir.
+      const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+      const tmpDir = spawnArgs[1];
+      expect(fs.readdirSync(tmpDir)).toHaveLength(2);
+
+      fakeProc.emit('close', 0);
+      const result = await resultPromise;
+      expect(result.collisions.size).toBe(0);
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('runBoxBackup', () => {
@@ -1827,6 +1996,83 @@ describe('runBoxBackup', () => {
     } finally {
       fs.rmSync(otherDir, { recursive: true, force: true });
     }
+  });
+
+  it('marks a literal duplicate box_status:"failed" (never "uploaded") end-to-end when the winning image genuinely fails its own rclone transfer', async () => {
+    // rcloneCopyFiles-level tests already prove erroredFiles correctly
+    // includes a duplicate's own path when its winner's transfer fails
+    // (see "propagates the winner's failure to its duplicate..." above).
+    // This test proves that outcome actually reaches the database via
+    // runBoxBackup's own consumption of erroredFiles, and specifically
+    // isolates it from a DIFFERENT, unrelated code path that could
+    // otherwise mask a broken fix: runBoxBackup's own pre-existing
+    // "total rclone failure" branch marks EVERY non-collision image in
+    // a wave as failed whenever rclone exits non-zero, independent of
+    // erroredFiles membership — so a close(1)/crash scenario here would
+    // produce the identical "both failed" outcome even if the round-19
+    // propagation fix were deleted entirely. Using a clean exit code
+    // (0) with a genuinely-matched per-file error is the only way to
+    // route through runBoxBackup's PER-FILE classification loop
+    // (`copyResult.erroredFiles.has(filePath)`), which is what this
+    // fix actually needs to be correct for.
+    const dupPath = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_00_completely_different_name.tif'
+    );
+    fs.writeFileSync(dupPath, 'fake tiff bytes, same physical content');
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
+
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else {
+        queueMicrotask(() => {
+          proc.stderr.emit(
+            'data',
+            Buffer.from(
+              JSON.stringify({
+                level: 'error',
+                msg: `${path.basename(sourceFile)}: simulated copy error`,
+              }) + '\n'
+            )
+          );
+          proc.emit('close', 0);
+        });
+      }
+      return proc as never;
+    });
+
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: dupPath },
+        ],
+      },
+    ]);
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const failedCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'failed'
+    );
+    expect(failedCall).toBeDefined();
+    expect([...failedCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
+    const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'uploaded'
+    );
+    expect(uploadedCall).toBeUndefined();
   });
 
   it('does not leak a resolved filename from one wave into a different wave that shares the same original basename', async () => {

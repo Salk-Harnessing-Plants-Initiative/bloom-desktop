@@ -175,10 +175,25 @@ export function rcloneCopyFiles(
 
     try {
       let symlinksCreated = 0;
+      // Every file that resolved to SOME location on disk, whether or
+      // not it turned out to be a literal duplicate that stages nothing
+      // — kept separate from symlinksCreated (which now only counts
+      // unique physical files actually staged) specifically so the
+      // "found on disk" log line below keeps its original, literal
+      // meaning. Before round 19 gated staging behind
+      // `!isLiteralDuplicate`, symlinksCreated coincidentally counted
+      // both "resolved" and "staged," but a wave containing duplicates
+      // would now silently under-report as e.g. "1/2 files found on
+      // disk" (implying one is MISSING) when both genuinely exist and
+      // were simply staged as one physical file — exactly the kind of
+      // misleading diagnostic an operator debugging this feature's own
+      // multi-round history would reach for first.
+      let resolvedCount = 0;
       const missingFiles: string[] = [];
       for (const filePath of filePaths) {
         const resolvedPath = resolveGraviScanPath(filePath);
         if (resolvedPath) {
+          resolvedCount++;
           const fileName = path.basename(resolvedPath);
           const linkPath = path.join(tmpDir, fileName);
           let realPath: string;
@@ -318,7 +333,7 @@ export function rcloneCopyFiles(
       }
 
       console.log(
-        `[BoxBackup] rcloneCopyFiles: ${symlinksCreated}/${filePaths.length} files found on disk`
+        `[BoxBackup] rcloneCopyFiles: ${resolvedCount}/${filePaths.length} files found on disk (${symlinksCreated} unique physical file(s) staged for upload)`
       );
       if (missingFiles.length > 0) {
         console.warn(
