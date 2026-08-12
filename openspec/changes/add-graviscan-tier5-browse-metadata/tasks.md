@@ -2774,3 +2774,129 @@ string) => void`), but 27.2's keying change means it has
       an isolated rerun, confirming a one-off local timing flake under
       system load, not a regression. `tests/unit/box-backup.test.ts`:
       31/31 passing (30 pre-existing + 1 new this round).
+
+## 29. Round-15 `/review-pr` response — 2 blocking + 1 important finding, all fixed with a design change
+
+Ran the same 5-subagent adversarial team against round 14's fix commit
+(`550dcf4`). The most severe finding (Scientific Rigor, unique among
+the 5 — required tracing the fix's behavior ACROSS separate
+`runBoxBackup` invocations, not just within one) showed round 14's fix
+didn't actually prevent the silent data loss it targeted — it deferred
+it by exactly one retry cycle, converting a caught bug into a
+self-resolving-looking corruption that's arguably worse than the
+original. Two other reviewers (Security, Behavioural Correctness)
+independently found a case-sensitivity gap that could reopen the same
+bug on Windows. Testing Strategy found (via live mutation testing) that
+round 14's own regression test couldn't distinguish the correct fix
+from a materially worse one. Fixed all of it with a genuine design
+change — a new, intentionally non-retriable `box_status` value — rather
+than a narrower patch. Fix commit: `93b8e3a`.
+
+- [x] 29.1 **BLOCKING (Scientific Rigor — required cross-run analysis
+      none of the other 4 reviewers' single-call scope caught) — round
+      14 routed collision losers through `box_status: 'failed'`, which
+      this file's own DB query re-selects for automatic retry every
+      run. A basename collision is not a transient condition; retrying
+      it doesn't help, because the two paths' basenames never change on
+      their own.** Traced the full consequence: run N, image A wins the
+      collision and uploads (`'uploaded'`), image B loses and is marked
+      `'failed'`. Run N+1: the query now excludes A (already
+      `'uploaded'`), so B runs ALONE in a fresh `rcloneCopyFiles` call
+      with an empty collision-detection map — no collision to find,
+      since A isn't even in this call's `filePaths`. B stages
+      successfully under the shared basename and rclone's normal
+      copy-if-different semantics **overwrite A's already-uploaded
+      bytes on Box with B's content**. B is now also marked
+      `'uploaded'`. End state: both images are permanently `'uploaded'`
+      in the DB, but Box physically holds only B's bytes; A's real
+      backup is silently gone with no future trigger to ever re-upload
+      it. From the operator's view, this looks like an ordinary
+      transient failure that "cleared up" on retry — worse than round
+      13/14's original bug, because it no longer even shows as a
+      problem. Fixed with a genuine design change: `rcloneCopyFiles`
+      now returns a `collisions: Set<string>` field, kept structurally
+      separate from `erroredFiles` (which the return type's own new
+      doc comment explains callers must never conflate). `runBoxBackup`
+      classifies collision losers into their own `collisionIds` array
+      and marks them `box_status: 'collision'` — a value deliberately
+      excluded from the `box_status: { in: ['pending', 'failed'] }`
+      query that selects images for automatic backup, so a collision is
+      never retried into re-occurring; it requires a human to rename
+      one of the conflicting files (and manually reset the image's
+      status) to ever resolve. `result.errors` gets an explicit
+      "will NOT resolve on retry" message distinguishing this from an
+      ordinary transient failure. Verified with a new test asserting
+      the losing image is marked `'collision'` and specifically NEVER
+      `'failed'`, plus a second test simulating the cross-run scenario
+      directly (confirming the query shape itself excludes
+      `'collision'` from re-selection, not just this test's fixture).
+- [x] 29.2 **BLOCKING (Testing Strategy, proved via live mutation
+      testing) — round 14's own regression test for the collision fix
+      could not distinguish the correct behavior from a materially
+      WORSE mutant.** Its assertions (`uploadedIds.length <= 1`,
+      `not.toEqual(['img1','img2'])`) also pass if a future change
+      marked BOTH images failed — discarding the winning image's
+      legitimate, already-successful upload — which is a strictly
+      worse outcome than the one being guarded against, not merely an
+      untested one. Confirmed empirically: a constructed mutant
+      matching this exact failure mode left the test green. Fixed by
+      rewriting the test with exact, tight assertions
+      (`toEqual(['img1'])` for the winner, `toEqual(['img2'])` for the
+      loser, an explicit `expect(failedCall).toBeUndefined()` to rule
+      out the old, wrong status, and a specific check on the
+      operator-facing error text) — directly addressing this finding
+      and 29.1's redesign together, since the exact-status assertion is
+      what makes both fixes verifiable by the same test.
+- [x] 29.3 **IMPORTANT (independently found by Security and Behavioural
+      Correctness — 2 of 5 reviewers) — the collision-detection
+      comparison was a case-SENSITIVE string lookup on a `Map`, but
+      Windows (and default macOS) filesystems resolve paths
+      case-INSENSITIVELY. Two DB paths whose resolved basenames differ
+      only by case (e.g. `IMG_007.tif` vs `img_007.TIF`) would bypass
+      the Map-based check entirely, reopening the exact silent-loss bug
+      round 14 otherwise closed, on the platform this app primarily
+      targets.** Fixed by checking `fs.existsSync(linkPath)` directly
+      — the SAME primitive `ensureSymlinkOrCopy`'s own guard uses to
+      decide whether a symlink/copy would be a no-op — instead of
+      relying on the case-sensitive Map lookup as the sole collision
+      signal. This closes the gap by construction: whatever
+      `ensureSymlinkOrCopy` would treat as "already staged" (identical
+      basename OR case-differing basename on a case-insensitive
+      filesystem) is now exactly what the collision check also catches,
+      so the two can no longer disagree. The literal-duplicate-path
+      exception (the exact same original path processed twice, e.g. a
+      genuine duplicate DB row) is preserved via a separate
+      `claimedBy === filePath` check that runs before the
+      `fs.existsSync` check, so it still correctly falls through as a
+      harmless no-op rather than a collision.
+- [x] 29.4 **Deliberately deferred — a dedicated automated test for the
+      actual OS-level case-insensitivity behavior in 29.3.** This
+      repo's CI matrix runs Linux, macOS, and Windows; a test that
+      relies on real filesystem case-folding behavior would need
+      platform-conditional skip logic to avoid being flaky on
+      case-sensitive runners, and the fix's correctness is verifiable
+      by code inspection (per two independent reviewers' own analysis):
+      it delegates the actual collision decision to the same
+      `fs.existsSync(linkPath)` primitive `ensureSymlinkOrCopy` already
+      uses, so the two can only ever agree or disagree together, on any
+      given OS. Two other tests (literal-duplicate-path,
+      resolved-but-transfer-failed exclusion) already exercise the
+      surrounding logic on every CI platform.
+- [x] 29.5 Additional test coverage closed per Testing Strategy's and
+      Code Quality's IMPORTANT findings: a dedicated
+      literal-duplicate-path test (confirming a genuine duplicate DB
+      row uploads normally, never flagged as a collision), and a
+      `proc.on('error')` spawn-failure test (confirming
+      `erroredFiles` — not a fresh empty `Set` — is what's actually
+      returned when rclone itself fails to spawn, closing a
+      previously-zero-coverage gap on a change round 14's own commit
+      message explicitly claimed to have fixed).
+- [x] 29.6 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1574/1576 real tests passing; the two
+      failures (`database-handlers.test.ts`'s `BLOOM_DATABASE_URL`
+      local-setup flake and `electron-cleanup.test.ts`'s
+      descendant-snapshot timing flake, both untouched by this round's
+      diff and both previously documented) confirmed as pre-existing,
+      unrelated to this round's changes. `tests/unit/box-backup.test.ts`:
+      34/34 passing (30 pre-existing + 4 new this round).
