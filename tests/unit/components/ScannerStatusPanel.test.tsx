@@ -105,4 +105,48 @@ describe('ScannerStatusPanel', () => {
       /%/
     );
   });
+
+  it('shows a success indication for a scanner with a successful test result (regression: testResults was computed but never rendered)', () => {
+    render(
+      <ScannerStatusPanel
+        scanners={[scanner({ scannerId: 'sc-1' })]}
+        progressByScanner={{}}
+        isScanning={false}
+        testResults={{ 'sc-1': { success: true, imagePath: '/out/test.tiff' } }}
+      />
+    );
+    expect(screen.getByTestId('scanner-status-sc-1').textContent).toMatch(
+      /test/i
+    );
+  });
+
+  it("shows a failed scanner's specific test-scan error message, not just an aggregate", () => {
+    render(
+      <ScannerStatusPanel
+        scanners={[scanner({ scannerId: 'sc-1' })]}
+        progressByScanner={{}}
+        isScanning={false}
+        testResults={{
+          'sc-1': { success: false, error: 'sane_start: Invalid argument' },
+        }}
+      />
+    );
+    expect(screen.getByTestId('scanner-status-sc-1').textContent).toMatch(
+      /sane_start: Invalid argument/
+    );
+  });
+
+  it('shows neither a success nor a failure indication for a scanner with no test result', () => {
+    render(
+      <ScannerStatusPanel
+        scanners={[scanner({ scannerId: 'sc-1' })]}
+        progressByScanner={{}}
+        isScanning={false}
+        testResults={{}}
+      />
+    );
+    expect(screen.getByTestId('scanner-status-sc-1').textContent).not.toMatch(
+      /test/i
+    );
+  });
 });

@@ -628,3 +628,28 @@ empty deps mean it never re-runs once that value resolves.
       both clean.
 - [x] 19.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 20. Render per-scanner Test Scan results (TDD, found during a parity audit)
+
+`useTestScan.ts` already computes per-scanner `testResults` but nothing
+renders them (design.md Decision 11).
+
+- [x] 20.1 Write failing tests in
+      `tests/unit/components/ScannerStatusPanel.test.tsx`: a successful
+      test result shows a success indication next to that scanner; a
+      failed result shows its specific error message; a scanner with no
+      result yet shows neither. Confirmed red: both failed against the
+      unchanged implementation.
+- [x] 20.2 Add an optional `testResults` prop to `ScannerStatusPanel.tsx`
+      and render per-scanner, styled like the existing `lastError` line.
+      Wire `testScan.testResults` through from `GraviScan.tsx`.
+- [x] 20.3 Run the full unit suite, `npx tsc --noEmit`, and lint; confirm
+      no regressions beyond the already-documented pre-existing failures.
+      **Result:** 1632 passed, same 4 known pre-existing failure files
+      plus `electron-cleanup.test.ts` (new from main's
+      `fix-e2e-worker-teardown-flake`, confirmed flaky under full-suite
+      load — passes cleanly in isolation, different subtests fail each
+      full-suite run). Zero failures related to this change.
+      Type-checking and lint both clean.
+- [x] 20.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.

@@ -207,6 +207,7 @@ export function GraviScan() {
         scanners={scanners}
         progressByScanner={scanSession.progressByScanner}
         isScanning={scanSession.isScanning}
+        testResults={testScan.testResults}
       />
 
       <ScanFormSection

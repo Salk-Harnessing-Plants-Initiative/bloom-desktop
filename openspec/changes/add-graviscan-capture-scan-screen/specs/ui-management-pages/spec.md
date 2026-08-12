@@ -488,6 +488,16 @@ fallback path (e.g. `/tmp`).
 - **THEN** the screen SHALL show a blocking inline error naming the failure
 - **AND** SHALL NOT attempt the capture against a hardcoded fallback path
 
+#### Scenario: Per-scanner test results are shown next to each scanner
+
+- **GIVEN** a Test Scan completed with scanner A succeeding and scanner B
+  failing with an error message
+- **WHEN** the operator views the scanner status panel
+- **THEN** scanner A's row SHALL show a success indication
+- **AND** scanner B's row SHALL show its specific error message
+- **AND** neither result SHALL be visible only as an aggregate,
+  unattributed message
+
 ---
 
 ### Requirement: GraviScan QR Verification Result Banner

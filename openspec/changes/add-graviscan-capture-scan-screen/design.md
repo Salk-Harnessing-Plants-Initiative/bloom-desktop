@@ -719,6 +719,33 @@ event-driven state updating via the separate IPC-listener effect,
 risking exactly the kind of stale-snapshot-clobbers-live-state race this
 tier's Decision 1 reducer rewrite was meant to eliminate.
 
+### Decision 11 — Render per-scanner Test Scan results
+
+A fresh production-branch parity audit found `useTestScan.ts` already
+computes per-scanner results (`testResults: Record<string,
+TestScanResult>` — `success`/`error`/`imagePath`, populated via
+`onScanComplete`/`onScanError` exactly like a real session) but nothing
+ever renders them. `ScanControlSection.tsx` only surfaces the hook's
+aggregate `error` (e.g. "Could not determine the scan output
+directory."); the per-scanner detail is computed, stored in state, and
+silently dropped. Production's `ScannerStatusPanel.tsx` renders each
+scanner's test outcome inline next to that scanner's own row.
+
+**Decision:** add an optional `testResults` prop to
+`ScannerStatusPanel.tsx` (the natural home — it's where every other
+per-scanner fact, connectivity/grid-mode/live-progress, already lives),
+passed from `GraviScan.tsx` as `testScan.testResults`. Render a
+success/failure line per scanner when a result exists for it, styled
+like the existing `lastError` line immediately below it.
+
+**Alternatives considered:** render per-scanner results inside
+`ScanControlSection.tsx`, next to the Test Scan button itself. Rejected
+— that component has no per-scanner rendering today (it's
+session/control-level, not per-scanner), and `ScannerStatusPanel.tsx`
+already iterates `scanners` once or displaying results there would mean
+either duplicating that iteration or awkwardly cross-referencing two
+separately-iterated lists.
+
 ## Architecture
 
 ```
