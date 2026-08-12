@@ -281,9 +281,18 @@ export function BrowseGraviScans() {
           );
         }
         if (!result.boxSuccess) {
-          failures.push(
-            `Box failed: ${result.boxErrors?.[0] ?? 'unknown error'}`
-          );
+          // A filename-collision error needs different operator action
+          // than an ordinary transient failure (rename a file and
+          // manually reset status, vs. just retry) — surfacing
+          // whichever wave happened to be processed first would let a
+          // collision silently hide behind an unrelated earlier error,
+          // leaving the operator to keep retrying without ever learning
+          // a different image needs manual attention.
+          const boxError =
+            result.boxErrors?.find((e) => e.includes('NOT resolve on retry')) ??
+            result.boxErrors?.[0] ??
+            'unknown error';
+          failures.push(`Box failed: ${boxError}`);
         }
         // `failures` is always non-empty here: entry into this branch
         // requires !bloomSuccess || !boxSuccess, and each of those exact

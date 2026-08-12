@@ -19,10 +19,24 @@ vi.mock('child_process', () => ({
 // intercepts at module resolution, which works regardless of import
 // style; `importOriginal` keeps every other fs call (mkdtempSync,
 // symlinkSync, rmSync, etc.) genuinely real.
+// realpathSync is also wrapped (real implementation by default, via
+// vi.fn(actual.realpathSync)) so a test can override it with
+// mockImplementationOnce to simulate a case-insensitive-filesystem
+// duplicate (two distinct path strings resolving to the same physical
+// file) without depending on the actual host OS's case-folding
+// behavior — CI runs this suite on case-sensitive (Linux) and
+// case-insensitive (Windows, macOS) filesystems, so a test relying on
+// real OS case-folding would behave differently per platform.
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
   const writeFileSync = vi.fn(actual.writeFileSync);
-  return { ...actual, writeFileSync, default: { ...actual, writeFileSync } };
+  const realpathSync = vi.fn(actual.realpathSync);
+  return {
+    ...actual,
+    writeFileSync,
+    realpathSync,
+    default: { ...actual, writeFileSync, realpathSync },
+  };
 });
 
 import { spawn } from 'child_process';
@@ -36,6 +50,12 @@ const mockSpawn = vi.mocked(spawn);
 
 beforeEach(() => {
   vi.mocked(fs.writeFileSync).mockClear();
+  // Only clears call history, not the wrapped real implementation set
+  // up in the vi.mock('fs', ...) factory above — a test overriding
+  // this with mockImplementationOnce to simulate a case-insensitive
+  // duplicate automatically falls back to the real passthrough
+  // afterward, without needing to be manually restored here.
+  vi.mocked(fs.realpathSync).mockClear();
 });
 
 class FakeChildProcess extends EventEmitter {
@@ -1283,6 +1303,23 @@ describe('runBoxBackup', () => {
     // call, and silently overwrite the winner's real content on Box —
     // both images would end up 'uploaded' while Box physically holds
     // only the loser's bytes, with nothing indicating anything is wrong.
+    //
+    // A version of this test that only asserts the query literal
+    // doesn't contain the string 'collision' (without ever including
+    // img2 in the fixture at all) would pass identically even if the
+    // ENTIRE collision feature were deleted, since that literal is a
+    // separate, older piece of code untouched by this feature — found
+    // to be exactly this vacuous via live mutation testing. This
+    // version instead makes the mock findMany implementation actually
+    // APPLY the real where/include clause runBoxBackup constructs
+    // against a small in-memory dataset — an already-'collision'-status
+    // img2 alongside an unrelated, genuinely-'pending' img3 — so a
+    // future regression that widens the query to include 'collision'
+    // would make img2 reappear here and get uploaded for real (there's
+    // nothing left to collide with it in this narrower, later call,
+    // which is exactly the mechanism that caused the original cross-run
+    // corruption), failing this test's assertions for real rather than
+    // checking a string literal in isolation.
     const otherDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'box-backup-test-src-other3-')
     );
@@ -1291,46 +1328,69 @@ describe('runBoxBackup', () => {
       'exp1_st_20260101T000000_cy1_S1_00.tif'
     );
     fs.writeFileSync(collidingFile, 'fake tiff bytes colliding');
+    const pendingFile = path.join(
+      otherDir,
+      'exp1_st_20260101T000000_cy1_S1_01.tif'
+    );
+    fs.writeFileSync(pendingFile, 'fake tiff bytes unrelated pending');
 
     try {
-      // Simulate img2 already being marked 'collision' from a prior
-      // run: the query must not select it, so it's simply absent from
-      // this run's fixture (mirroring runBoxBackup's real
-      // box_status:{in:['pending','failed']} filter never matching it).
-      db.graviScan.findMany.mockResolvedValue([
-        {
-          experiment: { name: 'ExpA', accession: null },
-          wave_number: 0,
-          plate_barcode: 'P1',
-          plate_index: '1',
-          grid_mode: '2grid',
-          capture_date: new Date('2026-01-01'),
-          transplant_date: null,
-          custom_note: null,
-          images: [{ id: 'img1', path: sourceFile }],
-        },
-      ]);
+      const allImages = [
+        // Already 'collision' from a simulated prior run — must never
+        // resurface in any future query result.
+        { id: 'img2', path: collidingFile, box_status: 'collision' },
+        // A genuinely unrelated image still needing backup this run.
+        { id: 'img3', path: pendingFile, box_status: 'pending' },
+      ];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db.graviScan.findMany.mockImplementation(async (args: any) => {
+        const allowedStatuses: string[] =
+          args.include.images.where.box_status.in;
+        const matching = allImages.filter((img) =>
+          allowedStatuses.includes(img.box_status)
+        );
+        if (matching.length === 0) return [];
+        return [
+          {
+            experiment: { name: 'ExpA', accession: null },
+            wave_number: 0,
+            plate_barcode: 'P1',
+            plate_index: '1',
+            grid_mode: '2grid',
+            capture_date: new Date('2026-01-01'),
+            transplant_date: null,
+            custom_note: null,
+            images: matching,
+          },
+        ];
+      });
+      mockSpawn.mockImplementation((_cmd, args) => {
+        const proc = new FakeChildProcess();
+        const argv = args as string[];
+        if (argv[0] === 'version') {
+          queueMicrotask(() => proc.emit('exit', 0));
+        } else {
+          queueMicrotask(() => proc.emit('close', 0));
+        }
+        return proc as never;
+      });
 
       await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
 
-      // img1 uploads normally on its own — nothing about a PAST
-      // collision (now excluded from this query) should block it.
+      // img3 (genuinely pending, no collision) uploads normally —
+      // proving the query DID run and DID return real work, so the
+      // absence of img2 below isn't just "nothing happened at all."
       const uploadedCall = db.graviImage.updateMany.mock.calls.find(
         (call) => call[0].data.box_status === 'uploaded'
       );
-      expect(uploadedCall[0].where.id.in).toEqual(['img1']);
-      // img2 was never even part of this run's query results (it's
-      // 'collision', not 'pending'/'failed') — confirming the actual
-      // exclusion lives in the query shape itself, not in this test's
-      // fixture, is covered by inspecting runBoxBackup's own
-      // db.graviScan.findMany call args.
-      const queryArgs = db.graviScan.findMany.mock.calls[0][0];
-      expect(queryArgs.include.images.where.box_status.in).not.toContain(
-        'collision'
+      expect(uploadedCall[0].where.id.in).toEqual(['img3']);
+      // img2 must never be touched at all — not re-marked 'collision'
+      // (it already is), and critically not silently 'uploaded' (which
+      // is exactly what the original cross-run bug produced).
+      const img2Calls = db.graviImage.updateMany.mock.calls.filter((call) =>
+        call[0].where.id.in.includes('img2')
       );
-      expect(queryArgs.where.images.some.box_status.in).not.toContain(
-        'collision'
-      );
+      expect(img2Calls).toHaveLength(0);
     } finally {
       fs.rmSync(otherDir, { recursive: true, force: true });
     }
@@ -1354,6 +1414,72 @@ describe('runBoxBackup', () => {
         images: [
           { id: 'img1', path: sourceFile },
           { id: 'img2', path: sourceFile },
+        ],
+      },
+    ]);
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'uploaded'
+    );
+    expect([...uploadedCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
+    const collisionCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'collision'
+    );
+    expect(collisionCall).toBeUndefined();
+  });
+
+  it('does not flag two DB rows referencing the same physical file via differently-cased path strings as a collision', async () => {
+    // On a case-insensitive filesystem (Windows, default macOS), two
+    // DB rows can point at the identical physical file through path
+    // strings that differ only by case — genuinely the same bytes, not
+    // two different images. Comparing the ORIGINAL path strings for
+    // exact equality (an earlier version of this fix did) misses this:
+    // the two strings differ, so it's not recognized as a literal
+    // duplicate, yet the shared tmpDir destination makes
+    // fs.existsSync(linkPath) true for the second one — wrongly
+    // flagging a harmless duplicate as an unrecoverable collision.
+    // realpathSync is mocked (not relying on the actual host OS's
+    // case-folding, which differs across this repo's CI matrix) to
+    // simulate both paths resolving to the same canonical real path,
+    // exactly what happens on a real case-insensitive filesystem.
+    const otherCasePath = path.join(
+      sourceDir,
+      'EXP1_ST_20260101T000000_CY1_S1_00.TIF'
+    );
+    // A real file must exist here for resolveGraviScanPath to succeed
+    // (on a case-insensitive filesystem this just rewrites sourceFile's
+    // own bytes — the same physical entry either way; on a
+    // case-sensitive filesystem it's a genuinely separate file, which
+    // is fine since the realpathSync mock below forces the intended
+    // "same physical file" outcome regardless of what the real
+    // filesystem does).
+    fs.writeFileSync(otherCasePath, 'fake tiff bytes');
+    // Computed BEFORE overriding the mock (using the still-real
+    // passthrough implementation) so the override below never needs to
+    // call through to the real fs.realpathSync itself — recursing into
+    // fs.realpathSync from inside its own mockImplementation would call
+    // the mock again, not the original.
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    // Both calls this test triggers (for sourceFile and otherCasePath)
+    // must resolve to the identical canonical path to simulate them
+    // being the same physical file.
+    vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
+
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: otherCasePath },
         ],
       },
     ]);

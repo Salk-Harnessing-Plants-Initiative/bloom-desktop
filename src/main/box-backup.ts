@@ -131,6 +131,23 @@ export function rcloneCopyFiles(
     // doc comment for why this must stay separate from
     // missingFilePaths/erroredFiles.
     const collisions = new Set<string>();
+    // Real, canonical on-disk path of every file already staged in this
+    // call, keyed to the original path that first claimed it. Used to
+    // recognize a literal duplicate (e.g. a genuine duplicate DB row)
+    // as harmless even when the two DB path STRINGS differ only by
+    // case — comparing the raw original-path strings for exact
+    // equality (an earlier version of this fix did) misses that case
+    // on a case-insensitive filesystem and wrongly treats a harmless
+    // duplicate as an unrecoverable collision, exactly the failure mode
+    // the case-insensitivity fix below was supposed to eliminate, just
+    // triggered from the opposite direction.
+    const claimedRealPaths = new Map<string, string>();
+    // Case-insensitive index of every resolved basename already
+    // claimed in this call, so a collision's diagnostic can always name
+    // the winning file — including when the two basenames differ only
+    // by case, which the case-sensitive resolvedToOriginalName lookup
+    // below cannot match.
+    const claimedBasenamesLower = new Map<string, string>();
 
     try {
       let symlinksCreated = 0;
@@ -140,15 +157,28 @@ export function rcloneCopyFiles(
         if (resolvedPath) {
           const fileName = path.basename(resolvedPath);
           const linkPath = path.join(tmpDir, fileName);
-          const claimedBy = resolvedToOriginalName.get(fileName);
-          // A literal duplicate — the exact same original path
-          // resolving twice (e.g. a genuine duplicate DB row) — is
-          // completely harmless: it's physically the same file, and
+          let realPath: string;
+          try {
+            realPath = fs.realpathSync(resolvedPath);
+          } catch {
+            // realpathSync can fail on a race (file removed between
+            // resolution and this call) — fall back to the resolved
+            // path itself rather than letting a transient fs error
+            // abort the whole wave; worst case this file is compared
+            // by its un-canonicalized path instead of a true duplicate
+            // check, which only matters for the rare
+            // differently-cased-duplicate scenario this map exists for.
+            realPath = resolvedPath;
+          }
+          // A literal duplicate — the same physical file reached via
+          // two DB rows, whether their path strings are byte-identical
+          // or merely equivalent on a case-insensitive filesystem — is
+          // completely harmless: it's the same bytes, and
           // ensureSymlinkOrCopy's own existsSync guard makes the
           // redundant symlink/copy call below a safe no-op. Anything
-          // else that already occupies this exact tmpDir destination
-          // is a REAL collision between two DIFFERENT images.
-          const isLiteralDuplicate = claimedBy === filePath;
+          // else that already occupies this exact tmpDir destination is
+          // a REAL collision between two DIFFERENT physical files.
+          const isLiteralDuplicate = claimedRealPaths.has(realPath);
           if (!isLiteralDuplicate && fs.existsSync(linkPath)) {
             // Checking the real destination path directly (rather than
             // only a case-sensitive Map lookup on `fileName`) catches
@@ -161,7 +191,9 @@ export function rcloneCopyFiles(
             // slip through undetected and reproduce the exact
             // silent-data-loss bug this check exists to prevent.
             const collidingWith =
-              claimedBy ?? '(a file with a differently-cased basename)';
+              resolvedToOriginalName.get(fileName) ??
+              claimedBasenamesLower.get(fileName.toLowerCase()) ??
+              '(another image in this wave)';
             console.warn(
               `[BoxBackup] Basename collision: "${filePath}" resolves to the same physical filename ("${fileName}") as "${collidingWith}" — this image cannot be safely uploaded until the conflicting files are renamed; skipping without marking it as a retryable failure.`
             );
@@ -169,8 +201,10 @@ export function rcloneCopyFiles(
             continue;
           }
           if (!isLiteralDuplicate) {
+            claimedRealPaths.set(realPath, filePath);
             resolvedToOriginalName.set(fileName, filePath);
             originalToResolvedName.set(filePath, fileName);
+            claimedBasenamesLower.set(fileName.toLowerCase(), filePath);
           }
           // Windows restricts unprivileged symlink creation (requires
           // admin or Developer Mode — the default state on most lab

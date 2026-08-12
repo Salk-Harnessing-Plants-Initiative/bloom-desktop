@@ -464,6 +464,48 @@ describe('BrowseGraviScans', () => {
       });
     });
 
+    it('prioritizes a filename-collision error over an earlier-processed ordinary failure, since a collision needs different operator action', async () => {
+      // boxErrors[0] alone would show the ordinary transient failure
+      // here, silently dropping the collision message a later wave
+      // pushed — the exact message that tells the operator "this will
+      // NOT resolve on retry" and needs manual intervention. An
+      // operator seeing only the generic message would reasonably keep
+      // retrying, never learning a different image needs a rename.
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 3,
+          skipped: 0,
+          failed: 2,
+          errors: ['Network timeout', 'filename collision with another image'],
+          metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 3,
+          boxUploaded: 3,
+          bloomErrors: [],
+          boxErrors: [
+            'ExpA/wave_0: 1/1 files failed (Network timeout)',
+            'ExpA/wave_1: 1 image(s) skipped — filename collision with another image in this wave. This will NOT resolve on retry; rename one of the conflicting files on disk, then manually reset the image’s status (see main-process logs for which files collided).',
+          ],
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/will not resolve on retry/i)
+        ).toBeInTheDocument();
+      });
+    });
+
     it('shows a friendly "rclone not installed" message instead of the generic error, noting Bloom was up to date', async () => {
       uploadAllScans.mockResolvedValue({
         success: true,
