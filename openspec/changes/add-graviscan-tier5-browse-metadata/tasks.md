@@ -3496,3 +3496,109 @@ files found on disk')`. A wave with a duplicate pair now logs
       flaky timeout did not reproduce this run.
       `tests/unit/box-backup.test.ts`: 43/43 passing (39 pre-existing +
       4 new this round).
+
+## 35. Round-21 `/review-pr` response — 1 blocking finding (in a PRE-EXISTING test, not this round's own diff), 2 minor documentation fixes
+
+Ran the same 5-subagent adversarial team against round 20's fix commit
+(`1714ccf`) — a small, low-risk diagnostic-log-line split plus 4 new
+tests. Four of five reviewers gave a clean or near-clean verdict on the
+diff itself. Testing Strategy, while independently reproducing round
+20's own mutation-testing claims, found that a **different, pre-existing
+test from round 17/18** (`"falls back to treating a file as a
+collision..."`, originally added for the `fs.realpathSync`-throw
+fallback) has the exact same recursive-mock-consumption bug round 20's
+own commit message describes fixing for a different test — meaning it
+has never actually verified the behavior it claims to, for its entire
+lifetime. Fix commit: `b2529f8`.
+
+- [x] 35.1 **BLOCKING (Testing Strategy, empirically confirmed via
+      instrumented production code and independent mutation testing) —
+      a round-17/18-era regression test's mock setup had the identical
+      `const real = fs.realpathSync; ... mockImplementationOnce((...args)
+=> real(...args))` recursion bug round 20 fixed elsewhere in this
+      exact same commit, meaning it verified the WRONG file's failure
+      path for its entire lifetime.** Since `fs.realpathSync` at that
+      point in the test IS the mock, the "pass-through" callback
+      recursively calling it consumes the NEXT queued
+      `mockImplementationOnce` (the "throw ENOENT" one) too — so
+      **img1's** call is the one that actually throws (silently falling
+      back to img1's own raw path, which happens to already equal the
+      correct value, masking the mistake), while **img2's** call falls
+      through the now-empty queue to the real passthrough and succeeds
+      normally. img2 still ends up classified `'collision'` and a
+      matching warning still fires — but via the ORDINARY
+      two-different-real-paths collision mechanism, completely
+      independent of the realpathSync-throw fallback this test is named
+      for and was specifically written to lock in. Fixed by applying
+      the exact same fix round 20 applied elsewhere: precompute the
+      real canonical path before installing any `mockImplementationOnce`
+      override, with zero recursion. Also strengthened the warning
+      assertion to check for `secondFile`'s path specifically (not just
+      the substrings `'realpathSync'`/`'ENOENT'` in isolation, which
+      can't distinguish which file's failure produced the message) —
+      verified this stronger assertion genuinely fails under the old
+      recursive mock setup (confirmed by temporarily reintroducing it),
+      and passes with the fix.
+- [x] 35.2 **Fixed (Code Quality, minor precision) — a comment claimed
+      the new `resolvedCount` counter preserves the log line's
+      "original, literal meaning," which slightly overstates what
+      actually changed: pre-round-19, the old `symlinksCreated` also
+      excluded basename collisions (which `continue` before reaching
+      either counter), so `resolvedCount` now BROADENS the numerator
+      to include collisions too, rather than precisely restoring the
+      old semantics.** Clarified the comment to explicitly note this is
+      an intentional broadening (a collision genuinely is a file found
+      on disk, just one this run couldn't safely upload), not a
+      regression.
+- [x] 35.3 **Documented (Testing Strategy, IMPORTANT — real but not
+      independently fixable with a new test) — the collision check's
+      `fs.existsSync(linkPath)` and the diagnostic-naming fallback's
+      `claimedBasenamesLower.has(...)` happen to always agree in this
+      codebase today, but nothing in the code enforces that
+      equivalence, and no test actually discriminates between checking
+      the real filesystem versus checking the in-memory registry.**
+      Traced why: both are populated/created in lockstep by the exact
+      same `if (!isLiteralDuplicate)` step, and `tmpDir` always starts
+      empty for each call — so a divergence is structurally
+      impossible given the current design, not merely untested by
+      coincidence. Since no genuinely differing scenario can be
+      constructed against the current implementation to exercise this
+      as a red test, documented the invariant and WHY checking the real
+      filesystem (not the registry) is still the right design choice
+      (it's the actual upload destination, and doesn't depend on this
+      function's own bookkeeping staying in sync with it) directly at
+      the collision-check call site, rather than adding a test that
+      can't currently fail.
+- [x] 35.4 **Noted, not acted on — an order-dependent
+      collision-vs-duplicate classification edge case (Behavioural
+      Correctness), explicitly assessed by its own finder as non-blocking.**
+      A row that could be classified as EITHER a literal duplicate of
+      one file OR a basename collision with a different file, depending
+      on which is processed first in `filePaths`' array order, can
+      receive a different classification (`'collision'` vs. silently
+      absorbed as a harmless duplicate) purely based on iteration order
+      — verified empirically with temporary probe tests in both
+      orderings. Confirmed this never causes data loss or a false
+      `'uploaded'` status in either order (the physical bytes always
+      reach Box under _someone's_ row) — only the classification
+      shown to an operator can differ. This is a pre-existing
+      characteristic of the current single-pass algorithm (a duplicate
+      relationship fundamentally can't be known before its winner has
+      been seen), not something introduced by round 20's diff, and its
+      proper fix (a two-pass approach: group by real path first, then
+      resolve collisions only across distinct groups) is exactly the
+      shape of change the round-20-raised architectural-refactor
+      recommendation (34.5, still pending a user decision) already
+      covers. Tracked as an additional data point for that same
+      decision rather than a new deferred item.
+- [x] 35.5 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1585/1586 real tests passing; the one
+      failure (`database-handlers.test.ts`'s `BLOOM_DATABASE_URL`
+      local-setup issue, untouched by this round's diff, previously
+      documented) confirmed unrelated —
+      `electron-cleanup.test.ts`'s previously-documented descendant-
+      snapshot timing flake did not reproduce this run.
+      `tests/unit/box-backup.test.ts`: 43/43 passing (unchanged count —
+      this round strengthened an existing test's mock setup and
+      assertion rather than adding a new one).
