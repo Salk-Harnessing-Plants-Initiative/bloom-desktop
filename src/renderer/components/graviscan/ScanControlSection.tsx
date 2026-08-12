@@ -119,7 +119,10 @@ export function ScanControlSection({
       )}
 
       {scanSession.isScanning && scanSession.totalCycles > 1 && (
-        <div data-testid="cycle-progress" className="text-sm text-gray-600">
+        <div
+          data-testid="cycle-progress"
+          className="bg-blue-50 border border-blue-300 text-blue-900 rounded p-2 text-sm font-semibold"
+        >
           Cycle {scanSession.currentCycle} of {scanSession.totalCycles}
         </div>
       )}
@@ -127,7 +130,7 @@ export function ScanControlSection({
       {scanSession.coordinatorState === 'waiting' && (
         <div
           data-testid="waiting-next-cycle"
-          className="bg-gray-50 border border-gray-300 text-gray-700 rounded p-2 text-sm"
+          className="bg-blue-50 border border-blue-300 text-blue-900 rounded p-2 text-sm font-semibold"
         >
           Waiting for next cycle...
         </div>
