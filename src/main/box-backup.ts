@@ -242,13 +242,19 @@ export function rcloneCopyFiles(
           const isLiteralDuplicate = claimedRealPaths.has(realPath);
           // fs.existsSync(linkPath) — checking the real tmpDir, not a
           // Map — is the ground truth here on purpose, not a stylistic
-          // choice: it happens to always agree with
-          // claimedBasenamesLower.has(fileName.toLowerCase()) in this
-          // codebase today (both are populated/created in the exact
-          // same `if (!isLiteralDuplicate)` step below), but that
-          // equivalence is a byproduct of tmpDir always starting empty
-          // for this call, not a guarantee either check enforces on its
-          // own — checking the filesystem directly is what actually
+          // choice. On the case-insensitive filesystems this app
+          // targets (Windows, default macOS), it happens to always
+          // agree with claimedBasenamesLower.has(fileName.toLowerCase())
+          // in this codebase today (both are populated/created in the
+          // exact same `if (!isLiteralDuplicate)` step below, and
+          // tmpDir always starts empty for this call) — but that's a
+          // byproduct of THIS design, not a universal guarantee either
+          // check enforces on its own: claimedBasenamesLower always
+          // folds case explicitly, while fs.existsSync's case
+          // sensitivity follows the real OS, so on a case-SENSITIVE
+          // filesystem (Linux) the two could diverge for a
+          // differently-cased pair that isn't actually a destination
+          // conflict. Checking the filesystem directly is what actually
           // matters (it's the real upload destination), and doesn't
           // depend on this function's own bookkeeping staying in sync
           // with it.
