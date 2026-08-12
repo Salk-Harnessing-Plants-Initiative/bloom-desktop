@@ -746,6 +746,42 @@ already iterates `scanners` once or displaying results there would mean
 either duplicating that iteration or awkwardly cross-referencing two
 separately-iterated lists.
 
+### Decision 12 — "Waiting for next cycle..." never appeared: `coordinatorState` was never driven by a live event
+
+Live smoke testing found the Decision 8 "Waiting for next cycle..."
+banner never appeared during an actual multi-cycle run. Root cause:
+`coordinatorState` is only ever set by `START` (always `'scanning'`),
+`CANCELLED`/`SCAN_ENDED` (`'idle'`), and mount-time `RESTORE` (whatever
+the backend reports at that instant). `CYCLE_ADVANCE` (the action added
+for Decision 8, dispatched on the coordinator's `cycle-complete` event)
+does not touch `coordinatorState` at all. The coordinator's own
+`interval-waiting` event — emitted once per cycle boundary, exactly when
+the UI should show the waiting banner — is fully wired end-to-end on the
+backend/preload side (`wiring.ts:182-183`, `preload.ts:481-491`,
+`onIntervalWaiting` present in every test mock) but **`useScanSession.ts`
+never subscribes to it**. `coordinatorState` is set to `'scanning'` once
+at session start and never changes again until the whole session ends —
+so the "waiting" branch of Decision 8's UI is permanently unreachable
+during a live session, only visible in the narrow, practically-unhit
+window where a remount happens to land exactly during a wait period.
+
+**Decision:** subscribe to `onIntervalWaiting` (dispatches a new,
+single-purpose `INTERVAL_WAITING` action setting `coordinatorState:
+'waiting'`) and repurpose the already-subscribed-but-no-op
+`onScanStarted` handler to dispatch a new `INTERVAL_RESUMED` action
+setting `coordinatorState: 'scanning'` — the first per-plate
+scan-started event of a new cycle is exactly the signal that scanning
+has resumed after a wait. (`onIntervalStart`, which fires once at the
+very start of the whole continuous session rather than per-cycle, is not
+the right signal for this and stays unsubscribed.)
+
+**Alternatives considered:** derive `coordinatorState` from
+`currentCycle` changing instead of a dedicated event. Rejected —
+`CYCLE_ADVANCE` already fires `currentCycle`'s change at `cycle-complete`
+time, which is _before_ the wait period begins, not during it; deriving
+"waiting" from cycle-number alone can't distinguish "just finished, about
+to wait" from "already scanning again."
+
 ## Architecture
 
 ```

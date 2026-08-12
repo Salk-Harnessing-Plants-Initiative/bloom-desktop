@@ -653,3 +653,27 @@ renders them (design.md Decision 11).
       Type-checking and lint both clean.
 - [x] 20.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 21. Wire coordinatorState to live interval-waiting/scan-started events (TDD, found during 16.6)
+
+Live smoke testing found the "Waiting for next cycle..." indicator
+(Section 17) never appeared during an actual run — `coordinatorState`
+was set once at session start and never updated again by any live
+event (design.md Decision 12).
+
+- [x] 21.1 Write failing tests in
+      `tests/unit/hooks/useScanSession.test.ts`: firing `interval-waiting`
+      during an active continuous session sets `coordinatorState` to
+      `'waiting'`; firing `scan-started` afterward sets it back to
+      `'scanning'`. Confirmed red against the unchanged implementation.
+- [x] 21.2 Subscribe to `onIntervalWaiting`, dispatching a new
+      `INTERVAL_WAITING` action. Repurpose the existing (currently no-op)
+      `onScanStarted` handler to dispatch a new `INTERVAL_RESUMED` action.
+      Add both to the effect's cleanup list.
+- [x] 21.3 Run the full unit suite, `npx tsc --noEmit`, and lint; confirm
+      no regressions beyond the already-documented pre-existing failures.
+      **Result:** 1638 passed, same known pre-existing failure set (4
+      files plus the already-flaky electron-cleanup.test.ts). Zero
+      failures related to this change. Type-checking and lint clean.
+- [x] 21.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.

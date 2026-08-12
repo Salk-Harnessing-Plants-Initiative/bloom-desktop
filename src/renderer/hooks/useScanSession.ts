@@ -155,6 +155,8 @@ type Action =
       type: 'CYCLE_ADVANCE';
       payload: { jobs: Record<string, ScanSessionJob>; cycle: number };
     }
+  | { type: 'INTERVAL_WAITING' }
+  | { type: 'INTERVAL_RESUMED' }
   | { type: 'ERROR'; payload: { error: string } }
   | {
       type: 'RESTORE';
@@ -227,6 +229,10 @@ function reducer(state: ScanState, action: Action): ScanState {
         ),
         currentCycle: action.payload.cycle,
       };
+    case 'INTERVAL_WAITING':
+      return { ...state, coordinatorState: 'waiting' };
+    case 'INTERVAL_RESUMED':
+      return { ...state, coordinatorState: 'scanning' };
     case 'CANCELLED':
       return {
         ...state,
@@ -583,9 +589,16 @@ export function useScanSession(
     });
 
     const cleanupStarted = gravi.onScanStarted(() => {
-      // No renderer-owned state currently derives from scan-started;
-      // listener kept (and dual-casing-safe) for future per-plate "now
-      // scanning" display without another event-wiring pass.
+      // The first per-plate scan-started event of a new cycle is exactly
+      // the signal that scanning has resumed after an interval-waiting
+      // pause (design.md Decision 12) — harmless to dispatch on every
+      // scan-started, not just the first per cycle, since it's a no-op
+      // once coordinatorState is already 'scanning'.
+      dispatch({ type: 'INTERVAL_RESUMED' });
+    });
+
+    const cleanupIntervalWaiting = gravi.onIntervalWaiting?.(() => {
+      dispatch({ type: 'INTERVAL_WAITING' });
     });
 
     return () => {
@@ -595,6 +608,7 @@ export function useScanSession(
       cleanupIntervalComplete();
       cleanupCancelled();
       cleanupStarted();
+      cleanupIntervalWaiting?.();
     };
   }, [finishSession, recordCompletedJob]);
 

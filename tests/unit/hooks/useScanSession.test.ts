@@ -534,6 +534,31 @@ describe('useScanSession', () => {
     );
   });
 
+  it('coordinatorState turns "waiting" on interval-waiting and back to "scanning" on the next cycle\'s first scan-started (regression: "Waiting for next cycle..." never appeared because coordinatorState was never driven by a live event)', async () => {
+    const { result } = renderHook(
+      () =>
+        useScanSession(
+          baseParams({
+            isContinuous: true,
+            intervalMinutes: 60,
+            durationMinutes: 180,
+          })
+        ),
+      { wrapper: wedgeWrapper }
+    );
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+    expect(result.current.coordinatorState).toBe('scanning');
+
+    fire('interval-waiting', { cycle: 1, totalCycles: 3, nextScanMs: 60000 });
+    expect(result.current.coordinatorState).toBe('waiting');
+
+    fire('scan-started', { scannerId: 'sc-1', plateIndex: '00' });
+    expect(result.current.coordinatorState).toBe('scanning');
+  });
+
   it('each job completion calls graviscans.create with all fields graviscansCreate requires', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,

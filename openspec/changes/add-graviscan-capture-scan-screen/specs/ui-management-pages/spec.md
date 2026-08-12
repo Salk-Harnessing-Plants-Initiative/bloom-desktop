@@ -367,6 +367,18 @@ per-scanner progress resets from 100% back to 0% at a cycle boundary.
 - **AND** it SHALL NOT be shown while the coordinator state is `scanning`
   or `idle`
 
+#### Scenario: The waiting indicator is driven by a live event, not just a mount-time snapshot
+
+- **GIVEN** a continuous scan is actively running, past its first cycle
+- **WHEN** the backend emits `interval-waiting` for the current cycle
+  boundary
+- **THEN** the waiting indicator SHALL appear without requiring a
+  navigation, remount, or any other action from the operator
+- **WHEN** the backend then emits the first `scan-started` event of the
+  next cycle
+- **THEN** the waiting indicator SHALL disappear again, reflecting that
+  scanning has resumed
+
 ---
 
 ### Requirement: GraviScan Session Restore on Renderer Navigation
