@@ -151,7 +151,7 @@ export interface GraviImage {
   graviscan_id: string;
   path: string;
   status: string; // Bloom upload: "pending" | "uploaded" | "failed"
-  box_status: string; // Box backup: "pending" | "uploaded" | "failed"
+  box_status: string; // Box backup: "pending" | "uploaded" | "failed" | "collision" (requires manual resolution — never auto-retried)
 }
 
 /**

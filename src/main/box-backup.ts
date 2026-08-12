@@ -86,6 +86,17 @@ export function rcloneCopyFiles(
   erroredFiles: Set<string>;
   error?: string;
   resolvedNames: Map<string, string>;
+  // Original paths that lost a basename collision (see below) — a
+  // DIFFERENT, non-retriable outcome from erroredFiles: retrying an
+  // ordinary transient failure is safe and expected, but retrying a
+  // collision is not, since the collision is a static property of two
+  // DB rows' paths that never resolves on its own. Callers must not
+  // route these through the same retry-eligible status erroredFiles
+  // uses, or the collision recurs (and silently resolves itself in
+  // Box's favor of whichever image happens to run last) every time the
+  // winning image is excluded from the query by already being marked
+  // uploaded.
+  collisions: Set<string>;
 }> {
   return new Promise((resolve) => {
     // Create a temp directory with symlinks to the files we want to copy
@@ -100,17 +111,7 @@ export function rcloneCopyFiles(
     // basename (different source directories, or genuine duplicate DB
     // rows) while being distinct, unique-by-full-path files — keying by
     // basename would let one image's resolution/error silently overwrite
-    // and misattribute onto a completely different image's row. The
-    // RESOLVED side is still keyed by basename since that's the actual
-    // physical filename rclone operates on in tmpDir — two different
-    // original paths resolving to the SAME resolved basename is a
-    // distinct problem this keying change alone does NOT fix (that one
-    // was previously undersold here as "a separate, narrower edge
-    // case," when it's actually a silent-data-loss bug: without the
-    // explicit collision check in the resolution loop below,
-    // ensureSymlinkOrCopy's fs.existsSync(linkPath) guard would make
-    // the second image's symlink a no-op, so only the FIRST image's
-    // bytes ever reach Box while BOTH get marked uploaded).
+    // and misattribute onto a completely different image's row.
     // Declared before the try block (not just before use) so the catch
     // block below can still return whatever was resolved before an
     // exception, instead of unconditionally discarding it.
@@ -125,6 +126,11 @@ export function rcloneCopyFiles(
     // closes that gap rather than merely narrowing it.
     const originalToResolvedName = new Map<string, string>();
     const missingFilePaths = new Set<string>();
+    // Original paths that lost a basename collision — see the
+    // fs.existsSync(linkPath) check below and the return type's own
+    // doc comment for why this must stay separate from
+    // missingFilePaths/erroredFiles.
+    const collisions = new Set<string>();
 
     try {
       let symlinksCreated = 0;
@@ -133,31 +139,39 @@ export function rcloneCopyFiles(
         const resolvedPath = resolveGraviScanPath(filePath);
         if (resolvedPath) {
           const fileName = path.basename(resolvedPath);
+          const linkPath = path.join(tmpDir, fileName);
           const claimedBy = resolvedToOriginalName.get(fileName);
-          if (claimedBy !== undefined && claimedBy !== filePath) {
-            // Physical collision: a DIFFERENT original path already
-            // claimed this exact resolved basename earlier in this same
-            // call (e.g. two images from different source directories
-            // whose filenames happen to match). ensureSymlinkOrCopy's
-            // fs.existsSync(linkPath) guard makes a second symlink/copy
-            // to the same tmpDir destination a silent no-op — rclone
-            // would only ever see and upload the FIRST image's bytes,
-            // while this one's real content never reaches Box at all,
-            // yet nothing would report an error for it. Routing it
-            // through the same missing-file path as a genuinely
-            // not-found file (rather than silently reusing the first
-            // image's staged file) means it's correctly marked failed
-            // and retried, instead of falsely marked uploaded.
+          // A literal duplicate — the exact same original path
+          // resolving twice (e.g. a genuine duplicate DB row) — is
+          // completely harmless: it's physically the same file, and
+          // ensureSymlinkOrCopy's own existsSync guard makes the
+          // redundant symlink/copy call below a safe no-op. Anything
+          // else that already occupies this exact tmpDir destination
+          // is a REAL collision between two DIFFERENT images.
+          const isLiteralDuplicate = claimedBy === filePath;
+          if (!isLiteralDuplicate && fs.existsSync(linkPath)) {
+            // Checking the real destination path directly (rather than
+            // only a case-sensitive Map lookup on `fileName`) catches
+            // collisions between two images whose resolved basenames
+            // are identical AND ones that merely differ by case on a
+            // case-insensitive filesystem (Windows, default macOS) —
+            // ensureSymlinkOrCopy's fs.existsSync(linkPath) guard would
+            // treat both the same way (a silent no-op), so the
+            // detection here must too, or a case-differing pair would
+            // slip through undetected and reproduce the exact
+            // silent-data-loss bug this check exists to prevent.
+            const collidingWith =
+              claimedBy ?? '(a file with a differently-cased basename)';
             console.warn(
-              `[BoxBackup] Basename collision: "${filePath}" resolves to the same physical filename ("${fileName}") as "${claimedBy}" — treating as unresolved rather than silently overwriting that upload.`
+              `[BoxBackup] Basename collision: "${filePath}" resolves to the same physical filename ("${fileName}") as "${collidingWith}" — this image cannot be safely uploaded until the conflicting files are renamed; skipping without marking it as a retryable failure.`
             );
-            missingFiles.push(filePath);
-            missingFilePaths.add(filePath);
+            collisions.add(filePath);
             continue;
           }
-          resolvedToOriginalName.set(fileName, filePath);
-          originalToResolvedName.set(filePath, fileName);
-          const linkPath = path.join(tmpDir, fileName);
+          if (!isLiteralDuplicate) {
+            resolvedToOriginalName.set(fileName, filePath);
+            originalToResolvedName.set(filePath, fileName);
+          }
           // Windows restricts unprivileged symlink creation (requires
           // admin or Developer Mode — the default state on most lab
           // machines), and this path was never exercised by CI (rclone
@@ -194,6 +208,7 @@ export function rcloneCopyFiles(
           erroredFiles: missingFilePaths,
           error: `None of the ${filePaths.length} image files exist on disk`,
           resolvedNames: originalToResolvedName,
+          collisions,
         });
         return;
       }
@@ -288,6 +303,7 @@ export function rcloneCopyFiles(
             success: true,
             erroredFiles,
             resolvedNames: originalToResolvedName,
+            collisions,
           });
         } else {
           resolve({
@@ -298,6 +314,7 @@ export function rcloneCopyFiles(
                 ? (waveLevelErrorMsg ?? `rclone exited with code ${code}`)
                 : undefined,
             resolvedNames: originalToResolvedName,
+            collisions,
           });
         }
       });
@@ -313,6 +330,7 @@ export function rcloneCopyFiles(
           erroredFiles,
           error: err.message,
           resolvedNames: originalToResolvedName,
+          collisions,
         });
       });
     } catch (err) {
@@ -321,16 +339,18 @@ export function rcloneCopyFiles(
       } catch {
         // ignore
       }
-      // Reuses whatever resolvedToOriginalName/missingFilePaths already
-      // accumulated before the exception (both declared above the try
-      // block specifically for this) rather than discarding it — an
-      // exception partway through the resolution loop (e.g.
-      // ensureSymlinkOrCopy failing on a full disk) shouldn't forget
-      // about files that resolved fine earlier in the same loop.
+      // Reuses whatever resolvedToOriginalName/missingFilePaths/
+      // collisions already accumulated before the exception (all
+      // declared above the try block specifically for this) rather
+      // than discarding it — an exception partway through the
+      // resolution loop (e.g. ensureSymlinkOrCopy failing on a full
+      // disk) shouldn't forget about files that resolved fine earlier
+      // in the same loop.
       resolve({
         success: false,
         erroredFiles: missingFilePaths,
         resolvedNames: originalToResolvedName,
+        collisions,
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -620,39 +640,69 @@ export async function runBoxBackup(
       // way an earlier version of this fix did.
       const uploadedIds: string[] = [];
       const failedIds: string[] = [];
+      // Images whose basename collided with another image's in this
+      // exact wave (see rcloneCopyFiles's collisions doc comment).
+      // Classified SEPARATELY from failedIds — retrying does not
+      // resolve a collision (the two paths' basenames never change on
+      // their own), and box_status:'failed' is specifically the status
+      // this file's own DB query re-selects for automatic retry every
+      // run. Marking a collision 'failed' would let it recur forever:
+      // the losing image retries alone once the winner is excluded by
+      // already being 'uploaded', succeeds with no collision to detect
+      // in that narrower call, and overwrites the winner's real content
+      // on Box — silently converting a correctly-caught collision into
+      // exactly the false-success state this whole mechanism exists to
+      // prevent, just deferred by one run. A collision needs a human to
+      // rename one of the conflicting files; box_status:'collision' is
+      // deliberately excluded from the ['pending','failed'] retry query
+      // so it isn't picked up again until that happens.
+      const collisionIds: string[] = [];
       const exportableScanRowIndexes = new Set<number>();
+
+      for (let i = 0; i < data.imagePaths.length; i++) {
+        if (copyResult.collisions.has(data.imagePaths[i])) {
+          collisionIds.push(data.imageIds[i]);
+        }
+      }
 
       if (
         !copyResult.success &&
         (copyResult.erroredFiles.size === 0 || copyResult.error !== undefined)
       ) {
-        // Total rclone failure — mark ALL as failed, including any that
-        // logged a per-file "Copied" line (and so already incremented
-        // completedImages) before the process died. A non-zero exit
-        // means rclone didn't run to completion, so any file NOT in
-        // erroredFiles is indistinguishable from "silently skipped
-        // because already present at the destination" vs. "never
-        // attempted because rclone crashed" — treat the whole wave
-        // conservatively as needing retry rather than inferring success
-        // for anything not explicitly matched. Without the `error !==
-        // undefined` half of this condition, a wave with one
-        // genuinely-matched per-file error AND a crash/quota/auth
-        // failure partway through would still mark every OTHER
-        // (never-attempted) file as uploaded — the same silent-data-loss
-        // defect this whole check exists to prevent, reached via a
-        // different door (a non-empty erroredFiles no longer implies
-        // "every other file is confirmed fine"). None of this wave's
-        // images are confirmed uploaded, so exportableScanRowIndexes
-        // stays empty — metadata.csv is skipped below rather than
-        // describing a wave that wasn't actually backed up.
+        // Total rclone failure — mark ALL non-collision images as
+        // failed, including any that logged a per-file "Copied" line
+        // (and so already incremented completedImages) before the
+        // process died. A non-zero exit means rclone didn't run to
+        // completion, so any file NOT in erroredFiles is
+        // indistinguishable from "silently skipped because already
+        // present at the destination" vs. "never attempted because
+        // rclone crashed" — treat the whole wave conservatively as
+        // needing retry rather than inferring success for anything not
+        // explicitly matched. Without the `error !== undefined` half of
+        // this condition, a wave with one genuinely-matched per-file
+        // error AND a crash/quota/auth failure partway through would
+        // still mark every OTHER (never-attempted) file as uploaded —
+        // the same silent-data-loss defect this whole check exists to
+        // prevent, reached via a different door (a non-empty
+        // erroredFiles no longer implies "every other file is confirmed
+        // fine"). None of this wave's images are confirmed uploaded, so
+        // exportableScanRowIndexes stays empty — metadata.csv is
+        // skipped below rather than describing a wave that wasn't
+        // actually backed up. Collision images are excluded here too —
+        // a crashed rclone process doesn't change the fact that they
+        // were never even attempted, and they must stay out of
+        // failedIds regardless of what else happened this run.
         console.error(
-          `[BoxBackup] rclone failed entirely for ${expName}/wave_${waveNum} — marking all files as failed`
+          `[BoxBackup] rclone failed entirely for ${expName}/wave_${waveNum} — marking all non-collision files as failed`
         );
-        failedIds.push(...data.imageIds);
+        for (const imageId of data.imageIds) {
+          if (!collisionIds.includes(imageId)) failedIds.push(imageId);
+        }
         completedImages -= waveCompletedImages;
       } else {
         for (let i = 0; i < data.imagePaths.length; i++) {
           const filePath = data.imagePaths[i];
+          if (copyResult.collisions.has(filePath)) continue;
           if (copyResult.erroredFiles.has(filePath)) {
             failedIds.push(data.imageIds[i]);
           } else {
@@ -672,6 +722,24 @@ export async function runBoxBackup(
           data: { box_status: 'uploaded' },
         });
         result.filesCopied += uploadedIds.length;
+      }
+
+      if (collisionIds.length > 0) {
+        await db.graviImage.updateMany({
+          where: { id: { in: collisionIds } },
+          data: { box_status: 'collision' },
+        });
+        failedImages += collisionIds.length;
+        result.errors.push(
+          `${expName}/wave_${waveNum}: ${collisionIds.length} image(s) skipped — filename collision with another image in this wave. This will NOT resolve on retry; rename one of the conflicting files on disk, then manually reset the image's status (see main-process logs for which files collided).`
+        );
+        result.success = false;
+        onProgress?.({
+          totalImages,
+          completedImages,
+          failedImages,
+          currentExperiment: expName,
+        });
       }
 
       if (failedIds.length > 0) {

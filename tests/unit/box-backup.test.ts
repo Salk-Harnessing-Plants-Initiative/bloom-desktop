@@ -195,6 +195,32 @@ describe('rcloneCopyFiles', () => {
     expect(result.erroredFiles.has(staleDbPath)).toBe(true);
     expect(result.erroredFiles.has(otherFile)).toBe(true);
   });
+
+  it('preserves already-known missing/errored files instead of an empty set when the rclone process itself fails to spawn', async () => {
+    // proc.on('error') fires for spawn-level failures (e.g. the rclone
+    // binary vanishing mid-run) — round 14 changed its resolve() call
+    // from a fresh empty Set to the already-accumulated erroredFiles,
+    // matching every other exit path in this function, but that change
+    // had zero test coverage. A genuinely missing file must still show
+    // up in the result even when the spawn itself errors afterward.
+    const neverExistsPath = path.join(
+      sourceDir,
+      'exp1_never_exists_cy1_S1_99.tif'
+    );
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles(
+      [sourceFile, neverExistsPath],
+      'ExperimentA/wave_0'
+    );
+    fakeProc.emit('error', new Error('ENOENT: rclone not found'));
+
+    const result = await resultPromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('ENOENT: rclone not found');
+    expect(result.erroredFiles.has(neverExistsPath)).toBe(true);
+  });
 });
 
 describe('runBoxBackup', () => {
@@ -1134,7 +1160,7 @@ describe('runBoxBackup', () => {
     }
   });
 
-  it('does not silently mark BOTH images uploaded when two genuinely-existing files in different directories resolve to the same physical tmpDir basename', async () => {
+  it('marks exactly the first-encountered image uploaded and the second box_status:"collision" (never "failed") when two genuinely-existing files in different directories resolve to the same physical tmpDir basename', async () => {
     // A narrower, more dangerous variant of the previous test: here BOTH
     // images actually exist on disk and both resolve successfully (no
     // missing/unresolvable side at all) — they just happen to share a
@@ -1142,14 +1168,20 @@ describe('runBoxBackup', () => {
     // plates/experiments). ensureSymlinkOrCopy's `if
     // (fs.existsSync(linkPath)) return;` guard means the SECOND image's
     // real bytes are never staged into tmpDir at all — rclone only ever
-    // sees and uploads the FIRST one, under one shared filename. Without
-    // a fix, the classification loop finds neither image in
-    // erroredFiles (rclone reported no error — it never even knew about
-    // the second file), so BOTH get marked box_status:'uploaded' and
-    // BOTH get a metadata.csv row naming the same file, even though one
-    // image's actual pixel content never reached Box at all and is now
-    // permanently unretriable (box_status:'uploaded' means it will
-    // never be selected by a future run's query again).
+    // sees and uploads the FIRST one, under one shared filename.
+    //
+    // Exact, tight assertions on purpose (not just "at most one
+    // uploaded"): a weaker assertion here previously passed even
+    // against a strictly WORSE mutant that marked both images
+    // box_status:'failed' (losing the first image's legitimate,
+    // already-successful upload) — found via live mutation testing.
+    // And box_status specifically must be 'collision', not 'failed':
+    // 'failed' is re-selected by this file's own retry query on every
+    // future run, but retrying a collision doesn't help (the two
+    // paths' basenames never change) — it would just let the losing
+    // image succeed alone on a later run once the winner is excluded
+    // by already being 'uploaded', silently overwriting the winner's
+    // real content on Box.
     const otherDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'box-backup-test-src-other2-')
     );
@@ -1163,6 +1195,21 @@ describe('runBoxBackup', () => {
     );
     // sourceFile (from the shared beforeEach) is left INTACT this time —
     // both files genuinely exist and both resolve as-is.
+
+    // Both the image copy AND the metadata CSV copy succeed here, so
+    // img1's uploaded status isn't independently reverted by the
+    // (unrelated) CSV-failure-revert path this file also has — this
+    // test targets ONLY the collision behavior.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else {
+        queueMicrotask(() => proc.emit('close', 0));
+      }
+      return proc as never;
+    });
 
     db.graviScan.findMany.mockResolvedValue([
       {
@@ -1182,35 +1229,145 @@ describe('runBoxBackup', () => {
     ]);
 
     try {
-      await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+      const result = await runBoxBackup(
+        db as unknown as Parameters<typeof runBoxBackup>[0]
+      );
 
-      // At most ONE of the two images may be marked uploaded — the other
-      // must be marked failed (so it's retried, rather than silently and
-      // permanently lost).
       const uploadedCall = db.graviImage.updateMany.mock.calls.find(
         (call) => call[0].data.box_status === 'uploaded'
       );
-      const uploadedIds: string[] = uploadedCall
-        ? uploadedCall[0].where.id.in
-        : [];
-      expect(uploadedIds.length).toBeLessThanOrEqual(1);
-      expect(uploadedIds).not.toEqual(['img1', 'img2']);
+      expect(uploadedCall[0].where.id.in).toEqual(['img1']);
 
-      // metadata.csv must not claim two distinct images both succeeded
-      // under the one physical filename Box actually received.
+      const collisionCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'collision'
+      );
+      expect(collisionCall[0].where.id.in).toEqual(['img2']);
+
+      // Never 'failed' for the losing image — that status is exactly
+      // what makes this file's retry query pick it up again.
+      const failedCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'failed'
+      );
+      expect(failedCall).toBeUndefined();
+
+      // Surfaced distinctly from an ordinary transient failure, with
+      // explicit "will not resolve on retry" guidance.
+      expect(
+        result.errors.some(
+          (e) => e.includes('collision') && e.includes('NOT resolve on retry')
+        )
+      ).toBe(true);
+
+      // metadata.csv must contain only the winning image's row, naming
+      // the one physical file Box actually received.
       const csvCall = vi
         .mocked(fs.writeFileSync)
         .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
-      if (csvCall) {
-        const csvContent = csvCall[1] as string;
-        const rowLines = csvContent
-          .split('\n')
-          .filter((line) => line.includes('exp1_st_20260101T000000_cy1_S1_00'));
-        expect(rowLines.length).toBeLessThanOrEqual(1);
-      }
+      expect(csvCall).toBeDefined();
+      const csvContent = csvCall![1] as string;
+      const rowLines = csvContent
+        .split('\n')
+        .filter((line) => line.includes('exp1_st_20260101T000000_cy1_S1_00'));
+      expect(rowLines).toHaveLength(1);
     } finally {
       fs.rmSync(otherDir, { recursive: true, force: true });
     }
+  });
+
+  it('does not resolve a basename collision on the next run even after the winning image is excluded from the retry query', async () => {
+    // Regression guard for the cross-run corruption this round's design
+    // specifically closes: box_status:'collision' must NOT be in the
+    // set of statuses runBoxBackup's own query re-selects, or the
+    // losing image would eventually run alone (once the winner is
+    // 'uploaded' and excluded), find no collision in that narrower
+    // call, and silently overwrite the winner's real content on Box —
+    // both images would end up 'uploaded' while Box physically holds
+    // only the loser's bytes, with nothing indicating anything is wrong.
+    const otherDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'box-backup-test-src-other3-')
+    );
+    const collidingFile = path.join(
+      otherDir,
+      'exp1_st_20260101T000000_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(collidingFile, 'fake tiff bytes colliding');
+
+    try {
+      // Simulate img2 already being marked 'collision' from a prior
+      // run: the query must not select it, so it's simply absent from
+      // this run's fixture (mirroring runBoxBackup's real
+      // box_status:{in:['pending','failed']} filter never matching it).
+      db.graviScan.findMany.mockResolvedValue([
+        {
+          experiment: { name: 'ExpA', accession: null },
+          wave_number: 0,
+          plate_barcode: 'P1',
+          plate_index: '1',
+          grid_mode: '2grid',
+          capture_date: new Date('2026-01-01'),
+          transplant_date: null,
+          custom_note: null,
+          images: [{ id: 'img1', path: sourceFile }],
+        },
+      ]);
+
+      await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+      // img1 uploads normally on its own — nothing about a PAST
+      // collision (now excluded from this query) should block it.
+      const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'uploaded'
+      );
+      expect(uploadedCall[0].where.id.in).toEqual(['img1']);
+      // img2 was never even part of this run's query results (it's
+      // 'collision', not 'pending'/'failed') — confirming the actual
+      // exclusion lives in the query shape itself, not in this test's
+      // fixture, is covered by inspecting runBoxBackup's own
+      // db.graviScan.findMany call args.
+      const queryArgs = db.graviScan.findMany.mock.calls[0][0];
+      expect(queryArgs.include.images.where.box_status.in).not.toContain(
+        'collision'
+      );
+      expect(queryArgs.where.images.some.box_status.in).not.toContain(
+        'collision'
+      );
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not flag a genuine duplicate DB row (same original path processed twice) as a collision', async () => {
+    // The literal-duplicate case round 14's own comment names by
+    // example ("a genuine duplicate DB row") must remain a harmless
+    // no-op, not a collision — both rows describe the exact same
+    // physical file, so there's nothing to disambiguate.
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: sourceFile },
+        ],
+      },
+    ]);
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'uploaded'
+    );
+    expect([...uploadedCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
+    const collisionCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'collision'
+    );
+    expect(collisionCall).toBeUndefined();
   });
 
   it('does not leak a resolved filename from one wave into a different wave that shares the same original basename', async () => {
