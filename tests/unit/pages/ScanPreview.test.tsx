@@ -122,3 +122,28 @@ describe('ScanPreview delete flow', () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 });
+
+describe('ScanPreview color palette', () => {
+  it('uses lime on the "Back to Scans" link and the Upload button, not blue', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'PLANT-001' });
+
+    const backLink = screen.getByText('← Back to Scans');
+    expect(backLink.className).toContain('text-lime-700');
+    expect(backLink.className).toContain('hover:text-lime-800');
+    expect(backLink.className).not.toMatch(/text-blue-600|hover:text-blue-800/);
+
+    const uploadButton = screen.getByTitle('Upload to Bloom');
+    expect(uploadButton.className).toContain('bg-lime-700');
+    expect(uploadButton.className).toContain('hover:bg-lime-800');
+    expect(uploadButton.className).not.toMatch(/bg-blue-600|hover:bg-blue-700/);
+  });
+
+  it('leaves the red Delete button unchanged (regression guard)', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'PLANT-001' });
+
+    const deleteButton = screen.getByTitle('Delete scan');
+    expect(deleteButton.className).toContain('bg-red-600');
+  });
+});

@@ -284,7 +284,7 @@ export function AccessionFileUpload({
       return 'bg-green-200';
     }
     if (columnName === selectedAccessionCol) {
-      return 'bg-blue-200';
+      return 'bg-lime-200';
     }
     return '';
   };
@@ -323,7 +323,7 @@ export function AccessionFileUpload({
             data-testid="file-input"
             accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-lime-50 file:text-lime-700 hover:file:bg-lime-100 cursor-pointer"
           />
         </div>
       </div>
@@ -384,7 +384,7 @@ export function AccessionFileUpload({
                 data-testid="sheet-selector"
                 value={selectedSheet || ''}
                 onChange={(e) => handleSheetChange(e.target.value)}
-                className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-lime-500"
               >
                 {sheetNames.map((sheet) => (
                   <option key={sheet} value={sheet}>
@@ -426,7 +426,7 @@ export function AccessionFileUpload({
                 onChange={(e) =>
                   setSelectedAccessionCol(e.target.value || null)
                 }
-                className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-lime-500"
               >
                 <option value="">Select...</option>
                 {columns.map((col) => (
@@ -496,7 +496,7 @@ export function AccessionFileUpload({
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 isUploadDisabled || isUploading
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-500 text-white hover:bg-blue-600'
+                  : 'bg-lime-700 text-white hover:bg-lime-800'
               }`}
             >
               {isUploading ? 'Uploading...' : 'Upload Accession File'}

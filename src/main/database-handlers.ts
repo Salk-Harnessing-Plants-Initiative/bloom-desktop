@@ -2120,7 +2120,14 @@ export function registerDatabaseHandlers(deps: {
                   },
                 },
                 phenotyper: true,
-                images: { select: { id: true, status: true } },
+                images: {
+                  select: {
+                    id: true,
+                    status: true,
+                    path: true,
+                    frame_number: true,
+                  },
+                },
               },
               orderBy: { capture_date: 'desc' },
               skip,
@@ -2294,6 +2301,9 @@ export function registerDatabaseHandlers(deps: {
             experiment: {
               select: { name: true },
             },
+            images: {
+              select: { status: true },
+            },
           },
         });
 
@@ -2306,6 +2316,37 @@ export function registerDatabaseHandlers(deps: {
         return { success: true, data: scans };
       } catch (error) {
         console.error('[DB] Failed to get recent scans:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    }
+  );
+
+  /**
+   * Count failed-status images across all non-deleted scans, regardless of
+   * capture date — a date-unscoped complement to getRecent's today-only
+   * scope, so a stale failed upload from a prior day still surfaces on the
+   * Home dashboard (Tier 4, #104).
+   */
+  ipcMain.handle(
+    'db:scans:getFailedUploadCount',
+    async (): Promise<DatabaseResponse> => {
+      try {
+        const failedCount = await db.image.count({
+          where: { status: 'failed', scan: { deleted: false } },
+        });
+
+        logDatabaseOperation(
+          'READ',
+          'Image',
+          `getFailedUploadCount count=${failedCount}`
+        );
+
+        return { success: true, data: { failedCount } };
+      } catch (error) {
+        console.error('[DB] Failed to get failed upload count:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',

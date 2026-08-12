@@ -7,6 +7,9 @@ import type {
   ExperimentWithRelations,
 } from '../types/database';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { countUploadStatuses } from '../utils/upload-status';
+import { pathToFileUrl } from '../utils/file-url';
+import { isAbsolutePath } from '../utils/scan-path';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -39,6 +42,26 @@ export function BrowseScans() {
     new Set()
   );
   const [batchUploadInProgress, setBatchUploadInProgress] = useState(false);
+
+  // Thumbnail resolution state — mirrors ScanPreview.tsx's existing pattern
+  const [scansDir, setScansDir] = useState('');
+  const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(
+    new Set()
+  );
+
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const { config } = await window.electron.config.get();
+        if (config.scans_dir) {
+          setScansDir(config.scans_dir);
+        }
+      } catch (err) {
+        console.error('Failed to load machine config:', err);
+      }
+    };
+    loadConfig();
+  }, []);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -220,15 +243,40 @@ export function BrowseScans() {
     });
   };
 
+  // First image = lowest frame_number, matching ScanPreview.tsx's existing
+  // `.sort((a, b) => a.frame_number - b.frame_number)[0]` pattern.
+  const getFirstImageUrl = (
+    images: { path: string; frame_number: number }[]
+  ): string | null => {
+    if (images.length === 0) return null;
+    const first = images.reduce((min, img) =>
+      img.frame_number < min.frame_number ? img : min
+    );
+    const resolvedPath = isAbsolutePath(first.path)
+      ? first.path
+      : `${scansDir}/${first.path}`;
+    return pathToFileUrl(resolvedPath);
+  };
+
+  const getCameraSettingsSummary = (scan: ScanWithImageSummary) => {
+    const compact = `${scan.scanner_name || '-'} · Exp ${scan.exposure_time}ms · Gain ${scan.gain}`;
+    const full = [
+      `Scanner: ${scan.scanner_name || '-'}`,
+      `Exposure: ${scan.exposure_time}ms`,
+      `Gain: ${scan.gain}`,
+      `Brightness: ${scan.brightness}`,
+      `Contrast: ${scan.contrast}`,
+      `Gamma: ${scan.gamma}`,
+      `Seconds/Rotation: ${scan.seconds_per_rot}`,
+    ].join(' · ');
+    return { compact, full };
+  };
+
   const getUploadStatus = (images: { id: string; status: string }[]) => {
     if (images.length === 0)
       return { text: 'No images', color: 'text-gray-400' };
 
-    const uploaded = images.filter((img) => img.status === 'uploaded').length;
-    const failed = images.filter((img) => img.status === 'failed').length;
-    const pending = images.filter(
-      (img) => img.status === 'pending' || img.status === 'uploading'
-    ).length;
+    const { uploaded, failed, pending } = countUploadStatuses(images);
 
     if (failed > 0) {
       return { text: `${failed} failed`, color: 'text-red-600' };
@@ -262,7 +310,7 @@ export function BrowseScans() {
             </label>
             <select
               id="experiment-filter"
-              className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-500"
               value={experimentId}
               onChange={(e) => {
                 setExperimentId(e.target.value);
@@ -286,7 +334,7 @@ export function BrowseScans() {
             <input
               id="date-from"
               type="date"
-              className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-500"
               value={dateFrom}
               onChange={(e) => {
                 setDateFrom(e.target.value);
@@ -303,7 +351,7 @@ export function BrowseScans() {
             <input
               id="date-to"
               type="date"
-              className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-500"
               value={dateTo}
               onChange={(e) => {
                 setDateTo(e.target.value);
@@ -373,7 +421,7 @@ export function BrowseScans() {
             type="button"
             onClick={handleBatchUpload}
             disabled={batchUploadInProgress}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {batchUploadInProgress
               ? 'Uploading...'
@@ -422,6 +470,9 @@ export function BrowseScans() {
                   />
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-700">
+                  Preview
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-700">
                   Plant ID
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-700">
@@ -449,6 +500,9 @@ export function BrowseScans() {
                   Upload Status
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-700">
+                  Camera Settings
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-gray-700">
                   Actions
                 </th>
               </tr>
@@ -472,10 +526,38 @@ export function BrowseScans() {
                         className="w-4 h-4 rounded border-gray-300 disabled:opacity-50"
                       />
                     </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const thumbnailUrl = getFirstImageUrl(scan.images);
+                        if (!thumbnailUrl || thumbnailErrors.has(scan.id)) {
+                          return (
+                            <div
+                              data-testid="thumbnail-placeholder"
+                              className="w-12 h-16 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-gray-400 text-xs"
+                            >
+                              N/A
+                            </div>
+                          );
+                        }
+                        return (
+                          <img
+                            src={thumbnailUrl}
+                            alt={`${scan.plant_id} thumbnail`}
+                            loading="lazy"
+                            className="w-12 h-16 object-cover rounded border border-gray-200"
+                            onError={() =>
+                              setThumbnailErrors((prev) =>
+                                new Set(prev).add(scan.id)
+                              )
+                            }
+                          />
+                        );
+                      })()}
+                    </td>
                     <td className="px-4 py-3 font-medium">
                       <Link
                         to={`/scan/${scan.id}`}
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                        className="text-lime-700 hover:text-lime-800 hover:underline"
                       >
                         {scan.plant_id}
                       </Link>
@@ -498,11 +580,17 @@ export function BrowseScans() {
                     <td className={`px-4 py-3 ${uploadStatus.color}`}>
                       {uploadStatus.text}
                     </td>
+                    <td
+                      className="px-4 py-3 text-gray-600"
+                      title={getCameraSettingsSummary(scan).full}
+                    >
+                      {getCameraSettingsSummary(scan).compact}
+                    </td>
                     <td className="px-4 py-3 flex gap-2">
                       <button
                         type="button"
                         onClick={() => navigate(`/scan/${scan.id}`)}
-                        className="text-blue-600 hover:text-blue-800"
+                        className="text-lime-700 hover:text-lime-800"
                         title="View scan"
                       >
                         <svg

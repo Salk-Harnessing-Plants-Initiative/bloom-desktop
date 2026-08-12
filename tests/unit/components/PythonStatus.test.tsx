@@ -150,3 +150,64 @@ describe('PythonStatus — graviscan mode', () => {
     expect(mockPythonAPI.onError).not.toHaveBeenCalled();
   });
 });
+
+describe('PythonStatus color palette', () => {
+  it('uses bg-lime-700/hover:bg-lime-800 on Check Hardware, not blue', async () => {
+    const { getByText } = render(<PythonStatus mode="cylinderscan" />);
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    const button = getByText('Check Hardware');
+    expect(button.className).toContain('bg-lime-700');
+    expect(button.className).toContain('hover:bg-lime-800');
+    expect(button.className).not.toMatch(/bg-blue-600|hover:bg-blue-700/);
+  });
+});
+
+describe('PythonStatus administrator-contact messaging (#104)', () => {
+  it('shows "Contact your administrator" when the camera library is unavailable', async () => {
+    mockPythonAPI.checkHardware.mockResolvedValue({
+      camera: { library_available: false, devices_found: 0, available: false },
+      daq: { library_available: true, devices_found: 1, available: true },
+    });
+
+    const { getByText } = render(<PythonStatus mode="cylinderscan" />);
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByText('Check Hardware'));
+
+    await waitFor(() => {
+      expect(getByText(/Contact your administrator/i)).toBeInTheDocument();
+    });
+  });
+
+  it('never links to Machine Configuration, regardless of hardware state', async () => {
+    mockPythonAPI.checkHardware.mockResolvedValue({
+      camera: { library_available: false, devices_found: 0, available: false },
+      daq: { library_available: false, devices_found: 0, available: false },
+    });
+
+    const { getByText, queryAllByText, container } = render(
+      <PythonStatus mode="cylinderscan" />
+    );
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByText('Check Hardware'));
+
+    await waitFor(() => {
+      expect(
+        queryAllByText(/Contact your administrator/i).length
+      ).toBeGreaterThan(0);
+    });
+
+    expect(
+      container.querySelector('a[href*="machine-config"]')
+    ).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/machine config/i);
+  });
+});

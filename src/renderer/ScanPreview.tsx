@@ -240,7 +240,7 @@ export function ScanPreview() {
       <div className="p-6">
         <Link
           to="/browse-scans"
-          className="text-blue-600 hover:text-blue-800 hover:underline mb-4 inline-block"
+          className="text-lime-700 hover:text-lime-800 hover:underline mb-4 inline-block"
         >
           ← Back to Scans
         </Link>
@@ -257,7 +257,7 @@ export function ScanPreview() {
       <div className="p-6">
         <Link
           to="/browse-scans"
-          className="text-blue-600 hover:text-blue-800 hover:underline mb-4 inline-block"
+          className="text-lime-700 hover:text-lime-800 hover:underline mb-4 inline-block"
         >
           ← Back to Scans
         </Link>
@@ -277,7 +277,7 @@ export function ScanPreview() {
       <div className="mb-4">
         <Link
           to="/browse-scans"
-          className="text-blue-600 hover:text-blue-800 hover:underline mb-2 inline-block"
+          className="text-lime-700 hover:text-lime-800 hover:underline mb-2 inline-block"
         >
           ← Back to Scans
         </Link>
@@ -364,7 +364,7 @@ export function ScanPreview() {
                 type="button"
                 onClick={handleUpload}
                 disabled={isUploading || !getUploadStatus().canUpload}
-                className="px-3 py-1 text-sm border rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1 text-sm border rounded-md bg-lime-700 text-white hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Upload to Bloom"
               >
                 {isUploading ? 'Uploading...' : 'Upload'}

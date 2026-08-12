@@ -21,6 +21,7 @@ import {
   DatabaseResponse,
   ExperimentWithRelations,
   ScanWithRelations,
+  ScanWithRecentSummary,
   Experiment,
   Scan,
   Phenotyper,
@@ -363,7 +364,10 @@ export interface DatabaseAPI {
     getRecent: (options?: {
       limit?: number;
       experimentId?: string;
-    }) => Promise<DatabaseResponse<ScanWithRelations[]>>;
+    }) => Promise<DatabaseResponse<ScanWithRecentSummary[]>>;
+    getFailedUploadCount: () => Promise<
+      DatabaseResponse<{ failedCount: number }>
+    >;
     /**
      * Soft delete a scan (sets deleted=true, does NOT delete images)
      * @param id - Scan ID to delete
