@@ -453,6 +453,82 @@ describe('usePlateAssignments', () => {
     );
   });
 
+  it('a manually-entered barcode (no metadata link) survives a genuine unmount+remount, not just a same-instance rerender', async () => {
+    // Stateful mock: upsertMany() actually records what gets written, and
+    // listAssignments() actually reads it back — a real unmount/remount
+    // has no living hook instance to keep local state in, so the ONLY
+    // thing a fresh mount can possibly see is whatever was truly
+    // persisted, exactly like the real IPC/DB round-trip.
+    let storedRow: Record<string, unknown> | null = null;
+    listGraviMetadata.mockResolvedValue({ success: true, data: [] });
+    listAssignments.mockImplementation(async () => ({
+      success: true,
+      data: storedRow ? [storedRow] : [],
+    }));
+    upsertMany.mockImplementation(
+      async (
+        _experimentId: string,
+        _scannerId: string,
+        assignments: Array<Record<string, unknown>>
+      ) => {
+        storedRow = {
+          id: 'row-1',
+          experiment_id: 'exp-1',
+          scanner_id: 'sc-1',
+          wave_number: 0,
+          verification_status: 'pending',
+          ...assignments[0],
+        };
+        return { success: true, data: [storedRow] };
+      }
+    );
+
+    const first = renderHook(() =>
+      usePlateAssignments({
+        experimentId: 'exp-1',
+        waveNumber: 0,
+        scannerIds: ['sc-1'],
+        gridModes: { 'sc-1': '2grid' },
+      })
+    );
+    await waitFor(() =>
+      expect(first.result.current.assignmentsByScanner['sc-1']).toBeDefined()
+    );
+
+    act(() => {
+      first.result.current.updateField(
+        'sc-1',
+        '00',
+        'plantBarcode',
+        'MANUAL_PLATE'
+      );
+    });
+    // Wait for the write (persistPosition's upsertMany) to actually land,
+    // matching a real operator who waits a beat before navigating away.
+    await waitFor(() => expect(upsertMany).toHaveBeenCalled());
+    await waitFor(() => expect(storedRow).not.toBeNull());
+
+    // Simulate navigating away and back: the old GraviScan.tsx tree (and
+    // this hook instance with it) is fully torn down, not just re-rendered
+    // with new props.
+    first.unmount();
+
+    const second = renderHook(() =>
+      usePlateAssignments({
+        experimentId: 'exp-1',
+        waveNumber: 0,
+        scannerIds: ['sc-1'],
+        gridModes: { 'sc-1': '2grid' },
+      })
+    );
+
+    await waitFor(() =>
+      expect(
+        second.result.current.assignmentsByScanner['sc-1']?.[0]?.plantBarcode
+      ).toBe('MANUAL_PLATE')
+    );
+  });
+
   // ── Regression found by review-pr round 1 ───────────────────────────────
 
   it('a failed upsertMany() from an operator edit surfaces via saveError instead of failing silently', async () => {
