@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CylinderScan style/UX parity pass ([PR #329](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/329), closes [#104](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/104), [#175](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/175), [#106](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/106), [#107](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/107), roadmap Tier 4)
+  - Blue/indigo accents replaced with a lime/stone/amber convention (adapted from `bloom-desktop-pilot`'s real usage) across CylinderScan-only pages and shared scan-management/entity-form pages, including the shared `WorkflowSteps.tsx` badge/hover colors (GraviScan's own step data and routes are unchanged, only the shared component's color)
+  - `CameraSettings.tsx` now centered in a `max-w-7xl` container with `shadow-sm` panels, matching `CaptureScan.tsx` (folds in and supersedes the standalone `align-page-layout-centering` change)
+  - New `CylinderScanWorkflowGuide` component restructures the Home page's workflow guide into "Daily Workflow" / "Setup" sections, replacing the old flat numbered list; built standalone so GraviScan's own workflow guide needed zero changes
+  - Home page "Today's Activity" dashboard: recent scans, upload-status breakdown, and a failed-upload banner (CylinderScan-only); new `db:scans:getFailedUploadCount` handler
+  - `BrowseScans.tsx` gains a lazy-loaded thumbnail-preview column and a compact camera-settings-summary column
+  - `Layout.tsx`'s shell/sidebar recolor and the equivalent GraviScan workflow-guide restructure were deferred rather than built against PR #289/#290 while both were still open and actively rewriting those files; tracked in follow-up [#328](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/328)
+  - See `openspec/changes/add-cylinderscan-style-ux-parity/` for full design rationale
 - GraviScan wave-scoped metadata linking (`database.experiments.{linkGraviMetadata,unlinkGraviMetadata,listGraviMetadata}`), unblocking the Browse/Experiment Detail/Metadata UI proposal (roadmap Tier 5)
   - `GraviExperimentWaveMetadata` model: one metadata-file link per `(experiment, wave)`, FK to `Experiment` (cascades) and `Accessions` (restricted)
   - `linkGraviMetadata` validates experiment existence/type, accession existence/file-type, and wave-number range before linking; rejects re-linking an already-linked wave rather than silently overwriting
