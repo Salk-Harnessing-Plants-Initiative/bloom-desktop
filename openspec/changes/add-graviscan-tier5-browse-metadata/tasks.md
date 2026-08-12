@@ -2900,3 +2900,126 @@ than a narrower patch. Fix commit: `93b8e3a`.
       diff and both previously documented) confirmed as pre-existing,
       unrelated to this round's changes. `tests/unit/box-backup.test.ts`:
       34/34 passing (30 pre-existing + 4 new this round).
+
+## 30. Round-16 `/review-pr` response — 3 findings fixed, 2 larger-scope product gaps deliberately deferred
+
+Ran the same 5-subagent adversarial team against round 15's fix commit
+(`93b8e3a`). Findings converged on two real code defects in round 15's
+own new logic (a case-insensitive literal-duplicate misclassification,
+found by Code Quality; a vacuous regression test, found by Testing
+Strategy via live mutation testing) plus a UI error-visibility gap
+(Scientific Rigor). Scientific Rigor and Behavioural Correctness also
+independently surfaced that round 15's "a human must rename the file
+and manually reset the image's status" recovery narrative has no
+actual implementation anywhere in the app — a real, significant gap,
+but a product/UX feature gap rather than a code defect in this PR's
+diff, and deliberately deferred with reasoning below rather than
+building a full reset UI in a bug-fix round. Fix commit: `383dfc0`.
+
+- [x] 30.1 **BLOCKING (Code Quality) — the case-insensitivity fix
+      (29.3) and the literal-duplicate exception used inconsistent
+      notions of "same file," causing a false positive: a genuine
+      duplicate DB row referencing the identical physical file via
+      differently-cased path strings was wrongly classified as an
+      unrecoverable collision instead of the harmless duplicate it
+      actually is.** `resolveGraviScanPath` returns the input path
+      verbatim (never normalizes casing), so two DB rows for the same
+      file via different-case strings resolve to different `fileName`
+      values; `isLiteralDuplicate`'s exact-string comparison
+      (`claimedBy === filePath`) never recognized them as the same
+      file, so the second one hit the (correct, for a REAL collision)
+      `fs.existsSync(linkPath)` check and was wrongly flagged. Fixed by
+      replacing the original-path-string identity check with one based
+      on `fs.realpathSync`'s canonical, case-normalized on-disk path —
+      two original paths are now recognized as a literal duplicate if
+      they resolve to the SAME real path, regardless of what string
+      differences (including case) exist between the two DB-stored
+      values. This also fixes the related diagnostic gap 3 independent
+      reviewers (Scientific Rigor, Security, Behavioural Correctness)
+      raised: a real, case-differing collision can now usually name its
+      winning partner (via a new case-insensitive basename index) that
+      the case-sensitive-only lookup used before this round could
+      never populate correctly. Verified with a new test using
+      `vi.mock`'d `fs.realpathSync` (not relying on the actual host
+      OS's case-folding, which differs across this repo's Linux/macOS/
+      Windows CI matrix) to simulate two distinct path strings
+      resolving to the same canonical file — confirmed failing (one
+      wrongly excluded) before the fix, passing (both uploaded) after.
+- [x] 30.2 **BLOCKING (Testing Strategy, proved via live mutation
+      testing) — round 15's own "cross-run" regression test never
+      actually simulated two runs or included the collision-losing
+      image in its fixture; it only asserted a hardcoded query-literal
+      array didn't contain the string `'collision'`, which passes
+      identically even if the entire collision feature were deleted
+      outright.** Confirmed empirically: mutating `box_status:
+'collision'` back to `'failed'` left this specific test
+      unaffected (only the OTHER, tightened collision-status test
+      caught it). Fixed by rewriting the test to make the mocked
+      `db.graviScan.findMany` implementation actually APPLY the real
+      `where`/`include` clause `runBoxBackup` constructs against a
+      small in-memory dataset containing an already-`'collision'`-
+      status image alongside an unrelated genuinely-pending one —
+      confirmed failing (the collision-status image resurfaces and
+      gets uploaded) when the query is deliberately widened to include
+      `'collision'`, passing (it's never touched) against the real,
+      correctly-scoped query.
+- [x] 30.3 **Fixed (Scientific Rigor) — a collision-specific error
+      message could be silently dropped from the UI entirely.**
+      `BrowseGraviScans.tsx` only ever displayed `boxErrors[0]` — the
+      first error pushed, in `experimentWaveMap` iteration order. An
+      ordinary transient failure in an earlier-processed wave would
+      occupy that slot, permanently hiding a later wave's "this will
+      NOT resolve on retry" collision message from the operator, who
+      would then reasonably keep retrying without ever learning a
+      different image needs manual attention. Fixed by preferring a
+      collision-specific error (detected via its own distinctive text)
+      over whichever error happens to be first, when more than one
+      `boxErrors` entry exists. Verified with a new test constructing
+      two `boxErrors` (an ordinary one first, a collision one second)
+      and asserting the collision message is what's actually shown.
+- [x] 30.4 **Deliberately deferred — no in-app mechanism exists
+      anywhere to reset `box_status` from `'collision'` back to
+      `'pending'`/`'failed'`, and no in-app way to view it at all.**
+      Confirmed by two independent reviewers (Scientific Rigor,
+      Behavioural Correctness) via exhaustive grep: `box_status` is
+      read/written only inside `box-backup.ts`; there is no IPC
+      handler, no renderer UI, and no admin/debug tool to change it.
+      The error message's "manually reset the image's status"
+      instruction currently requires an engineer with direct DB/Prisma
+      access — not something a non-programmer lab technician can do
+      unassisted. This is real and significant, but it is a
+      **product/UX feature gap** (a full "resolve collision" admin
+      action: an IPC endpoint, a renderer affordance, and a way to
+      surface which two files collided persistently rather than only
+      to `console.warn`, which goes nowhere visible in a packaged app)
+      — not a code defect introduced by this PR's diff, and building
+      it is disproportionate scope for a review-round bug fix.
+      Explicitly weighing the tradeoff: `box_status:'collision'`
+      (requiring engineering intervention to clear) is still correct
+      relative to the alternative rounds 13-15 already proved unsafe
+      (automatic retry, which silently corrupts data) — the gap is in
+      self-service _convenience_ of recovery, not in whether data loss
+      is prevented. Recommend filing a dedicated follow-up issue for a
+      proper resolve-collision admin UI; not fixed in this round.
+- [x] 30.5 **Deliberately deferred — the "Box N/M" progress indicator
+      will read as permanently 100% complete after a collision, hiding
+      the stuck image from view (Scientific Rigor).** `totalImages` is
+      recomputed each run strictly from the `box_status:{in:
+['pending','failed']}` query, so a `'collision'`-status image
+      drops out of the denominator on every subsequent run — the
+      indicator has no way to represent "N images exist, 1 is
+      permanently stuck" using its current two-number design. Same
+      category as 30.4: a real gap in the surrounding product's
+      existing UI (not new to this round, not something this round's
+      diff caused), whose proper fix (a third counter, or a distinct
+      visual state) is UI/UX design work beyond a bug-fix round's
+      scope. Tracked alongside 30.4 for the same follow-up.
+- [x] 30.6 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1577/1578 real tests passing; the one
+      failure (`database-handlers.test.ts`'s `BLOOM_DATABASE_URL`
+      local-setup flake, untouched by this round's diff, previously
+      documented) confirmed unrelated. `tests/unit/box-backup.test.ts`:
+      35/35 passing (34 pre-existing + 1 new this round, plus 1
+      existing test rewritten). `tests/unit/pages/BrowseGraviScans.test.tsx`:
+      36/36 passing (35 pre-existing + 1 new this round).
