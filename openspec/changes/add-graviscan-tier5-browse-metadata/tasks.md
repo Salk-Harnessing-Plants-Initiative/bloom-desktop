@@ -3166,3 +3166,105 @@ bug of the same shape. Fix commit: `6c2589b`.
       final-state assertions).
       `tests/unit/pages/BrowseGraviScans.test.tsx`: 37/37 passing (36
       pre-existing + 1 new this round).
+
+## 32. Round-18 `/review-pr` response — 1 blocking finding (independently confirmed by 3 of 5 reviewers), 1 suggestion fixed, 2 items explicitly deferred by their own reviewer
+
+Ran the same 5-subagent adversarial team against round 17's fix commit
+(`6c2589b`). Three reviewers (Behavioural Correctness, Scientific
+Rigor, Code Quality) independently converged on the SAME root cause —
+the ninth consecutive round-over-round sibling-variant bug in this
+collision sub-feature's own code, and the second in as many rounds
+centered on the exact same line (`originalToResolvedName.set(...)`).
+Fix commit: `5a0d88e`.
+
+- [x] 32.1 **BLOCKING (Behavioural Correctness, Scientific Rigor, Code
+      Quality — independently) — round 17's fix for the CSV-row-drop
+      bug recorded a literal duplicate's metadata.csv entry under its
+      OWN locally-computed basename, not the WINNING basename that was
+      actually staged in tmpDir and uploaded to Box.** `isLiteralDuplicate`
+      is decided purely by `fs.realpathSync`-based physical-file
+      identity, with no requirement that the two DB rows' own basenames
+      resemble each other at all — they can differ by more than case
+      (e.g. two paths reaching the same file via a symlink or network
+      mount under unrelated names). `ensureSymlinkOrCopy` only ever
+      stages ONE physical file per literal-duplicate group, under the
+      FIRST-processed row's basename; a later duplicate's own basename
+      is never written to tmpDir or uploaded anywhere. Round 17's fix
+      made `originalToResolvedName.set(filePath, fileName)` run
+      unconditionally to stop the row from being dropped entirely, but
+      used `fileName` — this row's OWN computed basename — even for a
+      duplicate, so its CSV row named a file that doesn't exist at the
+      Box destination under that string. A subtler regression than the
+      row simply being missing (round 17's bug): it looks valid. Fixed
+      by restoring `claimedRealPaths` to a `Map<string, string>` (real
+      path → the WINNING fileName staged under it — a different
+      purpose than round 16's original `Map<string, string>`, which
+      stored `realPath → originalPath` and was correctly identified as
+      unused by round 17's Set conversion) and using
+      `claimedRealPaths.get(realPath)` for a literal duplicate's own
+      `originalToResolvedName` entry instead of its local `fileName`.
+      Verified with two tests: extended the existing differently-cased-
+      duplicate test to assert the CSV contains the winning basename
+      TWICE and the losing case-variant ZERO times (previously asserted
+      the opposite — both variants once each, which was the bug
+      encoded as expected behavior); added a new test using two
+      genuinely different (not just case-differing) basenames forced to
+      the same real path via mocked `realpathSync`, confirming the fix
+      isn't specific to the case-folding scenario. Both confirmed
+      failing (the losing basename appeared in the CSV) before the fix,
+      passing after.
+- [x] 32.2 **Fixed (Security & Cross-Platform, Scientific Rigor —
+      independently suggested) — the new `fs.realpathSync` catch
+      block's `(err as NodeJS.ErrnoException).code` cast would throw
+      instead of degrading gracefully if `err` were ever a non-Error
+      value (e.g. `null`/`undefined`), inconsistent with this same
+      file's own established defensive pattern elsewhere
+      (`err instanceof Error ? ... : ...`).** Not realistically
+      triggerable via a real `fs.realpathSync` call (which only ever
+      throws proper `Error`/`ErrnoException` instances), but cheap to
+      align for consistency. Fixed with an `err instanceof Error` guard
+      before accessing `.code`.
+- [x] 32.3 **Deliberately deferred (Scientific Rigor) — a literal
+      duplicate pair increments `result.filesCopied` (and the "Uploaded
+      N image(s)" UI count) by 2 even though rclone physically
+      transferred only 1 file.** Both DB rows are correctly marked
+      `box_status:'uploaded'` (their data IS safely in Box, reachable
+      via the sibling's filename), so this is a count-semantics nuance,
+      not a correctness or data-safety issue — "N image(s) uploaded" is
+      reasonably read as "N scan records now have their data confirmed
+      in Box," which remains true. The reviewer who raised this
+      explicitly characterized it as "minor" and only "worth a one-line
+      comment or fix." Not fixed this round: doing so would require
+      threading the winner/duplicate distinction through the
+      progress-counting path in addition to the CSV/status path
+      already touched, which is disproportionate scope for a count
+      display nuance.
+- [x] 32.4 **Deliberately deferred (Scientific Rigor, explicitly
+      recommending against blocking on it) — joining multiple distinct
+      collision messages with `' | '` (round 17's fix) becomes a dense
+      wall of near-identical repeated boilerplate sentences for 3+
+      simultaneous collisions.** A real, if minor, usability cost — but
+      it trades a strictly worse bug (round 16: a second collision
+      silently hidden entirely, with no indication a second image
+      needed attention) for a display-legibility issue, not a
+      data-safety regression. The reviewer's own words: "I would not
+      block on this... flag for a near-term follow-up" (e.g. rendering
+      each collision as a separate list item). Tracked alongside
+      30.4/30.5 as a follow-up UX item, not fixed in this bug-fix round.
+- [x] 32.5 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1574/1576 real tests passing (excluding the
+      2 pre-existing, confirmed-unrelated flakes below); both re-run in
+      isolation and pass cleanly, confirming timing/parallel-load
+      flakiness rather than a regression from this round's diff (which
+      touches only `src/main/box-backup.ts` and
+      `tests/unit/box-backup.test.ts`): (1)
+      `database-handlers.test.ts`'s `BLOOM_DATABASE_URL` local-setup
+      issue, previously documented; (2)
+      `AccessionForm.test.tsx` (2 tests) — a flaky timeout explicitly
+      documented as a pre-existing baseline failure in this PR's own
+      description, unrelated to any file this PR touches; (3)
+      `electron-cleanup.test.ts`'s previously-documented descendant-
+      snapshot timing flake. `tests/unit/box-backup.test.ts`: 37/37
+      passing (36 pre-existing + 1 new this round, plus 1 existing test
+      with corrected assertions).
