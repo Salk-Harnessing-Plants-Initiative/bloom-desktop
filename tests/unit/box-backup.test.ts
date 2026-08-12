@@ -1913,21 +1913,36 @@ describe('runBoxBackup', () => {
     );
     fs.writeFileSync(secondFile, 'fake tiff bytes, second file');
 
-    // First call (for img1) succeeds normally; second call (for img2)
-    // throws, simulating the race/permission-error case. Order matches
-    // the images array below, which the resolution loop processes
-    // in-order.
-    const realRealpathSync = fs.realpathSync;
-    vi.mocked(fs.realpathSync).mockImplementationOnce((...args) =>
-      realRealpathSync(...(args as Parameters<typeof fs.realpathSync>))
-    );
-    vi.mocked(fs.realpathSync).mockImplementationOnce(() => {
-      const err = new Error(
-        'ENOENT: no such file or directory'
-      ) as NodeJS.ErrnoException;
-      err.code = 'ENOENT';
-      throw err;
-    });
+    // Computed BEFORE any mockImplementationOnce override is installed,
+    // using the still-real passthrough implementation, so the first
+    // queued override below never needs to call through to
+    // fs.realpathSync itself — recursing into fs.realpathSync from
+    // inside its own mockImplementationOnce callback would call the
+    // mock again, consuming the NEXT queued override (the "throw"
+    // one) too. That exact bug previously made THIS test verify the
+    // wrong thing entirely: img1's own call would be the one to throw
+    // (recursion consumes slot 2 during slot 1's execution), silently
+    // falling back to img1's own raw path (which happens to already
+    // equal the correct value, masking the mistake), while img2's call
+    // then fell through the now-empty queue to the real passthrough
+    // and succeeded normally — meaning img2 ended up flagged as a
+    // collision via the ORDINARY two-different-real-paths mechanism,
+    // never actually exercising the realpathSync-throw fallback this
+    // test is named for. First call (for img1) now succeeds normally
+    // by directly returning its precomputed value; second call (for
+    // img2) throws, simulating the race/permission-error case. Order
+    // matches the images array below, which the resolution loop
+    // processes in-order.
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    vi.mocked(fs.realpathSync)
+      .mockImplementationOnce(() => canonicalSourceFile)
+      .mockImplementationOnce(() => {
+        const err = new Error(
+          'ENOENT: no such file or directory'
+        ) as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        throw err;
+      });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     mockSpawn.mockImplementation((_cmd, args) => {
@@ -1986,11 +2001,19 @@ describe('runBoxBackup', () => {
       // look identical" needs a trail explaining WHY duplicate
       // detection couldn't confirm they're the same file, not just
       // that they collided.
+      // Checking specifically for secondFile (img2's own path) — not
+      // just the substrings 'realpathSync'/'ENOENT' in isolation — is
+      // what actually pins down WHICH file's realpathSync call threw.
+      // A weaker assertion here previously passed even while the mock
+      // setup's recursion bug (see comment above) made img1's call the
+      // one that actually threw, since the log message's presence
+      // alone doesn't reveal which resolvedPath it named.
       expect(
         warnSpy.mock.calls.some(
           (call) =>
             String(call[0]).includes('realpathSync') &&
-            String(call[0]).includes('ENOENT')
+            String(call[0]).includes('ENOENT') &&
+            String(call[0]).includes(secondFile)
         )
       ).toBe(true);
     } finally {

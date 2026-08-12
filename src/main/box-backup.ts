@@ -177,16 +177,23 @@ export function rcloneCopyFiles(
       let symlinksCreated = 0;
       // Every file that resolved to SOME location on disk, whether or
       // not it turned out to be a literal duplicate that stages nothing
-      // — kept separate from symlinksCreated (which now only counts
-      // unique physical files actually staged) specifically so the
-      // "found on disk" log line below keeps its original, literal
-      // meaning. Before round 19 gated staging behind
+      // or a basename collision that gets skipped — kept separate from
+      // symlinksCreated (which now only counts unique physical files
+      // actually staged) so the "found on disk" log line below counts
+      // what its name says, even though this slightly BROADENS its
+      // numerator relative to the pre-round-19 symlinksCreated (which
+      // also excluded collisions, since those already `continue` before
+      // reaching either counter). That broadening is intentional and
+      // arguably more correct — a collision genuinely IS a file found on
+      // disk, just one this run couldn't safely upload — not a
+      // regression. Before round 19 gated staging behind
       // `!isLiteralDuplicate`, symlinksCreated coincidentally counted
-      // both "resolved" and "staged," but a wave containing duplicates
-      // would now silently under-report as e.g. "1/2 files found on
-      // disk" (implying one is MISSING) when both genuinely exist and
-      // were simply staged as one physical file — exactly the kind of
-      // misleading diagnostic an operator debugging this feature's own
+      // both "resolved" and "staged" for non-collision files, but a wave
+      // containing duplicates would now silently under-report as e.g.
+      // "1/2 files found on disk" (implying one is MISSING) when both
+      // genuinely exist and were simply staged as one physical file —
+      // exactly the kind of misleading diagnostic an operator debugging
+      // this feature's own
       // multi-round history would reach for first.
       let resolvedCount = 0;
       const missingFiles: string[] = [];
@@ -233,6 +240,18 @@ export function rcloneCopyFiles(
           // else that already occupies this exact tmpDir destination is
           // a REAL collision between two DIFFERENT physical files.
           const isLiteralDuplicate = claimedRealPaths.has(realPath);
+          // fs.existsSync(linkPath) — checking the real tmpDir, not a
+          // Map — is the ground truth here on purpose, not a stylistic
+          // choice: it happens to always agree with
+          // claimedBasenamesLower.has(fileName.toLowerCase()) in this
+          // codebase today (both are populated/created in the exact
+          // same `if (!isLiteralDuplicate)` step below), but that
+          // equivalence is a byproduct of tmpDir always starting empty
+          // for this call, not a guarantee either check enforces on its
+          // own — checking the filesystem directly is what actually
+          // matters (it's the real upload destination), and doesn't
+          // depend on this function's own bookkeeping staying in sync
+          // with it.
           if (!isLiteralDuplicate && fs.existsSync(linkPath)) {
             // Checking the real destination path directly (rather than
             // only a case-sensitive Map lookup on `fileName`) catches
