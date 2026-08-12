@@ -330,52 +330,48 @@ export function useScanSession(
     isContinuousRef.current = isContinuous;
   }, [isContinuous]);
 
-  const contextRef = useRef({
-    experimentId,
-    phenotyperId,
-    waveNumber,
-    resolution,
-    assignmentsByScanner,
-  });
-  useEffect(() => {
-    contextRef.current = {
-      experimentId,
-      phenotyperId,
-      waveNumber,
-      resolution,
-      assignmentsByScanner,
-    };
-  }, [
-    experimentId,
-    phenotyperId,
-    waveNumber,
-    resolution,
-    assignmentsByScanner,
-  ]);
+  // Frozen once per session — NOT continuously mirrored like the old
+  // `contextRef` was (design.md Decision 13). Set once in `startScan()`
+  // (before dispatching `START`) and once in the on-mount restore effect
+  // (from the backend's own `ScanSessionState`), so a mid-scan change to
+  // the live experiment/phenotyper/wave/resolution selectors can never
+  // retroactively change which experiment/wave an in-flight job's DB write
+  // or QR verification gets attributed to.
+  const sessionContextRef = useRef<{
+    experimentId: string;
+    phenotyperId: string;
+    waveNumber: number;
+    resolution: number;
+  } | null>(null);
 
   const clearAbnormalMarker = useCallback(() => {
-    setAbnormalTermination(null);
-    if (!experimentId) return;
-    localStorage.removeItem(abnormalMarkerKey(experimentId, waveNumber));
+    const ctx = sessionContextRef.current;
+    if (!ctx) return;
+    localStorage.removeItem(
+      abnormalMarkerKey(ctx.experimentId, ctx.waveNumber)
+    );
+    // Only blank the displayed banner if it's still showing for this same
+    // session's own wave — otherwise this session ending under wave A would
+    // wipe a banner correctly showing an unrelated marker for wave B that
+    // the operator has since switched to.
+    if (ctx.experimentId === experimentId && ctx.waveNumber === waveNumber) {
+      setAbnormalTermination(null);
+    }
   }, [experimentId, waveNumber]);
 
   const runVerification = useCallback(
     async (jobsSnapshot: Record<string, ScanSessionJob>) => {
-      const ctx = contextRef.current;
-      if (!ctx.experimentId) return;
+      const ctx = sessionContextRef.current;
+      if (!ctx?.experimentId) return;
 
       const plates: QRVerifyPlateInput[] = [];
       for (const job of Object.values(jobsSnapshot)) {
-        if (!job.imagePath) continue;
-        const assignment = (ctx.assignmentsByScanner[job.scannerId] || []).find(
-          (a) => a.plateIndex === job.plateIndex
-        );
-        if (!assignment?.plantBarcode) continue;
+        if (!job.imagePath || !job.plantBarcode) continue;
         plates.push({
           scannerId: job.scannerId,
           plateIndex: job.plateIndex,
           imagePath: job.imagePath,
-          assignedPlateId: assignment.plantBarcode,
+          assignedPlateId: job.plantBarcode,
         });
       }
       if (plates.length === 0) return;
@@ -428,8 +424,8 @@ export function useScanSession(
       imagePath: string,
       cycleNumber: number | null
     ) => {
-      const ctx = contextRef.current;
-      if (!ctx.experimentId || !ctx.phenotyperId) return;
+      const ctx = sessionContextRef.current;
+      if (!ctx?.experimentId || !ctx.phenotyperId) return;
       await (window as any).electron.database.graviscans.create({
         experiment_id: ctx.experimentId,
         phenotyper_id: ctx.phenotyperId,
@@ -637,6 +633,32 @@ export function useScanSession(
       ) {
         onRestoreWaveNumber?.(status.waveNumber);
       }
+
+      // The backend's own record of what this already-in-progress session
+      // started under is strictly more authoritative than this hook's own
+      // first-render closure — `experimentId`/`waveNumber` can still be
+      // null/stale at this point (design.md Decision 10), and even once
+      // resolved, the renderer's restored selection is not guaranteed to
+      // match the session's actual wave until `onRestoreWaveNumber` above
+      // takes effect on a later render.
+      sessionContextRef.current = {
+        experimentId:
+          typeof status.experimentId === 'string'
+            ? status.experimentId
+            : (experimentId ?? ''),
+        phenotyperId:
+          typeof status.phenotyperId === 'string'
+            ? status.phenotyperId
+            : (phenotyperId ?? ''),
+        waveNumber:
+          typeof status.waveNumber === 'number'
+            ? status.waveNumber
+            : waveNumber,
+        resolution:
+          typeof status.resolution === 'number'
+            ? status.resolution
+            : resolution,
+      };
 
       jobTemplateRef.current = jobs;
       completedKeysRef.current = new Set(
@@ -871,6 +893,16 @@ export function useScanSession(
         sessionId = sessionResult.data.id;
       }
 
+      // Snapshot the session's own experiment/phenotyper/wave/resolution
+      // once, here — every subsequent recordCompletedJob/runVerification/
+      // marker-clearing call for this session reads this snapshot, never
+      // the live selectors (design.md Decision 13).
+      sessionContextRef.current = {
+        experimentId,
+        phenotyperId,
+        waveNumber,
+        resolution,
+      };
       completedJobsRef.current = {};
       jobTemplateRef.current = jobs;
       completedKeysRef.current = new Set();

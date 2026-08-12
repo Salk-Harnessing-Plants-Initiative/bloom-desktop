@@ -1192,6 +1192,107 @@ describe('useScanSession', () => {
     expect(result.current.error).toMatch(/db locked/);
   });
 
+  // ── Session context freeze (task 22.1, design.md Decision 13) ───────────
+
+  it("a mid-scan wave switch does not misattribute a still-in-flight job's DB write, verification, or marker-clearing (regression: contextRef mirrored live selector state)", async () => {
+    const { result, rerender } = renderHook((props) => useScanSession(props), {
+      initialProps: baseParams({ waveNumber: 0 }),
+      wrapper: wedgeWrapper,
+    });
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+    expect(
+      localStorage.getItem('graviscan:session-in-progress:exp-1:0')
+    ).not.toBeNull();
+
+    // Operator switches wave while the session's jobs are still pending.
+    rerender(baseParams({ waveNumber: 5 }));
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
+    expect(graviscansCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ wave_number: 0 })
+    );
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01.tiff',
+    });
+    await waitFor(() => expect(verifyPlates).toHaveBeenCalled());
+    expect(verifyPlates).toHaveBeenCalledWith(expect.any(Array), 'exp-1', 0);
+
+    await waitFor(() =>
+      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
+    );
+    // The session's own marker (wave 0) is cleared — no marker for wave 5
+    // was ever written, so this also confirms clearAbnormalMarker targeted
+    // the frozen wave, not the live one.
+    expect(
+      localStorage.getItem('graviscan:session-in-progress:exp-1:0')
+    ).toBeNull();
+  });
+
+  it("a job completing after a mid-scan restore records against the backend session's own experimentId/waveNumber/resolution, not this hook instance's current props (regression: restore never froze a session context either)", async () => {
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isActive: true,
+        experimentId: 'exp-restored',
+        phenotyperId: 'pheno-restored',
+        waveNumber: 7,
+        resolution: 2400,
+        currentCycle: 1,
+        totalCycles: 1,
+        coordinatorState: 'scanning',
+        scanStartedAt: 1000,
+        nextScanAt: null,
+        jobs: {
+          'sc-1:00': {
+            scannerId: 'sc-1',
+            plateIndex: '00',
+            outputPath: '/out/00.tiff',
+            plantBarcode: 'PLATE_001',
+            transplantDate: null,
+            customNote: null,
+            gridMode: '2grid',
+            status: 'pending',
+          },
+        },
+      },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useScanSession(baseParams({ experimentId: 'exp-1', waveNumber: 0 })),
+      { wrapper: wedgeWrapper }
+    );
+
+    await waitFor(() => expect(result.current.isScanning).toBe(true));
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+
+    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
+    expect(graviscansCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        experiment_id: 'exp-restored',
+        phenotyper_id: 'pheno-restored',
+        wave_number: 7,
+        resolution: 2400,
+      })
+    );
+  });
+
   it('a failed database.graviscans.create() (recordCompletedJob) surfaces an error rather than failing silently', async () => {
     graviscansCreate.mockRejectedValue(new Error('disk full'));
     const { result } = renderHook(() => useScanSession(baseParams()), {

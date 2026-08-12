@@ -782,6 +782,68 @@ time, which is _before_ the wait period begins, not during it; deriving
 "waiting" from cycle-number alone can't distinguish "just finished, about
 to wait" from "already scanning again."
 
+### Decision 13 — Freeze session context at scan start; stop mirroring live selectors into refs read mid-scan
+
+`/review-pr` (round 5, post-16.6) found `useScanSession`'s `contextRef` mirrors
+`experimentId`/`phenotyperId`/`waveNumber`/`resolution`/`assignmentsByScanner`
+on **every** render via a `useEffect` with no guard — it always reflects
+whatever the operator currently has selected, not what the session actually
+started under. `recordCompletedJob` and `runVerification` both read
+`contextRef.current` when a job completes, and `clearAbnormalMarker` closes
+over live `experimentId`/`waveNumber` via its own `useCallback` deps.
+`GraviScan.tsx` has no `disabled` wired to `scanSession.isScanning` on
+`ExperimentChooser`/`PhenotyperChooser`/the Wave `<input>`, so nothing stops
+an operator from changing any of them while jobs are still in flight.
+
+Concretely, if an operator switches wave mid-scan: a still-in-flight job's
+`database.graviscans.create()` write and its later QR verification both get
+attributed to the _new_ wave, not the one physically scanned; and
+`finishSession`'s `clearAbnormalMarker()` call removes the _new_ wave's
+localStorage marker (potentially clearing a real, unrelated marker for that
+wave) while leaving the original session's own marker stuck, since it never
+gets removed.
+
+**Decision:** replace the continuously-mirrored `contextRef` with a
+`sessionContextRef` that is set exactly twice — once per session, not once
+per render: (1) inside `startScan()`, immediately before dispatching
+`START`, from the just-validated `experimentId`/`phenotyperId`/`waveNumber`/
+`resolution`; (2) inside the on-mount restore effect (Decision 4), from the
+backend's own `ScanSessionState` fields (`status.experimentId`/
+`phenotyperId`/`waveNumber`/`resolution`) when `isActive: true` — the
+backend's record of what a live, possibly-already-in-progress session
+actually started under is strictly more authoritative here than this hook's
+own first-render closure (which, per Decision 10, can still be `null`/stale
+at that point). `recordCompletedJob` and `runVerification` read
+`sessionContextRef.current` instead of `contextRef.current`; the
+continuously-mirroring `contextRef`/its `useEffect` are removed entirely.
+
+`clearAbnormalMarker` always removes the **frozen** session's own marker key
+(`sessionContextRef.current`), but only clears the _displayed_
+`abnormalTermination` banner state when the live `experimentId`/`waveNumber`
+still match the frozen session's — otherwise a session ending under wave A
+would blank out a banner that's correctly showing an unrelated, real marker
+for wave B the operator has since switched to.
+
+`runVerification` also stops looking up each job's assigned barcode via
+`contextRef.current.assignmentsByScanner` (a second, independent instance of
+the same live-mirroring bug) and instead reads `job.plantBarcode` directly —
+`ScanSessionJob` already carries the plate's barcode as it was at the moment
+the job was created (fresh at `startScan()`, or restored verbatim from the
+backend's own job snapshot), so no live lookup is needed at all.
+
+`GraviScan.tsx` passes `disabled={scanSession.isScanning}` to
+`ExperimentChooser`, `PhenotyperChooser`, and the Wave number `<input>` —
+both hooks already accept a `disabled` prop; only the Wave `<input>` needed
+the attribute added.
+
+**Alternatives considered:** leave the mirrored ref in place and instead
+disable the three selectors while scanning, relying on the UI-level block
+alone to prevent the mismatch. Rejected — it doesn't close the gap for the
+restore-after-remount path (Decision 4), where a session already in flight
+before the current hook instance existed has no "selector was disabled"
+history to lean on, and it leaves the underlying live-mirroring shape in
+place for the next piece of context someone adds to this hook.
+
 ## Architecture
 
 ```

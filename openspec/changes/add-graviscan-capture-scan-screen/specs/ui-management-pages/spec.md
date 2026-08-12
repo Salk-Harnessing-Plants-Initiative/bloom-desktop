@@ -261,6 +261,16 @@ compound the problem than to help; the existing `WedgeBanner` remains the
 operator's mechanism to acknowledge/retry it, and clearing the wedge
 there re-enables "Start Scan" here.
 
+Once a scan session starts, the experiment/phenotyper/wave selectors SHALL
+be disabled for the lifetime of that session, and every in-flight job's
+eventual database write and QR verification SHALL be attributed to the
+experiment/phenotyper/wave the session actually started under — never to a
+value an operator changes a selector to while jobs are still pending. This
+SHALL hold whether the session was started fresh in this screen instance or
+was already in progress and is being observed after a navigate-away-and-back
+remount (per the "GraviScan Session Restore on Renderer Navigation"
+requirement).
+
 If the current wave has no linked wave metadata (per the "GraviScan Plate
 Assignment Auto-Fill and Manual Override" requirement) and no plate
 positions have been manually filled in, the screen SHALL show a
@@ -331,6 +341,25 @@ per-scanner progress resets from 100% back to 0% at a cycle boundary.
   the wedge that occurred before this screen was mounted — the screen
   SHALL NOT show "Start Scan" as enabled merely because its own view of
   wedge state only began accumulating at mount time
+
+#### Scenario: Experiment/phenotyper/wave selectors are locked while a scan is running
+
+- **GIVEN** a scan session is in progress
+- **WHEN** the operator views the Capture Scan screen
+- **THEN** the experiment chooser, phenotyper chooser, and Wave number
+  input SHALL all be disabled
+- **AND** they SHALL become enabled again once the session ends
+
+#### Scenario: A mid-scan wave switch does not misattribute an in-flight job's write or verification
+
+- **GIVEN** a scan session started under wave 0
+- **WHEN** a job from that session completes after the operator has since
+  switched the Wave selector to wave 5
+- **THEN** `database.graviscans.create(...)` SHALL be called with
+  `wave_number: 0`, and the eventual QR verification call SHALL be scoped
+  to wave 0 — never wave 5
+- **AND** the session's own abnormal-termination marker (keyed by wave 0)
+  SHALL be the one cleared when the session ends, not a marker for wave 5
 
 #### Scenario: Missing wave metadata warns before scan start, not only after
 

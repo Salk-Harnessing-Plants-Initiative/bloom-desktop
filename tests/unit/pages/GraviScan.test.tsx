@@ -242,6 +242,25 @@ describe('GraviScan screen composition', () => {
     expect(mockWaveNumber.setWaveNumber).toHaveBeenCalledWith(4);
   });
 
+  it('disables the experiment/phenotyper/wave selectors while a scan is running (regression: nothing stopped switching context mid-scan)', () => {
+    mockScanSession.isScanning = true;
+    try {
+      render(<GraviScan />);
+      const experimentSelect = document.querySelector(
+        '.experiment-chooser'
+      ) as HTMLSelectElement;
+      const phenotyperSelect = document.querySelector(
+        '.phenotyper-chooser'
+      ) as HTMLSelectElement;
+      const waveInput = screen.getByLabelText(/wave/i) as HTMLInputElement;
+      expect(experimentSelect).toBeDisabled();
+      expect(phenotyperSelect).toBeDisabled();
+      expect(waveInput).toBeDisabled();
+    } finally {
+      mockScanSession.isScanning = false;
+    }
+  });
+
   it('debounce-saves experimentId/phenotyperId/waveNumber to window.electron.session (regression: selections lost on navigating away and back)', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = global.window as any;

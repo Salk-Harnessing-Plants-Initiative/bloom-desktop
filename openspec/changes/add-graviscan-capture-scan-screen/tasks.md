@@ -677,3 +677,47 @@ event (design.md Decision 12).
       failures related to this change. Type-checking and lint clean.
 - [x] 21.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 22. Freeze session context at scan start (TDD, found during /review-pr round 5)
+
+`/review-pr` found `contextRef` mirrors live selector state every render, so
+a mid-scan wave/experiment switch misattributes in-flight jobs' DB writes
+and QR verification, and lets `finishSession` clear the wrong wave's
+abnormal-termination marker (design.md Decision 13).
+
+- [x] 22.1 Write failing tests in `tests/unit/hooks/useScanSession.test.ts`:
+      start a scan under `waveNumber: 0`, then rerender with
+      `waveNumber: 5` before any job completes — confirm a subsequent
+      `scan-complete` still calls `database.graviscans.create(...)` with
+      `wave_number: 0` and a subsequent `verifyPlates(...)` call still
+      passes `'exp-1', 0`; confirm `finishSession` still removes the
+      `...:exp-1:0` marker (the session's own), not a `...:exp-1:5` marker
+      that was never written. Also cover the restore path: mount with
+      `getScanStatus()` returning `isActive: true` with an
+      `experimentId`/`waveNumber`/`resolution` that differ from the hook's
+      own initial props — confirm a job completing after that restore
+      records against the **backend's** values, not the props.
+- [x] 22.2 Add `sessionContextRef`, set once in `startScan()` (before
+      dispatching `START`) and once in the on-mount restore effect (from
+      `status.experimentId`/`phenotyperId`/`waveNumber`/`resolution`).
+      Repoint `recordCompletedJob`/`runVerification` at it; remove the
+      continuously-mirrored `contextRef` and its `useEffect`. Change
+      `runVerification`'s per-job barcode lookup to read `job.plantBarcode`
+      directly instead of `contextRef.current.assignmentsByScanner`.
+      Rewrite `clearAbnormalMarker` to always remove the frozen session's
+      own marker key, only clearing the displayed `abnormalTermination`
+      state when the live `experimentId`/`waveNumber` still match it. Run
+      22.1's tests green.
+- [x] 22.3 Write a failing test in `tests/unit/pages/GraviScan.test.tsx`:
+      with `scanSession.isScanning: true`, `ExperimentChooser`,
+      `PhenotyperChooser`, and the Wave `<input>` are all disabled.
+- [x] 22.4 Add `disabled={scanSession.isScanning}` to all three in
+      `GraviScan.tsx`. Run 22.3's test green.
+- [x] 22.5 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1638 passed, same 5 pre-existing failure files
+      (config-store, electron-cleanup, image-uploader, AccessionForm,
+      scan-coordinator path-separator), zero new failures. `tsc --noEmit`
+      and lint both clean.
+- [x] 22.6 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.

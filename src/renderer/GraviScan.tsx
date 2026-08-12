@@ -183,10 +183,12 @@ export function GraviScan() {
         <ExperimentChooser
           value={experimentId}
           onExperimentChange={setExperimentId}
+          disabled={scanSession.isScanning}
         />
         <PhenotyperChooser
           value={phenotyperId}
           onPhenotyperChange={setPhenotyperId}
+          disabled={scanSession.isScanning}
         />
         <label className="flex items-center gap-1">
           Wave
@@ -194,6 +196,7 @@ export function GraviScan() {
             type="number"
             value={waveNumber}
             onChange={(e) => setWaveNumber(Number(e.target.value))}
+            disabled={scanSession.isScanning}
           />
         </label>
         {suggestedNextWave !== null && (
