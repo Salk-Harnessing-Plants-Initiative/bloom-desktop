@@ -3023,3 +3023,146 @@ building a full reset UI in a bug-fix round. Fix commit: `383dfc0`.
       35/35 passing (34 pre-existing + 1 new this round, plus 1
       existing test rewritten). `tests/unit/pages/BrowseGraviScans.test.tsx`:
       36/36 passing (35 pre-existing + 1 new this round).
+
+## 31. Round-17 `/review-pr` response — 2 blocking + 5 important findings, all fixed
+
+Ran the same 5-subagent adversarial team against round 16's fix commit
+(`383dfc0`). Both blocking findings were, once again, genuine sibling-
+variant defects hiding inside round 16's own new realpath-based identity
+logic — the sixth consecutive round (12-17) in which this collision
+sub-feature's own most recent fix introduced or left exactly one more
+bug of the same shape. Fix commit: `6c2589b`.
+
+- [x] 31.1 **BLOCKING (Security & Cross-Platform, independently
+      corroborated by Scientific Rigor's own suggestion) — a genuine
+      duplicate DB row referencing the same physical file via a
+      differently-cased path string got marked `box_status:'uploaded'`
+      but was silently excluded from the exported `metadata.csv`
+      entirely.** `originalToResolvedName.set(filePath, fileName)` — the
+      map `runBoxBackup` reads via `resolvedNames.get(filePath)` to
+      populate each CSV row's `image_filename` — was gated behind the
+      same `if (!isLiteralDuplicate)` guard used for the tmpDir-claim
+      bookkeeping (`claimedRealPaths`/`resolvedToOriginalName`/
+      `claimedBasenamesLower`). Before round 16, `isLiteralDuplicate`
+      could only be true when the two original path STRINGS were
+      byte-identical, so the second occurrence's key was already
+      populated from the first — harmless. Round 16 broadened
+      `isLiteralDuplicate` to also cover differently-cased strings
+      resolving to the same real path, which are DIFFERENT map keys —
+      so the second row's own entry was never set, and its otherwise-
+      valid scan row silently vanished from the CSV even though the DB
+      said it uploaded fine. Fixed by making
+      `originalToResolvedName.set(filePath, fileName)` unconditional:
+      every resolvable row is entitled to its own "original path → its
+      own resolved basename" CSV entry regardless of whether it happens
+      to be a duplicate of another row's physical file, while the three
+      tmpDir-claim structures stay correctly gated (there's only one
+      destination slot to claim, so repeating that part for a duplicate
+      is still meaningless). Verified with a new assertion added to the
+      existing differently-cased-duplicate test, checking `metadata.csv`
+      contains a row for BOTH images' own resolved basenames — confirmed
+      failing (one row silently missing) before the fix, passing after.
+- [x] 31.2 **BLOCKING (Behavioural Correctness and Testing Strategy,
+      independently) — the `fs.realpathSync` failure fallback introduced
+      in round 16 had zero test coverage of its only non-happy-path
+      branch, and the resulting collision message gave misleading
+      "rename a file" guidance when the true cause was an unresolvable
+      path, not two different files.** When `realpathSync` throws for
+      one side of what would otherwise be a genuine differently-cased
+      duplicate, the code already fell back to the safe direction (the
+      file is treated as a collision, never silently merged as if
+      identical to a possibly-different file) — but this was accidental
+      behavior nobody had verified, with no diagnostic trail explaining
+      _why_ duplicate detection couldn't confirm two apparently-
+      identical files were the same. Fixed by (a) logging the failure
+      distinctly, including the error code, when the catch fires, and
+      (b) adding a regression test that forces `realpathSync` to throw
+      for one of two files sharing a tmpDir destination and asserts the
+      safe outcome (collision, not a silent merge, not a crash) plus the
+      new diagnostic log line — locking in this as deliberate, tested
+      behavior rather than an untested accident. No classification logic
+      changed; a false-positive collision (costing a manual status
+      reset) remains the intentionally safer failure mode than a
+      false-negative merge (which would silently overwrite one image's
+      real content with another's on Box).
+- [x] 31.3 **Fixed (Scientific Rigor, Behavioural Correctness,
+      independently) — a backup run producing collisions in two
+      different waves/experiments only ever surfaced the FIRST one in
+      the UI.** `BrowseGraviScans.tsx`'s `.find()` returns at most one
+      match; an operator would rename the one named file, retry, and be
+      surprised by a second never-previewed collision later, since
+      nothing told them a second, unrelated image also needed
+      attention. Fixed by collecting every `boxErrors` entry matching
+      the collision marker (`.filter()`) and joining them, instead of
+      taking only the first. Verified with a new test constructing two
+      distinct collision messages (each naming a different file) and
+      asserting both are visible in the rendered message.
+- [x] 31.4 **Fixed (Scientific Rigor, Behavioural Correctness, Code
+      Quality — independently, the third time this exact fragility has
+      been flagged) — the main↔renderer collision/non-collision signal
+      was an undocumented literal substring (`'NOT resolve on retry'`)
+      duplicated by hand in two files, with no compiler error on drift.**
+      A future copy-edit to the message in `box-backup.ts` (fixing a
+      typo, rewording for clarity) would silently break
+      `BrowseGraviScans.tsx`'s matching with no test failure unless a
+      test happened to assert the exact current wording end-to-end.
+      Fixed by exporting a single `BOX_COLLISION_ERROR_MARKER` constant
+      from the shared `types/graviscan.ts` (already imported by both
+      main and renderer code for other types) and having both
+      `box-backup.ts`'s message construction and
+      `BrowseGraviScans.tsx`'s matching logic reference it, plus
+      updating both test files' fixture messages to interpolate the same
+      constant rather than hardcoding an independent copy of the
+      wording.
+- [x] 31.5 **Fixed (Testing Strategy, Code Quality — independently) —
+      the collision diagnostic's `collidingWith` name was built from a
+      two-branch lookup chain, and the second (case-insensitive) branch
+      — the entire reason round 16 exists — was completely untested.**
+      Code Quality separately proved the first branch
+      (`resolvedToOriginalName.get(fileName)`, case-sensitive) is
+      strictly redundant: `claimedBasenamesLower` is populated in
+      lockstep with it using a case-folded superset of the same keys, so
+      it alone produces identical results in every case the first branch
+      would have. Rather than construct an elaborate, platform-fragile
+      test to exercise a branch that can never actually differ from the
+      other, simplified the lookup to just
+      `claimedBasenamesLower.get(fileName.toLowerCase())` — removing the
+      untested, functionally dead branch instead of testing it. All
+      existing collision tests (identical-basename and differently-cased
+      cases) continued passing unchanged, confirming the two branches
+      really were equivalent for every case this codebase exercises.
+- [x] 31.6 **Fixed (Code Quality) — `claimedRealPaths` was declared as a
+      `Map<string, string>` but only `.has()` was ever called on it;
+      `.get()` was never used anywhere.** Changed to a `Set<string>` to
+      match its actual membership-only usage — no behavior change, pure
+      clarity.
+- [x] 31.7 **Fixed (Code Quality) — a test-file comment claimed a
+      specific test overrides `fs.realpathSync` with
+      `mockImplementationOnce` (auto-reverting after one call) and that
+      this is why the shared `beforeEach`'s `mockClear()` alone is
+      sufficient cleanup, but the actual differently-cased-duplicate
+      test uses a PERSISTENT `mockImplementation()`.** The suite only
+      avoided leaking that override into later tests by coincidence — an
+      unrelated pre-existing `afterEach(() => vi.restoreAllMocks())` in
+      the enclosing `describe('runBoxBackup', ...)` block, added
+      originally for `fs.symlinkSync` spies, happens to also restore
+      `realpathSync`. Corrected the comments (both the module-level
+      `vi.mock('fs', ...)` doc comment and the `beforeEach` comment) to
+      describe the actual mechanism — a persistent override relies on
+      the enclosing describe block's own `restoreAllMocks()`, not on
+      `mockClear()` — so a future contributor adding a similar override
+      in a describe block without that specific `afterEach` isn't misled
+      into believing `mockClear()` alone is enough.
+- [x] 31.8 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1579/1580 real tests passing; the one failure
+      (`database-handlers.test.ts`'s `BLOOM_DATABASE_URL` local-setup
+      flake, untouched by this round's diff, previously documented)
+      confirmed unrelated —
+      `tests/unit/electron-cleanup.test.ts`'s previously-documented
+      descendant-snapshot timing flake did not reproduce this run.
+      `tests/unit/box-backup.test.ts`: 36/36 passing (35 pre-existing + 1
+      new this round, plus 1 existing test extended with CSV-content and
+      final-state assertions).
+      `tests/unit/pages/BrowseGraviScans.test.tsx`: 37/37 passing (36
+      pre-existing + 1 new this round).
