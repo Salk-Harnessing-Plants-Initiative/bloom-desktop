@@ -19,6 +19,8 @@ import { ExperimentForm } from '../../../src/renderer/components/ExperimentForm'
 
 // Mock the window.electron.database.experiments.create API
 const mockCreate = vi.fn();
+const mockLinkGraviMetadata = vi.fn();
+const mockListFiles = vi.fn();
 
 const mockScientists = [
   { id: 'sci-1', name: 'Dr. Jane Smith', email: 'jane@example.com' },
@@ -30,14 +32,24 @@ const mockAccessions = [
   { id: 'acc-2', name: 'Accession File B' },
 ];
 
+const mockGraviAccessions = [{ id: 'grav-acc-1', name: 'batch3.xlsx' }];
+
 beforeEach(() => {
   mockCreate.mockReset();
+  mockLinkGraviMetadata.mockReset();
+  mockListFiles.mockReset();
+  mockListFiles.mockResolvedValue({ success: true, data: mockGraviAccessions });
+  mockLinkGraviMetadata.mockResolvedValue({ success: true });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
   if (win && win.electron && win.electron.database) {
     win.electron.database.experiments = {
       create: mockCreate,
+      linkGraviMetadata: mockLinkGraviMetadata,
+    };
+    win.electron.database.graviPlateAccessions = {
+      listFiles: mockListFiles,
     };
   }
 });
@@ -183,6 +195,7 @@ describe('ExperimentForm', () => {
         species: 'Alfalfa',
         scientist: { connect: { id: 'sci-1' } },
         accession: { connect: { id: 'acc-1' } },
+        experiment_type: 'cylinderscan',
       });
     });
 
@@ -332,5 +345,162 @@ describe('ExperimentForm', () => {
     });
 
     expect(mockOnSuccess).not.toHaveBeenCalled();
+  });
+
+  describe('mode="graviscan"', () => {
+    it('does not render a wave-number field when mode is omitted or cylinderscan', () => {
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+        />
+      );
+      expect(document.getElementById('wave-number-input')).toBeNull();
+
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+          mode="cylinderscan"
+        />
+      );
+      expect(document.getElementById('wave-number-input')).toBeNull();
+    });
+
+    it('renders a wave-number field (default 0) and no second accession picker', async () => {
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+          mode="graviscan"
+        />
+      );
+
+      await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+      const waveInput = document.getElementById(
+        'wave-number-input'
+      ) as HTMLInputElement;
+      expect(waveInput).not.toBeNull();
+      expect(waveInput.value).toBe('0');
+      // Only one accession-like select exists — no second dropdown added.
+      expect(
+        document.querySelectorAll('select[id="accession-select"]')
+      ).toHaveLength(1);
+    });
+
+    it("sources the Accession dropdown's options from graviPlateAccessions.listFiles(), not accessions.list()", async () => {
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+          mode="graviscan"
+        />
+      );
+
+      await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+      const accessionSelect = document.getElementById(
+        'accession-select'
+      ) as HTMLSelectElement;
+      const optionValues = Array.from(accessionSelect.options).map(
+        (o) => o.value
+      );
+      expect(optionValues).toContain('grav-acc-1');
+      expect(optionValues).not.toContain('acc-1');
+    });
+
+    it('sets experiment_type: graviscan and links the selected accession to the wave on submit', async () => {
+      const user = userEvent.setup();
+      mockCreate.mockResolvedValue({
+        success: true,
+        data: { id: 'exp-grav-1' },
+      });
+
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+          mode="graviscan"
+        />
+      );
+      await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+      const { nameInput, scientistSelect } = getFormElements();
+      const accessionSelect = document.getElementById(
+        'accession-select'
+      ) as HTMLSelectElement;
+      const submitButton = screen.getByRole('button', { name: /create/i });
+
+      await user.type(nameInput, 'Gravi Experiment');
+      await user.selectOptions(scientistSelect, 'sci-1');
+      await user.selectOptions(accessionSelect, 'grav-acc-1');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(mockCreate).toHaveBeenCalledWith({
+          name: 'Gravi Experiment',
+          species: 'Alfalfa',
+          scientist: { connect: { id: 'sci-1' } },
+          accession: { connect: { id: 'grav-acc-1' } },
+          experiment_type: 'graviscan',
+        });
+      });
+      await waitFor(() => {
+        expect(mockLinkGraviMetadata).toHaveBeenCalledWith(
+          'exp-grav-1',
+          0,
+          'grav-acc-1'
+        );
+      });
+    });
+
+    it('shows "Experiment created but metadata link failed" and keeps the experiment when the link call fails', async () => {
+      const user = userEvent.setup();
+      mockCreate.mockResolvedValue({
+        success: true,
+        data: { id: 'exp-grav-1' },
+      });
+      mockLinkGraviMetadata.mockResolvedValue({
+        success: false,
+        error: 'Wave already linked',
+      });
+      const mockOnSuccess = vi.fn();
+
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={mockOnSuccess}
+          mode="graviscan"
+        />
+      );
+      await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+      const { nameInput, scientistSelect } = getFormElements();
+      const accessionSelect = document.getElementById(
+        'accession-select'
+      ) as HTMLSelectElement;
+      const submitButton = screen.getByRole('button', { name: /create/i });
+
+      await user.type(nameInput, 'Gravi Experiment');
+      await user.selectOptions(scientistSelect, 'sci-1');
+      await user.selectOptions(accessionSelect, 'grav-acc-1');
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            'Experiment created but metadata link failed: Wave already linked'
+          )
+        ).toBeInTheDocument();
+      });
+      // The created experiment is not rolled back — onSuccess still fires
+      // so the parent's list refreshes and shows the new entry.
+      expect(mockOnSuccess).toHaveBeenCalled();
+    });
   });
 });

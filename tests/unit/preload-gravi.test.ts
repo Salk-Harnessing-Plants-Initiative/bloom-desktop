@@ -46,6 +46,7 @@ describe('preload gravi namespace', () => {
       'getPlatformInfo',
       'validateScanners',
       'validateConfig',
+      'resetUsb',
       'startScan',
       'getScanStatus',
       'markJobRecorded',
@@ -56,12 +57,38 @@ describe('preload gravi namespace', () => {
       'downloadImages',
       'getScannerStatus',
       'retryScanner',
+      'ensureDir',
+      'listScanFiles',
     ];
 
-    it('has all 18 invoke methods', () => {
+    it('has all 21 invoke methods', () => {
       for (const method of invokeMethods) {
         expect(typeof exposedAPI.gravi[method]).toBe('function');
       }
+    });
+
+    it('ensureDir calls ipcRenderer.invoke with correct channel and path', async () => {
+      await exposedAPI.gravi.ensureDir('/path/to/dir');
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'graviscan:ensure-dir',
+        '/path/to/dir'
+      );
+    });
+
+    it('listScanFiles calls ipcRenderer.invoke with correct channel and path', async () => {
+      await exposedAPI.gravi.listScanFiles('/path/to/dir');
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'graviscan:list-scan-files',
+        '/path/to/dir'
+      );
+    });
+
+    it('listScanFiles calls ipcRenderer.invoke with no argument when dirPath is omitted', async () => {
+      await exposedAPI.gravi.listScanFiles();
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'graviscan:list-scan-files',
+        undefined
+      );
     });
 
     it('getScannerStatus calls ipcRenderer.invoke with correct channel and no arguments', async () => {

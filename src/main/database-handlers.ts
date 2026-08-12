@@ -14,6 +14,16 @@ import { getScansDir } from './config-store';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// This file is shared code and must not import from graviscan/ directly
+// (enforced by @typescript-eslint/no-restricted-imports). GraviScan-specific
+// audit logging for linkGraviMetadata/unlinkGraviMetadata is injected via
+// setAuditLogger() instead — wired to the real scanLog() from
+// graviscan/wiring.ts's initGraviScan(), which runs only in graviscan mode.
+let auditLogger: (message: string) => void = () => {};
+export function setAuditLogger(fn: (message: string) => void): void {
+  auditLogger = fn;
+}
+
 /**
  * Standard response format for database operations
  */
@@ -682,6 +692,17 @@ export async function graviPlateAccessionsCreateWithSections(
     if (!Array.isArray(plates)) {
       return { success: false, error: 'plates must be an array' };
     }
+    if (plates.length === 0) {
+      // A spreadsheet whose columns didn't auto-map and were never fixed
+      // manually produces zero recognized plates (every row's plate_id
+      // resolves to '' and is skipped) — without this check the caller
+      // gets a false {success: true} for an import that wrote nothing.
+      return {
+        success: false,
+        error:
+          'No plates found — check that every required column is mapped correctly',
+      };
+    }
     for (const plate of plates) {
       if (
         !isNonEmptyString(plate?.plate_id) ||
@@ -1016,6 +1037,9 @@ export async function linkGraviMetadata(
       'GraviExperimentWaveMetadata',
       `experimentId=${experimentId} waveNumber=${waveNumber} accessionId=${accessionId}`
     );
+    auditLogger(
+      `[linkGraviMetadata] experiment=${experimentId} wave=${waveNumber} accession=${created.accession.name} (${accessionId})`
+    );
     return { success: true, data: created };
   } catch (error) {
     console.error('[DB] Failed to link GraviScan wave metadata:', error);
@@ -1055,6 +1079,7 @@ export async function unlinkGraviMetadata(
           wave_number: waveNumber,
         },
       },
+      include: { accession: true },
     });
     if (!existing) {
       return {
@@ -1075,6 +1100,9 @@ export async function unlinkGraviMetadata(
       'DELETE',
       'GraviExperimentWaveMetadata',
       `experimentId=${experimentId} waveNumber=${waveNumber}`
+    );
+    auditLogger(
+      `[unlinkGraviMetadata] experiment=${experimentId} wave=${waveNumber} accession=${existing.accession.name} (${existing.accession_id})`
     );
     return { success: true };
   } catch (error) {

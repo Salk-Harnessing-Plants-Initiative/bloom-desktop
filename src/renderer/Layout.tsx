@@ -1,6 +1,43 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { WedgeBanner } from './components/WedgeBanner';
+import { useUploadStatus } from './contexts/UploadStatusContext';
+import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
+import { BoxBackupProgress } from '../types/graviscan';
+
+function isSameProgress(
+  a: BoxBackupProgress | null,
+  b: BoxBackupProgress | null
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.totalImages === b.totalImages &&
+    a.completedImages === b.completedImages &&
+    a.failedImages === b.failedImages &&
+    a.currentExperiment === b.currentExperiment
+  );
+}
+
+function UploadStatusBanner() {
+  const { status } = useUploadStatus();
+  const [dismissed, setDismissed] = useState<BoxBackupProgress | null>(null);
+
+  // Compared by value, not reference: each graviscan:upload-progress IPC
+  // delivery is a fresh object (structured clone), so a harmless
+  // duplicate/retry event with identical content would otherwise silently
+  // undo the user's dismiss action.
+  if (!status || isSameProgress(status, dismissed)) return null;
+
+  return (
+    <div data-testid="upload-status-indicator">
+      <span>
+        Upload progress: {status.completedImages}/{status.totalImages}
+      </span>
+      <button onClick={() => setDismissed(status)}>Dismiss</button>
+    </div>
+  );
+}
 
 /** Maps scanner_mode values to human-readable labels */
 function modeLabel(mode: string | null): string {
@@ -32,46 +69,6 @@ const alwaysLinks = [
           strokeLinecap="round"
           strokeLinejoin="round"
           d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
-        />
-      </svg>
-    ),
-  },
-  {
-    to: '/browse-scans',
-    label: 'Browse Scans',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-        className="w-6 h-6 inline mr-2"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
-        />
-      </svg>
-    ),
-  },
-  {
-    to: '/export',
-    label: 'Export Scans',
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
-        className="w-6 h-6 inline mr-2"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
         />
       </svg>
     ),
@@ -137,6 +134,58 @@ const alwaysLinks = [
     ),
   },
 ];
+
+/**
+ * The shared "Browse Scans" link — CylinderScan's Scan/Image data layer, not
+ * mode-agnostic. Shown in every mode except graviscan, which has its own
+ * dedicated Browse GraviScans link instead (that shared data would always be
+ * empty for a GraviScan-mode user).
+ */
+const browseScansLink = {
+  to: '/browse-scans',
+  label: 'Browse Scans',
+  icon: (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="w-6 h-6 inline mr-2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
+      />
+    </svg>
+  ),
+};
+
+/**
+ * The shared "Export Scans" link — same CylinderScan-only data layer as
+ * browseScansLink above, hidden in graviscan mode for the same reason.
+ */
+const exportScansLink = {
+  to: '/export',
+  label: 'Export Scans',
+  icon: (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="w-6 h-6 inline mr-2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+      />
+    </svg>
+  ),
+};
 
 /** Capture-specific links (cylinderscan mode only) */
 const captureLinks = [
@@ -229,6 +278,46 @@ const graviscanLinks = [
       </svg>
     ),
   },
+  {
+    to: '/metadata',
+    label: 'Metadata',
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+        className="w-6 h-6 inline mr-2"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+        />
+      </svg>
+    ),
+  },
+  {
+    to: '/browse-graviscans',
+    label: 'Browse GraviScans',
+    icon: (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+        stroke="currentColor"
+        className="w-6 h-6 inline mr-2"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"
+        />
+      </svg>
+    ),
+  },
 ];
 
 interface LayoutProps {
@@ -237,15 +326,46 @@ interface LayoutProps {
 
 export function Layout({ mode = null }: LayoutProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [scannerName, setScannerName] = useState<string>('');
+  const { hasUnsavedChanges, blockNavigation } = useUnsavedChanges();
+
+  // Shared by every navigation surface (sidebar links, the machine-config
+  // keyboard shortcut) — a click/shortcut that doesn't actually change
+  // route needs neither the hard block nor the confirm below.
+  // Returns whether navigation may proceed.
+  const guardNavigation = (): boolean => {
+    if (blockNavigation) {
+      window.alert(
+        'An import is still in progress. Please wait for it to finish before navigating away.'
+      );
+      return false;
+    }
+    if (
+      hasUnsavedChanges &&
+      !window.confirm(
+        'You have an unsaved metadata import in progress. Leave anyway?'
+      )
+    ) {
+      return false;
+    }
+    return true;
+  };
+
+  const confirmNavAway = (event: React.MouseEvent, to: string) => {
+    if (to === location.pathname) return;
+    if (!guardNavigation()) {
+      event.preventDefault();
+    }
+  };
 
   const showCaptureLinks = mode === 'cylinderscan';
   const showGraviscanLinks = mode === 'graviscan';
   const links = showCaptureLinks
-    ? [...alwaysLinks, ...captureLinks]
+    ? [...alwaysLinks, browseScansLink, exportScansLink, ...captureLinks]
     : showGraviscanLinks
       ? [...alwaysLinks, ...graviscanLinks]
-      : alwaysLinks;
+      : [...alwaysLinks, browseScansLink, exportScansLink];
 
   // Load scanner name from scanner identity service
   useEffect(() => {
@@ -278,13 +398,14 @@ export function Layout({ mode = null }: LayoutProps) {
       // (Shift+Comma produces different event.key on different layouts)
       if (modifier && event.shiftKey && event.code === 'Comma') {
         event.preventDefault();
-        navigate('/machine-config');
+        if (location.pathname === '/machine-config') return;
+        if (guardNavigation()) navigate('/machine-config');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [navigate]);
+  }, [navigate, location.pathname, blockNavigation, hasUnsavedChanges]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -301,6 +422,7 @@ export function Layout({ mode = null }: LayoutProps) {
               key={link.to}
               to={link.to}
               end
+              onClick={(event) => confirmNavAway(event, link.to)}
               className={({ isActive }) =>
                 `flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors ${
                   isActive
@@ -326,6 +448,7 @@ export function Layout({ mode = null }: LayoutProps) {
       {/* Main content */}
       <div className="flex-1 overflow-auto">
         {showGraviscanLinks && <WedgeBanner />}
+        <UploadStatusBanner />
         <Outlet />
       </div>
     </div>

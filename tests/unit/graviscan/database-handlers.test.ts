@@ -17,7 +17,15 @@
  *   BLOOM_DATABASE_URL="file:./dev.db" npx prisma migrate deploy
  * first.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import {
   graviscansCreate,
@@ -38,6 +46,7 @@ import {
   linkGraviMetadata,
   unlinkGraviMetadata,
   listGraviMetadata,
+  setAuditLogger,
 } from '../../../src/main/database-handlers';
 
 const prisma = new PrismaClient();
@@ -164,8 +173,12 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+const mockAuditLogger = vi.fn();
+
 beforeEach(async () => {
   await cleanDatabase();
+  vi.clearAllMocks();
+  setAuditLogger(mockAuditLogger);
 });
 
 describe('database.graviscans.*', () => {
@@ -981,6 +994,17 @@ describe('database.graviPlateAccessions.*', () => {
       expect(await prisma.accessions.count()).toBe(0);
     });
 
+    it('rejects an empty plates array without writing anything — prevents a silent zero-plate "success" (e.g. every row mapped to no columns)', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Empty Plates' },
+        []
+      );
+
+      expect(result.success).toBe(false);
+      expect(await prisma.accessions.count()).toBe(0);
+    });
+
     it('rejects a plate missing plate_id/accession without writing anything', async () => {
       const result = await graviPlateAccessionsCreateWithSections(
         prisma,
@@ -1061,6 +1085,29 @@ describe('database.graviPlateAccessions.*', () => {
       );
       expect(result.success).toBe(false);
     });
+
+    it('returns transplant_date as a real Date over IPC when set', async () => {
+      const created = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Dated File' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            transplant_date: '2026-07-01T00:00:00.000Z',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'Q1' }],
+          },
+        ]
+      );
+      const result = await graviPlateAccessionsList(
+        prisma,
+        created.data!.metadataFileId
+      );
+      const plates = result.data ?? [];
+      // Structured clone preserves Date instances over IPC; renderer
+      // callers must format it, not assume string.
+      expect(plates[0].transplant_date).toBeInstanceOf(Date);
+    });
   });
 
   describe('listFiles', () => {
@@ -1092,6 +1139,9 @@ describe('database.graviPlateAccessions.*', () => {
       const linkedFile = files.find((f) => f.name === 'Linked File');
       expect(linkedFile?.plateCount).toBe(1);
       expect(linkedFile?.experimentNames).toContain('Experiment A');
+      // createdAt travels over IPC as a real Date (structured clone
+      // preserves it); renderer callers must format it, not assume string.
+      expect(linkedFile?.createdAt).toBeInstanceOf(Date);
     });
   });
 
@@ -1313,6 +1363,25 @@ describe('database.experiments.linkGraviMetadata', () => {
       },
     });
     expect(row?.accession_id).toBe(metadataFileId);
+  });
+
+  it('writes a scanLog line naming the experiment, wave, and accession file name on success', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile('batch3.xlsx');
+
+    await linkGraviMetadata(prisma, experiment.id, 2, metadataFileId);
+
+    expect(mockAuditLogger).toHaveBeenCalledTimes(1);
+    const [message] = mockAuditLogger.mock.calls[0];
+    expect(message).toContain(experiment.id);
+    expect(message).toContain('2');
+    expect(message).toContain('batch3.xlsx');
+  });
+
+  it('does not write a scanLog line on a validation failure', async () => {
+    const result = await linkGraviMetadata(prisma, '', 0, 'irrelevant');
+    expect(result.success).toBe(false);
+    expect(mockAuditLogger).not.toHaveBeenCalled();
   });
 
   it('accepts wave 0 as a valid boundary value', async () => {
@@ -1539,6 +1608,21 @@ describe('database.experiments.unlinkGraviMetadata', () => {
     expect(row).toBeNull();
   });
 
+  it('writes a scanLog line naming the experiment, wave, and unlinked accession file name on success', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile('batch3.xlsx');
+    await linkGraviMetadata(prisma, experiment.id, 3, metadataFileId);
+    mockAuditLogger.mockClear();
+
+    await unlinkGraviMetadata(prisma, experiment.id, 3);
+
+    expect(mockAuditLogger).toHaveBeenCalledTimes(1);
+    const [message] = mockAuditLogger.mock.calls[0];
+    expect(message).toContain(experiment.id);
+    expect(message).toContain('3');
+    expect(message).toContain('batch3.xlsx');
+  });
+
   it('returns a friendly error for a non-existent link, not a raw Prisma error', async () => {
     const experiment = await createGraviscanExperiment();
 
@@ -1553,6 +1637,7 @@ describe('database.experiments.unlinkGraviMetadata', () => {
       'Nothing to unlink — wave 5 has no metadata file linked'
     );
     expect(result.error).not.toMatch(/prisma|record to delete/i);
+    expect(mockAuditLogger).not.toHaveBeenCalled();
   });
 
   it.each([

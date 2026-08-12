@@ -98,9 +98,34 @@ async function launchElectronApp() {
     } as Record<string, string>,
   });
 
+  // TEMPORARY DIAGNOSTIC: pipe the launched instance's own main-process
+  // output to the CI log. Per-test Electron launches aren't captured
+  // anywhere today, so when waitForAppReady() times out below we have no
+  // visibility into whether app.on('ready') ever ran, or where it stalled.
+  // Remove once the E2E CI hang investigation (PR #290) is resolved.
+  electronApp.process().stdout?.on('data', (data) => {
+    console.log(`[electron-main stdout] ${data.toString().trimEnd()}`);
+  });
+  electronApp.process().stderr?.on('data', (data) => {
+    console.log(`[electron-main stderr] ${data.toString().trimEnd()}`);
+  });
+
   // Get the main window - filter for localhost to avoid DevTools window
   const windows = await electronApp.windows();
   window = windows.find((w) => w.url().includes('localhost')) || windows[0];
+
+  // TEMPORARY DIAGNOSTIC: surface renderer-side crashes. A prior CI run
+  // showed the app becoming "ready" (main-process IPC resolves fine) while
+  // the page's DOM stayed completely empty (not even the Loading state) —
+  // consistent with the renderer bundle throwing at script-evaluation time,
+  // before React ever mounts. Remove once the E2E CI hang investigation
+  // (PR #290) is resolved.
+  window.on('pageerror', (err) => {
+    console.log(`[renderer pageerror] ${err.stack || err.message}`);
+  });
+  window.on('console', (msg) => {
+    console.log(`[renderer console:${msg.type()}] ${msg.text()}`);
+  });
 
   // Wait for window to be ready
   await window.waitForLoadState('domcontentloaded', { timeout: 30000 });

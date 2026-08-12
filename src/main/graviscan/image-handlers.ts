@@ -21,6 +21,7 @@ import { resolveGraviScanPath } from '../graviscan-path-utils';
 import { runBoxBackup } from '../box-backup';
 import { uploadAllPendingScans } from '../graviscan-upload';
 import { getGraviscanOutputDir } from '../graviscan-output-dir';
+import { UploadAllScansResult } from '../../types/graviscan';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -183,20 +184,7 @@ export async function readScanImage(
 export async function uploadAllScans(
   db: PrismaClient,
   onProgress?: (progress: unknown) => void
-): Promise<{
-  success: boolean;
-  uploaded: number;
-  skipped: number;
-  failed: number;
-  errors: string[];
-  /**
-   * Whether the installed @salk-hpi/bloom-js supports Bloom session/plate-
-   * metadata linking (see graviscan-upload.ts's UploadResult). Surfaced here
-   * so a future renderer can show operators when metadata linking isn't
-   * active, rather than that only being visible in main-process logs.
-   */
-  metadataLinkingAvailable: boolean;
-}> {
+): Promise<UploadAllScansResult> {
   if (uploadInProgress) {
     console.log('[GraviScan:UPLOAD] Upload already in progress — skipping');
     return {
@@ -206,6 +194,15 @@ export async function uploadAllScans(
       failed: 0,
       errors: ['Upload already in progress'],
       metadataLinkingAvailable: false,
+      // Neither target was actually attempted, so neither is "at fault" —
+      // vacuously true so the renderer's per-target message doesn't claim a
+      // Bloom or Box failure that never happened.
+      bloomSuccess: true,
+      boxSuccess: true,
+      bloomUploaded: 0,
+      boxUploaded: 0,
+      bloomErrors: [],
+      boxErrors: [],
     };
   }
   uploadInProgress = true;
@@ -265,6 +262,12 @@ export async function uploadAllScans(
       failed: bloomResult.failed + boxResult.errors.length,
       errors: [...bloomResult.errors, ...boxResult.errors],
       metadataLinkingAvailable: bloomResult.metadataLinkingAvailable,
+      bloomSuccess: bloomResult.success,
+      boxSuccess: boxResult.success,
+      bloomUploaded: bloomResult.uploaded,
+      boxUploaded: boxResult.filesCopied,
+      bloomErrors: bloomResult.errors,
+      boxErrors: boxResult.errors,
     };
   } catch (error) {
     console.error('[GraviScan:UPLOAD] Error:', error);
@@ -275,6 +278,14 @@ export async function uploadAllScans(
       failed: 0,
       errors: [error instanceof Error ? error.message : 'Upload failed'],
       metadataLinkingAvailable: false,
+      // Whole function threw before either target could be attributed —
+      // same rationale as the uploadInProgress guard above.
+      bloomSuccess: true,
+      boxSuccess: true,
+      bloomUploaded: 0,
+      boxUploaded: 0,
+      bloomErrors: [],
+      boxErrors: [],
     };
   } finally {
     uploadInProgress = false;

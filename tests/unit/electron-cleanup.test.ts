@@ -227,6 +227,14 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
   });
 
   it('1.2 kills pre-snapshotted descendants after the root has already died (production order)', async () => {
+    // Windows' snapshotDescendants/killDescendants route through
+    // `powershell.exe Get-CimInstance` (PROCESS_QUERY_TIMEOUT_MS=3s each),
+    // plus real node.exe process spawns, both markedly slower than POSIX's
+    // `ps` — comfortably under 5s in isolation, but the combined chain here
+    // (spawn -> snapshot -> kill -> per-child waitUntil) can exceed vitest's
+    // default 5000ms test timeout on Windows, especially under full-suite
+    // worker contention. Root-caused via an isolated run with a raised
+    // timeout (all assertions passed, just slower) — not a hang.
     const { rootPid, childPids } = await spawnSyntheticTree(2);
     spawnedPids.push(rootPid, ...childPids);
 
@@ -250,9 +258,11 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
       await waitUntil(() => !isProcessRunning(pid));
       expect(isProcessRunning(pid)).toBe(false);
     }
-  });
+  }, 20000);
 
   it('1.2b kills transitive descendants (grandchildren), not just direct children', async () => {
+    // See the timeout note on 1.2 above — same spawn -> snapshot -> kill
+    // -> per-descendant waitUntil chain, here over more PIDs.
     const { rootPid, childPids, grandchildPids } = await spawnSyntheticTree(
       2,
       2
@@ -271,7 +281,7 @@ describe('electron-cleanup: descendant snapshot/kill', () => {
       await waitUntil(() => !isProcessRunning(pid));
       expect(isProcessRunning(pid)).toBe(false);
     }
-  });
+  }, 20000);
 
   it('1.3 does not throw when a descendant already exited on its own before the kill step', async () => {
     const { rootPid, childPids } = await spawnSyntheticTree(2);

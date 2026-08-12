@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Hardcoded species list (from pilot fix/addnewspecies branch, deduplicated and sorted)
@@ -53,15 +53,37 @@ interface ExperimentFormProps {
   scientists: Scientist[];
   accessions: Accession[];
   onSuccess: () => void;
+  mode?: string;
 }
 
 export function ExperimentForm({
   scientists,
   accessions,
   onSuccess,
+  mode = 'cylinderscan',
 }: ExperimentFormProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [waveNumber, setWaveNumber] = useState(0);
+  const [graviAccessions, setGraviAccessions] = useState<Accession[]>([]);
+
+  const isGraviscan = mode === 'graviscan';
+
+  // In graviscan mode, the Accession dropdown offers only GraviScan-eligible
+  // metadata files (design.md Decision 4) — sourced from
+  // graviPlateAccessions.listFiles(), not the generic accessions prop.
+  useEffect(() => {
+    if (!isGraviscan) return;
+    let cancelled = false;
+    window.electron.database.graviPlateAccessions.listFiles().then((result) => {
+      if (!cancelled && result.success) {
+        setGraviAccessions((result.data as Accession[]) ?? []);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGraviscan]);
 
   const {
     register,
@@ -88,6 +110,7 @@ export function ExperimentForm({
         species: data.species,
         scientist: { connect: { id: data.scientist_id } },
         accession: { connect: { id: data.accession_id } },
+        experiment_type: isGraviscan ? 'graviscan' : 'cylinderscan',
       };
 
       const result =
@@ -98,6 +121,22 @@ export function ExperimentForm({
         return;
       }
 
+      if (isGraviscan) {
+        const linkResult =
+          await window.electron.database.experiments.linkGraviMetadata(
+            result.data.id,
+            waveNumber,
+            data.accession_id
+          );
+        if (!linkResult.success) {
+          setSubmitError(
+            `Experiment created but metadata link failed: ${linkResult.error}`
+          );
+          onSuccess();
+          return;
+        }
+      }
+
       // Success - reset form and notify parent
       reset({
         name: '',
@@ -105,6 +144,7 @@ export function ExperimentForm({
         scientist_id: '',
         accession_id: '',
       });
+      setWaveNumber(0);
       onSuccess();
     } catch (error) {
       console.error('Error creating experiment:', error);
@@ -210,7 +250,7 @@ export function ExperimentForm({
           disabled={isSubmitting}
         >
           <option value="">-- Select an accession --</option>
-          {accessions.map((accession) => (
+          {(isGraviscan ? graviAccessions : accessions).map((accession) => (
             <option key={accession.id} value={accession.id}>
               {accession.name}
             </option>
@@ -222,6 +262,26 @@ export function ExperimentForm({
           </p>
         )}
       </div>
+
+      {isGraviscan && (
+        <div className="mb-4">
+          <label
+            htmlFor="wave-number-input"
+            className="block text-xs font-bold mb-1"
+          >
+            Wave Number
+          </label>
+          <input
+            id="wave-number-input"
+            type="number"
+            min={0}
+            value={waveNumber}
+            onChange={(e) => setWaveNumber(Number(e.target.value))}
+            className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-[200px] border border-gray-300"
+            disabled={isSubmitting}
+          />
+        </div>
+      )}
 
       <div className="flex justify-center">
         <button

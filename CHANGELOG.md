@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GraviScan Browse / Experiment Detail / Metadata UI (roadmap Tier 5, #133, #207, #164)
+  - `BrowseGraviScans`: filterable, paginated list of graviscan experiments with a wave/accession mismatch warning, a "Backup to Box" action (rclone-unavailable and partial-failure messaging), and a link through to Experiment Detail
+  - `ExperimentDetail`: per-experiment scan/file listing with scanner/wave filter chips, resizable columns, file preview, and inline linking/unlinking of wave-scoped metadata (with a durable audit log line on both actions)
+  - `Metadata`: spreadsheet upload (multi-sheet support, column auto-mapping, per-row validation) and a list of previously uploaded metadata files; parses with `exceljs` rather than `xlsx`/SheetJS, which has two unpatched HIGH-severity CVEs in its only published npm version
+  - `Experiments.tsx` now shows each graviscan experiment's linked waves inline and lets a new wave be linked (or an existing one unlinked, confirmation-gated) without a second accession picker
+  - Global upload-progress indicator in `Layout` that persists across navigation
+  - `docs/graviscan-metadata-spreadsheet-schema.md` documents the expected spreadsheet columns
+  - Fixes #286: new experiments now get an explicit `experiment_type` (`'graviscan'` or `'cylinderscan'`) instead of relying on an implicit default
+  - See `openspec/changes/add-graviscan-tier5-browse-metadata/` for full design rationale
+
 - GraviScan wave-scoped metadata linking (`database.experiments.{linkGraviMetadata,unlinkGraviMetadata,listGraviMetadata}`), unblocking the Browse/Experiment Detail/Metadata UI proposal (roadmap Tier 5)
   - `GraviExperimentWaveMetadata` model: one metadata-file link per `(experiment, wave)`, FK to `Experiment` (cascades) and `Accessions` (restricted)
   - `linkGraviMetadata` validates experiment existence/type, accession existence/file-type, and wave-number range before linking; rejects re-linking an already-linked wave rather than silently overwriting
