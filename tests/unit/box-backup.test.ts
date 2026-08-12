@@ -1519,18 +1519,21 @@ describe('runBoxBackup', () => {
       (call) => call[0].data.box_status === 'collision'
     );
     expect(collisionCall).toBeUndefined();
-    // img2's own resolved basename (its own path's case, "EXP1_ST_...TIF")
-    // must still reach metadata.csv even though it was recognized as a
-    // literal duplicate of img1's physical file — a genuine duplicate DB
-    // row is still a real, distinct scan record with its own image_id,
-    // and skipping the (harmless, no-op) tmpDir symlink for it is not a
-    // reason to also drop its row from the exported metadata. An earlier
-    // version of this fix gated originalToResolvedName's population
-    // behind the same "isLiteralDuplicate" check used for the tmpDir/
-    // collision bookkeeping, which left img2's entry in that map
-    // completely unset — silently excluding its row from metadata.csv
-    // while its DB status still said 'uploaded', found via this exact
-    // assertion failing.
+    // img2's row must still reach metadata.csv (a genuine duplicate DB
+    // row is still a real, distinct scan record with its own image_id —
+    // gating its originalToResolvedName entry behind "isLiteralDuplicate"
+    // left it completely unset, silently excluding its row from the CSV
+    // while its DB status still said 'uploaded'; that was round 17's
+    // first fix). But it must be recorded under img1's WINNING basename
+    // ("exp1_st_..." — the one actually staged in tmpDir and uploaded to
+    // Box), not img2's own independently-computed case variant
+    // ("EXP1_ST_...") — ensureSymlinkOrCopy's existsSync guard means only
+    // ONE physical file, under ONE case, is ever created for a literal
+    // duplicate pair; a CSV row claiming the OTHER case names a file that
+    // was never actually written to Box. An earlier version of this fix
+    // used each row's own locally-computed fileName unconditionally
+    // instead of the winning one, found via this exact assertion (the
+    // "EXP1_ST_..." variant appearing in the CSV at all) failing.
     const csvCall = vi
       .mocked(fs.writeFileSync)
       .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
@@ -1540,12 +1543,88 @@ describe('runBoxBackup', () => {
       csvContent
         .split('\n')
         .filter((line) => line.includes('exp1_st_20260101T000000_cy1_S1_00'))
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(
       csvContent
         .split('\n')
         .filter((line) => line.includes('EXP1_ST_20260101T000000_CY1_S1_00'))
-    ).toHaveLength(1);
+    ).toHaveLength(0);
+  });
+
+  it('records a literal duplicate under the WINNING basename in metadata.csv, not its own never-materialized one, when the two differ by more than just case', async () => {
+    // A genuine duplicate is identified purely by realPath equality, not
+    // by any similarity between the two DB rows' own basenames — two
+    // completely differently-named paths (not just differently-cased)
+    // can still be the identical physical file (e.g. reached via a
+    // symlink, or a network mount visible under two different names).
+    // ensureSymlinkOrCopy only ever stages ONE physical file per literal
+    // duplicate group, under the FIRST-processed row's basename — a
+    // second row's own, unrelated basename is never written to tmpDir or
+    // uploaded to Box at all. If its metadata.csv row names that
+    // never-materialized basename instead of the one that actually
+    // exists in Box, the CSV silently points to a file that isn't there.
+    const dupPath = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_00_completely_different_name.tif'
+    );
+    fs.writeFileSync(dupPath, 'fake tiff bytes, same physical content');
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    // Forces both sourceFile and dupPath to be treated as the identical
+    // physical file, regardless of their genuinely different basenames —
+    // simulating the symlink/network-mount scenario deterministically
+    // rather than depending on real OS filesystem behavior.
+    vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
+
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else {
+        queueMicrotask(() => proc.emit('close', 0));
+      }
+      return proc as never;
+    });
+
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: dupPath },
+        ],
+      },
+    ]);
+
+    await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+    const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+      (call) => call[0].data.box_status === 'uploaded'
+    );
+    expect([...uploadedCall[0].where.id.in].sort()).toEqual(['img1', 'img2']);
+    const csvCall = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+    expect(csvCall).toBeDefined();
+    const csvContent = csvCall![1] as string;
+    // Both rows must name the WINNING (img1's) basename — the only file
+    // that was ever actually staged and uploaded — never img2's own
+    // unrelated, never-materialized basename.
+    expect(
+      csvContent
+        .split('\n')
+        .filter((line) =>
+          line.includes('exp1_st_20260101T000000_cy1_S1_00.tif')
+        )
+    ).toHaveLength(2);
+    expect(csvContent).not.toContain('completely_different_name');
   });
 
   it('falls back to treating a file as a collision — never a silent duplicate-merge — when fs.realpathSync throws for it', async () => {

@@ -133,17 +133,26 @@ export function rcloneCopyFiles(
     // missingFilePaths/erroredFiles.
     const collisions = new Set<string>();
     // Real, canonical on-disk path of every file already staged in this
-    // call. Used to recognize a literal duplicate (e.g. a genuine
-    // duplicate DB row) as harmless even when the two DB path STRINGS
-    // differ only by case — comparing the raw original-path strings for
-    // exact equality (an earlier version of this fix did) misses that
-    // case on a case-insensitive filesystem and wrongly treats a
-    // harmless duplicate as an unrecoverable collision, exactly the
-    // failure mode the case-insensitivity fix below was supposed to
-    // eliminate, just triggered from the opposite direction. Membership
-    // only (a Set, not a Map) — nothing ever looks up which original
-    // path first claimed a given real path.
-    const claimedRealPaths = new Set<string>();
+    // call, mapped to the WINNING fileName that was actually staged
+    // under it. Used to (a) recognize a literal duplicate (e.g. a
+    // genuine duplicate DB row) as harmless even when the two DB path
+    // STRINGS differ — comparing the raw original-path strings for
+    // exact equality (an earlier version of this fix did) misses a
+    // case-only difference on a case-insensitive filesystem and wrongly
+    // treats a harmless duplicate as an unrecoverable collision; and
+    // (b) give a literal duplicate's OWN metadata.csv row the fileName
+    // that was actually staged/uploaded, not its own independently-
+    // computed one. A duplicate's own basename can differ from the
+    // winner's by more than just case (e.g. two DB rows reaching the
+    // same physical file via a symlink or network mount under
+    // completely different names) — ensureSymlinkOrCopy only ever
+    // stages ONE physical file per literal-duplicate group, under the
+    // FIRST-processed row's basename, so a duplicate's own basename is
+    // never actually written to tmpDir or uploaded to Box. A version of
+    // this fix that used each row's own locally-computed fileName
+    // unconditionally (rather than looking up the winner's) recorded a
+    // CSV row naming a file that doesn't exist at the Box destination.
+    const claimedRealPaths = new Map<string, string>();
     // Case-insensitive index of every resolved basename already
     // claimed in this call, so a collision's diagnostic can always name
     // the winning file — including when the two basenames differ only
@@ -178,8 +187,12 @@ export function rcloneCopyFiles(
             // the error code) so an operator troubleshooting a
             // collision that looks like the same file isn't left
             // guessing why duplicate detection couldn't confirm it.
+            const errCode =
+              err instanceof Error
+                ? ((err as NodeJS.ErrnoException).code ?? 'unknown error')
+                : 'unknown error';
             console.warn(
-              `[BoxBackup] fs.realpathSync failed for "${resolvedPath}" (${(err as NodeJS.ErrnoException).code ?? 'unknown error'}) — falling back to its un-canonicalized path for duplicate detection, which can only produce a false collision, never a silent merge of two different files.`
+              `[BoxBackup] fs.realpathSync failed for "${resolvedPath}" (${errCode}) — falling back to its un-canonicalized path for duplicate detection, which can only produce a false collision, never a silent merge of two different files.`
             );
             realPath = resolvedPath;
           }
@@ -221,7 +234,7 @@ export function rcloneCopyFiles(
             continue;
           }
           if (!isLiteralDuplicate) {
-            claimedRealPaths.add(realPath);
+            claimedRealPaths.set(realPath, fileName);
             resolvedToOriginalName.set(fileName, filePath);
             claimedBasenamesLower.set(fileName.toLowerCase(), filePath);
           }
@@ -231,15 +244,26 @@ export function rcloneCopyFiles(
           // literal duplicate (there's only one destination slot to
           // claim). originalToResolvedName is different — every DB row
           // this loop successfully resolves is entitled to its OWN
-          // "original path -> its own resolved basename" entry in
-          // metadata.csv, whether or not it happened to be a duplicate
-          // of another row's physical file. Gating this behind
-          // isLiteralDuplicate (an earlier version of this fix did)
-          // left a genuine duplicate's own filePath key completely
-          // unset in this map, silently excluding its otherwise-valid
-          // scan row from the exported CSV even though its box_status
-          // was correctly set to 'uploaded'.
-          originalToResolvedName.set(filePath, fileName);
+          // "original path -> resolved basename" entry in metadata.csv,
+          // whether or not it happened to be a duplicate of another
+          // row's physical file. Gating this behind isLiteralDuplicate
+          // (an earlier version of this fix did) left a genuine
+          // duplicate's own filePath key completely unset, silently
+          // excluding its otherwise-valid scan row from the exported
+          // CSV even though its box_status was correctly set to
+          // 'uploaded'. But a literal duplicate must be recorded under
+          // the WINNING fileName (claimedRealPaths.get(realPath)) —
+          // the only one actually staged in tmpDir and uploaded to Box
+          // — not its own locally-computed `fileName`, which was never
+          // materialized anywhere if it differs from the winner's (an
+          // earlier version of this fix used the local one
+          // unconditionally, silently naming a nonexistent file in the
+          // CSV for any duplicate whose own basename differed from the
+          // winner's).
+          originalToResolvedName.set(
+            filePath,
+            isLiteralDuplicate ? claimedRealPaths.get(realPath)! : fileName
+          );
           // Windows restricts unprivileged symlink creation (requires
           // admin or Developer Mode — the default state on most lab
           // machines), and this path was never exercised by CI (rclone
