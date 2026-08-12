@@ -20,13 +20,18 @@ vi.mock('child_process', () => ({
 // style; `importOriginal` keeps every other fs call (mkdtempSync,
 // symlinkSync, rmSync, etc.) genuinely real.
 // realpathSync is also wrapped (real implementation by default, via
-// vi.fn(actual.realpathSync)) so a test can override it with
-// mockImplementationOnce to simulate a case-insensitive-filesystem
+// vi.fn(actual.realpathSync)) so a test can override it — either with
+// mockImplementationOnce (auto-reverts to the real passthrough after
+// its one call, no explicit restore needed) or a persistent
+// mockImplementation (relies on the enclosing describe block's own
+// afterEach(() => vi.restoreAllMocks()) to restore the real passthrough
+// before the next test) — to simulate a case-insensitive-filesystem
 // duplicate (two distinct path strings resolving to the same physical
-// file) without depending on the actual host OS's case-folding
-// behavior — CI runs this suite on case-sensitive (Linux) and
-// case-insensitive (Windows, macOS) filesystems, so a test relying on
-// real OS case-folding would behave differently per platform.
+// file) or a realpathSync failure, without depending on the actual host
+// OS's case-folding behavior — CI runs this suite on case-sensitive
+// (Linux) and case-insensitive (Windows, macOS) filesystems, so a test
+// relying on real OS case-folding would behave differently per
+// platform.
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
   const writeFileSync = vi.fn(actual.writeFileSync);
@@ -50,11 +55,11 @@ const mockSpawn = vi.mocked(spawn);
 
 beforeEach(() => {
   vi.mocked(fs.writeFileSync).mockClear();
-  // Only clears call history, not the wrapped real implementation set
-  // up in the vi.mock('fs', ...) factory above — a test overriding
-  // this with mockImplementationOnce to simulate a case-insensitive
-  // duplicate automatically falls back to the real passthrough
-  // afterward, without needing to be manually restored here.
+  // Only clears call history, not any mockImplementation override — a
+  // test that installs a PERSISTENT override (not mockImplementationOnce)
+  // depends on its enclosing describe block's own
+  // afterEach(() => vi.restoreAllMocks()) to remove it before the next
+  // test runs, not on this mockClear().
   vi.mocked(fs.realpathSync).mockClear();
 });
 
@@ -1467,6 +1472,26 @@ describe('runBoxBackup', () => {
     // being the same physical file.
     vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
 
+    // Both the image copy AND the metadata CSV copy succeed here (mirroring
+    // the real-collision test above) — without this override the shared
+    // beforeEach's default mock makes the CSV copy fail, which reverts
+    // img1/img2 to box_status:'failed' by the end of the run. The
+    // uploadedCall assertion below would still pass (Array.find returns
+    // the FIRST matching updateMany call, before the revert), but it would
+    // be asserting a transient mid-run state rather than the run's actual
+    // final outcome — this test is specifically about final state, so it
+    // must not depend on an unrelated CSV failure happening not to matter.
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else {
+        queueMicrotask(() => proc.emit('close', 0));
+      }
+      return proc as never;
+    });
+
     db.graviScan.findMany.mockResolvedValue([
       {
         experiment: { name: 'ExpA', accession: null },
@@ -1494,6 +1519,147 @@ describe('runBoxBackup', () => {
       (call) => call[0].data.box_status === 'collision'
     );
     expect(collisionCall).toBeUndefined();
+    // img2's own resolved basename (its own path's case, "EXP1_ST_...TIF")
+    // must still reach metadata.csv even though it was recognized as a
+    // literal duplicate of img1's physical file — a genuine duplicate DB
+    // row is still a real, distinct scan record with its own image_id,
+    // and skipping the (harmless, no-op) tmpDir symlink for it is not a
+    // reason to also drop its row from the exported metadata. An earlier
+    // version of this fix gated originalToResolvedName's population
+    // behind the same "isLiteralDuplicate" check used for the tmpDir/
+    // collision bookkeeping, which left img2's entry in that map
+    // completely unset — silently excluding its row from metadata.csv
+    // while its DB status still said 'uploaded', found via this exact
+    // assertion failing.
+    const csvCall = vi
+      .mocked(fs.writeFileSync)
+      .mock.calls.find((call) => String(call[0]).endsWith('.csv'));
+    expect(csvCall).toBeDefined();
+    const csvContent = csvCall![1] as string;
+    expect(
+      csvContent
+        .split('\n')
+        .filter((line) => line.includes('exp1_st_20260101T000000_cy1_S1_00'))
+    ).toHaveLength(1);
+    expect(
+      csvContent
+        .split('\n')
+        .filter((line) => line.includes('EXP1_ST_20260101T000000_CY1_S1_00'))
+    ).toHaveLength(1);
+  });
+
+  it('falls back to treating a file as a collision — never a silent duplicate-merge — when fs.realpathSync throws for it', async () => {
+    // claimedRealPaths' duplicate-vs-collision decision depends entirely
+    // on fs.realpathSync successfully canonicalizing a path. When it
+    // throws (a real, documented possibility: a race where the file is
+    // removed between resolveGraviScanPath's own existsSync check and
+    // this call, or a permissions/network-share error), the code falls
+    // back to the file's raw, un-canonicalized path as its "identity."
+    // If that file happens to be a genuine duplicate of another file
+    // whose realpathSync DID succeed, the two identities won't match —
+    // the duplicate is NOT recognized as harmless, and instead falls
+    // into the ordinary collision branch. This is the intentional, safe
+    // direction for this ambiguity to fail in: a false-positive
+    // "collision" merely requires a one-time manual status reset (a
+    // known, accepted, documented product gap — see tasks.md Section
+    // 30.4) for what are actually the same bytes, whereas a
+    // false-negative (silently treating two DIFFERENT physical files as
+    // "the same," because realpathSync couldn't disprove it) would
+    // silently overwrite one image's real content with the other's on
+    // Box — genuine, undetectable data loss. This test locks in that
+    // this is deliberate, tested behavior, not an untested accident.
+    const otherDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'box-backup-test-src-realpath-throw-')
+    );
+    const secondFile = path.join(
+      otherDir,
+      'exp1_st_20260101T000000_cy1_S1_00.tif'
+    );
+    fs.writeFileSync(secondFile, 'fake tiff bytes, second file');
+
+    // First call (for img1) succeeds normally; second call (for img2)
+    // throws, simulating the race/permission-error case. Order matches
+    // the images array below, which the resolution loop processes
+    // in-order.
+    const realRealpathSync = fs.realpathSync;
+    vi.mocked(fs.realpathSync).mockImplementationOnce((...args) =>
+      realRealpathSync(...(args as Parameters<typeof fs.realpathSync>))
+    );
+    vi.mocked(fs.realpathSync).mockImplementationOnce(() => {
+      const err = new Error(
+        'ENOENT: no such file or directory'
+      ) as NodeJS.ErrnoException;
+      err.code = 'ENOENT';
+      throw err;
+    });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else {
+        queueMicrotask(() => proc.emit('close', 0));
+      }
+      return proc as never;
+    });
+
+    db.graviScan.findMany.mockResolvedValue([
+      {
+        experiment: { name: 'ExpA', accession: null },
+        wave_number: 0,
+        plate_barcode: 'P1',
+        plate_index: '1',
+        grid_mode: '2grid',
+        capture_date: new Date('2026-01-01'),
+        transplant_date: null,
+        custom_note: null,
+        images: [
+          { id: 'img1', path: sourceFile },
+          { id: 'img2', path: secondFile },
+        ],
+      },
+    ]);
+
+    try {
+      const result = await runBoxBackup(
+        db as unknown as Parameters<typeof runBoxBackup>[0]
+      );
+
+      // img1 (whose realpathSync succeeded and claimed the tmpDir slot
+      // first) uploads normally.
+      const uploadedCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'uploaded'
+      );
+      expect(uploadedCall[0].where.id.in).toEqual(['img1']);
+
+      // img2 — whose realpathSync threw — is classified as a
+      // collision, NOT silently merged into img1's upload (which would
+      // require box_status:'uploaded' for both and no collision at
+      // all) and NOT crashed/left unclassified.
+      const collisionCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'collision'
+      );
+      expect(collisionCall[0].where.id.in).toEqual(['img2']);
+      expect(result.success).toBe(false);
+
+      // The realpathSync failure itself must be distinguishable in the
+      // main-process logs from an ordinary collision — an operator
+      // troubleshooting "why does this say collision when the files
+      // look identical" needs a trail explaining WHY duplicate
+      // detection couldn't confirm they're the same file, not just
+      // that they collided.
+      expect(
+        warnSpy.mock.calls.some(
+          (call) =>
+            String(call[0]).includes('realpathSync') &&
+            String(call[0]).includes('ENOENT')
+        )
+      ).toBe(true);
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
   });
 
   it('does not leak a resolved filename from one wave into a different wave that shares the same original basename', async () => {

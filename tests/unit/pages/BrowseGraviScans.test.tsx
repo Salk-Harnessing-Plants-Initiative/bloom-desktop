@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { BrowseGraviScans } from '../../../src/renderer/BrowseGraviScans';
 import { WaveMetadataLinksProvider } from '../../../src/renderer/contexts/WaveMetadataLinksContext';
+import { BOX_COLLISION_ERROR_MARKER } from '../../../src/types/graviscan';
 
 function makeExperiment(overrides: Record<string, unknown> = {}) {
   return {
@@ -487,7 +488,7 @@ describe('BrowseGraviScans', () => {
           bloomErrors: [],
           boxErrors: [
             'ExpA/wave_0: 1/1 files failed (Network timeout)',
-            'ExpA/wave_1: 1 image(s) skipped — filename collision with another image in this wave. This will NOT resolve on retry; rename one of the conflicting files on disk, then manually reset the image’s status (see main-process logs for which files collided).',
+            `ExpA/wave_1: 1 image(s) skipped — filename collision with another image in this wave. This will ${BOX_COLLISION_ERROR_MARKER}; rename one of the conflicting files on disk, then manually reset the image’s status (see main-process logs for which files collided).`,
           ],
         },
       });
@@ -504,6 +505,52 @@ describe('BrowseGraviScans', () => {
           screen.getByText(/will not resolve on retry/i)
         ).toBeInTheDocument();
       });
+    });
+
+    it('surfaces every distinct collision, not just the first, when two different waves each have their own filename collision', async () => {
+      // A single backup run can span multiple experiments/waves, each
+      // independently able to hit its own basename collision (two
+      // unrelated images, in two unrelated waves, that each happen to
+      // share a basename with a sibling in their own wave). Showing
+      // only the first would let an operator rename that one file,
+      // retry, and be surprised by a second never-previewed collision
+      // later — never learning from this message alone that a SECOND,
+      // unrelated image also needs manual attention.
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 4,
+          skipped: 0,
+          failed: 2,
+          errors: [
+            'filename collision in wave 1',
+            'filename collision in wave 3',
+          ],
+          metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 4,
+          boxUploaded: 4,
+          bloomErrors: [],
+          boxErrors: [
+            `ExpA/wave_1: 1 image(s) skipped — filename collision with another image in this wave. This will ${BOX_COLLISION_ERROR_MARKER}; rename one of the conflicting files on disk (plateA_scan_07.tif), then manually reset the image’s status (see main-process logs for which files collided).`,
+            `ExpA/wave_3: 1 image(s) skipped — filename collision with another image in this wave. This will ${BOX_COLLISION_ERROR_MARKER}; rename one of the conflicting files on disk (plateB_scan_12.tif), then manually reset the image’s status (see main-process logs for which files collided).`,
+          ],
+        },
+      });
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/plateA_scan_07\.tif/)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/plateB_scan_12\.tif/)).toBeInTheDocument();
     });
 
     it('shows a friendly "rclone not installed" message instead of the generic error, noting Bloom was up to date', async () => {

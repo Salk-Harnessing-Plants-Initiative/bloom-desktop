@@ -296,6 +296,19 @@ export interface GetScanStatusResult {
 }
 
 /**
+ * Substring that marks a `UploadAllScansResult.boxErrors` entry as a
+ * filename-collision error (see box-backup.ts's runBoxBackup) rather than
+ * an ordinary transient failure — a collision needs the operator to
+ * rename a conflicting file and manually reset the image's status, since
+ * (unlike every other boxErrors entry) it will never resolve on its own
+ * via retry. Shared between box-backup.ts (which generates the message)
+ * and the renderer (which needs to recognize and prioritize it) so a
+ * future wording tweak to the message can't silently break the
+ * renderer's matching with no compiler error.
+ */
+export const BOX_COLLISION_ERROR_MARKER = 'NOT resolve on retry';
+
+/**
  * Result of `graviscan:upload-all-scans`
  * (`image-handlers.ts#uploadAllScans`) — the data payload nested under the
  * IPC-wide `{success, data}`/`{success, error}` envelope, not the envelope

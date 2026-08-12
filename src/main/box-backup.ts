@@ -23,6 +23,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { resolveGraviScanPath } from './graviscan-path-utils';
 import { ensureSymlinkOrCopy } from './fs-symlink-or-copy';
+import { BOX_COLLISION_ERROR_MARKER } from '../types/graviscan';
 
 const RCLONE_REMOTE = 'Box';
 const BOX_BASE_PATH = 'GraviScan-Backups';
@@ -132,16 +133,17 @@ export function rcloneCopyFiles(
     // missingFilePaths/erroredFiles.
     const collisions = new Set<string>();
     // Real, canonical on-disk path of every file already staged in this
-    // call, keyed to the original path that first claimed it. Used to
-    // recognize a literal duplicate (e.g. a genuine duplicate DB row)
-    // as harmless even when the two DB path STRINGS differ only by
-    // case — comparing the raw original-path strings for exact
-    // equality (an earlier version of this fix did) misses that case
-    // on a case-insensitive filesystem and wrongly treats a harmless
-    // duplicate as an unrecoverable collision, exactly the failure mode
-    // the case-insensitivity fix below was supposed to eliminate, just
-    // triggered from the opposite direction.
-    const claimedRealPaths = new Map<string, string>();
+    // call. Used to recognize a literal duplicate (e.g. a genuine
+    // duplicate DB row) as harmless even when the two DB path STRINGS
+    // differ only by case — comparing the raw original-path strings for
+    // exact equality (an earlier version of this fix did) misses that
+    // case on a case-insensitive filesystem and wrongly treats a
+    // harmless duplicate as an unrecoverable collision, exactly the
+    // failure mode the case-insensitivity fix below was supposed to
+    // eliminate, just triggered from the opposite direction. Membership
+    // only (a Set, not a Map) — nothing ever looks up which original
+    // path first claimed a given real path.
+    const claimedRealPaths = new Set<string>();
     // Case-insensitive index of every resolved basename already
     // claimed in this call, so a collision's diagnostic can always name
     // the winning file — including when the two basenames differ only
@@ -160,14 +162,25 @@ export function rcloneCopyFiles(
           let realPath: string;
           try {
             realPath = fs.realpathSync(resolvedPath);
-          } catch {
+          } catch (err) {
             // realpathSync can fail on a race (file removed between
-            // resolution and this call) — fall back to the resolved
-            // path itself rather than letting a transient fs error
-            // abort the whole wave; worst case this file is compared
-            // by its un-canonicalized path instead of a true duplicate
-            // check, which only matters for the rare
-            // differently-cased-duplicate scenario this map exists for.
+            // resolution and this call), a permissions error, or a
+            // network-share hiccup — fall back to the resolved path
+            // itself rather than letting a transient fs error abort the
+            // whole wave. This can only ever cause a FALSE COLLISION
+            // (this file's un-canonicalized identity fails to match a
+            // genuine duplicate's canonicalized one), never a silent
+            // duplicate-merge of two different physical files — the
+            // safe direction for this ambiguity to fail in, since a
+            // false collision costs a manual status reset while a
+            // false merge would silently overwrite one image's real
+            // content with another's on Box. Logged distinctly (with
+            // the error code) so an operator troubleshooting a
+            // collision that looks like the same file isn't left
+            // guessing why duplicate detection couldn't confirm it.
+            console.warn(
+              `[BoxBackup] fs.realpathSync failed for "${resolvedPath}" (${(err as NodeJS.ErrnoException).code ?? 'unknown error'}) — falling back to its un-canonicalized path for duplicate detection, which can only produce a false collision, never a silent merge of two different files.`
+            );
             realPath = resolvedPath;
           }
           // A literal duplicate — the same physical file reached via
@@ -190,8 +203,15 @@ export function rcloneCopyFiles(
             // detection here must too, or a case-differing pair would
             // slip through undetected and reproduce the exact
             // silent-data-loss bug this check exists to prevent.
+            // claimedBasenamesLower alone is sufficient here — it's
+            // populated in lockstep with resolvedToOriginalName (see the
+            // `if (!isLiteralDuplicate)` block below) using a
+            // case-folded superset of the same keys, so a separate
+            // case-sensitive lookup against resolvedToOriginalName
+            // first would only ever produce a result this one also
+            // produces. Keeping just one lookup avoids an untested,
+            // functionally dead branch.
             const collidingWith =
-              resolvedToOriginalName.get(fileName) ??
               claimedBasenamesLower.get(fileName.toLowerCase()) ??
               '(another image in this wave)';
             console.warn(
@@ -201,11 +221,25 @@ export function rcloneCopyFiles(
             continue;
           }
           if (!isLiteralDuplicate) {
-            claimedRealPaths.set(realPath, filePath);
+            claimedRealPaths.add(realPath);
             resolvedToOriginalName.set(fileName, filePath);
-            originalToResolvedName.set(filePath, fileName);
             claimedBasenamesLower.set(fileName.toLowerCase(), filePath);
           }
+          // Unconditional, unlike the structures above: those track
+          // which ORIGINAL path first claimed a given tmpDir
+          // destination/basename, which is meaningless to repeat for a
+          // literal duplicate (there's only one destination slot to
+          // claim). originalToResolvedName is different — every DB row
+          // this loop successfully resolves is entitled to its OWN
+          // "original path -> its own resolved basename" entry in
+          // metadata.csv, whether or not it happened to be a duplicate
+          // of another row's physical file. Gating this behind
+          // isLiteralDuplicate (an earlier version of this fix did)
+          // left a genuine duplicate's own filePath key completely
+          // unset in this map, silently excluding its otherwise-valid
+          // scan row from the exported CSV even though its box_status
+          // was correctly set to 'uploaded'.
+          originalToResolvedName.set(filePath, fileName);
           // Windows restricts unprivileged symlink creation (requires
           // admin or Developer Mode — the default state on most lab
           // machines), and this path was never exercised by CI (rclone
@@ -765,7 +799,7 @@ export async function runBoxBackup(
         });
         failedImages += collisionIds.length;
         result.errors.push(
-          `${expName}/wave_${waveNum}: ${collisionIds.length} image(s) skipped — filename collision with another image in this wave. This will NOT resolve on retry; rename one of the conflicting files on disk, then manually reset the image's status (see main-process logs for which files collided).`
+          `${expName}/wave_${waveNum}: ${collisionIds.length} image(s) skipped — filename collision with another image in this wave. This will ${BOX_COLLISION_ERROR_MARKER}; rename one of the conflicting files on disk, then manually reset the image's status (see main-process logs for which files collided).`
         );
         result.success = false;
         onProgress?.({

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
-import { BoxBackupProgress } from '../types/graviscan';
+import {
+  BoxBackupProgress,
+  BOX_COLLISION_ERROR_MARKER,
+} from '../types/graviscan';
 
 interface GraviExperimentRow {
   id: string;
@@ -283,15 +286,24 @@ export function BrowseGraviScans() {
         if (!result.boxSuccess) {
           // A filename-collision error needs different operator action
           // than an ordinary transient failure (rename a file and
-          // manually reset status, vs. just retry) — surfacing
+          // manually reset status, vs. just retry) — surfacing only
           // whichever wave happened to be processed first would let a
           // collision silently hide behind an unrelated earlier error,
           // leaving the operator to keep retrying without ever learning
-          // a different image needs manual attention.
+          // a different image needs manual attention. A backup run can
+          // also produce MULTIPLE distinct collisions across different
+          // waves/experiments — showing only the first of those has the
+          // same problem one level up: the operator renames one file,
+          // retries, and is surprised by a second never-previewed
+          // collision. Every collision message is therefore shown, not
+          // just one.
+          const collisionErrors = result.boxErrors?.filter((e) =>
+            e.includes(BOX_COLLISION_ERROR_MARKER)
+          );
           const boxError =
-            result.boxErrors?.find((e) => e.includes('NOT resolve on retry')) ??
-            result.boxErrors?.[0] ??
-            'unknown error';
+            collisionErrors && collisionErrors.length > 0
+              ? collisionErrors.join(' | ')
+              : (result.boxErrors?.[0] ?? 'unknown error');
           failures.push(`Box failed: ${boxError}`);
         }
         // `failures` is always non-empty here: entry into this branch
