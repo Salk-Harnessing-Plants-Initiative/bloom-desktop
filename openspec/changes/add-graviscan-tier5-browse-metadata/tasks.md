@@ -3268,3 +3268,95 @@ Fix commit: `5a0d88e`.
       snapshot timing flake. `tests/unit/box-backup.test.ts`: 37/37
       passing (36 pre-existing + 1 new this round, plus 1 existing test
       with corrected assertions).
+
+## 33. Round-19 `/review-pr` response — 2 blocking findings (both surfaced by the Behavioural Correctness lens after 4/5 reviewers judged round 18 converged), all fixed
+
+Ran the same 5-subagent adversarial team against round 18's fix commit
+(`5a0d88e`). Four of five reviewers (Code Quality, Testing Strategy,
+Security & Cross-Platform, and — for the specific narrow bug it
+targeted — Scientific Rigor) independently judged round 18's own diff
+correct and, in Code Quality's words, gave an explicit "yes, genuinely
+converged" verdict. The Behavioural Correctness reviewer, tracing a
+scenario none of the other four had considered (interaction between
+duplicate detection and a genuine per-file rclone transfer failure),
+found — and empirically confirmed by actually running the new round-18
+test and inspecting its own `tmpDir` output — that the underlying
+physical-staging and error-classification logic had never been updated
+to treat a "literal duplicate" as piggybacking on the winner's real
+transfer outcome, a gap that predates round 18 (traces to round
+14-16's original symlink-staging design) but that round 18's own CSV
+fix made substantially harder to detect. Fix commit: `2ad8a69`.
+
+- [x] 33.1 **BLOCKING (Behavioural Correctness, empirically confirmed
+      by running the existing round-18 test and inspecting its actual
+      tmpDir contents) — a literal duplicate whose own basename differs
+      from the winner's got its OWN separate physical file staged into
+      tmpDir and uploaded to Box, directly contradicting this file's
+      own long-standing comment that "ensureSymlinkOrCopy only ever
+      stages ONE physical file per literal-duplicate group."** The
+      `ensureSymlinkOrCopy(resolvedPath, linkPath, 'file');
+symlinksCreated++;` call was unconditional — never gated behind
+      `isLiteralDuplicate` — while only the _bookkeeping_ maps
+      (`claimedRealPaths`, `resolvedToOriginalName`,
+      `claimedBasenamesLower`) were gated. `ensureSymlinkOrCopy`'s own
+      `fs.existsSync(linkPath)` no-op guard only prevents a redundant
+      write when the exact `linkPath` STRING is already occupied — it
+      does nothing when a duplicate's own basename differs from the
+      winner's (precisely the "symlink or network mount under a
+      completely different name" scenario round 18's own new comment
+      explicitly cites as the reason the fix has to work by realpath,
+      not basename, identity). Net effect: an orphan file gets uploaded
+      to Box under a name that appears nowhere in metadata.csv, wasting
+      bandwidth/storage and creating an untracked artifact. Fixed by
+      gating `ensureSymlinkOrCopy`/`symlinksCreated++` behind
+      `!isLiteralDuplicate` — a duplicate now stages nothing at all,
+      entirely relying on the winner's already-staged file. Verified
+      with a new test that inspects `tmpDir`'s actual contents (via the
+      same technique an existing test already used to access it) and
+      asserts exactly one file exists after resolving two DB rows
+      forced to the same real path via mocked `realpathSync` but with
+      completely different basenames — confirmed failing (2 files
+      staged) before the fix, passing (1 file) after.
+- [x] 33.2 **BLOCKING (Behavioural Correctness — traced a scenario no
+      prior round's review had considered: interaction between
+      duplicate detection and a genuine per-file transfer failure) — if
+      the WINNING file's own rclone transfer genuinely failed, its
+      literal duplicate(s) were still silently marked `box_status:
+'uploaded'`, with a metadata.csv entry (post round-18's fix)
+      confidently citing the winner's real basename — a file that never
+      actually reached Box.** `erroredFiles` is populated by matching
+      rclone's per-file JSON log lines against `resolvedToOriginalName`,
+      which only ever maps the WINNER's own basename back to the
+      winner's own original path (a duplicate's basename is never
+      registered there, and — as of 33.1 — never even staged). A
+      duplicate's original path could therefore never appear in
+      `erroredFiles` through the normal per-file attribution path,
+      unconditionally falling into `uploadedIds` in `runBoxBackup`'s
+      per-image classification loop whenever the wave didn't fail
+      entirely. This mechanism predates round 18 (it's inherent to the
+      original realpath-based duplicate design), but round 18's own fix
+      made it substantially harder to catch: round 17's bug produced an
+      obviously-wrong CSV entry (naming the duplicate's own
+      never-materialized basename); this bug produces one that is
+      internally consistent and indistinguishable from a genuine
+      success. Fixed by tracking each literal duplicate's own original
+      path alongside the winning original path it depends on
+      (`literalDuplicateOriginalPaths`), and — once the final
+      `erroredFiles` set is known, after all per-file rclone log lines
+      have been processed in the `proc.on('close', ...)` handler —
+      propagating the winner's error status to every duplicate sharing
+      its real path. Verified with a new test simulating a genuine
+      per-file rclone failure attributed to the winner's own basename,
+      asserting the duplicate's original path also ends up in
+      `erroredFiles` — confirmed failing (duplicate silently absent)
+      before the fix, passing after.
+- [x] 33.3 Verified locally after all fixes: `npx tsc --noEmit`,
+      `npm run lint`, and `npm run format:check` all clean. Full
+      `npm run test:unit`: 1582/1583 real tests passing; the one
+      failure (`database-handlers.test.ts`'s `BLOOM_DATABASE_URL`
+      local-setup issue, untouched by this round's diff, previously
+      documented) confirmed unrelated — neither of the other two
+      previously-seen flakes (`AccessionForm.test.tsx`,
+      `electron-cleanup.test.ts`) reproduced this run.
+      `tests/unit/box-backup.test.ts`: 39/39 passing (37 pre-existing +
+      2 new this round).
