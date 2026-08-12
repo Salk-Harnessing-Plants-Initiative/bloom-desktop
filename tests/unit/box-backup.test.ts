@@ -246,6 +246,94 @@ describe('rcloneCopyFiles', () => {
     expect(result.error).toBe('ENOENT: rclone not found');
     expect(result.erroredFiles.has(neverExistsPath)).toBe(true);
   });
+
+  it("does not stage a second physical file in tmpDir for a literal duplicate whose own basename differs from the winner's", async () => {
+    // The resolution loop's `!isLiteralDuplicate` gate protects the
+    // bookkeeping maps (claimedRealPaths, resolvedToOriginalName,
+    // claimedBasenamesLower) from being overwritten by a duplicate, but
+    // the actual `ensureSymlinkOrCopy`/`symlinksCreated++` call was
+    // (before this fix) UNCONDITIONAL — every resolved file, duplicate
+    // or not, got its OWN linkPath (built from its OWN basename) staged
+    // into tmpDir. For a duplicate whose basename differs from the
+    // winner's (not just by case), this stages and uploads an entirely
+    // separate physical file to Box under a name that never appears
+    // anywhere in metadata.csv — an orphan upload, silently
+    // contradicting this file's own stated invariant that "only ONE
+    // physical file is ever staged per literal-duplicate group."
+    const dupPath = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_00_completely_different_name.tif'
+    );
+    fs.writeFileSync(dupPath, 'fake tiff bytes, same physical content');
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    // Forces both paths to be treated as the identical physical file,
+    // regardless of their genuinely different basenames — simulating a
+    // symlink/network-mount scenario deterministically.
+    vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
+
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles(
+      [sourceFile, dupPath],
+      'ExperimentA/wave_0'
+    );
+
+    // rcloneCopyFiles synchronously stages the temp dir before spawning
+    // rclone, so by the time spawn() has been called we can inspect its
+    // full contents — before rclone would run and before the 'close'
+    // handler deletes tmpDir.
+    const spawnArgs = mockSpawn.mock.calls[0][1] as string[];
+    const tmpDir = spawnArgs[1];
+    expect(fs.readdirSync(tmpDir)).toHaveLength(1);
+
+    fakeProc.emit('close', 0);
+    await resultPromise;
+  });
+
+  it("propagates the winning file's own rclone transfer failure to its literal duplicate, instead of leaving the duplicate silently marked as uploaded", async () => {
+    // A literal duplicate never gets its own physical file staged (see
+    // the previous test) — it entirely piggybacks on the winner's real
+    // transfer. If the WINNER's transfer genuinely fails, the shared
+    // bytes never reached Box at all, yet erroredFiles was (before this
+    // fix) populated only via resolvedToOriginalName, which only ever
+    // maps the winner's own basename back to the winner's own original
+    // path — a duplicate's original path could never appear in
+    // erroredFiles through that lookup, so it would default to
+    // "uploaded" with a plausible-looking (but false) CSV entry citing
+    // the winner's basename. This is worse than an obviously-wrong CSV
+    // entry: it's internally consistent and indistinguishable from a
+    // genuine success.
+    const dupPath = path.join(
+      sourceDir,
+      'exp1_st_20260101T000000_cy1_S1_00_completely_different_name.tif'
+    );
+    fs.writeFileSync(dupPath, 'fake tiff bytes, same physical content');
+    const canonicalSourceFile = fs.realpathSync(sourceFile);
+    vi.mocked(fs.realpathSync).mockImplementation(() => canonicalSourceFile);
+
+    const fakeProc = new FakeChildProcess();
+    mockSpawn.mockReturnValue(fakeProc as never);
+
+    const resultPromise = rcloneCopyFiles(
+      [sourceFile, dupPath],
+      'ExperimentA/wave_0'
+    );
+    fakeProc.stderr.emit(
+      'data',
+      Buffer.from(
+        JSON.stringify({
+          level: 'error',
+          msg: `${path.basename(sourceFile)}: simulated copy error`,
+        }) + '\n'
+      )
+    );
+    fakeProc.emit('close', 1);
+
+    const result = await resultPromise;
+    expect(result.erroredFiles.has(sourceFile)).toBe(true);
+    expect(result.erroredFiles.has(dupPath)).toBe(true);
+  });
 });
 
 describe('runBoxBackup', () => {

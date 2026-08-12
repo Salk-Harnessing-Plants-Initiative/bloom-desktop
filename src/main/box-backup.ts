@@ -159,6 +159,19 @@ export function rcloneCopyFiles(
     // by case, which the case-sensitive resolvedToOriginalName lookup
     // below cannot match.
     const claimedBasenamesLower = new Map<string, string>();
+    // A literal duplicate's own original path, mapped to the WINNING
+    // original path it piggybacks on. A duplicate never gets its own
+    // physical file staged (see the `if (!isLiteralDuplicate)` gate
+    // around ensureSymlinkOrCopy below) — it entirely depends on the
+    // winner's own transfer succeeding. If the winner's transfer
+    // genuinely fails, the duplicate must inherit that failure rather
+    // than defaulting to "uploaded": resolvedToOriginalName only ever
+    // maps the WINNER's basename back to the winner's own original
+    // path, so a duplicate's original path could never appear in
+    // erroredFiles through the normal per-file rclone-log attribution
+    // — this map closes that gap once the final erroredFiles set is
+    // known (see the `proc.on('close', ...)` handler below).
+    const literalDuplicateOriginalPaths = new Map<string, string>();
 
     try {
       let symlinksCreated = 0;
@@ -260,18 +273,44 @@ export function rcloneCopyFiles(
           // unconditionally, silently naming a nonexistent file in the
           // CSV for any duplicate whose own basename differed from the
           // winner's).
-          originalToResolvedName.set(
-            filePath,
-            isLiteralDuplicate ? claimedRealPaths.get(realPath)! : fileName
-          );
-          // Windows restricts unprivileged symlink creation (requires
-          // admin or Developer Mode — the default state on most lab
-          // machines), and this path was never exercised by CI (rclone
-          // itself isn't installed on any CI runner), so a raw
-          // fs.symlinkSync() call here would go undetected until it broke
-          // Box backup entirely on real hardware.
-          ensureSymlinkOrCopy(resolvedPath, linkPath, 'file');
-          symlinksCreated++;
+          const winnerFileName = isLiteralDuplicate
+            ? claimedRealPaths.get(realPath)!
+            : fileName;
+          originalToResolvedName.set(filePath, winnerFileName);
+          if (isLiteralDuplicate) {
+            // The winner's own original path is always already known
+            // by this point: isLiteralDuplicate can only be true once
+            // some EARLIER iteration has already run the
+            // `if (!isLiteralDuplicate)` block above for this same
+            // realPath, which is exactly what populates both
+            // claimedRealPaths and resolvedToOriginalName for it.
+            literalDuplicateOriginalPaths.set(
+              filePath,
+              resolvedToOriginalName.get(winnerFileName)!
+            );
+          } else {
+            // Windows restricts unprivileged symlink creation (requires
+            // admin or Developer Mode — the default state on most lab
+            // machines), and this path was never exercised by CI (rclone
+            // itself isn't installed on any CI runner), so a raw
+            // fs.symlinkSync() call here would go undetected until it
+            // broke Box backup entirely on real hardware.
+            //
+            // Only ever runs for the WINNER of a literal-duplicate group
+            // — a duplicate's own basename (which can differ from the
+            // winner's by more than just case) must never get its own
+            // tmpDir entry staged and uploaded to Box. An earlier
+            // version of this fix ran this unconditionally for every
+            // resolved file regardless of isLiteralDuplicate, silently
+            // uploading an orphan physical file under the duplicate's
+            // own basename — one that never appears anywhere in
+            // metadata.csv, and whose own transfer failure would be
+            // misattributed as a generic wave-level error instead of a
+            // per-file one, since resolvedToOriginalName never learns
+            // its basename either.
+            ensureSymlinkOrCopy(resolvedPath, linkPath, 'file');
+            symlinksCreated++;
+          }
         } else {
           missingFiles.push(filePath);
           missingFilePaths.add(filePath);
@@ -382,6 +421,25 @@ export function rcloneCopyFiles(
       proc.on('close', (code) => {
         // Parse any remaining buffered line
         if (stderrBuffer.trim()) processLine(stderrBuffer);
+
+        // A literal duplicate never gets its own physical file staged
+        // (see the resolution loop above) — its fate is entirely tied
+        // to whether the WINNER's transfer succeeded. Per-file rclone
+        // log lines can only ever attribute an error to the winner's
+        // own basename (resolvedToOriginalName never learns a
+        // duplicate's basename), so without this step a winner's
+        // genuine transfer failure would leave every duplicate sharing
+        // its real path silently absent from erroredFiles — falsely
+        // "uploaded" with a plausible-looking CSV entry citing a file
+        // that never actually reached Box.
+        for (const [
+          duplicatePath,
+          winnerPath,
+        ] of literalDuplicateOriginalPaths) {
+          if (erroredFiles.has(winnerPath)) {
+            erroredFiles.add(duplicatePath);
+          }
+        }
 
         // Clean up temp dir
         try {
