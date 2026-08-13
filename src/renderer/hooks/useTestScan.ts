@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useRef, useState } from 'react';
 import { createPlateAssignments, type GridMode } from '../../types/graviscan';
 import { unwrapGraviResult } from '../utils/graviIpc';
@@ -95,7 +94,7 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
         success: boolean;
         path?: string;
         error?: string;
-      }>(await (window as any).electron.gravi.getOutputDir());
+      }>(await window.electron.gravi.getOutputDir());
       if (!outputDirResult?.success || !outputDirResult.path) {
         setError(
           outputDirResult?.error ??
@@ -127,7 +126,7 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
         };
       });
 
-      const gravi = (window as any).electron.gravi;
+      const gravi = window.electron.gravi;
       const donePromise = new Promise<void>((resolve) => {
         resolveRef.current = resolve;
       });

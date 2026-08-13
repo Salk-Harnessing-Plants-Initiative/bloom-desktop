@@ -8,7 +8,6 @@
  * (design.md Decision 5), and a non-blocking pre-start warning for an
  * unlinked, unfilled wave.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
 import type { UseScanSessionResult } from '../../hooks/useScanSession';
 import type { UseContinuousModeResult } from '../../hooks/useContinuousMode';
@@ -40,7 +39,7 @@ export function ScanControlSection({
   const [overtimeMs, setOvertimeMs] = useState<number | null>(null);
 
   useEffect(() => {
-    const gravi = (window as any).electron.gravi;
+    const gravi = window.electron.gravi;
     const cleanupOvertime = gravi.onOvertime?.(
       (data: { overtimeMs: number }) => {
         setOvertimeMs(data.overtimeMs);

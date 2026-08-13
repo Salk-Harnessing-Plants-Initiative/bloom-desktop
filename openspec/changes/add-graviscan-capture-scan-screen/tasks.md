@@ -926,7 +926,7 @@ Decision 20).
       a plate whose `output_path` resolves outside the mocked output
       directory (both a `..`-traversal case and an absolute-escape case)
       rejects the whole call with `{ success: false, error: 'Path outside
-    scan directory' }`, and `sessionHandlers.startScan` is never called;
+  scan directory' }`, and `sessionHandlers.startScan` is never called;
       a contained-but-not-yet-existing `output_path` (the ordinary case —
       the file doesn't exist until the scan runs) still succeeds, with
       `sessionHandlers.startScan` called using the validated/resolved path.
@@ -943,4 +943,27 @@ Decision 20).
       failures. **Result:** 1655 passed, same 5 pre-existing failure files,
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 29.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
+
+## 30. Remove the blanket no-explicit-any disable in 3 files (found during /review-pr round 5)
+
+`/review-pr` found `useScanSession.ts`, `useTestScan.ts`, and
+`ScanControlSection.tsx` each carried a file-level
+`no-explicit-any` disable, bypassing the fully-typed `window.electron`
+bridge (design.md Decision 21). No test changes — pure type-safety
+cleanup, no behavior change.
+
+- [x] 30.1 Remove the file-level disable and every `(window as any)` cast
+      in all three files, using plain `window.electron` instead. Fix the
+      two genuine type gaps this exposed: `getScanStatus()`'s restore-path
+      reads now use `Partial<ScanSessionState>` instead of a loose
+      `GetScanStatusResult & Record<string, any>` intersection; the one
+      `sessionResult.data.id` read gets a single narrow
+      `as { id: string }` cast.
+- [x] 30.2 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1657 passed, same 5 pre-existing failure files
+      (one of which, AccessionForm, happened not to flake this run),
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 30.3 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.

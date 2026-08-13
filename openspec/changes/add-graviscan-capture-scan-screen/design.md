@@ -1139,6 +1139,30 @@ be a string comparison, not a real containment guarantee against a
 symlink; the authoritative check belongs at the IPC boundary, matching
 every other path handler in this file.
 
+### Decision 21 — Remove the blanket `no-explicit-any` disable from `useScanSession.ts`/`useTestScan.ts`/`ScanControlSection.tsx`
+
+`/review-pr` (round 5) found all three files carried a file-level
+`/* eslint-disable @typescript-eslint/no-explicit-any */`, which let every
+IPC call go through `(window as any).electron...` instead of the already
+fully-typed `window.electron` global (`src/types/electron.d.ts`) —
+bypassing type-checking for every one of those calls' arguments and forcing
+manual re-casts elsewhere that the typed API would otherwise give for free.
+
+**Decision:** all three files drop the blanket disable. Every
+`(window as any).electron` becomes plain `window.electron` (already typed
+via `declare global`). The two remaining genuine type gaps this exposed —
+`getScanStatus()`'s payload only being loosely pinned by
+`GetScanStatusResult` (`{ isActive: boolean; [key: string]: unknown }`, a
+deliberately loose contract per its own doc comment) and
+`graviscanSessionsCreate()`'s generic `DatabaseResponse.data: unknown` — are
+resolved narrowly rather than papered over: the restore-effect's status
+reads now use `Partial<ScanSessionState>` (the concrete shape the backend
+actually returns when `isActive`, already defined in `types/graviscan.ts`)
+instead of a loose intersection, and the one place that reads
+`sessionResult.data.id` gets a single, narrow, explicit
+`as { id: string }` cast — a targeted cast at one genuinely-untyped
+boundary, not a file-wide escape hatch.
+
 ## Architecture
 
 ```

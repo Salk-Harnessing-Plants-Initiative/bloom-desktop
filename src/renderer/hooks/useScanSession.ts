@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type {
-  GetScanStatusResult,
   GridMode,
   PlateAssignment,
   QRVerifyPlateInput,
   QRVerifyPlateResult,
   ScanSessionJob,
+  ScanSessionState,
 } from '../../types/graviscan';
 import { useWedgeContext } from '../contexts/WedgeContext';
 import { unwrapGraviResult } from '../utils/graviIpc';
@@ -398,7 +397,7 @@ export function useScanSession(
 
       dispatch({ type: 'VERIFY_STARTED' });
       try {
-        const result = await (window as any).electron.gravi.verifyPlates(
+        const result = await window.electron.gravi.verifyPlates(
           plates,
           ctx.experimentId,
           ctx.waveNumber
@@ -447,7 +446,7 @@ export function useScanSession(
     ) => {
       const ctx = sessionContextRef.current;
       if (!ctx?.experimentId || !ctx.phenotyperId) return;
-      await (window as any).electron.database.graviscans.create({
+      await window.electron.database.graviscans.create({
         experiment_id: ctx.experimentId,
         phenotyper_id: ctx.phenotyperId,
         scanner_id: job.scannerId,
@@ -475,7 +474,7 @@ export function useScanSession(
       const sessionId = stateRef.current.sessionId;
       clearAbnormalMarker();
       if (sessionId) {
-        await (window as any).electron.database.graviscanSessions.complete({
+        await window.electron.database.graviscanSessions.complete({
           session_id: sessionId,
           cancelled,
         });
@@ -491,7 +490,7 @@ export function useScanSession(
   // ── IPC event listeners ──────────────────────────────────────────────
 
   useEffect(() => {
-    const gravi = (window as any).electron.gravi;
+    const gravi = window.electron.gravi;
 
     // Shared by both onScanComplete and onScanError — a job is "accounted
     // for" (no longer something the session is waiting on) whether it
@@ -647,9 +646,9 @@ export function useScanSession(
 
   useEffect(() => {
     (async () => {
-      const status = unwrapGraviResult<
-        GetScanStatusResult & Record<string, any>
-      >(await (window as any).electron.gravi.getScanStatus());
+      const status = unwrapGraviResult<Partial<ScanSessionState>>(
+        await window.electron.gravi.getScanStatus()
+      );
       if (!status?.isActive) {
         return;
       }
@@ -730,8 +729,7 @@ export function useScanSession(
             typeof status.nextScanAt === 'number' ? status.nextScanAt : null,
         },
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    })().catch((err: any) => {
+    })().catch((err: unknown) => {
       dispatch({
         type: 'ERROR',
         payload: { error: err instanceof Error ? err.message : String(err) },
@@ -757,9 +755,9 @@ export function useScanSession(
     if (!experimentId) return;
     let cancelled = false;
     (async () => {
-      const status = unwrapGraviResult<
-        GetScanStatusResult & Record<string, any>
-      >(await (window as any).electron.gravi.getScanStatus());
+      const status = unwrapGraviResult<Partial<ScanSessionState>>(
+        await window.electron.gravi.getScanStatus()
+      );
       if (cancelled) return;
       if (status?.isActive) return; // handled by the active-session restore above
 
@@ -827,7 +825,7 @@ export function useScanSession(
         success: boolean;
         path?: string;
         error?: string;
-      }>(await (window as any).electron.gravi.getOutputDir());
+      }>(await window.electron.gravi.getOutputDir());
       if (!outputDirResult?.success || !outputDirResult.path) {
         dispatch({
           type: 'ERROR',
@@ -910,7 +908,7 @@ export function useScanSession(
         : 1;
 
       const result = unwrapGraviResult<{ success: boolean; error?: string }>(
-        await (window as any).electron.gravi.startScan({
+        await window.electron.gravi.startScan({
           scanners,
           interval: isContinuous
             ? { intervalSeconds, durationSeconds }
@@ -928,18 +926,17 @@ export function useScanSession(
       }
 
       let sessionId: string | null = null;
-      const sessionResult = await (
-        window as any
-      ).electron.database.graviscanSessions.create({
-        experiment_id: experimentId,
-        phenotyper_id: phenotyperId,
-        scan_mode: isContinuous ? 'continuous' : 'single',
-        interval_seconds: isContinuous ? intervalSeconds : null,
-        duration_seconds: isContinuous ? durationSeconds : null,
-        total_cycles: totalCycles,
-      });
+      const sessionResult =
+        await window.electron.database.graviscanSessions.create({
+          experiment_id: experimentId,
+          phenotyper_id: phenotyperId,
+          scan_mode: isContinuous ? 'continuous' : 'single',
+          interval_seconds: isContinuous ? intervalSeconds : null,
+          duration_seconds: isContinuous ? durationSeconds : null,
+          total_cycles: totalCycles,
+        });
       if (sessionResult?.success && sessionResult.data) {
-        sessionId = sessionResult.data.id;
+        sessionId = (sessionResult.data as { id: string }).id;
       }
 
       // Snapshot the session's own experiment/phenotyper/wave/resolution
@@ -1016,7 +1013,7 @@ export function useScanSession(
   const cancelScan = useCallback(async () => {
     try {
       const result = unwrapGraviResult<{ success: boolean; error?: string }>(
-        await (window as any).electron.gravi.cancelScan()
+        await window.electron.gravi.cancelScan()
       );
       if (!result?.success) {
         dispatch({
