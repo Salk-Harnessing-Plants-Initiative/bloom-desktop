@@ -428,9 +428,21 @@ describe('camera-settings column', () => {
     const title = summaryCell!.getAttribute('title')!;
 
     expect(title).toContain('Cam-A');
-    expect(title).toContain('50000');
-    expect(title).toContain('4');
-    expect(title).toContain('0.5');
-    expect(title).toContain('1');
+    expect(title).toContain('50000μs');
+    expect(title).toContain('Gain: 4');
+    expect(title).toContain('Gamma: 1');
+    expect(title).toContain('Seconds/Rotation: 7');
+  });
+
+  it('omits Brightness/Contrast from the tooltip (hardcoded, hardware-unsupported identity defaults with no informational value)', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const summaryCell = screen.getByText(/Cam-A/).closest('[title]');
+    const title = summaryCell!.getAttribute('title')!;
+
+    expect(title).not.toContain('Brightness');
+    expect(title).not.toContain('Contrast');
   });
 });

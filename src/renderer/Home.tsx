@@ -25,6 +25,7 @@ export function Home({ mode = null }: HomeProps) {
   );
   const [recentScansError, setRecentScansError] = useState(false);
   const [failedUploadCount, setFailedUploadCount] = useState(0);
+  const [failedUploadCountError, setFailedUploadCountError] = useState(false);
 
   // Check if this is first run (no config exists)
   useEffect(() => {
@@ -79,10 +80,13 @@ export function Home({ mode = null }: HomeProps) {
         if (!mounted) return;
         if (result.success && result.data) {
           setFailedUploadCount(result.data.failedCount);
+        } else {
+          setFailedUploadCountError(true);
         }
       })
       .catch((error: unknown) => {
         console.error('Failed to load failed-upload count:', error);
+        if (mounted) setFailedUploadCountError(true);
       });
     return () => {
       mounted = false;
@@ -136,6 +140,12 @@ export function Home({ mode = null }: HomeProps) {
           <h2 className="text-xl font-semibold mb-4 text-gray-700">
             Today&apos;s Activity
           </h2>
+
+          {failedUploadCountError && (
+            <p className="mb-4 text-sm text-red-600">
+              Couldn&apos;t check for failed uploads. Try reloading the app.
+            </p>
+          )}
 
           {failedUploadCount > 0 && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">

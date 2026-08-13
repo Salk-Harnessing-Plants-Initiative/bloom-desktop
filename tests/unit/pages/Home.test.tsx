@@ -341,4 +341,43 @@ describe('Home page — date-unscoped failed-upload indicator (#104)', () => {
       screen.queryByText(/failed uploads need attention/i)
     ).not.toBeInTheDocument();
   });
+
+  it('shows a distinct error message when getFailedUploadCount fails, not the same "everything is fine" silence', async () => {
+    mockGetFailedUploadCount.mockResolvedValue({
+      success: false,
+      error: 'DB error',
+    });
+
+    render(
+      <MemoryRouter>
+        <Home mode="cylinderscan" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/couldn.t check for failed uploads/i)
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/failed uploads need attention/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the same distinct error message when getFailedUploadCount rejects', async () => {
+    mockGetFailedUploadCount.mockRejectedValue(new Error('IPC failure'));
+
+    render(
+      <MemoryRouter>
+        <Home mode="cylinderscan" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/couldn.t check for failed uploads/i)
+      ).toBeInTheDocument();
+    });
+  });
 });

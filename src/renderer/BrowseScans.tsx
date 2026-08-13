@@ -270,12 +270,14 @@ export function BrowseScans() {
     // exposure_time is stored in microseconds (see camera-process.ts,
     // CameraSettingsForm.tsx's "Exposure Time (μs)" label) — not milliseconds.
     const compact = `${scan.scanner_name || '-'} · Exp ${scan.exposure_time}μs · Gain ${scan.gain}`;
+    // Brightness/contrast are omitted here: they're hardcoded identity
+    // defaults (always 0) written for metadata backward-compatibility only —
+    // the acA2000-50gm hardware doesn't support them, so surfacing them would
+    // read as real per-scan settings when they carry no information at all.
     const full = [
       `Scanner: ${scan.scanner_name || '-'}`,
       `Exposure: ${scan.exposure_time}μs`,
       `Gain: ${scan.gain}`,
-      `Brightness: ${scan.brightness}`,
-      `Contrast: ${scan.contrast}`,
       `Gamma: ${scan.gamma}`,
       `Seconds/Rotation: ${scan.seconds_per_rot}`,
     ].join(' · ');

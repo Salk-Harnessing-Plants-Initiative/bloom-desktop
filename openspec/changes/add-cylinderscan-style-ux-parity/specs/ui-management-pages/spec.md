@@ -110,7 +110,7 @@ The BrowseScans table SHALL display a compact, per-scan summary of camera settin
 
 **Given** a scan with recorded camera settings (`scanner_name`, `exposure_time`, `gain`, `brightness`, `contrast`, `gamma`, `seconds_per_rot`)
 **When** its row renders in the BrowseScans table
-**Then** the camera-settings column SHALL display a compact summary including the scanner name (e.g. "Cam-A · Exp 50ms · Gain 4")
+**Then** the camera-settings column SHALL display a compact summary including the scanner name (e.g. "Cam-A · Exp 50000μs · Gain 4" — `exposure_time` is stored in microseconds, not milliseconds)
 **And** the element's `title` attribute SHALL contain the full set of recorded values (scanner name, exposure, gain, brightness, contrast, gamma, seconds-per-rotation), viewable on hover
 
 **Acceptance Criteria**:
