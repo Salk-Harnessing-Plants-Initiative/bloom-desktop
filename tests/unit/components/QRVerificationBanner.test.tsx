@@ -50,6 +50,10 @@ describe('QRVerificationBanner', () => {
     expect(banner.className).toContain('bg-green-50');
     expect(screen.getByText(/QR Verification Complete/i)).toBeInTheDocument();
     expect(screen.getByText(/auto-corrected/i)).toBeInTheDocument();
+    // Names that nothing further is required — not just the banner's
+    // green color, which relies on the operator already having
+    // internalized the severity convention (review-pr round 5 follow-up).
+    expect(screen.getByText(/no action needed/i)).toBeInTheDocument();
     expect(
       screen.queryByText(/^Every plate verified correctly\.?$/i)
     ).not.toBeInTheDocument();

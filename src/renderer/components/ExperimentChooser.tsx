@@ -21,6 +21,9 @@ interface ExperimentChooserProps {
   disabled?: boolean;
   /** ID for the select element (for label association) */
   id?: string;
+  /** Native tooltip text — used to explain *why* the chooser is disabled,
+   * e.g. while a scan is running. */
+  title?: string;
 }
 
 /**
@@ -37,6 +40,7 @@ export function ExperimentChooser({
   value = null,
   disabled = false,
   id,
+  title,
 }: ExperimentChooserProps) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -120,6 +124,7 @@ export function ExperimentChooser({
   return (
     <select
       id={id}
+      title={title}
       className={`experiment-chooser p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full border-2 ${borderClass}`}
       value={value || ''}
       onChange={handleChange}

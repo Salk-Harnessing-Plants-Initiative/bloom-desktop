@@ -250,15 +250,13 @@ function reducer(state: ScanState, action: Action): ScanState {
     case 'INTERVAL_RESUMED':
       if (!state.isScanning) return state;
       return { ...state, coordinatorState: 'scanning' };
+    // A cancel and a clean natural completion leave identical state behind
+    // — the only real difference between them is the `cancelled` flag
+    // finishSession() passes downstream, not what a session-ending action
+    // resets here. Sharing one case avoids two copies that could silently
+    // drift apart again (design.md Decision 17 found and fixed exactly
+    // that drift once already).
     case 'CANCELLED':
-      return {
-        ...state,
-        isScanning: false,
-        pendingJobs: {},
-        progressByScanner: {},
-        coordinatorState: 'idle',
-        currentCycle: 0,
-      };
     case 'SCAN_ENDED':
       return {
         ...state,
@@ -547,7 +545,12 @@ export function useScanSession(
             // completed-job record itself already landed via
             // recordCompletedJob above, so it's a quieter, non-blocking
             // failure mode, not a data-loss one.
-            void gravi.markJobRecorded?.(key).catch(() => {});
+            void gravi.markJobRecorded?.(key).catch((err: unknown) => {
+              console.error(
+                `Failed to mark job ${key} recorded:`,
+                err instanceof Error ? err.message : err
+              );
+            });
           })
           .catch((err: unknown) => {
             dispatch({

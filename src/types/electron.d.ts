@@ -84,6 +84,48 @@ import type {
 } from '../main/database-handlers';
 
 /**
+ * Hand-duplicated mirrors of shapes declared in
+ * `src/main/graviscan/session-handlers.ts` (`StartScanParams`, `startScan`/
+ * `markJobRecorded`/`cancelScan`'s return shapes) and
+ * `src/main/graviscan/image-handlers.ts` (`getOutputDir`'s return shape).
+ * Not imported directly — this file is shared code, and shared code may
+ * not import from `main/graviscan/` (mode-specific; the
+ * `no-restricted-imports` ESLint rule reserves that for `main.ts`, the
+ * orchestrator). Keep these in sync by hand if those signatures change.
+ */
+interface GraviStartScanParams {
+  scanners: Array<{
+    scannerId: string;
+    saneName: string;
+    plates: Array<{
+      plate_index: string;
+      grid_mode: string;
+      resolution: number;
+      output_path: string;
+      wave_number?: number;
+      plate_barcode?: string | null;
+    }>;
+  }>;
+  interval?: { intervalSeconds: number; durationSeconds: number };
+  metadata?: {
+    experimentId: string;
+    phenotyperId: string;
+    resolution: number;
+    sessionId?: string;
+    waveNumber?: number;
+  };
+}
+interface GraviStartOrCancelScanResult {
+  success: boolean;
+  error?: string;
+}
+interface GraviGetOutputDirResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+}
+
+/**
  * Python backend API
  */
 export interface PythonAPI {
@@ -699,19 +741,34 @@ export interface GraviAPI {
   }>;
 
   // Session operations
-  startScan: (params: any) => Promise<any>;
+  startScan: (
+    params: GraviStartScanParams
+  ) => Promise<
+    | { success: true; data: GraviStartOrCancelScanResult }
+    | { success: false; error: string }
+  >;
   getScanStatus: () => Promise<
     | { success: true; data: GetScanStatusResult }
     | { success: false; error: string }
   >;
-  markJobRecorded: (jobKey: string) => Promise<any>;
-  cancelScan: () => Promise<any>;
+  markJobRecorded: (
+    jobKey: string
+  ) => Promise<
+    { success: true; data: undefined } | { success: false; error: string }
+  >;
+  cancelScan: () => Promise<
+    | { success: true; data: GraviStartOrCancelScanResult }
+    | { success: false; error: string }
+  >;
   retryScanner: (
     scannerId: string
   ) => Promise<{ success: true } | { success: false; error: string }>;
 
   // Image operations
-  getOutputDir: () => Promise<any>;
+  getOutputDir: () => Promise<
+    | { success: true; data: GraviGetOutputDirResult }
+    | { success: false; error: string }
+  >;
   readScanImage: (filePath: string, opts?: any) => Promise<any>;
   uploadAllScans: () => Promise<any>;
   downloadImages: (params: any) => Promise<any>;

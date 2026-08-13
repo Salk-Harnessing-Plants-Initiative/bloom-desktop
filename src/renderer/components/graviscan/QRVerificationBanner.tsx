@@ -98,7 +98,7 @@ export function QRVerificationBanner({ results }: QRVerificationBannerProps) {
       <div className="font-semibold">QR Verification Complete</div>
       <div>
         {swappedCount > 0
-          ? `${swappedCount} plate position${swappedCount === 1 ? '' : 's'} ${swappedCount === 1 ? 'was' : 'were'} auto-corrected after a detected swap.`
+          ? `${swappedCount} plate position${swappedCount === 1 ? '' : 's'} ${swappedCount === 1 ? 'was' : 'were'} auto-corrected after a detected swap — no action needed.`
           : 'Every plate verified correctly.'}
       </div>
     </div>

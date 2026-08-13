@@ -344,6 +344,17 @@ describe('ScanControlSection', () => {
     expect(run).toHaveBeenCalled();
   });
 
+  it('disables "Test Scan" while a real scan session is in progress (regression: only gated on its own isTesting, not scanSession.isScanning, review-pr round 5)', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          scanSession: scanSession({ isScanning: true }),
+        })}
+      />
+    );
+    expect(screen.getByRole('button', { name: /test scan/i })).toBeDisabled();
+  });
+
   it("renders useTestScan's blocking output-dir-failure error", () => {
     render(
       <ScanControlSection

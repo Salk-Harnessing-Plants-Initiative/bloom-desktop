@@ -214,9 +214,9 @@ export function ScanControlSection({
         <button
           type="button"
           onClick={() => void testScan.testAllScanners()}
-          disabled={testScan.isTesting}
+          disabled={testScan.isTesting || scanSession.isScanning}
           className={`px-6 py-2 rounded-lg font-semibold border transition-all ${
-            testScan.isTesting
+            testScan.isTesting || scanSession.isScanning
               ? 'border-gray-300 text-gray-400 cursor-not-allowed'
               : 'border-gray-400 text-gray-700 hover:bg-gray-50'
           }`}

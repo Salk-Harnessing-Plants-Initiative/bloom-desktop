@@ -1422,6 +1422,39 @@ describe('useScanSession', () => {
     );
   });
 
+  it('a markJobRecorded() rejection is logged, not surfaced as a blocking ERROR (review-pr round 5 follow-up)', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    markJobRecorded.mockRejectedValue(new Error('IPC channel closed'));
+
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+
+    await waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        'Failed to mark job sc-1:00 recorded:',
+        'IPC channel closed'
+      )
+    );
+    // Still non-blocking — the completed-job record itself already landed
+    // via recordCompletedJob; only a future remount's ability to recognize
+    // this job as already-done is at risk, not this session's own state.
+    expect(result.current.error).toBeNull();
+
+    consoleError.mockRestore();
+  });
+
   it('a job already recorded before a mid-scan remount is still included in QR verification after restore (regression: completedJobsRef was never rebuilt on restore)', async () => {
     getScanStatus.mockResolvedValue({
       success: true,

@@ -603,6 +603,7 @@ describe('usePlateAssignments', () => {
     // navigated away faster than the IPC/DB round-trip completed.
     first.unmount();
 
+    const listCallsBeforeSecondMount = listAssignments.mock.calls.length;
     const second = renderHook(() =>
       usePlateAssignments({
         experimentId: 'exp-1',
@@ -612,6 +613,18 @@ describe('usePlateAssignments', () => {
       })
     );
 
+    // Flush pending microtasks so the fresh mount's load effect has every
+    // chance to reach its own list() call — but the edit's write is still
+    // unresolved, so it must be genuinely blocked awaiting it, not already
+    // past it. Without this assertion, a test that immediately resolves
+    // the write (as an earlier version of this test did) can pass on the
+    // UN-fixed code too, since the read would just happen to see the
+    // already-updated mock state — proving nothing about ordering.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(listAssignments.mock.calls.length).toBe(listCallsBeforeSecondMount);
+
     // Only now does the edit's original write actually land.
     pendingResolvers[1]();
 
@@ -620,6 +633,73 @@ describe('usePlateAssignments', () => {
         second.result.current.assignmentsByScanner['sc-1']?.[0]?.plantBarcode
       ).toBe('MANUAL_PLATE')
     );
+  });
+
+  it('two rapid edits to the SAME position never fire concurrent writes — the second is enqueued behind the first, not raced (regression: registerPendingWrite tracked only the last-registered write per key, so an older write could commit after a newer one with no protection, review-pr round 5)', async () => {
+    listGraviMetadata.mockResolvedValue({ success: true, data: [] });
+    listAssignments.mockResolvedValue({ success: true, data: [] });
+
+    const startedFor: Array<string | null> = [];
+    const resolvers: Array<() => void> = [];
+    upsertMany.mockImplementation(
+      (
+        _experimentId: string,
+        _scannerId: string,
+        assignments: Array<Record<string, unknown>>
+      ) => {
+        startedFor.push((assignments[0]?.plate_barcode as string) ?? null);
+        return new Promise((resolve) => {
+          resolvers.push(() => resolve({ success: true, data: [] }));
+        });
+      }
+    );
+
+    const { result } = renderHook(() =>
+      usePlateAssignments({
+        experimentId: 'exp-1',
+        waveNumber: 0,
+        scannerIds: ['sc-1'],
+        gridModes: { 'sc-1': '2grid' },
+      })
+    );
+    await waitFor(() =>
+      expect(result.current.assignmentsByScanner['sc-1']).toBeDefined()
+    );
+    // Settle the mount's own write-through of the blank baseline so it
+    // doesn't interfere with what's being tested below.
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    await act(async () => {
+      resolvers[0]();
+    });
+
+    act(() => {
+      result.current.updateField('sc-1', '00', 'plantBarcode', 'FIRST');
+    });
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    expect(startedFor[1]).toBe('FIRST');
+
+    act(() => {
+      result.current.updateField('sc-1', '00', 'plantBarcode', 'SECOND');
+    });
+
+    // The second edit's write must NOT start until the first one settles —
+    // enqueueWrite() serializes writes to the same position instead of
+    // firing them concurrently with no guaranteed commit order.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(resolvers).toHaveLength(2);
+
+    // Resolving the first write unblocks the second, now-enqueued one.
+    await act(async () => {
+      resolvers[1]();
+    });
+    await waitFor(() => expect(resolvers).toHaveLength(3));
+    expect(startedFor[2]).toBe('SECOND');
+
+    await act(async () => {
+      resolvers[2]();
+    });
   });
 
   // ── Regression found by review-pr round 1 ───────────────────────────────

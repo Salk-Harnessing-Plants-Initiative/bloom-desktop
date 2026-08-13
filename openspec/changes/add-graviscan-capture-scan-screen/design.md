@@ -1163,6 +1163,120 @@ instead of a loose intersection, and the one place that reads
 `as { id: string }` cast — a targeted cast at one genuinely-untyped
 boundary, not a file-wide escape hatch.
 
+### Decision 22 — Self-review round 2: fixes found reviewing Decisions 13–21's own implementation
+
+Running `/review-pr` a second time — this time against the fixes for
+Decisions 13–21 themselves, not the original implementation — surfaced
+several real issues in that fix round. Each is addressed here rather than
+folded silently into the Decisions above, per this proposal's own
+convention of naming corrections instead of editing them away.
+
+1. **Prototype pollution in `markScanJobRecorded`** (`wiring.ts`). The
+   handler behind Decision 14's `markJobRecorded()` call did
+   `if (scanSession?.jobs[key]) { scanSession.jobs[key].status =
+'recorded'; }` — `key` reaches this from an untrusted renderer IPC call
+   with no shape validation, and `scanSession.jobs` is a plain object
+   literal. A renderer call with `key: '__proto__'` resolves through the
+   prototype chain to `Object.prototype` itself (truthy), then mutates it —
+   polluting every plain object in the main process for the rest of its
+   lifetime. Fixed with `Object.prototype.hasOwnProperty.call(scanSession.jobs,
+key)`, which only ever matches a key this module itself wrote via
+   `jobs[key] = {...}` (`session-handlers.ts`'s job-creation loop), never an
+   inherited one.
+
+2. **The write-race regression test (task 25.1) didn't prove Decision 16.**
+   Tracing the exact microtask ordering: the test resolved the "slow" write
+   synchronously immediately after the fresh mount rendered, before that
+   mount's own load effect ever advanced far enough to reach its `.list()`
+   call — so the test passed identically whether or not the
+   `awaitPendingWritesFor()` guard existed. Fixed by asserting
+   `listAssignments` has NOT been called yet (comparing call counts before
+   and after the fresh mount, since the _first_ mount's own initial load
+   also calls it) before resolving the pending write, and only then
+   resolving and asserting the read proceeds — genuinely exercising the
+   race window instead of skipping past it.
+
+3. **Write-vs-write race, distinct from the cross-mount read-vs-write race
+   Decision 16 targeted.** Two rapid edits to the _same_ plate position
+   fired two independent, concurrent `upsertMany()` calls — nothing chained
+   them to each other, and `pendingWrites` tracked only the
+   last-registered promise per key, so an older write settling after a
+   newer one had no protection at the DB layer, and a later remount's
+   `awaitPendingWritesFor()` had no visibility into the earlier write still
+   being in flight. Fixed by replacing the single-promise
+   `registerPendingWrite()` with `enqueueWrite(keys, writeFn)`: it now waits
+   for every currently-pending write matching any of `keys` to settle
+   _before_ invoking `writeFn()` at all, so writes to the same position (or
+   the same position covered by both an individual edit and a batch
+   write-through) are always issued in the order the operator made them,
+   never concurrently. Both `persistPosition()` and the load effect's own
+   write-through loop now go through this same function.
+
+4. **`awaitPendingWritesFor()` had no timeout.** A genuinely hung IPC call
+   (main process unresponsive without ever rejecting) would have blocked
+   every future mount for that exact position forever. Added a bounded
+   10-second timeout (`PENDING_WRITE_TIMEOUT_MS`) via `Promise.race`,
+   logging via `console.error` and falling through to read anyway rather
+   than hanging indefinitely — a stale read plus a loud log is a better
+   failure mode than an unrecoverable freeze.
+
+5. **Three accepted, narrower limitations found in this round, each filed
+   as its own tracked follow-up issue rather than fixed in this PR** (per
+   user decision — each would need scope wider than this PR's own
+   boundaries):
+   - **#330** — if the renderer crashes/reloads in the gap between
+     `recordCompletedJob()` resolving and `markJobRecorded()`'s IPC
+     round-trip completing, that job stays `'pending'` on the backend
+     forever; a restored single-shot session can never reach "all done."
+     The underlying DB write itself is not lost — only session/verification
+     bookkeeping is affected.
+   - **#331** — the same write-loss risk Decision 16 targets for
+     navigate-away-and-back can also occur via a full app quit; `main.ts`'s
+     `before-quit` handler doesn't await in-flight renderer IPC writes
+     before closing the database.
+   - **#332** — `path-containment.ts`'s `resolveContainedPathAllowingMissing()`
+     was written for read-only callers; Decision 20's `start-scan` use is
+     its first writer, and its missing-tail reappension has a TOCTOU window
+     that requires an attacker to already have an independent local
+     filesystem-write primitive to exploit.
+
+6. **Smaller consistency fixes**: `session-handlers.ts`'s inline
+   job-creation type was missing the `'recorded'` status literal that
+   Decision 14 makes live for the first time (it now imports and uses the
+   canonical `ScanSessionJob` type from `types/graviscan.ts` instead of a
+   locally-duplicated, drifted one); `electron.d.ts`'s `startScan`/
+   `markJobRecorded`/`cancelScan`/`getOutputDir` — the exact four calls
+   Decision 21 touched — gained real parameter/return types instead of
+   `any`, so that fix's stated goal actually reaches its own highest-risk
+   call site. These couldn't be typed via the established `ReturnType<typeof
+fn>` pattern the surrounding interface already uses for
+   `database-handlers.ts` exports: `electron.d.ts` is shared code, and an
+   ESLint rule (`no-restricted-imports`) blocks shared code from importing
+   `main/graviscan/*` — only `main.ts` may bridge between modes and shared
+   code. Fixed with hand-duplicated local interfaces
+   (`GraviStartScanParams`/`GraviStartOrCancelScanResult`/
+   `GraviGetOutputDirResult`) mirroring the real shapes instead, with a
+   comment noting they must be kept in sync by hand; the new Windows
+   containment test wrapped its comparison path
+   in `path.resolve()` (it previously compared an un-resolved forward-slash
+   string, so the "missing tail" branch it claims to exercise was never
+   actually reached on Windows); `markJobRecorded`'s own swallowed catch now
+   logs via `console.error`, matching the sibling fix two commits earlier in
+   this same round; `SCAN_ENDED`/`CANCELLED`'s now-identical reducer cases
+   were consolidated into one shared case, removing the two-copies-that-can-
+   drift shape that caused the original asymmetry; the experiment/
+   phenotyper/wave selectors and the Wave `<input>` gained a `title`
+   explaining why they're disabled during a scan; the swap-banner message
+   gained "— no action needed" so a non-programmer operator doesn't have to
+   infer that from the banner's color alone; "Test Scan" now also disables
+   while `scanSession.isScanning`, matching "Start Scan"'s own gating; the
+   `start-scan` containment loop gained a defensive guard against a
+   malformed `params.scanners` shape instead of throwing an unhandled,
+   internal-detail-leaking error; missing containment-check test coverage
+   (multi-plate escape, `getOutputDir()` failure) and a `markJobRecorded()`
+   rejection test were added, matching this file's existing coverage
+   pattern for its other path handlers.
+
 ## Architecture
 
 ```

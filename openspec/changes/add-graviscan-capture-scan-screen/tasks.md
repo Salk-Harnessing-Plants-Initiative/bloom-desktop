@@ -987,3 +987,78 @@ async effects (both already `console.error` their failure).
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 31.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 32. Self-review round 2: fixes found reviewing Sections 22–31's own implementation (design.md Decision 22)
+
+Running `/review-pr`'s 5-subagent team a second time — against the fixes
+for Sections 22–31 themselves — found a real security bug, a regression
+test that didn't prove what it claimed to, and several smaller
+consistency gaps. See design.md Decision 22 for full detail per item.
+
+- [x] 32.1 Prototype-pollution fix: `markScanJobRecorded` (`wiring.ts`) now
+      uses `Object.prototype.hasOwnProperty.call(...)` instead of a
+      truthy bracket-access check. Added failing tests in
+      `tests/unit/graviscan/main-wiring.test.ts` proving a `'__proto__'`/
+      `'constructor'` key polluted `Object.prototype` before the fix;
+      confirmed red, then green.
+- [x] 32.2 Rewrote the Section 25 write-race regression test
+      (`tests/unit/hooks/usePlateAssignments.test.ts`) to assert
+      `listAssignments` hasn't been called yet before resolving the
+      pending write (comparing call counts across the fresh mount) —
+      the original version resolved the write before the fresh mount's
+      read logic ever ran, so it passed identically with or without the
+      guard. Confirmed genuinely red against a temporarily-disabled guard,
+      then green.
+- [x] 32.3 Added `enqueueWrite()` (replacing `registerPendingWrite()`) in
+      `usePlateAssignments.ts`, serializing writes to the same position
+      instead of firing them concurrently; added a bounded 10s timeout to
+      `awaitPendingWritesFor()`. New test proves two rapid edits to the
+      same position never fire concurrent `upsertMany()` calls — confirmed
+      red against a temporarily-reverted `enqueueWrite`, then green.
+- [x] 32.4 Filed 3 follow-up GitHub issues (#330, #331, #332) for the
+      narrower limitations found in this round (stuck job on renderer
+      crash, app-quit write loss, TOCTOU on the write-path containment
+      check) rather than fixing them in this PR, per user decision.
+- [x] 32.5 Fixed `session-handlers.ts`'s job-creation type to import the
+      canonical `ScanSessionJob` (was missing the `'recorded'` literal
+      Section 23 made live for the first time).
+- [x] 32.6 Typed `electron.d.ts`'s `startScan`/`markJobRecorded`/
+      `cancelScan`/`getOutputDir` — the exact four calls Section 30
+      touched — with hand-duplicated local interfaces (shared code can't
+      import from `main/graviscan/*` per the `no-restricted-imports`
+      ESLint rule), closing the gap where Section 30's type-safety claim
+      didn't reach its own highest-risk call site.
+- [x] 32.7 Fixed the new start-scan containment test's Windows coverage
+      gap (wrapped the comparison path in `path.resolve()`, matching
+      `ensure-dir`'s own correct pattern) — it previously always reported
+      "exists" on the first check on Windows, never exercising the
+      missing-tail branch it claimed to.
+- [x] 32.8 `markJobRecorded`'s own swallowed catch now logs via
+      `console.error`, matching the Section 31 fix two commits earlier in
+      this same round. Added a rejection test.
+- [x] 32.9 Consolidated `SCAN_ENDED`/`CANCELLED`'s now-identical reducer
+      cases into one shared case.
+- [x] 32.10 Added a `title` prop to `ExperimentChooser`/`PhenotyperChooser`
+      and wired it (plus the Wave `<input>`'s own `title`) in
+      `GraviScan.tsx` to explain why the controls are disabled during a
+      scan.
+- [x] 32.11 Added "— no action needed" to the swap-banner message
+      (`QRVerificationBanner.tsx`) so a non-programmer operator doesn't
+      have to infer that from the banner's green color alone.
+- [x] 32.12 "Test Scan" now also disables while `scanSession.isScanning`,
+      matching "Start Scan"'s own gating.
+- [x] 32.13 Added a defensive guard in `graviscan:start-scan`'s
+      containment loop against a malformed `params.scanners` shape
+      (non-array `plates`, non-string `output_path`), returning the
+      uniform `{success:false, error}` shape instead of throwing an
+      unhandled, internal-detail-leaking error. Added tests for both
+      malformed-input cases, a multi-scanner/multi-plate escape case, and
+      the `getOutputDir()`-failure branch (matching this file's existing
+      coverage pattern for its other path handlers).
+- [x] 32.14 Run `npm run lint && npx tsc --noEmit && npm run test:unit &&
+    npm run format:check` — confirm no regressions beyond the
+      already-documented pre-existing failures. **Result:** 1668 passed,
+      same 4-5 pre-existing/flaky failure files, zero new failures.
+      `tsc --noEmit`, lint, and format:check all clean.
+- [x] 32.15 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.

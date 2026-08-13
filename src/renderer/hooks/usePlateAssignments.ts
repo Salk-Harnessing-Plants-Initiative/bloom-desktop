@@ -71,6 +71,14 @@ type UpsertManyResult = { success: boolean; error?: string };
 
 const pendingWrites = new Map<string, Promise<UpsertManyResult>>();
 
+/** How long a fresh mount's load effect will wait on a still-in-flight
+ * write from a previous instance before giving up and reading anyway
+ * (review-pr round 5 follow-up). A genuinely hung IPC call (main process
+ * unresponsive without ever rejecting) would otherwise block every future
+ * mount for that exact position forever; timing out and logging is a
+ * better failure mode than an unrecoverable freeze. */
+const PENDING_WRITE_TIMEOUT_MS = 10_000;
+
 function pendingWriteKey(
   experimentId: string,
   waveNumber: number,
@@ -80,12 +88,31 @@ function pendingWriteKey(
   return `${experimentId}:${waveNumber}:${scannerId}:${plateIndex}`;
 }
 
-function registerPendingWrite(
-  key: string,
-  promise: Promise<UpsertManyResult>
-): void {
-  pendingWrites.set(key, promise);
-  void promise
+/**
+ * Enqueues `writeFn` so it never runs concurrently with an already-pending
+ * write to any of `keys` — it starts only after every currently-pending
+ * write for those keys has settled (review-pr round 5 follow-up: two rapid
+ * edits to the *same* position previously fired concurrent `upsertMany()`
+ * calls with nothing chaining them, so an older write could commit after a
+ * newer one at the DB layer with no protection, and the map — tracking only
+ * the last-registered promise per key — had no visibility into the earlier
+ * one still being in flight). Returns the enqueued write's own promise.
+ */
+function enqueueWrite(
+  keys: string[],
+  writeFn: () => Promise<UpsertManyResult>
+): Promise<UpsertManyResult> {
+  const precedingWrites = keys
+    .map((k) => pendingWrites.get(k))
+    .filter((p): p is Promise<UpsertManyResult> => p !== undefined);
+  const chained =
+    precedingWrites.length > 0
+      ? Promise.allSettled(precedingWrites).then(() => writeFn())
+      : writeFn();
+  for (const key of keys) {
+    pendingWrites.set(key, chained);
+  }
+  void chained
     .catch(() => {
       // A failed write still needs to clear itself from the map below —
       // this hook's own rejection handling (reportUpsertOutcome) is what
@@ -93,10 +120,13 @@ function registerPendingWrite(
       // keep this .finally() chain from becoming an unhandled rejection.
     })
     .finally(() => {
-      if (pendingWrites.get(key) === promise) {
-        pendingWrites.delete(key);
+      for (const key of keys) {
+        if (pendingWrites.get(key) === chained) {
+          pendingWrites.delete(key);
+        }
       }
     });
+  return chained;
 }
 
 async function awaitPendingWritesFor(
@@ -108,8 +138,20 @@ async function awaitPendingWritesFor(
   const matching = [...pendingWrites.entries()]
     .filter(([key]) => key.startsWith(prefix))
     .map(([, promise]) => promise);
-  if (matching.length > 0) {
-    await Promise.allSettled(matching);
+  if (matching.length === 0) return;
+
+  let timedOut = false;
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, PENDING_WRITE_TIMEOUT_MS);
+  });
+  await Promise.race([Promise.allSettled(matching), timeout]);
+  if (timedOut) {
+    console.error(
+      `Timed out after ${PENDING_WRITE_TIMEOUT_MS}ms waiting for a pending plate-assignment write for ${prefix}* — reading anyway rather than blocking indefinitely.`
+    );
   }
 }
 
@@ -348,7 +390,14 @@ export function usePlateAssignments(
       for (const scannerId of scannerIds) {
         const toWrite = toPersist[scannerId];
         if (toWrite.length === 0) continue;
-        const writePromise =
+        // Enqueued (not fired immediately) behind any write already
+        // pending for any of these exact positions, so a batch write can
+        // never race a same-position edit still in flight from elsewhere
+        // (design.md Decision 16/22).
+        const keys = toWrite.map((a) =>
+          pendingWriteKey(experimentId, waveNumber, scannerId, a.plateIndex)
+        );
+        const writePromise = enqueueWrite(keys, () =>
           window.electron.database.graviscanPlateAssignments.upsertMany(
             experimentId,
             scannerId,
@@ -360,20 +409,11 @@ export function usePlateAssignments(
               selected: a.selected,
             })),
             waveNumber
-          );
-        // Registered once per position covered by this batch write, so a
-        // future mount's per-position await correctly waits on it
-        // regardless of which position it's checking.
-        for (const a of toWrite) {
-          registerPendingWrite(
-            pendingWriteKey(experimentId, waveNumber, scannerId, a.plateIndex),
-            writePromise
-          );
-        }
+          )
+        );
         reportUpsertOutcome(writePromise);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    })().catch((err: any) => {
+    })().catch((err: unknown) => {
       if (requestIdRef.current !== thisRequestId) return;
       setLoadError(err instanceof Error ? err.message : String(err));
     });
@@ -382,7 +422,21 @@ export function usePlateAssignments(
   const persistPosition = useCallback(
     (scannerId: string, assignment: PlateAssignment) => {
       if (!experimentId) return;
-      const writePromise =
+      // Cross-mount write-ordering guard (design.md Decision 16) — lets a
+      // fresh mount (after a genuine unmount+remount) wait for this write
+      // to land before reading this exact position back, instead of
+      // racing ahead and re-persisting a stale baseline over it.
+      // `enqueueWrite` additionally serializes this against any OTHER
+      // still-pending write to this same position (design.md Decision 22)
+      // — two rapid edits no longer fire concurrent `upsertMany()` calls
+      // with no guarantee which one the database commits last.
+      const key = pendingWriteKey(
+        experimentId,
+        waveNumber,
+        scannerId,
+        assignment.plateIndex
+      );
+      const writePromise = enqueueWrite([key], () =>
         window.electron.database.graviscanPlateAssignments.upsertMany(
           experimentId,
           scannerId,
@@ -396,19 +450,7 @@ export function usePlateAssignments(
             },
           ],
           waveNumber
-        );
-      // Cross-mount write-ordering guard (design.md Decision 16) — lets a
-      // fresh mount (after a genuine unmount+remount) wait for this write
-      // to land before reading this exact position back, instead of
-      // racing ahead and re-persisting a stale baseline over it.
-      registerPendingWrite(
-        pendingWriteKey(
-          experimentId,
-          waveNumber,
-          scannerId,
-          assignment.plateIndex
-        ),
-        writePromise
+        )
       );
       reportUpsertOutcome(writePromise);
     },

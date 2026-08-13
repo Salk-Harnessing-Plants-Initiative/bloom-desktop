@@ -184,11 +184,21 @@ export function GraviScan() {
           value={experimentId}
           onExperimentChange={setExperimentId}
           disabled={scanSession.isScanning}
+          title={
+            scanSession.isScanning
+              ? 'Locked while a scan is in progress'
+              : undefined
+          }
         />
         <PhenotyperChooser
           value={phenotyperId}
           onPhenotyperChange={setPhenotyperId}
           disabled={scanSession.isScanning}
+          title={
+            scanSession.isScanning
+              ? 'Locked while a scan is in progress'
+              : undefined
+          }
         />
         <label className="flex items-center gap-1">
           Wave
@@ -197,6 +207,11 @@ export function GraviScan() {
             value={waveNumber}
             onChange={(e) => setWaveNumber(Number(e.target.value))}
             disabled={scanSession.isScanning}
+            title={
+              scanSession.isScanning
+                ? 'Locked while a scan is in progress'
+                : undefined
+            }
           />
         </label>
         {suggestedNextWave !== null && (

@@ -294,10 +294,31 @@ export function registerGraviScanHandlers(
         error: 'Cannot determine scan directory for path validation',
       };
     }
+    // Malformed-input guard: a `scanner` that isn't an object, a
+    // non-array `plates`, or a non-string `output_path` would otherwise
+    // throw synchronously inside `path.resolve()`/the array iteration
+    // below — before `wrapHandler()` gets a chance to turn it into the
+    // uniform `{success:false, error}` shape every other failure here
+    // uses, leaking an internal error message through this boundary
+    // instead.
     const validatedScanners: typeof params.scanners = [];
     for (const scanner of params?.scanners ?? []) {
+      if (!scanner || !Array.isArray(scanner.plates)) {
+        return {
+          success: false,
+          error:
+            'Malformed start-scan request: each scanner must include a plates array',
+        };
+      }
       const validatedPlates: (typeof scanner.plates)[number][] = [];
-      for (const plate of scanner.plates ?? []) {
+      for (const plate of scanner.plates) {
+        if (!plate || typeof plate.output_path !== 'string') {
+          return {
+            success: false,
+            error:
+              'Malformed start-scan request: each plate must include an output_path string',
+          };
+        }
         const contained = resolveContainedPathAllowingMissing(
           outputDirResult.path,
           plate.output_path
