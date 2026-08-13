@@ -677,6 +677,19 @@ event (design.md Decision 12).
       failures related to this change. Type-checking and lint clean.
 - [x] 21.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+- [x] 21.5 (Added `/review-pr` round 5) 21.1's coverage only hand-fires
+      mock `interval-waiting`/`scan-started` events at the renderer hook —
+      nothing exercised a real `ScanCoordinator` emitting them across
+      multiple real (mocked-hardware) cycles, so a subtly-broken backend
+      emission could pass 21.1 while never actually reaching the renderer.
+      Added a test in `tests/unit/graviscan/scan-coordinator.test.ts`'s
+      `scanInterval()` suite driving 2 real cycles (10s interval/20s
+      duration) through a mocked-subprocess coordinator, asserting
+      `scan-started` fires at least once per cycle and `interval-waiting`
+      fires exactly once, between cycles, with the correct cycle number —
+      passed immediately (the backend's own emission was already correct;
+      this closes a coverage gap, not a behavior bug). Full file: 33
+      passed, 1 pre-existing unrelated failure (Windows path-separator).
 
 ## 22. Freeze session context at scan start (TDD, found during /review-pr round 5)
 

@@ -904,6 +904,49 @@ describe('ScanCoordinator', () => {
         })
       );
     });
+
+    it("emits interval-waiting between cycles and scan-started at the start of each new cycle, across 2+ real cycles (review-pr round 5: the renderer's consumption of these events was previously only unit-tested via hand-fired mock events, never against a real ScanCoordinator run through multiple cycles)", async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        sub.emit('event', {
+          type: 'scan-started',
+          scanner_id: 'scanner-1',
+          plate_index: '00',
+        });
+        process.nextTick(() => sub.emit('cycle-done', {}));
+      });
+
+      const scanStarted = vi.fn();
+      const intervalWaiting = vi.fn();
+      const intervalComplete = vi.fn();
+      coordinator.on('scan-started', scanStarted);
+      coordinator.on('interval-waiting', intervalWaiting);
+      coordinator.on('interval-complete', intervalComplete);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      // 10s interval, 20s duration => ceil(20000/10000) = 2 cycles.
+      const intervalPromise = coordinator.scanInterval(platesMap, 10000, 20000);
+
+      await vi.advanceTimersByTimeAsync(30000);
+      await intervalPromise;
+
+      expect(intervalComplete).toHaveBeenCalledWith(
+        expect.objectContaining({ totalCycles: 2, cyclesCompleted: 2 })
+      );
+      // scan-started fires at least once per cycle (2 cycles).
+      expect(scanStarted.mock.calls.length).toBeGreaterThanOrEqual(2);
+      // interval-waiting fires exactly once — between cycle 1 and cycle 2,
+      // not after the final cycle (which goes straight to interval-complete).
+      expect(intervalWaiting).toHaveBeenCalledTimes(1);
+      expect(intervalWaiting).toHaveBeenCalledWith(
+        expect.objectContaining({ cycle: 1, totalCycles: 2 })
+      );
+    });
   });
 
   describe('cancelAll()', () => {

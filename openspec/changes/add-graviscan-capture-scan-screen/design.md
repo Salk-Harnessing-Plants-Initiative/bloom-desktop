@@ -782,6 +782,16 @@ time, which is _before_ the wait period begins, not during it; deriving
 "waiting" from cycle-number alone can't distinguish "just finished, about
 to wait" from "already scanning again."
 
+**Follow-up (tasks.md 21.5, added `/review-pr` round 5):** this decision's
+own test coverage (task 21.1) only hand-fires mock `interval-waiting`/
+`scan-started` events directly at the renderer hook — nothing exercised a
+real `ScanCoordinator` actually emitting them correctly across 2+ real
+(mocked-hardware) cycles, so a subtly-broken backend emission could have
+passed 21.1 while never reaching a real renderer. Added that coverage to
+`scan-coordinator.test.ts`'s `scanInterval()` suite; it passed immediately
+— the backend's own emission was already correct, so this closes a
+coverage gap rather than fixing a behavior bug.
+
 ### Decision 13 — Freeze session context at scan start; stop mirroring live selectors into refs read mid-scan
 
 `/review-pr` (round 5, post-16.6) found `useScanSession`'s `contextRef` mirrors
