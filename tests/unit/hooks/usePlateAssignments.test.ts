@@ -1,6 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { usePlateAssignments } from '../../../src/renderer/hooks/usePlateAssignments';
+import {
+  usePlateAssignments,
+  __clearPendingWritesForTests,
+} from '../../../src/renderer/hooks/usePlateAssignments';
 
 function metadataLink(waveNumber: number, accessionId: string) {
   return {
@@ -66,6 +69,14 @@ describe('usePlateAssignments', () => {
       list: listAssignments,
       upsertMany,
     };
+  });
+
+  afterEach(() => {
+    // The cross-mount write-ordering guard (design.md Decision 16) is
+    // deliberately module-level state — clear it so a test that triggers a
+    // write without waiting for it to settle can't leak a stale entry into
+    // an unrelated later test.
+    __clearPendingWritesForTests();
   });
 
   it('no linked wave metadata: positions are empty and editable, no different-wave data leaks in', async () => {
@@ -521,6 +532,88 @@ describe('usePlateAssignments', () => {
         gridModes: { 'sc-1': '2grid' },
       })
     );
+
+    await waitFor(() =>
+      expect(
+        second.result.current.assignmentsByScanner['sc-1']?.[0]?.plantBarcode
+      ).toBe('MANUAL_PLATE')
+    );
+  });
+
+  it('a manually-entered barcode survives unmount+remount even if its write is still in flight at unmount time (regression: persistPosition() was fire-and-forget with no cross-mount write-ordering guard, review-pr round 5)', async () => {
+    let storedRow: Record<string, unknown> | null = null;
+    const pendingResolvers: Array<() => void> = [];
+    listGraviMetadata.mockResolvedValue({ success: true, data: [] });
+    listAssignments.mockImplementation(async () => ({
+      success: true,
+      data: storedRow ? [storedRow] : [],
+    }));
+    upsertMany.mockImplementation(
+      (
+        _experimentId: string,
+        _scannerId: string,
+        assignments: Array<Record<string, unknown>>
+      ) =>
+        new Promise((resolve) => {
+          pendingResolvers.push(() => {
+            storedRow = {
+              id: 'row-1',
+              experiment_id: 'exp-1',
+              scanner_id: 'sc-1',
+              wave_number: 0,
+              verification_status: 'pending',
+              ...assignments[0],
+            };
+            resolve({ success: true, data: [storedRow] });
+          });
+        })
+    );
+
+    const first = renderHook(() =>
+      usePlateAssignments({
+        experimentId: 'exp-1',
+        waveNumber: 0,
+        scannerIds: ['sc-1'],
+        gridModes: { 'sc-1': '2grid' },
+      })
+    );
+    await waitFor(() =>
+      expect(first.result.current.assignmentsByScanner['sc-1']).toBeDefined()
+    );
+    // Let the mount's own write-through of the blank baseline (no linked
+    // metadata, no persisted row yet) settle first, so only the edit's own
+    // write is left pending below.
+    await waitFor(() => expect(pendingResolvers).toHaveLength(1));
+    await act(async () => {
+      pendingResolvers[0]();
+    });
+    await waitFor(() => expect(storedRow).not.toBeNull());
+
+    act(() => {
+      first.result.current.updateField(
+        'sc-1',
+        '00',
+        'plantBarcode',
+        'MANUAL_PLATE'
+      );
+    });
+    await waitFor(() => expect(pendingResolvers).toHaveLength(2));
+
+    // Unmount WHILE the edit's write is still unresolved — the operator
+    // navigated away faster than the IPC/DB round-trip completed.
+    first.unmount();
+
+    const second = renderHook(() =>
+      usePlateAssignments({
+        experimentId: 'exp-1',
+        waveNumber: 0,
+        scannerIds: ['sc-1'],
+        gridModes: { 'sc-1': '2grid' },
+      })
+    );
+
+    // Only now does the edit's original write actually land.
+    pendingResolvers[1]();
 
     await waitFor(() =>
       expect(

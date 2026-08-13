@@ -749,7 +749,7 @@ Decision 14).
       fire-and-forget with its own `.catch(() => {})`. In the RESTORE effect,
       populate `completedJobsRef.current` from any `status.jobs` entry whose
       status is `'recorded'` or `'complete'`, using `job.imagePath ??
-  job.outputPath` since the backend never separately stores the real
+job.outputPath` since the backend never separately stores the real
       captured path. Run 23.1's tests green.
 - [x] 23.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
       confirm no regressions beyond the already-documented pre-existing
@@ -784,4 +784,40 @@ this (design.md Decision 15).
       failures. **Result:** 1640 passed, same 5 pre-existing failure files,
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 24.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
+
+## 25. Close the plate-assignment write race (TDD, found during /review-pr round 5)
+
+Commit 921aa34 named `persistPosition()`'s fire-and-forget `upsertMany()` as
+the likely cause of a live "edit not surviving navigate-away-and-back"
+report but shipped no fix, only a regression test proving the hook is
+correct once a write has already landed (design.md Decision 16).
+
+- [x] 25.1 Write a failing test in `tests/unit/hooks/usePlateAssignments.test.ts`:
+      a manually-entered barcode's `upsertMany()` write is still unresolved
+      (a controllable, manually-resolved promise) when the hook unmounts;
+      mount a fresh instance for the same experiment/wave/scanner before
+      resolving that write; confirm the fresh instance's own
+      `graviscanPlateAssignments.list()` call does not resolve/proceed until
+      after the pending write settles, and that once it does, the fresh
+      instance shows the edited barcode — not a blank/reverted value from a
+      read that raced ahead of the write.
+- [x] 25.2 Add a module-level `pendingWrites: Map<string,
+    Promise<UpsertManyResult>>` (keyed by
+      `` `${experimentId}:${waveNumber}:${scannerId}:${plateIndex}` ``,
+      deliberately module scope, not a `useRef` — a ref dies with its
+      component instance, the exact lifetime a genuine unmount+remount
+      doesn't share). `persistPosition()` registers its `upsertMany()`
+      promise there and removes it via `.finally()` once it settles. The
+      load effect's per-scanner loop awaits every pending write matching
+      that scanner's key prefix before calling `.list()` for it. Also added
+      a test-only `__clearPendingWritesForTests()` export, needed because
+      the module-level map otherwise leaks a stale entry into unrelated
+      later tests whenever a test triggers a write without waiting for it
+      to settle. Run 25.1's test green.
+- [x] 25.3 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1643 passed, same 5 pre-existing failure files,
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 25.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.

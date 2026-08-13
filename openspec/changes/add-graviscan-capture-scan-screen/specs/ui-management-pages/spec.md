@@ -139,6 +139,18 @@ no-link-exists case.
   persisted-vs-computed comparison made fresh on every mount, not from
   in-memory-only state that a remount would otherwise reset
 
+#### Scenario: A manual edit survives navigating away and back even if the save was still in flight at unmount time
+
+- **GIVEN** the operator has just edited a plate position's field, and its
+  persist write has not yet resolved
+- **WHEN** the operator navigates away from `/capture-scan` before that
+  write settles, then navigates back, remounting the screen
+- **THEN** the fresh mount SHALL wait for that write to settle before
+  reading the position's persisted state
+- **AND** the position SHALL show the operator's edited value, not a
+  blank/reverted value from a read that raced ahead of the still-in-flight
+  write
+
 #### Scenario: Switching wave recomputes the auto-fill baseline from scratch
 
 - **GIVEN** one or more plate positions hold operator-overridden values for

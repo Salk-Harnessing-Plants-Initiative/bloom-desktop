@@ -59,6 +59,69 @@ interface PersistedRow {
 
 type UpsertManyResult = { success: boolean; error?: string };
 
+// ---------------------------------------------------------------------------
+// Cross-mount write-ordering guard (design.md Decision 16). Module scope,
+// not a `useRef` — a ref dies with its component instance, which is
+// exactly the lifetime a genuine unmount+remount (real navigation, unlike
+// a same-instance rerender) doesn't share. Without this, a fresh mount's
+// own read can race ahead of a still-in-flight write from the instance it
+// replaced and then destructively re-persist a stale/blank baseline over
+// an operator's edit once that slower write finally lands.
+// ---------------------------------------------------------------------------
+
+const pendingWrites = new Map<string, Promise<UpsertManyResult>>();
+
+function pendingWriteKey(
+  experimentId: string,
+  waveNumber: number,
+  scannerId: string,
+  plateIndex: string
+): string {
+  return `${experimentId}:${waveNumber}:${scannerId}:${plateIndex}`;
+}
+
+function registerPendingWrite(
+  key: string,
+  promise: Promise<UpsertManyResult>
+): void {
+  pendingWrites.set(key, promise);
+  void promise
+    .catch(() => {
+      // A failed write still needs to clear itself from the map below —
+      // this hook's own rejection handling (reportUpsertOutcome) is what
+      // surfaces the failure to the operator; this catch exists solely to
+      // keep this .finally() chain from becoming an unhandled rejection.
+    })
+    .finally(() => {
+      if (pendingWrites.get(key) === promise) {
+        pendingWrites.delete(key);
+      }
+    });
+}
+
+async function awaitPendingWritesFor(
+  experimentId: string,
+  waveNumber: number,
+  scannerId: string
+): Promise<void> {
+  const prefix = `${experimentId}:${waveNumber}:${scannerId}:`;
+  const matching = [...pendingWrites.entries()]
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([, promise]) => promise);
+  if (matching.length > 0) {
+    await Promise.allSettled(matching);
+  }
+}
+
+/** Test-only escape hatch: the write-tracking map above is module-level by
+ * design (it must outlive any single hook instance to close the race this
+ * fix targets) but that means it also outlives any single test — a test
+ * that triggers a write without waiting for it to settle would otherwise
+ * leak a permanently-pending entry into unrelated later tests. */
+export function __clearPendingWritesForTests(): void {
+  pendingWrites.clear();
+}
+
 function fieldsEqual(
   a: Pick<
     PlateAssignment,
@@ -202,6 +265,13 @@ export function usePlateAssignments(
         const gridMode = gridModes[scannerId];
         const positions = createPlateAssignments(gridMode);
 
+        // Cross-mount write-ordering guard (design.md Decision 16): a
+        // fresh mount's read must never race ahead of a write the
+        // previous, now-unmounted instance issued but which hasn't
+        // landed yet.
+        await awaitPendingWritesFor(experimentId, waveNumber, scannerId);
+        if (requestIdRef.current !== thisRequestId) return;
+
         let persistedRows: PersistedRow[] = [];
         try {
           const assignmentsResult =
@@ -278,7 +348,7 @@ export function usePlateAssignments(
       for (const scannerId of scannerIds) {
         const toWrite = toPersist[scannerId];
         if (toWrite.length === 0) continue;
-        reportUpsertOutcome(
+        const writePromise =
           window.electron.database.graviscanPlateAssignments.upsertMany(
             experimentId,
             scannerId,
@@ -290,8 +360,17 @@ export function usePlateAssignments(
               selected: a.selected,
             })),
             waveNumber
-          )
-        );
+          );
+        // Registered once per position covered by this batch write, so a
+        // future mount's per-position await correctly waits on it
+        // regardless of which position it's checking.
+        for (const a of toWrite) {
+          registerPendingWrite(
+            pendingWriteKey(experimentId, waveNumber, scannerId, a.plateIndex),
+            writePromise
+          );
+        }
+        reportUpsertOutcome(writePromise);
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })().catch((err: any) => {
@@ -303,7 +382,7 @@ export function usePlateAssignments(
   const persistPosition = useCallback(
     (scannerId: string, assignment: PlateAssignment) => {
       if (!experimentId) return;
-      reportUpsertOutcome(
+      const writePromise =
         window.electron.database.graviscanPlateAssignments.upsertMany(
           experimentId,
           scannerId,
@@ -317,8 +396,21 @@ export function usePlateAssignments(
             },
           ],
           waveNumber
-        )
+        );
+      // Cross-mount write-ordering guard (design.md Decision 16) — lets a
+      // fresh mount (after a genuine unmount+remount) wait for this write
+      // to land before reading this exact position back, instead of
+      // racing ahead and re-persisting a stale baseline over it.
+      registerPendingWrite(
+        pendingWriteKey(
+          experimentId,
+          waveNumber,
+          scannerId,
+          assignment.plateIndex
+        ),
+        writePromise
       );
+      reportUpsertOutcome(writePromise);
     },
     [experimentId, waveNumber, reportUpsertOutcome]
   );

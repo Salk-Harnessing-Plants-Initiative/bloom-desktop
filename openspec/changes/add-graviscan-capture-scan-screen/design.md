@@ -936,6 +936,55 @@ thread a single completion-time-only value through; passing the raw event's
 resolved value as its own parameter is more direct and matches how
 `imagePath`/`cycleNumber` already reach this function.
 
+### Decision 16 — Close the plate-assignment write race by having a fresh mount wait on a still-in-flight prior write
+
+Commit 921aa34 (this branch) investigated a live report — a manually-edited
+plate barcode not surviving navigate-away-and-back — and found every
+existing "survives across changes" test used `rerender()` on the same hook
+instance, never a genuine unmount+remount (what navigation actually does).
+Adding that missing case confirmed the hook is correct **once a write has
+already landed**, and named the real suspect without confirming it:
+`persistPosition()`'s `upsertMany()` call is fire-and-forget, with nothing
+tying its completion to the component's lifecycle — if the operator
+navigates away faster than that IPC/DB round-trip completes, the old hook
+instance is torn down mid-write, and the fresh instance's own load effect
+reads the position's persisted state before that write has landed.
+
+That fresh mount's read-then-conditionally-rewrite pass (design.md Decision 3) then makes the race actively destructive, not just stale: seeing no
+persisted row yet (or one that still reflects the pre-edit value), it
+concludes the position needs populating from the fresh auto-fill/blank
+baseline and immediately re-persists that baseline — permanently overwriting
+the edit once the original, slower write finally does land, whichever
+settles last.
+
+**Decision:** track in-flight `upsertMany()` writes in a **module-level**
+map (`pendingWrites: Map<string, Promise<UpsertManyResult>>`, keyed by
+`` `${experimentId}:${waveNumber}:${scannerId}:${plateIndex}` ``) — module
+scope, not a `useRef`, deliberately: a `useRef` dies with its component
+instance, which is exactly the lifetime a genuine unmount+remount doesn't
+share, so only state living outside any single hook instance can let a
+fresh mount learn "a write for this exact position, from whichever instance
+issued it, hasn't settled yet." `persistPosition()` registers its
+`upsertMany()` promise in the map when it fires and removes it (via
+`.finally()`) once it settles, regardless of success or failure. The load
+effect's per-scanner loop, immediately before calling
+`graviscanPlateAssignments.list()` for a given `(experimentId, waveNumber,
+scannerId)`, awaits every currently-pending write matching that prefix
+before reading — so a fresh mount's read is guaranteed to observe the
+just-completed write's effect, never a stale pre-write snapshot, without
+requiring any router/navigation-level change.
+
+**Alternatives considered:** (1) block navigation until pending writes
+settle. Rejected — this app's `App.tsx` uses a plain `<Routes>` tree, not a
+data router (`createBrowserRouter`), so React Router v6's
+`useBlocker`/`unstable_usePrompt` aren't available without a broader router
+migration, a much larger change than this fix warrants. (2) show a
+non-blocking "saving..." indicator and rely on the operator not to navigate
+away yet. Rejected as a mitigation, not a fix — it reduces how often an
+operator triggers the race but doesn't close it, and the review's own
+framing ("closed real gaps in scope") calls for fixing the race itself over
+a UI hint an operator can still click past.
+
 ## Architecture
 
 ```
