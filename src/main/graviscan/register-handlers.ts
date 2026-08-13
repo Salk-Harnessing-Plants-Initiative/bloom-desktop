@@ -278,6 +278,39 @@ export function registerGraviScanHandlers(
     if (current?.isActive) {
       return { success: false, error: 'Scan already in progress' };
     }
+
+    // Path-containment check (design.md Decision 20) — every plate's
+    // output_path is renderer-constructed from experimentId/waveNumber/
+    // scannerId/plateIndex with no containment guarantee of its own.
+    // Confirm each one still resolves inside the configured scan output
+    // directory before the coordinator/Python worker ever writes to it,
+    // mirroring every read-side path handler already in this file
+    // (ensure-dir/list-scan-files above). The file doesn't exist yet at
+    // this point — the whole reason for `AllowingMissing`.
+    const outputDirResult = imageHandlers.getOutputDir();
+    if (!outputDirResult.success || !outputDirResult.path) {
+      return {
+        success: false,
+        error: 'Cannot determine scan directory for path validation',
+      };
+    }
+    const validatedScanners: typeof params.scanners = [];
+    for (const scanner of params?.scanners ?? []) {
+      const validatedPlates: (typeof scanner.plates)[number][] = [];
+      for (const plate of scanner.plates ?? []) {
+        const contained = resolveContainedPathAllowingMissing(
+          outputDirResult.path,
+          plate.output_path
+        );
+        if (!contained.ok) {
+          return { success: false, error: OUTSIDE_SCAN_DIR };
+        }
+        validatedPlates.push({ ...plate, output_path: contained.path });
+      }
+      validatedScanners.push({ ...scanner, plates: validatedPlates });
+    }
+    params = { ...params, scanners: validatedScanners };
+
     // Lazy coordinator creation — first start-scan creates + wires the coordinator
     let coordinator = getCoordinator();
     if (!coordinator && createCoordinator) {

@@ -444,6 +444,23 @@ per-scanner progress resets from 100% back to 0% at a cycle boundary.
 - **AND** the waiting indicator SHALL NOT render, since it also checks that
   a scan is actually in progress, not only the coordinator state field
 
+Before starting a scan, the main process SHALL confirm every plate's
+`output_path` resolves inside the configured scan output directory,
+following symlinks — the same containment guarantee already applied to
+every path a renderer supplies for a read. `startScan()` SHALL NOT be
+called with any plate whose path resolves outside that directory.
+
+#### Scenario: A plate's output_path outside the scan output directory blocks the whole start-scan call
+
+- **GIVEN** a `start-scan` request includes a plate whose `output_path`
+  resolves outside the configured scan output directory (e.g. via a `..`
+  segment)
+- **WHEN** the request is handled
+- **THEN** the call SHALL be rejected with the same uniform "path outside
+  scan directory" error every other path handler in this file uses
+- **AND** the scan SHALL NOT start — no plate in the request, not just the
+  offending one, is scanned
+
 ---
 
 ### Requirement: GraviScan Session Restore on Renderer Navigation

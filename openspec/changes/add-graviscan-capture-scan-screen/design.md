@@ -1095,6 +1095,50 @@ requirement text.
 `validate()` returns a message). This makes the button's actual behavior
 match what the requirement already specified.
 
+### Decision 20 — Validate write-side output_path containment in the start-scan handler
+
+`/review-pr` (round 5) found `useScanSession.ts`/`useTestScan.ts` build each
+plate's `output_path` via renderer-side string concatenation
+(`` `${outputDir}/${experimentId}/wave${waveNumber}/${scannerId}/${plateIndex}_cy1_${timestamp}.tiff` ``)
+with no containment check — unlike every _read_-side path handler already
+in this file (`ensure-dir`, `list-scan-files`, `read-scan-image`, all wired
+through `path-containment.ts`'s `resolveContainedPath`/
+`resolveContainedPathAllowingMissing`). Low risk today, since
+`experimentId`/`waveNumber`/`scannerId`/`plateIndex` are all
+UUID/enum/dropdown-constrained in the current UI — but nothing at the IPC
+boundary itself enforces that, and this is exactly the kind of check this
+same file already applies to every renderer-supplied path used for a
+_read_. A write path deserves the same defense-in-depth, not less, since a
+successful escape here means writing a file somewhere the operating
+system's own user account can write, not just reading one.
+
+**Decision:** the renderer keeps building `output_path` as before — it has
+no `fs` access to do a real (symlink-resolving) containment check itself,
+and the check only has authority when performed at the trust boundary the
+untrusted renderer payload actually crosses. `graviscan:start-scan`'s IPC
+handler (`register-handlers.ts`) resolves `imageHandlers.getOutputDir()`
+once and validates every plate's `output_path`, across every scanner in
+`params.scanners`, via `resolveContainedPathAllowingMissing()` (the file
+does not exist yet — the whole point of a start-scan call — so the
+"missing tail" variant is correct here, matching `ensure-dir`'s own
+reasoning). Any plate whose path resolves outside the output directory
+rejects the entire `start-scan` call with the same uniform
+`OUTSIDE_SCAN_DIR` error every other path handler in this file already
+uses, before the coordinator/Python worker ever sees it. Each plate's
+`output_path` in the validated payload is replaced with the
+containment-check's own resolved path (matching `ensure-dir`'s pattern:
+the value that was checked is the value that gets used), which also has
+the effect of normalizing it through Node's `path.resolve()` rather than
+trusting the renderer's raw forward-slash concatenation verbatim.
+
+**Alternatives considered:** add the same check inside
+`useScanSession.ts`/`useTestScan.ts` in the renderer. Rejected — the
+renderer has no `fs.realpathSync` access (this codebase's Electron config
+keeps it that way deliberately), so a renderer-side check could only ever
+be a string comparison, not a real containment guarantee against a
+symlink; the authoritative check belongs at the IPC boundary, matching
+every other path handler in this file.
+
 ## Architecture
 
 ```

@@ -964,6 +964,92 @@ describe('registerGraviScanHandlers', () => {
     });
   });
 
+  describe('graviscan:start-scan path containment', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    function startScanParams(outputPath: string) {
+      return {
+        scanners: [
+          {
+            scannerId: 'sc-1',
+            saneName: 'epkowa:usb:001:005',
+            plates: [
+              {
+                plate_index: '00',
+                grid_mode: '2grid',
+                resolution: 600,
+                output_path: outputPath,
+                wave_number: 0,
+              },
+            ],
+          },
+        ],
+        metadata: {
+          experimentId: 'exp-1',
+          phenotyperId: 'pheno-1',
+          resolution: 600,
+        },
+      };
+    }
+
+    it('rejects a `..` traversal that escapes the scan output directory', async () => {
+      const result = await mockIpcMain._invoke(
+        'graviscan:start-scan',
+        startScanParams(`${OUTPUT_DIR}/../../../etc/cron.d/evil.tiff`)
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Path outside scan directory',
+      });
+      expect(sessionHandlers.startScan).not.toHaveBeenCalled();
+    });
+
+    it('rejects an absolute output_path outside the scan output directory', async () => {
+      const result = await mockIpcMain._invoke(
+        'graviscan:start-scan',
+        startScanParams('/etc/cron.d/evil.tiff')
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Path outside scan directory',
+      });
+      expect(sessionHandlers.startScan).not.toHaveBeenCalled();
+    });
+
+    it('still starts the scan when every output_path is contained but does not exist yet (the ordinary case)', async () => {
+      const outputPath = `${OUTPUT_DIR}/exp-1/wave0/sc-1/00_cy1_20260813T000000.tiff`;
+      vi.mocked(fs.existsSync).mockImplementation((p) => p !== outputPath);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:start-scan',
+        startScanParams(outputPath)
+      );
+
+      expect(sessionHandlers.startScan).toHaveBeenCalled();
+      const [, calledParams] = vi.mocked(sessionHandlers.startScan).mock
+        .calls[0];
+      // The validated (path.resolve()-normalized) path is what gets used,
+      // not the caller's raw string — matching ensure-dir's own pattern.
+      expect(calledParams.scanners[0].plates[0].output_path).toBe(
+        path.resolve(outputPath)
+      );
+      // wrapHandler() wraps the underlying { success: true } in its own
+      // { success: true, data } envelope — matching every other
+      // successful-delegation response in this file.
+      expect(result).toEqual({ success: true, data: { success: true } });
+    });
+  });
+
   describe('graviscan:ensure-dir', () => {
     beforeEach(() => {
       registerGraviScanHandlers(

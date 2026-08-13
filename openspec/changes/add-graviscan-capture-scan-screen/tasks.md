@@ -911,3 +911,36 @@ showing (design.md Decision 19).
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 28.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 29. Validate write-side output_path containment in start-scan (TDD, found during /review-pr round 5)
+
+`/review-pr` found the renderer-constructed `output_path` for each plate has
+no containment check before reaching the coordinator/Python worker for
+writing, unlike every read-side path handler already in this file (design.md
+Decision 20).
+
+- [x] 29.1 Write failing tests in
+      `tests/unit/graviscan/register-handlers.test.ts` (in a new
+      `describe('graviscan:start-scan')` block, mirroring the existing
+      `ensure-dir`/`list-scan-files` containment tests' mocking pattern):
+      a plate whose `output_path` resolves outside the mocked output
+      directory (both a `..`-traversal case and an absolute-escape case)
+      rejects the whole call with `{ success: false, error: 'Path outside
+    scan directory' }`, and `sessionHandlers.startScan` is never called;
+      a contained-but-not-yet-existing `output_path` (the ordinary case —
+      the file doesn't exist until the scan runs) still succeeds, with
+      `sessionHandlers.startScan` called using the validated/resolved path.
+- [x] 29.2 In `graviscan:start-scan`'s handler, resolve
+      `imageHandlers.getOutputDir()` once and validate every plate's
+      `output_path` across every scanner in `params.scanners` via
+      `resolveContainedPathAllowingMissing()`, rejecting the whole call on
+      the first containment failure with `OUTSIDE_SCAN_DIR`. Replace each
+      plate's `output_path` with the containment check's own resolved path
+      before delegating to `sessionHandlers.startScan`. Run 29.1's tests
+      green.
+- [x] 29.3 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1655 passed, same 5 pre-existing failure files,
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 29.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
