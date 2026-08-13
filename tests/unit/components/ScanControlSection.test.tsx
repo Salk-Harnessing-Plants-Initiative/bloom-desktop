@@ -295,6 +295,22 @@ describe('ScanControlSection', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('does not show the waiting-for-next-cycle indicator when isScanning is false, even if coordinatorState is stale "waiting" (regression: no isScanning gate, review-pr round 5)', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          scanSession: scanSession({
+            isScanning: false,
+            coordinatorState: 'waiting',
+          }),
+        })}
+      />
+    );
+    expect(
+      screen.queryByText(/waiting for next cycle/i)
+    ).not.toBeInTheDocument();
+  });
+
   it('Test Scan button invokes useTestScan.testAllScanners', async () => {
     const run = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();

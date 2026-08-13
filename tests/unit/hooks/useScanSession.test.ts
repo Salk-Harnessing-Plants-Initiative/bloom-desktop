@@ -150,9 +150,31 @@ describe('useScanSession', () => {
   // ── Reducer core (task 12.1) ────────────────────────────────────────────
 
   it('JOB_COMPLETE derives per-scanner progress from the post-update pending-jobs state', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
+    // A second scanner's job stays pending throughout, so the session
+    // itself doesn't end when sc-1's jobs finish — otherwise SCAN_ENDED's
+    // own state reset (design.md Decision 17) would clear
+    // progressByScanner before this test's 100% assertion could observe it.
+    const { result } = renderHook(
+      () =>
+        useScanSession(
+          baseParams({
+            scannerIds: ['sc-1', 'sc-2'],
+            gridModes: { 'sc-1': '2grid', 'sc-2': '2grid' },
+            saneNames: {
+              'sc-1': 'epkowa:usb:001:005',
+              'sc-2': 'epkowa:usb:001:006',
+            },
+            assignmentsByScanner: {
+              'sc-1': [
+                plate({ plateIndex: '00' }),
+                plate({ plateIndex: '01', plantBarcode: 'PLATE_002' }),
+              ],
+              'sc-2': [plate({ plateIndex: '00', plantBarcode: 'PLATE_003' })],
+            },
+          })
+        ),
+      { wrapper: wedgeWrapper }
+    );
 
     await act(async () => {
       await result.current.startScan();
@@ -560,6 +582,65 @@ describe('useScanSession', () => {
 
     fire('scan-started', { scannerId: 'sc-1', plateIndex: '00' });
     expect(result.current.coordinatorState).toBe('scanning');
+  });
+
+  // ── SCAN_ENDED/CANCELLED symmetry; late-event guard (task 26.1, design.md Decision 17) ──
+
+  it('a clean single-shot completion clears pendingJobs and progressByScanner, not just isScanning (regression: SCAN_ENDED did not reset either, unlike CANCELLED)', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      imagePath: '/out/01.tiff',
+    });
+
+    await waitFor(() => expect(result.current.isScanning).toBe(false));
+    expect(Object.keys(result.current.pendingJobs)).toHaveLength(0);
+    expect(Object.keys(result.current.progressByScanner)).toHaveLength(0);
+  });
+
+  it('a late interval-waiting/scan-started event after the session has already ended does not resurrect coordinatorState (regression: no guard against a stray event arriving after SCAN_ENDED/CANCELLED)', async () => {
+    const { result } = renderHook(
+      () =>
+        useScanSession(
+          baseParams({
+            isContinuous: true,
+            intervalMinutes: 60,
+            durationMinutes: 180,
+          })
+        ),
+      { wrapper: wedgeWrapper }
+    );
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('interval-complete', {
+      cyclesCompleted: 3,
+      totalCycles: 3,
+      cancelled: false,
+    });
+    await waitFor(() => expect(result.current.isScanning).toBe(false));
+    expect(result.current.coordinatorState).toBe('idle');
+
+    // A stray/late event arrives after the session has already ended.
+    fire('interval-waiting', { cycle: 3, totalCycles: 3, nextScanMs: 60000 });
+    expect(result.current.coordinatorState).toBe('idle');
+
+    fire('scan-started', { scannerId: 'sc-1', plateIndex: '00' });
+    expect(result.current.coordinatorState).toBe('idle');
   });
 
   it('each job completion calls graviscans.create with all fields graviscansCreate requires', async () => {

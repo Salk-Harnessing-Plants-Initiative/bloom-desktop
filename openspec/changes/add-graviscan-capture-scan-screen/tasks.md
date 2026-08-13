@@ -803,7 +803,7 @@ correct once a write has already landed (design.md Decision 16).
       instance shows the edited barcode — not a blank/reverted value from a
       read that raced ahead of the write.
 - [x] 25.2 Add a module-level `pendingWrites: Map<string,
-    Promise<UpsertManyResult>>` (keyed by
+  Promise<UpsertManyResult>>` (keyed by
       `` `${experimentId}:${waveNumber}:${scannerId}:${plateIndex}` ``,
       deliberately module scope, not a `useRef` — a ref dies with its
       component instance, the exact lifetime a genuine unmount+remount
@@ -820,4 +820,39 @@ correct once a write has already landed (design.md Decision 16).
       failures. **Result:** 1643 passed, same 5 pre-existing failure files,
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 25.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
+
+## 26. SCAN_ENDED/CANCELLED symmetry; guard against late interval events after session end (TDD, found during /review-pr round 5)
+
+`/review-pr` found `SCAN_ENDED` doesn't clear `pendingJobs`/`progressByScanner`
+like `CANCELLED` does, and `INTERVAL_WAITING`/`INTERVAL_RESUMED` have no
+guard against firing after the session has already ended (design.md
+Decision 17).
+
+- [x] 26.1 Write failing tests in `tests/unit/hooks/useScanSession.test.ts`:
+      after a clean single-shot completion, `pendingJobs` and
+      `progressByScanner` are both empty (not just `isScanning: false`);
+      firing `interval-waiting` or `scan-started` after the session has
+      already ended (`interval-complete`/`cancelled` already fired) leaves
+      `coordinatorState` at `'idle'`, not flipping it to `'waiting'`/
+      `'scanning'`.
+- [x] 26.2 Add `pendingJobs: {}, progressByScanner: {}` to the `SCAN_ENDED`
+      reducer case. Guard `INTERVAL_WAITING`/`INTERVAL_RESUMED` with
+      `if (!state.isScanning) return state;`. Updated the pre-existing
+      "JOB_COMPLETE derives per-scanner progress" test to add a second
+      scanner whose job stays pending, since its final-100%-assertion
+      would otherwise observe `SCAN_ENDED`'s own new reset (the session
+      previously ended on that exact last job). Run 26.1's tests green.
+- [x] 26.3 Write a failing test in
+      `tests/unit/components/ScanControlSection.test.tsx`: the waiting
+      indicator does not render when `coordinatorState === 'waiting'` but
+      `isScanning: false`.
+- [x] 26.4 Add `scanSession.isScanning &&` to the waiting-indicator's render
+      condition in `ScanControlSection.tsx`, as defense-in-depth alongside
+      26.2's reducer guard. Run 26.3's test green.
+- [x] 26.5 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1644 passed, same 5 pre-existing failure files,
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 26.6 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.

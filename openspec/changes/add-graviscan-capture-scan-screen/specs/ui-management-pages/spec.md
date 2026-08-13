@@ -317,6 +317,16 @@ per-scanner progress resets from 100% back to 0% at a cycle boundary.
 - **THEN** pending jobs SHALL be cleared, `isScanning` SHALL become `false`,
   and scanner states SHALL return to idle
 
+#### Scenario: A clean natural completion resets scan state the same way a cancel does
+
+- **GIVEN** a scan session completes naturally (every job finished, or the
+  configured continuous-mode interval/duration elapsed)
+- **WHEN** the session ends
+- **THEN** pending jobs and per-scanner progress SHALL both be cleared, the
+  same as a successful cancel — `isScanning: false` SHALL NOT coexist with
+  a stale non-empty `pendingJobs` or `progressByScanner` left over from the
+  just-ended session
+
 #### Scenario: Duration is entered in minutes, consistent with Interval
 
 - **GIVEN** the operator opens the continuous-mode form
@@ -419,6 +429,17 @@ per-scanner progress resets from 100% back to 0% at a cycle boundary.
   next cycle
 - **THEN** the waiting indicator SHALL disappear again, reflecting that
   scanning has resumed
+
+#### Scenario: A late interval-waiting event after the session has already ended does not resurrect the waiting indicator
+
+- **GIVEN** a continuous scan session has already ended
+  (`interval-complete` or `cancelled` already fired)
+- **WHEN** a stray/late `interval-waiting` or `scan-started` event
+  nonetheless arrives afterward
+- **THEN** the coordinator state SHALL remain `idle`, not flip to
+  `waiting`/`scanning`
+- **AND** the waiting indicator SHALL NOT render, since it also checks that
+  a scan is actually in progress, not only the coordinator state field
 
 ---
 

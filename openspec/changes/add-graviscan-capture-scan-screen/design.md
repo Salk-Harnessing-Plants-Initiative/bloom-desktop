@@ -985,6 +985,51 @@ operator triggers the race but doesn't close it, and the review's own
 framing ("closed real gaps in scope") calls for fixing the race itself over
 a UI hint an operator can still click past.
 
+### Decision 17 — SCAN_ENDED/CANCELLED symmetry and a guard against late interval events after session end
+
+`/review-pr` (round 5) flagged two related reducer-shape gaps, both about a
+session-ending action leaving stale state around it:
+
+1. `CANCELLED` resets `pendingJobs: {}` and `progressByScanner: {}`;
+   `SCAN_ENDED` (the natural-completion counterpart) resets neither. In the
+   ordinary case `pendingJobs` is already empty by the time `SCAN_ENDED`
+   fires (each job removes itself via `JOB_COMPLETE`/`JOB_ERROR` as it
+   finishes), so this is latent rather than currently reachable — but it's
+   an asymmetry with no justification, and `progressByScanner` is never
+   reachable by "already empty" reasoning at all: it holds this session's
+   final per-scanner percentages, which nothing else clears. A UI reading
+   both `isScanning: false` and non-empty `progressByScanner` after a clean
+   completion is reading inconsistent session state.
+2. `INTERVAL_WAITING`/`INTERVAL_RESUMED` unconditionally set
+   `coordinatorState` regardless of `isScanning`. `onIntervalWaiting`/
+   `onScanStarted` are IPC-listener callbacks with no ordering guarantee
+   relative to `onIntervalComplete`/`onCancelled` reaching the same
+   listener effect — a late/stray `interval-waiting` event arriving after
+   `SCAN_ENDED`/`CANCELLED` has already fired would flip `coordinatorState`
+   back to `'waiting'` on an already-ended session, and nothing in
+   `ScanControlSection.tsx` stops the "Waiting for next cycle..." banner
+   from rendering for a session that has, per `isScanning`, already ended.
+
+**Decision:** `SCAN_ENDED` also resets `pendingJobs: {}` and
+`progressByScanner: {}`, matching `CANCELLED` exactly (both are
+session-ending actions; the only real difference between them is the
+`cancelled` flag `finishSession()` passes downstream, not what state they
+leave behind). `INTERVAL_WAITING`/`INTERVAL_RESUMED` become no-ops when
+`!state.isScanning` — a defensive guard for exactly the late-event scenario
+above, not a change to their behavior during a genuinely active session.
+`ScanControlSection.tsx`'s waiting-banner condition also checks
+`scanSession.isScanning`, not just `coordinatorState === 'waiting'`, as
+defense-in-depth at the render layer in case some other path ever produces
+the same stale combination.
+
+**Alternatives considered:** guard only at the render layer (add
+`isScanning &&` to the banner condition, leave the reducer as-is). Rejected
+as insufficient on its own — the reducer would still hold an internally
+inconsistent `{ isScanning: false, coordinatorState: 'waiting' }` state,
+which is exactly the kind of "trusted-stale" shape this tier's Decision 1
+reducer rewrite was meant to eliminate; fixing both layers means neither one
+alone has to be perfectly relied upon.
+
 ## Architecture
 
 ```

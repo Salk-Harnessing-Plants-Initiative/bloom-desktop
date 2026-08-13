@@ -242,8 +242,14 @@ function reducer(state: ScanState, action: Action): ScanState {
         currentCycle: action.payload.cycle,
       };
     case 'INTERVAL_WAITING':
+      // Guards against a stray/late `interval-waiting` event arriving
+      // after the session has already ended (design.md Decision 17) —
+      // these IPC-listener callbacks have no ordering guarantee relative
+      // to `onIntervalComplete`/`onCancelled` reaching the same effect.
+      if (!state.isScanning) return state;
       return { ...state, coordinatorState: 'waiting' };
     case 'INTERVAL_RESUMED':
+      if (!state.isScanning) return state;
       return { ...state, coordinatorState: 'scanning' };
     case 'CANCELLED':
       return {
@@ -258,6 +264,8 @@ function reducer(state: ScanState, action: Action): ScanState {
       return {
         ...state,
         isScanning: false,
+        pendingJobs: {},
+        progressByScanner: {},
         coordinatorState: 'idle',
         currentCycle: 0,
       };

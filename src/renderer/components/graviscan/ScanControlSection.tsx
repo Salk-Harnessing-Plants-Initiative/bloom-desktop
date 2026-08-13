@@ -127,7 +127,7 @@ export function ScanControlSection({
         </div>
       )}
 
-      {scanSession.coordinatorState === 'waiting' && (
+      {scanSession.isScanning && scanSession.coordinatorState === 'waiting' && (
         <div
           data-testid="waiting-next-cycle"
           className="bg-blue-50 border border-blue-300 text-blue-900 rounded p-2 text-sm font-semibold"
