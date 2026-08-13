@@ -23,6 +23,7 @@ export function Home({ mode = null }: HomeProps) {
   const [recentScans, setRecentScans] = useState<TodaysActivityScan[] | null>(
     null
   );
+  const [recentScansError, setRecentScansError] = useState(false);
   const [failedUploadCount, setFailedUploadCount] = useState(0);
 
   // Check if this is first run (no config exists)
@@ -52,11 +53,15 @@ export function Home({ mode = null }: HomeProps) {
       .getRecent({ limit: 10 })
       .then((result) => {
         if (!mounted) return;
-        setRecentScans(result.success && result.data ? result.data : []);
+        if (result.success && result.data) {
+          setRecentScans(result.data);
+        } else {
+          setRecentScansError(true);
+        }
       })
       .catch((error: unknown) => {
         console.error("Failed to load today's activity:", error);
-        if (mounted) setRecentScans([]);
+        if (mounted) setRecentScansError(true);
       });
     return () => {
       mounted = false;
@@ -147,7 +152,11 @@ export function Home({ mode = null }: HomeProps) {
             </div>
           )}
 
-          {recentScans === null ? (
+          {recentScansError ? (
+            <p className="text-sm text-red-600">
+              Couldn&apos;t load today&apos;s activity. Try reloading the app.
+            </p>
+          ) : recentScans === null ? (
             <p className="text-sm text-gray-500">Loading...</p>
           ) : recentScans.length === 0 ? (
             <p className="text-sm text-gray-500">No scans captured today.</p>
@@ -164,6 +173,12 @@ export function Home({ mode = null }: HomeProps) {
                   {uploadCounts!.failed} failed
                 </span>
               </div>
+              {recentScans.length === 10 && (
+                <p className="text-xs text-gray-400">
+                  Showing the 10 most recent scans — counts above may not
+                  reflect all of today&apos;s activity if more were captured.
+                </p>
+              )}
               <ul className="divide-y divide-gray-100 bg-white rounded-lg border border-gray-200">
                 {recentScans.map((scan) => (
                   <li

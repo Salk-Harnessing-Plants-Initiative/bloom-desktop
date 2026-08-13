@@ -208,6 +208,96 @@ describe("Home page — Today's Activity summary (#104)", () => {
     expect(mockGetRecent).not.toHaveBeenCalled();
     expect(screen.queryByText("Today's Activity")).not.toBeInTheDocument();
   });
+
+  it('shows a distinct error message when getRecent fails, not the same "no scans" empty state', async () => {
+    mockGetRecent.mockResolvedValue({ success: false, error: 'DB error' });
+
+    render(
+      <MemoryRouter>
+        <Home mode="cylinderscan" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/couldn.t load today.s activity/i)
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/no scans captured today/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the same distinct error message when getRecent rejects', async () => {
+    mockGetRecent.mockRejectedValue(new Error('IPC failure'));
+
+    render(
+      <MemoryRouter>
+        <Home mode="cylinderscan" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/couldn.t load today.s activity/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('disclose truncation when exactly 10 recent scans are returned (the getRecent limit)', async () => {
+    mockGetRecent.mockResolvedValue({
+      success: true,
+      data: Array.from({ length: 10 }, (_, i) => ({
+        id: `scan-${i}`,
+        plant_id: `PLANT-${i}`,
+        capture_date: '2026-08-12T10:00:00.000Z',
+        experiment: null,
+        images: [{ status: 'uploaded' }],
+      })),
+    });
+
+    render(
+      <MemoryRouter>
+        <Home mode="cylinderscan" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/showing the 10 most recent scans/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('does not show the truncation disclosure when fewer than 10 scans are returned', async () => {
+    mockGetRecent.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'scan-1',
+          plant_id: 'PLANT-001',
+          capture_date: '2026-08-12T10:00:00.000Z',
+          experiment: null,
+          images: [{ status: 'uploaded' }],
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <Home mode="cylinderscan" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('PLANT-001')).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByText(/showing the 10 most recent scans/i)
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('Home page — date-unscoped failed-upload indicator (#104)', () => {

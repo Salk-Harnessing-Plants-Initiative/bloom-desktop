@@ -45,6 +45,12 @@ export function BrowseScans() {
 
   // Thumbnail resolution state — mirrors ScanPreview.tsx's existing pattern
   const [scansDir, setScansDir] = useState('');
+  // Scans can load (via fetchScans, a separate IPC round-trip) before this
+  // config load resolves; gating thumbnail rendering on this flag avoids
+  // building a URL against an empty scansDir and permanently blacklisting
+  // the row in thumbnailErrors for what would only be a transient ordering
+  // issue, not a genuinely missing image.
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(
     new Set()
   );
@@ -58,6 +64,8 @@ export function BrowseScans() {
         }
       } catch (err) {
         console.error('Failed to load machine config:', err);
+      } finally {
+        setConfigLoaded(true);
       }
     };
     loadConfig();
@@ -259,10 +267,12 @@ export function BrowseScans() {
   };
 
   const getCameraSettingsSummary = (scan: ScanWithImageSummary) => {
-    const compact = `${scan.scanner_name || '-'} · Exp ${scan.exposure_time}ms · Gain ${scan.gain}`;
+    // exposure_time is stored in microseconds (see camera-process.ts,
+    // CameraSettingsForm.tsx's "Exposure Time (μs)" label) — not milliseconds.
+    const compact = `${scan.scanner_name || '-'} · Exp ${scan.exposure_time}μs · Gain ${scan.gain}`;
     const full = [
       `Scanner: ${scan.scanner_name || '-'}`,
-      `Exposure: ${scan.exposure_time}ms`,
+      `Exposure: ${scan.exposure_time}μs`,
       `Gain: ${scan.gain}`,
       `Brightness: ${scan.brightness}`,
       `Contrast: ${scan.contrast}`,
@@ -528,7 +538,9 @@ export function BrowseScans() {
                     </td>
                     <td className="px-4 py-3">
                       {(() => {
-                        const thumbnailUrl = getFirstImageUrl(scan.images);
+                        const thumbnailUrl = configLoaded
+                          ? getFirstImageUrl(scan.images)
+                          : null;
                         if (!thumbnailUrl || thumbnailErrors.has(scan.id)) {
                           return (
                             <div
