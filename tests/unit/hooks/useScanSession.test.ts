@@ -892,6 +892,30 @@ describe('useScanSession', () => {
     expect(result.current.abnormalTermination).toBeNull();
   });
 
+  it('a getScanStatus() failure during the marker check is logged, not silently swallowed (regression: review-pr round 5 — sibling catches in GraviScan.tsx already log)', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    getScanStatus.mockRejectedValue(new Error('IPC bridge closed'));
+
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ waveNumber: 0 })),
+      { wrapper: wedgeWrapper }
+    );
+
+    await waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        'Failed to check abnormal-termination marker:',
+        'IPC bridge closed'
+      )
+    );
+    // Still non-blocking with respect to the marker-check effect itself —
+    // no abnormal-termination banner gets stuck showing from this failure.
+    expect(result.current.abnormalTermination).toBeNull();
+
+    consoleError.mockRestore();
+  });
+
   it('a fresh successful startScan() clears a pre-existing abnormalTermination banner (regression: banner persisted indefinitely once shown)', async () => {
     localStorage.setItem(
       'graviscan:session-in-progress:exp-1:0',

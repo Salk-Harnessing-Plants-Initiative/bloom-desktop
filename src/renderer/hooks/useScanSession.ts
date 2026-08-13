@@ -776,9 +776,15 @@ export function useScanSession(
         // Corrupt marker — treat as absent rather than throwing.
         setAbnormalTermination(null);
       }
-    })().catch(() => {
+    })().catch((err: unknown) => {
       // A status-check failure here shouldn't surface as a blocking
-      // ERROR — this banner is an informational, non-blocking signal.
+      // ERROR — this banner is an informational, non-blocking signal —
+      // but it should still be logged, matching GraviScan.tsx's own
+      // sibling catches for this screen's other non-blocking async effects.
+      console.error(
+        'Failed to check abnormal-termination marker:',
+        err instanceof Error ? err.message : err
+      );
     });
     return () => {
       cancelled = true;

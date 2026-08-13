@@ -926,7 +926,7 @@ Decision 20).
       a plate whose `output_path` resolves outside the mocked output
       directory (both a `..`-traversal case and an absolute-escape case)
       rejects the whole call with `{ success: false, error: 'Path outside
-  scan directory' }`, and `sessionHandlers.startScan` is never called;
+scan directory' }`, and `sessionHandlers.startScan` is never called;
       a contained-but-not-yet-existing `output_path` (the ordinary case —
       the file doesn't exist until the scan runs) still succeeds, with
       `sessionHandlers.startScan` called using the validated/resolved path.
@@ -966,4 +966,24 @@ cleanup, no behavior change.
       (one of which, AccessionForm, happened not to flake this run),
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 30.3 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
+
+## 31. Log the swallowed abnormal-marker-check catch (found during /review-pr round 5)
+
+`/review-pr` found the Decision-10 marker-check effect's `.catch(() => {})`
+swallowed a `getScanStatus()` failure silently, inconsistent with
+`GraviScan.tsx`'s own sibling catches for this screen's other non-blocking
+async effects (both already `console.error` their failure).
+
+- [x] 31.1 Write a test in `tests/unit/hooks/useScanSession.test.ts`:
+      `getScanStatus()` rejecting during the marker-check effect logs via
+      `console.error`, and still leaves `abnormalTermination: null` (the
+      failure stays non-blocking).
+- [x] 31.2 Add a `console.error` call to that catch, matching
+      `GraviScan.tsx`'s own message style. Run 31.1's test green.
+- [x] 31.3 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1659 passed, same 5 pre-existing failure files,
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 31.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
