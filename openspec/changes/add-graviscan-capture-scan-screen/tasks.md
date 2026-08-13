@@ -1055,10 +1055,10 @@ consistency gaps. See design.md Decision 22 for full detail per item.
       malformed-input cases, a multi-scanner/multi-plate escape case, and
       the `getOutputDir()`-failure branch (matching this file's existing
       coverage pattern for its other path handlers).
-- [x] 32.14 Run `npm run lint && npx tsc --noEmit && npm run test:unit &&
-    npm run format:check` — confirm no regressions beyond the
-      already-documented pre-existing failures. **Result:** 1668 passed,
-      same 4-5 pre-existing/flaky failure files, zero new failures.
-      `tsc --noEmit`, lint, and format:check all clean.
+- [x] 32.14 Run lint, `tsc --noEmit`, the full unit suite, and
+      `format:check` — confirm no regressions beyond the already-documented
+      pre-existing failures. **Result:** 1668 passed, same 4-5
+      pre-existing/flaky failure files, zero new failures. `tsc --noEmit`,
+      lint, and format:check all clean.
 - [x] 32.15 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
