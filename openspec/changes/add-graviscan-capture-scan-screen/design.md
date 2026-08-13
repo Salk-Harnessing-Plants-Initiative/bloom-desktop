@@ -1030,6 +1030,37 @@ which is exactly the kind of "trusted-stale" shape this tier's Decision 1
 reducer rewrite was meant to eliminate; fixing both layers means neither one
 alone has to be perfectly relied upon.
 
+### Decision 18 — Distinguish an auto-corrected swap from a zero-incident run in the green banner
+
+The already-accepted "GraviScan QR Verification Result Banner" requirement
+(this same proposal) groups `verified` and `swapped` both under the green
+"QR Verification Complete" state, with no distinct wording for `swapped` —
+`/review-pr` (round 5) found this makes a real, audit-trailed plate-swap
+auto-correction (design.md Decision 2, point 5 — `verify-plates.ts` detects
+the swap, corrects the `GraviScan`/`GraviScanPlateAssignment` rows, and
+records what it corrected _from_) textually indistinguishable, in the one
+place an operator actually looks after a run, from a run with zero
+incidents at all.
+
+**Decision:** a `swapped` plate is still classified green — the swap
+_was_ successfully auto-corrected and needs no operator action, so this
+does not become an amber/red severity change — but when the batch includes
+any `swapped` result, the green banner's detail text additionally names how
+many plates were auto-corrected via swap-detection (e.g. "1 plate position
+was auto-corrected after a detected swap."), rather than the plain "Every
+plate verified correctly." used when no swap occurred. This gives the
+operator the same audit-awareness signal the backend already records,
+without contradicting the accepted requirement's severity classification
+(this is a refinement of the requirement's own wording, not a reversal of
+its green/amber/red grading).
+
+**Alternatives considered:** amber-grade any `swapped` result. Rejected —
+contradicts the already-accepted requirement text this proposal itself
+wrote, and a successfully auto-corrected swap is a materially different,
+lower-severity situation than the genuine amber causes (unreadable,
+needs_review, incorrect, lookup_failed), each of which needs some operator
+action a swap does not.
+
 ## Architecture
 
 ```

@@ -37,6 +37,24 @@ describe('QRVerificationBanner', () => {
     expect(screen.getByText(/QR Verification Complete/i)).toBeInTheDocument();
   });
 
+  it('names an auto-corrected swap in the green banner, distinct from a zero-incident run (regression: swapped fell through to the plain "everything verified" text, review-pr round 5)', () => {
+    render(
+      <QRVerificationBanner
+        results={[
+          plate({ status: 'verified' }),
+          plate({ plateIndex: '01', status: 'swapped' }),
+        ]}
+      />
+    );
+    const banner = screen.getByTestId('qr-verification-banner');
+    expect(banner.className).toContain('bg-green-50');
+    expect(screen.getByText(/QR Verification Complete/i)).toBeInTheDocument();
+    expect(screen.getByText(/auto-corrected/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/^Every plate verified correctly\.?$/i)
+    ).not.toBeInTheDocument();
+  });
+
   it('grades red ("Duplicate QR Codes Detected") when any plate has duplicate_qr, regardless of other statuses', () => {
     render(
       <QRVerificationBanner

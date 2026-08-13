@@ -83,13 +83,24 @@ export function QRVerificationBanner({ results }: QRVerificationBannerProps) {
     );
   }
 
+  // A swap is still a green (non-blocking) result — it was already
+  // successfully auto-corrected (design.md Decision 2, point 5) — but the
+  // detail text distinguishes it from a genuinely zero-incident run, since
+  // it's an audit-relevant event the operator should be able to see
+  // (design.md Decision 18).
+  const swappedCount = results.filter((r) => r.status === 'swapped').length;
+
   return (
     <div
       data-testid="qr-verification-banner"
       className="bg-green-50 border border-green-500 text-green-800 rounded p-3 text-sm"
     >
       <div className="font-semibold">QR Verification Complete</div>
-      <div>Every plate verified correctly.</div>
+      <div>
+        {swappedCount > 0
+          ? `${swappedCount} plate position${swappedCount === 1 ? '' : 's'} ${swappedCount === 1 ? 'was' : 'were'} auto-corrected after a detected swap.`
+          : 'Every plate verified correctly.'}
+      </div>
     </div>
   );
 }

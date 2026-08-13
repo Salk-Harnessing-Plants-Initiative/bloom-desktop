@@ -620,7 +620,12 @@ per-plate `verification_status` values:
   would wrongly tell the operator to _review_ a result rather than
   _retry_ the run).
 - **Green** ("QR Verification Complete") when every plate has status
-  `verified` or `swapped`.
+  `verified` or `swapped`. When any plate has status `swapped`, the
+  detail text additionally names how many plates were auto-corrected via
+  swap-detection, distinguishing an audit-trailed auto-correction from a
+  run with zero incidents at all — this does not change the banner's
+  green severity, since a detected swap was already successfully
+  corrected and needs no further operator action.
 
 `incorrect` and `lookup_failed` SHALL each render their own distinct label
 and detail text — neither SHALL be collapsed into the `unreadable` label,
@@ -673,6 +678,17 @@ priority order.
 - **WHEN** the verification banner renders
 - **THEN** it SHALL show the green, "QR Verification Complete" state naming
   the count of plates verified
+
+#### Scenario: An auto-corrected swap is visibly distinguished from a zero-incident run
+
+- **GIVEN** a completed scan's verification results include one plate with
+  status `swapped` and the rest `verified`, with no `duplicate_qr` plates
+- **WHEN** the verification banner renders
+- **THEN** it SHALL still show the green state (the swap was already
+  auto-corrected)
+- **AND** the detail text SHALL name that a plate position was
+  auto-corrected after a detected swap, distinct from the plain "Every
+  plate verified correctly" wording used when no swap occurred
 
 #### Scenario: Verification is invoked with the current wave number
 

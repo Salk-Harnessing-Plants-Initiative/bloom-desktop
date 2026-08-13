@@ -803,7 +803,7 @@ correct once a write has already landed (design.md Decision 16).
       instance shows the edited barcode — not a blank/reverted value from a
       read that raced ahead of the write.
 - [x] 25.2 Add a module-level `pendingWrites: Map<string,
-  Promise<UpsertManyResult>>` (keyed by
+Promise<UpsertManyResult>>` (keyed by
       `` `${experimentId}:${waveNumber}:${scannerId}:${plateIndex}` ``,
       deliberately module scope, not a `useRef` — a ref dies with its
       component instance, the exact lifetime a genuine unmount+remount
@@ -855,4 +855,27 @@ Decision 17).
       failures. **Result:** 1644 passed, same 5 pre-existing failure files,
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 26.6 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
+
+## 27. Distinguish an auto-corrected swap in the green QR-verification banner (TDD, found during /review-pr round 5)
+
+`/review-pr` found `QRVerificationBanner.tsx` has no case for `status:
+'swapped'` — it falls through to the plain green banner, indistinguishable
+from a zero-incident run (design.md Decision 18).
+
+- [x] 27.1 Write a failing test in
+      `tests/unit/components/QRVerificationBanner.test.tsx`: a batch with
+      one `swapped` plate and the rest `verified` (no `duplicate_qr`)
+      SHALL still render the green state, but with detail text naming that
+      a plate was auto-corrected after a detected swap — distinct from the
+      plain "Every plate verified correctly" text used when no swap
+      occurred.
+- [x] 27.2 Update `QRVerificationBanner.tsx`'s green-state branch to check
+      for any `swapped` result and render the swap-aware detail text when
+      present. Run 27.1's test green.
+- [x] 27.3 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1646 passed, same 5 pre-existing failure files,
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 27.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
