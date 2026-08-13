@@ -175,6 +175,34 @@ describe('GraviScan wiring module', () => {
       ).toBe('complete');
     });
 
+    it('markScanJobRecorded does not pollute Object.prototype via a "__proto__" key (prototype-pollution guard, review-pr round 5 follow-up)', () => {
+      graviSessionFns.setScanSession({
+        isActive: true,
+        jobs: { 'scanner1:00': { status: 'complete' } },
+      } as any);
+
+      graviSessionFns.markScanJobRecorded('__proto__');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((Object.prototype as any).status).toBeUndefined();
+      // A brand-new plain object must not have inherited a "status" field.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect(({} as any).status).toBeUndefined();
+    });
+
+    it('markScanJobRecorded does not pollute Object.prototype via a "constructor" key', () => {
+      graviSessionFns.setScanSession({
+        isActive: true,
+        jobs: { 'scanner1:00': { status: 'complete' } },
+      } as any);
+
+      expect(() =>
+        graviSessionFns.markScanJobRecorded('constructor')
+      ).not.toThrow();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((Object.prototype.constructor as any).status).toBeUndefined();
+    });
+
     it('markScanJobRecorded no-ops when scanSession is null', () => {
       expect(graviSessionFns.getScanSession()).toBeNull();
       expect(() =>

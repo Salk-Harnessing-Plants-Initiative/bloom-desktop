@@ -154,7 +154,18 @@ describe('preload database API — graviscan namespaces', () => {
       expect(mockInvoke).toHaveBeenCalledWith(
         'db:graviscanPlateAssignments:list',
         'e1',
-        's1'
+        's1',
+        undefined
+      );
+    });
+
+    it('list forwards an explicit waveNumber', async () => {
+      await exposedAPI.database.graviscanPlateAssignments.list('e1', 's1', 3);
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'db:graviscanPlateAssignments:list',
+        'e1',
+        's1',
+        3
       );
     });
 
@@ -169,7 +180,25 @@ describe('preload database API — graviscan namespaces', () => {
         'db:graviscanPlateAssignments:upsertMany',
         'e1',
         's1',
-        assignments
+        assignments,
+        undefined
+      );
+    });
+
+    it('upsertMany forwards an explicit waveNumber', async () => {
+      const assignments = [{ plate_index: '00' }];
+      await exposedAPI.database.graviscanPlateAssignments.upsertMany(
+        'e1',
+        's1',
+        assignments,
+        3
+      );
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'db:graviscanPlateAssignments:upsertMany',
+        'e1',
+        's1',
+        assignments,
+        3
       );
     });
   });

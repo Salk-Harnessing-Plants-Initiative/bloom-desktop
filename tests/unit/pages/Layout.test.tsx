@@ -71,6 +71,14 @@ describe('Layout nav links', () => {
       screen.queryByRole('link', { name: /configure scanner/i })
     ).not.toBeInTheDocument();
   });
+
+  it('renders a "Capture Scan" nav link pointing to /capture-scan in graviscan mode', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const link = screen.getByRole('link', { name: /^capture scan$/i });
+    expect(link).toHaveAttribute('href', '/capture-scan');
+  });
 });
 
 describe('Layout wedge banner wiring', () => {

@@ -20,11 +20,11 @@
       {
         "patterns": [
           {
-            "group": ["**/cylinderscan/**"],
+            "group": ["**/main/cylinderscan/**"],
             "message": "Shared code must not import from cylinderscan/. Only main.ts (the orchestrator) may import mode-specific modules."
           },
           {
-            "group": ["**/graviscan/**"],
+            "group": ["**/main/graviscan/**"],
             "message": "Shared code must not import from graviscan/. Only main.ts (the orchestrator) may import mode-specific modules."
           }
         ]

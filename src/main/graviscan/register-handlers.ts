@@ -24,6 +24,7 @@ import * as scannerUpsert from './scanner-upsert';
 import * as verifyPlatesHandlers from './verify-plates';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
+import { isValidWaveNumber } from '../database-handlers';
 
 let registered = false;
 
@@ -277,6 +278,60 @@ export function registerGraviScanHandlers(
     if (current?.isActive) {
       return { success: false, error: 'Scan already in progress' };
     }
+
+    // Path-containment check (design.md Decision 20) — every plate's
+    // output_path is renderer-constructed from experimentId/waveNumber/
+    // scannerId/plateIndex with no containment guarantee of its own.
+    // Confirm each one still resolves inside the configured scan output
+    // directory before the coordinator/Python worker ever writes to it,
+    // mirroring every read-side path handler already in this file
+    // (ensure-dir/list-scan-files above). The file doesn't exist yet at
+    // this point — the whole reason for `AllowingMissing`.
+    const outputDirResult = imageHandlers.getOutputDir();
+    if (!outputDirResult.success || !outputDirResult.path) {
+      return {
+        success: false,
+        error: 'Cannot determine scan directory for path validation',
+      };
+    }
+    // Malformed-input guard: a `scanner` that isn't an object, a
+    // non-array `plates`, or a non-string `output_path` would otherwise
+    // throw synchronously inside `path.resolve()`/the array iteration
+    // below — before `wrapHandler()` gets a chance to turn it into the
+    // uniform `{success:false, error}` shape every other failure here
+    // uses, leaking an internal error message through this boundary
+    // instead.
+    const validatedScanners: typeof params.scanners = [];
+    for (const scanner of params?.scanners ?? []) {
+      if (!scanner || !Array.isArray(scanner.plates)) {
+        return {
+          success: false,
+          error:
+            'Malformed start-scan request: each scanner must include a plates array',
+        };
+      }
+      const validatedPlates: (typeof scanner.plates)[number][] = [];
+      for (const plate of scanner.plates) {
+        if (!plate || typeof plate.output_path !== 'string') {
+          return {
+            success: false,
+            error:
+              'Malformed start-scan request: each plate must include an output_path string',
+          };
+        }
+        const contained = resolveContainedPathAllowingMissing(
+          outputDirResult.path,
+          plate.output_path
+        );
+        if (!contained.ok) {
+          return { success: false, error: OUTSIDE_SCAN_DIR };
+        }
+        validatedPlates.push({ ...plate, output_path: contained.path });
+      }
+      validatedScanners.push({ ...scanner, plates: validatedPlates });
+    }
+    params = { ...params, scanners: validatedScanners };
+
     // Lazy coordinator creation — first start-scan creates + wires the coordinator
     let coordinator = getCoordinator();
     if (!coordinator && createCoordinator) {
@@ -481,7 +536,12 @@ export function registerGraviScanHandlers(
   // --- Post-scan QR verification ---
   ipcMain.handle(
     'graviscan:verify-plates',
-    (_event, plates: VerifyPlateInput[], experimentId?: unknown) => {
+    (
+      _event,
+      plates: VerifyPlateInput[],
+      experimentId?: unknown,
+      waveNumber?: unknown
+    ) => {
       // Every DB write verifyPlates() performs is keyed on
       // (experiment_id, scanner_id, plate_index). Without an experimentId
       // those writes could hit a *different* experiment's row for the same
@@ -499,6 +559,24 @@ export function registerGraviScanHandlers(
         const error =
           'graviscan:verify-plates requires an experimentId (a non-empty ' +
           'string) — refusing to run verification without an experiment scope';
+        console.error('[GraviScan IPC]', error);
+        return Promise.resolve({
+          success: false,
+          error,
+          results: [],
+          swaps: [],
+        });
+      }
+
+      // waveNumber is optional, but if the caller supplied *something*, it
+      // must be a valid non-negative integer — same validation as every
+      // other waveNumber boundary in this codebase (isValidWaveNumber()),
+      // checked here at the IPC boundary too, not only inside
+      // verifyPlates() itself.
+      if (waveNumber !== undefined && !isValidWaveNumber(waveNumber)) {
+        const error =
+          'graviscan:verify-plates requires waveNumber (when supplied) to ' +
+          'be a non-negative integer';
         console.error('[GraviScan IPC]', error);
         return Promise.resolve({
           success: false,
@@ -558,7 +636,8 @@ export function registerGraviScanHandlers(
         plates,
         experimentId,
         outputDirResult.path,
-        onProgress
+        onProgress,
+        waveNumber as number | undefined
       );
     }
   );

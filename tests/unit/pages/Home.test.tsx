@@ -95,6 +95,21 @@ describe('Home page', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/scientists');
   });
 
+  it('GraviScan step 5 (Capture Scan) navigates to /capture-scan, now a real route rather than a Home redirect', async () => {
+    render(
+      <MemoryRouter>
+        <Home mode="graviscan" />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Workflow Steps')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('workflow-step-5'));
+    expect(mockNavigate).toHaveBeenCalledWith('/capture-scan');
+  });
+
   it('redirects to /machine-config when no config exists', async () => {
     mockConfigAPI.exists.mockResolvedValue(false);
 
