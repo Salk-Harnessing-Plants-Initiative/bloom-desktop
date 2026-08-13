@@ -879,3 +879,22 @@ from a zero-incident run (design.md Decision 18).
       zero new failures. `tsc --noEmit` and lint both clean.
 - [x] 27.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 28. Gate "Start Scan" on the interval-validation error (TDD, found during /review-pr round 5)
+
+`/review-pr` found `intervalError` is displayed but never disables "Start
+Scan" — an operator can click Start anyway while the validation error is
+showing (design.md Decision 19).
+
+- [x] 28.1 Write a failing test in
+      `tests/unit/components/ScanControlSection.test.tsx`: with
+      `continuousMode.isContinuous: true` and `validate()` returning an
+      error message, the "Start Scan" button is disabled.
+- [x] 28.2 Add `intervalError` to "Start Scan"'s `disabled` condition in
+      `ScanControlSection.tsx`. Run 28.1's test green.
+- [x] 28.3 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1648 passed, same 5 pre-existing failure files,
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 28.4 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.

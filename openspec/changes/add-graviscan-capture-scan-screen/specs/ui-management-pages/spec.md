@@ -339,9 +339,12 @@ per-scanner progress resets from 100% back to 0% at a cycle boundary.
 
 - **GIVEN** the operator has set the interval field to `0` (e.g. via a
   malformed input bypassing the form's own clamp)
-- **WHEN** the operator clicks "Start" for a continuous scan
+- **WHEN** the operator views the Capture Scan screen
 - **THEN** the screen SHALL show an inline validation error
-- **AND** `startScan()` SHALL NOT be called with an interval of `0`
+- **AND** the "Start Scan" control SHALL be disabled while that error is
+  showing
+- **AND** `startScan()` SHALL NOT be called with an interval of `0`, even
+  if the operator clicks where "Start Scan" would otherwise be
 
 #### Scenario: Start Scan is disabled while a scanner has an active wedge
 

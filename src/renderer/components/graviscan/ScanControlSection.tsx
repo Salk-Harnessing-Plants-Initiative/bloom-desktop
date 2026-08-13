@@ -185,9 +185,15 @@ export function ScanControlSection({
         <button
           type="button"
           onClick={() => void scanSession.startScan()}
-          disabled={!scanSession.canStartScan || scanSession.isScanning}
+          disabled={
+            !scanSession.canStartScan ||
+            scanSession.isScanning ||
+            !!intervalError
+          }
           className={`px-6 py-2 rounded-lg font-semibold shadow-sm transition-all ${
-            !scanSession.canStartScan || scanSession.isScanning
+            !scanSession.canStartScan ||
+            scanSession.isScanning ||
+            !!intervalError
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md'
           }`}

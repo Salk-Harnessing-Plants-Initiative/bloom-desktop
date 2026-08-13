@@ -178,6 +178,26 @@ describe('ScanControlSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('disables "Start Scan" while the interval-validation error is showing (regression: error was displayed but did not block starting, review-pr round 5)', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({
+          continuousMode: continuousMode({
+            isContinuous: true,
+            validate: vi
+              .fn()
+              .mockReturnValue(
+                'Interval must be a positive number of minutes.'
+              ),
+          }),
+        })}
+      />
+    );
+    expect(
+      screen.getByRole('button', { name: /^start scan$/i })
+    ).toBeDisabled();
+  });
+
   it('renders the overtime banner when the coordinator fires an overtime event', () => {
     render(
       <ScanControlSection

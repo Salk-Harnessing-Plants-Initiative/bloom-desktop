@@ -1061,6 +1061,30 @@ lower-severity situation than the genuine amber causes (unreadable,
 needs_review, incorrect, lookup_failed), each of which needs some operator
 action a swap does not.
 
+### Decision 19 — Gate "Start Scan" on the interval-validation error, not just display it
+
+The already-accepted "GraviScan Scan Session Controls" requirement (this
+proposal) already says "A zero-or-negative interval SHALL be rejected with
+an inline validation message before `startScan()` is ever called," and its
+own scenario says `startScan()` SHALL NOT be called with an interval of
+`0`. `/review-pr` (round 5) found `ScanControlSection.tsx` renders
+`continuousMode.validate()`'s error inline (`intervalError`, line 89-93)
+but never uses it to disable "Start Scan" — the button's `disabled`
+condition only checks `!scanSession.canStartScan || scanSession.isScanning`.
+An operator can click "Start" anyway while the error is visibly displayed,
+and `startScan()` receives the invalid interval unchanged (it only avoids
+crashing there via `useScanSession`'s own `intervalSeconds > 0 ? ... : 1`
+fallback for `totalCycles` — the invalid `intervalSeconds` value itself
+still reaches the backend's `startScan()` payload). No test at the
+component level ever exercised "clicking Start while the interval error is
+showing," which is why this gap went unnoticed against the already-accepted
+requirement text.
+
+**Decision:** "Start Scan"'s `disabled` condition also includes
+`intervalError` (truthy only while `continuousMode.isContinuous` and
+`validate()` returns a message). This makes the button's actual behavior
+match what the requirement already specified.
+
 ## Architecture
 
 ```
