@@ -1378,6 +1378,51 @@ describe('useScanSession', () => {
     expect(plates.map((p) => p.plateIndex).sort()).toEqual(['00', '01']);
   });
 
+  // ── achieved_resolution persistence (task 24.1, design.md Decision 15) ──
+
+  it("persists the scan-complete event's achieved_resolution, not the requested DPI (regression: recordCompletedJob wrote ctx.resolution unconditionally)", async () => {
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ resolution: 1200 })),
+      { wrapper: wedgeWrapper }
+    );
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+      achieved_resolution: 1180,
+    });
+
+    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
+    expect(graviscansCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ resolution: 1180 })
+    );
+  });
+
+  it('falls back to the requested resolution when a scan-complete event omits achieved_resolution', async () => {
+    const { result } = renderHook(
+      () => useScanSession(baseParams({ resolution: 1200 })),
+      { wrapper: wedgeWrapper }
+    );
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      imagePath: '/out/00.tiff',
+    });
+
+    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
+    expect(graviscansCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ resolution: 1200 })
+    );
+  });
+
   it('a failed database.graviscans.create() (recordCompletedJob) surfaces an error rather than failing silently', async () => {
     graviscansCreate.mockRejectedValue(new Error('disk full'));
     const { result } = renderHook(() => useScanSession(baseParams()), {

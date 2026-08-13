@@ -749,7 +749,7 @@ Decision 14).
       fire-and-forget with its own `.catch(() => {})`. In the RESTORE effect,
       populate `completedJobsRef.current` from any `status.jobs` entry whose
       status is `'recorded'` or `'complete'`, using `job.imagePath ??
-    job.outputPath` since the backend never separately stores the real
+  job.outputPath` since the backend never separately stores the real
       captured path. Run 23.1's tests green.
 - [x] 23.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
       confirm no regressions beyond the already-documented pre-existing
@@ -758,4 +758,30 @@ Decision 14).
       scan-coordinator path-separator), zero new failures. `tsc --noEmit`
       and lint both clean.
 - [x] 23.5 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
+
+## 24. Persist achieved_resolution, not the requested DPI (TDD, found during /review-pr round 5)
+
+`/review-pr` found `recordCompletedJob` writes the pre-scan requested DPI to
+`GraviScan.resolution` instead of the scan's actual `achieved_resolution`,
+contradicting `graviscansCreate()`'s own doc comment warning about exactly
+this (design.md Decision 15).
+
+- [x] 24.1 Write a failing test in `tests/unit/hooks/useScanSession.test.ts`:
+      fire a `scan-complete` event with `achieved_resolution: 1180` while the
+      session's requested `resolution` is `1200` — confirm
+      `database.graviscans.create(...)` is called with `resolution: 1180`,
+      not `1200`. Also cover: an event that omits `achieved_resolution`
+      falls back to the requested resolution unchanged (no regression for a
+      hypothetical event shape that lacks the field).
+- [x] 24.2 Add a `resolveAchievedResolution(event)` helper alongside
+      `resolveImagePath()`/`resolveCycleNumber()`. Add a fourth parameter to
+      `recordCompletedJob` and pass `achievedResolution ?? ctx.resolution` as
+      the `graviscans.create()` payload's `resolution` field. Run 24.1's
+      tests green.
+- [x] 24.3 Run `npm run lint && npx tsc --noEmit && npm run test:unit` —
+      confirm no regressions beyond the already-documented pre-existing
+      failures. **Result:** 1640 passed, same 5 pre-existing failure files,
+      zero new failures. `tsc --noEmit` and lint both clean.
+- [x] 24.4 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.

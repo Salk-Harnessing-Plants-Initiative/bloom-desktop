@@ -898,6 +898,44 @@ which keys are no longer outstanding, a binary signal; `runVerification`
 additionally needs each completed job's actual barcode/plateIndex/imagePath
 payload, which only a real per-job record (not just its key) can supply.
 
+### Decision 15 — Persist the achieved resolution, not the requested one, to `GraviScan.resolution`
+
+`/review-pr` (round 5) found `recordCompletedJob` writes `resolution:
+ctx.resolution` — the requested DPI value from the continuous-mode/scan-setup
+form — to every completed job's `graviscans.create()` call.
+`database-handlers.ts:123-136`'s own doc comment on `graviscansCreate()`
+explicitly warns future callers writing this field from a completed scan to
+source it from that scan's `achieved_resolution`, not the pre-scan requested
+value — otherwise, per that comment, "the #232 fix never reaches the
+queryable database record." `useScanSession` (this tier) is exactly that
+first real caller the comment was written for, and it doesn't follow its
+own warning. The already-accepted "GraviScan Scan-Worker Achieved-Resolution
+Readback" requirement (`scanning/spec.md:3574`) guarantees the Python worker
+emits `achieved_resolution` on every `scan-complete` event
+(`scanner-subprocess.ts:136`'s `ScanWorkerEvent.achieved_resolution?:
+number`, spread verbatim through the relay chain like every other
+per-job field) — the value is already available at the exact point
+`recordCompletedJob` runs, it's just never read.
+
+**Decision:** `recordCompletedJob` gains a fourth parameter,
+`achievedResolution: number | undefined`, read at the `onScanComplete` call
+site via a new `resolveAchievedResolution(event)` helper (matching the file's
+existing `resolveImagePath()`/`resolveCycleNumber()` pattern — no camelCase
+dual exists for this field either, per the Python worker only ever emitting
+snake_case). The `graviscans.create()` payload's `resolution` field becomes
+`achievedResolution ?? ctx.resolution` — falling back to the frozen session's
+requested DPI (design.md Decision 13) only if a future/legacy event
+genuinely omits the optional field, never as the normal case.
+
+**Alternatives considered:** read `achieved_resolution` inside
+`recordCompletedJob` itself from `completedJobsRef.current[key]` (already
+populated with `{...job, status: 'complete', imagePath}` at the call site).
+Rejected — that object is typed `ScanSessionJob`, which has no
+`achievedResolution` field and isn't the right place to bolt one on just to
+thread a single completion-time-only value through; passing the raw event's
+resolved value as its own parameter is more direct and matches how
+`imagePath`/`cycleNumber` already reach this function.
+
 ## Architecture
 
 ```

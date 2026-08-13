@@ -426,6 +426,11 @@ jobs that had already completed before the remount from the restored
 `pendingJobs`, and SHALL make each such job available to the eventual QR
 verification call the same as a job that completes after the remount.
 
+Each completed job's persisted `GraviScan.resolution` value SHALL be the
+resolution the scan actually achieved (the `scan-complete` event's
+`achieved_resolution` field), not the pre-scan requested DPI — falling back
+to the requested value only if a given event omits the field.
+
 This restoration SHALL NOT be presented as surviving a full application
 restart: the underlying `ScanSessionState` is an in-memory main-process
 value with no disk/DB rehydration on app launch, so a scan in progress at
@@ -464,6 +469,14 @@ upload).
   `/capture-scan`, and the session subsequently ends normally
 - **THEN** the QR verification call SHALL include all 12 jobs' plates, not
   only the 6 that completed after the remount
+
+#### Scenario: A completed job's persisted resolution reflects what the scanner actually achieved
+
+- **GIVEN** a scan session's requested resolution is 1200 DPI
+- **WHEN** a job's `scan-complete` event reports `achieved_resolution: 1180`
+  (the SANE device rounded the request)
+- **THEN** `database.graviscans.create(...)` SHALL be called with
+  `resolution: 1180`, not `1200`
 
 #### Scenario: A full app restart does not restore an in-progress scan
 

@@ -89,6 +89,18 @@ function resolveCycleNumber(event: Record<string, unknown>): number | null {
   return null;
 }
 
+/** The Python worker emits `achieved_resolution` only on `scan-complete` —
+ * the SANE device's actually-applied resolution, which may differ from the
+ * pre-scan requested value (`database-handlers.ts:123-136`'s doc comment on
+ * `graviscansCreate()`). No camelCase dual exists for this field either. */
+function resolveAchievedResolution(
+  event: Record<string, unknown>
+): number | undefined {
+  return typeof event.achieved_resolution === 'number'
+    ? event.achieved_resolution
+    : undefined;
+}
+
 function jobKey(scannerId: string, plateIndex: string): string {
   return `${scannerId}:${plateIndex}`;
 }
@@ -422,7 +434,8 @@ export function useScanSession(
     async (
       job: ScanSessionJob,
       imagePath: string,
-      cycleNumber: number | null
+      cycleNumber: number | null,
+      achievedResolution: number | undefined
     ) => {
       const ctx = sessionContextRef.current;
       if (!ctx?.experimentId || !ctx.phenotyperId) return;
@@ -439,7 +452,10 @@ export function useScanSession(
         custom_note: job.customNote ?? null,
         path: imagePath,
         grid_mode: job.gridMode,
-        resolution: ctx.resolution,
+        // The scan's actually-achieved resolution (design.md Decision 15),
+        // not the pre-scan requested value — falls back to the requested
+        // value only if a given event genuinely omits the field.
+        resolution: achievedResolution ?? ctx.resolution,
         format: 'tiff',
       });
     },
@@ -502,6 +518,7 @@ export function useScanSession(
 
         const imagePath = resolveImagePath(data);
         const cycleNumber = resolveCycleNumber(data);
+        const achievedResolution = resolveAchievedResolution(data);
 
         completedJobsRef.current[key] = {
           ...job,
@@ -513,7 +530,7 @@ export function useScanSession(
         // Always recorded, even on a duplicated/retried event for a job
         // already removed from `pendingJobs` — the backend's own upsert is
         // what makes the repeat safe (tasks.md 12.3), not a hook-side guard.
-        void recordCompletedJob(job, imagePath, cycleNumber)
+        void recordCompletedJob(job, imagePath, cycleNumber, achievedResolution)
           .then(() => {
             // Advances the backend's own per-job status past 'pending' so a
             // later remount's RESTORE effect can tell this job apart from
