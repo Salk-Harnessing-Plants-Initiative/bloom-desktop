@@ -1,19 +1,31 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { PythonStatus } from './components/PythonStatus';
-import {
-  WorkflowSteps,
-  cylinderScanSteps,
-  graviScanSteps,
-} from './components/WorkflowSteps';
+import { WorkflowSteps, graviScanSteps } from './components/WorkflowSteps';
+import { CylinderScanWorkflowGuide } from './components/CylinderScanWorkflowGuide';
+import { countUploadStatuses } from '../utils/upload-status';
 
 interface HomeProps {
   mode?: string | null;
 }
 
+interface TodaysActivityScan {
+  id: string;
+  plant_id: string;
+  capture_date: Date | string;
+  experiment?: { name: string } | null;
+  images: { status: string }[];
+}
+
 export function Home({ mode = null }: HomeProps) {
   const navigate = useNavigate();
   const [isCheckingConfig, setIsCheckingConfig] = useState(true);
+  const [recentScans, setRecentScans] = useState<TodaysActivityScan[] | null>(
+    null
+  );
+  const [recentScansError, setRecentScansError] = useState(false);
+  const [failedUploadCount, setFailedUploadCount] = useState(0);
+  const [failedUploadCountError, setFailedUploadCountError] = useState(false);
 
   // Check if this is first run (no config exists)
   useEffect(() => {
@@ -33,6 +45,54 @@ export function Home({ mode = null }: HomeProps) {
     checkFirstRun();
   }, [navigate]);
 
+  // Today's Activity is CylinderScan-only, matching PythonStatus's existing
+  // mode gate — leaves GraviScan's Home screen (and its render path) untouched.
+  useEffect(() => {
+    if (mode !== 'cylinderscan') return;
+    let mounted = true;
+    window.electron.database.scans
+      .getRecent({ limit: 10 })
+      .then((result) => {
+        if (!mounted) return;
+        if (result.success && result.data) {
+          setRecentScans(result.data);
+        } else {
+          setRecentScansError(true);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load today's activity:", error);
+        if (mounted) setRecentScansError(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [mode]);
+
+  // Date-unscoped failed-upload indicator — separate from Today's Activity's
+  // today-only scoping, so a stale failed upload from a prior day still surfaces.
+  useEffect(() => {
+    if (mode !== 'cylinderscan') return;
+    let mounted = true;
+    window.electron.database.scans
+      .getFailedUploadCount()
+      .then((result) => {
+        if (!mounted) return;
+        if (result.success && result.data) {
+          setFailedUploadCount(result.data.failedCount);
+        } else {
+          setFailedUploadCountError(true);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to load failed-upload count:', error);
+        if (mounted) setFailedUploadCountError(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [mode]);
+
   // Show loading while checking config
   if (isCheckingConfig) {
     return (
@@ -42,8 +102,20 @@ export function Home({ mode = null }: HomeProps) {
     );
   }
 
-  const steps = mode === 'graviscan' ? graviScanSteps : cylinderScanSteps;
   const modeLabel = mode === 'graviscan' ? 'GraviScan' : 'CylinderScan';
+  const uploadCounts = recentScans
+    ? recentScans.reduce(
+        (totals, scan) => {
+          const counts = countUploadStatuses(scan.images);
+          return {
+            pending: totals.pending + counts.pending,
+            failed: totals.failed + counts.failed,
+            uploaded: totals.uploaded + counts.uploaded,
+          };
+        },
+        { pending: 0, failed: 0, uploaded: 0 }
+      )
+    : null;
 
   return (
     <div className="p-8">
@@ -52,10 +124,91 @@ export function Home({ mode = null }: HomeProps) {
         {modeLabel} workflow — follow these steps to capture and manage scans.
       </p>
 
-      <h2 className="text-xl font-semibold mb-4 text-gray-700">
-        Workflow Steps
-      </h2>
-      <WorkflowSteps steps={steps} />
+      {mode === 'graviscan' ? (
+        <>
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">
+            Workflow Steps
+          </h2>
+          <WorkflowSteps steps={graviScanSteps} />
+        </>
+      ) : (
+        <CylinderScanWorkflowGuide />
+      )}
+
+      {mode === 'cylinderscan' && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">
+            Today&apos;s Activity
+          </h2>
+
+          {failedUploadCountError && (
+            <p className="mb-4 text-sm text-red-600">
+              Couldn&apos;t check for failed uploads. Try reloading the app.
+            </p>
+          )}
+
+          {failedUploadCount > 0 && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+              <span className="text-red-700 font-medium">
+                {failedUploadCount} failed upload
+                {failedUploadCount === 1 ? '' : 's'} need attention
+              </span>
+              <Link
+                to="/browse-scans"
+                className="text-lime-700 hover:text-lime-800 font-medium"
+              >
+                Browse Scans →
+              </Link>
+            </div>
+          )}
+
+          {recentScansError ? (
+            <p className="text-sm text-red-600">
+              Couldn&apos;t load today&apos;s activity. Try reloading the app.
+            </p>
+          ) : recentScans === null ? (
+            <p className="text-sm text-gray-500">Loading...</p>
+          ) : recentScans.length === 0 ? (
+            <p className="text-sm text-gray-500">No scans captured today.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex gap-4 text-sm">
+                <span className="text-green-600">
+                  {uploadCounts!.uploaded} uploaded
+                </span>
+                <span className="text-yellow-600">
+                  {uploadCounts!.pending} pending
+                </span>
+                <span className="text-red-600">
+                  {uploadCounts!.failed} failed
+                </span>
+              </div>
+              {recentScans.length === 10 && (
+                <p className="text-xs text-gray-400">
+                  Showing the 10 most recent scans — counts above may not
+                  reflect all of today&apos;s activity if more were captured.
+                </p>
+              )}
+              <ul className="divide-y divide-gray-100 bg-white rounded-lg border border-gray-200">
+                {recentScans.map((scan) => (
+                  <li
+                    key={scan.id}
+                    className="p-3 flex justify-between items-center text-sm"
+                  >
+                    <span className="font-medium">{scan.plant_id}</span>
+                    <span className="text-gray-500">
+                      {scan.experiment?.name || '-'}
+                    </span>
+                    <span className="text-gray-500">
+                      {new Date(scan.capture_date).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Python Backend Status */}
       <div className="mt-8">

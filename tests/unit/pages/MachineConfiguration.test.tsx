@@ -882,3 +882,77 @@ describe('MachineConfiguration Page', () => {
     });
   });
 });
+
+describe('MachineConfiguration color palette', () => {
+  it('uses focus:ring-lime-500 on text inputs, not blue', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
+    });
+
+    const cameraIp = screen.getByLabelText(/Camera IP/i);
+    const scansDir = screen.getByLabelText(/Scans Directory/i);
+    const username = screen.getByLabelText(/Username/i);
+    const apiUrl = screen.getByLabelText(/API URL/i);
+
+    [cameraIp, scansDir, username, apiUrl].forEach((el) => {
+      expect(el.className).toContain('focus:ring-lime-500');
+      expect(el.className).not.toContain('focus:ring-blue-500');
+    });
+  });
+
+  it('uses lime on the checkboxes and primary buttons, not blue', async () => {
+    mockConfigAPI.get.mockResolvedValue({
+      config: {
+        scanner_mode: 'cylinderscan',
+        scanner_name: 'PBIOBScanner',
+        camera_ip_address: '10.0.0.50',
+        scans_dir: '/data/scans',
+        bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: 'test@salk.edu',
+        bloom_scanner_password: '********',
+        bloom_anon_key: 'testkey123',
+      },
+      hasCredentials: true,
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Save Configuration/i })
+      ).toBeInTheDocument();
+    });
+
+    const saveButton = screen.getByRole('button', {
+      name: /Save Configuration/i,
+    });
+    expect(saveButton.className).toContain('bg-lime-700');
+    expect(saveButton.className).not.toContain('bg-blue-600');
+
+    const fetchButton = screen.getByRole('button', {
+      name: /Fetch Scanners from Bloom/i,
+    });
+    expect(fetchButton.className).toContain('bg-lime-700');
+    expect(fetchButton.className).not.toContain('bg-blue-600');
+  });
+});
+
+describe('MachineConfiguration scanner-mode radio color', () => {
+  it('uses text-lime-700 (accent color) on the scanner-mode radio buttons, not blue', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByText('CylinderScan')).toBeInTheDocument();
+    });
+
+    const cylinderRadio = screen.getByDisplayValue('cylinderscan');
+    const graviRadio = screen.getByDisplayValue('graviscan');
+
+    [cylinderRadio, graviRadio].forEach((el) => {
+      expect(el.className).toContain('text-lime-700');
+      expect(el.className).not.toContain('text-blue-600');
+    });
+  });
+});

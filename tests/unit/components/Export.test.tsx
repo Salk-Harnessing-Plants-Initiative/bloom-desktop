@@ -422,4 +422,15 @@ describe('Export page', () => {
     await pickDestination(user);
     expect(screen.getByRole('button', { name: /Export 1 scan/ })).toBeEnabled();
   });
+
+  it('uses lime on the Export button, not blue (Tier 4 style/UX parity — Export.tsx is an unconditional, both-mode route like BrowseScans.tsx/ScanPreview.tsx)', async () => {
+    mockList([makeScan('a')]);
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    const exportButton = screen.getByRole('button', { name: /Export 0 scan/ });
+    expect(exportButton.className).toContain('bg-lime-700');
+    expect(exportButton.className).toContain('hover:bg-lime-800');
+    expect(exportButton.className).not.toMatch(/bg-blue-600|hover:bg-blue-700/);
+  });
 });

@@ -583,3 +583,119 @@ describe('AccessionFileUpload', () => {
     });
   });
 });
+
+describe('AccessionFileUpload color palette', () => {
+  it('uses lime file-selector-button styling on the file input, not blue', () => {
+    render(<AccessionFileUpload onUploadComplete={vi.fn()} />);
+
+    const input = screen.getByTestId('file-input');
+    expect(input.className).toContain('file:bg-lime-50');
+    expect(input.className).toContain('file:text-lime-700');
+    expect(input.className).toContain('hover:file:bg-lime-100');
+    expect(input.className).not.toMatch(
+      /file:bg-blue-50|file:text-blue-700|hover:file:bg-blue-100/
+    );
+  });
+
+  it('uses focus:ring-lime-500 on the sheet and accession selectors, not blue (Plant ID stays green)', async () => {
+    render(<AccessionFileUpload onUploadComplete={vi.fn()} />);
+
+    const file = createMultiSheetExcelFile('multi.xlsx', [
+      {
+        name: 'Sheet1',
+        data: [
+          ['A', 'B'],
+          ['1', '2'],
+        ],
+      },
+      {
+        name: 'Sheet2',
+        data: [
+          ['C', 'D'],
+          ['3', '4'],
+        ],
+      },
+    ]);
+
+    const input = screen.getByTestId('file-input');
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sheet-selector')).toBeInTheDocument();
+    });
+
+    const sheetSelector = screen.getByTestId('sheet-selector');
+    expect(sheetSelector.className).toContain('focus:ring-lime-500');
+    expect(sheetSelector.className).not.toContain('focus:ring-blue-500');
+
+    const accessionSelector = screen.getByTestId('accession-selector');
+    expect(accessionSelector.className).toContain('focus:ring-lime-500');
+    expect(accessionSelector.className).not.toContain('focus:ring-blue-500');
+
+    // Plant ID selector keeps its existing green focus ring (not part of the blue sweep)
+    const plantSelector = screen.getByTestId('plant-id-selector');
+    expect(plantSelector.className).toContain('focus:ring-green-500');
+  });
+
+  it('highlights the selected Accession column in lime, not blue (Plant ID stays green)', async () => {
+    render(<AccessionFileUpload onUploadComplete={vi.fn()} />);
+
+    const file = createMockExcelFile('test.xlsx', [
+      ['Plant', 'Genotype'],
+      ['P1', 'G1'],
+    ]);
+
+    const input = screen.getByTestId('file-input');
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('plant-id-selector')).toBeInTheDocument();
+    });
+
+    await userEvent.selectOptions(
+      screen.getByTestId('plant-id-selector'),
+      'Plant'
+    );
+    await userEvent.selectOptions(
+      screen.getByTestId('accession-selector'),
+      'Genotype'
+    );
+
+    const previewTable = screen.getByTestId('preview-table');
+    const genotypeHeader = Array.from(previewTable.querySelectorAll('th')).find(
+      (th) => th.textContent?.includes('Genotype')
+    );
+
+    expect(genotypeHeader?.className).toContain('bg-lime-200');
+    expect(genotypeHeader?.className).not.toContain('bg-blue-200');
+  });
+
+  it('uses lime on the enabled Upload button, not blue', async () => {
+    render(<AccessionFileUpload onUploadComplete={vi.fn()} />);
+
+    const file = createMockExcelFile('test.xlsx', [
+      ['Plant', 'Genotype'],
+      ['P1', 'G1'],
+    ]);
+
+    const input = screen.getByTestId('file-input');
+    await userEvent.upload(input, file);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('plant-id-selector')).toBeInTheDocument();
+    });
+
+    await userEvent.selectOptions(
+      screen.getByTestId('plant-id-selector'),
+      'Plant'
+    );
+    await userEvent.selectOptions(
+      screen.getByTestId('accession-selector'),
+      'Genotype'
+    );
+
+    const uploadButton = screen.getByTestId('upload-button');
+    expect(uploadButton.className).toContain('bg-lime-700');
+    expect(uploadButton.className).not.toContain('bg-blue-500');
+  });
+});

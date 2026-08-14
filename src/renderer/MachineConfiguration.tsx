@@ -246,7 +246,7 @@ export function MachineConfiguration() {
                     scanner_mode: 'cylinderscan',
                   }))
                 }
-                className="w-4 h-4 text-blue-600"
+                className="w-4 h-4 text-lime-700"
               />
               <span className="text-gray-700">CylinderScan</span>
             </label>
@@ -262,7 +262,7 @@ export function MachineConfiguration() {
                     scanner_mode: 'graviscan',
                   }))
                 }
-                className="w-4 h-4 text-blue-600"
+                className="w-4 h-4 text-lime-700"
               />
               <span className="text-gray-700">GraviScan</span>
             </label>
@@ -296,7 +296,7 @@ export function MachineConfiguration() {
                     bloom_api_url: e.target.value,
                   }))
                 }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 ${
                   errors.bloom_api_url ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="https://api.bloom.salk.edu/proxy"
@@ -325,7 +325,7 @@ export function MachineConfiguration() {
                     bloom_scanner_username: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
                 placeholder="scanner@salk.edu"
               />
             </div>
@@ -347,7 +347,7 @@ export function MachineConfiguration() {
                     bloom_scanner_password: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
                 placeholder="Leave blank to keep existing"
               />
             </div>
@@ -369,7 +369,7 @@ export function MachineConfiguration() {
                     bloom_anon_key: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
                 placeholder="eyJhbGci..."
               />
             </div>
@@ -385,7 +385,7 @@ export function MachineConfiguration() {
                   !config.bloom_api_url ||
                   scannerListLoading
                 }
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {scannerListLoading ? (
                   <>
@@ -484,7 +484,7 @@ export function MachineConfiguration() {
                       scanner_name: e.target.value,
                     }))
                   }
-                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 ${
                     errors.scanner_name ? 'border-red-500' : 'border-gray-300'
                   }`}
                   disabled={scannerList.length === 0}
@@ -539,7 +539,7 @@ export function MachineConfiguration() {
                     scans_dir: e.target.value,
                   }))
                 }
-                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 ${
                   errors.scans_dir ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="Default scans directory"
@@ -584,7 +584,7 @@ export function MachineConfiguration() {
                       }));
                       setCameraTestStatus('idle');
                     }}
-                    className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 ${
                       errors.camera_ip_address
                         ? 'border-red-500'
                         : 'border-gray-300'
@@ -651,7 +651,7 @@ export function MachineConfiguration() {
                       setConfig((prev) => ({ ...prev, num_frames: val }));
                     }
                   }}
-                  className={`w-full px-3 py-2 border ${errors.num_frames ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  className={`w-full px-3 py-2 border ${errors.num_frames ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500`}
                 />
                 {errors.num_frames && (
                   <p className="text-red-600 text-sm mt-1">
@@ -684,7 +684,7 @@ export function MachineConfiguration() {
                       setConfig((prev) => ({ ...prev, seconds_per_rot: val }));
                     }
                   }}
-                  className={`w-full px-3 py-2 border ${errors.seconds_per_rot ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  className={`w-full px-3 py-2 border ${errors.seconds_per_rot ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500`}
                 />
                 {errors.seconds_per_rot && (
                   <p className="text-red-600 text-sm mt-1">
@@ -711,7 +711,7 @@ export function MachineConfiguration() {
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            className="px-6 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : 'Save Configuration'}
           </button>

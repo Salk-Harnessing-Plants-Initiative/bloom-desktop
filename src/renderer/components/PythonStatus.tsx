@@ -162,7 +162,7 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
                   </span>
                 ) : (
                   <span className="text-red-600">
-                    [ERROR] Library not installed
+                    [ERROR] Library not installed. Contact your administrator.
                   </span>
                 )}
               </div>
@@ -179,7 +179,7 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
                   </span>
                 ) : (
                   <span className="text-red-600">
-                    [ERROR] Library not installed
+                    [ERROR] Library not installed. Contact your administrator.
                   </span>
                 )}
               </div>
@@ -198,7 +198,7 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
         <div className="flex gap-2 mt-4">
           <button
             onClick={checkHardware}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+            className="px-4 py-2 bg-lime-700 text-white rounded hover:bg-lime-800 transition"
           >
             Check Hardware
           </button>

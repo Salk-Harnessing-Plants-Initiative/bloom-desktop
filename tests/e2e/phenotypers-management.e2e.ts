@@ -455,8 +455,10 @@ test.describe('Phenotypers Management', () => {
     // Navigate to home page
     await window.click('text=Home');
 
-    // Wait for home page to load (unique heading on home page)
-    await expect(window.getByText('Workflow Steps')).toBeVisible();
+    // Wait for home page to load (unique heading on home page). "Workflow
+    // Steps" was replaced by CylinderScanWorkflowGuide's own "Daily
+    // Workflow"/"Setup" section headers (Tier 4 style/UX parity, #175).
+    await expect(window.getByText('Daily Workflow')).toBeVisible();
 
     // Navigate back to Phenotypers page
     await window.click('text=Phenotypers');

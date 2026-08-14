@@ -349,3 +349,20 @@ describe('ScientistForm', () => {
     expect(mockOnSuccess).not.toHaveBeenCalled();
   });
 });
+
+describe('ScientistForm color palette', () => {
+  it('uses focus:ring-lime-500 on the name/email inputs and submit button, not blue', () => {
+    render(<ScientistForm onSuccess={vi.fn()} />);
+
+    const nameInput = screen.getByLabelText('Name');
+    const emailInput = screen.getByLabelText('Email');
+    const submitButton = screen.getByRole('button', {
+      name: /add new scientist/i,
+    });
+
+    [nameInput, emailInput, submitButton].forEach((el) => {
+      expect(el.className).toContain('focus:ring-lime-500');
+      expect(el.className).not.toContain('focus:ring-blue-500');
+    });
+  });
+});
