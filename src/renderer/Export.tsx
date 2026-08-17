@@ -330,6 +330,19 @@ export function Export() {
         >
           {resultBanner.type === 'error' ? (
             <p className="text-sm text-red-600">{resultBanner.message}</p>
+          ) : resultBanner.type === 'success' &&
+            resultBanner.exportedScans === 0 &&
+            resultBanner.skippedFiles === 0 ? (
+            // Nothing was exported, skipped, or failed at all — the
+            // selection resolved to zero processable scans (e.g. they were
+            // deleted elsewhere between page load and export). Without this
+            // branch, the default wording below would read as a false
+            // "0 scans exported (already present)" success claim with no
+            // indication anything is wrong.
+            <p className="text-sm text-gray-800">
+              No scans were exported — the selected scans may no longer exist.
+              Try refreshing the page and re-selecting.
+            </p>
           ) : (
             <>
               <p className="text-sm text-gray-800">

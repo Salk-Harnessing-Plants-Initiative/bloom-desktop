@@ -264,6 +264,33 @@ describe('Export page', () => {
     });
   });
 
+  it('shows an honest "no scans exported" message instead of "0 scans exported (already present)" when the selection resolves to nothing (e.g. deleted elsewhere)', async () => {
+    const user = userEvent.setup();
+    mockList([makeScan('a')]);
+    getDb().export = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 0,
+        skippedFiles: 0,
+        failedScans: [],
+      },
+    });
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await pickDestination(user);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/No scans were exported/i)).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/exported \(already present\)/i)
+    ).not.toBeInTheDocument();
+  });
+
   it('confirms before discarding an unread partial-failure banner when starting another export, and honors cancel', async () => {
     const user = userEvent.setup();
     mockList([makeScan('a')]);
