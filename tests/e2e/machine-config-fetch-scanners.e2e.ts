@@ -183,10 +183,7 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
     const apiUrlInput = await window.locator('input[id*="api-url"]');
     const apiUrlValue = await apiUrlInput.inputValue();
     if (!apiUrlValue) {
-      await window.fill(
-        'input[id*="api-url"]',
-        'https://api.bloom.salk.edu/proxy'
-      );
+      await window.fill('input[id*="api-url"]', 'https://bloom.salk.edu/api');
     }
 
     // Button should now be enabled
@@ -252,7 +249,7 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
     // account. BLOOM_TEST_USERNAME/PASSWORD/ANON_KEY are documented in
     // .env.example as being for manual testing - they are not (and should
     // not be) wired up as CI secrets, since GitHub-hosted runners have no
-    // guaranteed path to reach api.bloom.salk.edu. Skip unless a developer
+    // guaranteed path to reach bloom.salk.edu. Skip unless a developer
     // has configured real credentials locally. See GH issue #254.
     test.skip(
       !process.env.BLOOM_TEST_USERNAME ||

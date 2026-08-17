@@ -6,30 +6,11 @@
  * and exactly 3 range inputs are rendered.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { CameraSettingsForm } from '../../../src/components/CameraSettingsForm';
 import { DEFAULT_CAMERA_SETTINGS } from '../../../src/types/camera';
-
-// Mock window.electron for CameraSettingsForm's useEffect
-const mockConfigGet = vi.fn().mockResolvedValue({
-  config: { camera_ip_address: 'mock' },
-});
-const mockDetectCameras = vi.fn().mockResolvedValue({
-  success: true,
-  cameras: [],
-});
-
-beforeEach(() => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = global.window as any;
-  if (!win.electron) win.electron = {};
-  if (!win.electron.config) win.electron.config = {};
-  if (!win.electron.camera) win.electron.camera = {};
-  win.electron.config.get = mockConfigGet;
-  win.electron.camera.detectCameras = mockDetectCameras;
-});
 
 describe('CameraSettingsForm — Basler acA2000-50gm corrections', () => {
   const onChange = vi.fn();
@@ -39,7 +20,6 @@ describe('CameraSettingsForm — Basler acA2000-50gm corrections', () => {
       <CameraSettingsForm
         settings={DEFAULT_CAMERA_SETTINGS}
         onChange={onChange}
-        showCameraSelection={false}
         showActions={false}
       />
     );

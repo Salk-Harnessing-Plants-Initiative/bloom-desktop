@@ -4,6 +4,8 @@ This document describes all configurable constants and default values in the Blo
 
 **For Admin UI Implementation**: When building the admin settings UI, reference this document for all configuration options that should be made user-configurable.
 
+**Accessing Machine Configuration**: The Machine Configuration page has no visible sidebar link — it's reached via the `Ctrl+Shift+,` (`Cmd+Shift+,` on macOS) keyboard shortcut. Since hardware troubleshooting (Check Hardware / Restart Python) now lives there rather than on the Home page, admins should relay this shortcut to lab technicians who may need to report a hardware issue during a scanning session.
+
 ## Scanner Settings
 
 ### Rotation & Timing

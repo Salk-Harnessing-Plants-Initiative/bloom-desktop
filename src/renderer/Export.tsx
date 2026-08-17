@@ -7,9 +7,15 @@ import type {
 } from '../types/database';
 
 type ResultBanner =
-  | { type: 'success'; exportedFiles: number; skippedFiles: number }
+  | {
+      type: 'success';
+      exportedScans: number;
+      exportedFiles: number;
+      skippedFiles: number;
+    }
   | {
       type: 'partial';
+      exportedScans: number;
       exportedFiles: number;
       skippedFiles: number;
       failedScans: ScansExportFailure[];
@@ -247,6 +253,7 @@ export function Export() {
       if (data.failedScans.length > 0) {
         setResultBanner({
           type: 'partial',
+          exportedScans: data.exportedScans,
           exportedFiles: data.exportedFiles,
           skippedFiles: data.skippedFiles,
           failedScans: data.failedScans,
@@ -254,6 +261,7 @@ export function Export() {
       } else {
         setResultBanner({
           type: 'success',
+          exportedScans: data.exportedScans,
           exportedFiles: data.exportedFiles,
           skippedFiles: data.skippedFiles,
         });
@@ -325,8 +333,13 @@ export function Export() {
           ) : (
             <>
               <p className="text-sm text-gray-800">
-                {resultBanner.exportedFiles} exported,{' '}
-                {resultBanner.skippedFiles} skipped (already exist)
+                {resultBanner.exportedScans} scan
+                {resultBanner.exportedScans === 1 ? '' : 's'} exported (
+                {resultBanner.exportedFiles} file
+                {resultBanner.exportedFiles === 1 ? '' : 's'}),{' '}
+                {resultBanner.skippedFiles} file
+                {resultBanner.skippedFiles === 1 ? '' : 's'} skipped (already
+                exist)
               </p>
               {resultBanner.type === 'partial' && (
                 <div className="mt-2">

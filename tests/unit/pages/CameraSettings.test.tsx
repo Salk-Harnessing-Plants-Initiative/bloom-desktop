@@ -15,13 +15,6 @@ import { CameraSettings } from '../../../src/renderer/CameraSettings';
 const mockGetSettings = vi.fn().mockResolvedValue(null);
 const mockStopStream = vi.fn().mockResolvedValue(undefined);
 const mockConfigure = vi.fn().mockResolvedValue(undefined);
-const mockConfigGet = vi.fn().mockResolvedValue({
-  config: { camera_ip_address: 'mock' },
-});
-const mockDetectCameras = vi.fn().mockResolvedValue({
-  success: true,
-  cameras: [],
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -34,11 +27,6 @@ beforeEach(() => {
       getSettings: mockGetSettings,
       stopStream: mockStopStream,
       configure: mockConfigure,
-      detectCameras: mockDetectCameras,
-    },
-    config: {
-      ...win.electron?.config,
-      get: mockConfigGet,
     },
   };
 });
@@ -84,5 +72,16 @@ describe('CameraSettings page layout', () => {
 
     expect(settingsIndex).toBeGreaterThanOrEqual(0);
     expect(previewIndex).toBeGreaterThan(settingsIndex);
+  });
+
+  it('does not show camera-selection/auto-detection UI (#338 — moved to Machine Configuration)', () => {
+    render(<CameraSettings />);
+
+    expect(
+      screen.queryByRole('button', { name: /Detect Cameras/i })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/How to find camera IP address/i)
+    ).not.toBeInTheDocument();
   });
 });

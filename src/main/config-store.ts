@@ -152,7 +152,7 @@ export function getDefaultConfig(): MachineConfig {
     scanner_name: '',
     camera_ip_address: 'mock',
     scans_dir: scansDir,
-    bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+    bloom_api_url: 'https://bloom.salk.edu/api',
     bloom_scanner_username: '',
     bloom_scanner_password: '',
     bloom_anon_key: '',

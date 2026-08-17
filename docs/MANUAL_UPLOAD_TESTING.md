@@ -15,7 +15,7 @@ CAMERA_IP_ADDRESS=10.0.0.50
 SCANS_DIR=/path/to/your/scans
 
 # Bloom API Settings (required for upload)
-BLOOM_API_URL=https://api.bloom.salk.edu/proxy
+BLOOM_API_URL=https://bloom.salk.edu/api
 BLOOM_SCANNER_USERNAME=your_scanner@salk.edu
 BLOOM_SCANNER_PASSWORD=your_password
 BLOOM_ANON_KEY=your_anon_key
@@ -152,7 +152,7 @@ You can verify via the Supabase dashboard or using the Supabase CLI.
 
 1. Verify your username/password are correct
 2. Check if your account has access to the Bloom API
-3. Ensure `BLOOM_API_URL` is correct (default: `https://api.bloom.salk.edu/proxy`)
+3. Ensure `BLOOM_API_URL` is correct (default: `https://bloom.salk.edu/api`)
 
 ### "Scan not found"
 

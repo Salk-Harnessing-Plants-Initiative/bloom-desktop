@@ -224,7 +224,9 @@ describe('Export page', () => {
       expect(screen.getByText('1 scan failed:')).toBeInTheDocument();
     });
     expect(
-      screen.getByText('3 exported, 2 skipped (already exist)')
+      screen.getByText(
+        '1 scan exported (3 files), 2 files skipped (already exist)'
+      )
     ).toBeInTheDocument();
     // Full date AND time — not just the day — per design.md's disambiguation requirement.
     expect(
@@ -315,7 +317,9 @@ describe('Export page', () => {
       ).not.toBeInTheDocument();
     });
     expect(
-      screen.getByText('1 exported, 0 skipped (already exist)')
+      screen.getByText(
+        '1 scan exported (1 file), 0 files skipped (already exist)'
+      )
     ).toBeInTheDocument();
   });
 
