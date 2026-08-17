@@ -19,14 +19,14 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
   const [status, setStatus] = useState<string>('Checking...');
 
   useEffect(() => {
-    // Camera/DAQ hardware status is CylinderScan-specific — this component
-    // renders nothing at all in graviscan mode (see the render-level guard
-    // below), so skip the IPC calls/subscriptions entirely too. This check
-    // must live inside the effect, not just at the render level: React's
-    // Rules of Hooks require every hook to run on every render regardless
-    // of where a render-level early return sits, so a render-only gate
-    // would still fire this effect (and its IPC round-trips) in graviscan
-    // mode even though nothing is ever shown.
+    // Python connectivity is only relevant in CylinderScan mode — this
+    // component renders nothing at all in graviscan mode (see the
+    // render-level guard below), so skip the IPC calls/subscriptions
+    // entirely too. This check must live inside the effect, not just at
+    // the render level: React's Rules of Hooks require every hook to run
+    // on every render regardless of where a render-level early return
+    // sits, so a render-only gate would still fire this effect (and its
+    // IPC round-trips) in graviscan mode even though nothing is ever shown.
     if (mode !== 'cylinderscan') return;
 
     // Get Python version
@@ -65,9 +65,13 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
   // Relabeling of the three states this component already distinguished
   // for its colored pill — not a new state machine. "Checking" covers the
   // initial mount state and any other status string that isn't a clear
-  // Connected/Error signal (e.g. "Restarted").
+  // Connected/Error signal. `main.ts` sends "Process exited: <code>" as a
+  // `python:status` push (not `python:error`) when the subprocess dies —
+  // that must count as Error, not fall through to the calm "Checking"
+  // bucket, or a real crash would show no error color and no admin-contact
+  // message at all.
   const isConnected = status === 'Connected' || status.includes('ready');
-  const isError = status === 'Error';
+  const isError = status === 'Error' || status.startsWith('Process exited');
 
   return (
     <div className="p-6 bg-white rounded-lg shadow">
@@ -105,7 +109,10 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
             "Check Hardware", which this component never invokes. */}
         {isError && (
           <div className="p-3 bg-red-50 border border-red-200 rounded">
-            <p className="text-sm text-red-800">Contact your administrator.</p>
+            <p className="text-sm text-red-800">
+              Contact your administrator. Admins: press Ctrl+Shift+,
+              (Cmd+Shift+, on Mac) for hardware diagnostics.
+            </p>
           </div>
         )}
       </div>

@@ -311,4 +311,39 @@ describe('MachineConfiguration — Restart Required Notice', () => {
       screen.queryByTestId('restart-required-notice')
     ).not.toBeInTheDocument();
   });
+
+  it('does not stack the generic save toast on top of a still-visible, not-yet-dismissed restart-required notice', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText('GraviScan'));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Save Configuration/i })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('restart-required-notice')).toBeInTheDocument();
+    });
+
+    // A second, unrelated save (no further mode change) while the notice
+    // is still showing and undismissed.
+    fireEvent.change(screen.getByLabelText(/Scanner Name/i), {
+      target: { value: 'RenamedScanner' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Save Configuration/i })
+    );
+
+    await waitFor(() => {
+      expect(mockConfigAPI.set).toHaveBeenCalledTimes(2);
+    });
+
+    expect(screen.getByTestId('restart-required-notice')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Configuration saved successfully!')
+    ).not.toBeInTheDocument();
+  });
 });

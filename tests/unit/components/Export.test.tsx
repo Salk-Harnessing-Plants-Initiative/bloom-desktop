@@ -236,6 +236,34 @@ describe('Export page', () => {
     ).toBeInTheDocument();
   });
 
+  it('re-exporting a scan whose files all already exist shows "(already present)", not the self-contradictory "(0 files)"', async () => {
+    const user = userEvent.setup();
+    mockList([makeScan('a')]);
+    getDb().export = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 1,
+        skippedFiles: 2,
+        failedScans: [],
+      },
+    });
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await pickDestination(user);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          '1 scan exported (already present), 2 files skipped (already exist)'
+        )
+      ).toBeInTheDocument();
+    });
+  });
+
   it('confirms before discarding an unread partial-failure banner when starting another export, and honors cancel', async () => {
     const user = userEvent.setup();
     mockList([makeScan('a')]);

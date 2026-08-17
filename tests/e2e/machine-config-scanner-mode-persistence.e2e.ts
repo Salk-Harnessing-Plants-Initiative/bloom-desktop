@@ -93,7 +93,14 @@ test.describe('Machine Configuration — scanner_mode round-trip', () => {
   });
 
   test('CylinderScan radio is checked and the Hardware section renders when scanner_mode=cylinderscan is already saved', async () => {
-    await window.keyboard.press('Control+Shift+Comma');
+    // Layout.tsx's shortcut handler checks navigator.platform for 'MAC' and
+    // requires metaKey (Cmd) there, ctrlKey everywhere else — mirror that
+    // here, since the CI matrix runs this on macOS too.
+    const shortcut =
+      process.platform === 'darwin'
+        ? 'Meta+Shift+Comma'
+        : 'Control+Shift+Comma';
+    await window.keyboard.press(shortcut);
     await expect(
       window.getByRole('heading', { name: 'Machine Configuration' })
     ).toBeVisible({ timeout: 15000 });

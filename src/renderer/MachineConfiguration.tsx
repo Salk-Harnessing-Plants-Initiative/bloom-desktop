@@ -8,22 +8,10 @@
 import { useState, useEffect, useRef } from 'react';
 import type { MachineConfig, Scanner } from '../main/config-store';
 import type { DetectedCamera } from '../types/camera';
+import type { HardwareStatus } from '../types/electron';
 
 type FormState = 'loading' | 'config'; // Removed 'login' state
 type CameraTestStatus = 'idle' | 'testing' | 'success' | 'error';
-
-interface HardwareStatus {
-  camera: {
-    library_available: boolean;
-    devices_found: number;
-    available: boolean;
-  };
-  daq: {
-    library_available: boolean;
-    devices_found: number;
-    available: boolean;
-  };
-}
 
 interface FormErrors {
   scanner_mode?: string;
@@ -72,6 +60,9 @@ export function MachineConfiguration() {
   // Camera detection state (#338 — relocated from CameraSettingsForm)
   const [detectedCameras, setDetectedCameras] = useState<DetectedCamera[]>([]);
   const [showManualCameraEntry, setShowManualCameraEntry] = useState(false);
+  const [isDetectingCameras, setIsDetectingCameras] = useState(false);
+  const [cameraDetectionError, setCameraDetectionError] = useState('');
+  const [showCameraHelp, setShowCameraHelp] = useState(false);
   const hasDetectedCamerasRef = useRef(false);
 
   // Hardware diagnostics state (#339 — relocated from Home's PythonStatus)
@@ -140,58 +131,72 @@ export function MachineConfiguration() {
     loadConfiguration();
   }, []);
 
-  // Detect cameras once the Hardware section is known to be relevant
+  // Detect cameras — callable both automatically (once, on mount, guarded
+  // by hasDetectedCamerasRef below) and manually via the "Detect Cameras"
+  // retry button, which bypasses that guard so the admin can re-scan if a
+  // camera is connected after the page loads or detection transiently
+  // failed. Uses the latest `config` via closure at call time.
+  const detectCameras = async () => {
+    setIsDetectingCameras(true);
+    setCameraDetectionError('');
+    try {
+      const result = await window.electron.camera.detectCameras();
+      if (result.success && result.cameras) {
+        setDetectedCameras(result.cameras);
+
+        if (result.cameras.length === 0) {
+          setShowManualCameraEntry(true);
+          return;
+        }
+
+        const savedIp = config.camera_ip_address;
+        const matched = result.cameras.find((c) => c.ip_address === savedIp);
+
+        if (savedIp && matched) {
+          setShowManualCameraEntry(false);
+        } else if (savedIp) {
+          // Saved value doesn't match any detected camera — keep it as
+          // manual entry rather than silently replacing it with mock.
+          setShowManualCameraEntry(true);
+        } else {
+          const mockCamera = result.cameras.find((c) => c.is_mock);
+          if (mockCamera) {
+            setConfig((prev) => ({
+              ...prev,
+              camera_ip_address: mockCamera.ip_address,
+            }));
+            setShowManualCameraEntry(false);
+          } else {
+            setShowManualCameraEntry(true);
+          }
+        }
+      } else {
+        setShowManualCameraEntry(true);
+        setCameraDetectionError(result.error || 'Camera detection failed');
+      }
+    } catch (error) {
+      console.error('Failed to detect cameras:', error);
+      setShowManualCameraEntry(true);
+      setCameraDetectionError(
+        error instanceof Error ? error.message : 'Camera detection failed'
+      );
+    } finally {
+      setIsDetectingCameras(false);
+    }
+  };
+
+  // Auto-run detection once the Hardware section is known to be relevant
   // (CylinderScan mode). Runs once — a ref guards against re-firing if the
-  // admin toggles scanner_mode back and forth before saving.
+  // admin toggles scanner_mode back and forth before saving; the manual
+  // "Detect Cameras" button above bypasses this guard on purpose.
   useEffect(() => {
     if (formState !== 'config') return;
     if (config.scanner_mode !== 'cylinderscan') return;
     if (hasDetectedCamerasRef.current) return;
     hasDetectedCamerasRef.current = true;
 
-    const detectCameras = async () => {
-      try {
-        const result = await window.electron.camera.detectCameras();
-        if (result.success && result.cameras) {
-          setDetectedCameras(result.cameras);
-
-          if (result.cameras.length === 0) {
-            setShowManualCameraEntry(true);
-            return;
-          }
-
-          const savedIp = config.camera_ip_address;
-          const matched = result.cameras.find((c) => c.ip_address === savedIp);
-
-          if (savedIp && matched) {
-            setShowManualCameraEntry(false);
-          } else if (savedIp) {
-            // Saved value doesn't match any detected camera — keep it as
-            // manual entry rather than silently replacing it with mock.
-            setShowManualCameraEntry(true);
-          } else {
-            const mockCamera = result.cameras.find((c) => c.is_mock);
-            if (mockCamera) {
-              setConfig((prev) => ({
-                ...prev,
-                camera_ip_address: mockCamera.ip_address,
-              }));
-              setShowManualCameraEntry(false);
-            } else {
-              setShowManualCameraEntry(true);
-            }
-          }
-        } else {
-          setShowManualCameraEntry(true);
-        }
-      } catch (error) {
-        console.error('Failed to detect cameras:', error);
-        setShowManualCameraEntry(true);
-      }
-    };
-
     detectCameras();
-  }, [formState, config.scanner_mode, config.camera_ip_address]);
+  }, [formState, config.scanner_mode]);
 
   // Handle selecting a camera from the detected-cameras dropdown
   const handleCameraSelect = (value: string) => {
@@ -264,7 +269,10 @@ export function MachineConfiguration() {
           // admin must explicitly dismiss it, so it isn't missed before
           // the required restart happens.
           setShowRestartRequiredNotice(true);
-        } else {
+        } else if (!showRestartRequiredNotice) {
+          // Don't stack the generic toast on top of a still-visible
+          // restart-required notice from an earlier, not-yet-dismissed
+          // save in this same session.
           setSaveSuccess(true);
           // Clear success message after 3 seconds
           setTimeout(() => setSaveSuccess(false), 3000);
@@ -361,8 +369,9 @@ export function MachineConfiguration() {
           className="sticky top-0 z-10 bg-yellow-50 border-2 border-yellow-500 text-yellow-900 px-4 py-3 rounded-md mb-4 flex items-center justify-between gap-4"
         >
           <span>
-            Scanner Mode changed — restart the application for this change to
-            take effect.
+            Scanner Mode changed — restart the application now for this change
+            to take effect. This notice won&apos;t reappear if you navigate away
+            first.
           </span>
           <button
             type="button"
@@ -736,6 +745,21 @@ export function MachineConfiguration() {
                 >
                   Camera IP Address
                 </label>
+                <div className="flex gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={detectCameras}
+                    disabled={isDetectingCameras}
+                    className="px-4 py-2 bg-lime-700 text-white rounded hover:bg-lime-800 transition disabled:opacity-50"
+                  >
+                    {isDetectingCameras ? 'Detecting...' : 'Detect Cameras'}
+                  </button>
+                </div>
+                {cameraDetectionError && (
+                  <p className="text-red-600 text-sm mb-2">
+                    {cameraDetectionError}
+                  </p>
+                )}
                 <div className="flex gap-2">
                   {!showManualCameraEntry && detectedCameras.length > 0 ? (
                     <select
@@ -799,6 +823,53 @@ export function MachineConfiguration() {
                 {cameraTestStatus === 'error' && (
                   <p className="text-red-600 text-sm mt-1">{cameraTestError}</p>
                 )}
+
+                {/* Help text (collapsible) — relocated verbatim from
+                    CameraSettingsForm.tsx's camera-selection block (#338).
+                    Accuracy against real Basler/Pylon Viewer hardware is
+                    tracked separately in #335 (requires physical hardware
+                    access this pass didn't have). */}
+                <div className="border-t pt-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCameraHelp(!showCameraHelp)}
+                    className="text-sm text-lime-700 hover:text-lime-800"
+                  >
+                    {showCameraHelp ? '▼' : '▶'} How to find camera IP address
+                  </button>
+
+                  {showCameraHelp && (
+                    <div className="mt-2 p-3 bg-gray-50 rounded text-sm space-y-2">
+                      <p className="font-medium">
+                        Method 1: Basler Pylon Viewer (Recommended)
+                      </p>
+                      <ol className="list-decimal ml-5 space-y-1">
+                        <li>Open Basler Pylon Viewer software</li>
+                        <li>Right-click camera → Properties</li>
+                        <li>View IP Address in properties panel</li>
+                      </ol>
+
+                      <p className="font-medium mt-3">
+                        Method 2: Check Camera Label
+                      </p>
+                      <p>Physical label on camera may show IP address</p>
+
+                      <p className="font-medium mt-3">
+                        Method 3: Router Admin Page
+                      </p>
+                      <p>
+                        Check connected devices in router settings (usually
+                        192.168.1.1)
+                      </p>
+
+                      <p className="text-gray-600 mt-3">
+                        <strong>Note:</strong> Mock camera doesn&apos;t require
+                        an IP address. Detection button should show it
+                        automatically.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Hardware Diagnostics — relocated from Home's Python

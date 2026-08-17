@@ -182,6 +182,20 @@ convergence explicitly rather than treating them as fully independent edits.
   Tier 5b hardware QA work) — it only moves the text verbatim to its new
   location. A comment will be left on #335 noting the relocation so it
   doesn't go stale once this change merges.
+- **The restart-required notice (#334) is page-local, not app-wide.** It's
+  component state inside `MachineConfiguration.tsx`; navigating away (the
+  only way back to Home/CaptureScan, since the page has no in-page "close")
+  unmounts the component and the notice is gone permanently, with no
+  app-wide banner or cross-session reminder to replace it. Building real
+  persistence (e.g. lifting the notice to `Layout.tsx`, which survives
+  navigation, the way `WedgeBanner` does) would mean either wrapping every
+  existing `MachineConfiguration`/`MachineConfigMode` test in a full
+  `Layout` tree or inventing a new shared cross-component store — both
+  meaningfully larger than this PR's "quick fixes" scope. Mitigated cheaply
+  instead: the notice's own text now says "restart the application now...
+  this notice won't reappear if you navigate away first," so the admin is
+  told about the limitation rather than silently losing the reminder.
+  Accepted as a known limitation, not fixed architecturally, in this pass.
 
 ## Migration Plan
 

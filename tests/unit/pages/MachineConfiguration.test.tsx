@@ -1027,6 +1027,36 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
     });
   });
 
+  it('the manual "Detect Cameras" button re-triggers detection on demand', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Detect Cameras/i }));
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('shows a camera-detection error message when detection fails, distinct from zero-cameras-found', async () => {
+    mockCameraAPI.detectCameras.mockResolvedValue({
+      success: false,
+      cameras: [],
+      error: 'Camera subprocess unavailable',
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Camera subprocess unavailable')
+      ).toBeInTheDocument();
+    });
+  });
+
   it('(b) selecting a detected camera sets camera_ip_address and Test Connection targets it', async () => {
     mockCameraAPI.detectCameras.mockResolvedValue({
       success: true,
@@ -1262,5 +1292,96 @@ describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
     });
 
     confirmSpy.mockRestore();
+  });
+
+  it('surfaces an error when python:check-hardware rejects', async () => {
+    mockPythonAPI.checkHardware.mockRejectedValue(new Error('IPC failure'));
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Check Hardware/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Check Hardware/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('IPC failure')).toBeInTheDocument();
+    });
+  });
+
+  it('surfaces an error when python:restart rejects', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockPythonAPI.restart.mockRejectedValue(new Error('restart IPC failure'));
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Restart Python/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Restart Python/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('restart IPC failure')).toBeInTheDocument();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('surfaces an error when python:restart resolves with success: false', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockPythonAPI.restart.mockResolvedValue({
+      success: false,
+      error: 'Python executable not found',
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Restart Python/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Restart Python/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Python executable not found')
+      ).toBeInTheDocument();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('Test Connection targets the manually-entered IP when in manual-entry mode', async () => {
+    mockCameraAPI.detectCameras.mockResolvedValue({
+      success: true,
+      cameras: [],
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Camera IP/i)).toHaveAttribute(
+        'type',
+        'text'
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText(/Camera IP/i), {
+      target: { value: '10.0.0.88' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Test Connection/i }));
+
+    await waitFor(() => {
+      expect(mockConfigAPI.testCamera).toHaveBeenCalledWith('10.0.0.88');
+    });
   });
 });

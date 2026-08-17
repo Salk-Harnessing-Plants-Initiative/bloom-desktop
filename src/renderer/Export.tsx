@@ -335,9 +335,12 @@ export function Export() {
               <p className="text-sm text-gray-800">
                 {resultBanner.exportedScans} scan
                 {resultBanner.exportedScans === 1 ? '' : 's'} exported (
-                {resultBanner.exportedFiles} file
-                {resultBanner.exportedFiles === 1 ? '' : 's'}),{' '}
-                {resultBanner.skippedFiles} file
+                {resultBanner.exportedFiles === 0
+                  ? 'already present'
+                  : `${resultBanner.exportedFiles} file${
+                      resultBanner.exportedFiles === 1 ? '' : 's'
+                    }`}
+                ), {resultBanner.skippedFiles} file
                 {resultBanner.skippedFiles === 1 ? '' : 's'} skipped (already
                 exist)
               </p>

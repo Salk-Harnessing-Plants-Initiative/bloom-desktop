@@ -21,12 +21,16 @@ const mockOnStatusCleanup = vi.fn();
 const mockOnErrorCleanup = vi.fn();
 
 let capturedErrorCallback: (error: string) => void = () => {};
+let capturedStatusCallback: (status: string) => void = () => {};
 
 const mockPythonAPI = {
   getVersion: vi.fn().mockResolvedValue({ version: '1.0.0' }),
   checkHardware: vi.fn(),
   restart: vi.fn(),
-  onStatus: vi.fn().mockReturnValue(mockOnStatusCleanup),
+  onStatus: vi.fn().mockImplementation((cb: (status: string) => void) => {
+    capturedStatusCallback = cb;
+    return mockOnStatusCleanup;
+  }),
   onError: vi.fn().mockImplementation((cb: (error: string) => void) => {
     capturedErrorCallback = cb;
     return mockOnErrorCleanup;
@@ -36,7 +40,10 @@ const mockPythonAPI = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockPythonAPI.getVersion.mockResolvedValue({ version: '1.0.0' });
-  mockPythonAPI.onStatus.mockReturnValue(mockOnStatusCleanup);
+  mockPythonAPI.onStatus.mockImplementation((cb: (status: string) => void) => {
+    capturedStatusCallback = cb;
+    return mockOnStatusCleanup;
+  });
   mockPythonAPI.onError.mockImplementation((cb: (error: string) => void) => {
     capturedErrorCallback = cb;
     return mockOnErrorCleanup;
@@ -154,5 +161,25 @@ describe('PythonStatus administrator-contact messaging (#104, simplified per #33
       container.querySelector('a[href*="machine-config"]')
     ).not.toBeInTheDocument();
     expect(container.textContent).not.toMatch(/machine config/i);
+  });
+});
+
+describe('PythonStatus — process-exit classification', () => {
+  it('classifies a "Process exited: <code>" status push as Error, not the calm Checking bucket', async () => {
+    const { getByText } = render(<PythonStatus mode="cylinderscan" />);
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    // main.ts pushes this via python:status (not python:error) when the
+    // subprocess dies — it must still count as Error.
+    act(() => {
+      capturedStatusCallback('Process exited: 1');
+    });
+
+    await waitFor(() => {
+      expect(getByText('Error')).toBeInTheDocument();
+    });
+    expect(getByText(/Contact your administrator/i)).toBeInTheDocument();
   });
 });

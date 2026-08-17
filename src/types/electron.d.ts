@@ -82,6 +82,25 @@ import type {
 } from '../main/database-handlers';
 
 /**
+ * Hardware availability report returned by `python:check-hardware`.
+ * Shared between the preload contract here and any renderer component
+ * that displays it (currently `MachineConfiguration.tsx`'s Hardware
+ * Diagnostics section) to avoid two independently-drifting copies.
+ */
+export interface HardwareStatus {
+  camera: {
+    library_available: boolean;
+    devices_found: number;
+    available: boolean;
+  };
+  daq: {
+    library_available: boolean;
+    devices_found: number;
+    available: boolean;
+  };
+}
+
+/**
  * Python backend API
  */
 export interface PythonAPI {
@@ -103,18 +122,7 @@ export interface PythonAPI {
    * Check hardware availability
    * @returns Promise resolving to hardware status with detailed info
    */
-  checkHardware: () => Promise<{
-    camera: {
-      library_available: boolean;
-      devices_found: number;
-      available: boolean;
-    };
-    daq: {
-      library_available: boolean;
-      devices_found: number;
-      available: boolean;
-    };
-  }>;
+  checkHardware: () => Promise<HardwareStatus>;
 
   /**
    * Restart the Python subprocess

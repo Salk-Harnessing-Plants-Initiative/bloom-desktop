@@ -232,7 +232,9 @@ test.describe('Export Scans Page', () => {
     // risk task 4.3 calls out). That warning has dedicated, timing-controlled
     // coverage in tests/unit/components/Export.test.tsx instead. This is a
     // smoke check that the full pipe works end to end.
-    await expect(window.locator('text=2 exported, 0 skipped')).toBeVisible({
+    await expect(
+      window.locator('text=1 scan exported (2 files), 0 files skipped')
+    ).toBeVisible({
       timeout: 15000,
     });
 
@@ -276,14 +278,23 @@ test.describe('Export Scans Page', () => {
 
     // First export: both files land on disk.
     await window.click('button:has-text("Export 1 scan")');
-    await expect(window.locator('text=2 exported, 0 skipped')).toBeVisible({
+    await expect(
+      window.locator('text=1 scan exported (2 files), 0 files skipped')
+    ).toBeVisible({
       timeout: 15000,
     });
 
-    // Second export of the SAME (now fully-present) scan: pure skip, no error.
+    // Second export of the SAME (now fully-present) scan: pure skip, no
+    // error. The scan itself still counts as "exported" (no per-file
+    // failure), even though 0 new bytes were copied this run — see
+    // scansExport()'s exportedScans counter in database-handlers.ts.
+    // Rendered as "(already present)" rather than "(0 files)", which would
+    // otherwise read as self-contradictory next to "exported".
     await window.locator('input[type="checkbox"]').nth(1).check();
     await window.click('button:has-text("Export 1 scan")');
-    await expect(window.locator('text=0 exported, 2 skipped')).toBeVisible({
+    await expect(
+      window.locator('text=1 scan exported (already present), 2 files skipped')
+    ).toBeVisible({
       timeout: 15000,
     });
 
