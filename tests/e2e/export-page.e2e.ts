@@ -288,12 +288,15 @@ test.describe('Export Scans Page', () => {
     // error. The scan itself still counts as "exported" (no per-file
     // failure), even though 0 new bytes were copied this run — see
     // scansExport()'s exportedScans counter in database-handlers.ts.
-    // Rendered as "(already present)" rather than "(0 files)", which would
-    // otherwise read as self-contradictory next to "exported".
+    // Rendered as "already exported — all N files already present" rather
+    // than "exported (already present)" or "exported (0 files)", both of
+    // which read as self-contradictory next to "exported".
     await window.locator('input[type="checkbox"]').nth(1).check();
     await window.click('button:has-text("Export 1 scan")');
     await expect(
-      window.locator('text=1 scan exported (already present), 2 files skipped')
+      window.locator(
+        'text=1 scan already exported — all 2 files already present'
+      )
     ).toBeVisible({
       timeout: 15000,
     });

@@ -236,7 +236,7 @@ describe('Export page', () => {
     ).toBeInTheDocument();
   });
 
-  it('re-exporting a scan whose files all already exist shows "(already present)", not the self-contradictory "(0 files)"', async () => {
+  it('re-exporting a scan whose files all already exist shows "already exported — all N files already present", not the self-contradictory "exported (already present)"', async () => {
     const user = userEvent.setup();
     mockList([makeScan('a')]);
     getDb().export = vi.fn().mockResolvedValue({
@@ -258,10 +258,16 @@ describe('Export page', () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          '1 scan exported (already present), 2 files skipped (already exist)'
+          '1 scan already exported — all 2 files already present'
         )
       ).toBeInTheDocument();
     });
+    // Regression guard: "exported" must never appear paired with "already
+    // present" in the same clause when nothing new was copied — that
+    // reads as self-contradictory (did it export or not?).
+    expect(
+      screen.queryByText(/exported \(already present\)/i)
+    ).not.toBeInTheDocument();
   });
 
   it('shows an honest "no scans exported" message instead of "0 scans exported (already present)" when the selection resolves to nothing (e.g. deleted elsewhere)', async () => {

@@ -346,16 +346,29 @@ export function Export() {
           ) : (
             <>
               <p className="text-sm text-gray-800">
-                {resultBanner.exportedScans} scan
-                {resultBanner.exportedScans === 1 ? '' : 's'} exported (
-                {resultBanner.exportedFiles === 0
-                  ? 'already present'
-                  : `${resultBanner.exportedFiles} file${
-                      resultBanner.exportedFiles === 1 ? '' : 's'
-                    }`}
-                ), {resultBanner.skippedFiles} file
-                {resultBanner.skippedFiles === 1 ? '' : 's'} skipped (already
-                exist)
+                {resultBanner.exportedFiles === 0 ? (
+                  // Nothing new was copied this run — every file already
+                  // existed at the destination. Saying "exported (already
+                  // present)" here would be self-contradictory (did it
+                  // export or not?), so this phrasing avoids pairing those
+                  // two words in the same clause.
+                  <>
+                    {resultBanner.exportedScans} scan
+                    {resultBanner.exportedScans === 1 ? '' : 's'} already
+                    exported — all {resultBanner.skippedFiles} file
+                    {resultBanner.skippedFiles === 1 ? '' : 's'} already present
+                  </>
+                ) : (
+                  <>
+                    {resultBanner.exportedScans} scan
+                    {resultBanner.exportedScans === 1 ? '' : 's'} exported (
+                    {resultBanner.exportedFiles} file
+                    {resultBanner.exportedFiles === 1 ? '' : 's'}),{' '}
+                    {resultBanner.skippedFiles} file
+                    {resultBanner.skippedFiles === 1 ? '' : 's'} skipped
+                    (already exist)
+                  </>
+                )}
               </p>
               {resultBanner.type === 'partial' && (
                 <div className="mt-2">
