@@ -1237,11 +1237,15 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
 
     render(<MachineConfiguration />);
 
+    // Both conditions must hold in the SAME poll: a transient manual-entry
+    // <input> can briefly carry the same value before the detection effect
+    // resolves and swaps it for the <select> — asserting the tag separately
+    // afterward races that swap (passed locally, flaked on Linux CI).
     await waitFor(() => {
-      expect(screen.getByLabelText(/Camera IP/i)).toHaveValue('10.0.0.77');
+      const field = screen.getByLabelText(/Camera IP/i);
+      expect(field.tagName).toBe('SELECT');
+      expect(field).toHaveValue('10.0.0.77');
     });
-
-    expect(screen.getByLabelText(/Camera IP/i).tagName).toBe('SELECT');
   });
 });
 
