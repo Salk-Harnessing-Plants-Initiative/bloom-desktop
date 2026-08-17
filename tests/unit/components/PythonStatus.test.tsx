@@ -161,6 +161,15 @@ describe('PythonStatus administrator-contact messaging (#104, simplified per #33
       container.querySelector('a[href*="machine-config"]')
     ).not.toBeInTheDocument();
     expect(container.textContent).not.toMatch(/machine config/i);
+    // Regression guard: the admin-only keyboard shortcut must never be
+    // printed on Home, even as a hint — Machine Configuration's whole
+    // access model is "reachable only if you already know the shortcut
+    // out of band" (see docs/CONFIGURATION.md's admin-facing note). Any
+    // end user who sees this error text must not learn the shortcut from
+    // it, or that access model is defeated for exactly the users it's
+    // meant to exclude.
+    expect(container.textContent).not.toMatch(/shift/i);
+    expect(container.textContent).not.toMatch(/ctrl|cmd/i);
   });
 });
 

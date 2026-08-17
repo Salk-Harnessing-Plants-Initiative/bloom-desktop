@@ -109,10 +109,7 @@ export function PythonStatus({ mode = null }: PythonStatusProps) {
             "Check Hardware", which this component never invokes. */}
         {isError && (
           <div className="p-3 bg-red-50 border border-red-200 rounded">
-            <p className="text-sm text-red-800">
-              Contact your administrator. Admins: press Ctrl+Shift+,
-              (Cmd+Shift+, on Mac) for hardware diagnostics.
-            </p>
+            <p className="text-sm text-red-800">Contact your administrator.</p>
           </div>
         )}
       </div>

@@ -150,10 +150,23 @@ convergence explicitly rather than treating them as fully independent edits.
   means a lab technician who hits a hardware error and doesn't already know
   that shortcut has no in-app path beyond "Contact your administrator." The
   user confirmed this trade-off is acceptable (matching #339's own ask and
-  the existing #104-era precedent) but asked for a documentation reminder:
-  `docs/CONFIGURATION.md` gets one added sentence noting that admins should
-  relay the shortcut to technicians who may need to report hardware issues.
-  This is documentation only — no code, no new UI, no new requirement.
+  the existing #104-era precedent) but asked for a documentation reminder in
+  `docs/CONFIGURATION.md`. This is documentation only — no code, no new UI,
+  no new requirement.
+  - **Correction (caught during PR review, then again by the user after
+    review posted)**: the doc note's first draft said "admins should relay
+    the shortcut to lab technicians," and a since-reverted follow-up change
+    during PR review round 1 went further and printed the actual shortcut
+    directly in `PythonStatus.tsx`'s Home-page error message. Both are wrong
+    for the same reason: the whole point of "no visible link, shortcut-only
+    access" is that technicians — the exact audience who sees this error —
+    must NOT learn the shortcut, whether from the UI or relayed by an admin.
+    Doing either defeats the access model for precisely the users it's
+    meant to exclude. Fixed on both fronts: `PythonStatus.tsx` reverted to
+    the plain "Contact your administrator." (with a permanent regression
+    test asserting no shift/ctrl/cmd keystroke text ever appears there),
+    and the doc note reworded to tell admins to make sure technicians know
+    _who to contact_, not the shortcut itself.
 
 ## Risks / Trade-offs
 
