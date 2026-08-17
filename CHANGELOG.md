@@ -86,6 +86,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CylinderScan config/UX quick fixes from Tier 4 walkthrough ([PR #344](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/344), closes [#333](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/333), [#334](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/334), [#336](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/336), [#338](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/338), [#339](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/339))
+  - Fixed stale default `bloom_api_url` (`api.bloom.salk.edu/proxy` → `bloom.salk.edu/api`) in both `config-store.ts` and a second, independent hardcoded copy in `MachineConfiguration.tsx`
+  - Machine Configuration now shows a persistent, dismissible "restart required" notice when Scanner Mode changes, instead of the generic auto-dismissing save toast — confirmed `scanner_mode` is the only Machine Config field with this bug
+  - Export page's success/partial banners now surface the scan count alongside the file count (e.g. "12 scans exported (73 files)"), not just an ambiguous file count
+  - Camera auto-detection relocated from the Camera Settings page into Machine Configuration's Hardware section, replacing its plain text input — Machine Configuration is now the sole place to set `camera_ip_address`
+  - "Check Hardware"/"Restart Python" relocated from Home's status panel into Machine Configuration's Hardware section, with a confirm dialog before restart; Home now shows only a simple Connected/Checking/Error indicator
+  - Found and fixed via manual E2E smoke-testing: `config:get`'s real IPC handler (`main.ts`) silently omitted `scanner_mode` from its response, making the entire CylinderScan-only Hardware section fail to render in the real app despite passing unit tests that mock the IPC boundary directly; added a permanent E2E regression test since this bug class is invisible to mocked unit tests
+  - See `openspec/changes/fix-cylinderscan-config-ux-quickfixes/` for full design rationale; [#337](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/337) (sidebar nav ordering) deferred pending PRs #289/#290; follow-up [#343](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/343) filed for Machine Config UI on 3 manual-`.env`-only fields
 - CylinderScan correctness & security hardening ([PR #280](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/280), roadmap Tier 1)
   - Replaced `webSecurity: false` with a custom protocol handler + path-traversal validation for local scan-image access (#93)
   - Added cleanup functions to all 8 preload listeners that were missing them (#96)
