@@ -901,6 +901,7 @@ ipcMain.handle('config:get', async () => {
     // Return unified config with masked password
     return {
       config: {
+        scanner_mode: config.scanner_mode,
         scanner_name: config.scanner_name,
         camera_ip_address: config.camera_ip_address,
         scans_dir: config.scans_dir,

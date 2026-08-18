@@ -19,8 +19,7 @@ import { SupabaseStore } from '@salk-hpi/bloom-js';
 
 // TODO: Replace with your actual credentials from .env
 const config = {
-  bloom_api_url:
-    process.env.BLOOM_API_URL || 'https://api.bloom.salk.edu/proxy',
+  bloom_api_url: process.env.BLOOM_API_URL || 'https://bloom.salk.edu/api',
   bloom_anon_key: process.env.BLOOM_ANON_KEY || 'your-anon-key-here',
   bloom_scanner_username:
     process.env.BLOOM_TEST_USERNAME || 'your-username@salk.edu',

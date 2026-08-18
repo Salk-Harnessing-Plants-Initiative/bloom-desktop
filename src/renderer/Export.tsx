@@ -7,9 +7,15 @@ import type {
 } from '../types/database';
 
 type ResultBanner =
-  | { type: 'success'; exportedFiles: number; skippedFiles: number }
+  | {
+      type: 'success';
+      exportedScans: number;
+      exportedFiles: number;
+      skippedFiles: number;
+    }
   | {
       type: 'partial';
+      exportedScans: number;
       exportedFiles: number;
       skippedFiles: number;
       failedScans: ScansExportFailure[];
@@ -247,6 +253,7 @@ export function Export() {
       if (data.failedScans.length > 0) {
         setResultBanner({
           type: 'partial',
+          exportedScans: data.exportedScans,
           exportedFiles: data.exportedFiles,
           skippedFiles: data.skippedFiles,
           failedScans: data.failedScans,
@@ -254,6 +261,7 @@ export function Export() {
       } else {
         setResultBanner({
           type: 'success',
+          exportedScans: data.exportedScans,
           exportedFiles: data.exportedFiles,
           skippedFiles: data.skippedFiles,
         });
@@ -324,10 +332,53 @@ export function Export() {
             <p className="text-sm text-red-600">{resultBanner.message}</p>
           ) : (
             <>
-              <p className="text-sm text-gray-800">
-                {resultBanner.exportedFiles} exported,{' '}
-                {resultBanner.skippedFiles} skipped (already exist)
-              </p>
+              {resultBanner.exportedScans === 0 &&
+              resultBanner.skippedFiles === 0 ? (
+                resultBanner.type === 'success' ? (
+                  // Nothing was exported, skipped, or failed at all — the
+                  // selection resolved to zero processable scans (e.g. they
+                  // were deleted elsewhere between page load and export).
+                  // Without this branch, the default wording below would
+                  // read as a false "0 scans exported (already present)"
+                  // success claim with no indication anything is wrong.
+                  <p className="text-sm text-gray-800">
+                    No scans were exported — the selected scans may no longer
+                    exist. Try refreshing the page and re-selecting.
+                  </p>
+                ) : // Partial export where every selected scan failed outright
+                // (0 exported, 0 skipped): the failed-scan list below
+                // already says everything useful — a "0 scans already
+                // exported" summary here would just be confusing noise on
+                // top of it.
+                null
+              ) : (
+                <p className="text-sm text-gray-800">
+                  {resultBanner.exportedFiles === 0 ? (
+                    // Nothing new was copied this run — every file already
+                    // existed at the destination. Saying "exported (already
+                    // present)" here would be self-contradictory (did it
+                    // export or not?), so this phrasing avoids pairing those
+                    // two words in the same clause.
+                    <>
+                      {resultBanner.exportedScans} scan
+                      {resultBanner.exportedScans === 1 ? '' : 's'} already
+                      exported — all {resultBanner.skippedFiles} file
+                      {resultBanner.skippedFiles === 1 ? '' : 's'} already
+                      present
+                    </>
+                  ) : (
+                    <>
+                      {resultBanner.exportedScans} scan
+                      {resultBanner.exportedScans === 1 ? '' : 's'} exported (
+                      {resultBanner.exportedFiles} file
+                      {resultBanner.exportedFiles === 1 ? '' : 's'}),{' '}
+                      {resultBanner.skippedFiles} file
+                      {resultBanner.skippedFiles === 1 ? '' : 's'} skipped
+                      (already exist)
+                    </>
+                  )}
+                </p>
+              )}
               {resultBanner.type === 'partial' && (
                 <div className="mt-2">
                   <p className="text-sm font-medium text-red-700">

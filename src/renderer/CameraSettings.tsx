@@ -122,7 +122,6 @@ export function CameraSettings() {
               onChange={setEditedSettings}
               onApply={handleApply}
               onReset={handleReset}
-              showCameraSelection={true}
               showActions={true}
             />
 
