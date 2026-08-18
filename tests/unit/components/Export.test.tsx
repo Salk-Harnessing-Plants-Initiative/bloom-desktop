@@ -236,6 +236,40 @@ describe('Export page', () => {
     ).toBeInTheDocument();
   });
 
+  it('when every selected scan fails outright, shows only the failure list — not a nonsensical "0 scans already exported" summary', async () => {
+    const user = userEvent.setup();
+    const failedCaptureDate = new Date('2026-01-05T14:30:00');
+    mockList([makeScan('a')]);
+    getDb().export = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 0,
+        skippedFiles: 0,
+        failedScans: [
+          {
+            scanId: 'zzz',
+            experimentName: 'Experiment A',
+            captureDate: failedCaptureDate,
+            reason: 'Could not read scan source folder',
+          },
+        ],
+      },
+    });
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await pickDestination(user);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('1 scan failed:')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/already exported/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/scans? exported/i)).not.toBeInTheDocument();
+  });
+
   it('re-exporting a scan whose files all already exist shows "already exported — all N files already present", not the self-contradictory "exported (already present)"', async () => {
     const user = userEvent.setup();
     mockList([makeScan('a')]);
