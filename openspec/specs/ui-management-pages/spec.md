@@ -2443,14 +2443,16 @@ The Home page SHALL present live hardware/system status, a link-driven quickstar
 
 **Given** the user is in CylinderScan mode and navigates to the Home page
 **When** the page loads
-**Then** the existing Python/camera/DAQ hardware status is presented as a dashboard-style summary with visual (color-coded) indicators
-**And** if a hardware component is unavailable, the summary SHALL show a "Contact your administrator" message
+**Then** a simple status indicator is shown with one of three states — Connected, Checking, or Error — derived from the existing `python:get-version` call and `onStatus`/`onError` event subscriptions (no per-component camera/DAQ breakdown; that detail now lives only in Machine Configuration's relocated "Check Hardware")
+**And** if the status is Error, the summary SHALL show a generic "Contact your administrator" message
+**And** the Home page SHALL NOT show any interactive troubleshooting controls ("Check Hardware", "Restart Python") — those actions live in Machine Configuration (see the "Hardware Diagnostics in Machine Configuration" requirement in the `machine-configuration` capability)
 **And** the Home page SHALL NOT show any link to Machine Configuration (admin-only, one-time-per-machine setup)
 
 **Acceptance Criteria**:
 
-- No additional IPC calls beyond what `PythonStatus` already performs are introduced for this scenario
-- GraviScan mode's Home screen is unaffected (`PythonStatus` remains mode-gated to `cylinderscan`, rendering nothing in GraviScan mode, as it does today)
+- "Connected" maps to the existing status values of `'Connected'` or any status string containing `'ready'`; "Error" maps to the existing `'Error'` status; "Checking" maps to every other status value (including the initial `'Checking...'` state and `'Restarted'`) — this is a relabeling of the three states the component already distinguishes for its colored pill, not a new state machine
+- Home's status indicator is derived from the existing `python:get-version`/status-event IPC surface only; it does NOT invoke `python:check-hardware` or `python:restart` (those are only triggered from Machine Configuration now) — verified by a test asserting neither mock is called after Home mounts
+- GraviScan mode's Home screen is unaffected (the status indicator remains mode-gated to `cylinderscan`, rendering nothing in GraviScan mode, as it does today)
 
 #### Scenario: Today's Activity summary
 

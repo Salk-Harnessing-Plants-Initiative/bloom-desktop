@@ -326,9 +326,7 @@ loadEnvConfig(ENV_PATH); // Loads everything from .env
    describe('config:fetch-scanners handler logic', () => {
      it('should accept apiUrl and credentials as parameters', async () => {
        const apiUrl = 'https://api.bloom.salk.edu/proxy';
-       const credentials = {
-         /* ... */
-       };
+       const credentials = {/* ... */};
 
        const result = await handler(apiUrl, credentials);
 
