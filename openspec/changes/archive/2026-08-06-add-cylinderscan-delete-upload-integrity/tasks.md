@@ -92,12 +92,22 @@ third outcome, and an explicit await so verification work can't outlive
 - [x] 3.2 Implement the soft-delete guard in `uploadScan`/`uploadBatch`.
       Confirm 3.1 passes.
 - [x] 3.3 Write failing unit tests for the retry-skip filter and its
-      index-safety (design.md Decisions 9 & 10):
-
-      - A scan with images [A `'uploaded'`, B `'failed'`, C `'pending'`]: only B and C are passed to the `bloom-fs` upload call; `total` (re-upload count) is 2, not 3; A's status is never touched by this call.
-                      - **Index-safety regression test**: with the same 3-image scan, assert that when `bloom-fs`'s callback reports index 0 (of the _filtered_ 2-item call) as B succeeding and index 1 as C failing, the correct `Image` row (B, then C) receives each status update — not `scan.images[0]`/`scan.images[1]` (which would be A and B). This must fail against a naive `scan.images[index]` implementation and pass only once callbacks index into the filtered `imagesToUpload` array instead.
-                      - The "mark as uploading" loop only marks the filtered subset (B and C), not A.
-                      - An all-`'uploaded'` scan makes zero `bloom-fs` upload calls, returns `total: 0`, and leaves every image's status untouched (no re-verification is attempted for already-`'uploaded'` images — this is intentional, not a gap to fill in this task).
+      index-safety (design.md Decisions 9 & 10). A scan with images
+      [A `'uploaded'`, B `'failed'`, C `'pending'`]: only B and C are passed
+      to the `bloom-fs` upload call; `total` (re-upload count) is 2, not 3;
+      A's status is never touched by this call. **Index-safety regression
+      test**: with the same 3-image scan, assert that when `bloom-fs`'s
+      callback reports index 0 (of the _filtered_ 2-item call) as B
+      succeeding and index 1 as C failing, the correct `Image` row (B, then
+      C) receives each status update — not `scan.images[0]`/`scan.images[1]`
+      (which would be A and B). This must fail against a naive
+      `scan.images[index]` implementation and pass only once callbacks index
+      into the filtered `imagesToUpload` array instead. The "mark as
+      uploading" loop only marks the filtered subset (B and C), not A. An
+      all-`'uploaded'` scan makes zero `bloom-fs` upload calls, returns
+      `total: 0`, and leaves every image's status untouched (no
+      re-verification is attempted for already-`'uploaded'` images — this is
+      intentional, not a gap to fill in this task).
 
 - [x] 3.4 Implement the filtered `imagesToUpload` array (design.md
       Decision 10): build it once from `scan.images.filter(img => img.status !== 'uploaded')`, pass it (not `scan.images`) to `uploadImagesFn`, index into it (not `scan.images`) from the `result`/`before`/`onProgress` callbacks, and filter the "mark as uploading" loop the same way. Confirm 3.3 passes.
@@ -105,14 +115,22 @@ third outcome, and an explicit await so verification work can't outlive
       covering all outcomes from the `upload` spec's "Upload Verifies
       Storage Object Existence Before Marking Uploaded" requirement (all
       of these apply only to images freshly uploaded in the current call —
-      not to already-`'uploaded'` images, per 3.3's last bullet):
-
-      - `object_path` lookup + storage check both succeed, object present → `'uploaded'`.
-                      - `object_path` lookup succeeds, storage check confirms object missing → `'failed'` with the distinguishing message; a second `uploadScan()` call on the same scan now includes that image.
-                      - `object_path` lookup itself returns null (simulating `bloom-fs`'s own discarded internal update failure) → treated as inconclusive, not confirmed-missing.
-                      - Verification call throws/times out on attempts 1-2 but succeeds (object present) on attempt 3 → final status `'uploaded'`, exactly 3 attempts made, with a 500ms delay asserted between attempts (use fake timers, not real waits).
-                      - Verification call fails all 3 attempts → `'failed'` with the "verification could not be confirmed" message, distinct from the confirmed-missing message.
-                      - Mock the Supabase client (`this.supabase`, a full `SupabaseClient` — not `this.store`, which has no read method) for all of the above — do not hit a real network in these tests.
+      not to already-`'uploaded'` images, per 3.3's last bullet). Cover:
+      `object_path` lookup + storage check both succeed, object present →
+      `'uploaded'`. `object_path` lookup succeeds, storage check confirms
+      object missing → `'failed'` with the distinguishing message; a second
+      `uploadScan()` call on the same scan now includes that image.
+      `object_path` lookup itself returns null (simulating `bloom-fs`'s own
+      discarded internal update failure) → treated as inconclusive, not
+      confirmed-missing. Verification call throws/times out on attempts 1-2
+      but succeeds (object present) on attempt 3 → final status `'uploaded'`,
+      exactly 3 attempts made, with a 500ms delay asserted between attempts
+      (use fake timers, not real waits). Verification call fails all 3
+      attempts → `'failed'` with the "verification could not be confirmed"
+      message, distinct from the confirmed-missing message. Mock the
+      Supabase client (`this.supabase`, a full `SupabaseClient` — not
+      `this.store`, which has no read method) for all of the above — do not
+      hit a real network in these tests.
 
 - [x] 3.6 Implement storage-existence verification using `this.supabase`
       (typing it properly, e.g. `SupabaseClient<Database>`, rather than
@@ -125,12 +143,21 @@ third outcome, and an explicit await so verification work can't outlive
       loop (the pattern `tests/unit/image-uploader.test.ts` already uses
       elsewhere) proves nothing here, since that callback does no async
       work after 3.8 lands; it must pass or fail identically with or
-      without the fix. Instead:
-
-      - Use a **scan with at least 2 images** (matching the `upload` spec's own "multiple images... across worker slots" scenario — a single-image test can't distinguish "awaited" from "not awaited").
-                      - Mock the verification/Supabase call itself (not the `bloom-fs` callback) with a manually-resolvable deferred promise — e.g. `let resolveVerify; const verifyPromise = new Promise(r => {resolveVerify = r})`, returned by the mocked verification call for at least one image.
-                      - Call `uploadScan()`, let `uploadImagesFn`'s mock resolve immediately (its callback only records now, per 3.8), then assert via a settled-flag or `Promise.race` against a sentinel that the `uploadScan()` promise has **not yet resolved** while `verifyPromise` is still pending.
-                      - Call `resolveVerify(...)`, then assert `uploadScan()` **does** resolve, and that the returned `UploadResult`'s counts reflect every image's final, post-verification status — not just the one image whose promise was manually controlled.
+      without the fix. Instead: use a **scan with at least 2 images**
+      (matching the `upload` spec's own "multiple images... across worker
+      slots" scenario — a single-image test can't distinguish "awaited" from
+      "not awaited"). Mock the verification/Supabase call itself (not the
+      `bloom-fs` callback) with a manually-resolvable deferred promise — e.g.
+      `let resolveVerify; const verifyPromise = new Promise(r => {resolveVerify = r})`,
+      returned by the mocked verification call for at least one image. Call
+      `uploadScan()`, let `uploadImagesFn`'s mock resolve immediately (its
+      callback only records now, per 3.8), then assert via a settled-flag or
+      `Promise.race` against a sentinel that the `uploadScan()` promise has
+      **not yet resolved** while `verifyPromise` is still pending. Call
+      `resolveVerify(...)`, then assert `uploadScan()` **does** resolve, and
+      that the returned `UploadResult`'s counts reflect every image's final,
+      post-verification status — not just the one image whose promise was
+      manually controlled.
 
 - [x] 3.8 Implement the fix: inside `uploadImagesFn`'s `result` callback,
       only synchronously record `(index, created, error)` into an
@@ -152,10 +179,7 @@ third outcome, and an explicit await so verification work can't outlive
 
 ## 4. Duplicate-scan check (#120) + dead-code removal
 
-- [x] 4.1 Write failing unit tests for a new `checkDuplicateScan(db, plantId, experimentId, waveNumber, plantAgeDays)` handler function, validating each of the four fields independently (not as a group):
-
-      - Returns `true` when a non-deleted matching scan exists, `false` otherwise (including when the only match is soft-deleted).
-                      - Returns an error (not `false`) for: empty/non-string/missing `plantId`; empty/non-string/missing `experimentId`; negative, non-integer, or non-numeric `waveNumber`; negative, non-integer, or non-numeric `plantAgeDays` — one concrete test per case, matching the `ui-management-pages` spec's "Invalid plantId or experimentId..." and "Invalid waveNumber or plantAgeDays..." scenarios exactly.
+- [x] 4.1 Write failing unit tests for a new `checkDuplicateScan(db, plantId, experimentId, waveNumber, plantAgeDays)` handler function, validating each of the four fields independently (not as a group). Returns `true` when a non-deleted matching scan exists, `false` otherwise (including when the only match is soft-deleted). Returns an error (not `false`) for: empty/non-string/missing `plantId`; empty/non-string/missing `experimentId`; negative, non-integer, or non-numeric `waveNumber`; negative, non-integer, or non-numeric `plantAgeDays` — one concrete test per case, matching the `ui-management-pages` spec's "Invalid plantId or experimentId..." and "Invalid waveNumber or plantAgeDays..." scenarios exactly.
 
 - [x] 4.2 Implement `checkDuplicateScan` and register
       `db:scans:checkDuplicate` in `database-handlers.ts`, following the
@@ -176,11 +200,22 @@ third outcome, and an explicit await so verification work can't outlive
       accordingly, replacing the old `getMostRecentScanDate`-based logic.
       This file has no fake-timer setup today — introduce
       `vi.useFakeTimers()`/`vi.advanceTimersByTime()` for the 2s-interval
-      assertions rather than real-timer `waitFor`s. Include:
-
-      - The two specific transitions issue #120 itself calls out: changing wave number away from a duplicate match clears the warning; changing plant ID away from a duplicate match clears the warning (not just the steady-state match/no-match cases).
-                      - An edge case for invalid/unparsed `waveNumber`/`plantAgeDays` (both are string form state requiring `parseInt` before use, per `CaptureScan.tsx`'s existing pattern at lines ~305-306, ~512-513): the check SHALL NOT call `checkDuplicate` with an invalid value, matching the existing early-return guard for blank `plantQrCode`/`experimentId`.
-                      - An interval-cleanup test asserting `clearInterval` is called for the duplicate-check interval on unmount, using the same `vi.spyOn(global, 'clearInterval')` + `renderHook`/`unmount()` pattern already proven (but currently disabled) in `tests/unit/pages/CaptureScan-event-cleanup.test.tsx:220-323`'s `describe('Interval cleanup', ...)` block — port the pattern into this actively-running file rather than relying on the skipped one.
+      assertions rather than real-timer `waitFor`s. Include the two specific
+      transitions issue #120 itself calls out: changing wave number away
+      from a duplicate match clears the warning; changing plant ID away
+      from a duplicate match clears the warning (not just the steady-state
+      match/no-match cases). An edge case for invalid/unparsed
+      `waveNumber`/`plantAgeDays` (both are string form state requiring
+      `parseInt` before use, per `CaptureScan.tsx`'s existing pattern at
+      lines ~305-306, ~512-513): the check SHALL NOT call `checkDuplicate`
+      with an invalid value, matching the existing early-return guard for
+      blank `plantQrCode`/`experimentId`. An interval-cleanup test asserting
+      `clearInterval` is called for the duplicate-check interval on unmount,
+      using the same `vi.spyOn(global, 'clearInterval')` +
+      `renderHook`/`unmount()` pattern already proven (but currently
+      disabled) in `tests/unit/pages/CaptureScan-event-cleanup.test.tsx:220-323`'s
+      `describe('Interval cleanup', ...)` block — port the pattern into this
+      actively-running file rather than relying on the skipped one.
 
 - [x] 4.6 Update `CaptureScan.tsx` to use `checkDuplicate`. Confirm 4.5
       passes.
@@ -188,13 +223,35 @@ third outcome, and an explicit await so verification work can't outlive
       Decision 6, confirmed dead once 4.6 lands — an independent full-tree
       grep for "getMostRecentScanDate" found no other caller): the handler
       in `database-handlers.ts`, its `preload.ts` exposure, its
-      `electron.d.ts` declaration, and:
-
-      - Remove its two dedicated `test()` blocks inside `tests/e2e/renderer-database-ipc.e2e.ts`'s larger `describe('Renderer Database IPC - Scans (with Filters)', ...)` block (they are individual tests within a large shared describe, not an isolated section — remove precisely those two tests, leave the rest of that describe block untouched).
-                      - Remove the dedicated `describe('IPC: db:scans:getMostRecentScanDate', ...)` block in `tests/e2e/plant-barcode-validation.e2e.ts` (this one _is_ fully isolated).
-                      - **Rewrite, not delete**, the separate `'should show warning when plant already scanned today'` test in `tests/e2e/plant-barcode-validation.e2e.ts` (inside `describe('UI: Duplicate Scan Prevention', ...)`) — it asserts the literal string `'This plant was already scanned today'`, which no longer applies under the new 4-field key, and its current UI interaction never fills the wave-number/plant-age-days form fields (it only fills plant barcode + selects experiment/phenotyper, since the old check didn't need them). The rewritten test(s) must also fill in matching wave-number and plant-age-days values, or the new check will no-op on invalid/blank input (per 4.5's edge case) and the test will fail for an unrelated reason. Cover the match/no-match/different-day scenarios from the `ui-management-pages` spec delta.
-                      - **Replace**, not just remove, the `getMostRecentScanDate` mock in `tests/unit/capture-scan-config.test.tsx` with a `checkDuplicate` mock (see 4.5 — this is the same file 4.5's new tests live in).
-                      - In `tests/unit/pages/CaptureScan-event-cleanup.test.tsx`, remove the `getMostRecentScanDate` mock (this file's suite is currently `describe.skip`'d, so this is a low-risk cleanup, not a live-test fix — the working interval-cleanup pattern from this file is ported to `capture-scan-config.test.tsx` in 4.5, not left here).
+      `electron.d.ts` declaration, and: remove its two dedicated `test()`
+      blocks inside `tests/e2e/renderer-database-ipc.e2e.ts`'s larger
+      `describe('Renderer Database IPC - Scans (with Filters)', ...)` block
+      (they are individual tests within a large shared describe, not an
+      isolated section — remove precisely those two tests, leave the rest
+      of that describe block untouched). Remove the dedicated
+      `describe('IPC: db:scans:getMostRecentScanDate', ...)` block in
+      `tests/e2e/plant-barcode-validation.e2e.ts` (this one _is_ fully
+      isolated). **Rewrite, not delete**, the separate `'should show
+warning when plant already scanned today'` test in
+      `tests/e2e/plant-barcode-validation.e2e.ts` (inside `describe('UI:
+Duplicate Scan Prevention', ...)`) — it asserts the literal string
+      `'This plant was already scanned today'`, which no longer applies
+      under the new 4-field key, and its current UI interaction never fills
+      the wave-number/plant-age-days form fields (it only fills plant
+      barcode + selects experiment/phenotyper, since the old check didn't
+      need them). The rewritten test(s) must also fill in matching
+      wave-number and plant-age-days values, or the new check will no-op on
+      invalid/blank input (per 4.5's edge case) and the test will fail for
+      an unrelated reason. Cover the match/no-match/different-day scenarios
+      from the `ui-management-pages` spec delta. **Replace**, not just
+      remove, the `getMostRecentScanDate` mock in
+      `tests/unit/capture-scan-config.test.tsx` with a `checkDuplicate`
+      mock (see 4.5 — this is the same file 4.5's new tests live in). In
+      `tests/unit/pages/CaptureScan-event-cleanup.test.tsx`, remove the
+      `getMostRecentScanDate` mock (this file's suite is currently
+      `describe.skip`'d, so this is a low-risk cleanup, not a live-test fix
+      — the working interval-cleanup pattern from this file is ported to
+      `capture-scan-config.test.tsx` in 4.5, not left here).
 
 - [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check
       gate before full E2E.
