@@ -1107,3 +1107,23 @@ advancing next to the same stuck label (design.md Decision 23).
       scan and confirm the scanner status label updates to `ready`
       shortly after Start Scan, instead of staying on `disconnected`.
       **Confirmed** in the running dev app (hot-reloaded).
+- [x] 33.7 (Added `openspec-review` round 3) 33.1's coverage only proves
+      `useScannerStatus.refresh()` works in isolation — nothing exercised
+      `GraviScan.tsx`'s own wiring (the `useEffect` that actually calls
+      `refreshScannerStatus()` on the `scanSession.isScanning` transition),
+      and `tests/unit/pages/GraviScan.test.tsx`'s `mockScannerStatus` had
+      no `refresh` field at all, so any future test that actually
+      triggered the transition would crash with a TypeError instead of
+      failing meaningfully. Added `refresh: vi.fn()` to that mock and a new
+      test asserting `refresh` is NOT called on initial mount, IS called
+      exactly once on a false→true transition, not called again while
+      `isScanning` stays true, and is called again on the true→false
+      transition. Confirmed red by temporarily disabling the
+      `refreshScannerStatus()` call in `GraviScan.tsx` and re-running just
+      this test (failed as expected), then restored it and confirmed
+      green. Full suite: 1766 passed, 7 failed across 4 files — all match
+      the already-documented pre-existing/flaky set (config-store,
+      image-uploader x3, scan-coordinator's regex test, and
+      electron-cleanup.test.ts, documented as flaky under full-suite
+      parallel load); zero new failures. `tsc --noEmit`, lint, and
+      format:check all clean.

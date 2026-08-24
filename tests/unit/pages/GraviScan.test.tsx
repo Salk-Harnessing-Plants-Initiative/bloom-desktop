@@ -28,6 +28,7 @@ const {
       },
     ],
     loading: false,
+    refresh: vi.fn(),
   },
   mockWaveNumber: {
     waveNumber: 2,
@@ -256,6 +257,37 @@ describe('GraviScan screen composition', () => {
       expect(experimentSelect).toBeDisabled();
       expect(phenotyperSelect).toBeDisabled();
       expect(waveInput).toBeDisabled();
+    } finally {
+      mockScanSession.isScanning = false;
+    }
+  });
+
+  it('refetches scanner status on the isScanning transition, not on mount (Decision 23 regression)', () => {
+    // useScannerStatus is mocked out entirely in this file, so this is the
+    // one place that can exercise GraviScan.tsx's own wiring: the useEffect
+    // (keyed on scanSession.isScanning) that calls refreshScannerStatus() to
+    // pick up a status change coordinator.initialize() already made before
+    // isScanning ever became true. Without this test, GraviScan.tsx could
+    // stop calling refresh() entirely (or call it on every render) and
+    // nothing would catch it — tests/unit/hooks/useScannerStatus.test.ts
+    // only proves refresh() itself works, never that this component invokes
+    // it at the right time.
+    mockScannerStatus.refresh.mockClear();
+    try {
+      const { rerender } = render(<GraviScan />);
+      expect(mockScannerStatus.refresh).not.toHaveBeenCalled();
+
+      mockScanSession.isScanning = true;
+      rerender(<GraviScan />);
+      expect(mockScannerStatus.refresh).toHaveBeenCalledTimes(1);
+
+      // No further call while isScanning stays true.
+      rerender(<GraviScan />);
+      expect(mockScannerStatus.refresh).toHaveBeenCalledTimes(1);
+
+      mockScanSession.isScanning = false;
+      rerender(<GraviScan />);
+      expect(mockScannerStatus.refresh).toHaveBeenCalledTimes(2);
     } finally {
       mockScanSession.isScanning = false;
     }

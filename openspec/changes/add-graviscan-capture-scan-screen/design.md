@@ -1313,6 +1313,18 @@ in a `useEffect` keyed on `scanSession.isScanning`, skipping the initial
 mount (already covered by the hook's own mount-time fetch) and firing
 only on an actual transition.
 
+**Round 3 (`openspec-review`) found a coverage gap in this fix itself**:
+the test added alongside it (task 33.1) only proved `refresh()` works in
+isolation, never that `GraviScan.tsx` actually calls it at the right
+time — `tests/unit/pages/GraviScan.test.tsx` mocks `useScannerStatus`
+away entirely and its mock had no `refresh` field, so the real wiring
+(the `useEffect` above) had zero test coverage, and any test that did
+trigger the transition would have crashed with a TypeError rather than
+failing meaningfully. Fixed in task 33.7: added `refresh` to that mock
+and a test exercising the actual false→true→false transition through
+`rerender()`, confirmed red against a temporarily-disabled
+`refreshScannerStatus()` call before confirming green.
+
 ## Architecture
 
 ```
