@@ -524,7 +524,7 @@ other out of order.
       `npm run test:db-upgrade` as a final check after all handler
       changes (matching this repo's convention for schema-touching
       changes, per `add-wave-scoped-metadata-linking`'s own tasks.md).
-- [ ] 16.6 Start the dev app (per this repo's `dev`/`run` skill) and
+- [x] 16.6 Start the dev app (per this repo's `dev`/`run` skill) and
       manually exercise the Capture Scan happy path in GraviScan mode:
       select experiment/wave → assign plates (auto-fill + one manual
       override) → start a short continuous scan → observe live progress →
@@ -535,7 +535,19 @@ other out of order.
       real app, not just the mocked unit test → force-quit and relaunch
       to confirm the abnormal-termination informational banner appears
       for that wave. This is a live-Electron check, not a substitute for
-      the automated suites above.
+      the automated suites above. **Result:** all steps confirmed in the
+      real app, including after a force-quit + relaunch. Found and fixed
+      one real bug along the way — scanner status stuck on `disconnected`
+      throughout a scan (Decision 23 / Section 33). Verified: locked
+      experiment/phenotyper/wave selectors show a tooltip during a scan;
+      "Test Scan" also disables mid-scan; a zero interval disables "Start
+      Scan" rather than just erroring; a plate edit immediately followed
+      by navigating away persists (write-race fix holds). The green/swap
+      QR-verification banner path was not exercised — it needs wave
+      metadata linking, which has no UI yet (unstarted Tier 5 work, not a
+      gap in this proposal's scope); the `lookup_failed` banner was
+      observed instead, confirming the graded-banner mechanism itself
+      works.
 - [x] 16.7 Run `openspec validate add-graviscan-capture-scan-screen
 --strict` and resolve any issues.
 
