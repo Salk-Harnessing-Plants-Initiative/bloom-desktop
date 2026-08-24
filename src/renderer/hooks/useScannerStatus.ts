@@ -31,6 +31,11 @@ function toScannerPanelState(row: ScannerStatusRow): ScannerPanelState {
 export interface UseScannerStatusResult {
   scanners: ScannerPanelState[];
   loading: boolean;
+  /**
+   * Imperative refetch, for callers that need to force a status update
+   * outside this hook's own polling — see the doc comment below.
+   */
+  refresh: () => Promise<void>;
 }
 
 /**
@@ -39,6 +44,18 @@ export interface UseScannerStatusResult {
  * "poll while any row is `starting`, stop otherwise" pattern (the fix PR
  * #213 asks for) rather than relying solely on `webContents.send` events,
  * which can fire before a fresh mount subscribes and are never replayed.
+ *
+ * `refresh` is exposed so a caller can force a fetch outside that loop:
+ * unlike Configure Scanner (where the hook is already mounted and polling
+ * while its own page drives scanner initialization, so the poll-while-
+ * `starting` loop naturally observes the transition), Capture Scan's
+ * `coordinator.initialize()` runs entirely inside the `startScan()` IPC
+ * call, between the button click and `isScanning` becoming true — after
+ * this hook's initial mount-time fetch already captured the pre-scan
+ * `disconnected` snapshot. `GraviScan.tsx` calls `refresh()` on the
+ * `isScanning` transition itself (see its own comment) so this hook
+ * doesn't need to depend on `useScanSession`'s output, which itself
+ * depends on this hook's `scanners`.
  */
 export function useScannerStatus(): UseScannerStatusResult {
   const [scanners, setScanners] = useState<ScannerPanelState[]>([]);
@@ -80,5 +97,5 @@ export function useScannerStatus(): UseScannerStatusResult {
     };
   }, [scanners, refresh]);
 
-  return { scanners, loading };
+  return { scanners, loading, refresh };
 }

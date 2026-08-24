@@ -5,7 +5,7 @@
  * control (start/cancel/continuous/test-scan), and QR verification
  * results.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExperimentChooser } from './components/ExperimentChooser';
 import { PhenotyperChooser } from './components/PhenotyperChooser';
 import { ScanFormSection } from './components/graviscan/ScanFormSection';
@@ -36,7 +36,7 @@ export function GraviScan() {
 
   const { waveNumber, setWaveNumber, suggestedNextWave } =
     useWaveNumber(experimentId);
-  const { scanners } = useScannerStatus();
+  const { scanners, refresh: refreshScannerStatus } = useScannerStatus();
 
   // Restore experiment/phenotyper/wave on mount so they survive navigating
   // away from this screen and back (CaptureScan.tsx uses the same
@@ -159,6 +159,23 @@ export function GraviScan() {
     durationMinutes: continuousMode.durationMinutes,
     onRestoreWaveNumber: setWaveNumber,
   });
+
+  // useScannerStatus's own mount-time fetch can only ever see the pre-scan
+  // snapshot — coordinator.initialize() (which is what actually moves a
+  // scanner from disconnected to ready) runs entirely inside startScan(),
+  // between the button click and isScanning becoming true. Force a refetch
+  // on the transition itself so the panel doesn't stay stuck on the stale
+  // pre-scan status for the whole scan (design.md Decision 23). Declared
+  // here rather than inside useScannerStatus itself: scanners (that hook's
+  // own output) feeds scanSession's inputs, so scanSession.isScanning isn't
+  // available until after this hook already exists.
+  const isScanningRef = useRef(scanSession.isScanning);
+  useEffect(() => {
+    if (isScanningRef.current !== scanSession.isScanning) {
+      isScanningRef.current = scanSession.isScanning;
+      refreshScannerStatus();
+    }
+  }, [scanSession.isScanning, refreshScannerStatus]);
 
   const testScan = useTestScan({ scannerIds, gridModes, saneNames });
 

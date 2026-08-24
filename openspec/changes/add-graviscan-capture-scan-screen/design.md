@@ -1277,6 +1277,42 @@ fn>` pattern the surrounding interface already uses for
    rejection test were added, matching this file's existing coverage
    pattern for its other path handlers.
 
+### Decision 23 — Refetch scanner status on the isScanning transition (found during 16.6)
+
+Live smoke testing (task 16.6) found the per-scanner status in
+`ScannerStatusPanel` stuck on `disconnected` for the entire duration of a
+scan, even though the backend log confirmed both mock scanners reached
+`ready` almost immediately after Start Scan, and scan progress was
+visibly advancing next to that same stuck label.
+
+Root cause: `useScannerStatus` mirrors `ConfigureScanner.tsx`'s established
+"poll `getScannerStatus()` while any row is `starting`, stop once every
+row leaves it" pattern (the PR #213 fix). On Configure Scanner, that's
+sufficient because the hook is already mounted and polling while that
+page's own actions (Detect/Connect) drive scanner initialization, so the
+poll-while-`starting` loop naturally observes the `starting` → `ready`
+transition. On Capture Scan, `coordinator.initialize()` runs entirely
+inside the `startScan()` IPC call in `session-handlers.ts` — between the
+button click and `useScanSession`'s `isScanning` becoming `true` — so by
+the time the renderer could know a scan even started, initialization has
+already finished. The hook's one-time initial fetch (at page mount, well
+before any scan starts) captures the pre-scan `disconnected` snapshot,
+never observes a `starting` row, and therefore never starts polling at
+all.
+
+**Decision:** `useScannerStatus` exposes its internal `refresh()`
+function instead of (or in addition to) polling internally. It cannot
+simply accept an `isScanning` parameter and refetch on that transition
+itself — `GraviScan.tsx`'s `scanners` (this hook's own output) feeds into
+`useScanSession`'s inputs (`scannerIds`/`gridModes`/`saneNames`), and
+`isScanning` is `useScanSession`'s output, so taking `isScanning` as a
+parameter would make the hook depend on its own downstream consumer.
+Instead, `GraviScan.tsx` — which already holds both values once
+`useScanSession` is constructed — calls `refreshScannerStatus()` itself
+in a `useEffect` keyed on `scanSession.isScanning`, skipping the initial
+mount (already covered by the hook's own mount-time fetch) and firing
+only on an actual transition.
+
 ## Architecture
 
 ```

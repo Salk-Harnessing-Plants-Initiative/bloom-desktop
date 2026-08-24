@@ -127,4 +127,44 @@ describe('useScannerStatus', () => {
     });
     expect(getScannerStatus).toHaveBeenCalledTimes(1);
   });
+
+  it('exposes a refresh() a caller can invoke to force a refetch outside the polling loop', async () => {
+    // Capture Scan's Start Scan flow spawns/initializes scanner subprocesses
+    // (session-handlers.ts's startScan -> coordinator.initialize()) entirely
+    // between the button click and useScanSession's isScanning becoming
+    // true — after this hook's initial mount-time fetch already ran. Unlike
+    // Configure Scanner (where the hook's own poll-while-'starting' loop is
+    // what observes that transition, since initialization happens through
+    // that page's own actions while the hook is already mounted and
+    // polling), Capture Scan's initial fetch can only ever see the pre-scan
+    // 'disconnected' snapshot. GraviScan.tsx calls refresh() on the
+    // isScanning transition to close that gap (not modeled here, since it
+    // needs useScanSession's output, which itself depends on this hook's
+    // `scanners` — see the hook's doc comment) — this test just confirms
+    // refresh() does the refetch it would rely on.
+    getScannerStatus.mockResolvedValueOnce({
+      success: true,
+      scanners: [row({ status: 'disconnected' })],
+    });
+    getScannerStatus.mockResolvedValueOnce({
+      success: true,
+      scanners: [row({ status: 'ready' })],
+    });
+
+    const { result } = renderHook(() => useScannerStatus());
+
+    await waitFor(() =>
+      expect(result.current.scanners[0]?.connectionStatus).toBe('disconnected')
+    );
+    expect(getScannerStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    await waitFor(() =>
+      expect(result.current.scanners[0]?.connectionStatus).toBe('ready')
+    );
+    expect(getScannerStatus).toHaveBeenCalledTimes(2);
+  });
 });

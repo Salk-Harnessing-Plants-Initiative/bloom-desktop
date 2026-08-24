@@ -1062,3 +1062,36 @@ consistency gaps. See design.md Decision 22 for full detail per item.
       lint, and format:check all clean.
 - [x] 32.15 Re-run `openspec validate add-graviscan-capture-scan-screen
 --strict`.
+
+## 33. Refetch scanner status on the isScanning transition (TDD, found during 16.6)
+
+Live smoke testing (resuming task 16.6, after the round-2 self-review
+fixes and the `origin/main` merge) found the per-scanner status in
+`ScannerStatusPanel` stuck on `disconnected` for the whole duration of a
+scan, even though the dev-server log confirmed both mock scanners reached
+`ready` almost immediately after Start Scan, and progress was visibly
+advancing next to the same stuck label (design.md Decision 23).
+
+- [x] 33.1 Write a failing test in `tests/unit/hooks/useScannerStatus.test.ts`
+      confirming the hook exposes a `refresh()` a caller can invoke to
+      force a refetch outside its own polling loop. Confirmed red against
+      the unchanged implementation (no `refresh` in the returned object).
+- [x] 33.2 Add `refresh` to `UseScannerStatusResult` and return it from
+      `useScannerStatus()`.
+- [x] 33.3 In `GraviScan.tsx`, add a `useEffect` keyed on
+      `scanSession.isScanning` (declared after `useScanSession`, so it can
+      see both that value and the hook's `refresh`) that calls
+      `refreshScannerStatus()` on an actual transition, skipping the
+      initial mount via a ref (already covered by the hook's own
+      mount-time fetch).
+- [x] 33.4 Run the full unit suite, `npx tsc --noEmit`, and lint; confirm
+      no regressions beyond the already-documented pre-existing failures.
+      **Result:** 1767 passed, same 5 pre-existing/flaky failure files
+      (Windows path-separator), zero new failures. `tsc --noEmit` and lint
+      both clean.
+- [x] 33.5 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.
+- [x] 33.6 Manually re-verify in the live app (continuing 16.6): start a
+      scan and confirm the scanner status label updates to `ready`
+      shortly after Start Scan, instead of staying on `disconnected`.
+      **Confirmed** in the running dev app (hot-reloaded).
