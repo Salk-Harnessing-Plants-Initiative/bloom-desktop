@@ -728,7 +728,7 @@ export function CaptureScan() {
                         </p>
                         <a
                           href="#/camera-settings"
-                          className="text-blue-600 hover:text-blue-800 font-medium"
+                          className="text-lime-700 hover:text-lime-800 font-medium"
                         >
                           Go to Camera Settings →
                         </a>
@@ -831,7 +831,7 @@ export function CaptureScan() {
                     </p>
                     <a
                       href="#/camera-settings"
-                      className="inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+                      className="inline-block px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 font-medium"
                     >
                       Configure Camera
                     </a>

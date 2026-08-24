@@ -307,7 +307,7 @@ BLOOM_ANON_KEY=legacykey`;
       expect(defaults.scanner_name).toBe('');
       expect(defaults.camera_ip_address).toBe('mock');
       expect(defaults.scans_dir).toContain('.bloom/scans');
-      expect(defaults.bloom_api_url).toBe('https://api.bloom.salk.edu/proxy');
+      expect(defaults.bloom_api_url).toBe('https://bloom.salk.edu/api');
     });
   });
 

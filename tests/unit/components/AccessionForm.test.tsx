@@ -327,3 +327,19 @@ describe('AccessionForm', () => {
     });
   });
 });
+
+describe('AccessionForm color palette', () => {
+  it('uses focus:ring-lime-500 on the name input and submit button, not blue', () => {
+    render(<AccessionForm onSuccess={vi.fn()} />);
+
+    const nameInput = screen.getByLabelText('Name');
+    expect(nameInput.className).toContain('focus:ring-lime-500');
+    expect(nameInput.className).not.toContain('focus:ring-blue-500');
+
+    const submitButton = screen.getByRole('button', {
+      name: /add accession|create accession/i,
+    });
+    expect(submitButton.className).toContain('focus:ring-lime-500');
+    expect(submitButton.className).not.toContain('focus:ring-blue-500');
+  });
+});

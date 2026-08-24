@@ -233,6 +233,8 @@ const databaseAPI: DatabaseAPI = {
       ),
     getRecent: (options?: { limit?: number; experimentId?: string }) =>
       ipcRenderer.invoke('db:scans:getRecent', options),
+    getFailedUploadCount: () =>
+      ipcRenderer.invoke('db:scans:getFailedUploadCount'),
     delete: (id: string) => ipcRenderer.invoke('db:scans:delete', id),
     upload: (scanId: string) => ipcRenderer.invoke('db:scans:upload', scanId),
     uploadBatch: (scanIds: string[]) =>

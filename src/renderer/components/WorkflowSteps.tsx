@@ -8,58 +8,6 @@ export interface WorkflowStep {
   icon: string;
 }
 
-export const cylinderScanSteps: WorkflowStep[] = [
-  {
-    step: 1,
-    title: 'Scientists',
-    description: 'Register the scientists running experiments',
-    route: '/scientists',
-    icon: '👥',
-  },
-  {
-    step: 2,
-    title: 'Phenotypers',
-    description: 'Add the people operating the scanner',
-    route: '/phenotypers',
-    icon: '🧑',
-  },
-  {
-    step: 3,
-    title: 'Accessions',
-    description: 'Define plant accessions and barcode mappings',
-    route: '/accessions',
-    icon: '📁',
-  },
-  {
-    step: 4,
-    title: 'Experiments',
-    description: 'Create experiments and attach accessions',
-    route: '/experiments',
-    icon: '🧪',
-  },
-  {
-    step: 5,
-    title: 'Camera Settings',
-    description: 'Configure camera exposure and white balance',
-    route: '/camera-settings',
-    icon: '📷',
-  },
-  {
-    step: 6,
-    title: 'Capture Scan',
-    description: 'Capture a 360-degree scan of a plant',
-    route: '/capture-scan',
-    icon: '🔄',
-  },
-  {
-    step: 7,
-    title: 'Browse Scans',
-    description: 'Review and manage captured scans',
-    route: '/browse-scans',
-    icon: '📋',
-  },
-];
-
 export const graviScanSteps: WorkflowStep[] = [
   {
     step: 1,

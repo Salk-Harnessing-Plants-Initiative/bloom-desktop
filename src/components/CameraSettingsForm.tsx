@@ -5,8 +5,8 @@
  * Can be used in Camera Settings page and CaptureScan page.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import type { CameraSettings, DetectedCamera } from '../types/camera';
+import React from 'react';
+import type { CameraSettings } from '../types/camera';
 
 export interface CameraSettingsFormProps {
   /** Current settings */
@@ -21,9 +21,6 @@ export interface CameraSettingsFormProps {
   /** Callback when Reset is clicked */
   onReset?: () => void;
 
-  /** Whether to show camera selection */
-  showCameraSelection?: boolean;
-
   /** Whether Apply/Reset buttons are visible */
   showActions?: boolean;
 
@@ -36,99 +33,9 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
   onChange,
   onApply,
   onReset,
-  showCameraSelection = true,
   showActions = true,
   readOnly = false,
 }) => {
-  const [detectedCameras, setDetectedCameras] = useState<DetectedCamera[]>([]);
-  const [isDetecting, setIsDetecting] = useState(false);
-  const [selectedCamera, setSelectedCamera] = useState<string>('');
-  const [showManualEntry, setShowManualEntry] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-
-  // Use refs to avoid stale closures in async effects
-  const settingsRef = useRef(settings);
-  const onChangeRef = useRef(onChange);
-  useEffect(() => {
-    settingsRef.current = settings;
-    onChangeRef.current = onChange;
-  }, [settings, onChange]);
-
-  // Load default camera from machine config, then detect cameras
-  useEffect(() => {
-    const initializeCamera = async () => {
-      if (!showCameraSelection || readOnly) return;
-
-      // First, try to load default camera from machine config
-      try {
-        const { config } = await window.electron.config.get();
-        // Use refs to get latest values after async operation
-        if (
-          config.camera_ip_address &&
-          !settingsRef.current.camera_ip_address
-        ) {
-          // Pre-select the configured default camera
-          setSelectedCamera(config.camera_ip_address);
-          onChangeRef.current({
-            ...settingsRef.current,
-            camera_ip_address: config.camera_ip_address,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to load camera config:', error);
-      }
-
-      // Then detect available cameras
-      handleDetectCameras();
-    };
-
-    initializeCamera();
-  }, [showCameraSelection, readOnly]); // eslint-disable-line
-
-  const handleDetectCameras = async () => {
-    setIsDetecting(true);
-    try {
-      const result = await window.electron.camera.detectCameras();
-      if (result.success && result.cameras) {
-        setDetectedCameras(result.cameras);
-
-        // Use refs to get latest values after async operation
-        const currentSettings = settingsRef.current;
-
-        // Only auto-select if no camera is currently selected
-        if (!currentSettings.camera_ip_address) {
-          // Select mock camera by default
-          const mockCamera = result.cameras.find((c) => c.is_mock);
-          if (mockCamera) {
-            setSelectedCamera(mockCamera.ip_address);
-            onChangeRef.current({
-              ...currentSettings,
-              camera_ip_address: mockCamera.ip_address,
-            });
-          }
-        } else {
-          // Camera already selected, just update selectedCamera state for UI
-          setSelectedCamera(currentSettings.camera_ip_address);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to detect cameras:', err);
-    } finally {
-      setIsDetecting(false);
-    }
-  };
-
-  const handleCameraSelect = (cameraIp: string) => {
-    if (cameraIp === 'manual') {
-      setShowManualEntry(true);
-      setSelectedCamera('');
-    } else {
-      setShowManualEntry(false);
-      setSelectedCamera(cameraIp);
-      onChange({ ...settings, camera_ip_address: cameraIp });
-    }
-  };
-
   const handleSliderChange = (field: keyof CameraSettings, value: number) => {
     onChange({ ...settings, [field]: value });
   };
@@ -143,94 +50,6 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Camera Selection */}
-      {showCameraSelection && !readOnly && (
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
-            Camera
-          </label>
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleDetectCameras}
-              disabled={isDetecting}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
-            >
-              {isDetecting ? 'Detecting...' : 'Detect Cameras'}
-            </button>
-          </div>
-
-          {detectedCameras.length > 0 && (
-            <select
-              value={showManualEntry ? 'manual' : selectedCamera}
-              onChange={(e) => handleCameraSelect(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {detectedCameras.map((camera) => (
-                <option key={camera.ip_address} value={camera.ip_address}>
-                  {camera.friendly_name}
-                </option>
-              ))}
-              <option value="manual">Manual Entry...</option>
-            </select>
-          )}
-
-          {(showManualEntry || detectedCameras.length === 0) && (
-            <div className="space-y-1">
-              <input
-                type="text"
-                placeholder="192.168.1.100 (or leave empty for mock)"
-                value={settings.camera_ip_address || ''}
-                onChange={(e) =>
-                  onChange({ ...settings, camera_ip_address: e.target.value })
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500">
-                Leave empty to use mock camera
-              </p>
-            </div>
-          )}
-
-          {/* Help Text (Collapsible) */}
-          <div className="border-t pt-2">
-            <button
-              onClick={() => setShowHelp(!showHelp)}
-              className="text-sm text-blue-600 hover:text-blue-800"
-            >
-              {showHelp ? '▼' : '▶'} How to find camera IP address
-            </button>
-
-            {showHelp && (
-              <div className="mt-2 p-3 bg-gray-50 rounded text-sm space-y-2">
-                <p className="font-medium">
-                  Method 1: Basler Pylon Viewer (Recommended)
-                </p>
-                <ol className="list-decimal ml-5 space-y-1">
-                  <li>Open Basler Pylon Viewer software</li>
-                  <li>Right-click camera → Properties</li>
-                  <li>View IP Address in properties panel</li>
-                </ol>
-
-                <p className="font-medium mt-3">Method 2: Check Camera Label</p>
-                <p>Physical label on camera may show IP address</p>
-
-                <p className="font-medium mt-3">Method 3: Router Admin Page</p>
-                <p>
-                  Check connected devices in router settings (usually
-                  192.168.1.1)
-                </p>
-
-                <p className="text-gray-600 mt-3">
-                  <strong>Note:</strong> Mock camera doesn't require an IP
-                  address. Detection button should show it automatically.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Exposure Time */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">

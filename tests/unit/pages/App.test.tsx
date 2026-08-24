@@ -40,6 +40,15 @@ const mockConfigAPI = {
     .mockResolvedValue({ slackConfigured: true, libusbRecoveryEnabled: true }),
 };
 
+const mockDatabaseAPI = {
+  scans: {
+    getRecent: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    getFailedUploadCount: vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { failedCount: 0 } }),
+  },
+};
+
 const mockGraviAPI = {
   getScannerStatus: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
   getConfig: vi.fn().mockResolvedValue({
@@ -86,6 +95,14 @@ beforeEach(() => {
     success: true,
     data: { isActive: false },
   });
+  mockDatabaseAPI.scans.getRecent.mockResolvedValue({
+    success: true,
+    data: [],
+  });
+  mockDatabaseAPI.scans.getFailedUploadCount.mockResolvedValue({
+    success: true,
+    data: { failedCount: 0 },
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
@@ -94,6 +111,7 @@ beforeEach(() => {
       ...win.electron,
       config: mockConfigAPI,
       gravi: mockGraviAPI,
+      database: mockDatabaseAPI,
       scanner: { getScannerId: vi.fn().mockResolvedValue('TestScanner') },
       database: {
         ...win.electron?.database,

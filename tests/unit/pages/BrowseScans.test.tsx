@@ -17,7 +17,16 @@ const baseScan = {
   phenotyper: { id: 'phen-1', name: 'Jane' },
   wave_number: 1,
   plant_age_days: 14,
-  images: [{ id: 'img-1', status: 'pending' }],
+  images: [
+    { id: 'img-1', status: 'pending', path: 'frame_000.jpg', frame_number: 0 },
+  ],
+  scanner_name: 'Cam-A',
+  exposure_time: 50000,
+  gain: 4,
+  brightness: 0.5,
+  contrast: 1.0,
+  gamma: 1.0,
+  seconds_per_rot: 7.0,
 };
 
 function makeListResponse(scans: unknown[]) {
@@ -32,6 +41,7 @@ let mockDelete: ReturnType<typeof vi.fn>;
 let mockUpload: ReturnType<typeof vi.fn>;
 let mockUploadBatch: ReturnType<typeof vi.fn>;
 let mockExperimentsList: ReturnType<typeof vi.fn>;
+let mockConfigGet: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   mockList = vi.fn().mockResolvedValue(makeListResponse([baseScan]));
@@ -39,11 +49,18 @@ beforeEach(() => {
   mockUpload = vi.fn().mockResolvedValue({ success: true, data: {} });
   mockUploadBatch = vi.fn().mockResolvedValue({ success: true, data: {} });
   mockExperimentsList = vi.fn().mockResolvedValue({ success: true, data: [] });
+  mockConfigGet = vi
+    .fn()
+    .mockResolvedValue({ config: { scans_dir: '/scans' } });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
   win.electron = {
     ...win.electron,
+    config: {
+      ...win.electron?.config,
+      get: mockConfigGet,
+    },
     database: {
       ...win.electron.database,
       scans: {
@@ -140,5 +157,292 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() =>
       expect(screen.getByTitle('Delete scan')).not.toBeDisabled()
     );
+  });
+});
+
+describe('BrowseScans baseline rendering', () => {
+  it('renders the table with the documented columns', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const headerTexts = Array.from(document.querySelectorAll('thead th')).map(
+      (th) => th.textContent?.trim()
+    );
+
+    [
+      'Plant ID',
+      'Accession',
+      'Capture Date',
+      'Experiment',
+      'Phenotyper',
+      'Wave',
+      'Age (days)',
+      'Images',
+      'Upload Status',
+      'Actions',
+    ].forEach((header) => {
+      expect(headerTexts).toContain(header);
+    });
+  });
+
+  it('shows an empty-state message when there are no scans', async () => {
+    mockList.mockResolvedValue(makeListResponse([]));
+    renderPage();
+
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    expect(await screen.findByText('No scans found')).toBeInTheDocument();
+  });
+
+  it('shows the total count summary', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+    expect(await screen.findByText(/Showing 1 of 1 scans/)).toBeInTheDocument();
+  });
+});
+
+describe('BrowseScans color palette', () => {
+  it('uses focus:ring-lime-500 on the filter inputs, not blue', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const experimentFilter = document.getElementById('experiment-filter');
+    const dateFrom = document.getElementById('date-from');
+    const dateTo = document.getElementById('date-to');
+
+    [experimentFilter, dateFrom, dateTo].forEach((el) => {
+      expect(el?.className).toContain('focus:ring-lime-500');
+      expect(el?.className).not.toContain('focus:ring-blue-500');
+    });
+  });
+
+  it('uses lime on the Plant ID link and the view icon, not blue', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+    const plantLink = await screen.findByText('PLANT-001');
+    expect(plantLink.className).toContain('text-lime-700');
+    expect(plantLink.className).not.toContain('text-blue-600');
+
+    const viewIcon = screen.getByTitle('View scan');
+    expect(viewIcon.className).toContain('text-lime-700');
+    expect(viewIcon.className).not.toContain('text-blue-600');
+  });
+
+  it('uses lime on the batch "Upload Selected" button, not blue', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    // Select the row to reveal the batch action bar
+    const checkboxes = screen.getAllByRole('checkbox');
+    fireEvent.click(checkboxes[1]); // index 0 is "select all"
+
+    const uploadSelectedButton = await screen.findByText(/Upload Selected/);
+    expect(uploadSelectedButton.className).toContain('bg-lime-700');
+    expect(uploadSelectedButton.className).not.toContain('bg-blue-600');
+  });
+
+  it('leaves gray row chrome and upload-status colors unchanged (regression guard)', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const row = screen.getByText('PLANT-001').closest('tr');
+    expect(row?.className).toContain('hover:bg-gray-50');
+
+    const tbody = document.querySelector('tbody');
+    expect(tbody?.className).toContain('divide-gray-100');
+  });
+});
+
+describe('thumbnail column', () => {
+  it('renders a lazy-loaded thumbnail sourced from the lowest-frame_number image', async () => {
+    mockList.mockResolvedValue(
+      makeListResponse([
+        {
+          ...baseScan,
+          images: [
+            {
+              id: 'img-2',
+              status: 'uploaded',
+              path: 'frame_001.jpg',
+              frame_number: 1,
+            },
+            {
+              id: 'img-1',
+              status: 'uploaded',
+              path: 'frame_000.jpg',
+              frame_number: 0,
+            },
+          ],
+        },
+      ])
+    );
+
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const thumbnail = await screen.findByAltText(/thumbnail/i);
+    expect(thumbnail).toHaveAttribute('loading', 'lazy');
+    expect(thumbnail.getAttribute('src')).toContain('frame_000.jpg');
+    expect(thumbnail.getAttribute('src')).not.toContain('frame_001.jpg');
+  });
+
+  it('renders a placeholder for a scan with zero images', async () => {
+    mockList.mockResolvedValue(makeListResponse([{ ...baseScan, images: [] }]));
+
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('thumbnail-placeholder')).toBeInTheDocument();
+  });
+
+  it('falls back to the placeholder when the image fails to load', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const thumbnail = await screen.findByAltText(/thumbnail/i);
+    fireEvent.error(thumbnail);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('thumbnail-placeholder')).toBeInTheDocument();
+    });
+  });
+
+  it('does not attempt (or blacklist) a thumbnail before scansDir config has loaded, even if the scan list resolves first', async () => {
+    // Regression test: scansDir loads via a separate IPC call from the scan
+    // list. If scans.list() resolves first, an <img> built without the
+    // scans_dir prefix would 404 and permanently blacklist the row via
+    // thumbnailErrors. Simulate that ordering by holding config.get() open
+    // until after the scan list has rendered.
+    let resolveConfig: (value: {
+      config: { scans_dir: string };
+    }) => void = () => {};
+    mockConfigGet.mockReturnValue(
+      new Promise((resolve) => {
+        resolveConfig = resolve;
+      })
+    );
+
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    // Before config resolves, no <img> should have been attempted (which
+    // would risk a premature onError blacklisting this row).
+    expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
+
+    resolveConfig!({ config: { scans_dir: '/scans' } });
+
+    const thumbnail = await screen.findByAltText(/thumbnail/i);
+    expect(decodeURIComponent(thumbnail.getAttribute('src') || '')).toContain(
+      '/scans/'
+    );
+  });
+});
+
+describe('upload-status column (getUploadStatus, refactored onto countUploadStatuses)', () => {
+  it('shows red "N failed" when any image failed, regardless of other statuses', async () => {
+    mockList.mockResolvedValue(
+      makeListResponse([
+        {
+          ...baseScan,
+          images: [
+            { id: 'img-1', status: 'uploaded', path: 'a.jpg', frame_number: 0 },
+            { id: 'img-2', status: 'failed', path: 'b.jpg', frame_number: 1 },
+          ],
+        },
+      ])
+    );
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+    const statusCell = await screen.findByText(/1 failed/);
+    expect(statusCell.className).toContain('text-red-600');
+  });
+
+  it('shows yellow "X/Y uploaded" when some images are pending and none failed', async () => {
+    mockList.mockResolvedValue(
+      makeListResponse([
+        {
+          ...baseScan,
+          images: [
+            { id: 'img-1', status: 'uploaded', path: 'a.jpg', frame_number: 0 },
+            { id: 'img-2', status: 'pending', path: 'b.jpg', frame_number: 1 },
+          ],
+        },
+      ])
+    );
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+    const statusCell = await screen.findByText('1/2 uploaded');
+    expect(statusCell.className).toContain('text-yellow-600');
+  });
+
+  it('shows green "All uploaded" when every image is uploaded', async () => {
+    mockList.mockResolvedValue(
+      makeListResponse([
+        {
+          ...baseScan,
+          images: [
+            { id: 'img-1', status: 'uploaded', path: 'a.jpg', frame_number: 0 },
+            { id: 'img-2', status: 'uploaded', path: 'b.jpg', frame_number: 1 },
+          ],
+        },
+      ])
+    );
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+
+    const statusCell = await screen.findByText('All uploaded');
+    expect(statusCell.className).toContain('text-green-600');
+  });
+});
+
+describe('camera-settings column', () => {
+  it('renders a compact summary including scanner name, exposure, and gain', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    expect(screen.getByText(/Cam-A/)).toBeInTheDocument();
+    expect(screen.getByText(/Exp 50000μs/)).toBeInTheDocument();
+    expect(screen.getByText(/Gain 4/)).toBeInTheDocument();
+  });
+
+  it('includes the full field set at unrounded precision in the title tooltip', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const summaryCell = screen.getByText(/Cam-A/).closest('[title]');
+    expect(summaryCell).not.toBeNull();
+    const title = summaryCell!.getAttribute('title')!;
+
+    expect(title).toContain('Cam-A');
+    expect(title).toContain('50000μs');
+    expect(title).toContain('Gain: 4');
+    expect(title).toContain('Gamma: 1');
+    expect(title).toContain('Seconds/Rotation: 7');
+  });
+
+  it('omits Brightness/Contrast from the tooltip (hardcoded, hardware-unsupported identity defaults with no informational value)', async () => {
+    renderPage();
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByText('PLANT-001');
+
+    const summaryCell = screen.getByText(/Cam-A/).closest('[title]');
+    const title = summaryCell!.getAttribute('title')!;
+
+    expect(title).not.toContain('Brightness');
+    expect(title).not.toContain('Contrast');
   });
 });

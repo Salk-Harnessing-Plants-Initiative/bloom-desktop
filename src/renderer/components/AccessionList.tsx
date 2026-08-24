@@ -164,7 +164,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
           {/* Collapsed view */}
           <button
             onClick={() => handleExpand(accession)}
-            className="w-full text-left p-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full text-left p-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500"
           >
             <div className="flex justify-between items-center">
               <div>
@@ -196,13 +196,13 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                         handleEditCancel();
                       }
                     }}
-                    className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-lime-500"
                     autoFocus
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleEditSave(accession.id)}
-                      className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600"
+                      className="px-3 py-1 bg-lime-700 text-white text-xs rounded-md hover:bg-lime-800"
                     >
                       Save
                     </button>
@@ -304,12 +304,12 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                                           mapping.id
                                         )
                                       }
-                                      className="w-full px-1 py-0.5 border border-blue-400 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                      className="w-full px-1 py-0.5 border border-lime-400 rounded text-xs focus:outline-none focus:ring-1 focus:ring-lime-500"
                                       autoFocus
                                       onClick={(e) => e.stopPropagation()}
                                     />
                                   ) : (
-                                    <span className="hover:text-blue-600">
+                                    <span className="hover:text-lime-600">
                                       {mapping.accession_name || '—'}
                                     </span>
                                   )}
@@ -325,7 +325,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleEditStart(accession)}
-                      className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-500"
                     >
                       Edit
                     </button>
