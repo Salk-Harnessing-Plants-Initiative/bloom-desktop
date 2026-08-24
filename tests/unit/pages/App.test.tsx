@@ -111,10 +111,17 @@ beforeEach(() => {
       ...win.electron,
       config: mockConfigAPI,
       gravi: mockGraviAPI,
-      database: mockDatabaseAPI,
       scanner: { getScannerId: vi.fn().mockResolvedValue('TestScanner') },
       database: {
+        // Base: the global test setup's mock (phenotypers, scientists,
+        // scans.list/export, accessions) — preserved for components that
+        // rely on it incidentally (e.g. PhenotyperChooser, BrowseScans).
         ...win.electron?.database,
+        // CylinderScan Home dashboard's recent-scans/failed-upload-count.
+        scans: {
+          ...win.electron?.database?.scans,
+          ...mockDatabaseAPI.scans,
+        },
         // GraviScan Capture Scan screen's ExperimentChooser/PhenotyperChooser
         // (Tier 4) — absent from the global test setup's bare database mock.
         experiments: {
