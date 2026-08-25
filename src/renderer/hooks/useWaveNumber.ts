@@ -35,13 +35,18 @@ export function useWaveNumber(
     }
     let cancelled = false;
     (async () => {
-      const result =
-        await window.electron.database.graviscans.getMaxWaveNumber(
-          experimentId
-        );
-      if (cancelled) return;
-      if (result.success) {
-        setSuggestedNextWave(result.data + 1);
+      try {
+        const result =
+          await window.electron.database.graviscans.getMaxWaveNumber(
+            experimentId
+          );
+        if (cancelled) return;
+        if (result.success) {
+          setSuggestedNextWave(result.data + 1);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('[useWaveNumber] getMaxWaveNumber() failed:', error);
       }
     })();
     return () => {

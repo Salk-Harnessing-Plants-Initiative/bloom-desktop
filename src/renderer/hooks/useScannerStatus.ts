@@ -12,6 +12,16 @@ const OFFLINE_STATUSES: ReadonlySet<ScannerStatusRow['status']> = new Set([
   'disconnected',
 ]);
 
+/**
+ * `ScannerPanelState` is `ConfigureScanner.tsx`'s type, reused here rather
+ * than duplicated. `enabled`/`isBusy`/`progress`/`outputFilename`/`state`
+ * are Configure-Scanner-specific fields this hook has no data source for
+ * and always sets to a fixed stub value — none of the current consumers
+ * (`ScannerStatusPanel.tsx`, `useContinuousMode.ts`) read them (real
+ * progress comes from a separate `progressByScanner` prop). A future
+ * caller trusting these fields' values from this hook would get a
+ * constant, not live data.
+ */
 function toScannerPanelState(row: ScannerStatusRow): ScannerPanelState {
   return {
     scannerId: row.scannerId,
@@ -65,6 +75,16 @@ export interface UseScannerStatusResult {
  * resolve in request order. Applying an older response after a newer one
  * would silently revert the panel to outdated status — exactly the bug
  * this hook's `refresh()` exists to fix, reintroduced via concurrency.
+ *
+ * `refresh()` also catches a genuine promise rejection from
+ * `getScannerStatus()` (found in round-4 `/review-pr`), distinct from the
+ * already-handled `{success: false}` path: an uncaught rejection here
+ * previously left `loading` stuck `true` forever (never read by any
+ * consumer, so no error UI either) and `scanners` stuck `[]`, which keeps
+ * the poll-while-`starting` effect below from ever starting — no retry
+ * short of an app restart, strictly worse than the PR #213 bug this hook
+ * exists to fix. Logged via `console.error`, falling through to
+ * `setLoading(false)` rather than leaving the UI silently stuck.
  */
 export function useScannerStatus(): UseScannerStatusResult {
   const [scanners, setScanners] = useState<ScannerPanelState[]>([]);
@@ -74,14 +94,24 @@ export function useScannerStatus(): UseScannerStatusResult {
 
   const refresh = useCallback(async () => {
     const requestId = ++latestRequestIdRef.current;
-    const result = await window.electron.gravi.getScannerStatus();
-    if (requestId !== latestRequestIdRef.current) {
-      return;
+    try {
+      const result = await window.electron.gravi.getScannerStatus();
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
+      if (result.success) {
+        setScanners(result.scanners.map(toScannerPanelState));
+      }
+    } catch (error) {
+      if (requestId !== latestRequestIdRef.current) {
+        return;
+      }
+      console.error('[useScannerStatus] getScannerStatus() failed:', error);
+    } finally {
+      if (requestId === latestRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-    if (result.success) {
-      setScanners(result.scanners.map(toScannerPanelState));
-    }
-    setLoading(false);
   }, []);
 
   useEffect(() => {

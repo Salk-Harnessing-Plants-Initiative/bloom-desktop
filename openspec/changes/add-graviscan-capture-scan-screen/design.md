@@ -1357,6 +1357,41 @@ by changing just the ring shade to `lime-700` (~5:1) in both components —
 keeping the intended lime accent without touching anything else PR #329
 colored, or any file outside this PR's own diff.
 
+**Round 4 (`/review-pr`), run once CI was fully green, found one more
+real bug in this Decision's own fix**: `refresh()` had no try/catch
+around `getScannerStatus()`. A genuine promise rejection (distinct from
+the already-handled `{success: false}` path) left `loading` stuck `true`
+forever and `scanners` stuck `[]` — which keeps the poll-while-`starting`
+effect from ever starting, so there was no retry path short of an app
+restart. Strictly worse than the PR #213 bug this hook exists to fix.
+Fixed with try/catch/finally: logs via `console.error`, still calls
+`setLoading(false)`, and a later `refresh()` call still works (the
+request-id guard doesn't get wedged by an earlier rejection). The same
+unhandled-rejection shape in `useWaveNumber.ts`'s `getMaxWaveNumber()`
+call was fixed for consistency (lower blast radius — only
+`suggestedNextWave`, a hint, is affected).
+
+Round 4 also found and fixed two smaller Code Quality gaps unrelated to
+this Decision's own logic: `preload.ts`'s `graviAPI` had no `: GraviAPI`
+annotation (unlike every sibling API object in that file), so the
+compiler never checked it against the interface renderer code trusts —
+added, confirmed no existing drift; and `useScannerStatus.ts`'s
+`toScannerPanelState()` silently hardcodes several `ScannerPanelState`
+fields this hook has no data for (reused from `ConfigureScanner.tsx`,
+unread by any current consumer) — documented with a comment rather than
+changed, since removing them would require forking the shared type.
+
+Two further Round 4 findings were reviewed and intentionally left as-is
+this round: `verify-plates.ts`'s swap-correction write is wave-unscoped
+if a future caller omits `waveNumber` — dormant today (the one live
+caller always passes it) and `waveNumber` stays optional by design (see
+this proposal's own backward-compatibility goal for ~50 pre-wave-scoping
+callers) — mitigated with an explicit warning comment rather than a
+behavior change. And `QRVerificationBanner.tsx` surfaces only aggregate
+pass/fail text, never which specific plate — a real actionability gap,
+but a UI-scope question left for explicit user decision rather than
+expanded into unilaterally.
+
 ## Architecture
 
 ```

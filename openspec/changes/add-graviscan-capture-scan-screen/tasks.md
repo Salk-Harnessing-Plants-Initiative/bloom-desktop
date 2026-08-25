@@ -1180,3 +1180,68 @@ advancing next to the same stuck label (design.md Decision 23).
       1767 passed, 7 failed across 4 files — same pre-existing/flaky set
       as 33.8, zero new failures. `tsc --noEmit`, lint, and format:check
       all clean.
+
+## 34. Round-4 /review-pr findings (TDD)
+
+A fourth `/review-pr` round — CI fully green (all 20 checks) at this
+point — found one real bug and two lower-risk hardening items.
+
+- [x] 34.1 (Behavioural Correctness) Found an unhandled promise rejection
+      in `useScannerStatus.refresh()`: a genuine `getScannerStatus()`
+      rejection (distinct from the already-handled `{success: false}`
+      path) left `loading` stuck `true` forever — never read by
+      `GraviScan.tsx`, so no error UI — and `scanners` stuck `[]`, which
+      keeps the poll-while-`starting` effect from ever starting. No retry
+      path short of an app restart: strictly worse than the PR #213 bug
+      this hook exists to fix. Wrote a failing test first (confirmed red
+      via an actual unhandled-rejection error, not just a wrong
+      assertion), then fixed with try/catch/finally: logs via
+      `console.error`, still calls `setLoading(false)`, and confirms a
+      later `refresh()` call still works (the request-id guard doesn't
+      get wedged by the earlier rejection).
+- [x] 34.2 Same unhandled-rejection shape existed in `useWaveNumber.ts`'s
+      `getMaxWaveNumber()` call (flagged as a consistency suggestion by
+      the same review round). Lower blast radius (only
+      `suggestedNextWave` is affected, a hint rather than core
+      functionality) but fixed for consistency with 34.1, same TDD
+      approach.
+- [x] 34.3 (Code Quality) `preload.ts`'s `graviAPI` object had no
+      `: GraviAPI` type annotation, unlike every sibling API object in
+      that file (`pythonAPI`, `cameraAPI`, `daqAPI`, `scannerAPI`,
+      `databaseAPI`, `configAPI`) — meaning the compiler never checked it
+      against the interface renderer code actually trusts. Added the
+      annotation; `tsc --noEmit` stayed clean, confirming no existing
+      drift.
+- [x] 34.4 (Code Quality) `useScannerStatus.ts`'s `toScannerPanelState()`
+      hardcodes `enabled`/`isBusy`/`progress`/`outputFilename`/`state`
+      (fields `ScannerPanelState` — reused from `ConfigureScanner.tsx` —
+      declares but this hook has no data source for; none of this hook's
+      consumers read them). Added a doc comment explaining these are
+      fixed stubs, not live data, so a future caller doesn't trust them.
+- [x] 34.5 (Scientific Rigor/UX) `verify-plates.ts`'s swap-correction
+      writes are wave-unscoped if a future caller omits `waveNumber` —
+      currently dormant (the one live caller, `useScanSession.ts`, always
+      passes it, including `0`) but a real footgun for a future caller
+      operating on wave-scoped data. `waveNumber` stays optional
+      (required for backward compatibility with ~50 pre-wave-scoping
+      callers — see this function's own doc comment; making it required
+      would break that stated goal). Added a comment at the swap-write
+      site making the omitted-case risk explicit instead of leaving it
+      implicit in the conditional spread.
+- [x] 34.6 (Scientific Rigor/UX) Reviewed but not fixed this round: the
+      QR-verification banner shows only aggregate text ("One or more
+      plates..."), never which specific plate — a real actionability gap
+      for a lab technician who needs to know which physical plate to
+      inspect. This is a UI-design-scope question (how to redesign
+      `QRVerificationBanner.tsx` to surface per-plate detail, which
+      `QRVerifyPlateResult` already carries), not a one-line fix — left
+      for explicit user decision on scope rather than expanded into
+      unilaterally.
+- [x] 34.7 Run the full unit suite, `npx tsc --noEmit`, lint, and
+      `format:check`; confirm no regressions beyond the already-documented
+      pre-existing failures. **Result:** 1770 passed, 6 failed across 4
+      files — same pre-existing/flaky set (config-store, image-uploader
+      x3, scan-coordinator's regex test, electron-cleanup.test.ts x2),
+      zero new failures. `tsc --noEmit`, lint, and format:check all clean.
+- [x] 34.8 Re-run `openspec validate add-graviscan-capture-scan-screen
+--strict`.

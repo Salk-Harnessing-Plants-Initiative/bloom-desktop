@@ -54,4 +54,17 @@ describe('useWaveNumber', () => {
 
     await waitFor(() => expect(result.current.suggestedNextWave).toBe(0));
   });
+
+  it('does not throw an unhandled rejection when getMaxWaveNumber() rejects (round-4 /review-pr regression)', async () => {
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    getMaxWaveNumber.mockRejectedValueOnce(new Error('IPC transport failed'));
+
+    const { result } = renderHook(() => useWaveNumber('exp-1'));
+    await waitFor(() => expect(getMaxWaveNumber).toHaveBeenCalled());
+
+    expect(result.current.suggestedNextWave).toBeNull();
+    consoleError.mockRestore();
+  });
 });

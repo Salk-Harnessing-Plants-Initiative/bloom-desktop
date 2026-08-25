@@ -742,6 +742,16 @@ export async function verifyPlates(
           //    constraint — plus wave_number itself when waveNumber was
           //    supplied, so a wave-scoped verification run can only ever
           //    touch that wave's own row for this position.
+          //    waveNumber is deliberately optional for backward
+          //    compatibility with this function's ~50 existing pre-wave-
+          //    scoping callers (see this function's own doc comment) — but
+          //    a caller that omits it while operating on wave-scoped data
+          //    would have this correction touch the matching
+          //    (scanner_id, plate_index) row across EVERY wave of the
+          //    experiment, not just the one just verified. The one current
+          //    renderer caller (useScanSession.ts) always passes it,
+          //    including 0; any new caller of this function on wave-scoped
+          //    data MUST do the same.
           const assignment1 = await tx.graviScanPlateAssignment.updateMany({
             where: {
               experiment_id: experimentId,

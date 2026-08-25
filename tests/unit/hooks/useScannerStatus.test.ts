@@ -216,4 +216,38 @@ describe('useScannerStatus', () => {
     });
     expect(result.current.scanners[0]?.connectionStatus).toBe('ready');
   });
+
+  it('recovers from a rejected getScannerStatus() call instead of stalling forever (round-4 /review-pr regression)', async () => {
+    // refresh() had no try/catch: a genuine promise *rejection* (as opposed
+    // to the handled `{success: false}` path) left `loading` stuck `true`
+    // forever — never even read by GraviScan.tsx, so no error UI — and
+    // `scanners` stuck `[]`, which keeps `anyStarting` false, so the
+    // poll-while-starting effect never starts either. No retry path short
+    // of an app restart: strictly worse than the PR #213 bug this hook
+    // exists to fix.
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    getScannerStatus.mockRejectedValueOnce(new Error('IPC transport failed'));
+    getScannerStatus.mockResolvedValueOnce({
+      success: true,
+      scanners: [row({ status: 'ready' })],
+    });
+
+    const { result } = renderHook(() => useScannerStatus());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.scanners).toEqual([]);
+    expect(consoleError).toHaveBeenCalled();
+
+    // A subsequent refresh() (e.g. GraviScan.tsx's isScanning-triggered
+    // call) must still work — the rejection must not have wedged the
+    // request-id guard into permanently discarding later responses.
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.scanners[0]?.connectionStatus).toBe('ready');
+
+    consoleError.mockRestore();
+  });
 });

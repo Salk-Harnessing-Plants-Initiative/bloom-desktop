@@ -13,6 +13,7 @@ import {
   DAQAPI,
   DatabaseAPI,
   ConfigAPI,
+  GraviAPI,
 } from '../types/electron';
 /* eslint-enable import/no-unresolved */
 // eslint-disable-next-line import/no-unresolved
@@ -400,7 +401,7 @@ const sessionAPI = {
  * GraviScan API exposed to renderer
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const graviAPI = {
+const graviAPI: GraviAPI = {
   // Scanner operations
   detectScanners: () => ipcRenderer.invoke('graviscan:detect-scanners'),
   getConfig: () => ipcRenderer.invoke('graviscan:get-config'),
