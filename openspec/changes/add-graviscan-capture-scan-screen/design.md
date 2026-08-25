@@ -1325,6 +1325,38 @@ and a test exercising the actual false→true→false transition through
 `rerender()`, confirmed red against a temporarily-disabled
 `refreshScannerStatus()` call before confirming green.
 
+**Round 3 (`/review-pr`) found a real race condition in this fix**: two
+overlapping `refresh()` calls (rapid Start/Cancel/Start cycles, or
+`GraviScan.tsx`'s own transition-triggered call racing the hook's next
+poll tick) have no guarantee of resolving in request order, since their
+`getScannerStatus()` IPC round-trips depend on real SANE/USB query
+timing. An older response resolving after a newer one would silently
+revert the panel to stale status — reintroducing this very Decision's bug
+via concurrency. Fixed with a monotonic `latestRequestIdRef`: `refresh()`
+captures its own request id and only applies a response if no newer
+request has been issued since. This also exposed the mount effect's
+`cancelled` flag as dead code — `setScanners`/`setLoading` run inside
+`refresh()` itself, before that flag is ever checked, so it provided zero
+actual protection — removed as redundant once the request-id guard made
+it unnecessary. (A separately-considered unmount-state-update guard was
+not added: React 18 already silently no-ops `setState` on a truly
+unmounted component, confirmed by a test that passed even without any
+such guard — nothing observable to fix there.)
+
+**Round 3 (`/review-pr`) also found an accessibility regression pulled
+in by the `origin/main` merge**, unrelated to this Decision's own logic:
+`ExperimentChooser.tsx`/`PhenotyperChooser.tsx` (shared with GraviScan's
+Capture Scan screen) had their focus ring changed from
+`focus:ring-blue-500` to `focus:ring-lime-500` by PR #329's CylinderScan
+style/UX pass — a deliberate, in-scope choice for those files, but one
+that PR's own `design.md` explicitly flagged as "novel, not attested in
+the pilot," with its manual visual/contrast check left unchecked.
+`lime-500` on white computes to ~1.98:1 contrast, failing WCAG 2.1 SC
+1.4.11's 3:1 minimum for focus indicators (`blue-500` was ~3.68:1). Fixed
+by changing just the ring shade to `lime-700` (~5:1) in both components —
+keeping the intended lime accent without touching anything else PR #329
+colored, or any file outside this PR's own diff.
+
 ## Architecture
 
 ```

@@ -125,7 +125,7 @@ export function ExperimentChooser({
     <select
       id={id}
       title={title}
-      className={`experiment-chooser p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-full border-2 ${borderClass}`}
+      className={`experiment-chooser p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-700 w-full border-2 ${borderClass}`}
       value={value || ''}
       onChange={handleChange}
       disabled={disabled || isLoading}

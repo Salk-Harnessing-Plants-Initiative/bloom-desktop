@@ -1127,3 +1127,56 @@ advancing next to the same stuck label (design.md Decision 23).
       electron-cleanup.test.ts, documented as flaky under full-suite
       parallel load); zero new failures. `tsc --noEmit`, lint, and
       format:check all clean.
+- [x] 33.8 (Added `/review-pr` round 3, Behavioural Correctness) Found a
+      real race condition in `refresh()`: rapid Start/Cancel/Start cycles,
+      plus `GraviScan.tsx`'s own isScanning-triggered call, can have two
+      `getScannerStatus()` IPC round-trips in flight at once with no
+      guarantee they resolve in request order — an older response
+      resolving after a newer one would silently revert the panel to
+      stale status, reintroducing Decision 23's bug via concurrency. Also
+      found the mount effect's `cancelled` flag was dead code: it never
+      actually gated `setScanners`/`setLoading` (they run inside
+      `refresh()` itself, before the flag is ever checked). Fixed with a
+      monotonic `latestRequestIdRef` in `refresh()`: each call captures
+      its own request id, and a response is applied only if no newer
+      request has been issued since — this also makes the now-redundant
+      `cancelled` flag unnecessary, so it was removed rather than left as
+      confusing dead code. Added a regression test firing two overlapping
+      `refresh()` calls and resolving them out of order (newer settles
+      first), asserting the final state reflects the newer call, not
+      whichever resolved last. Confirmed red against the unchanged
+      implementation. (A third finding — remount mid-scan desyncing the
+      transition guard — was investigated and not confirmed as an
+      independent bug: a genuine unmount/remount recreates the hook's own
+      state and re-runs its unconditional mount-time fetch, which already
+      gets the correct live status regardless of `GraviScan.tsx`'s
+      separate `isScanningRef`.) A separately-proposed unmount-guard test
+      was dropped after confirming it passed even without any fix — React
+      18 already silently no-ops `setState` on a truly unmounted
+      component, so there was nothing observable left to guard.
+- [x] 33.9 (Added `/review-pr` round 3, Scientific Rigor/UX) The
+      `origin/main` merge changed `ExperimentChooser.tsx`/
+      `PhenotyperChooser.tsx`'s focus ring from `focus:ring-blue-500` to
+      `focus:ring-lime-500` (PR #329's CylinderScan style/UX pass,
+      intentionally scoped to include these two shared components). That
+      PR's own `design.md` flagged the ring color as "novel, not attested
+      in the pilot" and left its manual visual/contrast check unchecked
+      in its own test plan. Verified: `lime-500` on white computes to
+      ~1.98:1 contrast, failing WCAG 2.1 SC 1.4.11's 3:1 minimum for focus
+      indicators (the `blue-500` it replaced was ~3.68:1) — a real
+      accessibility regression on a control shared with GraviScan's own
+      Capture Scan screen. Fixed by changing just the focus-ring shade to
+      `lime-700` (~5:1, comfortably passing) in both components, keeping
+      the lime accent PR #329 intended without touching anything else it
+      colored. Updated both components' color-palette test assertions
+      (`ExperimentChooser.test.tsx`, `PhenotyperChooser.test.tsx`) to match.
+      Also fixed a genuinely-failing CI check unrelated to either finding
+      above: `Lint - Node.js`'s `format:check` step was failing on
+      `openspec/changes/archive/2026-02-03-fix-credentials-and-remove-login/proposal.md`,
+      a pre-existing Prettier non-idempotency issue on `origin/main`
+      itself (same class as the `dc7cff9` fix for `tasks.md`) — confirmed
+      via the actual CI job log, not just a local checkout artifact, then
+      fixed with `prettier --write`. Full suite after all three fixes:
+      1767 passed, 7 failed across 4 files — same pre-existing/flaky set
+      as 33.8, zero new failures. `tsc --noEmit`, lint, and format:check
+      all clean.

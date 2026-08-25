@@ -56,14 +56,28 @@ export interface UseScannerStatusResult {
  * `isScanning` transition itself (see its own comment) so this hook
  * doesn't need to depend on `useScanSession`'s output, which itself
  * depends on this hook's `scanners`.
+ *
+ * `refresh()` discards a response that resolves after a *newer* `refresh()`
+ * call was already issued (found in round-3 `/review-pr`): rapid Start/
+ * Cancel/Start cycles, plus `GraviScan.tsx`'s own isScanning-triggered
+ * call, can have two `getScannerStatus()` IPC round-trips in flight at
+ * once, and their real SANE/USB-query timing gives no guarantee they
+ * resolve in request order. Applying an older response after a newer one
+ * would silently revert the panel to outdated status — exactly the bug
+ * this hook's `refresh()` exists to fix, reintroduced via concurrency.
  */
 export function useScannerStatus(): UseScannerStatusResult {
   const [scanners, setScanners] = useState<ScannerPanelState[]>([]);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const latestRequestIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const requestId = ++latestRequestIdRef.current;
     const result = await window.electron.gravi.getScannerStatus();
+    if (requestId !== latestRequestIdRef.current) {
+      return;
+    }
     if (result.success) {
       setScanners(result.scanners.map(toScannerPanelState));
     }
@@ -71,14 +85,7 @@ export function useScannerStatus(): UseScannerStatusResult {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      await refresh();
-      if (cancelled) return;
-    })();
-    return () => {
-      cancelled = true;
-    };
+    refresh();
   }, [refresh]);
 
   useEffect(() => {

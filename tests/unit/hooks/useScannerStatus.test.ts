@@ -167,4 +167,53 @@ describe('useScannerStatus', () => {
     );
     expect(getScannerStatus).toHaveBeenCalledTimes(2);
   });
+
+  it('discards a stale response that resolves after a newer request (round-3 /review-pr regression)', async () => {
+    // GraviScan.tsx's isScanning-transition refresh() (and rapid Start/
+    // Cancel/Start cycles) can fire overlapping getScannerStatus() calls.
+    // If an older call's IPC round-trip resolves AFTER a newer one — quite
+    // plausible, since the handler's timing depends on real SANE/USB
+    // queries — applying results in resolution order rather than request
+    // order would silently revert the panel to outdated status, exactly
+    // the bug Decision 23 fixed, reintroduced via concurrency.
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    getScannerStatus.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFirst = resolve;
+      })
+    );
+    getScannerStatus.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSecond = resolve;
+      })
+    );
+
+    const { result } = renderHook(() => useScannerStatus());
+    await waitFor(() => expect(getScannerStatus).toHaveBeenCalledTimes(1));
+
+    // A second refresh() is issued before the first (mount) call resolves.
+    let secondCall!: Promise<void>;
+    act(() => {
+      secondCall = result.current.refresh();
+    });
+    await waitFor(() => expect(getScannerStatus).toHaveBeenCalledTimes(2));
+
+    // Resolve out of order: the newer (second) request settles first...
+    await act(async () => {
+      resolveSecond({ success: true, scanners: [row({ status: 'ready' })] });
+      await secondCall;
+    });
+    expect(result.current.scanners[0]?.connectionStatus).toBe('ready');
+
+    // ...then the older (first/mount) request settles late. Its result
+    // must be discarded, not applied over the newer one.
+    await act(async () => {
+      resolveFirst({
+        success: true,
+        scanners: [row({ status: 'disconnected' })],
+      });
+    });
+    expect(result.current.scanners[0]?.connectionStatus).toBe('ready');
+  });
 });
