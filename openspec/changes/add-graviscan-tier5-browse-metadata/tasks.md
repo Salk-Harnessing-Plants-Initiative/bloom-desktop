@@ -3684,3 +3684,508 @@ zero-count:
       in round 19's review) remain open product/UX follow-ups, not
       correctness defects — tracked here for whoever picks up the
       next round of work on this feature.
+
+## 37. Backend `include` additions + correctness computations (TDD)
+
+Per `design.md` Decision 12. No schema change, no migration, no new IPC
+handler — two existing Prisma queries gain a nested `include`.
+
+- [x] 37.1 Write failing unit tests in
+      `tests/unit/graviscan/database-handlers.test.ts` (extending the
+      existing `graviscansBrowseByExperiment` describe block): given
+      experiments whose `graviScans` rows have different `phenotyper_id`s,
+      the returned `experiments[].graviScans[].phenotyper.name` is present
+      for each scan (not just `phenotyper_id`). Extend the
+      `graviscansExperimentDetail` describe block similarly: given scans
+      with different `phenotyper_id`s, the returned `scans[].phenotyper.name`
+      is present for each scan. Confirmed red (empty array received) before
+      implementing — also surfaced a pre-existing environment issue in this
+      worktree: `prisma/dev.db` had never had `prisma migrate deploy` run
+      (only `generate`), so every query touching `GraviScanPlateAssignment`
+      was silently failing with `success: false`, masked because these new
+      tests read `.data` without checking `.success` first. Fixed by
+      running `migrate deploy` locally (not a code change).
+- [x] 37.2 Add `phenotyper: true` to `graviscansBrowseByExperiment`'s
+      `graviScans` include (`database-handlers.ts:389-393`) and to
+      `graviscansExperimentDetail`'s `db.graviScan.findMany` call
+      (`database-handlers.ts:463-470`, currently no `include`). Update both
+      functions' return-type annotations (`Prisma.ExperimentGetPayload`/
+      `Prisma.GraviScanGetPayload`) to include the nested `phenotyper`
+      relation. Per `design.md` Decision 12's Round 2 correction, also
+      update the renderer-local interfaces with a concrete contract, not a
+      forward reference: `BrowseGraviScans.tsx`'s `GraviExperimentRow` drops
+      its stale, currently-unpopulated `phenotypers?: {name: string}[]`
+      field entirely, and its `graviScans` field (today `unknown[]`) is
+      typed with a nested `phenotyper: {name: string}` per element; the
+      aggregate phenotyper/resolution/grid-mode/date-range/image-breakdown
+      values are computed at render time (Section 38's helper), not stored
+      as separate interface fields. `ExperimentDetail.tsx`'s `GraviScanRow`
+      (consumed today via an `as unknown as GraviScanRow[]` cast at
+      `ExperimentDetail.tsx:165`) gains `phenotyper: {name: string}`;
+      `resolution` stays as-is, already present. Satisfies 37.1. Also
+      removed two other stale, never-read fields from `GraviExperimentRow`
+      found while making this edit: top-level `resolution`/`grid_mode`
+      (Experiment has no such columns; only `GraviScan` does — these were
+      dead weight, confirmed via grep with zero read sites) — extracted a
+      proper `GraviExperimentScan` element type for `graviScans` instead of
+      leaving it typed `unknown[]`.
+- [x] 37.3 Write failing unit tests, extracted immediately to
+      `tests/unit/utils/graviExperimentSummary.test.ts` (not
+      `BrowseGraviScans.test.tsx` as originally drafted — the need for a
+      second call site in `ExperimentDetail.tsx` was already clear going in,
+      so extracting upfront avoided a pointless intermediate co-located
+      version) for two small new pure helpers, now in
+      `src/renderer/utils/graviExperimentSummary.ts`. Per `design.md`
+      Decision 12's
+      Round 2 correction, these are two distinct, minimal shapes — neither
+      helper caps or formats a display string; both return the full,
+      untruncated distinct set, leaving capping/"+N more"/tooltip formatting
+      to the rendering layer (Section 38/39) so the helpers stay pure and
+      trivially testable: - `computeDistinctValueSummary(values: (string|number)[])` →
+      `{values: string[], isMixed: boolean}` (all distinct values,
+      `isMixed: values.length > 1`), for resolution and grid_mode.
+      Test cases: a single distinct value (`isMixed: false`); 2+ distinct
+      values (`isMixed: true`, all values present, none dropped); an
+      **empty input array returns `{values: [], isMixed: false}`** (not a
+      thrown error or `undefined` — `tests/unit/pages/BrowseGraviScans.test.tsx`'s
+      existing `makeExperiment()` fixture defaults `graviScans: []` at all
+      14 of its current call sites, so this is the common case every
+      pre-existing test in the file will exercise once Section 38 wires
+      this in, not a rare edge case). - `computeNameList(names: string[])` → `{values: string[]}` (distinct,
+      sorted; no `isMixed` field at all — multiple phenotypers is the
+      normal case, not an anomaly, so there is nothing for a caller to
+      read and correctly ignore). Test cases: one name; 2+ distinct names;
+      an empty input array returns `{values: []}`. - A separate date-range helper: given scans with different
+      `capture_date`s, computes `{earliest, latest}`; given an empty
+      array, returns `null` (not a range with undefined bounds). - A separate image-count-breakdown helper, returning
+      `{scannerCount, plateCount, cycleCount, scansWithoutCycle,
+totalImages}`: given scans with varying `scanner_id`/`plate_index`,
+      and `cycle_number` where some scans have a null value, computes
+      distinct counts of `scanner_id`/`plate_index`/non-null
+      `cycle_number` (`scannerCount`/`plateCount`/`cycleCount`) plus a
+      separate count of scans with a null `cycle_number`
+      (`scansWithoutCycle`, per Decision 12's "(+N without a cycle
+      number)" handling — a test must cover the all-null and mixed-null
+      cases, not just the all-non-null case) and `totalImages` (the total
+      scan count, unaffected by the null-cycle split); given an empty
+      array, returns `{scannerCount: 0, plateCount: 0, cycleCount: 0,
+scansWithoutCycle: 0, totalImages: 0}` — a concrete zero-value
+      result, not a divide-by-zero, NaN, or unspecified default.
+- [x] 37.4 Implemented all four helpers (`computeDistinctValueSummary`,
+      `computeNameList`, `computeDateRange`, `computeImageCountBreakdown`)
+      in `src/renderer/utils/graviExperimentSummary.ts`, satisfying all 15
+      of 37.3's tests. Also updated `tests/unit/pages/BrowseGraviScans.test.tsx`'s
+      `makeExperiment()` fixture to drop the now-removed stale `phenotypers`/
+      `resolution`/`grid_mode` top-level fields (37.2) — all 37 existing
+      tests in that file still pass unchanged, confirming those fields were
+      genuinely dead and the `graviScans: []` default (all 14 call sites)
+      is exactly the zero-scans case 37.3 required coverage for.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 38. All clean (lint, typecheck). Full suite:
+      1687 passed, 3 failed — all 3 pre-existing baseline failures unrelated
+      to this section's diff (`AccessionForm.test.tsx` x2,
+      `electron-cleanup.test.ts` x1, the latter a previously-documented
+      timing flake) — confirmed via `git diff --stat`, neither file appears
+      in this session's changes. Also found and reverted an unintended
+      side effect: running `prisma migrate deploy`/`generate` with a
+      `./prisma/dev.db`-relative `BLOOM_DATABASE_URL` from the repo root
+      modifies a stray, already-mistakenly-committed `prisma/prisma/dev.db`
+      (the Prisma CLI resolves relative sqlite URLs against `schema.prisma`'s
+      own directory, not CWD, unlike the Node client at runtime) — reverted
+      via `git checkout -- prisma/prisma/dev.db`, unrelated to this change.
+
+## 38. `BrowseGraviScans.tsx` — spec-conformance + styling (TDD)
+
+Closes the "Per-experiment row content," "Download images for a wave," and
+"Successful backup reports counts" gaps named in `design.md` Decision 12,
+plus retrofits Tailwind styling. Extend the existing
+`tests/unit/pages/BrowseGraviScans.test.tsx` throughout — behavioral
+assertions, not className assertions (per Decision 12's "Verification
+approach").
+
+- [x] 38.1 Write failing tests: a row renders phenotyper name(s) (comma-
+      joined, capped at 3 with "+N more" when 37.4's `computeNameList`
+      returns 4+ values, with a `title` attribute holding the full,
+      uncapped list), a date range, an image-count breakdown string
+      (including the "(+N without a cycle number)" suffix when applicable),
+      and the resolution/grid-mode set — same cap/"+N more"/`title`-tooltip
+      treatment as phenotyper, but additionally: when
+      `computeDistinctValueSummary(...).isMixed` is true, a
+      `data-testid="mixed-value-indicator"` neutral-gray marker renders next
+      to the value (per `design.md` Decision 12's Round 2 correction —
+      NOT the amber "Needs Review" color, to avoid two unrelated amber
+      signals on the same card; phenotyper's own list never gets this
+      marker, since it has no `isMixed` concept) — using 37.2's now-populated
+      `phenotyper` field and 37.4's helpers.
+- [x] 38.2 Wire 38.1's fields into `ExperimentRow` using 37.4's helpers and
+      the now-populated `phenotyper` field from Section 37: cap each
+      aggregate's inline display at 3 values with "+N more" and a `title`
+      attribute carrying the full list; render the gray
+      `data-testid="mixed-value-indicator"` marker only for resolution/
+      grid-mode when `isMixed` is true. Satisfies 38.1.
+- [x] 38.3 Write failing tests: clicking Download calls
+      `gravi.downloadImages(...)` (existing behavior, unchanged) and, on
+      resolution, displays the result (uploaded/copied count and destination,
+      or the error) in an inline message near the row — not a bare `alert()`
+      (matching this screen family's existing inline-banner convention, not
+      production's `alert()`-based feedback). **Correction found while
+      implementing**: read `image-handlers.ts`'s actual `downloadImages()` —
+      there is no `destination` field in its return value
+      (`{success, total, copied, errors}`, wrapped by `wrapHandler` as
+      `{success: true, data: <that>}` or `{success: false, error}` on an
+      envelope-level throw). No destination path is returned at all (only
+      logged server-side), so the message reports "Downloaded N of M
+      image(s)" / "Download failed: {first error}" instead — showing a
+      destination would need a backend change out of this section's scope.
+- [x] 38.4 Capture `handleDownload`'s `await window.electron.gravi.
+downloadImages(...)` return value (currently discarded) into
+      per-row state and render it per 38.3. Satisfies 38.3.
+- [x] 38.5 Write failing tests: the Backup-to-Box result banner
+      (`backupMessage`) has a dismiss control that clears it, and it
+      auto-clears after a delay (matching this codebase's existing
+      `successMessage` auto-clear convention in `BrowseScans.tsx`, `4000`ms)
+      if not dismissed first.
+- [x] 38.6 Add a dismiss button and an auto-clear `useEffect` (mirroring
+      `BrowseScans.tsx`'s existing `successMessage` timer pattern) to
+      `backupMessage`'s rendering. Satisfies 38.5, closing the "Successful
+      backup reports counts" dismissable-banner gap.
+- [x] 38.7 Write failing tests: an `isLoading` state shows "Loading
+      experiments…" during the initial fetch (distinct from the empty-result
+      "No GraviScan data is present" message — the two must not be
+      conflated); a "Clear filters" control resets every filter and refetches
+      at offset `0` when at least one filter is set (hidden when none are);
+      a "Showing X of Y experiments" / "Page N of M" summary line renders
+      above the list, matching `BrowseScans.tsx`'s existing convention for
+      its own "Showing X of Y scans" / page summary.
+- [x] 38.8 Add the `isLoading` state (set around `fetchExperiments`), the
+      "Clear filters" control, and the result-count/page-position summary
+      line. Satisfies 38.7.
+- [x] 38.9 Retrofit Tailwind styling matching `BrowseScans.tsx`'s convention
+      (`design.md` Decision 12): `p-6` page wrapper; filter bar as a
+      `bg-white border rounded-lg shadow-sm p-4` card with labeled inputs;
+      experiment rows as `bg-white border rounded-lg shadow-sm` cards with
+      `hover:bg-gray-50`; "Needs Review" as an amber pill
+      (`text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded`);
+      the 38.1/38.2 mixed-value marker as a visually distinct neutral-gray
+      badge (`text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5
+rounded`) — deliberately not amber, so it never reads as a second
+      "Needs Review"-style warning on the same card; buttons styled per this
+      screen's action semantics (primary blue for
+      Backup/Download, plain for View Images), matching
+      `BrowseScans.tsx`'s icon-button treatment where applicable; Box/Bloom
+      progress indicators as small colored mini-bars/text, with the
+      in-progress default state using `text-blue-600` — deliberately not
+      `BrowseScans.tsx`'s usual neutral gray for this state, since this same
+      card already uses gray for the mixed-value marker above and reusing
+      it for progress too would collide (`design.md` Decision 12's Round 2
+      correction). No behavioral test changes expected from this task
+      alone — run the full file's suite after to confirm no regression.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 39. Lint/typecheck clean;
+      `BrowseGraviScans.test.tsx`: 51/51 passing. Full suite: first attempt
+      showed 56 failures across 3 files including
+      `database-handlers.test.ts` ("table ... does not exist") — traced to
+      a transient migration-state race from running `prisma migrate deploy`
+      immediately before starting the full parallel suite (re-querying
+      `prisma/dev.db` directly afterward confirmed the table really was
+      briefly missing, not a flaky assertion); re-running `migrate deploy`
+      then the full suite again showed only the 2 pre-existing baseline
+      files (`electron-cleanup.test.ts`'s documented timing flake,
+      `AccessionForm.test.tsx`), confirmed via `git diff --stat` to be
+      outside this session's changes. Also re-reverted the same stray
+      `prisma/prisma/dev.db` artifact from Section 37's gate (the `migrate
+deploy` re-runs touched it again).
+
+## 39. `ExperimentDetail.tsx` — spec-conformance + styling (TDD)
+
+Closes the "Metadata summary," filter-chip live-count, and resolution/
+grid-mode correctness gaps named in `design.md` Decision 12, plus retrofits
+Tailwind styling. Extend the existing
+`tests/unit/pages/ExperimentDetail.test.tsx` throughout — behavioral
+assertions, not className assertions.
+
+- [x] 39.1 Write failing tests: the metadata summary strip shows phenotyper
+      name(s) — capped at 3 with "+N more" and a `title` tooltip holding the
+      full list, per Section 38's convention, applied here identically for
+      phenotyper — and a date range (currently absent), and shows
+      resolution/grid-mode as the distinct set across all scans with the
+      same cap/"+N more"/`title`-tooltip/`data-testid="mixed-value-indicator"`
+      gray-marker treatment as Section 38 (currently `scans[0]` only —
+      reproduce the bug first: a test with two scans of different
+      `resolution` must fail against today's implementation before the fix).
+- [x] 39.2 Wire 39.1's fields using Section 37's now-populated `phenotyper`
+      field and its shared helper(s) (reusing `BrowseGraviScans.tsx`'s
+      extraction from 37.4 if it was extracted; otherwise decide now whether
+      this second call site justifies extracting it), including the same
+      cap/tooltip/gray-marker treatment as 38.2. Satisfies 39.1, fixing the
+      correctness bug.
+- [x] 39.2a Write failing tests: `FileRow`'s expanded per-scan view (which
+      today shows `grid_mode` and `scanner_id` but neither `resolution` nor
+      phenotyper) also shows `resolution` and `phenotyper.name` per scan —
+      per `design.md` Decision 12's correction, this is what lets a
+      researcher determine _which_ scan had _which_ resolution/phenotyper
+      once the summary strip only shows an aggregate.
+- [x] 39.2b Add `resolution` and `phenotyper.name` to `FileRow`'s expanded
+      view, alongside its existing `grid_mode`/`scanner_id` fields.
+      Satisfies 39.2a.
+- [x] 39.3 Write failing tests: scanner/wave filter chips show a live count
+      of matching rows (respecting the other active filter, matching
+      `design.md`'s "Resizable file table" Acceptance Criteria); clicking an
+      already-active chip clears that filter back to "all" (an explicit "All"
+      state, not just "pick a different chip").
+- [x] 39.4 Add live counts (derived from `scans`/`visibleScans`, respecting
+      the other filter) and toggle-off behavior to the scanner/wave chips.
+      Satisfies 39.3.
+- [x] 39.5 Write failing tests: an `isLoading` state shows "Loading
+      experiment…" during the initial fetch; a "Showing X of Y" line and a
+      "No images match filters" message render when `scannerFilter`/
+      `waveFilter` narrow `visibleScans` to zero (distinct from "no scans
+      exist at all" — `notFound`/empty-experiment states are unchanged).
+- [x] 39.6 Add the `isLoading` state and the filtered-count/empty-state
+      messaging. Satisfies 39.5.
+- [x] 39.7 Write failing tests: `FileRow`'s expand-to-preview shows a loading
+      placeholder while `readScanImage` is in flight, and a failed-to-load
+      message if the call resolves `{success: false}` or the image fails to
+      render (currently: nothing renders in either case).
+- [x] 39.8 Add the loading/failure states to `FileRow`'s expanded preview.
+      Satisfies 39.7.
+- [x] 39.9 Retrofit Tailwind styling matching `BrowseScans.tsx`'s convention
+      (`design.md` Decision 12): `p-6 max-w-7xl mx-auto` page wrapper with a
+      back-link; summary strip as a `bg-white rounded-lg shadow-sm border p-4`
+      card in a responsive grid; Linked Metadata section with card-styled
+      link rows, a red `hover:bg-red-50` Unlink button, and a blue Link
+      button; filter chips as rounded pill buttons with an active/inactive
+      color state; the file table as a `bg-white rounded-lg shadow-sm border
+overflow-hidden` container with a `bg-gray-50` header row,
+      `hover:bg-gray-50` rows, and an amber/green `VerificationBadge`; per
+      `design.md` Decision 12's Round 2 correction, `FileRow` gains a
+      chevron/expand icon that rotates with `expanded` state — the same
+      rotating-chevron pattern Section 40.5 adds to `GraviMetadataList`'s
+      own expandable rows, both new in this addendum, neither depending on
+      the other's position in this task list — since today's bare clickable
+      `<div>` gives no visual cue that a row is expandable, and without it
+      39.2a/39.2b's new per-scan resolution/phenotyper fields are
+      undiscoverable. No other behavioral test changes expected from this
+      task — run the full file's suite after to confirm no regression.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 40. Lint/typecheck clean;
+      `ExperimentDetail.test.tsx`: 26/26 passing (extracted
+      `capForDisplay`/`formatDateRange` from `BrowseGraviScans.tsx` into the
+      shared `graviExperimentSummary.ts` util at this point, since this
+      section is exactly the second real call site 37.4 deferred the
+      decision to). Full suite hit the same transient migration-state race
+      as Section 38's gate (53 failures this time, same
+      `GraviExperimentWaveMetadata does not exist` signature) — re-running
+      `migrate deploy` (confirmed via a direct `PRAGMA` query that the table
+      and schema were correct immediately afterward; `journal_mode` is
+      `delete`, not `wal`, ruling out a checkpoint-lag theory) then the full
+      suite again dropped it to the same 2 pre-existing baseline files
+      (`electron-cleanup.test.ts`, `AccessionForm.test.tsx`). Root cause of
+      the race itself remains unidentified — flagged as a real, reproducible
+      local-environment flake worth its own investigation, not something
+      this section's diff causes or fixes. Re-reverted the same stray
+      `prisma/prisma/dev.db` artifact again.
+
+## 40. `Metadata.tsx` / `GraviMetadataUpload.tsx` / `GraviMetadataList.tsx` —
+
+      spec-conformance + styling (TDD)
+
+Closes the "Column mapping" color-coded-preview gap named in `design.md`
+Decision 12, plus convention-alignment additions and styling. Extend the
+existing `tests/unit/components/GraviMetadataUpload.test.tsx` and
+`tests/unit/components/GraviMetadataList.test.tsx`.
+
+- [x] 40.1 Write failing tests in `GraviMetadataUpload.test.tsx`: given a
+      column mapping, the live preview table's cells/headers for a mapped
+      column carry a mapping-derived color class (one distinct class per
+      mapped field, e.g. Plate ID vs. Section ID vs. Plant QR each visually
+      distinct) — assert on the presence of a distinct class per column
+      role, not a specific hex/Tailwind value, so the test doesn't couple to
+      exact color choice.
+- [x] 40.2 Add a `getColumnClass(fieldRole)`-style helper and apply it to the
+      preview table's cells/headers. Satisfies 40.1, closing the "Column
+      mapping" spec gap.
+- [x] 40.3 Write failing tests: selecting a file shows a "Remove" control
+      that clears the selection (calling the existing internal `reset()`
+      path) without requiring the user to pick a different file first; while
+      `parseExcelFile` is in flight, a "Parsing file…" loading state renders.
+- [x] 40.4 Add the "Remove" control and the parsing-loading state. Satisfies
+      40.3.
+- [x] 40.5 Retrofit Tailwind styling to `Metadata.tsx`, `GraviMetadataUpload.tsx`,
+      and `GraviMetadataList.tsx` matching `BrowseScans.tsx`'s convention
+      (`design.md` Decision 12): `p-6` page wrapper; upload flow as a
+      `bg-white border rounded-lg shadow-sm p-4` card with a styled dropzone/
+      file-picker area, mapping dropdowns, and preview table; list entries as
+      expandable cards with a chevron icon that rotates with expanded state
+      (same pattern as Section 39.9's `FileRow` chevron), styled Delete
+      button, and the row-spanned plate/section table on expansion. No
+      behavioral test changes expected from this task alone — run both
+      files' suites after to confirm no regression. Also styled `Metadata.tsx`
+      itself (`p-6` wrapper), not just the two child components, since it's
+      one of the three files this section's own header names.
+- [x] Run `npm run lint && npx tsc --noEmit && npm run test:unit` — check gate
+      before starting Section 41. Lint/typecheck clean;
+      `GraviMetadataUpload.test.tsx`: 21/21, `GraviMetadataList.test.tsx`:
+      5/5. Full suite: running `migrate deploy` immediately beforehand
+      avoided the Section 38/39 gates' transient migration-race this time —
+      only the 2 pre-existing baseline files failed
+      (`electron-cleanup.test.ts`, `AccessionForm.test.tsx`), confirmed via
+      `git diff --stat` to be outside this session's changes. Reverted the
+      stray `prisma/prisma/dev.db` artifact once more (untouched this run,
+      checked defensively).
+
+## 41. Full verification sweep
+
+- [x] 41.1 Run `npm run test:e2e -- tests/e2e/graviscan-browse-metadata.e2e.ts`
+      (the existing E2E spec covering these screens) and fix any failure
+      caused by Sections 37-40's markup/behavior changes (e.g. a selector
+      that assumed unstyled DOM structure). Followed `docs/E2E_TESTING.md`'s
+      documented two-terminal recipe exactly (`npm run start` for the dev
+      server + `.webpack/main/index.js`, then
+      `npx playwright test tests/e2e/graviscan-browse-metadata.e2e.ts`) — no
+      ad-hoc launch script. Result: 3/4 passed, including the tests that
+      exercise exactly what Sections 37-40 changed (seeded experiment
+      renders in Browse GraviScans and links to Experiment Detail; Metadata
+      page lists the seeded file; nav/workflow-step routing). The 1 failure
+      ("global upload-progress indicator persists across navigation") is in
+      a Box-backup/rclone-detection path the test's own comments say is
+      written for CI determinism ("rclone is not installed in the mock/CI
+      test environment") — this local dev machine has a genuinely working
+      `rclone.exe` install (confirmed via `where.exe rclone`, distinct from
+      a red-herring broken extensionless `rclone` file also on PATH that a
+      bash-side check misleadingly flagged first), so the code path this
+      test exercises never triggers locally. Environment mismatch, not
+      caused by this section's diff — no fix applied here.
+- [x] 41.2 Run the full `npm run test:e2e` suite (not just this change's
+      specs) — **per explicit user direction, the full E2E suite is CI-only;
+      only targeted specs are run locally for debugging/verification.**
+      Deferred to CI, not run locally. tasks.md 10.4/12.4 (from before this
+      addendum) remain open for the same reason — also CI's job, not a
+      local step.
+- [~] 41.3 Manually launch the app in `graviscan` mode and walk every screen
+  touched by Sections 37-40 (Browse GraviScans, Experiment Detail,
+  Metadata) — closes tasks.md 12.6, still open from before this
+  addendum. Confirm the screens are legible (the original complaint) and
+  that every new field/control (phenotyper, date range, image breakdown,
+  dismissable banner, filter-chip counts, color-coded upload preview,
+  Remove-file control) behaves as specced.
+
+      **In progress (user-run, 2026-08-13): found and fixed 4 real bugs**
+      none of the automated rounds caught — recorded in full in `design.md`
+      Decision 12's "Round 4 correction": (1) "Back to Browse" was a plain
+      `<a>`, not a `Link` — real page load → "Cannot GET /browse-graviscans"
+      → stuck outside the SPA; (2) `FileRow`'s expanded content was
+      unlabeled/unstyled despite Section 39.9's styling pass; (3) scanner
+      filter chips and the expanded-row "Scanner" field showed the raw
+      `scanner_id` UUID instead of a name (needed a `scanner: true` include,
+      the same gap class Section 37 already fixed once for `phenotyper`);
+      (4) long filenames visually bled into the Plate column with no
+      truncation. All fixed via TDD, verified with
+      `npm run lint && npx tsc --noEmit && npm run format:check` clean and
+      the full `npm run test:unit` suite at the same 2-pre-existing-baseline
+      state as every prior gate in this section. Separately, filed
+      [#347](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/347)
+      for a real but out-of-scope finding from this same walkthrough
+      (GraviScan's Bloom-upload scanner attribution bypasses the required,
+      Bloom-validated `config.scanner_name` CylinderScan already uses).
+      Walkthrough itself not yet marked complete — still the user's own
+      task to finish clicking through the remaining screens.
+
+      Also added, for the user's own Metadata-page testing: a real sample
+      spreadsheet, `tests/fixtures/excel/graviscan-metadata-sample.xlsx`
+      (the repo's 5 pre-existing `tests/fixtures/excel/*.xlsx` files are for
+      a different feature, CylinderScan's `accession-excel-upload.e2e.ts`,
+      and don't match GraviScan's column schema at all). Per the user's own
+      follow-up question ("why don't we have a test that uses the excel
+      fixture at all"), added a unit test reading this file from disk
+      (`GraviMetadataUpload.test.tsx`) so the committed sample can't
+      silently drift out of sync with `REQUIRED_FIELDS`/`OPTIONAL_FIELDS` —
+      see `design.md`'s note under the Round 4 correction. 22/22 in that
+      test file, lint/typecheck/format clean.
+
+- [x] 41.4 Run `npm run lint && npx tsc --noEmit && npm run test:unit && npm run format:check`
+      (the `/pre-merge` sweep) and fix any finding.
+      Lint/typecheck/format all clean. Full unit suite: 1714 passed, 6
+      failed — all 6 in the same 2 pre-existing baseline files
+      (`electron-cleanup.test.ts`'s documented timing flake,
+      `AccessionForm.test.tsx`), confirmed via `git diff --stat` outside
+      this session's changes.
+- [x] 41.5 Run `/review-pr` against the accumulated diff from Sections 37-41
+      and cycle fixes to convergence (zero blocking/important), per this
+      change's own established discipline (Sections 13-36) — this time
+      including a reviewer lens that actually inspects rendered/visual
+      output, not backend logic only.
+
+      **Round 1** (5-lens adversarial team against the local uncommitted
+      diff): 1 BLOCKING, 4 IMPORTANT, several SUGGESTIONs. All fixed —
+      recorded in `design.md` Decision 12's "Round 3 correction" (numbered
+      relative to Decision 12's own history, not this section's round
+      count): a duplicate `data-testid="mixed-value-indicator"` shared
+      between the resolution and grid-mode fields (split into
+      `-resolution`/`-grid-mode`); no in-flight guard on Download (added
+      `isDownloading`); a partial download failure reported as a flat
+      "Download failed" dropping the copied count (now reports "Downloaded
+      N of M, K error(s)" with every distinct error listed, reserving
+      "Download failed" for `copied === 0`); the Box-backup banner
+      auto-clearing failure messages identically to success, leaving Box
+      collisions with zero durable trace after 4s (added a `backupIsError`
+      flag; the auto-clear effect now skips failures). Also closed two
+      test-coverage gaps the Testing lens found (direct unit tests for
+      `capForDisplay`/`formatDateRange`, a UI-wiring test for the
+      "(+N without a cycle number)" suffix) — which surfaced a genuine,
+      narrow pre-existing edge case: `formatDateRange`'s date-only display
+      can shift by one calendar day near a UTC boundary in timezones behind
+      UTC, same underlying behavior as every other local-time date
+      formatter in this codebase, just without the time-of-day context that
+      makes the shift visible elsewhere. Not fixed (would create a new
+      inconsistency); named in Decision 12 instead.
+
+      Verified after Round 1's fixes: `npm run lint && npx tsc --noEmit &&
+      npm run format:check` clean; targeted test files
+      (`BrowseGraviScans.test.tsx`, `ExperimentDetail.test.tsx`,
+      `graviExperimentSummary.test.ts`) 102/102; full `npm run test:unit`:
+      1727 passed, 3 failed — the same 2 pre-existing baseline files
+      (`electron-cleanup.test.ts`, `AccessionForm.test.tsx`), confirmed via
+      `git diff --stat` outside this session's changes.
+
+      **Round 2** (fresh 5-lens pass against Round 1's fixed diff, verifying
+      the fixes themselves rather than re-finding Round 1's own issues):
+      **0 BLOCKING, 0 IMPORTANT across all 5 lenses — converged.** The
+      Testing lens independently confirmed (by temporarily removing each
+      fix and re-running) that the double-click guard and the
+      failure-persistence fix are genuinely tested, not rubber-stamped. The
+      Scientific Rigor lens gave an explicit opinion on the accepted
+      timezone edge case: local-time display is the scientifically correct
+      default (a lab's "which day" question is about local wall-clock time,
+      not UTC), `FileRow`'s per-scan `formatDate` already shows the
+      time-of-day source of truth, and the edge case is real but narrow —
+      correctly named, not over-fixed. Remaining SUGGESTION-tier items, all
+      independently confirmed pre-existing (not introduced by this
+      addendum) and left as-is: `handleBackupToBox` lacks the same
+      redundant in-body early-return guard `handleDownload`/`handleLink`/
+      `handleUnlink` all have (relies solely on its disabled-button prop);
+      the Box-backup and download error-join sites have no `capForDisplay`
+      -style cap on error-list length (only matters for a pathological
+      many-error run); a `title` tooltip with full date+time on the
+      date-range display would give the timezone edge case a hover escape
+      hatch, mirroring the pattern `capForDisplay` already uses elsewhere.
+
+      **Incident during Round 2, unrelated to the review's own findings**:
+      a Testing-lens subagent's mutation-testing cleanup ran
+      `git checkout -- src/renderer/BrowseGraviScans.tsx` to restore its own
+      temporary scratch patch — but since none of Sections 37-41 had been
+      committed, this reverted the *entire* file to the pre-Section-37
+      commit, discarding ~500 lines of real uncommitted work (Section 38's
+      whole implementation plus Round 1's fixes). Recovered by extracting
+      the pre-incident source from a stale webpack dev-server hot-reload
+      source map (`.webpack/renderer/*.hot-update.js`) still present on
+      disk, verified line-for-line against the diff already reviewed, and
+      restored. Re-verified after restore: lint/typecheck clean,
+      `BrowseGraviScans.test.tsx`/`ExperimentDetail.test.tsx`/
+      `graviExperimentSummary.test.ts` 102/102. See
+      `feedback_review_subagent_git_checkout_hazard` (project memory) for
+      the generalized lesson — this is a recurrence of a known hazard class,
+      now with a concrete mitigation recorded (explicitly prohibit
+      git-based reverts in review-subagent prompts; checkpoint uncommitted
+      work at natural boundaries rather than letting it accumulate for
+      hours unprotected).

@@ -15,6 +15,27 @@ const REQUIRED_FIELDS = [
 const OPTIONAL_FIELDS = ['Custom Note'] as const;
 const ALL_FIELDS = [...REQUIRED_FIELDS, ...OPTIONAL_FIELDS];
 
+// One distinct color per mapped field role, so the live preview table
+// visually reinforces which column maps to which field (spec.md's "Column
+// mapping" scenario) — an unmapped column gets no class at all.
+const COLUMN_COLORS: Record<string, string> = {
+  'Plate ID': 'bg-blue-50',
+  'Section ID': 'bg-green-50',
+  'Plant QR': 'bg-purple-50',
+  Accession: 'bg-yellow-50',
+  Medium: 'bg-pink-50',
+  'Transplant Date': 'bg-orange-50',
+  'Custom Note': 'bg-gray-100',
+};
+
+function getColumnClass(
+  headerIndex: number,
+  mapping: Record<string, string>
+): string {
+  const field = ALL_FIELDS.find((f) => mapping[f] === String(headerIndex));
+  return field ? COLUMN_COLORS[field] : '';
+}
+
 interface ParsedSheet {
   headers: string[];
   rows: string[][];
@@ -51,6 +72,7 @@ export function GraviMetadataUpload({
   const [fileName, setFileName] = useState<string>('');
   const [done, setDone] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
   const { setHasUnsavedChanges, setBlockNavigation } = useUnsavedChanges();
 
   // Rows with every required field blank (e.g. a trailing blank Excel row)
@@ -134,8 +156,10 @@ export function GraviMetadataUpload({
       return;
     }
 
+    setIsParsing(true);
     const buffer = await file.arrayBuffer();
     const result = await window.electron.gravi.parseExcelFile(buffer);
+    setIsParsing(false);
     if (!result.success || !result.data) {
       setError(result.error || 'Failed to parse spreadsheet');
       return;
@@ -254,25 +278,51 @@ export function GraviMetadataUpload({
   };
 
   return (
-    <div>
-      <label htmlFor="metadata-file-input">Spreadsheet File</label>
-      <input
-        id="metadata-file-input"
-        aria-label="Spreadsheet File"
-        type="file"
-        accept=".xlsx,.xls"
-        onChange={handleFileChange}
-      />
-      {error && <p>{error}</p>}
+    <div className="bg-white border rounded-lg shadow-sm p-4">
+      <div className="flex items-center gap-3 mb-2">
+        <label
+          htmlFor="metadata-file-input"
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm cursor-pointer"
+        >
+          Spreadsheet File
+        </label>
+        <input
+          id="metadata-file-input"
+          aria-label="Spreadsheet File"
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        {fileName && (
+          <>
+            <span className="text-sm text-gray-600">{fileName}</span>
+            <button
+              onClick={reset}
+              className="text-sm text-gray-500 hover:text-gray-700 underline"
+            >
+              Remove
+            </button>
+          </>
+        )}
+      </div>
+      {isParsing && <p className="text-sm text-gray-500">Parsing file...</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {sheetNames.length > 1 && (
-        <div>
-          <label htmlFor="sheet-select">Sheet</label>
+        <div className="mb-3">
+          <label
+            htmlFor="sheet-select"
+            className="block text-xs font-bold mb-1"
+          >
+            Sheet
+          </label>
           <select
             id="sheet-select"
             aria-label="Sheet"
             value={selectedSheet}
             onChange={(e) => handleSheetChange(e.target.value)}
+            className="p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none"
           >
             {sheetNames.map((name) => (
               <option key={name} value={name}>
@@ -286,37 +336,54 @@ export function GraviMetadataUpload({
       {sheet && (
         <div>
           {blankRowCount > 0 && (
-            <p>
+            <p className="text-sm text-amber-600 mb-2">
               {blankRowCount} row{blankRowCount === 1 ? '' : 's'} with no data
               in any required field will be skipped
             </p>
           )}
-          {ALL_FIELDS.map((field) => (
-            <div key={field}>
-              <label htmlFor={`mapping-${field}`}>{field}</label>
-              <select
-                id={`mapping-${field}`}
-                aria-label={field}
-                value={mapping[field] ?? ''}
-                onChange={(e) =>
-                  setMapping((prev) => ({ ...prev, [field]: e.target.value }))
-                }
-              >
-                <option value="">-- Select column --</option>
-                {sheet.headers.map((h, i) => (
-                  <option key={i} value={i}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+          <div className="flex flex-wrap gap-3 mb-3">
+            {ALL_FIELDS.map((field) => (
+              <div key={field}>
+                <label
+                  htmlFor={`mapping-${field}`}
+                  className="block text-xs font-bold mb-1"
+                >
+                  {field}
+                </label>
+                <select
+                  id={`mapping-${field}`}
+                  aria-label={field}
+                  value={mapping[field] ?? ''}
+                  onChange={(e) =>
+                    setMapping((prev) => ({
+                      ...prev,
+                      [field]: e.target.value,
+                    }))
+                  }
+                  className="p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none"
+                >
+                  <option value="">-- Select column --</option>
+                  {sheet.headers.map((h, i) => (
+                    <option key={i} value={i}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
 
-          <table>
+          <table className="w-full text-sm border-collapse mb-3">
             <thead>
               <tr>
                 {sheet.headers.map((h, i) => (
-                  <th key={i}>{h}</th>
+                  <th
+                    key={i}
+                    data-testid={`preview-header-${i}`}
+                    className={getColumnClass(i, mapping)}
+                  >
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -324,7 +391,13 @@ export function GraviMetadataUpload({
               {sheet.rows.slice(0, PREVIEW_ROW_LIMIT).map((row, i) => (
                 <tr key={i}>
                   {row.map((cell, j) => (
-                    <td key={j}>{cell}</td>
+                    <td
+                      key={j}
+                      data-testid={`preview-cell-${i}-${j}`}
+                      className={getColumnClass(j, mapping)}
+                    >
+                      {cell}
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -332,20 +405,24 @@ export function GraviMetadataUpload({
           </table>
 
           {rowErrors.length > 0 && (
-            <ul>
+            <ul className="text-sm text-red-600 mb-3 list-disc pl-5">
               {rowErrors.map((e) => (
                 <li key={e}>{e}</li>
               ))}
             </ul>
           )}
 
-          <button onClick={handleImport} disabled={isImporting}>
+          <button
+            onClick={handleImport}
+            disabled={isImporting}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
+          >
             {isImporting ? 'Importing...' : 'Import'}
           </button>
         </div>
       )}
 
-      {done && <p>Done uploading!</p>}
+      {done && <p className="text-sm text-green-700 mt-2">Done uploading!</p>}
     </div>
   );
 }

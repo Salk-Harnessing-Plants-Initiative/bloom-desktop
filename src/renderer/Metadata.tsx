@@ -9,11 +9,13 @@ export function Metadata() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
-    <div>
-      <h1>Metadata</h1>
-      <GraviMetadataUpload
-        onUploadComplete={() => setRefreshKey((k) => k + 1)}
-      />
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Metadata</h1>
+      <div className="mb-6">
+        <GraviMetadataUpload
+          onUploadComplete={() => setRefreshKey((k) => k + 1)}
+        />
+      </div>
       <GraviMetadataList key={refreshKey} />
     </div>
   );

@@ -396,6 +396,346 @@ only ever rendered inside the `{mode === 'graviscan'}` route block (Decision
 with no internal mode check to write, test, or keep in sync with the outer
 route gate.
 
+## Decision 12: Closing the styling + spec-conformance gap found after round-22 convergence (2026-08-12)
+
+**Context**: rounds 1-22 of `/review-pr` (tasks.md Sections 13-36) converged
+to zero blocking/important findings, but every round reviewed backend logic
+(`box-backup.ts`'s duplicate-detection) — none reviewed rendered visual
+output. Manually launching the app (per the standing pre-merge walkthrough
+checklist) found `BrowseGraviScans.tsx`/`ExperimentDetail.tsx` render as
+unstyled, running-together text (1 and 0 Tailwind `className` occurrences
+respectively, vs. 29 in the comparably-sized, already-shipped
+`BrowseScans.tsx`). Auditing feature-by-feature against the production rig
+branch (`fix/v600-wedge-followups-metadata_propogation_followup`) while
+investigating found this is not purely cosmetic: several scenarios already
+accepted in this change's own `specs/ui-management-pages/spec.md` delta were
+never implemented. This decision scopes closing both gaps together, and
+draws the line at what's already-accepted vs. genuinely new.
+
+**Already-accepted, unimplemented — fixed as part of this decision, not new
+scope**:
+
+- "Per-experiment row content" (`spec.md` line 13-17) requires each
+  `BrowseGraviScans` row to show scientist, phenotyper(s), date range,
+  image-count breakdown, and resolution/grid mode. Today's row shows none of
+  phenotyper(s)/date-range/image-breakdown, and reads resolution/grid mode
+  from `scans[0]` only (silently wrong for a multi-scanner experiment with
+  mixed settings, and the same bug independently exists in
+  `ExperimentDetail.tsx`'s "Metadata summary," `spec.md` line 136-140).
+- "Download images for a wave" (`spec.md` line 37-41) requires the page to
+  report `downloadImages()`'s result; today the result is discarded.
+- "Successful backup reports counts" (`spec.md` line 108-112) requires a
+  _dismissable_ inline banner; today's banner has no dismiss control.
+- The file table's Acceptance Criteria (`spec.md` line 184) requires scanner/
+  wave filter chips to show live counts; today's chips show neither counts
+  nor a way to toggle one back off.
+- "Column mapping" (`spec.md` line 207-212) requires the upload preview
+  table to have color-coded columns; today's preview table is plain.
+
+**Small backend change needed for the first bullet, scoped narrowly**: no
+`Experiment.phenotypers` relation exists in `prisma/schema.prisma` — each
+`GraviScan` row has its own `phenotyper_id`/`phenotyper` relation instead.
+Rather than a schema change, `graviscansBrowseByExperiment`'s existing
+`graviScans` include (`database-handlers.ts:389-393`) gains a nested
+`phenotyper: true`, and `graviscansExperimentDetail`'s
+`db.graviScan.findMany` call (`database-handlers.ts:463-470`, currently no
+`include` at all) gains the same. Both renderers already fetch the full
+`scans`/`graviScans` array per experiment; phenotyper name(s), date range
+(min/max `capture_date`), image-count breakdown (distinct `scanner_id` ×
+`plate_index` × `cycle_number` counts), and resolution/grid mode (as a
+`Set`, not `[0]`) are then all computed client-side from data already in
+hand — no new query, no migration, no new IPC handler or preload method.
+
+**Explicitly still out of scope, not silently dropped**: production's
+per-experiment continuous-session interval/duration display. Checked against
+the same "Per-experiment row content" scenario this decision otherwise
+closes gaps against — that scenario's field list does not include session
+cadence/duration at all, so building it now would be adding capability the
+spec never asked for (the thing Tier 5's own roadmap section already warns
+against treating "production has it" as sufficient justification for), not
+closing a gap. If wanted later, it needs its own `ADDED` requirement and
+review, once Tier 4's live continuous-mode screen exists to give it a more
+natural home.
+
+**Styling**: `BrowseGraviScans.tsx`, `ExperimentDetail.tsx`,
+`GraviMetadataUpload.tsx`, and `GraviMetadataList.tsx` are retrofitted to
+this codebase's existing Tailwind convention (established in `BrowseScans.tsx`
+and surveyed across `Phenotypers.tsx`/`Experiments.tsx`/`Home.tsx`): `p-6`
+page wrapper, `bg-white border rounded-lg shadow-sm` cards/containers,
+`px-4 py-3` table cells, `hover:bg-gray-50` row states, the existing
+green/yellow/red status-color convention, and `DeleteConfirmModal`-style
+button treatment. No new shared component is introduced — matching every
+existing page, each screen applies utility classes inline; no
+theme file or shared `<Button>`/`<Table>` exists anywhere in this codebase to
+extract into.
+
+**Convention-alignment additions, not spec-mandated but included under this
+decision's "full fix, not partial" framing**: loading states on all three
+screens (every comparable shipped page has one; these three are the only
+pages in the app without one), a "Clear filters" control and result-count/
+page-position text on `BrowseGraviScans.tsx` (already present on its own
+sibling `BrowseScans.tsx` — this closes a same-app inconsistency, not a new
+UX idea), a "Showing X of Y" / "no images match filters" line on
+`ExperimentDetail.tsx`, a "Remove file" control plus a "Parsing file…"
+loading state on `GraviMetadataUpload.tsx`, and a loading/failed-to-load
+state for `FileRow`'s expanded TIFF preview in `ExperimentDetail.tsx`
+(currently: nothing renders while `readScanImage` is in flight or on
+failure) — same rationale as the other convention-alignment items, not
+tied to a specific accepted scenario.
+
+**Correction found during openspec-review (2026-08-12): the distinct-set
+fix needs three refinements, not a bare `Set.join(', ')`** — caught by the
+Scientific Rigor reviewer, who found the naive version would be a real
+traceability regression, not just an incomplete polish:
+
+1. **Per-scan resolution and phenotyper must also appear in the file
+   table.** Today's `FileRow` expanded view already shows `grid_mode` per
+   scan but not `resolution`, and shows `scanner_id` but not phenotyper.
+   Once the experiment-level summary shows an aggregate ("600, 800 DPI"),
+   the file table is the only place left for a researcher to determine
+   _which_ scan had _which_ resolution/phenotyper — without this, the fix
+   correctly stops showing a silently-wrong single value but removes the
+   only path to the real per-scan answer entirely. `FileRow` gains
+   `resolution` and `phenotyper.name` alongside its existing per-scan
+   fields (Section 39).
+2. **Cap the displayed distinct-value list.** Show up to 3 distinct values
+   joined with ", "; beyond that, show the first 3 followed by
+   "+N more" (e.g. "600, 800, 1200 +2 more") rather than an unbounded
+   string. Applies to resolution, grid mode, and phenotyper name lists
+   wherever they're rendered as an aggregate (Sections 38, 39).
+3. **Visually flag when a field is non-uniform**, not just list the
+   values plainly — this is the entire point of fixing the `[0]`-only bug,
+   so it must be legible as "this experiment mixes resolutions," not read
+   identically to a uniform value. Use the same amber
+   attention-color convention as "Needs Review" (not a new color meaning)
+   when the distinct-value count is greater than 1, on the resolution/
+   grid-mode fields specifically (not on phenotyper, where multiple names
+   is the normal case, not an anomaly — every experiment lasting more than
+   one scan session plausibly has multiple phenotypers, unlike resolution/
+   grid mode, which are configuration values expected to stay constant
+   across scanners within one experiment).
+
+**Nullable `cycle_number` in the image-count breakdown**: `GraviScan.
+cycle_number` is nullable (single-cycle/non-continuous scans may never set
+it). The "scanners × plates × cycles" breakdown counts distinct non-null
+`cycle_number` values; if any scan in the experiment has a null
+`cycle_number`, the breakdown appends "(+N without a cycle number)" rather
+than either treating null as its own distinct bucket (which would silently
+inflate the cycle count) or dropping those scans from the total image count
+(which would under-report how many images actually exist).
+
+**Round 2 correction found during openspec-review (2026-08-12): five more
+refinements, all still on the distinct-value/traceability fix above** —
+round 2 re-reviewed round 1's fix itself and found it introduced new,
+real gaps rather than just needing documentation polish:
+
+1. **Concrete helper contract, not "whatever 37.4's helper actually
+   consumes."** Two distinct, minimal return shapes, not one shape reused
+   with a field one caller must remember to ignore — and neither helper
+   caps, formats, or decides "+N more": that's a rendering-layer concern
+   (item 4 below), so the helpers stay pure and trivially testable.
+   `computeDistinctValueSummary(values)` (resolution/grid-mode) returns
+   `{values: string[], isMixed: boolean}` — the full, untruncated distinct
+   set. `computeNameList(names)` (phenotyper) returns `{values: string[]}`
+   — no `isMixed` field at all, since "multiple phenotypers" has no
+   anomalous/non-anomalous distinction to carry. Neither returns a
+   `hasMore` flag; the rendering layer computes `values.length > 3` itself
+   from the full set both helpers already return.
+   `BrowseGraviScans.tsx`'s `GraviExperimentRow` interface drops its stale,
+   currently-unpopulated `phenotypers?: {name: string}[]` field entirely;
+   phenotyper/resolution/grid-mode/date-range/image-breakdown aggregates are
+   computed at render time from the raw `graviScans` array (typed with a
+   nested `phenotyper: {name: string}` per Section 37.2's Prisma-side
+   change), not stored as separate interface fields.
+2. **An explicit zero-scans test case, not just the 2-4+ distinct-value
+   cases.** `tests/unit/pages/BrowseGraviScans.test.tsx`'s `makeExperiment()`
+   fixture defaults `graviScans: []` at all 14 of its current call sites —
+   every pre-existing empty-state/pagination/filter/download/box-backup test
+   will exercise the new helper against an empty array as soon as it's
+   wired in. Each helper has a specified, tested behavior for empty input:
+   `{values: [], isMixed: false}` for resolution/grid-mode, `{values: []}`
+   for phenotyper, `null` for date range, and a concrete zero-value result
+   for the image-count-breakdown helper (`{scannerCount: 0, plateCount: 0,
+cycleCount: 0, scansWithoutCycle: 0, totalImages: 0}` or equivalent named
+   fields — not just "0 images" as prose) — not an unverified default that
+   happens not to crash.
+3. **The mixed-value indicator is a distinct neutral marker, not amber —
+   and not the same gray this app already uses for a different meaning.**
+   `BrowseGraviScans.tsx` already renders an amber "Needs Review" pill
+   (`hasNeedsReview`) on the same experiment card that would also carry the
+   new mixed-value flag — two amber signals with unrelated meanings on one
+   card is a real ambiguity round 1 didn't address. Separately,
+   `BrowseScans.tsx`'s existing upload-status convention already uses
+   `text-gray-600` as the _default/neutral_ progress-status color (an
+   in-progress upload with no error) — the same card's Box/Bloom progress
+   indicator (Section 38's styling task) must not reuse that same gray for
+   its default state, or it collides with the new marker's meaning too.
+   The mixed-value indicator uses a neutral gray badge (`bg-gray-100
+text-gray-600`, e.g. a small "≠" or split-values glyph); Box/Bloom
+   progress indicators use blue/slate (e.g. `text-blue-600`) for their
+   default in-progress state instead of reusing this same gray, reserving
+   amber exclusively for "Needs Review" and gray exclusively for "mixed
+   values" everywhere on this card. It carries a
+   `data-testid="mixed-value-indicator"` so tests can assert its presence
+   directly — a semantic marker, not a className assertion, consistent with
+   this decision's own styling-verification approach below.
+4. **A reveal mechanism for values past the cap.** The rendering layer (not
+   the helper — see item 1) caps the inline display at the first 3 values
+   from the helper's full set and sets a `title` attribute on the rendered
+   element to the full, uncapped comma-joined list — a plain hover tooltip,
+   no new interaction pattern (matches this same screen family's existing
+   per-cell `title`-attribute convention, e.g. `ExperimentDetail.tsx`'s file
+   -table cells). This doesn't replace per-scan drill-down for a researcher
+   who needs to know _which_ scan had the hidden 4th value, but it means
+   "+N more" is never a dead end — the full list is always one hover away,
+   not locked behind expanding every row in the file table.
+5. **`FileRow` needs a visible expand affordance, not just expandable
+   content.** Today's `FileRow` (`ExperimentDetail.tsx:92-105`) is a bare
+   clickable `<div>` with no chevron or other visual cue that it's
+   expandable — item 1 above adds resolution/phenotyper to the expanded
+   content, but a researcher has no reason to know clicking a row reveals
+   anything. Section 39's styling retrofit adds a chevron/expand icon to
+   `FileRow` that rotates with `expanded` state; Section 40's styling task
+   adds the equivalent rotating chevron to `GraviMetadataList`'s own
+   expandable rows — both this addendum's own additions, not a pre-existing
+   convention one borrows from the other, so neither depends on the other's
+   task-list position.
+
+**Verification approach for styling changes**: Tailwind class additions are
+not asserted via className-snapshot tests (no existing test in this codebase
+does that, including `BrowseScans.test.tsx`) — they're verified by (1) every
+existing/extended behavioral test in Sections 37-41 continuing to pass
+unchanged by the visual treatment, and (2) the user's own manual golden-path
+walkthrough (tasks.md 12.6, still open), which is what surfaced this gap in
+the first place.
+
+**Round 3 correction found during a post-implementation `/review-pr` cycle
+(2026-08-12): a duplicate-testid bug, a missing in-flight guard, a false
+total-failure report, a persistence bug on the Box-backup banner, and a
+narrow timezone edge case in date-range display — fixed, and named here for
+the same reason Decision 12's other corrections are**:
+
+1. **`data-testid="mixed-value-indicator"` was shared between the
+   resolution and grid-mode fields** on the same card/summary strip —
+   confirmed reproducible (an experiment with both fields mixed renders two
+   identical testids). Split into
+   `mixed-value-indicator-resolution`/`mixed-value-indicator-grid-mode`.
+2. **`BrowseGraviScans.tsx`'s Download button had no in-flight guard** —
+   a rapid double-click could fire two concurrent `downloadImages` calls
+   against the same experiment/wave. Added an `isDownloading` state
+   disabling the button while the call is in flight, matching every other
+   async action this addendum already guards (Link/Unlink, Import).
+3. **A partial download failure (`copied > 0`, `success: false`) was
+   reported as a flat "Download failed," dropping the copied count and
+   showing only the first of possibly several errors** — falsely implying
+   nothing landed on disk. Now reports "Downloaded N of M image(s), K
+   error(s): {all errors}" when `copied > 0`, reserving "Download failed"
+   for the true `copied === 0` case, and lists every distinct error (not
+   just the first), matching this same file's own Box-backup precedent.
+4. **The Box-backup result banner auto-cleared failure messages after 4s,
+   identically to success** — a real drift from the cited `BrowseScans.tsx`
+   precedent (whose separate `error` state has no timer; only its dedicated
+   success state auto-clears). This mattered specifically because a Box
+   collision/failure needs manual resolution and has no other durable trace
+   in this UI (`box_status` isn't surfaced by the "Upload Status" filter,
+   which only inspects the Bloom-side `img.status`) — missing the toast left
+   zero remaining way to see it. Added a `backupIsError` flag; the
+   auto-clear effect now skips failure messages entirely, leaving them
+   visible until dismissed.
+5. **`formatDateRange`'s date-only display can silently shift by one
+   calendar day** for a `capture_date` near a UTC day boundary, in any
+   timezone behind UTC (e.g. a scan captured at 11pm Pacific / 6am UTC the
+   next day). This isn't a new inconsistency — every other date formatter in
+   this codebase (`formatDate` in `ExperimentDetail.tsx`, `BrowseScans.tsx`)
+   already converts to local time the same way — but those also show the
+   time-of-day, so a late-night local time reads as obviously late-night;
+   `formatDateRange`'s date-only summary drops that context, so the shift
+   is invisible to the reader. Not fixed (switching to UTC display would
+   itself be a new inconsistency against every other date shown in this
+   app, and the summary strip is explicitly a coarse aggregate, not the
+   precise-instant file-table view `FileRow` already provides per-scan) —
+   named as a known, narrow limitation instead, consistent with Decision
+   10's own precedent for a similarly-scoped gap.
+
+**Round 4 correction found during the user's own manual walkthrough
+(tasks.md 41.3, 2026-08-13) — four real bugs, none caught by any prior
+review round or test, because none of them are visible from a unit test's
+mocked data or a `git diff` read:**
+
+1. **`ExperimentDetail.tsx`'s "Back to Browse" was a plain
+   `<a href="/browse-graviscans">`, not a React Router `Link`.** In the real
+   Electron app (renderer served by the webpack dev server), this triggers
+   an actual page load instead of client-side routing — the dev server has
+   no such HTTP route, producing "Cannot GET /browse-graviscans" and
+   leaving the operator stuck outside the SPA entirely. This predates this
+   addendum (it's Tier 5's original implementation), but this addendum's
+   own Section 39.9 styled this exact line without ever fixing it. Fixed:
+   swapped for `<Link to="/browse-graviscans">`, with a regression test
+   that renders a real destination route and asserts client-side
+   navigation actually occurs (jsdom doesn't implement real navigation, so
+   this test only passes for a genuine `Link`).
+2. **`FileRow`'s expanded content was still a wall of bare, unlabeled
+   `<span>`s** (capture date, transplant date, custom note, plate barcode,
+   scanner, grid mode, resolution, phenotyper) — Section 39.9's styling
+   pass styled the _wrapper_ around this content but never touched the
+   fields themselves, so real data rendered as an illegible run-on string
+   (confirmed via screenshot: `"Aug 5, 2026, 12:08 PMAug 4, 2026, 05:00
+PMplate_...gridwave1200Alice Williams"`). Fixed: a labeled grid (Capture
+   Date / Transplant Date / Plate Barcode / Scanner / Grid Mode /
+   Resolution / Phenotyper), matching the summary strip's own
+   label-above-value convention, with the image preview shown above it.
+3. **Scanner filter chips and the expanded-row "Scanner" field showed the
+   raw `scanner_id` UUID** (e.g. `1d51f773-cb96-4a77-808c-7c3ef95ad873`) —
+   neither `graviscansExperimentDetail`'s Prisma query nor `GraviScanRow`
+   ever fetched the scanner's actual name, only the opaque foreign key.
+   Fixed the same way Section 37 added `phenotyper: true`: added
+   `scanner: true` to `graviscansExperimentDetail`'s include
+   (`database-handlers.ts`), added a `scannerLabel()` helper (prefers
+   `display_name`, falls back to `name`, never the id) used by both the
+   filter chips and the expanded-row field.
+4. **A long filename visually bled into the Plate column** — e.g.
+   `"00_1785956913481.tiff00"` rendered as one run-on string, the trailing
+   `"00"` actually being the _next column's_ plate value, not part of the
+   filename. Root cause: the filename/plate/wave `<span>`s had a `width`
+   style but no `overflow`/`white-space` handling, so text longer than its
+   column's declared width rendered past the boundary directly into the
+   next flex sibling's position instead of being clipped. Fixed: added
+   Tailwind's `truncate` (`overflow: hidden; text-overflow: ellipsis;
+white-space: nowrap`) plus `flexShrink: 0` to each column span, and a
+   `title` attribute on the filename cell so the full name is still
+   available on hover — the same reveal-mechanism pattern Decision 12 item
+   4 already established for capped aggregate lists.
+
+All four fixed via TDD (failing test confirmed red against the
+pre-existing/pre-fix code, then the fix applied) and recorded in
+`tasks.md`'s Section 41.3 note. None of the four are reproducible from this
+change's existing unit tests' mocked fixtures alone — `Link` vs. `<a>`
+looks identical in a static diff read (`Link` renders as an `<a>` in the
+DOM), unlabeled `<span>`s pass any test asserting the text is present
+_somewhere_, and a missing backend `include` only manifests once real,
+longer data is on screen. This is the concrete argument for why Section
+41.3's manual walkthrough is a required gate, not a formality this PR could
+have skipped once its automated suite was green.
+
+**Sample fixture added for the user's own manual testing of the Metadata
+page**: `tests/fixtures/excel/graviscan-metadata-sample.xlsx` (4 plates × 4
+sections, 2 distinct accessions, one deliberately-blank optional Custom
+Note cell). The 5 pre-existing files in that same directory
+(`single-sheet.xlsx`, `multi-sheet.xlsx`, `large-batch.xlsx`,
+`edge-cases.xlsx`, `alternative-columns.xlsx`) don't work for this —
+they're for a different feature entirely (CylinderScan's
+`accession-excel-upload.e2e.ts`, hence column names like `PlantBarcode`/
+`GenotypeID` that don't match GraviScan's `Plate ID`/`Section ID`/etc.
+schema at all). Per the same "an untested fixture can silently rot" concern
+that applies to any checked-in file, added a unit test
+(`GraviMetadataUpload.test.tsx`, "imports the checked-in
+graviscan-metadata-sample.xlsx fixture end to end") that reads this file
+from disk (every other test in that file builds an in-memory workbook
+instead) and asserts on the exact plate/section/accession shape the sample
+data describes — so a future edit to `REQUIRED_FIELDS`/`OPTIONAL_FIELDS`
+or to the sample file itself that breaks the correspondence between them
+fails CI, not just a future manual tester.
+
 ## Risks / Trade-offs
 
 - **Global upload-status context adds one more always-mounted subscriber**

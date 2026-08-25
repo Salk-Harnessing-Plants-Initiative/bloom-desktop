@@ -228,3 +228,25 @@ GraviMetadataList.tsx`, new `src/renderer/hooks/useResizableColumns.ts`,
   or with Tier 4 (unstarted) — this change touches none of
   `session-handlers.ts`/`scan-coordinator.ts`, the shared-file concern noted
   elsewhere in the roadmap for Tier 4/#281/#283.
+
+## Addendum (2026-08-12): styling and spec-conformance completion
+
+After round-22 `/review-pr` convergence (tasks.md Section 36), a manual
+pre-merge walkthrough found `BrowseGraviScans.tsx`/`ExperimentDetail.tsx`
+render essentially unstyled — every prior review round audited backend logic
+(`box-backup.ts`), none audited rendered output. Auditing feature-by-feature
+against the production rig branch while investigating found this wasn't
+purely cosmetic: several scenarios already `ADDED` in this change's own
+`specs/ui-management-pages/spec.md` delta (per-experiment row content's
+phenotyper/date-range/image-breakdown fields, resolution/grid-mode display,
+download-result reporting, dismissable backup banner, live filter-chip
+counts, color-coded upload-preview columns) were never implemented. This
+addendum — see `design.md` Decision 12 and `tasks.md` Sections 37-41 — closes
+those already-accepted gaps, fixes the resolution/grid-mode "first scan
+only" correctness bug found in the process, retrofits this codebase's
+established Tailwind convention (`BrowseScans.tsx`) to all four affected
+files, and adds a small, scoped `graviScans`-include change
+(`database-handlers.ts`) for phenotyper data — no schema change, no new IPC
+handler. Explicitly excluded: production's per-experiment continuous-session
+interval/duration display, which is not named in any accepted scenario and
+would be new capability, not a gap-fill (see Decision 12).

@@ -79,57 +79,98 @@ export function GraviMetadataList() {
   };
 
   return (
-    <div>
-      {deleteError && <p>{deleteError}</p>}
-      <ul>
-        {files.map((file) => (
-          <li key={file.id}>
-            <span
-              onClick={() => handleExpand(file.id)}
-              style={{ cursor: 'pointer' }}
+    <div className="bg-white border rounded-lg shadow-sm p-4">
+      {deleteError && (
+        <p className="text-sm text-red-600 mb-2">{deleteError}</p>
+      )}
+      <ul className="space-y-2">
+        {files.map((file) => {
+          const expanded = expandedId === file.id;
+          return (
+            <li
+              key={file.id}
+              className="bg-gray-50 rounded-lg border border-gray-100"
             >
-              {file.name}
-            </span>
-            <span> {formatDate(file.createdAt)}</span>
-            <span> {file.experimentNames.join(', ')}</span>
-            <span> {file.plateCount} plates</span>
-            <button onClick={() => handleDelete(file.id, file.name)}>
-              Delete
-            </button>
+              <div className="flex items-center gap-2 px-3 py-2">
+                <span
+                  onClick={() => handleExpand(file.id)}
+                  className={`text-gray-400 cursor-pointer transition-transform ${expanded ? 'rotate-90' : ''}`}
+                >
+                  &rsaquo;
+                </span>
+                <span
+                  onClick={() => handleExpand(file.id)}
+                  className="font-medium cursor-pointer"
+                >
+                  {file.name}
+                </span>
+                <span className="text-sm text-gray-600">
+                  {formatDate(file.createdAt)}
+                </span>
+                <span className="text-sm text-gray-600">
+                  {file.experimentNames.join(', ')}
+                </span>
+                <span className="text-sm text-gray-600">
+                  {file.plateCount} plates
+                </span>
+                <button
+                  onClick={() => handleDelete(file.id, file.name)}
+                  className="ml-auto text-red-600 hover:bg-red-50 rounded px-2 py-1 text-sm"
+                >
+                  Delete
+                </button>
+              </div>
 
-            {expandedId === file.id && plates[file.id] && (
-              <table>
-                <tbody>
-                  {plates[file.id].map((plate) =>
-                    plate.sections.map((section, i) => (
-                      <tr key={`${plate.plate_id}-${section.plate_section_id}`}>
-                        {i === 0 && (
-                          <>
-                            <td rowSpan={plate.sections.length}>
-                              {plate.plate_id}
-                            </td>
-                            <td rowSpan={plate.sections.length}>
-                              {plate.accession}
-                            </td>
-                            <td rowSpan={plate.sections.length}>
-                              {formatDate(plate.transplant_date)}
-                            </td>
-                            <td rowSpan={plate.sections.length}>
-                              {plate.custom_note}
-                            </td>
-                          </>
-                        )}
-                        <td>{section.plate_section_id}</td>
-                        <td>{section.plant_qr}</td>
-                        <td>{section.medium}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            )}
-          </li>
-        ))}
+              {expanded && plates[file.id] && (
+                <table className="w-full text-sm border-t">
+                  <tbody className="divide-y divide-gray-100">
+                    {plates[file.id].map((plate) =>
+                      plate.sections.map((section, i) => (
+                        <tr
+                          key={`${plate.plate_id}-${section.plate_section_id}`}
+                        >
+                          {i === 0 && (
+                            <>
+                              <td
+                                rowSpan={plate.sections.length}
+                                className="px-3 py-2"
+                              >
+                                {plate.plate_id}
+                              </td>
+                              <td
+                                rowSpan={plate.sections.length}
+                                className="px-3 py-2"
+                              >
+                                {plate.accession}
+                              </td>
+                              <td
+                                rowSpan={plate.sections.length}
+                                className="px-3 py-2"
+                              >
+                                {formatDate(plate.transplant_date)}
+                              </td>
+                              <td
+                                rowSpan={plate.sections.length}
+                                className="px-3 py-2"
+                              >
+                                {plate.custom_note}
+                              </td>
+                            </>
+                          )}
+                          <td className="px-3 py-2">
+                            {section.plate_section_id}
+                          </td>
+                          <td className="px-3 py-2">{section.plant_qr}</td>
+                          <td className="px-3 py-2">{section.medium}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

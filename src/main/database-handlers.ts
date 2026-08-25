@@ -340,7 +340,7 @@ export async function graviscansBrowseByExperiment(
       Prisma.ExperimentGetPayload<{
         include: {
           accession: true;
-          graviScans: { include: { images: true } };
+          graviScans: { include: { images: true; phenotyper: true } };
           graviPlateAssignments: true;
         };
       }> & { hasNeedsReview: boolean }
@@ -388,7 +388,10 @@ export async function graviscansBrowseByExperiment(
         orderBy: { name: 'asc' },
         include: {
           accession: true,
-          graviScans: { where: scansWhere, include: { images: true } },
+          graviScans: {
+            where: scansWhere,
+            include: { images: true, phenotyper: true },
+          },
           graviPlateAssignments: true,
         },
       }),
@@ -443,7 +446,9 @@ export async function graviscansExperimentDetail(
   experimentId: string
 ): Promise<
   DatabaseResponse<{
-    scans: Prisma.GraviScanGetPayload<object>[];
+    scans: Prisma.GraviScanGetPayload<{
+      include: { phenotyper: true; scanner: true };
+    }>[];
     verificationStatusMap: Record<string, string>;
   }>
 > {
@@ -467,6 +472,7 @@ export async function graviscansExperimentDetail(
         { scanner_id: 'asc' },
         { plate_index: 'asc' },
       ],
+      include: { phenotyper: true, scanner: true },
     });
     const assignments = await db.graviScanPlateAssignment.findMany({
       where: { experiment_id: experimentId },

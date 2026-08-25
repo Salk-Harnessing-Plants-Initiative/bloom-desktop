@@ -18,11 +18,8 @@ function makeExperiment(overrides: Record<string, unknown> = {}) {
     name: 'Drought Study',
     hasNeedsReview: false,
     scientist: { name: 'Dr. Smith' },
-    phenotypers: [{ name: 'Alice' }],
     accession: { id: 'acc-1', name: 'batch3.xlsx' },
     graviScans: [],
-    resolution: 600,
-    grid_mode: '2grid',
     ...overrides,
   };
 }
@@ -43,7 +40,15 @@ describe('BrowseGraviScans', () => {
       success: true,
       data: { experiments: [], total: 0 },
     });
-    downloadImages = vi.fn().mockResolvedValue({ success: true });
+    // graviscan:download-images goes through register-handlers.ts's
+    // wrapHandler, same envelope convention as uploadAllScans below —
+    // {success: true, data: <inner result>} on resolve. The inner result's
+    // own `success`/`copied`/`total`/`errors` shape comes straight from
+    // image-handlers.ts's downloadImages().
+    downloadImages = vi.fn().mockResolvedValue({
+      success: true,
+      data: { success: true, total: 3, copied: 3, errors: [] },
+    });
     // graviscan:upload-all-scans goes through register-handlers.ts's
     // wrapHandler, which always envelopes the real result as
     // {success: true, data: <UploadAllScansResult>} (or {success: false,
@@ -131,6 +136,200 @@ describe('BrowseGraviScans', () => {
     expect(
       screen.getByRole('button', { name: /view images/i })
     ).toBeInTheDocument();
+  });
+
+  describe('aggregate row fields (Decision 12)', () => {
+    function makeScan(overrides: Record<string, unknown> = {}) {
+      return {
+        scanner_id: 'scanner-1',
+        plate_index: '00',
+        cycle_number: 1,
+        resolution: 600,
+        grid_mode: '2grid',
+        capture_date: '2026-06-15T00:00:00.000Z',
+        phenotyper: { name: 'Alice' },
+        ...overrides,
+      };
+    }
+
+    it('renders phenotyper name(s), a date range, and an image-count breakdown from graviScans', async () => {
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: {
+          experiments: [
+            makeExperiment({
+              graviScans: [
+                makeScan({ capture_date: '2026-06-15T00:00:00.000Z' }),
+                makeScan({
+                  scanner_id: 'scanner-2',
+                  plate_index: '01',
+                  phenotyper: { name: 'Bob' },
+                  capture_date: '2026-06-20T00:00:00.000Z',
+                }),
+              ],
+            }),
+          ],
+          total: 1,
+        },
+      });
+      renderPage();
+
+      await waitFor(() => screen.getByText('Drought Study'));
+      expect(screen.getByText(/alice, bob/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 images/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 scanners/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 plates/i)).toBeInTheDocument();
+    });
+
+    it('shows the "(+N without a cycle number)" suffix when some scans have a null cycle_number', async () => {
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: {
+          experiments: [
+            makeExperiment({
+              graviScans: [
+                makeScan({ cycle_number: 1 }),
+                makeScan({ scanner_id: 'scanner-2', cycle_number: null }),
+              ],
+            }),
+          ],
+          total: 1,
+        },
+      });
+      renderPage();
+
+      await waitFor(() => screen.getByText('Drought Study'));
+      expect(
+        screen.getByText(/\(\+1 without a cycle number\)/i)
+      ).toBeInTheDocument();
+    });
+
+    it('shows the resolution/grid-mode set with a mixed-value indicator when scans differ, not just the first scan', async () => {
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: {
+          experiments: [
+            makeExperiment({
+              graviScans: [
+                makeScan({ resolution: 600, grid_mode: '2grid' }),
+                makeScan({ resolution: 800, grid_mode: '4grid' }),
+              ],
+            }),
+          ],
+          total: 1,
+        },
+      });
+      renderPage();
+
+      await waitFor(() => screen.getByText('Drought Study'));
+      expect(screen.getByText(/600/)).toBeInTheDocument();
+      expect(screen.getByText(/800/)).toBeInTheDocument();
+      // Resolution AND grid_mode both differ here — each field gets its own
+      // testid (not a shared one) so a test asserting "which field is mixed"
+      // can't collide with another mixed field on the same card.
+      expect(
+        screen.getByTestId('mixed-value-indicator-resolution')
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId('mixed-value-indicator-grid-mode')
+      ).toBeInTheDocument();
+    });
+
+    it('does not show a mixed-value indicator when every scan has the same resolution/grid-mode', async () => {
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: {
+          experiments: [
+            makeExperiment({
+              graviScans: [makeScan(), makeScan({ scanner_id: 'scanner-2' })],
+            }),
+          ],
+          total: 1,
+        },
+      });
+      renderPage();
+
+      await waitFor(() => screen.getByText('Drought Study'));
+      expect(
+        screen.queryByTestId('mixed-value-indicator-resolution')
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('mixed-value-indicator-grid-mode')
+      ).not.toBeInTheDocument();
+    });
+
+    it('caps a distinct-value list at 3 with "+N more" and a title attribute holding the full list', async () => {
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: {
+          experiments: [
+            makeExperiment({
+              graviScans: [
+                makeScan({ resolution: 600 }),
+                makeScan({ resolution: 800, scanner_id: 's2' }),
+                makeScan({ resolution: 1200, scanner_id: 's3' }),
+                makeScan({ resolution: 1600, scanner_id: 's4' }),
+              ],
+            }),
+          ],
+          total: 1,
+        },
+      });
+      renderPage();
+
+      await waitFor(() => screen.getByText('Drought Study'));
+      const moreText = screen.getByText(/\+1 more/i);
+      expect(moreText).toBeInTheDocument();
+      expect(moreText.closest('[title]')).toHaveAttribute(
+        'title',
+        expect.stringContaining('1600')
+      );
+    });
+
+    it('never shows a mixed-value indicator for the phenotyper list', async () => {
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: {
+          experiments: [
+            makeExperiment({
+              graviScans: [
+                makeScan({ phenotyper: { name: 'Alice' } }),
+                makeScan({
+                  scanner_id: 'scanner-2',
+                  phenotyper: { name: 'Bob' },
+                }),
+              ],
+            }),
+          ],
+          total: 1,
+        },
+      });
+      renderPage();
+
+      await waitFor(() => screen.getByText('Drought Study'));
+      expect(
+        screen.queryByTestId('mixed-value-indicator-resolution')
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('mixed-value-indicator-grid-mode')
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders gracefully with no crash and no mixed-value indicator when an experiment has zero scans', async () => {
+      browseByExperiment.mockResolvedValue({
+        success: true,
+        data: { experiments: [makeExperiment({ graviScans: [] })], total: 1 },
+      });
+      expect(() => renderPage()).not.toThrow();
+
+      await waitFor(() => screen.getByText('Drought Study'));
+      expect(
+        screen.queryByTestId('mixed-value-indicator-resolution')
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('mixed-value-indicator-grid-mode')
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('shows a wave-metadata link error on the experiment row instead of silently leaving the wave selector stale', async () => {
@@ -340,6 +539,204 @@ describe('BrowseGraviScans', () => {
         experimentName: 'Drought Study',
         waveNumber: undefined,
       });
+    });
+  });
+
+  it('disables Download while a download is in flight, so a rapid second click cannot fire a duplicate IPC call', async () => {
+    let resolveDownload: (value: unknown) => void = () => {};
+    downloadImages.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDownload = resolve;
+      })
+    );
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => screen.getByText('Drought Study'));
+
+    const downloadButton = screen.getByRole('button', { name: /^download$/i });
+    await user.click(downloadButton);
+
+    expect(downloadButton).toBeDisabled();
+    await user.click(downloadButton);
+
+    resolveDownload({
+      success: true,
+      data: { success: true, total: 3, copied: 3, errors: [] },
+    });
+    await waitFor(() => expect(downloadButton).not.toBeDisabled());
+    expect(downloadImages).toHaveBeenCalledTimes(1);
+  });
+
+  it('displays the download result inline near the row instead of discarding it', async () => {
+    downloadImages.mockResolvedValue({
+      success: true,
+      data: { success: true, total: 12, copied: 12, errors: [] },
+    });
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => screen.getByText('Drought Study'));
+
+    await user.click(screen.getByRole('button', { name: /^download$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/downloaded 12 of 12/i)).toBeInTheDocument();
+    });
+  });
+
+  it('reports the copied count on a partial download failure, not a flat "Download failed" that implies nothing landed', async () => {
+    // errors.length===0 is downloadImages()'s own success criterion
+    // (image-handlers.ts), so success:false with copied>0 means SOME files
+    // really did land on disk — collapsing that to "Download failed" would
+    // falsely imply a total failure, and dropping `copied` entirely would
+    // hide real progress from the operator.
+    downloadImages.mockResolvedValue({
+      success: true,
+      data: {
+        success: false,
+        total: 3,
+        copied: 1,
+        errors: ['img2.tif: Copy failed', 'img3.tif: Copy failed'],
+      },
+    });
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => screen.getByText('Drought Study'));
+
+    await user.click(screen.getByRole('button', { name: /^download$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/downloaded 1 of 3/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 error/i)).toBeInTheDocument();
+      // Every distinct error is shown, not just the first — matching this
+      // same file's own Box-backup precedent (surfaces every collision, not
+      // just the first-processed one).
+      expect(screen.getByText(/img2\.tif: copy failed/i)).toBeInTheDocument();
+      expect(screen.getByText(/img3\.tif: copy failed/i)).toBeInTheDocument();
+    });
+  });
+
+  it('reports a true total failure (nothing copied) as "Download failed", listing every error', async () => {
+    downloadImages.mockResolvedValue({
+      success: true,
+      data: {
+        success: false,
+        total: 2,
+        copied: 0,
+        errors: ['img1.tif: Copy failed', 'img2.tif: Copy failed'],
+      },
+    });
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => screen.getByText('Drought Study'));
+
+    await user.click(screen.getByRole('button', { name: /^download$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/download failed.*img1\.tif: copy failed/i)
+      ).toBeInTheDocument();
+      expect(screen.getByText(/img2\.tif: copy failed/i)).toBeInTheDocument();
+    });
+  });
+
+  it('displays an envelope-level download error (the IPC call itself failing) inline', async () => {
+    downloadImages.mockResolvedValue({
+      success: false,
+      error: 'Destination folder is not writable',
+    });
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 1 },
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => screen.getByText('Drought Study'));
+
+    await user.click(screen.getByRole('button', { name: /^download$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/destination folder is not writable/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows "Loading experiments..." during the initial fetch, distinct from the empty-result message', async () => {
+    let resolveFetch: (value: unknown) => void = () => {};
+    browseByExperiment.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      })
+    );
+    renderPage();
+
+    expect(screen.getByText(/loading experiments/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no graviscan data/i)).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveFetch({ success: true, data: { experiments: [], total: 0 } });
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/no graviscan data/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/loading experiments/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a "Clear filters" control only when a filter is set, which resets every filter and refetches at offset 0', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(browseByExperiment).toHaveBeenCalled());
+
+    expect(
+      screen.queryByRole('button', { name: /clear filters/i })
+    ).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/experiment name/i), 'Drought');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /clear filters/i })
+      ).toBeInTheDocument()
+    );
+
+    browseByExperiment.mockClear();
+    await user.click(screen.getByRole('button', { name: /clear filters/i }));
+
+    await waitFor(() => {
+      expect(browseByExperiment).toHaveBeenLastCalledWith(
+        expect.objectContaining({ offset: 0, filters: {} })
+      );
+    });
+    expect(screen.getByLabelText(/experiment name/i)).toHaveValue('');
+    expect(
+      screen.queryByRole('button', { name: /clear filters/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a "Showing X of Y experiments" / page-position summary line', async () => {
+    browseByExperiment.mockResolvedValue({
+      success: true,
+      data: { experiments: [makeExperiment()], total: 21 },
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/showing 1 of 21/i)).toBeInTheDocument();
     });
   });
 
@@ -915,6 +1312,111 @@ describe('BrowseGraviScans', () => {
       expect(
         screen.getByRole('button', { name: /^backup to box$/i })
       ).toBeEnabled();
+    });
+
+    it('the backup result banner has a dismiss control that clears it', async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      await user.click(
+        screen.getByRole('button', { name: /^backup to box$/i })
+      );
+      await waitFor(() => {
+        expect(screen.getByText(/3 uploaded/i)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /dismiss/i }));
+      expect(screen.queryByText(/3 uploaded/i)).not.toBeInTheDocument();
+    });
+
+    it('the backup result banner auto-clears after 4000ms if not dismissed', async () => {
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: true,
+          uploaded: 3,
+          skipped: 0,
+          failed: 0,
+          errors: [],
+          metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: true,
+          bloomUploaded: 3,
+          boxUploaded: 3,
+          bloomErrors: [],
+          boxErrors: [],
+        },
+      });
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(
+          screen.getByRole('button', { name: /^backup to box$/i })
+        );
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(screen.getByText(/uploaded 3 image/i)).toBeInTheDocument();
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(4000);
+        });
+        expect(screen.queryByText(/uploaded 3 image/i)).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does NOT auto-clear a backup FAILURE message — only success messages auto-clear, matching BrowseScans.tsx's error-vs-success distinction", async () => {
+      // A Box collision/failure needs manual resolution and has no other
+      // durable trace in this UI today (box_status isn't surfaced by the
+      // Upload Status filter) — auto-clearing it after 4s the same as a
+      // success message would leave the operator with zero remaining way
+      // to see it if they missed the toast.
+      uploadAllScans.mockResolvedValue({
+        success: true,
+        data: {
+          success: false,
+          uploaded: 0,
+          skipped: 0,
+          failed: 1,
+          errors: ['rclone exited with code 1'],
+          metadataLinkingAvailable: false,
+          bloomSuccess: true,
+          boxSuccess: false,
+          bloomUploaded: 0,
+          boxUploaded: 0,
+          bloomErrors: [],
+          boxErrors: ['rclone exited with code 1'],
+        },
+      });
+      renderPage();
+      await waitFor(() => expect(getScanStatus).toHaveBeenCalled());
+
+      vi.useFakeTimers();
+      try {
+        fireEvent.click(
+          screen.getByRole('button', { name: /^backup to box$/i })
+        );
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(
+          screen.getByText(/box failed.*rclone exited with code 1/i)
+        ).toBeInTheDocument();
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10000);
+        });
+        expect(
+          screen.getByText(/box failed.*rclone exited with code 1/i)
+        ).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('updates the per-experiment Box progress indicator from onUploadProgress events', async () => {

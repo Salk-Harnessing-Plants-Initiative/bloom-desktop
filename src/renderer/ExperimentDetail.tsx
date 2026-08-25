@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useResizableColumns } from './hooks/useResizableColumns';
 import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
+import {
+  computeDistinctValueSummary,
+  computeNameList,
+  computeDateRange,
+  capForDisplay,
+  formatDateRange,
+} from './utils/graviExperimentSummary';
 
 /** Last path segment, so the Filename column shows the real TIFF name
  * (e.g. "exp1_st_..._cy1_S1_00.tif") instead of the database row id. */
@@ -22,6 +29,16 @@ interface GraviScanRow {
   custom_note?: string | null;
   plate_barcode?: string | null;
   path: string;
+  phenotyper?: { name: string } | null;
+  scanner?: { name: string; display_name?: string | null } | null;
+}
+
+/** Falls back to `name` when `display_name` is unset — never the raw
+ * `scanner_id`, which is meaningless to a scientist reading the screen. */
+function scannerLabel(
+  scanner: { name: string; display_name?: string | null } | null | undefined
+): string {
+  return scanner?.display_name || scanner?.name || 'unknown scanner';
 }
 
 /**
@@ -56,10 +73,14 @@ interface ExperimentSummary {
 
 function VerificationBadge({ status }: { status?: string }) {
   if (status === 'needs_review') {
-    return <span>Needs Review</span>;
+    return (
+      <span className="text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+        Needs Review
+      </span>
+    );
   }
   if (status === 'verified') {
-    return <span>✓</span>;
+    return <span className="text-green-600">&#10003;</span>;
   }
   return <span />;
 }
@@ -75,16 +96,23 @@ function FileRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [dataUri, setDataUri] = useState<string | null>(null);
+  const [imageState, setImageState] = useState<
+    'idle' | 'loading' | 'loaded' | 'failed'
+  >('idle');
 
   const handleClick = async () => {
     const next = !expanded;
     setExpanded(next);
     if (next && !dataUri) {
+      setImageState('loading');
       const result = await window.electron.gravi.readScanImage(scan.path, {
         full: false,
       });
-      if (result.success) {
-        setDataUri(result.dataUri ?? null);
+      if (result.success && result.dataUri) {
+        setDataUri(result.dataUri);
+        setImageState('loaded');
+      } else {
+        setImageState('failed');
       }
     }
   };
@@ -94,24 +122,87 @@ function FileRow({
       <div
         data-testid={`file-row-${scan.id}`}
         onClick={handleClick}
-        style={{ cursor: 'pointer' }}
+        className="flex items-center gap-2 px-3 py-2.5 cursor-pointer hover:bg-gray-50"
       >
-        <span style={{ width: widths.filename }}>{basename(scan.path)}</span>
-        <span style={{ width: widths.plate }}>{scan.plate_index}</span>
-        <span style={{ width: widths.wave }}>Wave {scan.wave_number}</span>
+        <span
+          className={`text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`}
+        >
+          &rsaquo;
+        </span>
+        <span
+          className="truncate"
+          style={{ width: widths.filename, flexShrink: 0 }}
+          title={basename(scan.path)}
+        >
+          {basename(scan.path)}
+        </span>
+        <span
+          className="truncate"
+          style={{ width: widths.plate, flexShrink: 0 }}
+        >
+          {scan.plate_index}
+        </span>
+        <span
+          className="truncate"
+          style={{ width: widths.wave, flexShrink: 0 }}
+        >
+          Wave {scan.wave_number}
+        </span>
         <span data-testid={`verification-badge-${scan.id}`}>
           <VerificationBadge status={verificationStatus} />
         </span>
       </div>
       {expanded && (
-        <div>
-          {dataUri && <img src={dataUri} alt={scan.id} />}
-          <span>{formatDate(scan.capture_date)}</span>
-          <span>{formatDate(scan.transplant_date)}</span>
-          <span>{scan.custom_note}</span>
-          <span>{scan.plate_barcode}</span>
-          <span>{scan.scanner_id}</span>
-          <span>{scan.grid_mode}</span>
+        <div className="px-3 py-3 bg-blue-50 border-t border-blue-100 text-sm">
+          {imageState === 'loading' && (
+            <p className="text-gray-500 mb-2">Loading preview...</p>
+          )}
+          {imageState === 'failed' && (
+            <p className="text-red-600 mb-2">Failed to load preview</p>
+          )}
+          {dataUri && (
+            <img
+              src={dataUri}
+              alt={scan.id}
+              className="max-w-xs max-h-48 object-contain rounded border border-gray-200 mb-3"
+            />
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <div className="font-medium text-gray-600">Capture Date</div>
+              <div>{formatDate(scan.capture_date)}</div>
+            </div>
+            <div>
+              <div className="font-medium text-gray-600">Transplant Date</div>
+              <div>{formatDate(scan.transplant_date)}</div>
+            </div>
+            <div>
+              <div className="font-medium text-gray-600">Plate Barcode</div>
+              <div>{scan.plate_barcode || '—'}</div>
+            </div>
+            <div>
+              <div className="font-medium text-gray-600">Scanner</div>
+              <div>{scannerLabel(scan.scanner)}</div>
+            </div>
+            <div>
+              <div className="font-medium text-gray-600">Grid Mode</div>
+              <div>{scan.grid_mode}</div>
+            </div>
+            <div>
+              <div className="font-medium text-gray-600">Resolution</div>
+              <div>{scan.resolution}</div>
+            </div>
+            <div>
+              <div className="font-medium text-gray-600">Phenotyper</div>
+              <div>{scan.phenotyper?.name || '—'}</div>
+            </div>
+            {scan.custom_note && (
+              <div className="col-span-2 md:col-span-4">
+                <div className="font-medium text-gray-600">Custom Note</div>
+                <div>{scan.custom_note}</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -127,6 +218,7 @@ export function ExperimentDetail() {
   >({});
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [metadataOptions, setMetadataOptions] = useState<Accession[]>([]);
   const [scannerFilter, setScannerFilter] = useState<string>('');
   const [waveFilter, setWaveFilter] = useState<string>('');
@@ -151,10 +243,12 @@ export function ExperimentDetail() {
 
   const fetchAll = useCallback(async () => {
     if (!experimentId) return;
+    setIsLoading(true);
     const expResult =
       await window.electron.database.experiments.get(experimentId);
     if (!expResult.success) {
       setNotFound(true);
+      setIsLoading(false);
       return;
     }
     setExperiment(expResult.data);
@@ -167,6 +261,7 @@ export function ExperimentDetail() {
     } else {
       setError(detailResult.error ?? 'Failed to load experiment detail');
     }
+    setIsLoading(false);
   }, [experimentId]);
 
   useEffect(() => {
@@ -218,6 +313,12 @@ export function ExperimentDetail() {
   }
 
   const scanners = Array.from(new Set(scans.map((s) => s.scanner_id)));
+  const scannerLabelById = new Map(
+    scanners.map((id) => [
+      id,
+      scannerLabel(scans.find((s) => s.scanner_id === id)?.scanner),
+    ])
+  );
   const waves = Array.from(new Set(scans.map((s) => s.wave_number)));
   const visibleScans = scans.filter((s) => {
     if (scannerFilter && s.scanner_id !== scannerFilter) return false;
@@ -225,100 +326,283 @@ export function ExperimentDetail() {
     return true;
   });
 
+  const phenotyperNames = computeNameList(
+    scans.map((s) => s.phenotyper?.name).filter((n): n is string => !!n)
+  );
+  const resolutionSummary = computeDistinctValueSummary(
+    scans.map((s) => s.resolution)
+  );
+  const gridModeSummary = computeDistinctValueSummary(
+    scans.map((s) => s.grid_mode)
+  );
+  const dateRange = computeDateRange(scans.map((s) => s.capture_date));
+  const phenotyperDisplay = capForDisplay(phenotyperNames.values);
+  const resolutionDisplay = capForDisplay(resolutionSummary.values);
+  const gridModeDisplay = capForDisplay(gridModeSummary.values);
+
   return (
-    <div>
-      <a href="/browse-graviscans">Back to Browse</a>
-      <h1>{experiment.name}</h1>
-      <div>
-        <span>{experiment.scientist?.name ?? 'unknown'}</span>
-        <span>{scans[0]?.resolution}</span>
-        <span>{scans[0]?.grid_mode}</span>
-        <span>{waves.length > 1 ? 'Multi-wave' : 'Single wave'}</span>
-        <span>{scans.length} images</span>
+    <div className="p-6 max-w-7xl mx-auto">
+      <Link
+        to="/browse-graviscans"
+        className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+      >
+        &lsaquo; Back to Browse
+      </Link>
+      <h1 className="text-2xl font-bold mt-1 mb-4">{experiment.name}</h1>
+      <div className="bg-white rounded-lg shadow-sm border p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+        <div>
+          <div className="font-medium text-gray-600">Scientist</div>
+          <div>{experiment.scientist?.name ?? 'unknown'}</div>
+        </div>
+        {phenotyperNames.values.length > 0 && (
+          <div>
+            <div className="font-medium text-gray-600">Phenotyper(s)</div>
+            <div title={phenotyperDisplay.title}>
+              {phenotyperDisplay.display}
+            </div>
+          </div>
+        )}
+        {dateRange && (
+          <div>
+            <div className="font-medium text-gray-600">Date Range</div>
+            <div>{formatDateRange(dateRange)}</div>
+          </div>
+        )}
+        {resolutionSummary.values.length > 0 && (
+          <div>
+            <div className="font-medium text-gray-600">Resolution</div>
+            <div
+              title={resolutionDisplay.title}
+              className="flex items-center gap-1"
+            >
+              {resolutionDisplay.display}
+              {resolutionSummary.isMixed && (
+                <span
+                  data-testid="mixed-value-indicator-resolution"
+                  className="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded"
+                >
+                  &ne;
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        {gridModeSummary.values.length > 0 && (
+          <div>
+            <div className="font-medium text-gray-600">Grid Mode</div>
+            <div
+              title={gridModeDisplay.title}
+              className="flex items-center gap-1"
+            >
+              {gridModeDisplay.display}
+              {gridModeSummary.isMixed && (
+                <span
+                  data-testid="mixed-value-indicator-grid-mode"
+                  className="text-xs font-medium text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded"
+                >
+                  &ne;
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        <div>
+          <div className="font-medium text-gray-600">Wave Status</div>
+          <div>{waves.length > 1 ? 'Multi-wave' : 'Single wave'}</div>
+        </div>
+        <div>
+          <div className="font-medium text-gray-600">Images</div>
+          <div>{scans.length} images</div>
+        </div>
       </div>
 
-      <div>
-        <h2>Linked Metadata</h2>
-        <ul>
-          {links.map((l) => (
-            <li key={l.wave_number}>
-              Wave {l.wave_number}: {l.accession.name}
+      {isLoading ? (
+        <p className="text-sm text-gray-500">Loading experiment...</p>
+      ) : (
+        <>
+          <div className="bg-white rounded-lg shadow-sm border p-4 mb-4">
+            <h2 className="text-lg font-semibold mb-2">Linked Metadata</h2>
+            <ul className="space-y-1 mb-3">
+              {links.map((l) => (
+                <li
+                  key={l.wave_number}
+                  className="flex items-center justify-between bg-gray-50 px-3 py-2 rounded"
+                >
+                  <span>
+                    Wave {l.wave_number}: {l.accession.name}
+                  </span>
+                  <button
+                    onClick={() =>
+                      handleUnlink(l.wave_number, l.accession.name)
+                    }
+                    disabled={unlinkingWave !== null}
+                    className="text-red-600 hover:bg-red-50 rounded px-2 py-1 text-sm disabled:opacity-50"
+                  >
+                    {unlinkingWave === l.wave_number
+                      ? 'Unlinking...'
+                      : 'Unlink'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {linkError && (
+              <p className="text-sm text-red-600 mb-2">{linkError}</p>
+            )}
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label
+                  htmlFor="new-wave-input"
+                  className="block text-xs font-bold mb-1"
+                >
+                  New Wave Number
+                </label>
+                <input
+                  id="new-wave-input"
+                  aria-label="New Wave Number"
+                  type="number"
+                  min={0}
+                  value={newWave}
+                  onChange={(e) => setNewWave(Number(e.target.value))}
+                  className="p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="new-metadata-select"
+                  className="block text-xs font-bold mb-1"
+                >
+                  Metadata File
+                </label>
+                <select
+                  id="new-metadata-select"
+                  aria-label="Metadata File"
+                  value={newAccession}
+                  onChange={(e) => setNewAccession(e.target.value)}
+                  className="p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none"
+                >
+                  <option value="">-- Select a metadata file --</option>
+                  {metadataOptions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
-                onClick={() => handleUnlink(l.wave_number, l.accession.name)}
-                disabled={unlinkingWave !== null}
+                onClick={handleLink}
+                disabled={isLinking}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
               >
-                {unlinkingWave === l.wave_number ? 'Unlinking...' : 'Unlink'}
+                {isLinking ? 'Linking...' : 'Link'}
               </button>
-            </li>
-          ))}
-        </ul>
-        {linkError && <p>{linkError}</p>}
-        <label htmlFor="new-wave-input">New Wave Number</label>
-        <input
-          id="new-wave-input"
-          aria-label="New Wave Number"
-          type="number"
-          min={0}
-          value={newWave}
-          onChange={(e) => setNewWave(Number(e.target.value))}
-        />
-        <label htmlFor="new-metadata-select">Metadata File</label>
-        <select
-          id="new-metadata-select"
-          aria-label="Metadata File"
-          value={newAccession}
-          onChange={(e) => setNewAccession(e.target.value)}
-        >
-          <option value="">-- Select a metadata file --</option>
-          {metadataOptions.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <button onClick={handleLink} disabled={isLinking}>
-          {isLinking ? 'Linking...' : 'Link'}
-        </button>
-      </div>
+            </div>
+          </div>
 
-      <div>
-        {scanners.map((s) => (
-          <button key={s} onClick={() => setScannerFilter(s)}>
-            {s}
-          </button>
-        ))}
-        {waves.length > 1 &&
-          waves.map((w) => (
-            <button key={w} onClick={() => setWaveFilter(String(w))}>
-              Wave {w}
-            </button>
-          ))}
-      </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {scanners.map((s) => {
+              const count = scans.filter(
+                (sc) =>
+                  sc.scanner_id === s &&
+                  (waveFilter === '' || sc.wave_number === Number(waveFilter))
+              ).length;
+              const active = scannerFilter === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() =>
+                    setScannerFilter((prev) => (prev === s ? '' : s))
+                  }
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                    active
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {scannerLabelById.get(s)} ({count})
+                </button>
+              );
+            })}
+            {waves.length > 1 &&
+              waves.map((w) => {
+                const count = scans.filter(
+                  (sc) =>
+                    sc.wave_number === w &&
+                    (scannerFilter === '' || sc.scanner_id === scannerFilter)
+                ).length;
+                const active = waveFilter === String(w);
+                return (
+                  <button
+                    key={w}
+                    onClick={() =>
+                      setWaveFilter((prev) =>
+                        prev === String(w) ? '' : String(w)
+                      )
+                    }
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                      active
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Wave {w} ({count})
+                  </button>
+                );
+              })}
+          </div>
 
-      <div>
-        <span
-          data-testid="resize-handle-filename"
-          onMouseDown={onResizeStart('filename')}
-        >
-          Filename
-        </span>
-        <span
-          data-testid="resize-handle-plate"
-          onMouseDown={onResizeStart('plate')}
-        >
-          Plate
-        </span>
-        {visibleScans.map((scan) => (
-          <FileRow
-            key={scan.id}
-            scan={scan}
-            verificationStatus={
-              verificationStatusMap[`${scan.scanner_id}:${scan.plate_index}`]
-            }
-            widths={widths}
-          />
-        ))}
-      </div>
+          <p className="text-sm text-gray-600 mb-2">
+            Showing {visibleScans.length} of {scans.length}
+          </p>
+
+          <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+            <div className="bg-gray-50 border-b flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-500 uppercase">
+              <span className="w-4" />
+              <span
+                data-testid="resize-handle-filename"
+                onMouseDown={onResizeStart('filename')}
+                className="truncate"
+                style={{ width: widths.filename, flexShrink: 0 }}
+              >
+                Filename
+              </span>
+              <span
+                data-testid="resize-handle-plate"
+                onMouseDown={onResizeStart('plate')}
+                className="truncate"
+                style={{ width: widths.plate, flexShrink: 0 }}
+              >
+                Plate
+              </span>
+              <span
+                className="truncate"
+                style={{ width: widths.wave, flexShrink: 0 }}
+              >
+                Wave
+              </span>
+            </div>
+            {visibleScans.length === 0 ? (
+              <p className="text-sm text-gray-500 p-4">
+                No images match filters
+              </p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {visibleScans.map((scan) => (
+                  <FileRow
+                    key={scan.id}
+                    scan={scan}
+                    verificationStatus={
+                      verificationStatusMap[
+                        `${scan.scanner_id}:${scan.plate_index}`
+                      ]
+                    }
+                    widths={widths}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

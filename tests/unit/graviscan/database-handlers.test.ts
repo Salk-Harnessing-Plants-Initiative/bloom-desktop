@@ -635,6 +635,38 @@ describe('database.graviscans.*', () => {
       expect(pendingIds).toContain(fx.experimentB.id);
       expect(pendingIds).not.toContain(fx.experimentA.id);
     });
+
+    it("includes each scan's phenotyper name, not just phenotyper_id (Section 37, Decision 12)", async () => {
+      const fx = await seedBaseFixture();
+      const secondPhenotyper = await prisma.phenotyper.create({
+        data: {
+          name: 'Second Phenotyper',
+          email: `phenotyper2-${Date.now()}@salk.edu`,
+        },
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: secondPhenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+
+      const result = await graviscansBrowseByExperiment(prisma, {
+        offset: 0,
+        limit: 10,
+      });
+      const expA = (result.data?.experiments ?? []).find(
+        (e) => e.id === fx.experimentA.id
+      );
+      const phenotyperNames = (expA?.graviScans ?? [])
+        .map((s) => s.phenotyper?.name)
+        .sort();
+      expect(phenotyperNames).toEqual(['Second Phenotyper', 'Test Phenotyper']);
+    });
   });
 
   describe('experimentDetail', () => {
@@ -711,6 +743,58 @@ describe('database.graviscans.*', () => {
       expect(
         Object.keys(result.data?.verificationStatusMap ?? {})
       ).toHaveLength(0);
+    });
+
+    it("includes each scan's phenotyper name, not just phenotyper_id (Section 37, Decision 12)", async () => {
+      const fx = await seedBaseFixture();
+      const secondPhenotyper = await prisma.phenotyper.create({
+        data: {
+          name: 'Second Phenotyper',
+          email: `phenotyper2-${Date.now()}@salk.edu`,
+        },
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: secondPhenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+
+      const result = await graviscansExperimentDetail(
+        prisma,
+        fx.experimentA.id
+      );
+      const phenotyperNames = (result.data?.scans ?? [])
+        .map((s) => s.phenotyper?.name)
+        .sort();
+      expect(phenotyperNames).toEqual(['Second Phenotyper', 'Test Phenotyper']);
+    });
+
+    it("includes each scan's scanner name/display_name, not just scanner_id — the renderer has no other way to show a human-readable scanner label", async () => {
+      const fx = await seedBaseFixture();
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerY.id,
+      });
+
+      const result = await graviscansExperimentDetail(
+        prisma,
+        fx.experimentA.id
+      );
+      const scannerLabels = (result.data?.scans ?? [])
+        .map((s) => s.scanner?.display_name ?? s.scanner?.name)
+        .sort();
+      expect(scannerLabels).toEqual(['Scanner X', 'Scanner Y']);
     });
   });
 });
