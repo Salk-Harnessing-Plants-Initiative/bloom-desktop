@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { useWedgeEvents } from '../hooks/useWedgeEvents';
+import { useWedgeContext } from '../contexts/WedgeContext';
 import type { GraviWedgeEvent } from '../../types/graviscan';
 
 interface WedgeEntryRowProps {
@@ -129,7 +129,7 @@ export function WedgeBanner() {
     totalScannersAffected,
     dismiss,
     dismissIfCurrent,
-  } = useWedgeEvents();
+  } = useWedgeContext();
 
   const entryList = Object.values(entries);
 

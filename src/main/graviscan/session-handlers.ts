@@ -7,7 +7,11 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import type { PlateConfig, ScannerConfig } from '../../types/graviscan';
+import type {
+  PlateConfig,
+  ScannerConfig,
+  ScanSessionJob,
+} from '../../types/graviscan';
 import { buildSaneName } from './scanner-handlers';
 import { scanLog } from './scan-logger';
 
@@ -119,23 +123,13 @@ export async function startScan(
       }
     }
 
-    // Build jobs map
-    const jobs: Record<
-      string,
-      {
-        scannerId: string;
-        plateIndex: string;
-        outputPath: string;
-        plantBarcode: string | null;
-        transplantDate: string | null;
-        customNote: string | null;
-        gridMode: string;
-        status: 'pending' | 'scanning' | 'complete' | 'error';
-        imagePath?: string;
-        error?: string;
-        durationMs?: number;
-      }
-    > = {};
+    // Build jobs map. Imports the canonical `ScanSessionJob` type rather
+    // than a locally-duplicated one — a prior inline copy of this type was
+    // missing the `'recorded'` status literal that `markScanJobRecorded()`
+    // (`wiring.ts`) makes a real, live value for the first time, and only
+    // happened to compile because a narrower union is structurally
+    // assignable to the wider one it was drifting from.
+    const jobs: Record<string, ScanSessionJob> = {};
 
     for (const s of params.scanners) {
       for (const plate of s.plates) {

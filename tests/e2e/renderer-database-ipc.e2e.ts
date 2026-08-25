@@ -3047,6 +3047,52 @@ test.describe('Renderer Database IPC - GraviScan graviscans.*', () => {
     expect(detail.success).toBe(true);
     expect(detail.data.scans).toHaveLength(1);
   });
+
+  test('create is idempotent for the same (session_id, scanner_id, plate_index, cycle_number) through the real IPC bridge', async () => {
+    const fx = await seedGraviScanFixture();
+    const session = await prisma.graviScanSession.create({
+      data: {
+        experiment_id: fx.experiment.id,
+        phenotyper_id: fx.phenotyper.id,
+      },
+    });
+
+    const payload = {
+      experiment_id: fx.experiment.id,
+      phenotyper_id: fx.phenotyper.id,
+      scanner_id: fx.scanner.id,
+      session_id: session.id,
+      cycle_number: 1,
+      path: '/scans/dup-e2e.tif',
+      grid_mode: '2grid',
+      plate_index: '00',
+      resolution: 600,
+    };
+
+    const first = await window.evaluate((data) => {
+      return (window as WindowWithElectron).electron.database.graviscans.create(
+        data
+      );
+    }, payload);
+    expect(first.success).toBe(true);
+
+    const second = await window.evaluate((data) => {
+      return (window as WindowWithElectron).electron.database.graviscans.create(
+        data
+      );
+    }, payload);
+    expect(second.success).toBe(true);
+
+    const rows = await prisma.graviScan.findMany({
+      where: {
+        session_id: session.id,
+        scanner_id: fx.scanner.id,
+        plate_index: '00',
+        cycle_number: 1,
+      },
+    });
+    expect(rows).toHaveLength(1);
+  });
 });
 
 test.describe('Renderer Database IPC - GraviScan graviscanSessions.*', () => {
@@ -3118,6 +3164,67 @@ test.describe('Renderer Database IPC - GraviScan graviscanPlateAssignments.*', (
     );
     expect(listed.success).toBe(true);
     expect(listed.data).toHaveLength(2);
+  });
+
+  test('waveNumber scopes each wave to its own independent row through the real IPC bridge', async () => {
+    const fx = await seedGraviScanFixture();
+
+    await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.upsertMany(
+          experimentId,
+          scannerId,
+          [{ plate_index: '00', plate_barcode: 'WAVE2' }],
+          2
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.upsertMany(
+          experimentId,
+          scannerId,
+          [{ plate_index: '00', plate_barcode: 'WAVE3' }],
+          3
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+
+    const wave2 = await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.list(
+          experimentId,
+          scannerId,
+          2
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    expect(wave2.data).toHaveLength(1);
+    expect(wave2.data[0].plate_barcode).toBe('WAVE2');
+
+    const wave3 = await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.list(
+          experimentId,
+          scannerId,
+          3
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    expect(wave3.data).toHaveLength(1);
+    expect(wave3.data[0].plate_barcode).toBe('WAVE3');
   });
 });
 

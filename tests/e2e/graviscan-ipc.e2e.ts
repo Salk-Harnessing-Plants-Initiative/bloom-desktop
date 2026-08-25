@@ -21,6 +21,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
+import { PrismaClient } from '@prisma/client';
 import { closeElectronApp } from './helpers/electron-cleanup';
 import { waitForAppReady } from './helpers/app-ready';
 import type { ElectronAPI } from '../../src/types/electron';
@@ -34,6 +35,7 @@ interface WindowWithElectron extends Window {
 
 let electronApp: ElectronApplication;
 let window: Page;
+let prisma: PrismaClient;
 
 // Test database (separate from other E2E tests)
 const TEST_DB_PATH = path.join(__dirname, 'graviscan-ipc-test.db');
@@ -131,6 +133,9 @@ test.beforeEach(async () => {
     stdio: 'pipe',
   });
 
+  prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
+  await prisma.$connect();
+
   await launchElectronApp();
 });
 
@@ -138,6 +143,10 @@ test.beforeEach(async () => {
  * Test teardown: Clean up resources
  */
 test.afterEach(async () => {
+  if (prisma) {
+    await prisma.$disconnect();
+  }
+
   await closeElectronApp(electronApp);
 
   if (fs.existsSync(TEST_DB_PATH)) {
@@ -258,6 +267,96 @@ test.describe('GraviScan IPC Round-Trip', () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toBeDefined();
+  });
+});
+
+/**
+ * verifyPlates + its progress events (Tier 4, issue #162 wave-scoping).
+ *
+ * These tests exercise the real renderer -> preload -> IPC -> handler path
+ * added by this tier, but deliberately stay within scenarios that don't
+ * require successful QR decoding (a real image with an embedded, decodable
+ * QR code) — GRAVISCAN_MOCK only mocks scanner hardware detection, not the
+ * Python QR-decode subprocess, and generating a real QR-code fixture image
+ * is a separate concern already covered by verify-plates.test.ts's
+ * extensive mocked-Prisma suite and qr-reader's own tests. What this file
+ * verifies instead: the preload bridge and waveNumber threading actually
+ * reach the real handler end-to-end, including the wave-with-no-linked-
+ * metadata path (which short-circuits to `lookup_failed` before any QR
+ * decode is attempted, per verify-plates.ts).
+ */
+test.describe('GraviScan verifyPlates (Tier 4)', () => {
+  test('verifyPlates is exposed and round-trips an empty plates array', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.gravi.verifyPlates([], 'exp-1');
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.results).toEqual([]);
+    expect(result.swaps).toEqual([]);
+  });
+
+  test('a waveNumber with no linked GraviExperimentWaveMetadata classifies every plate lookup_failed', async () => {
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'E2E Verify Experiment',
+        species: 'Amaranthus',
+        experiment_type: 'graviscan',
+      },
+    });
+
+    const result = await window.evaluate(
+      ({ experimentId }) => {
+        return (
+          window as unknown as WindowWithElectron
+        ).electron.gravi.verifyPlates(
+          [
+            {
+              scannerId: 's1',
+              plateIndex: '00',
+              imagePath: '/nonexistent.tif',
+              assignedPlateId: 'Plate_13',
+            },
+          ],
+          experimentId,
+          7
+        );
+      },
+      { experimentId: experiment.id }
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].status).toBe('lookup_failed');
+  });
+
+  test('rejects an invalid waveNumber through the real IPC bridge', async () => {
+    const result = await window.evaluate(() => {
+      return (
+        window as unknown as WindowWithElectron
+      ).electron.gravi.verifyPlates([], 'exp-1', -1);
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/waveNumber/);
+  });
+
+  test('onVerifyStarted/onVerifyResult/onVerifyComplete each return a cleanup function', async () => {
+    const result = await window.evaluate(() => {
+      const electron = (window as unknown as WindowWithElectron).electron;
+      const cleanups = [
+        electron.gravi.onVerifyStarted(() => {}),
+        electron.gravi.onVerifyResult(() => {}),
+        electron.gravi.onVerifyComplete(() => {}),
+      ];
+      const allFunctions = cleanups.every((c) => typeof c === 'function');
+      cleanups.forEach((c) => c());
+      return allFunctions;
+    });
+
+    expect(result).toBe(true);
   });
 });
 

@@ -20,6 +20,7 @@
 import { PrismaClient } from '@prisma/client';
 import { readQrCodesBatch } from '../qr-reader';
 import { resolveContainedPath } from './path-containment';
+import { isValidWaveNumber } from '../database-handlers';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -245,13 +246,26 @@ function filterWellFormedPlates(
  * module depends only on `db` and a QR-reading function, with no Electron
  * import, and the caller (`register-handlers.ts`) already knows the
  * configured output directory.
+ *
+ * `waveNumber` is OPTIONAL and appended last, after `onProgress` — not
+ * grouped next to `experimentId` — because this function is called
+ * positionally at ~50 sites in this file's own test suite plus an exact
+ * positional assertion in register-handlers.test.ts; any earlier position
+ * would silently rebind an existing argument (e.g. `scanOutputDir` sliding
+ * into the `waveNumber` slot). Omitting it preserves every existing
+ * caller's behavior unchanged (the experiment-wide lookup/write scope
+ * described above). When supplied, it further scopes both the plate
+ * lookup and every swap-correction write to the accession linked to that
+ * specific `(experimentId, waveNumber)` pair via
+ * `GraviExperimentWaveMetadata` — see the wave-scoping block below.
  */
 export async function verifyPlates(
   db: PrismaClient,
   plates: VerifyPlateInput[],
   experimentId: string,
   scanOutputDir: string,
-  onProgress?: (event: VerifyProgressEvent) => void
+  onProgress?: (event: VerifyProgressEvent) => void,
+  waveNumber?: number
 ): Promise<VerifyPlatesResult> {
   try {
     // Runtime guard as well as the required type: an untyped IPC payload or
@@ -275,6 +289,35 @@ export async function verifyPlates(
       return { success: false, error, results: [], swaps: [] };
     }
 
+    if (waveNumber !== undefined && !isValidWaveNumber(waveNumber)) {
+      const error =
+        'waveNumber must be a non-negative integer — refusing to verify ' +
+        'plates with a malformed wave scope';
+      console.error(`[GraviScan:VERIFY] ${error}`);
+      return { success: false, error, results: [], swaps: [] };
+    }
+
+    // Resolve the wave's linked accession BEFORE any decode/DB access, so an
+    // unlinked wave fails the whole batch as `lookup_failed` rather than
+    // silently falling back to the unscoped, experiment-wide filter below.
+    let waveAccessionId: string | null = null;
+    let waveHasNoLinkedMetadata = false;
+    if (waveNumber !== undefined) {
+      const link = await db.graviExperimentWaveMetadata.findUnique({
+        where: {
+          experiment_id_wave_number: {
+            experiment_id: experimentId,
+            wave_number: waveNumber,
+          },
+        },
+      });
+      if (link) {
+        waveAccessionId = link.accession_id;
+      } else {
+        waveHasNoLinkedMetadata = true;
+      }
+    }
+
     // Malformed rows are dropped here, before anything can reach a `where`.
     const wellFormedPlates = filterWellFormedPlates(plates);
 
@@ -285,6 +328,31 @@ export async function verifyPlates(
     onProgress?.({ type: 'verify-started' });
 
     const results: VerifyPlateResult[] = [];
+
+    // No wave-metadata link for the requested wave — every plate is
+    // classified `lookup_failed` (nothing is known about which plate any of
+    // them hold) rather than silently falling back to unscoped, broader
+    // matching. No decode, no plate lookup: there is nothing correct to
+    // check these images against.
+    if (waveHasNoLinkedMetadata) {
+      console.warn(
+        `[GraviScan:VERIFY] No GraviExperimentWaveMetadata link for ` +
+          `experiment ${experimentId}, wave ${waveNumber} — classifying ` +
+          `the whole batch lookup_failed`
+      );
+      for (const plate of wellFormedPlates) {
+        const result: VerifyPlateResult = {
+          ...plate,
+          detectedPlateId: null,
+          detectedCodes: [],
+          status: 'lookup_failed',
+        };
+        results.push(result);
+        onProgress?.({ type: 'verify-result', result });
+      }
+      onProgress?.({ type: 'verify-complete', results, swaps: [] });
+      return { success: true, results, swaps: [] };
+    }
 
     /**
      * Record a write that reported success but matched no rows.
@@ -455,13 +523,22 @@ export async function verifyPlates(
         // Scope query to experiment's accession to avoid cross-experiment
         // matches. `experimentId` is guaranteed non-empty by the guard at the
         // top of this function, so there is no unscoped branch here.
-        const accessionFilter = {
-          plate: {
-            metadata_file: {
-              experiments: { some: { id: experimentId } },
-            },
-          },
-        };
+        //
+        // When `waveNumber` was supplied (and resolved to a linked accession
+        // above), scope directly to that accession instead — more precise
+        // than the legacy single-`Experiment.accession_id` relation, which
+        // isn't guaranteed populated for wave-scoped experiments and would
+        // match plates from ANY accession ever linked to the experiment, not
+        // just the current wave's.
+        const accessionFilter = waveAccessionId
+          ? { plate: { metadata_file_id: waveAccessionId } }
+          : {
+              plate: {
+                metadata_file: {
+                  experiments: { some: { id: experimentId } },
+                },
+              },
+            };
 
         const mappings = await db.graviPlateSectionMapping.findMany({
           where: {
@@ -661,12 +738,26 @@ export async function verifyPlates(
         const counts = await db.$transaction(async (tx) => {
           // 1. Swap plate_barcode in GraviScanPlateAssignment.
           //    Every `where` below carries experiment_id, matching the real
-          //    @@unique([experiment_id, scanner_id, plate_index]) constraint.
+          //    @@unique([experiment_id, scanner_id, plate_index, wave_number])
+          //    constraint — plus wave_number itself when waveNumber was
+          //    supplied, so a wave-scoped verification run can only ever
+          //    touch that wave's own row for this position.
+          //    waveNumber is deliberately optional for backward
+          //    compatibility with this function's ~50 existing pre-wave-
+          //    scoping callers (see this function's own doc comment) — but
+          //    a caller that omits it while operating on wave-scoped data
+          //    would have this correction touch the matching
+          //    (scanner_id, plate_index) row across EVERY wave of the
+          //    experiment, not just the one just verified. The one current
+          //    renderer caller (useScanSession.ts) always passes it,
+          //    including 0; any new caller of this function on wave-scoped
+          //    data MUST do the same.
           const assignment1 = await tx.graviScanPlateAssignment.updateMany({
             where: {
               experiment_id: experimentId,
               scanner_id: position1.scannerId,
               plate_index: position1.plateIndex,
+              ...(waveNumber !== undefined ? { wave_number: waveNumber } : {}),
             },
             data: {
               plate_barcode: position2.assignedPlateId,
@@ -682,6 +773,7 @@ export async function verifyPlates(
               experiment_id: experimentId,
               scanner_id: position2.scannerId,
               plate_index: position2.plateIndex,
+              ...(waveNumber !== undefined ? { wave_number: waveNumber } : {}),
             },
             data: {
               plate_barcode: position1.assignedPlateId,
@@ -717,6 +809,7 @@ export async function verifyPlates(
               plate_index: position1.plateIndex,
               plate_barcode: position1.assignedPlateId,
               deleted: false,
+              ...(waveNumber !== undefined ? { wave_number: waveNumber } : {}),
             },
             data: { plate_barcode: position2.assignedPlateId },
           });
@@ -727,6 +820,7 @@ export async function verifyPlates(
               plate_index: position2.plateIndex,
               plate_barcode: position2.assignedPlateId,
               deleted: false,
+              ...(waveNumber !== undefined ? { wave_number: waveNumber } : {}),
             },
             data: { plate_barcode: position1.assignedPlateId },
           });
@@ -812,6 +906,7 @@ export async function verifyPlates(
             experiment_id: experimentId,
             scanner_id: result.scannerId,
             plate_index: result.plateIndex,
+            ...(waveNumber !== undefined ? { wave_number: waveNumber } : {}),
           },
           data: {
             verification_status: finalStatus,
