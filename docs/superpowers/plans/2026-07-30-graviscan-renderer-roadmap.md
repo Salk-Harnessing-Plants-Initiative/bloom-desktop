@@ -6,8 +6,11 @@ scope/consistency/safety), approved, and now underway. Tiers 1, 2, and 3
 merged 2026-07-31/08-04 (PRs #273, #274, #277). A prerequisite discovered
 while scoping Tier 5, `add-wave-scoped-metadata-linking`, merged separately
 as **PR #278** (2026-08-04) — not one of the five tiers below; see Tier 4
-and Tier 5's own sections for what it changes for each. Tiers 4–5 not yet
-started — see the table below and "Closing the loop." **Re-audited
+and Tier 5's own sections for what it changes for each. **Tier 4 merged
+2026-08-25 (PR #289, `c8d3ea9`)** — see its table row and "Closing the
+loop" for what this means for Tier 5, which is already in progress
+(PR #290, in a separate worktree/session) and touches some of the same
+files. Tier 5 not yet merged; Tier 6 not yet started. **Re-audited
 2026-08-04** against current `main` (post #278, via 2 independent `Explore`
 agents covering backend/preload wiring and nav/workflow-step routing) — one
 further staleness gap found and corrected below (Tier 5's handler
@@ -160,7 +163,7 @@ the upload screen) can be scoped concretely.
 | 1   | Configure Scanner UI                              | —                                                                                                         | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03)            |
 | 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                                                                  | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31)            |
 | 3   | Wedge-response UI (fast-tracked)                  | 2                                                                                                         | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04)            |
-| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose)                                      | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | Not started — unblocked                                |
+| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose)                                      | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | ✅ Merged — PR #289 (`c8d3ea9`, 2026-08-25)            |
 | 5   | Browse / Experiment Detail / Metadata UI          | 2; wave-scoped metadata-link UI also needs `add-wave-scoped-metadata-linking` (merged PR #278, see prose) | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207, #164                      | Not started — unblocked (Tier 2 + PR #278 both merged) |
 | 6   | Packaging CI & Linux deployment docs              | — (no dependency; infra/docs work, not renderer/backend feature work — see prose)                         | No                                                                                         | #294, #295                            | Not started — unblocked, added 2026-08-05              |
 
@@ -294,6 +297,32 @@ scoping, not carried further as unowned questions:**
   per wave, rather than requiring manual entry each capture. Confirm whether
   this tier's `usePlateAssignments` should consume it, or whether that's
   Tier 5-only scope.
+
+**Shipped (2026-08-25, PR #289):** both open questions above were resolved,
+not deferred. `waveNumber` threads through `verify-plates.ts`'s full call
+chain (read + write); `usePlateAssignments` consumes `listGraviMetadata`
+for wave-scoped auto-fill, with manual overrides persisted via a new
+`GraviScanPlateAssignment.wave_number` schema column rather than
+renderer-side inference (three review rounds each found a real bug in
+renderer-only override-tracking before landing on the schema fix — see
+the archived proposal's `design.md` Decisions 2–3 for the full history).
+Went through 4 post-implementation `/review-pr` rounds (this roadmap's
+own "cycle until convergence" convention) before merging — full narrative
+in `openspec/changes/archive/2026-08-25-add-graviscan-capture-scan-screen/`.
+Follow-up issues filed for accepted, narrower limitations: #330, #331,
+#332, #346 (see the archived `tasks.md`/`design.md` for what each covers),
+plus #309–#317, #326, #327 from earlier in the same PR's review history.
+
+**For Tier 5 (already in progress, PR #290, separate worktree/session):**
+this tier touched `Layout.tsx` (added the "Capture Scan" nav-link entry)
+and `ExperimentChooser.tsx`/`PhenotyperChooser.tsx` (added a `title` prop
+for the disabled-during-scan tooltip, and — from an unrelated concurrent
+`origin/main` merge this tier absorbed — changed their focus-ring color
+from `blue-500` to `lime-700`, not `lime-500`; the intermediate `lime-500`
+failed WCAG contrast and was corrected before merge). Re-check Tier 5's
+own changes to these same files against what's actually on `main` now,
+per this roadmap's "Closing the loop" convention — don't assume the state
+Tier 5 branched from is still current.
 
 ### Tier 5 — Browse / Experiment Detail / Metadata UI
 
