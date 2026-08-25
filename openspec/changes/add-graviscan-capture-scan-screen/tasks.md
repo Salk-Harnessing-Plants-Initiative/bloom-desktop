@@ -1234,9 +1234,9 @@ point — found one real bug and two lower-risk hardening items.
       for a lab technician who needs to know which physical plate to
       inspect. This is a UI-design-scope question (how to redesign
       `QRVerificationBanner.tsx` to surface per-plate detail, which
-      `QRVerifyPlateResult` already carries), not a one-line fix — left
-      for explicit user decision on scope rather than expanded into
-      unilaterally.
+      `QRVerifyPlateResult` already carries), not a one-line fix — per
+      user decision, filed as follow-up **#346** rather than expanded
+      into unilaterally.
 - [x] 34.7 Run the full unit suite, `npx tsc --noEmit`, lint, and
       `format:check`; confirm no regressions beyond the already-documented
       pre-existing failures. **Result:** 1770 passed, 6 failed across 4

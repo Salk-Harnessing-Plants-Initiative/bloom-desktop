@@ -1389,8 +1389,8 @@ this proposal's own backward-compatibility goal for ~50 pre-wave-scoping
 callers) — mitigated with an explicit warning comment rather than a
 behavior change. And `QRVerificationBanner.tsx` surfaces only aggregate
 pass/fail text, never which specific plate — a real actionability gap,
-but a UI-scope question left for explicit user decision rather than
-expanded into unilaterally.
+but a UI-scope question filed as follow-up **#346** per user decision,
+rather than expanded into unilaterally.
 
 ## Architecture
 
