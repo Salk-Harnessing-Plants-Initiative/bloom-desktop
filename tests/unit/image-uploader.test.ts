@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+import path from 'path';
 import type { ImageStatus } from '../../src/types/database';
 
 // Types for testing
@@ -371,16 +372,17 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         const callArgs = (uploadImages as Mock).mock.calls[0];
         const imagePaths = callArgs[0] as string[];
         expect(imagePaths).toHaveLength(3);
-        // scansDir from mockCredentials is '/test/scans'
-        expect(imagePaths[0]).toContain('/test/scans');
-        expect(imagePaths[0]).toContain(
-          '2024-01-15/PLANT-001/scan-uuid/001.png'
+        // scansDir is prepended via path.join, which normalizes to the
+        // host OS's separator — build the expectation the same way rather
+        // than hardcoding a POSIX literal, so this passes on Windows too.
+        expect(imagePaths[0]).toBe(
+          path.join(mockCredentials.scans_dir, mockScan.images[0].path)
         );
-        expect(imagePaths[1]).toContain(
-          '2024-01-15/PLANT-001/scan-uuid/002.png'
+        expect(imagePaths[1]).toBe(
+          path.join(mockCredentials.scans_dir, mockScan.images[1].path)
         );
-        expect(imagePaths[2]).toContain(
-          '2024-01-15/PLANT-001/scan-uuid/003.png'
+        expect(imagePaths[2]).toBe(
+          path.join(mockCredentials.scans_dir, mockScan.images[2].path)
         );
       });
 
@@ -873,12 +875,15 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         await uploader.uploadScan('scan-123');
 
         // Verify absolute image paths are passed to uploadImages
-        // Image.path stores relative paths; uploader prepends scansDir (/test/scans)
+        // Image.path stores relative paths; uploader prepends scansDir via
+        // path.join, so build the expectation the same way rather than
+        // hardcoding a POSIX literal (this must pass on Windows too).
         const callArgs = (uploadImages as Mock).mock.calls[0];
         const imagePaths = callArgs[0] as string[];
         expect(imagePaths).toHaveLength(3);
-        expect(imagePaths[0]).toContain('/test/scans');
-        expect(imagePaths[0]).toContain(mockScan.images[0].path);
+        expect(imagePaths[0]).toBe(
+          path.join(mockCredentials.scans_dir, mockScan.images[0].path)
+        );
       });
 
       it('should pass nWorkers and pngCompression in options', async () => {
@@ -925,13 +930,16 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         // Should call bloom-fs uploadImages
         expect(uploadImages).toHaveBeenCalledTimes(1);
 
-        // Should pass absolute image paths (scansDir + relative path)
+        // Should pass absolute image paths (scansDir + relative path),
+        // joined the same way the production code does (path.join
+        // normalizes to the host OS's separator, so hardcoding a POSIX
+        // literal here would fail on Windows).
         const callArgs = (uploadImages as Mock).mock.calls[0];
         const imagePaths = callArgs[0] as string[];
         expect(imagePaths).toHaveLength(3);
-        // scansDir from mockCredentials is '/test/scans'
-        expect(imagePaths[0]).toContain('/test/scans');
-        expect(imagePaths[0]).toContain(mockScan.images[0].path);
+        expect(imagePaths[0]).toBe(
+          path.join(mockCredentials.scans_dir, mockScan.images[0].path)
+        );
       });
 
       it('should build CylImageMetadata with correct experiment fields', async () => {

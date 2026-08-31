@@ -454,9 +454,15 @@ export async function initGraviScan(
   // Lazy import to avoid loading sharp/native modules in cylinderscan mode
   const { registerGraviScanHandlers } = await import('./register-handlers');
   const { cleanupOldLogs } = await import('./scan-logger');
+  const { setAuditLogger } = await import('../database-handlers');
 
   // Clean up old scan logs on startup
   cleanupOldLogs();
+
+  // Wire linkGraviMetadata/unlinkGraviMetadata's audit logging (database-
+  // handlers.ts is shared code and cannot import graviscan/scan-logger
+  // directly — see the eslint no-restricted-imports rule).
+  setAuditLogger(scanLog);
 
   registerGraviScanHandlers(
     ipcMainRef,

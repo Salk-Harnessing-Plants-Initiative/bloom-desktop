@@ -39,11 +39,26 @@ vi.mock('../../../src/main/graviscan/image-handlers', () => ({
   getOutputDir: vi
     .fn()
     .mockReturnValue({ success: true, path: '/home/user/.bloom/graviscan' }),
-  readScanImage: vi
+  // Shapes below must track ReadScanImageResult / UploadAllScansResult /
+  // downloadImages()'s real return types (src/types/graviscan.ts,
+  // image-handlers.ts) — this file's mocks have drifted from the real
+  // handler shapes multiple times before because no test here exercises
+  // these channels' return values directly.
+  readScanImage: vi.fn().mockResolvedValue({
+    success: true,
+    dataUri: 'data:image/tiff;base64,AAAA',
+  }),
+  uploadAllScans: vi.fn().mockResolvedValue({
+    success: true,
+    uploaded: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [],
+    metadataLinkingAvailable: true,
+  }),
+  downloadImages: vi
     .fn()
-    .mockResolvedValue({ data: 'base64data', width: 400, height: 300 }),
-  uploadAllScans: vi.fn().mockResolvedValue({ uploaded: 0, errors: [] }),
-  downloadImages: vi.fn().mockResolvedValue({ exported: 0 }),
+    .mockResolvedValue({ success: true, total: 0, copied: 0, errors: [] }),
 }));
 
 import * as scannerHandlers from '../../../src/main/graviscan/scanner-handlers';

@@ -27,7 +27,7 @@ export const graviScanSteps: WorkflowStep[] = [
     step: 3,
     title: 'Metadata',
     description: 'Configure experiment metadata fields',
-    route: '/experiments',
+    route: '/metadata',
     icon: '📝',
   },
   {
@@ -48,7 +48,7 @@ export const graviScanSteps: WorkflowStep[] = [
     step: 6,
     title: 'Browse Scans',
     description: 'Review and manage captured scans',
-    route: '/browse-scans',
+    route: '/browse-graviscans',
     icon: '📋',
   },
 ];

@@ -307,6 +307,11 @@ describe('image-handlers', () => {
 
       expect(second.success).toBe(false);
       expect(second.errors).toContain('Upload already in progress');
+      // Neither target was actually attempted, so neither is "at fault" —
+      // the renderer's per-target attribution message must not claim a
+      // Bloom or Box failure that never happened.
+      expect(second.bloomSuccess).toBe(true);
+      expect(second.boxSuccess).toBe(true);
     });
 
     it('should run Bloom and Box uploads in parallel', async () => {
@@ -392,6 +397,16 @@ describe('image-handlers', () => {
       expect(result.uploaded).toBe(4); // Box's files still counted
       expect(result.failed).toBe(2);
       expect(result.errors).toContain('Bloom: authentication failed');
+      // Per-target attribution: the renderer needs to know WHICH target
+      // failed to avoid reporting a Bloom failure as "Box backup failed"
+      // (round 2's fix corrected the success/failure categorization but
+      // left this system-attribution gap — round 3's fix).
+      expect(result.bloomSuccess).toBe(false);
+      expect(result.boxSuccess).toBe(true);
+      expect(result.bloomUploaded).toBe(0);
+      expect(result.boxUploaded).toBe(4);
+      expect(result.bloomErrors).toEqual(['Bloom: authentication failed']);
+      expect(result.boxErrors).toEqual([]);
     });
 
     it('should let Bloom complete successfully when Box backup fails', async () => {
@@ -417,6 +432,12 @@ describe('image-handlers', () => {
       expect(result.success).toBe(false); // overall still false (Box failed)
       expect(result.uploaded).toBe(5); // Bloom's uploads still counted
       expect(result.errors).toContain('rclone not installed');
+      expect(result.bloomSuccess).toBe(true);
+      expect(result.boxSuccess).toBe(false);
+      expect(result.bloomUploaded).toBe(5);
+      expect(result.boxUploaded).toBe(0);
+      expect(result.bloomErrors).toEqual([]);
+      expect(result.boxErrors).toEqual(['rclone not installed']);
     });
 
     it('should isolate a thrown Bloom upload from a successful Box backup', async () => {
@@ -437,6 +458,8 @@ describe('image-handlers', () => {
       expect(
         result.errors.some((e) => e.includes('Unexpected Bloom crash'))
       ).toBe(true);
+      expect(result.bloomSuccess).toBe(false);
+      expect(result.boxSuccess).toBe(true);
     });
 
     it('should isolate a thrown Box backup from a successful Bloom upload', async () => {
@@ -457,6 +480,8 @@ describe('image-handlers', () => {
       expect(
         result.errors.some((e) => e.includes('Unexpected Box crash'))
       ).toBe(true);
+      expect(result.bloomSuccess).toBe(true);
+      expect(result.boxSuccess).toBe(false);
     });
   });
 

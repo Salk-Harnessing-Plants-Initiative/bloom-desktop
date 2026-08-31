@@ -439,6 +439,12 @@ const graviAPI: GraviAPI = {
   uploadAllScans: () => ipcRenderer.invoke('graviscan:upload-all-scans'),
   downloadImages: (params: any) =>
     ipcRenderer.invoke('graviscan:download-images', params),
+  ensureDir: (dirPath?: string) =>
+    ipcRenderer.invoke('graviscan:ensure-dir', dirPath),
+  listScanFiles: (dirPath?: string) =>
+    ipcRenderer.invoke('graviscan:list-scan-files', dirPath),
+  parseExcelFile: (buffer: ArrayBuffer) =>
+    ipcRenderer.invoke('graviscan:parse-excel-file', buffer),
 
   // Post-scan QR verification (Tier 4, issue #162). No scanOutputDir
   // parameter here — unlike verifyPlates() itself (the main-process

@@ -883,6 +883,19 @@ describe('MachineConfiguration Page', () => {
       await waitFor(() => {
         expect(screen.getByText(/Fetching scanners.../i)).toBeInTheDocument();
       });
+
+      // Wait for the mock's setTimeout(100) to resolve and the component to
+      // settle before the test ends — otherwise that pending real timer
+      // outlives this test, and its resolution (calling setScannerListLoading
+      // in fetchScanners' `finally`) can fire after RTL's cleanup() has
+      // already unmounted/torn down this test's environment, surfacing as
+      // an unhandled "window is not defined" rejection attributed to
+      // whichever test happens to be running next.
+      await waitFor(() => {
+        expect(
+          screen.queryByText(/Fetching scanners.../i)
+        ).not.toBeInTheDocument();
+      });
     });
 
     it('should show success message after successful fetch', async () => {

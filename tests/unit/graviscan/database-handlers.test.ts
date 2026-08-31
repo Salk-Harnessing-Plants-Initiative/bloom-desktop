@@ -17,7 +17,15 @@
  *   BLOOM_DATABASE_URL="file:./dev.db" npx prisma migrate deploy
  * first.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+} from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import {
   graviscansCreate,
@@ -38,6 +46,7 @@ import {
   linkGraviMetadata,
   unlinkGraviMetadata,
   listGraviMetadata,
+  setAuditLogger,
 } from '../../../src/main/database-handlers';
 
 const prisma = new PrismaClient();
@@ -164,8 +173,12 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
+const mockAuditLogger = vi.fn();
+
 beforeEach(async () => {
   await cleanDatabase();
+  vi.clearAllMocks();
+  setAuditLogger(mockAuditLogger);
 });
 
 describe('database.graviscans.*', () => {
@@ -704,6 +717,38 @@ describe('database.graviscans.*', () => {
       expect(pendingIds).toContain(fx.experimentB.id);
       expect(pendingIds).not.toContain(fx.experimentA.id);
     });
+
+    it("includes each scan's phenotyper name, not just phenotyper_id (Section 37, Decision 12)", async () => {
+      const fx = await seedBaseFixture();
+      const secondPhenotyper = await prisma.phenotyper.create({
+        data: {
+          name: 'Second Phenotyper',
+          email: `phenotyper2-${Date.now()}@salk.edu`,
+        },
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: secondPhenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+
+      const result = await graviscansBrowseByExperiment(prisma, {
+        offset: 0,
+        limit: 10,
+      });
+      const expA = (result.data?.experiments ?? []).find(
+        (e) => e.id === fx.experimentA.id
+      );
+      const phenotyperNames = (expA?.graviScans ?? [])
+        .map((s) => s.phenotyper?.name)
+        .sort();
+      expect(phenotyperNames).toEqual(['Second Phenotyper', 'Test Phenotyper']);
+    });
   });
 
   describe('experimentDetail', () => {
@@ -780,6 +825,58 @@ describe('database.graviscans.*', () => {
       expect(
         Object.keys(result.data?.verificationStatusMap ?? {})
       ).toHaveLength(0);
+    });
+
+    it("includes each scan's phenotyper name, not just phenotyper_id (Section 37, Decision 12)", async () => {
+      const fx = await seedBaseFixture();
+      const secondPhenotyper = await prisma.phenotyper.create({
+        data: {
+          name: 'Second Phenotyper',
+          email: `phenotyper2-${Date.now()}@salk.edu`,
+        },
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: secondPhenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+
+      const result = await graviscansExperimentDetail(
+        prisma,
+        fx.experimentA.id
+      );
+      const phenotyperNames = (result.data?.scans ?? [])
+        .map((s) => s.phenotyper?.name)
+        .sort();
+      expect(phenotyperNames).toEqual(['Second Phenotyper', 'Test Phenotyper']);
+    });
+
+    it("includes each scan's scanner name/display_name, not just scanner_id — the renderer has no other way to show a human-readable scanner label", async () => {
+      const fx = await seedBaseFixture();
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+      });
+      await createGraviScan({
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerY.id,
+      });
+
+      const result = await graviscansExperimentDetail(
+        prisma,
+        fx.experimentA.id
+      );
+      const scannerLabels = (result.data?.scans ?? [])
+        .map((s) => s.scanner?.display_name ?? s.scanner?.name)
+        .sort();
+      expect(scannerLabels).toEqual(['Scanner X', 'Scanner Y']);
     });
   });
 });
@@ -1316,6 +1413,17 @@ describe('database.graviPlateAccessions.*', () => {
       expect(await prisma.accessions.count()).toBe(0);
     });
 
+    it('rejects an empty plates array without writing anything — prevents a silent zero-plate "success" (e.g. every row mapped to no columns)', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Empty Plates' },
+        []
+      );
+
+      expect(result.success).toBe(false);
+      expect(await prisma.accessions.count()).toBe(0);
+    });
+
     it('rejects a plate missing plate_id/accession without writing anything', async () => {
       const result = await graviPlateAccessionsCreateWithSections(
         prisma,
@@ -1343,6 +1451,76 @@ describe('database.graviPlateAccessions.*', () => {
       expect(result.success).toBe(false);
       expect(await prisma.accessions.count()).toBe(0);
       expect(await prisma.graviPlateAccession.count()).toBe(0);
+    });
+
+    it('rejects two sections on the same plate sharing a plate_section_id, without writing anything (closes #313)', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Duplicate Section ID' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [
+              { plate_section_id: 'S1', plant_qr: 'QR1' },
+              { plate_section_id: 'S1', plant_qr: 'QR2' },
+            ],
+          },
+        ]
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/S1/);
+      expect(await prisma.accessions.count()).toBe(0);
+      expect(await prisma.graviPlateAccession.count()).toBe(0);
+      expect(await prisma.graviPlateSectionMapping.count()).toBe(0);
+    });
+
+    it('allows two different plates to reuse the same plate_section_id (e.g. every plate has an "S1")', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Shared Section Labels' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'QR1' }],
+          },
+          {
+            plate_id: 'P2',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'QR2' }],
+          },
+        ]
+      );
+
+      expect(result.success).toBe(true);
+      expect(await prisma.graviPlateSectionMapping.count()).toBe(2);
+    });
+
+    it('rejects the same plant_qr appearing on two different plates in one upload, without writing anything (closes #313)', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Duplicate QR Across Plates' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'DUPLICATE' }],
+          },
+          {
+            plate_id: 'P2',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'DUPLICATE' }],
+          },
+        ]
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/DUPLICATE/);
+      expect(await prisma.accessions.count()).toBe(0);
+      expect(await prisma.graviPlateAccession.count()).toBe(0);
+      expect(await prisma.graviPlateSectionMapping.count()).toBe(0);
     });
   });
 
@@ -1396,6 +1574,29 @@ describe('database.graviPlateAccessions.*', () => {
       );
       expect(result.success).toBe(false);
     });
+
+    it('returns transplant_date as a real Date over IPC when set', async () => {
+      const created = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Dated File' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            transplant_date: '2026-07-01T00:00:00.000Z',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'Q1' }],
+          },
+        ]
+      );
+      const result = await graviPlateAccessionsList(
+        prisma,
+        created.data!.metadataFileId
+      );
+      const plates = result.data ?? [];
+      // Structured clone preserves Date instances over IPC; renderer
+      // callers must format it, not assume string.
+      expect(plates[0].transplant_date).toBeInstanceOf(Date);
+    });
   });
 
   describe('listFiles', () => {
@@ -1427,6 +1628,9 @@ describe('database.graviPlateAccessions.*', () => {
       const linkedFile = files.find((f) => f.name === 'Linked File');
       expect(linkedFile?.plateCount).toBe(1);
       expect(linkedFile?.experimentNames).toContain('Experiment A');
+      // createdAt travels over IPC as a real Date (structured clone
+      // preserves it); renderer callers must format it, not assume string.
+      expect(linkedFile?.createdAt).toBeInstanceOf(Date);
     });
   });
 
@@ -1648,6 +1852,25 @@ describe('database.experiments.linkGraviMetadata', () => {
       },
     });
     expect(row?.accession_id).toBe(metadataFileId);
+  });
+
+  it('writes a scanLog line naming the experiment, wave, and accession file name on success', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile('batch3.xlsx');
+
+    await linkGraviMetadata(prisma, experiment.id, 2, metadataFileId);
+
+    expect(mockAuditLogger).toHaveBeenCalledTimes(1);
+    const [message] = mockAuditLogger.mock.calls[0];
+    expect(message).toContain(experiment.id);
+    expect(message).toContain('2');
+    expect(message).toContain('batch3.xlsx');
+  });
+
+  it('does not write a scanLog line on a validation failure', async () => {
+    const result = await linkGraviMetadata(prisma, '', 0, 'irrelevant');
+    expect(result.success).toBe(false);
+    expect(mockAuditLogger).not.toHaveBeenCalled();
   });
 
   it('accepts wave 0 as a valid boundary value', async () => {
@@ -1874,6 +2097,21 @@ describe('database.experiments.unlinkGraviMetadata', () => {
     expect(row).toBeNull();
   });
 
+  it('writes a scanLog line naming the experiment, wave, and unlinked accession file name on success', async () => {
+    const experiment = await createGraviscanExperiment();
+    const metadataFileId = await createValidGraviMetadataFile('batch3.xlsx');
+    await linkGraviMetadata(prisma, experiment.id, 3, metadataFileId);
+    mockAuditLogger.mockClear();
+
+    await unlinkGraviMetadata(prisma, experiment.id, 3);
+
+    expect(mockAuditLogger).toHaveBeenCalledTimes(1);
+    const [message] = mockAuditLogger.mock.calls[0];
+    expect(message).toContain(experiment.id);
+    expect(message).toContain('3');
+    expect(message).toContain('batch3.xlsx');
+  });
+
   it('returns a friendly error for a non-existent link, not a raw Prisma error', async () => {
     const experiment = await createGraviscanExperiment();
 
@@ -1888,6 +2126,7 @@ describe('database.experiments.unlinkGraviMetadata', () => {
       'Nothing to unlink — wave 5 has no metadata file linked'
     );
     expect(result.error).not.toMatch(/prisma|record to delete/i);
+    expect(mockAuditLogger).not.toHaveBeenCalled();
   });
 
   it.each([

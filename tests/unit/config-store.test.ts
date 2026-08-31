@@ -306,7 +306,10 @@ BLOOM_ANON_KEY=legacykey`;
 
       expect(defaults.scanner_name).toBe('');
       expect(defaults.camera_ip_address).toBe('mock');
-      expect(defaults.scans_dir).toContain('.bloom/scans');
+      // path.join normalizes to the host OS's separator — check path
+      // segments individually rather than a hardcoded POSIX literal, so
+      // this passes on Windows too.
+      expect(defaults.scans_dir).toContain(path.join('.bloom', 'scans'));
       expect(defaults.bloom_api_url).toBe('https://bloom.salk.edu/api');
     });
   });

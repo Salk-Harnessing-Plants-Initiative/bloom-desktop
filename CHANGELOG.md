@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- GraviScan Browse / Experiment Detail / Metadata UI (roadmap Tier 5, #133, #207, #164)
+  - `BrowseGraviScans`: filterable, paginated list of graviscan experiments with a wave/accession mismatch warning, a "Backup to Box" action (rclone-unavailable and partial-failure messaging), and a link through to Experiment Detail
+  - `ExperimentDetail`: per-experiment scan/file listing with scanner/wave filter chips, resizable columns, file preview, and inline linking/unlinking of wave-scoped metadata (with a durable audit log line on both actions)
+  - `Metadata`: spreadsheet upload (multi-sheet support, column auto-mapping, per-row validation, plate-ID/accession/QR format and uniqueness validation before submit — closes #313) and a list of previously uploaded metadata files; parses with `exceljs` rather than `xlsx`/SheetJS, which has two unpatched HIGH-severity CVEs in its only published npm version
+  - `createWithSections` now rejects duplicate `plate_section_id` within a plate and duplicate `plant_qr` across the whole upload (new `@@unique([gravi_plate_id, plate_section_id])` constraint plus an application-level cross-plate check), closing #313
+  - `Experiments.tsx` now shows each graviscan experiment's linked waves inline and lets a new wave be linked (or an existing one unlinked, confirmation-gated) without a second accession picker
+  - Global upload-progress indicator in `Layout` that persists across navigation
+  - `docs/graviscan-metadata-spreadsheet-schema.md` documents the expected spreadsheet columns
+  - Fixes #286: new experiments now get an explicit `experiment_type` (`'graviscan'` or `'cylinderscan'`) instead of relying on an implicit default
+  - See `openspec/changes/add-graviscan-tier5-browse-metadata/` for full design rationale
+
 - CylinderScan style/UX parity pass ([PR #329](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/329), closes [#104](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/104), [#175](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/175), [#106](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/106), [#107](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/107), roadmap Tier 4)
   - Blue/indigo accents replaced with a lime/stone/amber convention (adapted from `bloom-desktop-pilot`'s real usage) across CylinderScan-only pages and shared scan-management/entity-form pages. `WorkflowSteps.tsx` itself is untouched apart from removing its now-unused `cylinderScanSteps` export — GraviScan's own step data, routes, and the shared component's blue badge/hover colors are unchanged; there is no cross-mode color change in this PR
   - `CameraSettings.tsx` now centered in a `max-w-7xl` container with `shadow-sm` panels, matching `CaptureScan.tsx` (folds in and supersedes the standalone `align-page-layout-centering` change)

@@ -151,7 +151,7 @@ export interface GraviImage {
   graviscan_id: string;
   path: string;
   status: string; // Bloom upload: "pending" | "uploaded" | "failed"
-  box_status: string; // Box backup: "pending" | "uploaded" | "failed"
+  box_status: string; // Box backup: "pending" | "uploaded" | "failed" | "collision" (requires manual resolution — never auto-retried)
 }
 
 /**
@@ -293,6 +293,82 @@ export interface SaveScannersToDBResult {
 export interface GetScanStatusResult {
   isActive: boolean;
   [key: string]: unknown;
+}
+
+/**
+ * Substring that marks a `UploadAllScansResult.boxErrors` entry as a
+ * filename-collision error (see box-backup.ts's runBoxBackup) rather than
+ * an ordinary transient failure — a collision needs the operator to
+ * rename a conflicting file and manually reset the image's status, since
+ * (unlike every other boxErrors entry) it will never resolve on its own
+ * via retry. Shared between box-backup.ts (which generates the message)
+ * and the renderer (which needs to recognize and prioritize it) so a
+ * future wording tweak to the message can't silently break the
+ * renderer's matching with no compiler error.
+ */
+export const BOX_COLLISION_ERROR_MARKER = 'NOT resolve on retry';
+
+/**
+ * Result of `graviscan:upload-all-scans`
+ * (`image-handlers.ts#uploadAllScans`) — the data payload nested under the
+ * IPC-wide `{success, data}`/`{success, error}` envelope, not the envelope
+ * itself.
+ */
+export interface UploadAllScansResult {
+  success: boolean;
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+  /**
+   * Whether the installed @salk-hpi/bloom-js supports Bloom session/plate-
+   * metadata linking (see graviscan-upload.ts's UploadResult). Surfaced here
+   * so a future renderer can show operators when metadata linking isn't
+   * active, rather than that only being visible in main-process logs.
+   */
+  metadataLinkingAvailable: boolean;
+  /**
+   * Per-target success/counts/errors, in addition to the merged fields
+   * above. Bloom (Supabase) and Box (rclone) run independently, so one can
+   * fully succeed while the other fails outright — the renderer needs these
+   * to attribute a failure message to the right system rather than
+   * reporting e.g. a Bloom-only failure as a generic "Box backup failed".
+   */
+  bloomSuccess: boolean;
+  boxSuccess: boolean;
+  bloomUploaded: number;
+  boxUploaded: number;
+  bloomErrors: string[];
+  boxErrors: string[];
+}
+
+/**
+ * Result of `graviscan:read-scan-image`
+ * (`image-handlers.ts#readScanImage`) — this IS the whole IPC response,
+ * not a payload nested under a further envelope. `readScanImage` never
+ * throws, so `register-handlers.ts` returns it directly rather than
+ * passing it through `wrapHandler`.
+ */
+export interface ReadScanImageResult {
+  success: boolean;
+  dataUri?: string;
+  error?: string;
+}
+
+/**
+ * Payload of the `graviscan:upload-progress` push event
+ * (`box-backup.ts`'s `BoxBackupProgress`, forwarded verbatim by
+ * `uploadAllScans`'s `onProgress` callback). Previously untyped (`any`),
+ * which let three independent, unlinked hand-typed mirrors of this same
+ * shape drift across `BrowseGraviScans.tsx`, `Layout.tsx`, and this file's
+ * own main-process source of truth with no compiler check tying them
+ * together.
+ */
+export interface BoxBackupProgress {
+  totalImages: number;
+  completedImages: number;
+  failedImages: number;
+  currentExperiment: string;
 }
 
 /**
@@ -520,6 +596,23 @@ export interface ScanSessionJob {
   imagePath?: string;
   error?: string;
   durationMs?: number;
+}
+
+/** A single parsed worksheet from a metadata spreadsheet upload. */
+export interface ParsedSheet {
+  headers: string[];
+  rows: string[][];
+}
+
+/**
+ * Result of `graviscan:parse-excel-file` (`excel-parser.ts#parseExcelWorkbook`).
+ * Parsing runs in the main process — exceljs's browser bundle has a
+ * require() call that survives webpack bundling and throws in the
+ * renderer's sandbox.
+ */
+export interface ParsedWorkbook {
+  sheetNames: string[];
+  sheets: Record<string, ParsedSheet>;
 }
 
 export interface ScanSessionState {

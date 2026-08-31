@@ -52,6 +52,10 @@ import {
   GetScanStatusResult,
   GraviConfigInput,
   GraviWedgeEvent,
+  ParsedWorkbook,
+  UploadAllScansResult,
+  ReadScanImageResult,
+  BoxBackupProgress,
   QRVerifyPlateInput,
   QRVerifyPlateResult,
   QRVerifyPlatesResult,
@@ -781,9 +785,31 @@ export interface GraviAPI {
     | { success: true; data: GraviGetOutputDirResult }
     | { success: false; error: string }
   >;
-  readScanImage: (filePath: string, opts?: any) => Promise<any>;
-  uploadAllScans: () => Promise<any>;
+  readScanImage: (
+    filePath: string,
+    opts?: { full?: boolean }
+  ) => Promise<ReadScanImageResult>;
+  uploadAllScans: () => Promise<
+    | { success: true; data: UploadAllScansResult }
+    | { success: false; error: string }
+  >;
   downloadImages: (params: any) => Promise<any>;
+  ensureDir: (
+    dirPath?: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  listScanFiles: (
+    dirPath?: string
+  ) => Promise<{ success: boolean; files: string[]; error?: string }>;
+  /**
+   * Parses an uploaded metadata spreadsheet in the main process (exceljs
+   * has a require() call embedded in its own "browser" bundle that throws
+   * in the renderer's sandbox — see excel-parser.ts).
+   */
+  parseExcelFile: (buffer: ArrayBuffer) => Promise<{
+    success: boolean;
+    data?: ParsedWorkbook;
+    error?: string;
+  }>;
 
   /**
    * Post-scan QR verification (Tier 4, issue #162). `waveNumber` is
@@ -809,7 +835,7 @@ export interface GraviAPI {
   onOvertime: (callback: (data: any) => void) => () => void;
   onCancelled: (callback: () => void) => () => void;
   onScanError: (callback: (data: any) => void) => () => void;
-  onUploadProgress: (callback: (data: any) => void) => () => void;
+  onUploadProgress: (callback: (data: BoxBackupProgress) => void) => () => void;
   onDownloadProgress: (callback: (data: any) => void) => () => void;
   onWedgeDetected: (callback: (event: GraviWedgeEvent) => void) => () => void;
   onVerifyStarted: (callback: () => void) => () => void;
