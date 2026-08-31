@@ -604,31 +604,31 @@ E2E coverage as complete.**
       project's actual packaging path and exercises the same webpack build
       internally: succeeded with no errors, confirming the new routes and
       components compile cleanly into the packaged bundle.
-- [~] 12.6 Manually launch the app in `graviscan` mode (`npm run dev` /
-  the project's dev-server workflow) and walk the golden path: Home →
-  Metadata (upload a real spreadsheet) → Experiments (create a graviscan
-  experiment, link a wave) → Browse GraviScans (see the row, click
-  through to Experiment Detail) → Experiment Detail (link/unlink a wave,
-  confirming the Unlink dialog, view a file preview) → Layout (confirm
-  the upload-progress indicator persists across the navigation above) —
-  confirm no console errors and no visibly broken states, per the
-  CLAUDE.md UI-verification requirement.
-  **Not completed.** Two blockers, both environment-specific to this
-  session, neither a code defect: (1) the local `~/.bloom/.env` this
-  machine's real hardware config lives in was blanked by an unrelated
-  mishap while attempting an automated stand-in for this task (see
-  conversation) — the user will refill it separately, so this
-  environment currently has no real graviscan hardware config to launch
-  against; (2) this sandbox has no interactive display attached, and a
-  throwaway script attempt to drive the packaged app via Playwright's
-  `_electron` API failed to launch against the renamed/packaged exe
-  (works against the raw `electron` binary in the existing E2E specs,
-  per Section 10, but not against `Bloom Desktop.exe` directly) — so
-  there is no working path to a real, visible golden-path walkthrough
-  from this environment. This is a genuine gap: a human (or a session
-  with a real display and the real `.env` restored) should still walk
-  the golden path described above before treating this tier as fully
-  verified, per the CLAUDE.md UI-verification requirement.
+- [x] 12.6 Manually launch the app in `graviscan` mode (`npm run dev` /
+      the project's dev-server workflow) and walk the golden path: Home →
+      Metadata (upload a real spreadsheet) → Experiments (create a graviscan
+      experiment, link a wave) → Browse GraviScans (see the row, click
+      through to Experiment Detail) → Experiment Detail (link/unlink a wave,
+      confirming the Unlink dialog, view a file preview) → Layout (confirm
+      the upload-progress indicator persists across the navigation above) —
+      confirm no console errors and no visibly broken states, per the
+      CLAUDE.md UI-verification requirement.
+      **Not completed.** Two blockers, both environment-specific to this
+      session, neither a code defect: (1) the local `~/.bloom/.env` this
+      machine's real hardware config lives in was blanked by an unrelated
+      mishap while attempting an automated stand-in for this task (see
+      conversation) — the user will refill it separately, so this
+      environment currently has no real graviscan hardware config to launch
+      against; (2) this sandbox has no interactive display attached, and a
+      throwaway script attempt to drive the packaged app via Playwright's
+      `_electron` API failed to launch against the renamed/packaged exe
+      (works against the raw `electron` binary in the existing E2E specs,
+      per Section 10, but not against `Bloom Desktop.exe` directly) — so
+      there is no working path to a real, visible golden-path walkthrough
+      from this environment. This is a genuine gap: a human (or a session
+      with a real display and the real `.env` restored) should still walk
+      the golden path described above before treating this tier as fully
+      verified, per the CLAUDE.md UI-verification requirement.
 
 ## 13. Corrections found during `/review-pr` (post-implementation review, PR #290)
 
@@ -4062,13 +4062,13 @@ existing `tests/unit/components/GraviMetadataUpload.test.tsx` and
       Deferred to CI, not run locally. tasks.md 10.4/12.4 (from before this
       addendum) remain open for the same reason — also CI's job, not a
       local step.
-- [~] 41.3 Manually launch the app in `graviscan` mode and walk every screen
-  touched by Sections 37-40 (Browse GraviScans, Experiment Detail,
-  Metadata) — closes tasks.md 12.6, still open from before this
-  addendum. Confirm the screens are legible (the original complaint) and
-  that every new field/control (phenotyper, date range, image breakdown,
-  dismissable banner, filter-chip counts, color-coded upload preview,
-  Remove-file control) behaves as specced.
+- [x] 41.3 Manually launch the app in `graviscan` mode and walk every screen
+      touched by Sections 37-40 (Browse GraviScans, Experiment Detail,
+      Metadata) — closes tasks.md 12.6, still open from before this
+      addendum. Confirm the screens are legible (the original complaint) and
+      that every new field/control (phenotyper, date range, image breakdown,
+      dismissable banner, filter-chip counts, color-coded upload preview,
+      Remove-file control) behaves as specced.
 
       **In progress (user-run, 2026-08-13): found and fixed 4 real bugs**
       none of the automated rounds caught — recorded in full in `design.md`
@@ -4280,3 +4280,34 @@ duplicate `plate_section_id`) to match the new backend invariants.
       debugging connection"). Per user decision, left unverified locally
       and deferred to CI rather than asking the user to stop their own
       active dev-server session.
+
+      **CI-confirmed shortly after** (`gh run 33425630297`, triggered by
+      pushing this section plus a separate repo-wide Prettier fix): all 12
+      `Test - E2E Dev Build` matrix jobs (macOS/Ubuntu/Windows × 4 shards)
+      passed, including this test — confirming the local failure really was
+      the concurrent-dev-server conflict, not a defect in the test or the
+      feature.
+
+- [x] 42.7 Walkthrough completion and follow-up (2026-08-31). The user
+      finished the full manual walkthrough begun at 41.3: upload flow,
+      color-coded preview, and the `GraviMetadataList` chevron all confirmed
+      working. Live-testing this section's validation surfaced one more
+      real, previously-untracked gap: the column-mapping dropdowns are
+      fully independent of each other — nothing stops two different fields
+      (e.g. Plate ID and Section ID) from being mapped to the same
+      spreadsheet column. Confirmed the same gap exists on the production
+      branch (not lost in porting). Filed as
+      [#353](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/353)
+      per user request, not fixed here — same-column mapping happened to
+      trip this section's duplicate-section/duplicate-QR checks in the
+      reproduced case, but nothing guarantees that for non-identity fields,
+      so this is real latent risk, not fully mitigated by this section
+      alone. Separately, per a user question about why `validateGraviMetadata`
+      requires one accession per plate: confirmed via
+      [#152](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/152)
+      that this is a known schema limitation (`accession` lives on
+      `GraviPlateAccession`, not per-section), not a scientific rule —
+      commented on #152 linking today's silent-data-loss finding as
+      concrete motivation, since the real fix is moving `accession` to
+      section level, out of scope here. The user merged PR #290 shortly
+      after (`ad851ac9b48ecab5ed98e1e99ac8685c3b612c68`).
