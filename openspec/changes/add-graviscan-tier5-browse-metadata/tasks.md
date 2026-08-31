@@ -4231,7 +4231,7 @@ duplicate `plate_section_id`) to match the new backend invariants.
       (new file, ported from production's own test file and extended with
       the two cross-plate/duplicate-section cases beyond what production
       itself checks) and a new `describe('pre-submit metadata validation
-  (closes #207, #313)', ...)` block in
+(closes #207, #313)', ...)` block in
       `tests/unit/components/GraviMetadataUpload.test.tsx` covering:
       inconsistent plate-ID padding blocks submission and names the
       outlier; the same plant QR on two different plates blocks submission;
