@@ -8,9 +8,9 @@ while scoping Tier 5, `add-wave-scoped-metadata-linking`, merged separately
 as **PR #278** (2026-08-04) — not one of the five tiers below; see Tier 4
 and Tier 5's own sections for what it changes for each. **Tier 4 merged
 2026-08-25 (PR #289, `c8d3ea9`)** — see its table row and "Closing the
-loop" for what this means for Tier 5, which is already in progress
-(PR #290, in a separate worktree/session) and touches some of the same
-files. Tier 5 not yet merged; Tier 6 not yet started. **Re-audited
+loop" for what this meant for Tier 5. **Tier 5 merged 2026-08-31 (PR #290,
+`ad851ac`)** — see its table row and own section for what shipped. Tier 6
+not yet started. **Re-audited
 2026-08-04** against current `main` (post #278, via 2 independent `Explore`
 agents covering backend/preload wiring and nav/workflow-step routing) — one
 further staleness gap found and corrected below (Tier 5's handler
@@ -158,14 +158,14 @@ the upload screen) can be scoped concretely.
 
 ## Tiers
 
-| #   | Tier                                              | Depends on                                                                                                | New backend?                                                                               | Related issues                        | Status                                                 |
-| --- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------------------ |
-| 1   | Configure Scanner UI                              | —                                                                                                         | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03)            |
-| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                                                                  | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31)            |
-| 3   | Wedge-response UI (fast-tracked)                  | 2                                                                                                         | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04)            |
-| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose)                                      | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | ✅ Merged — PR #289 (`c8d3ea9`, 2026-08-25)            |
-| 5   | Browse / Experiment Detail / Metadata UI          | 2; wave-scoped metadata-link UI also needs `add-wave-scoped-metadata-linking` (merged PR #278, see prose) | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207, #164                      | Not started — unblocked (Tier 2 + PR #278 both merged) |
-| 6   | Packaging CI & Linux deployment docs              | — (no dependency; infra/docs work, not renderer/backend feature work — see prose)                         | No                                                                                         | #294, #295                            | Not started — unblocked, added 2026-08-05              |
+| #   | Tier                                              | Depends on                                                                                                | New backend?                                                                               | Related issues                        | Status                                      |
+| --- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------------------------- |
+| 1   | Configure Scanner UI                              | —                                                                                                         | Preload wiring (`get-scanner-status`) + one small new IPC read for #245's env-state banner | #208, #133, #230, #245                | ✅ Merged — PR #273 (`d49d389`, 2026-08-03) |
+| 2   | GraviScan DB data-layer port + event-model change | — (parallel to 1, see coordination note)                                                                  | Yes — full increment                                                                       | #133 (backend half), #234, #231, #232 | ✅ Merged — PR #274 (`9805bba`, 2026-07-31) |
+| 3   | Wedge-response UI (fast-tracked)                  | 2                                                                                                         | No — consumes Tier 2's granular events                                                     | #244, #240                            | ✅ Merged — PR #277 (`4782a0b`, 2026-08-04) |
+| 4   | Core scan-operation screen                        | 1, 2, 3; re-check vs. `add-wave-scoped-metadata-linking` (see prose)                                      | Preload wiring only (`verify-plates` + its events)                                         | #133, #162                            | ✅ Merged — PR #289 (`c8d3ea9`, 2026-08-25) |
+| 5   | Browse / Experiment Detail / Metadata UI          | 2; wave-scoped metadata-link UI also needs `add-wave-scoped-metadata-linking` (merged PR #278, see prose) | Preload wiring only (`ensure-dir`, `list-scan-files`)                                      | #133, #207, #164                      | ✅ Merged — PR #290 (`ad851ac`, 2026-08-31) |
+| 6   | Packaging CI & Linux deployment docs              | — (no dependency; infra/docs work, not renderer/backend feature work — see prose)                         | No                                                                                         | #294, #295                            | Not started — unblocked, added 2026-08-05   |
 
 **Coordination note (Tier 1 / Tier 2 parallel work):** both tiers edit
 `src/main/preload.ts`'s `graviAPI` object — Tier 1 adds one method near the
@@ -360,6 +360,32 @@ into one shared hook/utility instead of copying it twice, fixes the
 `verifyPlates` status value mismatch against the real backend contract before
 displaying verification results, and does not port the dead
 `ScannerConfigSection`/`useScannerConfig` code.
+
+**Shipped (2026-08-31, PR #290):** merged after 22 rounds of `/review-pr`
+convergence on the backend-logic diff, a manual rendered-output walkthrough
+that found and fixed real styling/spec-conformance gaps (`design.md`
+Decision 12), and a second manual walkthrough focused specifically on
+metadata-upload correctness (`design.md` Decision 13) that closed this
+tier's own origin issue, #207, together with #313 — both had explicitly
+called for the upload-format/uniqueness validation
+(`graviMetadataValidation.ts`, plus new backend uniqueness checks on
+`createWithSections`) that shipped in Section 42. Also closed #313/#207's
+missing E2E acceptance criterion (a real file-upload test against the live
+UI, not just a unit-level one). Follow-up issues filed from these
+walkthroughs, none blocking: #347 (GraviScan Bloom-upload scanner
+attribution bypasses the required, Bloom-validated `config.scanner_name`
+field), #352 (`GraviMetadataList.tsx` has no loading/error/empty-state
+message, and no column headers on its expanded row detail), #353
+(`GraviMetadataUpload.tsx` has no check preventing two different fields
+from being mapped to the same spreadsheet column). Comments added to two
+pre-existing issues with concrete evidence from this tier: #309 (Tier 4's
+auto-assignment lacks the same duplicate-plate-ID check and
+assignment-summary banner production has) and #152 (confirmed
+`accession`'s plate-level-only schema is a real, already-known limitation,
+not a scientific rule — this tier's new validation is a stopgap against
+silent data loss under that limitation, not a substitute for #152's actual
+fix). Full narrative in
+`openspec/changes/archive/2026-08-31-add-graviscan-tier5-browse-metadata/`.
 
 ### Tier 6 — Packaging CI & Linux deployment docs
 
