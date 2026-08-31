@@ -281,6 +281,7 @@ model GraviPlateSectionMapping {
   plate GraviPlateAccession @relation(fields: [gravi_plate_id], references: [id], onDelete: Cascade)
 
   @@unique([gravi_plate_id, plant_qr])
+  @@unique([gravi_plate_id, plate_section_id])
   @@index([gravi_plate_id])
   @@index([plant_qr])
 }

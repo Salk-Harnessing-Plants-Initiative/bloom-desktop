@@ -4189,3 +4189,94 @@ existing `tests/unit/components/GraviMetadataUpload.test.tsx` and
       git-based reverts in review-subagent prompts; checkpoint uncommitted
       work at natural boundaries rather than letting it accumulate for
       hours unprotected).
+
+      **41.3 continued (2026-08-31)**: resuming the still-open manual
+      walkthrough (Metadata page), the user asked directly whether metadata
+      format/order is validated and whether auto-assignment has a
+      correctness UI, citing past real issues with this. Found three real
+      gaps auditing against the production rig branch — see `design.md`
+      Decision 13 for the full triage. One (`GraviMetadataList.tsx`'s
+      missing loading/error/empty-state + missing table headers) filed as
+      #352 per user request. One (Tier 4 auto-assignment's missing
+      duplicate-check/summary-banner) added as a comment to already-open
+      #309, correctly staying a follow-up (Tier 4 already merged, outside
+      this change's diff). One — metadata upload format/uniqueness
+      validation — closed here, in Section 42, since #313 and #207 (Tier
+      5's own origin issue) already explicitly call for it as this change's
+      scope, not a new finding.
+
+## 42. Metadata upload format + uniqueness validation (closes #313, #207) (TDD)
+
+Ported `graviMetadataValidation.ts` from the production branch and added
+matching backend uniqueness checks to `graviPlateAccessionsCreateWithSections`
+— see `design.md` Decision 13 for the full rationale, including why the
+frontend port goes beyond production's own version (cross-plate `plant_qr`,
+duplicate `plate_section_id`) to match the new backend invariants.
+
+- [x] 42.1 Write failing tests in `tests/unit/graviscan/database-handlers.test.ts`
+      (`createWithSections` describe block): rejects two sections on the
+      same plate sharing a `plate_section_id`; allows the same
+      `plate_section_id` reused across different plates; rejects the same
+      `plant_qr` appearing on two different plates in one upload. All three
+      assert nothing was written (atomic rollback), matching this describe
+      block's existing convention.
+- [x] 42.2 Add the two pre-transaction checks to
+      `graviPlateAccessionsCreateWithSections` (`database-handlers.ts`).
+      Also added `@@unique([gravi_plate_id, plate_section_id])` to
+      `GraviPlateSectionMapping` in `prisma/schema.prisma` (migration
+      `20260831175938_add_plate_section_id_uniqueness`) as defense in depth
+      behind the app-level check, matching #313's own proposed solution.
+      Satisfies 42.1. 106/106 in `database-handlers.test.ts`.
+- [x] 42.3 Write failing tests: `tests/unit/graviMetadataValidation.test.ts`
+      (new file, ported from production's own test file and extended with
+      the two cross-plate/duplicate-section cases beyond what production
+      itself checks) and a new `describe('pre-submit metadata validation
+  (closes #207, #313)', ...)` block in
+      `tests/unit/components/GraviMetadataUpload.test.tsx` covering:
+      inconsistent plate-ID padding blocks submission and names the
+      outlier; the same plant QR on two different plates blocks submission;
+      inconsistent accession across a plate's sections blocks submission; a
+      valid, consistently-formatted file still submits normally.
+- [x] 42.4 Add `src/renderer/utils/graviMetadataValidation.ts`
+      (`validatePlateIdPattern` + `validateGraviMetadata`) and wire it into
+      `GraviMetadataUpload.tsx`'s `handleImport()`. Found and fixed a real
+      pre-existing bug while wiring this in: validating against the
+      already-grouped `plates` structure (as first attempted) silently
+      passed every inconsistent-accession case, because the plate-grouping
+      loop only keeps the first-seen `accession` per `plate_id` — later
+      rows' real values never reach any downstream check. Fixed by
+      validating directly from `sheet.rows` (via the existing `colIndex`
+      resolution), before grouping, matching production's own ordering.
+      Reuses the existing `rowErrors` state/rendering — no new UI element.
+      Satisfies 42.3. 13/13 in `graviMetadataValidation.test.ts`, 26/26 in
+      `GraviMetadataUpload.test.tsx` (two of the new tests needed a
+      `{selector: 'li'}` scope on `getByText` after their first run failed
+      on "multiple elements" — the same substring legitimately appears in
+      both the raw preview table and the new error list).
+- [x] 42.5 Full verification: `npx tsc --noEmit`, `npx eslint` (targeted
+      files), and `npx prettier --check` all clean. Full `npm run test:unit`
+      (with `BLOOM_DATABASE_URL="file:./dev.db"` set): 2053 passed, 7
+      failed — all 7 in `electron-cleanup.test.ts`, confirmed the same
+      known timing flake by re-running that file alone (14/14 passed in
+      isolation both before and after this section's changes).
+- [x] 42.6 Closed #207's remaining open acceptance criterion — a real E2E
+      test driving the file upload through the live UI, not just the
+      unit-level "end to end" test in `GraviMetadataUpload.test.tsx`
+      (Testing Library, not a live Electron window). Added to
+      `tests/e2e/graviscan-browse-metadata.e2e.ts`: uploads the checked-in
+      `graviscan-metadata-sample.xlsx` fixture through the real file input,
+      clicks Import, and verifies the resulting `GraviPlateAccession`/
+      `GraviPlateSectionMapping` rows via Prisma (4 plates × 4 sections,
+      matching the same fixture assertions as the unit test). Lint/
+      typecheck/format clean.
+
+      **Not verified locally** — running it found all 5 tests in this file
+      fail right now, including pre-existing ones untouched by this change,
+      confirming environmental interference (this file's own launcher spins
+      up a second Electron+webpack instance while the user's `npm run dev`
+      session is concurrently live on the same machine), matching
+      `docs/E2E_TESTING.md`'s documented Pitfall 9 failure signature exactly
+      ("intermittent timeouts... race condition with Playwright's remote
+      debugging connection"). Per user decision, left unverified locally
+      and deferred to CI rather than asking the user to stop their own
+      active dev-server session.

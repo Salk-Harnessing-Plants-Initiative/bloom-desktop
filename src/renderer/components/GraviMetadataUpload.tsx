@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useUnsavedChanges } from '../contexts/UnsavedChangesContext';
+import {
+  validateGraviMetadata,
+  GraviMetadataRow,
+} from '../utils/graviMetadataValidation';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const PREVIEW_ROW_LIMIT = 20;
@@ -216,6 +220,30 @@ export function GraviMetadataUpload({
         return;
       }
 
+      // Format/uniqueness checks (plate ID pattern consistency, consistent
+      // accession per plate, duplicate section/QR — closes #207/#313) run
+      // client-side, against the rows as entered, before Import — so the
+      // operator sees a specific error instead of a generic backend
+      // rejection, or worse, a silent wrong-order plate auto-assignment
+      // downstream on Capture Scan. Built from `sheet.rows` directly, not
+      // from the plate-grouped structure below, which only keeps one
+      // (first-seen) accession per plate_id and would hide exactly the
+      // inconsistency this is meant to catch.
+      const validationRows: GraviMetadataRow[] = sheet.rows
+        .filter((row) => (row[colIndex('Plate ID')] ?? '').trim() !== '')
+        .map((row) => ({
+          plateId: row[colIndex('Plate ID')] ?? '',
+          sectionId: row[colIndex('Section ID')] ?? '',
+          plantQr: row[colIndex('Plant QR')] ?? '',
+          accession: row[colIndex('Accession')] ?? '',
+          medium: row[colIndex('Medium')] || null,
+        }));
+      const metadataErrors = validateGraviMetadata(validationRows);
+      if (metadataErrors.length > 0) {
+        setRowErrors(metadataErrors);
+        return;
+      }
+
       const plateMap = new Map<
         string,
         {
@@ -254,6 +282,7 @@ export function GraviMetadataUpload({
       }
 
       const plates = Array.from(plateMap.values());
+
       const result =
         await window.electron.database.graviPlateAccessions.createWithSections(
           { name: fileName },

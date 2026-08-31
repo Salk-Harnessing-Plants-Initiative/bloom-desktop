@@ -257,6 +257,46 @@ test.describe('BrowseGraviScans / ExperimentDetail / Metadata (Tier 5)', () => {
     await window.waitForSelector('text=e2e-batch.xlsx');
   });
 
+  // Real file-upload round-trip through the live UI (renderer -> preload ->
+  // IPC -> main -> database), not just a database seed — closes #207's own
+  // E2E acceptance criterion, which the unit-test-level "end to end" test in
+  // GraviMetadataUpload.test.tsx doesn't satisfy (Testing Library, not a
+  // live Electron window).
+  test('uploads the checked-in sample fixture through the real UI and creates matching database rows', async () => {
+    await window.click('text=Metadata');
+    await window.waitForSelector('h1:has-text("Metadata")');
+
+    const fixturePath = path.join(
+      __dirname,
+      '../fixtures/excel/graviscan-metadata-sample.xlsx'
+    );
+    await window.locator('input[type="file"]').setInputFiles(fixturePath);
+
+    await window.waitForSelector('button:has-text("Import")');
+    await window.click('button:has-text("Import")');
+    await window.waitForSelector('text=Done uploading!');
+
+    const metadataFile = await prisma.accessions.findFirst({
+      where: { name: 'graviscan-metadata-sample.xlsx' },
+    });
+    expect(metadataFile).not.toBeNull();
+
+    const plates = await prisma.graviPlateAccession.findMany({
+      where: { metadata_file_id: metadataFile!.id },
+      include: { sections: true },
+    });
+    expect(plates).toHaveLength(4);
+    for (const plate of plates) {
+      expect(plate.sections).toHaveLength(4);
+    }
+    const p4 = plates.find((p) => p.plate_id === 'P4');
+    expect(p4?.accession).toBe('ACC-drought-B');
+
+    // Metadata page's list panel should refresh to show the new file
+    // without a manual reload.
+    await window.waitForSelector('text=graviscan-metadata-sample.xlsx');
+  });
+
   test('"Metadata" and "Browse GraviScans" workflow steps/nav resolve to the new routes, and the shared "Browse Scans" link is absent', async () => {
     await expect(
       window.locator('nav a', { hasText: 'Browse Scans' })

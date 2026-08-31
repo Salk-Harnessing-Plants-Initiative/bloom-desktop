@@ -1452,6 +1452,76 @@ describe('database.graviPlateAccessions.*', () => {
       expect(await prisma.accessions.count()).toBe(0);
       expect(await prisma.graviPlateAccession.count()).toBe(0);
     });
+
+    it('rejects two sections on the same plate sharing a plate_section_id, without writing anything (closes #313)', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Duplicate Section ID' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [
+              { plate_section_id: 'S1', plant_qr: 'QR1' },
+              { plate_section_id: 'S1', plant_qr: 'QR2' },
+            ],
+          },
+        ]
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/S1/);
+      expect(await prisma.accessions.count()).toBe(0);
+      expect(await prisma.graviPlateAccession.count()).toBe(0);
+      expect(await prisma.graviPlateSectionMapping.count()).toBe(0);
+    });
+
+    it('allows two different plates to reuse the same plate_section_id (e.g. every plate has an "S1")', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Shared Section Labels' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'QR1' }],
+          },
+          {
+            plate_id: 'P2',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'QR2' }],
+          },
+        ]
+      );
+
+      expect(result.success).toBe(true);
+      expect(await prisma.graviPlateSectionMapping.count()).toBe(2);
+    });
+
+    it('rejects the same plant_qr appearing on two different plates in one upload, without writing anything (closes #313)', async () => {
+      const result = await graviPlateAccessionsCreateWithSections(
+        prisma,
+        { name: 'Duplicate QR Across Plates' },
+        [
+          {
+            plate_id: 'P1',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'DUPLICATE' }],
+          },
+          {
+            plate_id: 'P2',
+            accession: 'Col-0',
+            sections: [{ plate_section_id: 'S1', plant_qr: 'DUPLICATE' }],
+          },
+        ]
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/DUPLICATE/);
+      expect(await prisma.accessions.count()).toBe(0);
+      expect(await prisma.graviPlateAccession.count()).toBe(0);
+      expect(await prisma.graviPlateSectionMapping.count()).toBe(0);
+    });
   });
 
   describe('list', () => {

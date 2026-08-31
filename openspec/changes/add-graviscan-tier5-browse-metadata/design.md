@@ -800,3 +800,85 @@ tier.
   precedent yet in this codebase — a candidate for whoever picks up the
   Decision 10 follow-up issue to resolve alongside it, since both stem from
   the same "legacy field vs. wave-scoped link" divergence).
+
+## Decision 13: Closing #313 and #207's validation gap during the user's own manual walkthrough (2026-08-31)
+
+**Context**: the user's own pre-merge manual walkthrough of the Metadata
+page (task 41.3, still in progress after Decision 12's Round 4 corrections)
+found the page "bare" and asked specifically whether metadata format/order
+validation and auto-assignment safety exist, having had real issues with
+this in the past. Auditing against the actual production rig branch
+(`fix/v600-wedge-followups-metadata_propogation_followup`, confirmed via the
+roadmap doc's own citation — not the unrelated, diverged
+`feature/graviscan-prod` branch checked first in error) found three
+distinct gaps, triaged differently:
+
+1. **`GraviMetadataList.tsx` has no loading/error/empty-state message**
+   (unlike `BrowseGraviScans.tsx`/`ExperimentDetail.tsx`/
+   `GraviMetadataUpload.tsx`, which all got this treatment under Decision
+   12's convention-alignment pass — `GraviMetadataList.tsx` was only in
+   scope for that pass's chevron/Delete-button/table styling, Section 40.5),
+   and its expanded plate/section table has no column headers at all. Filed
+   as [#352](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/352)
+   per user request — not fixed in this change.
+2. **Auto-assignment (Tier 4, `usePlateAssignments.ts`, already-merged PR
+   #289) has no duplicate-plate-ID check and no operator-facing
+   assignment-summary banner** the way production's equivalent effect does.
+   This is the same class of gap
+   [#309](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/309)
+   already tracks (that issue's own text says Tier 4 "deliberately deferred
+   this") — commented with today's findings, not re-filed, and correctly
+   stays a follow-up since Tier 4 is already merged and out of this change's
+   diff.
+3. **Metadata upload has no format/uniqueness validation at all** — closed
+   here, in this change, because it's not a new finding: both
+   [#313](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/313)
+   (filed 2026-08-07, explicitly scoped to "Tier 5's `GraviMetadataUpload.tsx`
+   proposal rather than a standalone change") and
+   [#207](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/207)
+   (Tier 5's own origin issue, listed alongside #133/#164 in the roadmap's
+   Tier 5 row) already call for exactly this. Confirmed still open: neither
+   `graviMetadataValidation.ts` nor any equivalent was ever ported from
+   production, and `graviPlateAccessionsCreateWithSections`
+   (`database-handlers.ts:751`) still only checked for non-empty strings.
+
+**What "fixing #313/#207" means concretely, split backend/frontend**:
+
+- **Backend** (`graviPlateAccessionsCreateWithSections`): added two new
+  pre-transaction checks — a plate can't have two sections sharing a
+  `plate_section_id`, and a `plant_qr` can't appear on two different plates
+  in one upload. The second is the practical equivalent of #313's "unique
+  per (experiment, wave)" ask: `GraviExperimentWaveMetadata`'s existing
+  `@@unique([experiment_id, wave_number])` means at most one metadata file
+  is ever linked to a given wave at a time, so "unique across one file" and
+  "unique per (experiment, wave)" are the same guarantee — the same
+  chaining logic #313 itself already uses to explain why constraint 1
+  (`plate_id` per file) already covers "`plate_id` per (experiment, wave)."
+  Also added the schema-level `@@unique([gravi_plate_id, plate_section_id])`
+  #313 proposed (new migration
+  `20260831175938_add_plate_section_id_uniqueness`), as defense in depth
+  behind the app-level check.
+- **Frontend**: ported `graviMetadataValidation.ts`
+  (`validatePlateIdPattern` + `validateGraviMetadata`) from production,
+  wired into `GraviMetadataUpload.tsx`'s `handleImport()` and run against
+  rows built directly from `sheet.rows` — not from the already-grouped
+  `plates` structure, which was found to silently keep only the first-seen
+  accession per `plate_id` and would have hidden exactly the
+  inconsistent-accession case this validation exists to catch. Extended
+  beyond production's own version (which only checks `plant_qr` uniqueness
+  per plate, confirmed via its own test "allows same plant QR on different
+  plates") to also flag the same cross-plate `plant_qr` case the backend
+  now rejects, and to flag duplicate `plate_section_id` within a plate —
+  so an operator sees a specific, pre-submit error instead of a generic
+  backend rejection for either.
+- **`validatePlateIdPattern` is what directly answers the "order" concern**:
+  `graviPlateAccessionsList` already naturally sorts by `plate_id`
+  (confirmed via its own existing test), so plate auto-assignment order is
+  more robust than production's (which relies purely on raw upload-row
+  order, per its own "First-come-first-served by metadata row order"
+  comment) — but that sort is only meaningful if plate IDs share a
+  consistent prefix/padding shape in the first place; an inconsistent shape
+  (e.g. a `Plate3` typo among `P1`/`P2`/`P4`) defeats natural sort's intent
+  even though nothing would crash. This validation is the actual guard
+  against that failure mode, not a redundant nicety layered on top of
+  sorting that already exists.

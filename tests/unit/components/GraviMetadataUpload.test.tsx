@@ -384,6 +384,85 @@ describe('GraviMetadataUpload', () => {
     expect(createWithSections).not.toHaveBeenCalled();
   });
 
+  describe('pre-submit metadata validation (closes #207, #313)', () => {
+    it('blocks submission and names the outlier when plate IDs use inconsistent numeric padding', async () => {
+      const user = userEvent.setup();
+      const file = await buildWorkbookFile([
+        ['P01', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ['P02', 'S1', 'QR2', 'Col-0', 'Soil', '2026-07-01', ''],
+        ['P003', 'S1', 'QR3', 'Col-0', 'Soil', '2026-07-01', ''],
+      ]);
+      renderUpload();
+      await user.upload(getFileInput(), file);
+      await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+      await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/padding/i, { selector: 'li' })
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByText(/P003/, { selector: 'li' })).toBeInTheDocument();
+      expect(createWithSections).not.toHaveBeenCalled();
+    });
+
+    it('blocks submission when the same plant QR appears on two different plates', async () => {
+      const user = userEvent.setup();
+      const file = await buildWorkbookFile([
+        ['P1', 'S1', 'DUPLICATE-QR', 'Col-0', 'Soil', '2026-07-01', ''],
+        ['P2', 'S1', 'DUPLICATE-QR', 'Col-0', 'Soil', '2026-07-01', ''],
+      ]);
+      renderUpload();
+      await user.upload(getFileInput(), file);
+      await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+      await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/DUPLICATE-QR/, { selector: 'li' })
+        ).toBeInTheDocument();
+      });
+      expect(createWithSections).not.toHaveBeenCalled();
+    });
+
+    it('blocks submission when a plate has inconsistent accession values across its sections', async () => {
+      const user = userEvent.setup();
+      const file = await buildWorkbookFile([
+        ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ['P1', 'S2', 'QR2', 'Ler-0', 'Soil', '2026-07-01', ''],
+      ]);
+      renderUpload();
+      await user.upload(getFileInput(), file);
+      await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+      await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/inconsistent accession/i)).toBeInTheDocument();
+      });
+      expect(createWithSections).not.toHaveBeenCalled();
+    });
+
+    it('allows a valid, consistently-formatted file through unchanged', async () => {
+      const user = userEvent.setup();
+      const file = await buildWorkbookFile([
+        ['P001', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ['P002', 'S1', 'QR2', 'Col-0', 'Soil', '2026-07-01', ''],
+      ]);
+      renderUpload();
+      await user.upload(getFileInput(), file);
+      await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+      await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+      await waitFor(() => {
+        expect(createWithSections).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
   it('warns how many rows were skipped when a row has no data in any required field', async () => {
     // A row where every required field is blank doesn't trigger the
     // partial-row validation error (filled === 0, not 0 < filled <

@@ -796,6 +796,7 @@ export async function graviPlateAccessionsCreateWithSections(
           error: `plate ${plate.plate_id} sections must be an array`,
         };
       }
+      const seenSectionIds = new Set<string>();
       for (const section of plate.sections) {
         if (
           !isNonEmptyString(section?.plate_section_id) ||
@@ -807,6 +808,31 @@ export async function graviPlateAccessionsCreateWithSections(
               'each section requires a non-empty plate_section_id and plant_qr',
           };
         }
+        if (seenSectionIds.has(section.plate_section_id)) {
+          return {
+            success: false,
+            error: `plate ${plate.plate_id} has duplicate section ID ${section.plate_section_id}`,
+          };
+        }
+        seenSectionIds.add(section.plate_section_id);
+      }
+    }
+
+    // plant_qr must be unique across the whole upload, not just within one
+    // plate (the DB's own @@unique([gravi_plate_id, plant_qr]) only covers
+    // the latter) — the same physical plant can't legitimately appear on two
+    // different plates in one wave's metadata (#313).
+    const qrToPlateId = new Map<string, string>();
+    for (const plate of plates) {
+      for (const section of plate.sections) {
+        const existingPlateId = qrToPlateId.get(section.plant_qr);
+        if (existingPlateId !== undefined) {
+          return {
+            success: false,
+            error: `plant QR ${section.plant_qr} appears on both plate ${existingPlateId} and plate ${plate.plate_id}`,
+          };
+        }
+        qrToPlateId.set(section.plant_qr, plate.plate_id);
       }
     }
 
