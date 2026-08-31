@@ -382,6 +382,69 @@ export type ScannerState =
   | 'error';
 
 /**
+ * Renderer-facing verification status for a plate assignment. Matches
+ * `src/main/graviscan/verify-plates.ts`'s `VerifyStatus` union exactly
+ * (`verified | incorrect | unreadable | needs_review | duplicate_qr |
+ * swapped | lookup_failed`), plus `'pending'` for
+ * `GraviScanPlateAssignment.verification_status`'s own pre-verification
+ * DB default — `verifyPlates()` itself never emits `'pending'`, but a
+ * freshly-created row can carry it before any verification has run.
+ * Deliberately does NOT include `'skipped'`: that value was removed from
+ * `VerifyStatus` as dead code (never produced, never consumed) and
+ * reintroducing it here would recreate the same anti-pattern.
+ */
+export type VerificationStatus =
+  | 'pending'
+  | 'verified'
+  | 'incorrect'
+  | 'unreadable'
+  | 'needs_review'
+  | 'duplicate_qr'
+  | 'swapped'
+  | 'lookup_failed';
+
+/**
+ * Renderer-facing mirrors of `src/main/graviscan/verify-plates.ts`'s
+ * `VerifyPlateInput`/`VerifyPlateResult`/`PlateSwap`/`VerifyPlatesResult`.
+ * Declared independently here, not imported from that module — shared/
+ * renderer code is not allowed to import from `src/main/graviscan/`
+ * (enforced by this repo's `no-restricted-imports` ESLint rule; only
+ * `main.ts`, the orchestrator, may import mode-specific modules). Keep
+ * these fields in sync with verify-plates.ts's own types by hand.
+ */
+export interface QRVerifyPlateInput {
+  scannerId: string;
+  plateIndex: string;
+  imagePath: string;
+  assignedPlateId: string;
+}
+
+export interface QRVerifyPlateResult {
+  scannerId: string;
+  plateIndex: string;
+  assignedPlateId: string;
+  imagePath: string;
+  detectedPlateId: string | null;
+  detectedCodes: string[];
+  status: VerificationStatus;
+  inconsistentMappings?: Record<string, string[]>;
+  duplicateQrCodes?: string[];
+}
+
+export interface QRVerifyPlateSwap {
+  position1: { scannerId: string; plateIndex: string; assignedPlateId: string };
+  position2: { scannerId: string; plateIndex: string; assignedPlateId: string };
+}
+
+export interface QRVerifyPlatesResult {
+  success: boolean;
+  results: QRVerifyPlateResult[];
+  swaps: QRVerifyPlateSwap[];
+  error?: string;
+  warnings?: string[];
+}
+
+/**
  * Per-scanner state for tracking scan progress.
  */
 export interface ScannerPanelState {
@@ -394,6 +457,17 @@ export interface ScannerPanelState {
   progress: number;
   outputFilename: string;
   lastError?: string;
+  /** Sourced from `getScannerStatus()`'s existing `ScannerStatusRow.gridMode`
+   * — no backend change needed. Used to compute the real (not hardcoded)
+   * `platesPerScanner` for the predictive cadence warning (design.md
+   * Decision 7). */
+  gridMode: string;
+  /** The scanner's raw hardware/connection status from
+   * `ScannerStatusRow.status` ('ready' | 'starting' | 'error' | 'dead' |
+   * 'disconnected'), kept distinct from `state` (which describes
+   * scan-progress, not connectivity) — collapsing the two would lose the
+   * "starting" distinction PR #213's fix depends on polling for. */
+  connectionStatus: ScannerStatusRow['status'];
 }
 
 /**

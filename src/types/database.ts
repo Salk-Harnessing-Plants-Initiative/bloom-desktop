@@ -90,7 +90,26 @@ export type ScanWithImageSummary = Prisma.ScanGetPayload<{
       select: {
         id: true;
         status: true;
+        path: true;
+        frame_number: true;
       };
+    };
+  };
+}>;
+
+/**
+ * Scan shape returned by `db:scans:getRecent` — experiment name and each
+ * image's status only (not the full `images: true` `ScanWithRelations`
+ * shape; this handler's query never included images at all until Tier 4's
+ * #104 "Today's Activity" work added this minimal select).
+ */
+export type ScanWithRecentSummary = Prisma.ScanGetPayload<{
+  include: {
+    experiment: {
+      select: { name: true };
+    };
+    images: {
+      select: { status: true };
     };
   };
 }>;

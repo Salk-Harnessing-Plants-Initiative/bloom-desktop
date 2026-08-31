@@ -23,6 +23,7 @@ import { MachineConfiguration } from './MachineConfiguration';
 import { ConfigureScanner } from './ConfigureScanner';
 import { BrowseGraviScans } from './BrowseGraviScans';
 import { ExperimentDetail } from './ExperimentDetail';
+import { GraviScan } from './GraviScan';
 import { useAppMode } from './hooks/useAppMode';
 import { UploadStatusProvider } from './contexts/UploadStatusContext';
 import { WaveMetadataLinksProvider } from './contexts/WaveMetadataLinksContext';
@@ -84,6 +85,7 @@ export default function App() {
                       path="configure-scanner"
                       element={<ConfigureScanner />}
                     />
+                    <Route path="capture-scan" element={<GraviScan />} />
                     <Route
                       path="browse-graviscans"
                       element={<BrowseGraviScans />}

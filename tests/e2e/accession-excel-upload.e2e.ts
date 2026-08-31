@@ -467,7 +467,7 @@ test.describe('Column Highlighting', () => {
     await expect(plantIdHeader).toHaveClass(/bg-green/);
   });
 
-  test('should highlight Genotype column in blue when selected', async () => {
+  test('should highlight Genotype column in lime when selected', async () => {
     await navigateToAccessions();
 
     const fileInput = window.locator('input[type="file"]');
@@ -484,11 +484,12 @@ test.describe('Column Highlighting', () => {
     );
     await accessionSelector.selectOption('GenotypeID');
 
-    // Column header should have blue highlighting class
+    // Column header should have lime highlighting class (Tier 4 style/UX
+    // parity recolored AccessionFileUpload.tsx's blue accent to lime)
     const accessionHeader = window.locator(
       '[data-testid="preview-table"] th:has-text("GenotypeID")'
     );
-    await expect(accessionHeader).toHaveClass(/bg-blue/);
+    await expect(accessionHeader).toHaveClass(/bg-lime/);
   });
 
   test('should show column labels in header when selected', async () => {

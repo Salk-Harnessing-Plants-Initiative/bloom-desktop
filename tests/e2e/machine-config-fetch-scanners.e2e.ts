@@ -183,10 +183,7 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
     const apiUrlInput = await window.locator('input[id*="api-url"]');
     const apiUrlValue = await apiUrlInput.inputValue();
     if (!apiUrlValue) {
-      await window.fill(
-        'input[id*="api-url"]',
-        'https://api.bloom.salk.edu/proxy'
-      );
+      await window.fill('input[id*="api-url"]', 'https://bloom.salk.edu/api');
     }
 
     // Button should now be enabled
@@ -217,10 +214,16 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
         timeout: 1000,
       });
     } catch {
-      // If it's too fast to see loading, that's okay - check for result instead
+      // If it's too fast to see loading, that's okay - check for result
+      // instead. Generous timeout: this is a real network round-trip to
+      // whatever bloom_api_url the app defaults to — since #333 fixed that
+      // default to the correct, live `bloom.salk.edu/api` endpoint (the old
+      // stale proxy URL likely failed fast simply because it was
+      // unreachable/dead, not because auth genuinely completed quickly),
+      // this now depends on an actual live auth round-trip completing.
       await window.waitForSelector(
         'text=/Found \\d+ scanner|Authentication failed|Failed to fetch/',
-        { timeout: 5000 }
+        { timeout: 15000 }
       );
     }
   });
@@ -240,10 +243,16 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
     );
     await button.click();
 
-    // Should show error message
+    // Should show error message. Generous timeout: real network round-trip
+    // to whatever bloom_api_url the app defaults to — since #333 fixed that
+    // default to the correct, live `bloom.salk.edu/api` endpoint (the old
+    // stale proxy URL likely failed fast simply because it was
+    // unreachable/dead, not because auth genuinely completed quickly), this
+    // now depends on an actual live auth-rejection round-trip completing,
+    // observed to occasionally exceed 10s under concurrent CI matrix load.
     await window.waitForSelector(
       'text=/Authentication failed|Failed to fetch|Invalid/',
-      { timeout: 10000 }
+      { timeout: 20000 }
     );
   });
 
@@ -252,7 +261,7 @@ test.describe('Machine Configuration - Fetch Scanners Button', () => {
     // account. BLOOM_TEST_USERNAME/PASSWORD/ANON_KEY are documented in
     // .env.example as being for manual testing - they are not (and should
     // not be) wired up as CI secrets, since GitHub-hosted runners have no
-    // guaranteed path to reach api.bloom.salk.edu. Skip unless a developer
+    // guaranteed path to reach bloom.salk.edu. Skip unless a developer
     // has configured real credentials locally. See GH issue #254.
     test.skip(
       !process.env.BLOOM_TEST_USERNAME ||

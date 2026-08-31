@@ -3,7 +3,19 @@ import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { WedgeBanner } from '../../../src/renderer/components/WedgeBanner';
+import { WedgeProvider } from '../../../src/renderer/contexts/WedgeContext';
 import type { GraviWedgeEvent } from '../../../src/types/graviscan';
+
+/** WedgeBanner now consumes shared state via WedgeContext (design.md
+ * Decision 6) rather than calling useWedgeEvents() itself — every render
+ * needs a provider ancestor. */
+function renderWedgeBanner() {
+  return render(
+    <WedgeProvider>
+      <WedgeBanner />
+    </WedgeProvider>
+  );
+}
 
 function makeEvent(overrides: Partial<GraviWedgeEvent> = {}): GraviWedgeEvent {
   return {
@@ -56,7 +68,7 @@ describe('WedgeBanner', () => {
   }
 
   it('renders a banner entry showing identity/signature/error, with already-paused copy, in error styling', () => {
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent());
 
     expect(screen.getByText(/Bench 3/)).toBeInTheDocument();
@@ -72,7 +84,7 @@ describe('WedgeBanner', () => {
   });
 
   it('renders two independently-actionable entries as a vertically-stacked list', () => {
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent({ scanner_id: 'sc-1', display_name: 'Bench 1' }));
     fireWedge(makeEvent({ scanner_id: 'sc-2', display_name: 'Bench 2' }));
 
@@ -82,7 +94,7 @@ describe('WedgeBanner', () => {
 
   it('Dismiss removes the entry without calling retryScanner', async () => {
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent());
 
     await user.click(
@@ -95,7 +107,7 @@ describe('WedgeBanner', () => {
 
   it('Power-Cycled & Retry shows a confirmation sub-state with explanatory text, without calling retryScanner yet', async () => {
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent());
 
     await user.click(
@@ -112,7 +124,7 @@ describe('WedgeBanner', () => {
 
   it('Confirm Retry calls retryScanner and removes the entry on success', async () => {
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent());
 
     await user.click(
@@ -128,7 +140,7 @@ describe('WedgeBanner', () => {
 
   it('Cancel reverts to the unconfirmed state without calling retryScanner', async () => {
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent());
 
     await user.click(
@@ -148,7 +160,7 @@ describe('WedgeBanner', () => {
   it('a failed Confirm Retry leaves the entry in place and shows the error inline', async () => {
     retryScanner.mockResolvedValue({ success: false, error: 'still wedged' });
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent());
 
     await user.click(
@@ -163,7 +175,7 @@ describe('WedgeBanner', () => {
   it('a rejected Confirm Retry (IPC promise rejects, not resolves-with-error) shows an error and leaves the entry in place', async () => {
     retryScanner.mockRejectedValue(new Error('IPC channel closed'));
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent());
 
     await user.click(
@@ -184,7 +196,7 @@ describe('WedgeBanner', () => {
         })
     );
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent({ cycle_number: 1, signature: 'sane_start_invalid' }));
 
     await user.click(
@@ -213,7 +225,7 @@ describe('WedgeBanner', () => {
 
   it('resets to the unconfirmed two-button view when a new wedge supersedes an entry mid-confirmation', async () => {
     const user = userEvent.setup();
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     fireWedge(makeEvent({ cycle_number: 1 }));
 
     await user.click(
@@ -235,7 +247,7 @@ describe('WedgeBanner', () => {
   });
 
   it('shows no counter indicator when totalAutoPauseEvents is 0, and shows both numbers together once wedges occur', () => {
-    render(<WedgeBanner />);
+    renderWedgeBanner();
     expect(
       screen.queryByTestId('wedge-session-counter')
     ).not.toBeInTheDocument();

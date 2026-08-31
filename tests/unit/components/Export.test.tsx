@@ -224,7 +224,9 @@ describe('Export page', () => {
       expect(screen.getByText('1 scan failed:')).toBeInTheDocument();
     });
     expect(
-      screen.getByText('3 exported, 2 skipped (already exist)')
+      screen.getByText(
+        '1 scan exported (3 files), 2 files skipped (already exist)'
+      )
     ).toBeInTheDocument();
     // Full date AND time — not just the day — per design.md's disambiguation requirement.
     expect(
@@ -232,6 +234,101 @@ describe('Export page', () => {
         (text) => text.includes('Experiment A') && text.includes('2:30 PM')
       )
     ).toBeInTheDocument();
+  });
+
+  it('when every selected scan fails outright, shows only the failure list — not a nonsensical "0 scans already exported" summary', async () => {
+    const user = userEvent.setup();
+    const failedCaptureDate = new Date('2026-01-05T14:30:00');
+    mockList([makeScan('a')]);
+    getDb().export = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 0,
+        skippedFiles: 0,
+        failedScans: [
+          {
+            scanId: 'zzz',
+            experimentName: 'Experiment A',
+            captureDate: failedCaptureDate,
+            reason: 'Could not read scan source folder',
+          },
+        ],
+      },
+    });
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await pickDestination(user);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('1 scan failed:')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/already exported/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/scans? exported/i)).not.toBeInTheDocument();
+  });
+
+  it('re-exporting a scan whose files all already exist shows "already exported — all N files already present", not the self-contradictory "exported (already present)"', async () => {
+    const user = userEvent.setup();
+    mockList([makeScan('a')]);
+    getDb().export = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 1,
+        skippedFiles: 2,
+        failedScans: [],
+      },
+    });
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await pickDestination(user);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          '1 scan already exported — all 2 files already present'
+        )
+      ).toBeInTheDocument();
+    });
+    // Regression guard: "exported" must never appear paired with "already
+    // present" in the same clause when nothing new was copied — that
+    // reads as self-contradictory (did it export or not?).
+    expect(
+      screen.queryByText(/exported \(already present\)/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows an honest "no scans exported" message instead of "0 scans exported (already present)" when the selection resolves to nothing (e.g. deleted elsewhere)', async () => {
+    const user = userEvent.setup();
+    mockList([makeScan('a')]);
+    getDb().export = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        exportedFiles: 0,
+        exportedScans: 0,
+        skippedFiles: 0,
+        failedScans: [],
+      },
+    });
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    await user.click(screen.getAllByRole('checkbox')[1]);
+    await pickDestination(user);
+    await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/No scans were exported/i)).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/exported \(already present\)/i)
+    ).not.toBeInTheDocument();
   });
 
   it('confirms before discarding an unread partial-failure banner when starting another export, and honors cancel', async () => {
@@ -315,7 +412,9 @@ describe('Export page', () => {
       ).not.toBeInTheDocument();
     });
     expect(
-      screen.getByText('1 exported, 0 skipped (already exist)')
+      screen.getByText(
+        '1 scan exported (1 file), 0 files skipped (already exist)'
+      )
     ).toBeInTheDocument();
   });
 
@@ -421,5 +520,16 @@ describe('Export page', () => {
 
     await pickDestination(user);
     expect(screen.getByRole('button', { name: /Export 1 scan/ })).toBeEnabled();
+  });
+
+  it('uses lime on the Export button, not blue (Tier 4 style/UX parity — Export.tsx is an unconditional, both-mode route like BrowseScans.tsx/ScanPreview.tsx)', async () => {
+    mockList([makeScan('a')]);
+    render(<Export />);
+
+    await screen.findByText(/Experiment A/);
+    const exportButton = screen.getByRole('button', { name: /Export 0 scan/ });
+    expect(exportButton.className).toContain('bg-lime-700');
+    expect(exportButton.className).toContain('hover:bg-lime-800');
+    expect(exportButton.className).not.toMatch(/bg-blue-600|hover:bg-blue-700/);
   });
 });

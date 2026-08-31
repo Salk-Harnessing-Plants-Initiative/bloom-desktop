@@ -219,6 +219,23 @@ describe('database.graviscans.*', () => {
       expect(count).toBe(0);
     });
 
+    it('rejects a negative wave_number rather than silently coercing it to 0', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscansCreate(prisma, {
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+        wave_number: -1,
+        path: '/scans/x.tif',
+        grid_mode: '2grid',
+        plate_index: '00',
+        resolution: 600,
+      } as never);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/wave_number/);
+      expect(await prisma.graviScan.count()).toBe(0);
+    });
+
     it('persists all fields and defaults format to tiff and wave_number to 0 when omitted', async () => {
       const fx = await seedBaseFixture();
       const session = await prisma.graviScanSession.create({
@@ -263,6 +280,71 @@ describe('database.graviscans.*', () => {
       });
       expect(row?.scan_started_at?.toISOString()).toBe(startedAt.toISOString());
       expect(row?.scan_ended_at?.toISOString()).toBe(endedAt.toISOString());
+    });
+
+    it('is idempotent — calling it twice with identical (session_id, scanner_id, plate_index, cycle_number) and identical field values creates exactly one row', async () => {
+      const fx = await seedBaseFixture();
+      const session = await prisma.graviScanSession.create({
+        data: {
+          experiment_id: fx.experimentA.id,
+          phenotyper_id: fx.phenotyper.id,
+        },
+      });
+      const payload = {
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+        session_id: session.id,
+        cycle_number: 1,
+        wave_number: 2,
+        path: '/scans/dup.tif',
+        grid_mode: '2grid',
+        plate_index: '00',
+        resolution: 600,
+      };
+
+      const first = await graviscansCreate(prisma, payload);
+      expect(first.success).toBe(true);
+      const second = await graviscansCreate(prisma, payload);
+      expect(second.success).toBe(true);
+
+      const rows = await prisma.graviScan.findMany({
+        where: {
+          session_id: session.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          cycle_number: 1,
+        },
+      });
+      expect(rows).toHaveLength(1);
+    });
+
+    it('still creates independent rows for one-shot scans with no session_id (multiple NULLs are distinct)', async () => {
+      const fx = await seedBaseFixture();
+      const payload = {
+        experiment_id: fx.experimentA.id,
+        phenotyper_id: fx.phenotyper.id,
+        scanner_id: fx.scannerX.id,
+        path: '/scans/test-scan.tif',
+        grid_mode: '2grid',
+        plate_index: '00',
+        resolution: 600,
+      };
+
+      const first = await graviscansCreate(prisma, payload);
+      expect(first.success).toBe(true);
+      const second = await graviscansCreate(prisma, payload);
+      expect(second.success).toBe(true);
+
+      const rows = await prisma.graviScan.findMany({
+        where: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          session_id: null,
+        },
+      });
+      expect(rows).toHaveLength(2);
     });
   });
 
@@ -930,6 +1012,93 @@ describe('database.graviscanPlateAssignments.*', () => {
       expect(rows[0].plate_index).toBe('00');
       expect(rows[1].plate_index).toBe('01');
     });
+
+    it("is scoped to waveNumber — a different wave's row for the same position is not returned", async () => {
+      const fx = await seedBaseFixture();
+      await prisma.graviScanPlateAssignment.create({
+        data: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          plate_barcode: 'WAVE2-VALUE',
+          wave_number: 2,
+        },
+      });
+      await prisma.graviScanPlateAssignment.create({
+        data: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          plate_barcode: 'WAVE3-VALUE',
+          wave_number: 3,
+        },
+      });
+
+      const wave2Result = await graviscanPlateAssignmentsList(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        2
+      );
+      expect(wave2Result.success).toBe(true);
+      expect(wave2Result.data).toHaveLength(1);
+      expect(wave2Result.data![0].plate_barcode).toBe('WAVE2-VALUE');
+
+      const wave3Result = await graviscanPlateAssignmentsList(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        3
+      );
+      expect(wave3Result.success).toBe(true);
+      expect(wave3Result.data).toHaveLength(1);
+      expect(wave3Result.data![0].plate_barcode).toBe('WAVE3-VALUE');
+    });
+
+    it('defaults waveNumber to 0 when omitted, matching the schema default', async () => {
+      const fx = await seedBaseFixture();
+      await prisma.graviScanPlateAssignment.create({
+        data: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          plate_barcode: 'WAVE0-VALUE',
+        },
+      });
+
+      const result = await graviscanPlateAssignmentsList(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id
+      );
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+      expect(result.data![0].plate_barcode).toBe('WAVE0-VALUE');
+    });
+
+    it('rejects a negative waveNumber rather than silently coercing it', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscanPlateAssignmentsList(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        -1
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
+    });
+
+    it('rejects a non-integer waveNumber (e.g. NaN) rather than silently coercing it', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscanPlateAssignmentsList(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        NaN
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
+    });
   });
 
   describe('upsertMany', () => {
@@ -974,6 +1143,19 @@ describe('database.graviscanPlateAssignments.*', () => {
       expect(result.success).toBe(false);
     });
 
+    it('rejects a negative waveNumber rather than silently coercing it', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscanPlateAssignmentsUpsertMany(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        [{ plate_index: '00', plate_barcode: 'X' }],
+        -1
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/waveNumber/);
+    });
+
     it('is atomic — a failing entry rolls back the whole batch', async () => {
       const fx = await seedBaseFixture();
 
@@ -994,6 +1176,159 @@ describe('database.graviscanPlateAssignments.*', () => {
         where: { experiment_id: fx.experimentA.id, scanner_id: fx.scannerX.id },
       });
       expect(rows).toHaveLength(0);
+    });
+
+    it("writes to (experiment_id, scanner_id, plate_index, waveNumber) — does not clobber a different wave's row for the same position", async () => {
+      const fx = await seedBaseFixture();
+      await prisma.graviScanPlateAssignment.create({
+        data: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          plate_barcode: 'WAVE2-ORIGINAL',
+          wave_number: 2,
+        },
+      });
+
+      const result = await graviscanPlateAssignmentsUpsertMany(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        [{ plate_index: '00', plate_barcode: 'WAVE3-NEW' }],
+        3
+      );
+      expect(result.success).toBe(true);
+
+      const wave2Row = await prisma.graviScanPlateAssignment.findUnique({
+        where: {
+          experiment_id_scanner_id_plate_index_wave_number: {
+            experiment_id: fx.experimentA.id,
+            scanner_id: fx.scannerX.id,
+            plate_index: '00',
+            wave_number: 2,
+          },
+        },
+      });
+      expect(wave2Row?.plate_barcode).toBe('WAVE2-ORIGINAL');
+
+      const wave3Row = await prisma.graviScanPlateAssignment.findUnique({
+        where: {
+          experiment_id_scanner_id_plate_index_wave_number: {
+            experiment_id: fx.experimentA.id,
+            scanner_id: fx.scannerX.id,
+            plate_index: '00',
+            wave_number: 3,
+          },
+        },
+      });
+      expect(wave3Row?.plate_barcode).toBe('WAVE3-NEW');
+    });
+
+    it("defaults waveNumber to 0 when omitted, matching the schema default and today's behavior", async () => {
+      const fx = await seedBaseFixture();
+
+      const result = await graviscanPlateAssignmentsUpsertMany(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        [{ plate_index: '00', plate_barcode: 'IMPLICIT-WAVE0' }]
+      );
+      expect(result.success).toBe(true);
+
+      const row = await prisma.graviScanPlateAssignment.findUnique({
+        where: {
+          experiment_id_scanner_id_plate_index_wave_number: {
+            experiment_id: fx.experimentA.id,
+            scanner_id: fx.scannerX.id,
+            plate_index: '00',
+            wave_number: 0,
+          },
+        },
+      });
+      expect(row?.plate_barcode).toBe('IMPLICIT-WAVE0');
+    });
+
+    it('accepts waveNumber: 0 as valid, not rejected', async () => {
+      const fx = await seedBaseFixture();
+      const result = await graviscanPlateAssignmentsUpsertMany(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        [{ plate_index: '00', plate_barcode: 'EXPLICIT-WAVE0' }],
+        0
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('preserves an existing verification_status/previous_plate_barcode when the payload omits them', async () => {
+      const fx = await seedBaseFixture();
+      await prisma.graviScanPlateAssignment.create({
+        data: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          plate_barcode: 'Plate_04',
+          verification_status: 'swapped',
+          previous_plate_barcode: 'Plate_04-old',
+        },
+      });
+
+      // Simulates an operator editing an unrelated field (custom_note) in
+      // the plate-assignment grid — the payload has no opinion about
+      // verification_status/previous_plate_barcode at all.
+      const result = await graviscanPlateAssignmentsUpsertMany(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        [{ plate_index: '00', custom_note: 'operator note' }]
+      );
+      expect(result.success).toBe(true);
+
+      const row = await prisma.graviScanPlateAssignment.findFirst({
+        where: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+        },
+      });
+      expect(row?.verification_status).toBe('swapped');
+      expect(row?.previous_plate_barcode).toBe('Plate_04-old');
+      expect(row?.custom_note).toBe('operator note');
+    });
+
+    it('still updates verification_status/previous_plate_barcode when a payload explicitly includes them', async () => {
+      const fx = await seedBaseFixture();
+      await prisma.graviScanPlateAssignment.create({
+        data: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+          verification_status: 'pending',
+        },
+      });
+
+      const result = await graviscanPlateAssignmentsUpsertMany(
+        prisma,
+        fx.experimentA.id,
+        fx.scannerX.id,
+        [
+          {
+            plate_index: '00',
+            verification_status: 'verified',
+            previous_plate_barcode: null,
+          },
+        ]
+      );
+      expect(result.success).toBe(true);
+
+      const row = await prisma.graviScanPlateAssignment.findFirst({
+        where: {
+          experiment_id: fx.experimentA.id,
+          scanner_id: fx.scannerX.id,
+          plate_index: '00',
+        },
+      });
+      expect(row?.verification_status).toBe('verified');
     });
   });
 });

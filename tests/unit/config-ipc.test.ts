@@ -453,9 +453,17 @@ describe('Config IPC Handler Logic', () => {
       const hasCredentials = config.bloom_scanner_password !== '';
 
       // The handler should return ALL config fields including scan params
+      // and scanner_mode (a real bug — main.ts's actual config:get handler
+      // omitted scanner_mode from this field list entirely, silently
+      // dropping it on every load; caught via manual E2E smoke testing of
+      // fix-cylinderscan-config-ux-quickfixes, not by this simulated test,
+      // since this object independently duplicates the handler's field
+      // list rather than calling it — fixed in main.ts, and scanner_mode
+      // is now derived here too instead of hardcoded, to keep this
+      // simulation from drifting out of sync with the real handler again).
       const result = {
         config: {
-          scanner_mode: 'cylinderscan',
+          scanner_mode: config.scanner_mode,
           scanner_name: config.scanner_name,
           camera_ip_address: config.camera_ip_address,
           scans_dir: config.scans_dir,
@@ -469,6 +477,7 @@ describe('Config IPC Handler Logic', () => {
         hasCredentials,
       };
 
+      expect(result.config.scanner_mode).toBe('cylinderscan');
       expect(result.config.num_frames).toBe(36);
       expect(result.config.seconds_per_rot).toBe(5.0);
     });

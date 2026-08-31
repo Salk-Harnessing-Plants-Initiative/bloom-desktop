@@ -18,15 +18,46 @@ const mockConfigAPI = {
   fetchScanners: vi.fn(),
 };
 
+// Mock window.electron.camera (camera auto-detection, relocated from
+// CameraSettingsForm per #338)
+const mockCameraAPI = {
+  detectCameras: vi.fn(),
+};
+
+// Mock window.electron.python (Check Hardware / Restart Python, relocated
+// from Home's PythonStatus per #339)
+const mockPythonAPI = {
+  checkHardware: vi.fn(),
+  restart: vi.fn(),
+};
+
+const MOCK_CAMERA = {
+  ip_address: 'mock',
+  model_name: 'Mock Camera',
+  serial_number: '',
+  mac_address: '',
+  user_defined_name: '',
+  friendly_name: 'Mock Camera',
+  is_mock: true,
+};
+
 // Setup mock before tests
 beforeEach(() => {
   vi.clearAllMocks();
 
   // Setup window.electron mock
   (
-    window as unknown as { electron: { config: typeof mockConfigAPI } }
+    window as unknown as {
+      electron: {
+        config: typeof mockConfigAPI;
+        camera: typeof mockCameraAPI;
+        python: typeof mockPythonAPI;
+      };
+    }
   ).electron = {
     config: mockConfigAPI,
+    camera: mockCameraAPI,
+    python: mockPythonAPI,
   };
 
   // Default mock implementations
@@ -48,6 +79,16 @@ beforeEach(() => {
   mockConfigAPI.set.mockResolvedValue({ success: true });
   mockConfigAPI.testCamera.mockResolvedValue({ success: true });
   mockConfigAPI.browseDirectory.mockResolvedValue(null);
+
+  mockCameraAPI.detectCameras.mockResolvedValue({
+    success: true,
+    cameras: [MOCK_CAMERA],
+  });
+  mockPythonAPI.checkHardware.mockResolvedValue({
+    camera: { library_available: true, devices_found: 1, available: true },
+    daq: { library_available: true, devices_found: 1, available: true },
+  });
+  mockPythonAPI.restart.mockResolvedValue({ success: true });
 });
 
 describe('MachineConfiguration Page', () => {
@@ -75,6 +116,22 @@ describe('MachineConfiguration Page', () => {
 
       // Should show form, not login
       expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Config load failure fallback', () => {
+    it('falls back to the hardcoded default bloom_api_url when config.get() rejects', async () => {
+      mockConfigAPI.get.mockRejectedValue(new Error('IPC failure'));
+
+      render(<MachineConfiguration />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
+      });
+
+      expect(
+        screen.getByDisplayValue('https://bloom.salk.edu/api')
+      ).toBeInTheDocument();
     });
   });
 
@@ -892,6 +949,456 @@ describe('MachineConfiguration Page', () => {
       await waitFor(() => {
         expect(screen.getByText(/Found 3 scanners/i)).toBeInTheDocument();
       });
+    });
+  });
+});
+
+describe('MachineConfiguration color palette', () => {
+  it('uses focus:ring-lime-500 on text inputs, not blue', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
+    });
+
+    const cameraIp = screen.getByLabelText(/Camera IP/i);
+    const scansDir = screen.getByLabelText(/Scans Directory/i);
+    const username = screen.getByLabelText(/Username/i);
+    const apiUrl = screen.getByLabelText(/API URL/i);
+
+    [cameraIp, scansDir, username, apiUrl].forEach((el) => {
+      expect(el.className).toContain('focus:ring-lime-500');
+      expect(el.className).not.toContain('focus:ring-blue-500');
+    });
+  });
+
+  it('uses lime on the checkboxes and primary buttons, not blue', async () => {
+    mockConfigAPI.get.mockResolvedValue({
+      config: {
+        scanner_mode: 'cylinderscan',
+        scanner_name: 'PBIOBScanner',
+        camera_ip_address: '10.0.0.50',
+        scans_dir: '/data/scans',
+        bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: 'test@salk.edu',
+        bloom_scanner_password: '********',
+        bloom_anon_key: 'testkey123',
+      },
+      hasCredentials: true,
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Save Configuration/i })
+      ).toBeInTheDocument();
+    });
+
+    const saveButton = screen.getByRole('button', {
+      name: /Save Configuration/i,
+    });
+    expect(saveButton.className).toContain('bg-lime-700');
+    expect(saveButton.className).not.toContain('bg-blue-600');
+
+    const fetchButton = screen.getByRole('button', {
+      name: /Fetch Scanners from Bloom/i,
+    });
+    expect(fetchButton.className).toContain('bg-lime-700');
+    expect(fetchButton.className).not.toContain('bg-blue-600');
+  });
+});
+
+describe('MachineConfiguration scanner-mode radio color', () => {
+  it('uses text-lime-700 (accent color) on the scanner-mode radio buttons, not blue', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByText('CylinderScan')).toBeInTheDocument();
+    });
+
+    const cylinderRadio = screen.getByDisplayValue('cylinderscan');
+    const graviRadio = screen.getByDisplayValue('graviscan');
+
+    [cylinderRadio, graviRadio].forEach((el) => {
+      expect(el.className).toContain('text-lime-700');
+      expect(el.className).not.toContain('text-blue-600');
+    });
+  });
+});
+
+describe('MachineConfiguration Hardware section — camera detection (#338)', () => {
+  it('(a) detects cameras on mount and always includes the mock camera in the dropdown', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Mock Camera')).toBeInTheDocument();
+    });
+  });
+
+  it('the manual "Detect Cameras" button re-triggers detection on demand', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Detect Cameras/i }));
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('shows a camera-detection error message when detection fails, distinct from zero-cameras-found', async () => {
+    mockCameraAPI.detectCameras.mockResolvedValue({
+      success: false,
+      cameras: [],
+      error: 'Camera subprocess unavailable',
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Camera subprocess unavailable')
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('(b) selecting a detected camera sets camera_ip_address and Test Connection targets it', async () => {
+    mockCameraAPI.detectCameras.mockResolvedValue({
+      success: true,
+      cameras: [
+        {
+          ip_address: 'mock',
+          model_name: 'Mock Camera',
+          serial_number: '',
+          mac_address: '',
+          user_defined_name: '',
+          friendly_name: 'Mock Camera',
+          is_mock: true,
+        },
+        {
+          ip_address: '10.0.0.77',
+          model_name: 'acA2000-50gm',
+          serial_number: 'SN123',
+          mac_address: '00:11:22:33:44:55',
+          user_defined_name: '',
+          friendly_name: 'acA2000-50gm (10.0.0.77)',
+          is_mock: false,
+        },
+      ],
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByText('acA2000-50gm (10.0.0.77)')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Camera IP/i), {
+      target: { value: '10.0.0.77' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Test Connection/i }));
+
+    await waitFor(() => {
+      expect(mockConfigAPI.testCamera).toHaveBeenCalledWith('10.0.0.77');
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Save Configuration/i })
+    );
+
+    await waitFor(() => {
+      expect(mockConfigAPI.set).toHaveBeenCalledWith(
+        expect.objectContaining({ camera_ip_address: '10.0.0.77' })
+      );
+    });
+  });
+
+  it('(c) choosing Manual Entry reveals a free-text input that still saves via config.set', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Mock Camera')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/Camera IP/i), {
+      target: { value: 'manual' },
+    });
+
+    const manualInput = await screen.findByLabelText(/Camera IP/i);
+    fireEvent.change(manualInput, { target: { value: '10.0.0.99' } });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Save Configuration/i })
+    );
+
+    await waitFor(() => {
+      expect(mockConfigAPI.set).toHaveBeenCalledWith(
+        expect.objectContaining({ camera_ip_address: '10.0.0.99' })
+      );
+    });
+  });
+
+  it('(d) zero detected cameras falls back to manual entry', async () => {
+    mockCameraAPI.detectCameras.mockResolvedValue({
+      success: true,
+      cameras: [],
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Camera IP/i)).toHaveAttribute(
+        'type',
+        'text'
+      );
+    });
+  });
+
+  it('(e) a rejected camera:detect-cameras promise also falls back to manual entry without throwing', async () => {
+    mockCameraAPI.detectCameras.mockRejectedValue(new Error('IPC failure'));
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Camera IP/i)).toHaveAttribute(
+        'type',
+        'text'
+      );
+    });
+  });
+
+  it('(f) a previously-saved camera IP not in the detected list pre-fills manual entry, not blank or mock', async () => {
+    mockConfigAPI.get.mockResolvedValue({
+      config: {
+        scanner_mode: 'cylinderscan',
+        scanner_name: '',
+        camera_ip_address: '10.0.0.55',
+        scans_dir: '~/.bloom/scans',
+        bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+      },
+      hasCredentials: false,
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Camera IP/i)).toHaveValue('10.0.0.55');
+    });
+  });
+
+  it('(g) a previously-saved camera IP matching a detected camera pre-selects it in the dropdown', async () => {
+    mockConfigAPI.get.mockResolvedValue({
+      config: {
+        scanner_mode: 'cylinderscan',
+        scanner_name: '',
+        camera_ip_address: '10.0.0.77',
+        scans_dir: '~/.bloom/scans',
+        bloom_api_url: 'https://api.bloom.salk.edu/proxy',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+      },
+      hasCredentials: false,
+    });
+    mockCameraAPI.detectCameras.mockResolvedValue({
+      success: true,
+      cameras: [
+        {
+          ip_address: 'mock',
+          model_name: 'Mock Camera',
+          serial_number: '',
+          mac_address: '',
+          user_defined_name: '',
+          friendly_name: 'Mock Camera',
+          is_mock: true,
+        },
+        {
+          ip_address: '10.0.0.77',
+          model_name: 'acA2000-50gm',
+          serial_number: 'SN123',
+          mac_address: '00:11:22:33:44:55',
+          user_defined_name: '',
+          friendly_name: 'acA2000-50gm (10.0.0.77)',
+          is_mock: false,
+        },
+      ],
+    });
+
+    render(<MachineConfiguration />);
+
+    // Both conditions must hold in the SAME poll: a transient manual-entry
+    // <input> can briefly carry the same value before the detection effect
+    // resolves and swaps it for the <select> — asserting the tag separately
+    // afterward races that swap (passed locally, flaked on Linux CI).
+    await waitFor(() => {
+      const field = screen.getByLabelText(/Camera IP/i);
+      expect(field.tagName).toBe('SELECT');
+      expect(field).toHaveValue('10.0.0.77');
+    });
+  });
+});
+
+describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
+  it('(h) Check Hardware invokes python:check-hardware and displays the result', async () => {
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Check Hardware/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Check Hardware/i }));
+
+    await waitFor(() => {
+      expect(mockPythonAPI.checkHardware).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/device\(s\) found/i).length).toBeGreaterThan(
+        0
+      );
+    });
+  });
+
+  it('(i) Restart Python confirms before restarting, and only restarts if confirmed', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Restart Python/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Restart Python/i }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(mockPythonAPI.restart).not.toHaveBeenCalled();
+
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: /Restart Python/i }));
+
+    await waitFor(() => {
+      expect(mockPythonAPI.restart).toHaveBeenCalled();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('surfaces an error when python:check-hardware rejects', async () => {
+    mockPythonAPI.checkHardware.mockRejectedValue(new Error('IPC failure'));
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Check Hardware/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Check Hardware/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('IPC failure')).toBeInTheDocument();
+    });
+  });
+
+  it('surfaces an error when python:restart rejects', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockPythonAPI.restart.mockRejectedValue(new Error('restart IPC failure'));
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Restart Python/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Restart Python/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('restart IPC failure')).toBeInTheDocument();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('surfaces an error when python:restart resolves with success: false', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockPythonAPI.restart.mockResolvedValue({
+      success: false,
+      error: 'Python executable not found',
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Restart Python/i })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Restart Python/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Python executable not found')
+      ).toBeInTheDocument();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('Test Connection targets the manually-entered IP when in manual-entry mode', async () => {
+    mockCameraAPI.detectCameras.mockResolvedValue({
+      success: true,
+      cameras: [],
+    });
+
+    render(<MachineConfiguration />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Camera IP/i)).toHaveAttribute(
+        'type',
+        'text'
+      );
+    });
+
+    fireEvent.change(screen.getByLabelText(/Camera IP/i), {
+      target: { value: '10.0.0.88' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Test Connection/i }));
+
+    await waitFor(() => {
+      expect(mockConfigAPI.testCamera).toHaveBeenCalledWith('10.0.0.88');
     });
   });
 });

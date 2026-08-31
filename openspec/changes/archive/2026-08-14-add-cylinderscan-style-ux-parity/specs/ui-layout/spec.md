@@ -1,8 +1,4 @@
-## Capability: UI Layout Consistency
-
-Pages with two-panel layouts (settings + live preview) SHALL use a consistent centered container pattern.
-
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Camera Settings Page Layout
 

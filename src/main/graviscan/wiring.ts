@@ -153,7 +153,19 @@ export const graviSessionFns: SessionFns = {
     scanSession = s;
   },
   markScanJobRecorded: (key: string) => {
-    if (scanSession?.jobs[key]) {
+    // `key` reaches here from an untrusted renderer IPC call
+    // (`graviscan:mark-job-recorded`) with no shape validation upstream.
+    // `scanSession.jobs` is a plain object literal — a bracket-access
+    // truthiness check alone (`scanSession?.jobs[key]`) would resolve
+    // `key: '__proto__'` through the prototype chain to `Object.prototype`
+    // itself (truthy), then mutate it, polluting every plain object in
+    // this process for the rest of its lifetime. `hasOwnProperty` only
+    // ever matches a key this module itself wrote via `jobs[key] = {...}`
+    // (`session-handlers.ts`'s job-creation loop), never an inherited one.
+    if (
+      scanSession &&
+      Object.prototype.hasOwnProperty.call(scanSession.jobs, key)
+    ) {
       scanSession.jobs[key].status = 'recorded';
     }
   },

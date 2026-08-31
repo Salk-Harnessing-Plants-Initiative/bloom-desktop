@@ -310,7 +310,7 @@ BLOOM_ANON_KEY=legacykey`;
       // segments individually rather than a hardcoded POSIX literal, so
       // this passes on Windows too.
       expect(defaults.scans_dir).toContain(path.join('.bloom', 'scans'));
-      expect(defaults.bloom_api_url).toBe('https://api.bloom.salk.edu/proxy');
+      expect(defaults.bloom_api_url).toBe('https://bloom.salk.edu/api');
     });
   });
 

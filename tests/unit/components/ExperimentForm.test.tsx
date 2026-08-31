@@ -504,3 +504,21 @@ describe('ExperimentForm', () => {
     });
   });
 });
+
+describe('ExperimentForm color palette', () => {
+  it('uses focus:ring-lime-500 on the name input and submit button, not blue', () => {
+    render(
+      <ExperimentForm
+        scientists={mockScientists}
+        accessions={mockAccessions}
+        onSuccess={vi.fn()}
+      />
+    );
+
+    const { nameInput, submitButton } = getFormElements();
+    expect(nameInput.className).toContain('focus:ring-lime-500');
+    expect(nameInput.className).not.toContain('focus:ring-blue-500');
+    expect(submitButton.className).toContain('focus:ring-lime-500');
+    expect(submitButton.className).not.toContain('focus:ring-blue-500');
+  });
+});

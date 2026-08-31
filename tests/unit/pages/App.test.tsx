@@ -40,6 +40,15 @@ const mockConfigAPI = {
     .mockResolvedValue({ slackConfigured: true, libusbRecoveryEnabled: true }),
 };
 
+const mockDatabaseAPI = {
+  scans: {
+    getRecent: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    getFailedUploadCount: vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { failedCount: 0 } }),
+  },
+};
+
 const mockGraviAPI = {
   getScannerStatus: vi.fn().mockResolvedValue({ success: true, scanners: [] }),
   getConfig: vi.fn().mockResolvedValue({
@@ -49,6 +58,12 @@ const mockGraviAPI = {
   getScanStatus: vi
     .fn()
     .mockResolvedValue({ success: true, data: { isActive: false } }),
+  // GraviScan Capture Scan screen (Tier 4) — fetched unconditionally on
+  // mount to build the startScan() sane_name map.
+  detectScanners: vi.fn().mockResolvedValue({
+    success: true,
+    data: { success: true, scanners: [], count: 0 },
+  }),
   onScanStarted: vi.fn().mockReturnValue(vi.fn()),
   onScanComplete: vi.fn().mockReturnValue(vi.fn()),
   onScanError: vi.fn().mockReturnValue(vi.fn()),
@@ -111,6 +126,14 @@ beforeEach(() => {
     success: true,
     data: { isActive: false },
   });
+  mockDatabaseAPI.scans.getRecent.mockResolvedValue({
+    success: true,
+    data: [],
+  });
+  mockDatabaseAPI.scans.getFailedUploadCount.mockResolvedValue({
+    success: true,
+    data: { failedCount: 0 },
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
@@ -121,10 +144,22 @@ beforeEach(() => {
       gravi: mockGraviAPI,
       scanner: { getScannerId: vi.fn().mockResolvedValue('TestScanner') },
       database: {
-        ...win.electron.database,
+        // Base: the global test setup's mock (phenotypers, scientists,
+        // scans.list/export, accessions) — preserved for components that
+        // rely on it incidentally (e.g. PhenotyperChooser, BrowseScans).
+        ...win.electron?.database,
+        // CylinderScan Home dashboard's recent-scans/failed-upload-count.
+        scans: {
+          ...win.electron?.database?.scans,
+          ...mockDatabaseAPI.scans,
+        },
         graviscans: mockDatabaseGraviscansAPI,
+        // GraviScan Capture Scan screen's ExperimentChooser/PhenotyperChooser
+        // (Tier 4) plus Tier 5's Metadata listing — absent from the global
+        // test setup's bare database mock.
         experiments: {
-          ...win.electron.database?.experiments,
+          ...win.electron?.database?.experiments,
+          list: vi.fn().mockResolvedValue({ success: true, data: [] }),
           ...mockDatabaseExperimentsAPI,
         },
         graviPlateAccessions: mockDatabaseGraviPlateAccessionsAPI,
@@ -263,5 +298,41 @@ describe('App routing', () => {
         screen.getByRole('heading', { name: /configure scanner/i })
       ).toBeInTheDocument();
     });
+  });
+
+  it('navigates to the GraviScan capture screen via its nav link in graviscan mode', async () => {
+    mockUseAppMode.mockReturnValue({ mode: 'graviscan', isLoading: false });
+
+    render(<App />);
+
+    const navLink = await screen.findByRole('link', {
+      name: /^capture scan$/i,
+    });
+    fireEvent.click(navLink);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /^capture scan$/i })
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("CylinderScan mode's own /capture-scan route (CaptureScan.tsx) still resolves, unchanged, alongside GraviScan's same-named route", async () => {
+    // App.tsx registers "capture-scan" inside two mutually exclusive
+    // `mode === '...'  && (...)` JSX blocks, so only one of
+    // CaptureScan/GraviScan is ever mounted at that path for a given
+    // mode — never both. Confirmed structurally by inspection; this test
+    // checks the cylinderscan nav link still targets the same route
+    // CaptureScan.tsx has always owned, without deep-rendering
+    // CaptureScan.tsx itself (a large, pre-existing, camera/scanner/
+    // session-heavy component entirely unrelated to this tier's change).
+    mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
+
+    render(<App />);
+
+    const navLink = await screen.findByRole('link', {
+      name: /^capture scan$/i,
+    });
+    expect(navLink).toHaveAttribute('href', '/capture-scan');
   });
 });

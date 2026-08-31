@@ -1,37 +1,53 @@
 /**
- * Unit tests: PythonStatus component (#96 + #198)
+ * Unit tests: PythonStatus component (#96 + #198 + #339)
  *
- * Covers two things that both touch the same useEffect:
+ * Covers:
  * - #96: onStatus/onError listener cleanup on unmount
  * - #198: the effect body itself (not just render output) is gated on
  *   mode, since React's Rules of Hooks forbid conditionally skipping a
  *   hook call — a render-only gate would still fire the effect (and its
  *   IPC calls/subscriptions) in graviscan mode.
+ * - #339: Check Hardware / Restart Python moved to Machine Configuration.
+ *   Home's PythonStatus now shows only a simple Connected/Checking/Error
+ *   status indicator with a generic admin-contact message on Error, and
+ *   never invokes python:check-hardware or python:restart itself.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, cleanup, waitFor } from '@testing-library/react';
 import { PythonStatus } from '../../../src/renderer/components/PythonStatus';
 
 const mockOnStatusCleanup = vi.fn();
 const mockOnErrorCleanup = vi.fn();
 
+let capturedErrorCallback: (error: string) => void = () => {};
+let capturedStatusCallback: (status: string) => void = () => {};
+
 const mockPythonAPI = {
   getVersion: vi.fn().mockResolvedValue({ version: '1.0.0' }),
-  checkHardware: vi.fn().mockResolvedValue({
-    camera: { library_available: true, devices_found: 1, available: true },
-    daq: { library_available: true, devices_found: 1, available: true },
+  checkHardware: vi.fn(),
+  restart: vi.fn(),
+  onStatus: vi.fn().mockImplementation((cb: (status: string) => void) => {
+    capturedStatusCallback = cb;
+    return mockOnStatusCleanup;
   }),
-  restart: vi.fn().mockResolvedValue({ success: true }),
-  onStatus: vi.fn().mockReturnValue(mockOnStatusCleanup),
-  onError: vi.fn().mockReturnValue(mockOnErrorCleanup),
+  onError: vi.fn().mockImplementation((cb: (error: string) => void) => {
+    capturedErrorCallback = cb;
+    return mockOnErrorCleanup;
+  }),
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockPythonAPI.getVersion.mockResolvedValue({ version: '1.0.0' });
-  mockPythonAPI.onStatus.mockReturnValue(mockOnStatusCleanup);
-  mockPythonAPI.onError.mockReturnValue(mockOnErrorCleanup);
+  mockPythonAPI.onStatus.mockImplementation((cb: (status: string) => void) => {
+    capturedStatusCallback = cb;
+    return mockOnStatusCleanup;
+  });
+  mockPythonAPI.onError.mockImplementation((cb: (error: string) => void) => {
+    capturedErrorCallback = cb;
+    return mockOnErrorCleanup;
+  });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
@@ -70,65 +86,23 @@ describe('PythonStatus — cylinderscan mode', () => {
     expect(mockOnErrorCleanup).toHaveBeenCalledTimes(1);
   });
 
-  it('disables the Restart Python button while a restart is in flight, so a double-click cannot fire two concurrent restarts', async () => {
-    let resolveRestart: () => void;
-    mockPythonAPI.restart.mockReturnValue(
-      new Promise<{ success: boolean }>((resolve) => {
-        resolveRestart = () => resolve({ success: true });
-      })
-    );
-
+  it('never invokes python:check-hardware or python:restart — those actions live in Machine Configuration now', async () => {
     const { getByText } = render(<PythonStatus mode="cylinderscan" />);
+
     await waitFor(() => {
       expect(getByText('Python Backend Status')).toBeInTheDocument();
     });
 
-    const button = getByText('Restart Python') as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
-
-    fireEvent.click(button);
+    act(() => {
+      capturedErrorCallback('Python process crashed');
+    });
 
     await waitFor(() => {
-      expect(button.disabled).toBe(true);
-    });
-    // A second click while disabled must not invoke restart() again.
-    fireEvent.click(button);
-    expect(mockPythonAPI.restart).toHaveBeenCalledTimes(1);
-
-    resolveRestart!();
-
-    await waitFor(() => {
-      expect(button.disabled).toBe(false);
-    });
-  });
-
-  it('surfaces a failed restart instead of reporting success', async () => {
-    mockPythonAPI.restart.mockResolvedValue({
-      success: false,
-      error: 'Python executable not found',
+      expect(getByText(/Contact your administrator/i)).toBeInTheDocument();
     });
 
-    const { getByText, queryByText } = render(
-      <PythonStatus mode="cylinderscan" />
-    );
-    await waitFor(() => {
-      expect(getByText('Python Backend Status')).toBeInTheDocument();
-    });
-
-    const button = getByText('Restart Python') as HTMLButtonElement;
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(getByText('Python executable not found')).toBeInTheDocument();
-    });
-
-    // The button must re-enable, and "Restarted" must never be shown for a
-    // failed restart — getVersion() must not be re-fetched either (only
-    // the initial on-mount call should have happened), since there's no
-    // reason to believe it's safe to call after a failed restart.
-    expect(button.disabled).toBe(false);
-    expect(queryByText('Restarted')).not.toBeInTheDocument();
-    expect(mockPythonAPI.getVersion).toHaveBeenCalledTimes(1);
+    expect(mockPythonAPI.checkHardware).not.toHaveBeenCalled();
+    expect(mockPythonAPI.restart).not.toHaveBeenCalled();
   });
 });
 
@@ -148,5 +122,73 @@ describe('PythonStatus — graviscan mode', () => {
     expect(mockPythonAPI.getVersion).not.toHaveBeenCalled();
     expect(mockPythonAPI.onStatus).not.toHaveBeenCalled();
     expect(mockPythonAPI.onError).not.toHaveBeenCalled();
+  });
+});
+
+describe('PythonStatus administrator-contact messaging (#104, simplified per #339)', () => {
+  it('shows a generic "Contact your administrator" message when status is Error', async () => {
+    const { getByText } = render(<PythonStatus mode="cylinderscan" />);
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    act(() => {
+      capturedErrorCallback('Camera library not installed');
+    });
+
+    await waitFor(() => {
+      expect(getByText(/Contact your administrator/i)).toBeInTheDocument();
+    });
+  });
+
+  it('never links to Machine Configuration, regardless of status', async () => {
+    const { getByText, container } = render(
+      <PythonStatus mode="cylinderscan" />
+    );
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    act(() => {
+      capturedErrorCallback('Camera library not installed');
+    });
+
+    await waitFor(() => {
+      expect(getByText(/Contact your administrator/i)).toBeInTheDocument();
+    });
+
+    expect(
+      container.querySelector('a[href*="machine-config"]')
+    ).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/machine config/i);
+    // Regression guard: the admin-only keyboard shortcut must never be
+    // printed on Home, even as a hint — Machine Configuration's whole
+    // access model is "reachable only if you already know the shortcut
+    // out of band" (see docs/CONFIGURATION.md's admin-facing note). Any
+    // end user who sees this error text must not learn the shortcut from
+    // it, or that access model is defeated for exactly the users it's
+    // meant to exclude.
+    expect(container.textContent).not.toMatch(/shift/i);
+    expect(container.textContent).not.toMatch(/ctrl|cmd/i);
+  });
+});
+
+describe('PythonStatus — process-exit classification', () => {
+  it('classifies a "Process exited: <code>" status push as Error, not the calm Checking bucket', async () => {
+    const { getByText } = render(<PythonStatus mode="cylinderscan" />);
+    await waitFor(() => {
+      expect(getByText('Python Backend Status')).toBeInTheDocument();
+    });
+
+    // main.ts pushes this via python:status (not python:error) when the
+    // subprocess dies — it must still count as Error.
+    act(() => {
+      capturedStatusCallback('Process exited: 1');
+    });
+
+    await waitFor(() => {
+      expect(getByText('Error')).toBeInTheDocument();
+    });
+    expect(getByText(/Contact your administrator/i)).toBeInTheDocument();
   });
 });

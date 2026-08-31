@@ -2038,6 +2038,61 @@ test.describe('Renderer Database IPC - Scans List with Pagination', () => {
     expect(result.data.scans[1].plant_id).toBe('PLANT-ORDER-MID');
     expect(result.data.scans[2].plant_id).toBe('PLANT-ORDER-OLDEST');
   });
+
+  test("includes each image's path and frame_number (Tier 4, #106 thumbnail column)", async () => {
+    const { experiment1, phenotyper } = await createTestScanData();
+
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment1.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'PLANT-THUMBNAIL-TEST',
+        path: '/test/scans/thumbnail/PLANT-THUMBNAIL-TEST',
+        capture_date: new Date(),
+        num_frames: 2,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 10.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+    await prisma.image.create({
+      data: {
+        scan_id: scan.id,
+        frame_number: 1,
+        path: 'frame_001.jpg',
+        status: 'uploaded',
+      },
+    });
+    await prisma.image.create({
+      data: {
+        scan_id: scan.id,
+        frame_number: 0,
+        path: 'frame_000.jpg',
+        status: 'uploaded',
+      },
+    });
+
+    const result = await callPaginatedList({ page: 1, pageSize: 25 });
+
+    expect(result.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const found = (result.data.scans as any[]).find(
+      (s) => s.plant_id === 'PLANT-THUMBNAIL-TEST'
+    );
+    expect(found).toBeDefined();
+    expect(found.images).toHaveLength(2);
+    expect(found.images[0]).toHaveProperty('path');
+    expect(found.images[0]).toHaveProperty('frame_number');
+    expect(found.images[0]).toHaveProperty('id');
+    expect(found.images[0]).toHaveProperty('status');
+  });
 });
 
 /**
@@ -2343,6 +2398,64 @@ test.describe('Renderer Database IPC - Scans getRecent', () => {
     expect(Array.isArray(result.data)).toBe(true);
     expect(result.data!.length).toBeGreaterThan(0);
     expect(result.data![0].plant_id).toBe('RECENT_SCAN_001');
+  });
+
+  test("includes each image's status in the response (Tier 4, #104 Today's Activity)", async () => {
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Recent Scientist 2', email: 'recent2@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Recent Phenotyper 2', email: 'recentpheno2@test.com' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Recent Experiment 2',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const scan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'RECENT_SCAN_WITH_IMAGES',
+        path: './scans/test/RECENT_SCAN_WITH_IMAGES',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+    await prisma.image.create({
+      data: {
+        scan_id: scan.id,
+        frame_number: 0,
+        path: 'frame_000.jpg',
+        status: 'uploaded',
+      },
+    });
+
+    const result = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.database.scans.getRecent();
+    });
+
+    expect(result.success).toBe(true);
+    const found = result.data!.find(
+      (s) => s.plant_id === 'RECENT_SCAN_WITH_IMAGES'
+    );
+    expect(found).toBeDefined();
+    expect(Array.isArray(found!.images)).toBe(true);
+    expect(found!.images.length).toBe(1);
+    expect(found!.images[0].status).toBe('uploaded');
   });
 });
 
@@ -2934,6 +3047,52 @@ test.describe('Renderer Database IPC - GraviScan graviscans.*', () => {
     expect(detail.success).toBe(true);
     expect(detail.data.scans).toHaveLength(1);
   });
+
+  test('create is idempotent for the same (session_id, scanner_id, plate_index, cycle_number) through the real IPC bridge', async () => {
+    const fx = await seedGraviScanFixture();
+    const session = await prisma.graviScanSession.create({
+      data: {
+        experiment_id: fx.experiment.id,
+        phenotyper_id: fx.phenotyper.id,
+      },
+    });
+
+    const payload = {
+      experiment_id: fx.experiment.id,
+      phenotyper_id: fx.phenotyper.id,
+      scanner_id: fx.scanner.id,
+      session_id: session.id,
+      cycle_number: 1,
+      path: '/scans/dup-e2e.tif',
+      grid_mode: '2grid',
+      plate_index: '00',
+      resolution: 600,
+    };
+
+    const first = await window.evaluate((data) => {
+      return (window as WindowWithElectron).electron.database.graviscans.create(
+        data
+      );
+    }, payload);
+    expect(first.success).toBe(true);
+
+    const second = await window.evaluate((data) => {
+      return (window as WindowWithElectron).electron.database.graviscans.create(
+        data
+      );
+    }, payload);
+    expect(second.success).toBe(true);
+
+    const rows = await prisma.graviScan.findMany({
+      where: {
+        session_id: session.id,
+        scanner_id: fx.scanner.id,
+        plate_index: '00',
+        cycle_number: 1,
+      },
+    });
+    expect(rows).toHaveLength(1);
+  });
 });
 
 test.describe('Renderer Database IPC - GraviScan graviscanSessions.*', () => {
@@ -3005,6 +3164,67 @@ test.describe('Renderer Database IPC - GraviScan graviscanPlateAssignments.*', (
     );
     expect(listed.success).toBe(true);
     expect(listed.data).toHaveLength(2);
+  });
+
+  test('waveNumber scopes each wave to its own independent row through the real IPC bridge', async () => {
+    const fx = await seedGraviScanFixture();
+
+    await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.upsertMany(
+          experimentId,
+          scannerId,
+          [{ plate_index: '00', plate_barcode: 'WAVE2' }],
+          2
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.upsertMany(
+          experimentId,
+          scannerId,
+          [{ plate_index: '00', plate_barcode: 'WAVE3' }],
+          3
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+
+    const wave2 = await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.list(
+          experimentId,
+          scannerId,
+          2
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    expect(wave2.data).toHaveLength(1);
+    expect(wave2.data[0].plate_barcode).toBe('WAVE2');
+
+    const wave3 = await window.evaluate(
+      ({ experimentId, scannerId }) => {
+        return (
+          window as WindowWithElectron
+        ).electron.database.graviscanPlateAssignments.list(
+          experimentId,
+          scannerId,
+          3
+        );
+      },
+      { experimentId: fx.experiment.id, scannerId: fx.scanner.id }
+    );
+    expect(wave3.data).toHaveLength(1);
+    expect(wave3.data[0].plate_barcode).toBe('WAVE3');
   });
 });
 
@@ -3177,5 +3397,102 @@ test.describe('Renderer Database IPC - GraviScan experiments.{link,unlink,list}G
     );
     expect(relinked.success).toBe(true);
     expect(relinked.data.accession.id).toBe(fx.accessionB.id);
+  });
+});
+
+test.describe('Renderer Database IPC - Scans getFailedUploadCount (Tier 4, #104)', () => {
+  test('counts failed images across non-deleted scans, any capture date', async () => {
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Failed Upload Scientist', email: 'failedupload@test.com' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: {
+        name: 'Failed Upload Phenotyper',
+        email: 'faileduploadpheno@test.com',
+      },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Failed Upload Experiment',
+        species: 'Arabidopsis',
+        scientist_id: scientist.id,
+      },
+    });
+
+    const oldScan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'FAILED_UPLOAD_OLD',
+        path: './scans/test/FAILED_UPLOAD_OLD',
+        capture_date: new Date('2020-01-01T00:00:00.000Z'),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: false,
+      },
+    });
+    await prisma.image.create({
+      data: {
+        scan_id: oldScan.id,
+        frame_number: 0,
+        path: 'frame_000.jpg',
+        status: 'failed',
+      },
+    });
+    await prisma.image.create({
+      data: {
+        scan_id: oldScan.id,
+        frame_number: 1,
+        path: 'frame_001.jpg',
+        status: 'uploaded',
+      },
+    });
+
+    // A failed image on a soft-deleted scan must NOT be counted
+    const deletedScan = await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Test-Scanner',
+        plant_id: 'FAILED_UPLOAD_DELETED',
+        path: './scans/test/FAILED_UPLOAD_DELETED',
+        capture_date: new Date(),
+        num_frames: 72,
+        exposure_time: 10000,
+        gain: 5.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 36.0,
+        wave_number: 1,
+        plant_age_days: 14,
+        deleted: true,
+      },
+    });
+    await prisma.image.create({
+      data: {
+        scan_id: deletedScan.id,
+        frame_number: 0,
+        path: 'frame_000.jpg',
+        status: 'failed',
+      },
+    });
+
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.scans.getFailedUploadCount();
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data!.failedCount).toBe(1);
   });
 });

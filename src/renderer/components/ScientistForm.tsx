@@ -80,7 +80,7 @@ export function ScientistForm({ onSuccess }: ScientistFormProps) {
           id="name"
           type="text"
           {...register('name')}
-          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-[200px] border border-gray-300"
+          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-[200px] border border-gray-300"
           disabled={isSubmitting}
         />
         {errors.name && (
@@ -96,7 +96,7 @@ export function ScientistForm({ onSuccess }: ScientistFormProps) {
           id="email"
           type="email"
           {...register('email')}
-          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-[200px] border border-gray-300"
+          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-[200px] border border-gray-300"
           disabled={isSubmitting}
         />
         {errors.email && (
@@ -107,7 +107,7 @@ export function ScientistForm({ onSuccess }: ScientistFormProps) {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="px-4 py-2 rounded-md bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="px-4 py-2 rounded-md bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-500 border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {isSubmitting ? 'Adding...' : 'Add new scientist'}
       </button>

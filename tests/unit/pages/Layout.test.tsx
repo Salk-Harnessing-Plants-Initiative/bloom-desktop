@@ -122,6 +122,14 @@ describe('Layout nav links', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('renders a "Capture Scan" nav link pointing to /capture-scan in graviscan mode', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const link = screen.getByRole('link', { name: /^capture scan$/i });
+    expect(link).toHaveAttribute('href', '/capture-scan');
+  });
+
   it('shows "Metadata" and "Browse GraviScans" links, and hides the shared "Browse Scans" link, in graviscan mode — while "Experiments" remains visible', async () => {
     renderLayout('graviscan');
     await waitFor(() => screen.getByText(/scanner:/i));
