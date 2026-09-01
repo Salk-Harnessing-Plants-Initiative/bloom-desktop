@@ -14,10 +14,10 @@
 
 - **GIVEN** a sidebar nav link in either scan mode
 - **WHEN** the link is hovered
-- **THEN** it SHALL use `hover:bg-stone-100 hover:text-lime-700` in place of
+- **THEN** it SHALL use `hover:bg-stone-100 hover:text-lime-800` in place of
   `hover:bg-blue-50 hover:text-blue-600`
 - **WHEN** the link's route is the active route
-- **THEN** it SHALL use `bg-stone-200 text-lime-700 border-r-4 border-lime-700`
+- **THEN** it SHALL use `bg-stone-200 text-lime-800 border-r-4 border-lime-800`
   in place of `bg-blue-50 text-blue-600 border-r-4 border-blue-600`
 
 **Acceptance Criteria**:
@@ -28,6 +28,15 @@
   today's two existing UX affordances (colored hover feedback, a persistent
   active-route border indicator), recolored to lime/stone, rather than
   adopting the pilot's flatter style and losing them.
+- `lime-800` (not `lime-700`) is used specifically for WCAG AA contrast
+  compliance: computed against Tailwind's default palette hex values using
+  the standard relative-luminance formula, `text-lime-700` on `bg-stone-200`
+  is ≈3.98:1 — below the 4.5:1 minimum for normal-size text. `text-lime-800`
+  on `bg-stone-200` computes to ≈5.64:1 (active state), and `text-lime-800`
+  on `bg-stone-100` computes to ≈6.49:1 (hover state) — both comfortably
+  clear AA. This is a computed decision, not a subjective eyeball call; the
+  manual dev-server visual check in `tasks.md` confirms real-browser
+  rendering matches this computation, it does not substitute for it.
 - Applies identically in CylinderScan mode, GraviScan mode, and the
   default/no-mode state — `Layout.tsx` has no mode-conditional styling for
   the shell background or nav-link hover/active classes.
@@ -58,7 +67,7 @@
 
 #### Scenario: Shared pages' and forms' blue elements convert to lime
 
-- **GIVEN** `BrowseScans.tsx`'s date/experiment filter focus rings, "Upload Selected" button, Plant ID link, and row view-icon; `ExperimentForm.tsx`/`PhenotyperForm.tsx`/`ScientistForm.tsx`'s input focus rings and submit buttons; and `MachineConfiguration.tsx`'s checkboxes, input focus rings, and submit buttons
+- **GIVEN** `BrowseScans.tsx`'s date/experiment filter focus rings, "Upload Selected" button, Plant ID link, and row view-icon; `ScanPreview.tsx`'s "Back to Scans" links and Upload button; `ExperimentForm.tsx`/`PhenotyperForm.tsx`/`ScientistForm.tsx`'s input focus rings and submit buttons; and `MachineConfiguration.tsx`'s checkboxes, input focus rings, and submit buttons
 - **WHEN** these elements render
 - **THEN** they SHALL use the same lime button/link/focus-ring classes as the Lime/Stone/Amber Accent Color Convention requirement
 - **AND** existing navigation/upload/filter/form-submission behavior on these pages is unchanged (styling-only)
@@ -71,4 +80,7 @@
 Note: the "Cross-Mode Shell, Sidebar, and Workflow-Guide Palette" requirement
 this note previously deferred is now implemented — see that ADDED
 requirement above. The deferred-note blockquote that followed this
-requirement is removed as part of this change.
+requirement is removed as part of this change. **This MODIFIED entry is
+spec-text cleanup only** — its scenario describes behavior already shipped
+by a prior change (`add-cylinderscan-style-ux-parity`); no task in this
+change's `tasks.md` re-implements it, and none is needed.

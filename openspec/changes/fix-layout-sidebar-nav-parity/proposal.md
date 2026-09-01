@@ -26,16 +26,22 @@ proposals landing avoidable merge friction on the same file.
 - `Layout.tsx`'s shell background: `bg-gray-50` → `bg-stone-100`.
 - Sidebar nav-link hover/active state: `hover:bg-blue-50 hover:text-blue-600`
   / active `bg-blue-50 text-blue-600 border-r-4 border-blue-600` → a
-  lime-accented equivalent (`hover:bg-stone-100 hover:text-lime-700` / active
-  `bg-stone-200 text-lime-700 border-r-4 border-lime-700`) that preserves
+  lime-accented equivalent (`hover:bg-stone-100 hover:text-lime-800` / active
+  `bg-stone-200 text-lime-800 border-r-4 border-lime-800`) that preserves
   today's two UX affordances (colored hover feedback, a persistent border
   active-route indicator) rather than literally copying the pilot's flatter
   `bg-stone-200`-only style (verified directly against
   `bloom-desktop-pilot/app/src/renderer/Layout.tsx:207-211` — the pilot has
-  no text-color or border change on its active nav item; the earlier
+  no text-color or border change on its active nav item; both the earlier
   `add-cylinderscan-style-ux-parity/design.md`'s "lime text/border
-  equivalents" note was an extrapolation beyond the pilot, not a literal
-  port — see `design.md`'s "Decisions" for the full reasoning).
+  equivalents" note **and #328's own issue text** repeat this as if it were
+  a literal port of the pilot's mapping — it isn't, and this proposal
+  knowingly deviates from that instruction; see `design.md`'s "Decisions"
+  for the full reasoning). `lime-800`, not `lime-700`, is used specifically
+  because `lime-700` on `bg-stone-200` computes to ≈3.98:1 contrast —
+  below the WCAG AA minimum (4.5:1) for normal-size text; `lime-800`
+  computes to ≈5.64:1 (active) / ≈6.49:1 (hover), both comfortably clearing
+  AA.
 - This is cross-mode by design (both scan modes share `Layout.tsx`'s shell)
   and was already user-approved as an intentional, visible change to
   GraviScan's shell too, back when Tier 4 first scoped it.
@@ -53,12 +59,16 @@ proposals landing avoidable merge friction on the same file.
   and are removed once confirmed unused elsewhere; the `WorkflowSteps`
   component itself is removed only if nothing else renders it after this
   change (checked directly, not assumed, during implementation).
-- "Configure Scanner" lands in Daily Workflow, not Setup — verified via
-  GitHub issues #182, #230, #245, #228 that GraviScan's USB scanners are
-  fragile enough (device renumbering on failure, stale rows after
-  reconfiguration, parallel-scan races) that Configure Scanner functions as
-  the "verify hardware health before this session" step, the same role
-  Camera Settings plays for CylinderScan — not a one-time setup task.
+- "Configure Scanner" lands in Daily Workflow, not Setup — verified directly
+  via GitHub issue #230 (stale scanner rows persist after USB
+  reconfiguration, blocking a valid config state with no in-app fix), with
+  #182 and #228 as supporting context on general scanner fragility (not
+  direct evidence for this placement — #245 was dropped as a citation
+  entirely after round-1 review found it names an unrelated feature). Copy
+  is condition-specific ("Check scanner detection and connection health —
+  especially after moving cables or a prior scan failure"), not a blanket
+  "every session" framing, to avoid alert fatigue on the days nothing was
+  actually touched.
 
 **#337 — sidebar link-ordering parity, both modes:**
 
@@ -91,8 +101,12 @@ proposals landing avoidable merge friction on the same file.
 
 - Affected specs: `ui-color-palette` (ADDED requirement — the
   cross-mode shell/sidebar palette this spec's own trailing note already
-  flagged as deferred), `ui-management-pages` (ADDED "GraviScan Workflow
-  Guide Structure" requirement, ADDED "Sidebar Navigation Ordering"
+  flagged as deferred; MODIFIED "Shared Scan-Management and Entity-Form
+  Accent Color Convention" — spec-text cleanup only, removing the
+  now-satisfied deferred-note blockquote, no code task attached, since that
+  requirement's actual scenario — including `ScanPreview.tsx` — was already
+  implemented by a prior change), `ui-management-pages` (ADDED "GraviScan
+  Workflow Guide Structure" requirement, ADDED "Sidebar Navigation Ordering"
   requirement, MODIFIED "CylinderScan Workflow Guide Structure" to remove
   its now-stale "GraviScan's equivalent restructure is explicitly deferred"
   note).
@@ -102,5 +116,15 @@ proposals landing avoidable merge friction on the same file.
   assertions for both modes), new `tests/unit/components/GraviScanWorkflowGuide.test.tsx`,
   `tests/unit/pages/Home.test.tsx` (graviscan-mode assertions updated for
   the new component, mirroring how Tier 4 updated its cylinderscan-mode
-  assertions).
+  assertions), `tests/unit/pages/App.test.tsx` (a `workflow-step-1`
+  regression-guard assertion becomes vacuous once numeric testids retire —
+  needs replacing, not just leaving to silently pass for the wrong reason),
+  `tests/e2e/graviscan-browse-metadata.e2e.ts` (a hard-coded
+  `workflow-step-3` selector will break outright and needs updating to the
+  new slug scheme).
+- Follow-up (not fixed by this change, filed as a new issue per `tasks.md`
+  §7): `ConfigureScanner.tsx`'s "Reset USB" and per-scanner "Remove" actions
+  have no confirmation-dialog guard — found during review, worth addressing
+  given this change increases how often operators are prompted toward that
+  page.
 - Closes #328, #337.

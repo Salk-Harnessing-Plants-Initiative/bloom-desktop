@@ -9,9 +9,10 @@ GraviScan's Home page SHALL present its workflow guide via a dedicated `GraviSca
 - **GIVEN** the user is in GraviScan mode and navigates to the Home page
 - **WHEN** the workflow guide renders
 - **THEN** a "Daily Workflow" section SHALL prominently display, in this
-  order: Configure Scanner (verify scanner detection/connection health
-  before each session), Capture Scan (rendered as the single large primary
-  call-to-action), Browse GraviScans (secondary)
+  order: Configure Scanner (check scanner detection and connection health —
+  especially after moving cables or a prior scan failure), Capture Scan
+  (rendered as the single large primary call-to-action), Browse GraviScans
+  (secondary)
 - **AND** a "Setup" section SHALL display, as unordered cards with no step
   numbers: Scientists, Phenotypers, Metadata, Experiments
 
@@ -51,11 +52,18 @@ GraviScan's Home page SHALL present its workflow guide via a dedicated `GraviSca
   Capture Scan, Browse GraviScans, Scientists, Phenotypers, Metadata,
   Experiments
 
+#### Scenario: Default/no-mode sidebar order is unchanged
+
+- **GIVEN** no scan mode is set (`mode` is `null`)
+- **WHEN** the sidebar renders
+- **THEN** links SHALL appear in this order, unchanged from before this
+  requirement existed: Home, Scientists, Phenotypers, Experiments, Browse
+  Scans, Export Scans
+
 **Acceptance Criteria**:
 
-- The default/no-mode sidebar order (Home, Scientists, Phenotypers,
-  Experiments, Browse Scans, Export Scans) is unchanged by this requirement
-  — no mode-specific Daily Workflow concept applies when no mode is set.
+- No mode-specific Daily Workflow concept applies when no mode is set, which
+  is why the default order is unchanged rather than reordered.
 - No link is added, removed, or changes its route/label — ordering only.
 
 ## MODIFIED Requirements

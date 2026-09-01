@@ -55,11 +55,17 @@ The pilot's actual active-nav-link styling
 ```
 
 That's it — no text-color change on active, no border accent, no background
-change on hover at all (only a text-color darken). `add-cylinderscan-style-ux-parity/design.md`'s
-pilot-mapping table claimed "`bg-stone-200` text/border equivalents in place
-of `bg-blue-50`/`text-blue-600`/`border-blue-600`" — that specific
-text/border pairing was never actually attested in the pilot; it was an
-extrapolation written in anticipation of a follow-up, not a verified port.
+change on hover at all (only a text-color darken). Both
+`add-cylinderscan-style-ux-parity/design.md`'s pilot-mapping table **and
+#328's own issue text** claim "`bg-stone-200` + lime text/border" is a
+literal reuse of the pilot's mapping ("The bloom-desktop-pilot repo's own
+`Layout.tsx` already solves the active-nav-item case with `bg-stone-200` —
+reuse that mapping (`bg-stone-200` + lime text/border) rather than inventing
+a new one.") — that specific text/border pairing was never actually
+attested in the pilot; it's an extrapolation that #328 itself repeats from
+the Tier 4 design doc, not a verified port. This proposal knowingly deviates
+from that literal issue instruction (see below for why), rather than
+silently following an inherited false premise.
 
 Today's bloom-desktop nav link has two UX affordances the pilot's doesn't:
 colored hover feedback (`hover:bg-blue-50 hover:text-blue-600`) and a
@@ -67,13 +73,26 @@ persistent `border-r-4` active-route indicator. The user, presented with
 both options directly, chose to keep both affordances and recolor them
 (rather than adopt the pilot's flatter style and lose them):
 
-- Hover: `hover:bg-stone-100 hover:text-lime-700`
-- Active: `bg-stone-200 text-lime-700 border-r-4 border-lime-700`
+- Hover: `hover:bg-stone-100 hover:text-lime-800`
+- Active: `bg-stone-200 text-lime-800 border-r-4 border-lime-800`
 
 This keeps the sidebar's existing clarity (an operator can tell which route
 is active at a glance, and gets hover feedback while scanning the list) while
 moving fully off blue, consistent with the rest of the lime/stone/amber
 convention already established by Tier 4's `ui-color-palette` spec.
+
+**Shade correction (round-1 review):** the first draft of this decision used
+`text-lime-700`/`border-lime-700` for both hover and active. Computed
+directly against Tailwind's default palette hex values (`lime-700` =
+`#4d7c0f`, `lime-800` = `#3f6212`, `stone-100` = `#f5f5f4`, `stone-200` =
+`#e7e5e4`) using the standard WCAG relative-luminance formula:
+`text-lime-700` on `bg-stone-200` (the active state) computes to ≈3.98:1 —
+below the 4.5:1 minimum for normal-size text (WCAG AA). Darkening to
+`lime-800` fixes this: ≈5.64:1 on `bg-stone-200` (active), ≈6.49:1 on
+`bg-stone-100` (hover) — both comfortably clear AA. This is a computed
+correction, not a re-run of the same eyeball check that missed it the first
+time; the manual visual-check task still runs, but as confirmation of a
+known-good computed choice, not as the only check.
 
 ### Decision: GraviScan workflow guide — new standalone component, not a `WorkflowSteps.tsx` restructure
 
@@ -100,34 +119,63 @@ choice on its own merits:
 GraviScan's scanners are USB flatbed scanners (Epson V600-class, per #228),
 materially more fragile than CylinderScan's permanently-mounted,
 Ethernet-connected Basler camera. Verified directly from open GitHub issues,
-not assumed:
+not assumed — and re-weighted after round-1 review, which correctly flagged
+that not all four originally-cited issues carry equal weight:
 
-- **#182** — a scan failure causes a USB disconnect/reconnect with a new
-  device number; the current reconnect logic uses a now-stale `bus:device`
-  address, so every retry after a failure fails.
-- **#230** — after physically moving scanners to different USB ports,
-  Configure Scanner shows every historically-detected scanner (13 shown for
-  5 physically connected in one observed case) with no in-app way to clear
-  stale rows, permanently blocking a valid configuration state.
-- **#245** — a banner surfacing `LIBUSB_ENDPOINT_RECOVERY` env-var state,
-  because recovery behavior for these USB devices is itself
-  environment-dependent.
-- **#228** — a root-cause investigation into a parallel-scan race + libusb
-  120s timeout + stuck-endpoint bug specific to these scanners.
+- **#230 (primary, direct evidence)** — after physically moving scanners to
+  different USB ports, Configure Scanner shows every historically-detected
+  scanner (13 shown for 5 physically connected in one observed case) with no
+  in-app way to clear stale rows, permanently blocking a valid configuration
+  state. This is squarely about the Configure Scanner *screen* failing
+  operators after a real, common physical event — the strongest direct
+  support for putting it somewhere operators will actually revisit.
+- **#182, #228 (general fragility context, not direct evidence for
+  placement)** — #182 is about backend reconnect logic (USB device
+  renumbering after a scan failure), and #228 is a root-cause investigation
+  into a mid-scan parallel-scan race/stuck-endpoint bug whose own recommended
+  fix is a session-time failure-mode UX change, not a Configure Scanner
+  placement question. Both support "these scanners are fragile in general,"
+  which is real and relevant background, but neither is direct evidence that
+  Configure Scanner itself needs pre-session attention. Cited here as
+  context, not as proof.
+- **#245 — dropped as a citation.** Round-1 review found this issue is
+  about an unrelated feature (a header status pill for Slack-webhook/
+  `LIBUSB_ENDPOINT_RECOVERY` env-var health, filed against `main.ts`) that
+  never mentions Configure Scanner at all. Citing it as supporting evidence
+  for this placement decision was an overreach in the original draft;
+  removed rather than kept as padding.
 
 `ConfigureScanner.tsx` itself is described in its own file header as
 "detect/save scanners, a global resolution + grid-mode config, USB reset,
 and per-scanner removal" — that's a hardware-health/troubleshooting surface,
-not a one-time setup form. Given how often these scanners need
-re-identification after being unplugged/replugged (the user's own framing:
-"unplugging them and replugging them in is a nightmare since it isn't
-obvious how to identify them via API"), Configure Scanner plays exactly the
-role Camera Settings plays for CylinderScan: something to verify/confirm is
-healthy before starting a session, especially before a large experiment run.
-It belongs in Daily Workflow, with copy that says so explicitly (e.g.
+not a one-time setup form. #230 alone is enough to place it in Daily
+Workflow rather than Setup, alongside genuinely infrequent tasks like
+registering a new Scientist.
+
+**Copy framing (round-1 review correction):** the original draft's copy —
 "Verify all scanners are detected and connections are healthy before
-starting a session") — not filed away in Setup alongside genuinely
-infrequent tasks like registering a new Scientist.
+starting a session" — was flagged as risking alert fatigue: none of #182/
+#230/#228 describe a problem detectable on a normal day when nothing was
+physically touched, so a blanket "every session" framing risks operators
+tuning it out on the (most) days nothing is actually wrong, exactly the
+days it wouldn't matter, while under-signaling urgency on the days that do
+(right after a cable move or a scan failure). The copy is corrected to
+condition-specific framing: "Check scanner detection and connection
+health — especially after moving cables or a prior scan failure." This
+still lives in Daily Workflow (it's still worth a quick glance each
+session) but no longer implies mandatory reconfiguration every time.
+
+**Verify vs. configure conflation (round-1 review finding):** `ConfigureScanner.tsx`
+also hosts a "Reset USB" action (`handleResetUsb`) and a per-scanner
+"Remove" action (`handleRemove`), confirmed to have **no confirmation
+dialog guard** on either (`grep`-checked directly — no `window.confirm`/
+"Are you sure" anywhere in the file). Prominent Daily Workflow placement
+with "just check things are healthy" copy risks inviting more casual clicks
+into a page containing unguarded destructive controls than that page's risk
+profile warrants. Adding a confirmation guard to those actions is a real
+`ConfigureScanner.tsx` behavior change, out of scope for this Layout.tsx/
+workflow-guide-only change — flagged as a follow-up issue to file (see
+`tasks.md` §7) rather than silently left unaddressed.
 
 This also gives Daily Workflow / Setup a clean structural parallel across
 both modes:
@@ -165,13 +213,26 @@ exactly the problem #337 describes.
 Today's `alwaysLinks` (Home, Scientists, Phenotypers, Experiments) is reused
 verbatim by every mode's link composition. The target orders interleave Home
 alone at the top with mode-specific Daily Workflow links, then group the
-Setup-category links (which differ per mode: CylinderScan adds Accessions,
-GraviScan adds Metadata) afterward — a monolithic `alwaysLinks` block can't
-produce this. `Layout.tsx` is restructured to:
+Setup-category links (which differ per mode: CylinderScan adds Accessions
+*before* Experiments, GraviScan adds Metadata *before* Experiments)
+afterward — a monolithic `alwaysLinks` block can't produce this.
+
+**Composition bug found and fixed (round-1 review):** the first draft of
+this decision defined `setupLinks = [Scientists, Phenotypers, Experiments]`
+and composed each mode as `[...setupLinks, accessionsLink]` /
+`[...setupLinks, metadataLink]`. Two independent reviewers (code-feasibility
+and TDD-strategy) confirmed this is mechanically wrong: spreading an array
+that already ends in `Experiments` and appending one more link after it can
+only ever place that link *last* — producing `...Experiments, Accessions`
+and `...Experiments, Metadata`, the exact reverse of the target order
+(`...Accessions, Experiments` / `...Metadata, Experiments`) stated in this
+proposal's own spec delta and `tasks.md`'s own test description. The fix:
+keep `Experiments` out of the shared array entirely, and append it last in
+each mode's own composition, after the mode-specific Setup link:
 
 ```ts
 const homeLink = { to: '/', label: 'Home', ... };
-const setupLinks = [Scientists, Phenotypers, Experiments]; // shared, order preserved
+const setupLinks = [Scientists, Phenotypers]; // shared, order preserved — Experiments is NOT in this array
 ```
 
 with `Accessions` moved out of `captureLinks` into a CylinderScan-specific
@@ -181,19 +242,23 @@ GraviScan-specific setup group, so each mode composes:
 ```ts
 // cylinderscan
 [homeLink, cameraSettingsLink, captureScanLink, browseScansLink, exportScansLink,
- ...setupLinks, accessionsLink]
+ ...setupLinks, accessionsLink, experimentsLink]
+// = Home, Camera Settings, Capture Scan, Browse Scans, Export Scans,
+//   Scientists, Phenotypers, Accessions, Experiments  ✓ matches spec delta
 
 // graviscan
 [homeLink, configureScannerLink, captureScanLink, browseGraviscansLink,
- ...setupLinks, metadataLink]
+ ...setupLinks, metadataLink, experimentsLink]
+// = Home, Configure Scanner, Capture Scan, Browse GraviScans,
+//   Scientists, Phenotypers, Metadata, Experiments  ✓ matches spec delta
 
 // default/no-mode (unchanged order, just reassembled from the new pieces)
-[homeLink, ...setupLinks, browseScansLink, exportScansLink]
+[homeLink, ...setupLinks, experimentsLink, browseScansLink, exportScansLink]
+// = Home, Scientists, Phenotypers, Experiments, Browse Scans, Export Scans  ✓ unchanged
 ```
 
 The default/no-mode branch's rendered order is unchanged by this
-restructuring (Home, Scientists, Phenotypers, Experiments, Browse Scans,
-Export Scans) — #337 doesn't ask about it, and no mode-specific Daily
+restructuring — #337 doesn't ask about it, and no mode-specific Daily
 Workflow concept applies when there's no mode. This is verified by a
 regression-guard test, not just left as an assumption.
 
@@ -209,10 +274,25 @@ regression-guard test, not just left as an assumption.
 - **`WorkflowSteps.tsx` deletion risk**: only delete the component/interface
   once a repo-wide search confirms zero remaining consumers — if a future
   file needs a truly generic step-list renderer again, that's a fresh
-  decision, not a reason to keep speculative shared code around now.
-- **Judgment-call shading**: exact lime/stone shades for the nav-link hover
-  and active states are a real-browser legibility call, not fully fixed by
-  this doc — verified in the same manual visual check above.
+  decision, not a reason to keep speculative shared code around now. Round-1
+  code-feasibility and TDD review both independently found real consumers a
+  narrow identifier-only grep would miss: the numeric `workflow-step-N`
+  testid string itself (not the `WorkflowSteps`/`graviScanSteps` identifiers)
+  is hard-coded in `tests/unit/pages/App.test.tsx` (a now-vacuous regression
+  guard) and `tests/e2e/graviscan-browse-metadata.e2e.ts` (a selector that
+  breaks outright) — both fixed in `tasks.md` §4.3, not left for the §4.4
+  grep alone to catch.
+- **Judgment-call shading**: resolved by computation, not left to
+  eyeballing alone — see the "nav-link color" decision's shade correction
+  above (`lime-800`, not `lime-700`, computed to clear WCAG AA). The manual
+  visual check confirms real-browser rendering matches the computed choice.
+- **Operator muscle-memory disruption**: the sidebar reorder (#337) changes
+  spatial positions operators click by habit, under real lab time pressure,
+  dozens of times a day. Round-1 review flagged that neither this design doc
+  nor `tasks.md` originally accounted for any transition cost. Mitigated by
+  a one-time team heads-up (see `tasks.md` §7) before/at merge — cheap,
+  and reduces confusion risk for a change explicitly about
+  muscle-memory-sensitive UI.
 
 ## Migration Plan
 
