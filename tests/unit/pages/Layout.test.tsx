@@ -164,6 +164,62 @@ describe('Layout nav links', () => {
       screen.queryByRole('link', { name: /browse graviscans/i })
     ).not.toBeInTheDocument();
   });
+
+  it('orders cylinderscan-mode links Daily-Workflow-first: Home, Camera Settings, Capture Scan, Browse Scans, Export Scans, then Setup: Scientists, Phenotypers, Accessions, Experiments', async () => {
+    renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/',
+      '/camera-settings',
+      '/capture-scan',
+      '/browse-scans',
+      '/export',
+      '/scientists',
+      '/phenotypers',
+      '/accessions',
+      '/experiments',
+    ]);
+  });
+
+  it('orders graviscan-mode links Daily-Workflow-first: Home, Configure Scanner, Capture Scan, Browse GraviScans, then Setup: Scientists, Phenotypers, Metadata, Experiments', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/',
+      '/configure-scanner',
+      '/capture-scan',
+      '/browse-graviscans',
+      '/scientists',
+      '/phenotypers',
+      '/metadata',
+      '/experiments',
+    ]);
+  });
+
+  it('leaves the default/no-mode link order unchanged: Home, Scientists, Phenotypers, Experiments, Browse Scans, Export Scans', async () => {
+    renderLayout(null);
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/',
+      '/scientists',
+      '/phenotypers',
+      '/experiments',
+      '/browse-scans',
+      '/export',
+    ]);
+  });
 });
 
 describe('Layout shell and nav-link colors', () => {
