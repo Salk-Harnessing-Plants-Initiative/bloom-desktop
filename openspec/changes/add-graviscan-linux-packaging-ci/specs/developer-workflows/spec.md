@@ -110,10 +110,9 @@ The `build-python`, `test-integration`, `test-e2e-dev`, `test-make`, `test-make-
 
 #### Scenario: Timeout values leave headroom for normal runs
 
-- **GIVEN** `build-python`, `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` have observed typical durations of roughly 1-2 minutes, 2-4 minutes, 24-34 minutes (with a real non-hung outlier at 46 minutes), 4-6 minutes, and 11 minutes respectively (see `design.md` for the underlying data and its caveats), and `test-make-linux` has no observed CI duration yet at the time this requirement was written
+- **GIVEN** `build-python`, `test-integration`, `test-e2e-dev`, `test-make`, `test-make-windows`, and `test-make-linux` have observed typical durations of roughly 1-2 minutes, 2-4 minutes, 24-34 minutes (with a real non-hung outlier at 46 minutes), 4-6 minutes, 11 minutes, and 6.5 minutes respectively (see `design.md` for the underlying data and its caveats)
 - **WHEN** each job runs normally
-- **THEN** its configured `timeout-minutes` (10, 15, 90, 20, 30, and 20 respectively) is above the observed range for the five jobs with observed data, including the worst real data point found for `test-e2e-dev`
-- **AND** `test-make-linux`'s value is treated as a provisional estimate pending its own observed data, not an equally well-founded figure
+- **THEN** its configured `timeout-minutes` (10, 15, 90, 20, 30, and 20 respectively) is above the observed range for all six jobs, including the worst real data point found for `test-e2e-dev`
 - **AND** a normal run is never falsely terminated for running long
 
 #### Scenario: Timeout values are enforced by the same regression test
