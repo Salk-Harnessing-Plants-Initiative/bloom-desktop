@@ -11,25 +11,26 @@ interface DailyWorkflowStep {
 
 const DAILY_STEPS: DailyWorkflowStep[] = [
   {
-    id: 'camera-settings',
-    title: 'Camera Settings',
-    description: 'Confirm exposure and gain before you scan',
-    route: '/camera-settings',
-    icon: '📷',
+    id: 'configure-scanner',
+    title: 'Configure Scanner',
+    description:
+      'Check scanner detection and connection health — especially after moving cables or a prior scan failure',
+    route: '/configure-scanner',
+    icon: '🔌',
   },
   {
     id: 'capture-scan',
     title: 'Capture Scan',
-    description: 'Capture a 360-degree scan of a plant',
+    description: 'Capture a time-lapse scan',
     route: '/capture-scan',
     icon: '🔄',
     primary: true,
   },
   {
-    id: 'browse-scans',
-    title: 'Browse Scans',
+    id: 'browse-graviscans',
+    title: 'Browse GraviScans',
     description: 'Review and manage captured scans',
-    route: '/browse-scans',
+    route: '/browse-graviscans',
     icon: '📋',
   },
 ];
@@ -50,29 +51,28 @@ const SETUP_STEPS: DailyWorkflowStep[] = [
     icon: '🧑',
   },
   {
-    id: 'accessions',
-    title: 'Accessions',
-    description: 'Define plant accessions and barcode mappings',
-    route: '/accessions',
-    icon: '📁',
+    id: 'metadata',
+    title: 'Metadata',
+    description: 'Configure experiment metadata fields',
+    route: '/metadata',
+    icon: '📝',
   },
   {
     id: 'experiments',
     title: 'Experiments',
-    description: 'Create experiments and attach accessions',
+    description: 'Create experiments to run on the scanner',
     route: '/experiments',
     icon: '🧪',
   },
 ];
 
 /**
- * CylinderScan-only workflow guide. Restructures the prior flat numbered
- * list into a prominent Daily Workflow section (camera check, capture,
- * browse) and a less-prominent, unordered Setup section (#175) — a new
- * component rather than a change to a shared step-list component. See
- * GraviScanWorkflowGuide.tsx for GraviScan's equivalent (#328 piece 2).
+ * GraviScan-only workflow guide. Restructures the prior flat numbered
+ * list into a prominent Daily Workflow section (scanner check, capture,
+ * browse) and a less-prominent, unordered Setup section (#328 piece 2) —
+ * mirrors CylinderScanWorkflowGuide.tsx's pattern (#175).
  */
-export function CylinderScanWorkflowGuide() {
+export function GraviScanWorkflowGuide() {
   const navigate = useNavigate();
 
   return (

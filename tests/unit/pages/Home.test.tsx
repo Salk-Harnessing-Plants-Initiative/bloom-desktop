@@ -84,19 +84,24 @@ describe('Home page', () => {
     expect(screen.getByText(/CylinderScan workflow/)).toBeInTheDocument();
   });
 
-  it('renders GraviScan workflow steps when mode is graviscan', async () => {
+  it('renders the GraviScanWorkflowGuide (Daily Workflow / Setup sections) when mode is graviscan', async () => {
     render(
       <MemoryRouter>
         <Home mode="graviscan" />
       </MemoryRouter>
     );
 
+    // The generic "Workflow Steps" heading is retired for graviscan mode —
+    // GraviScanWorkflowGuide has its own "Daily Workflow"/"Setup" headers,
+    // which would otherwise nest redundantly under it.
     await waitFor(() => {
-      expect(screen.getByText('Workflow Steps')).toBeInTheDocument();
+      expect(screen.getByText('Daily Workflow')).toBeInTheDocument();
     });
+    expect(screen.getByText('Setup')).toBeInTheDocument();
 
-    // GraviScan has Metadata step, no Camera Settings
+    // GraviScan has Metadata and Configure Scanner steps, no Camera Settings
     expect(screen.getByText('Metadata')).toBeInTheDocument();
+    expect(screen.getByText('Configure Scanner')).toBeInTheDocument();
     expect(screen.queryByText('Camera Settings')).not.toBeInTheDocument();
   });
 
@@ -117,7 +122,7 @@ describe('Home page', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/scientists');
   });
 
-  it('GraviScan step 5 (Capture Scan) navigates to /capture-scan, now a real route rather than a Home redirect', async () => {
+  it('GraviScan Capture Scan navigates to /capture-scan, now a real route rather than a Home redirect', async () => {
     render(
       <MemoryRouter>
         <Home mode="graviscan" />
@@ -125,10 +130,10 @@ describe('Home page', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Workflow Steps')).toBeInTheDocument();
+      expect(screen.getByText('Daily Workflow')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByTestId('workflow-step-5'));
+    fireEvent.click(screen.getByTestId('workflow-step-capture-scan'));
     expect(mockNavigate).toHaveBeenCalledWith('/capture-scan');
   });
 
@@ -216,7 +221,7 @@ describe("Home page — Today's Activity summary (#104)", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Workflow Steps')).toBeInTheDocument();
+      expect(screen.getByText('Daily Workflow')).toBeInTheDocument();
     });
 
     expect(mockGetRecent).not.toHaveBeenCalled();

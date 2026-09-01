@@ -316,7 +316,7 @@ test.describe('BrowseGraviScans / ExperimentDetail / Metadata (Tier 5)', () => {
     // regardless of whether navigation itself is correct — assert on
     // rendered content instead, like every other test in this suite.
     await window.click('text=Home');
-    await window.click('[data-testid="workflow-step-3"]');
+    await window.click('[data-testid="workflow-step-metadata"]');
     await window.waitForSelector('h1:has-text("Metadata")');
   });
 

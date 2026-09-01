@@ -2,9 +2,8 @@
  * Unit tests: CylinderScanWorkflowGuide (Tier 4, #175)
  *
  * A new, CylinderScan-only component implementing the Daily-Workflow/Setup
- * restructure — NOT a change to the shared WorkflowSteps.tsx component,
- * which continues to render GraviScan's flat numbered list unchanged (see
- * design.md's "Deferred Scope").
+ * restructure. See GraviScanWorkflowGuide.test.tsx for GraviScan's
+ * equivalent (#328 piece 2).
  */
 
 import { describe, it, expect, vi } from 'vitest';
