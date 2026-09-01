@@ -21,7 +21,7 @@ const DAILY_STEPS: DailyWorkflowStep[] = [
   {
     id: 'capture-scan',
     title: 'Capture Scan',
-    description: 'Capture a time-lapse gravitropism scan',
+    description: 'Capture a time-lapse scan',
     route: '/capture-scan',
     icon: '🔄',
     primary: true,
@@ -60,7 +60,7 @@ const SETUP_STEPS: DailyWorkflowStep[] = [
   {
     id: 'experiments',
     title: 'Experiments',
-    description: 'Create experiments for gravitropism studies',
+    description: 'Create experiments to run on the scanner',
     route: '/experiments',
     icon: '🧪',
   },
