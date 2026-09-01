@@ -429,7 +429,7 @@ export function Layout({ mode = null }: LayoutProps) {
   }, [navigate, location.pathname, blockNavigation, hasUnsavedChanges]);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-stone-100">
       {/* Sidebar */}
       <div className="w-64 bg-white shadow-lg flex flex-col">
         <div className="p-6">
@@ -445,9 +445,9 @@ export function Layout({ mode = null }: LayoutProps) {
               end
               onClick={(event) => confirmNavAway(event, link.to)}
               className={({ isActive }) =>
-                `flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors ${
+                `flex items-center px-6 py-3 text-gray-700 hover:bg-stone-100 hover:text-lime-800 transition-colors ${
                   isActive
-                    ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600'
+                    ? 'bg-stone-200 text-lime-800 border-r-4 border-lime-800'
                     : ''
                 }`
               }

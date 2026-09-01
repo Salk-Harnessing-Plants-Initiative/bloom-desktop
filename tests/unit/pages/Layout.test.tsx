@@ -96,6 +96,7 @@ function renderLayout(mode: string | null, initialPath = '/') {
                 path="metadata-importing"
                 element={<FakeImportingMetadataPage />}
               />
+              <Route path="*" element={<div>Other content</div>} />
             </Route>
           </Routes>
         </UnsavedChangesProvider>
@@ -162,6 +163,60 @@ describe('Layout nav links', () => {
     expect(
       screen.queryByRole('link', { name: /browse graviscans/i })
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('Layout shell and nav-link colors', () => {
+  it('uses bg-stone-100 for the shell background, not bg-gray-50, in cylinderscan mode', async () => {
+    const { container } = renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const shell = container.querySelector('.flex.h-screen');
+    expect(shell?.className).toContain('bg-stone-100');
+    expect(shell?.className).not.toContain('bg-gray-50');
+  });
+
+  it('uses bg-stone-100 for the shell background, not bg-gray-50, in graviscan mode', async () => {
+    const { container } = renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const shell = container.querySelector('.flex.h-screen');
+    expect(shell?.className).toContain('bg-stone-100');
+    expect(shell?.className).not.toContain('bg-gray-50');
+  });
+
+  it('the active Home link uses the lime/stone active treatment, not blue', async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const homeLink = screen.getByRole('link', { name: /^home$/i });
+    expect(homeLink.className).toContain('bg-stone-200');
+    expect(homeLink.className).toContain('text-lime-800');
+    expect(homeLink.className).toContain('border-r-4');
+    expect(homeLink.className).toContain('border-lime-800');
+  });
+
+  it('non-active links carry the lime/stone hover treatment, not blue', async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
+    expect(scientistsLink.className).toContain('hover:bg-stone-100');
+    expect(scientistsLink.className).toContain('hover:text-lime-800');
+  });
+
+  it('no nav link, in either mode, has any blue-* class', async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+    screen.getAllByRole('link').forEach((link) => {
+      expect(link.className).not.toMatch(/blue-/);
+    });
+
+    renderLayout('graviscan', '/');
+    await waitFor(() => screen.getAllByText(/scanner:/i));
+    screen.getAllByRole('link').forEach((link) => {
+      expect(link.className).not.toMatch(/blue-/);
+    });
   });
 });
 
