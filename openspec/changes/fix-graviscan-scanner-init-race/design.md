@@ -37,17 +37,18 @@ Related, previously-unreferenced issues this change substantially resolves: **#2
 
 ### Decision 1: Two-layer guard — coarse `initialize()`-level, plus fine-grained per-`scannerId`
 
-**Layer A — coarse, on `initialize()` itself**, matching issue #350's own suggested shape:
+**Layer A — coarse, on `initialize()` itself**, serializing (not memoizing) overlapping calls:
 
 ```ts
-private initInFlight: Promise<void> | null = null;
+private initQueue: Promise<void> = Promise.resolve();
 
 async initialize(scanners: ScannerConfig[]): Promise<void> {
-  if (this.initInFlight) return this.initInFlight;
-  this.initInFlight = this.doInitialize(scanners).finally(() => {
-    this.initInFlight = null;
-  });
-  return this.initInFlight;
+  const run = this.initQueue.then(
+    () => this.doInitialize(scanners),
+    () => this.doInitialize(scanners) // run even if the previous call in the chain somehow threw
+  );
+  this.initQueue = run.catch(() => {}); // keep the chain alive regardless of this run's outcome
+  return run;
 }
 
 private async doInitialize(scanners: ScannerConfig[]): Promise<void> {
@@ -55,7 +56,7 @@ private async doInitialize(scanners: ScannerConfig[]): Promise<void> {
 }
 ```
 
-A second concurrent call to `initialize()` — regardless of whether its scanner list matches the first's — simply awaits the first call's entire in-flight promise. This closes the untested race an earlier draft of this design missed: `initErrors.clear()` and the stale-subprocess cleanup loop (today's lines 152-168) only ever run once at a time, for *any* two overlapping `initialize()` calls, not just ones spawning the same scanners. The trade-off is that a second caller with a genuinely disjoint scanner list still waits for the first call's entire run to finish — acceptable because both real call sites (Reset USB, start-scan) are rare, human-triggered actions, not a hot path.
+**This is a queue, not the promise-memoization shape used elsewhere in this design (Layer B, `wiring.ts`'s `getOrCreateCoordinator()`) — and that distinction matters.** An earlier version of this design used the same memoized-single-promise shape for Layer A: a second overlapping call would simply be handed the *first* call's promise. That is correct for Layer B and for `getOrCreateCoordinator()` because those calls are requesting an equivalent thing (spawn/reuse *this* `scannerId`; get/create *the* coordinator singleton) — but `initialize()` calls can carry materially different scanner lists, and review of this design caught that memoizing would silently *drop* a second call's list entirely: it would resolve successfully having never actually spawned any scanner unique to it. The queue above avoids this — every call to `initialize()` gets its own `doInitialize(scanners)` invocation with its own scanner list, strictly ordered after any call already in the chain, so `initErrors.clear()` and the stale-subprocess cleanup loop (today's lines 152-168) only ever run once at a time (closing the untested preamble race an earlier draft of this design missed) without ever silently discarding a caller's request. The trade-off is the same as before — a second caller waits for the first call's entire run to finish before its own begins — acceptable because both real call sites (Reset USB, start-scan) are rare, human-triggered actions, not a hot path. A minor, acceptable cost: two back-to-back calls with the *identical* scanner list now run `doInitialize()` twice instead of sharing one in-flight promise, but the second run is cheap — by the time it starts, every scanner is already `ready` in `this.subprocesses`, so Layer B's reuse path makes it a fast no-op pass, not a real respawn.
 
 **Layer B — fine-grained, per-`scannerId`, at the shared `spawnSingleScanner()` choke point:**
 

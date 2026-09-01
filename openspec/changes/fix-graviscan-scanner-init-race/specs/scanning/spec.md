@@ -17,7 +17,7 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **AND** existing subprocesses not in the new config SHALL be shut down
 - **AND** existing subprocesses that are already ready SHALL be reused
 
-#### Scenario: Concurrent initialize calls do not race shared preamble state
+#### Scenario: Concurrent initialize calls do not race shared preamble state, and neither call's scanner list is dropped
 
 - **GIVEN** a `ScanCoordinator` call to `initialize(scannersA)` is in
   progress (has not yet resolved)
@@ -27,8 +27,12 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **THEN** the second call SHALL NOT independently run the
   stale-subprocess cleanup loop or clear `initErrors` while the first
   call's own run of that same preamble is still in progress
-- **AND** the second call's returned `Promise` SHALL resolve only after
-  the first call's entire `initialize()` run has completed
+- **AND** the second call SHALL still run its own `doInitialize`
+  against `scannersB` once the first call's run completes — it SHALL
+  NOT be silently merged into or dropped by the first call's result
+- **AND** after both calls resolve, every scanner unique to `scannersB`
+  SHALL have been spawned (`hasWorker()` returns `true` for it),
+  proving `scannersB` was actually processed and not discarded
 - **AND** no subprocess SHALL be shut down or spawned twice as a result
   of the overlap
 
