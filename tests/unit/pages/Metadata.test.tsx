@@ -16,8 +16,15 @@ describe('Metadata', () => {
     await waitFor(() => {
       expect(container.querySelector('#metadata-file-input')).not.toBeNull();
     });
-    // GraviMetadataList always renders its own container (a <ul>, even if
-    // empty) — confirms both children mounted together, unconditionally.
-    expect(container.querySelector('ul')).not.toBeNull();
+    // GraviMetadataList resolves its initial fetch asynchronously (a loading
+    // message first, then an empty-state message for this mock's empty
+    // list) — wait for it to settle rather than asserting immediately, to
+    // confirm both children mounted together without racing the list's own
+    // async state.
+    await waitFor(() => {
+      expect(
+        container.textContent?.includes('No GraviScan metadata uploaded yet')
+      ).toBe(true);
+    });
   });
 });

@@ -50,6 +50,98 @@ describe('GraviMetadataList', () => {
     };
   });
 
+  it('shows a loading message while the initial file list fetch is in flight', async () => {
+    let resolveListFiles: (value: {
+      success: boolean;
+      data: unknown[];
+    }) => void = () => {};
+    listFiles.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveListFiles = resolve;
+        })
+    );
+    render(<GraviMetadataList />);
+
+    expect(screen.getByText(/loading metadata files/i)).toBeInTheDocument();
+
+    resolveListFiles({ success: true, data: [] });
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/loading metadata files/i)
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('surfaces an error when the file list fetch fails, instead of an empty-state message', async () => {
+    listFiles.mockResolvedValue({
+      success: false,
+      error: 'Could not reach database',
+    });
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not reach database')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/no graviscan metadata uploaded yet/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('falls back to a default message when the file list fetch fails with no error field', async () => {
+    listFiles.mockResolvedValue({ success: false });
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/failed to load metadata files/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('shows an empty-state message when there are no metadata files', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [] });
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no graviscan metadata uploaded yet/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('surfaces an error when expanding fails to fetch plates, without rendering an empty table', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockResolvedValue({ success: false, error: 'Failed to load plates' });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load plates')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('falls back to a default message when expanding fails with no error field', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockResolvedValue({ success: false });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/failed to load plate data/i)
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
   it('lists files with name, date, linked experiments, and plate count, chronologically, no filter/sort UI', async () => {
     listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
     render(<GraviMetadataList />);
