@@ -13,6 +13,8 @@ const WORKFLOW_PATH = path.join(
 );
 
 interface WorkflowJob {
+  needs?: string | string[];
+  'runs-on'?: string;
   'timeout-minutes'?: number;
   strategy?: {
     matrix?: Record<string, unknown>;
@@ -39,6 +41,7 @@ const EXPECTED_TIMEOUTS: Record<string, number> = {
   'test-e2e-dev': 90,
   'test-make': 20,
   'test-make-windows': 30,
+  'test-make-linux': 20,
 };
 
 function loadWorkflow(): WorkflowFile {
@@ -87,6 +90,44 @@ describe('pr-checks.yml timeout-minutes on jobs exposed to main-push queuing', (
       .map(([name]) => name);
 
     expect(unexpectedlyBounded).toEqual([]);
+  });
+});
+
+describe('pr-checks.yml test-make-linux job', () => {
+  it('needs build-python and runs on ubuntu-latest', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-make-linux'];
+
+    expect(job).toBeDefined();
+    expect(job?.needs).toContain('build-python');
+    expect(job?.['runs-on']).toBe('ubuntu-latest');
+  });
+
+  it('runs the Linux-scoped make:linux script, not the shared make script', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-make-linux'];
+    const makeStep = (job?.steps ?? []).find((step) =>
+      step.run?.includes('make:linux')
+    );
+
+    expect(makeStep).toBeDefined();
+    expect(makeStep?.run).toContain('npm run make:linux');
+  });
+
+  it('runs the launch-verification step under xvfb-run with the sandbox disabled', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-make-linux'];
+    const launchStep = (job?.steps ?? []).find((step) =>
+      step.run?.includes('test:package:launch')
+    );
+
+    expect(launchStep).toBeDefined();
+    expect(launchStep?.run).toContain('xvfb-run');
+    expect(
+      (launchStep?.env as Record<string, unknown> | undefined)?.[
+        'ELECTRON_DISABLE_SANDBOX'
+      ]
+    ).toBe(1);
   });
 });
 

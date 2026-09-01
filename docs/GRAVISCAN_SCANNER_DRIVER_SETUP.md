@@ -217,6 +217,9 @@ for status.
 
 ## Related Documentation
 
+- [GraviScan Linux Deployment](GRAVISCAN_LINUX_DEPLOYMENT.md) — the
+  packaged app's own libusb-filter/LD_PRELOAD wiring, deb-vs-rpm choice,
+  and systemd/permissions (distinct from this doc's driver-setup focus)
 - [Scanner Testing Guide](SCANNER_TESTING.md) — CylinderScan scanner
   (Basler camera + NI-DAQ), a different subsystem from GraviScan
 - [Camera Testing Guide](CAMERA_TESTING.md)
