@@ -3,7 +3,7 @@
 Tier 5's post-merge manual walkthrough (PR #290, 2026-08-31) found two gaps in the GraviScan Metadata page (`/metadata`) that were filed as follow-ups rather than fixed in that PR, and are both still present on `main` as of 2026-09-01:
 
 - **#352**: `GraviMetadataList.tsx` has no loading state, no error state, and no empty-state message. A failed `listFiles()` fetch fails silently (the operator sees a blank card indistinguishable from "no files exist") — this is not just a style gap: an operator who mistakes a failed fetch for "no metadata uploaded yet" has a plausible reason to re-upload the same file, risking a duplicate metadata record. The expanded plate/section detail table also has no column headers at all. Every other list screen from the same PR (`BrowseGraviScans.tsx`, `ExperimentDetail.tsx`) already has the loading/error/empty treatment; this component was only in scope for chevron/styling in that PR.
-- **#353**: `GraviMetadataUpload.tsx`'s column-mapping dropdowns are fully independent — nothing stops two different fields (e.g. Medium and Custom Note) from being mapped to the same spreadsheet column. Existing validation checks the parsed *rows*, not the *mapping* that produced them, so a same-column mapping between two non-identity fields can silently corrupt per-row data with no error surfaced anywhere.
+- **#353**: `GraviMetadataUpload.tsx`'s column-mapping dropdowns are fully independent — nothing stops two different fields (e.g. Medium and Custom Note) from being mapped to the same spreadsheet column. Existing validation checks the parsed _rows_, not the _mapping_ that produced them, so a same-column mapping between two non-identity fields can silently corrupt per-row data with no error surfaced anywhere.
 
 ## What Changes
 
