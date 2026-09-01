@@ -97,6 +97,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GraviScan Metadata page UX/data-integrity gaps from Tier 5's PR #290 walkthrough (closes [#352](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/352), [#353](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/353))
+  - `GraviMetadataList.tsx` now has loading/error/empty states on its file-list fetch (previously a failed fetch failed silently, indistinguishable from "no files exist") and on the per-file expand fetch, which had the identical gap
+  - Added the missing `<thead>` column-header row to the expanded plate/section detail table
+  - `GraviMetadataUpload.tsx` now blocks submission when two or more column-mapping fields point at the same spreadsheet column, naming every colliding field and the shared column by position — previously nothing stopped e.g. Medium and Custom Note from silently sharing a column and corrupting per-row data with no error surfaced
+  - See `openspec/changes/fix-gravi-metadata-ux-gaps/` for full design rationale
 - CylinderScan config/UX quick fixes from Tier 4 walkthrough ([PR #344](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/344), closes [#333](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/333), [#334](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/334), [#336](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/336), [#338](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/338), [#339](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/339))
   - Fixed stale default `bloom_api_url` (`api.bloom.salk.edu/proxy` → `bloom.salk.edu/api`) in both `config-store.ts` and a second, independent hardcoded copy in `MachineConfiguration.tsx`
   - Machine Configuration now shows a persistent, dismissible "restart required" notice when Scanner Mode changes, instead of the generic auto-dismissing save toast — confirmed `scanner_mode` is the only Machine Config field with this bug
