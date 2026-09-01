@@ -97,7 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- GraviScan Metadata page UX/data-integrity gaps from Tier 5's PR #290 walkthrough (closes [#352](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/352), [#353](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/353))
+- GraviScan Metadata page UX/data-integrity gaps from Tier 5's PR #290 walkthrough ([PR #356](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/356), closes [#352](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/352), [#353](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/353))
   - `GraviMetadataList.tsx` now has loading/error/empty states on its file-list fetch (previously a failed fetch failed silently, indistinguishable from "no files exist") and on the per-file expand fetch, which had the identical gap
   - Added the missing `<thead>` column-header row to the expanded plate/section detail table
   - `GraviMetadataUpload.tsx` now blocks submission when two or more column-mapping fields point at the same spreadsheet column, naming every colliding field and the shared column by position — previously nothing stopped e.g. Medium and Custom Note from silently sharing a column and corrupting per-row data with no error surfaced
