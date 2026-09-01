@@ -636,6 +636,55 @@ describe('ScanCoordinator', () => {
 
       vi.useRealTimers();
     });
+
+    it('addScanner() racing a concurrent stopScanner() for the same id spawns a fresh worker instead of silently dropping it', async () => {
+      // Regression test for a bug found in review: ScannerSubprocess.isReady
+      // stays `true` for the entire multi-second shutdown() grace window
+      // (it only flips once the real OS process exits), so a naive
+      // stopScanner() that deletes the map entry only AFTER awaiting
+      // shutdown() lets a concurrent addScanner()'s hasWorker() check see
+      // the doomed instance as still healthy and no-op — silently dropping
+      // the scanner with zero error ever surfaced. The fix: stopScanner()
+      // removes the map entry BEFORE awaiting shutdown.
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1)); // scanner-1, ready
+      const oldSub = createdSubprocesses[0];
+
+      // Make shutdown() slow (never resolving within this test) so the
+      // race window is observable.
+      let resolveShutdown: (v: boolean) => void = () => {};
+      vi.mocked(oldSub.shutdown).mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          resolveShutdown = resolve;
+        })
+      );
+
+      const stopPromise = coordinator.stopScanner('scanner-1');
+      // stopScanner()'s synchronous prefix (clearing spawnInFlight and
+      // deleting the map entry) has already run by the time the above
+      // call returns its promise — no microtask flush needed for that
+      // part, only for what follows.
+
+      const freshMock = createMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(freshMock);
+        return freshMock as unknown as ScannerSubprocess;
+      });
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      // The scanner must NOT have silently vanished — a fresh subprocess
+      // was constructed and is ready, not left as a no-op.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+
+      resolveShutdown(true);
+      await stopPromise;
+    });
   });
 
   describe('bounded spawn-ready timeout with no-duplicate reclaim (design.md Decisions 2 & 3)', () => {
@@ -810,6 +859,63 @@ describe('ScanCoordinator', () => {
 
       vi.useRealTimers();
     });
+
+    it('an orphaned reclaim does not evict or falsely fail-report a healthy replacement installed by a concurrent retry', async () => {
+      // BLOCKING regression test from review: reclaimUnresponsive() used to
+      // delete this.subprocesses / report initErrors unconditionally by
+      // scannerId. If stopScanner()+addScanner() successfully installed a
+      // healthy replacement while the original attempt was orphaned
+      // (design.md's accepted residual limitation — the original attempt
+      // keeps running in the background until its own timeout), the
+      // orphaned attempt's eventual reclaim would otherwise silently evict
+      // the healthy replacement and falsely report it as failed.
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1); // scanner-1
+
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const orphanedInit = coordinator.initialize(scanners);
+      await Promise.resolve();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      // Operator retries while scanner-1 is still mid-connect.
+      await coordinator.stopScanner('scanner-1');
+
+      const freshMock = createMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(freshMock);
+        return freshMock as unknown as ScannerSubprocess;
+      });
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+      expect(coordinator.hasWorker('scanner-1')).toBe(true); // fresh, healthy
+
+      const initStatus = vi.fn();
+      coordinator.on('scanner-init-status', initStatus);
+
+      // Let the ORIGINAL orphaned attempt's own spawn-ready timeout fire.
+      await vi.advanceTimersByTimeAsync(SPAWN_READY_TIMEOUT_MS + 1000);
+      await orphanedInit;
+
+      // The healthy replacement must survive untouched — not evicted, not
+      // falsely reported as failed.
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+      expect(initStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ scannerId: 'scanner-1', status: 'error' })
+      );
+
+      vi.useRealTimers();
+    });
   });
 
   describe('all shutdown() call sites act on the confirmed/unconfirmed signal (design.md Decision 3)', () => {
@@ -865,6 +971,68 @@ describe('ScanCoordinator', () => {
       expect(warnSpy).not.toHaveBeenCalledWith(
         expect.stringContaining('scanner-1')
       );
+    });
+
+    it('the bulk shutdown() method does not report a spurious init failure for a subprocess still mid-spawn', async () => {
+      // IMPORTANT regression test from review: bulk shutdown() used to
+      // call sub.shutdown() without first removing listeners, unlike
+      // every other teardown path (stopScanner(), the defensive
+      // fallback). A subprocess still mid-connect has its own spawn()-
+      // internal 'exit' listener still attached; without removeAllListeners()
+      // first, force-killing it during a bulk shutdown made that listener
+      // reject with "process exited before becoming ready", which the
+      // generic catch branch then reported as a spurious init-failure —
+      // right after a clean, deliberate app shutdown/cancel.
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1);
+
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const initStatus = vi.fn();
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+      coordinator.on('scanner-init-status', initStatus);
+      initStatus.mockClear(); // ignore the earlier 'starting' event
+
+      await coordinator.shutdown();
+
+      expect(pendingMock.removeAllListeners).toHaveBeenCalled();
+      expect(initStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'error' })
+      );
+
+      // Settle the still-pending initialize() call so it doesn't leak
+      // into a later test as an unresolved promise.
+      void initPromise.catch(() => {});
+    });
+
+    it('the defensive respawn-branch fallback logs a warning when its own reclaim shutdown cannot confirm exit', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const staleSub = createdSubprocesses[0];
+      staleSub.isReady = false;
+      vi.mocked(staleSub.shutdown).mockResolvedValue(false);
+
+      const warnSpy = vi.spyOn(console, 'warn');
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'defensive-fallback shutdown could not be confirmed'
+        )
+      );
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
     });
 
     it('the defensive respawn-branch fallback still shuts down and respawns if the guard invariant is ever violated, logging loudly', async () => {

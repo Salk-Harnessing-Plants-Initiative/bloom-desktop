@@ -225,13 +225,19 @@ export class ScanCoordinator
     for (const [id, sub] of this.subprocesses) {
       if (!scanners.find((s) => s.scannerId === id)) {
         console.log(`[ScanCoordinator] Shutting down stale subprocess ${id}`);
-        const confirmed = await sub.shutdown(5000);
+        // Remove from the map BEFORE awaiting shutdown, not after — same
+        // reasoning as stopScanner(): `sub.isReady` stays stale (true)
+        // until the OS process actually exits, which can take several
+        // seconds, and a concurrent addScanner()/hasWorker() caller must
+        // not see this doomed instance as still healthy during that
+        // window (see stopScanner()'s comment for the full failure mode).
+        this.subprocesses.delete(id);
+        const confirmed = await sub.shutdown();
         if (!confirmed) {
           console.warn(
             `[ScanCoordinator] Stale subprocess ${id} shutdown could not be confirmed`
           );
         }
-        this.subprocesses.delete(id);
       }
     }
 
@@ -369,15 +375,24 @@ export class ScanCoordinator
 
     const sub = this.subprocesses.get(scannerId);
     if (!sub) return;
+
+    // Remove from the map and clear any stale error BEFORE awaiting
+    // shutdown (which can take up to ~7s), not after. `sub.isReady`
+    // doesn't flip until the OS process's real `exit` event fires, so
+    // leaving the old entry in place during that window would let a
+    // concurrent addScanner()/hasWorker() caller see a doomed instance as
+    // still healthy and silently no-op instead of spawning a
+    // replacement — a scanner would vanish with no error ever surfaced.
+    this.subprocesses.delete(scannerId);
+    this.initErrors.delete(scannerId);
+
     sub.removeAllListeners();
-    const confirmed = await sub.shutdown(5000);
+    const confirmed = await sub.shutdown();
     if (!confirmed) {
       console.warn(
         `[ScanCoordinator] stopScanner(${scannerId}): shutdown could not be confirmed`
       );
     }
-    this.subprocesses.delete(scannerId);
-    this.initErrors.delete(scannerId);
   }
 
   /**
@@ -401,7 +416,14 @@ export class ScanCoordinator
     }
 
     const promise = this.doSpawnSingleScanner(config).finally(() => {
-      this.spawnInFlight.delete(config.scannerId);
+      // Identity-guarded: only clear the guard entry if it's still THIS
+      // call's promise — stopScanner() can clear it earlier (design.md
+      // Decision 1), and without this check a very-late-settling orphaned
+      // attempt could otherwise delete a different, newer attempt's
+      // still-active guard entry out from under it.
+      if (this.spawnInFlight.get(config.scannerId) === promise) {
+        this.spawnInFlight.delete(config.scannerId);
+      }
     });
     this.spawnInFlight.set(config.scannerId, promise);
     return promise;
@@ -444,14 +466,20 @@ export class ScanCoordinator
       console.error(
         `[ScanCoordinator] INVARIANT VIOLATION: scanner ${config.scannerId} had a not-ready subprocess with no in-flight spawn guard — respawning via the defensive fallback path`
       );
+      // Remove from the map before awaiting shutdown, not after (same
+      // reasoning as stopScanner()/doInitialize()'s stale-cleanup): we're
+      // already committed to replacing `existing` regardless of the
+      // shutdown outcome, so there's no reason to leave a doomed,
+      // stale-`isReady` entry visible to a concurrent caller in the
+      // meantime.
+      this.subprocesses.delete(config.scannerId);
       existing.removeAllListeners();
-      const confirmed = await existing.shutdown(5000);
+      const confirmed = await existing.shutdown();
       if (!confirmed) {
         console.warn(
           `[ScanCoordinator] Scanner ${config.scannerId} defensive-fallback shutdown could not be confirmed`
         );
       }
-      this.subprocesses.delete(config.scannerId);
     }
 
     const sub = new ScannerSubprocess(
@@ -505,7 +533,16 @@ export class ScanCoordinator
       console.log(
         `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
       );
-      this.subprocesses.delete(info.scannerId);
+      // Identity-guarded: only remove the map entry if it still points at
+      // THIS instance. A natural exit racing a concurrent replacement is
+      // not currently reachable (every path that replaces an entry always
+      // strips the old instance's listeners first, synchronously, before
+      // any replacement can be constructed) but this guard makes that
+      // invariant self-enforcing rather than relying on reasoning about
+      // every call site staying that way under future changes.
+      if (this.subprocesses.get(info.scannerId) === sub) {
+        this.subprocesses.delete(info.scannerId);
+      }
     });
 
     this.subprocesses.set(config.scannerId, sub);
@@ -535,6 +572,14 @@ export class ScanCoordinator
       console.error(
         `[ScanCoordinator] Scanner ${config.scannerId} init failed: ${message}`
       );
+      scanLog(`[${config.scannerId}] init failed: ${message}`);
+      if (this.subprocesses.get(config.scannerId) !== sub) {
+        // A concurrent stopScanner()+addScanner()/initialize() sequence
+        // already replaced this entry (e.g. while `withTimeout`'s own
+        // internal await gave a narrow window for it) — don't clobber the
+        // newer instance's bookkeeping or falsely report it as failed.
+        return;
+      }
       this.subprocesses.delete(config.scannerId);
       this.initErrors.set(config.scannerId, message);
       this.emit('scanner-init-status', {
@@ -557,6 +602,16 @@ export class ScanCoordinator
    * `initErrors`/`scanner-init-status`/`scanLog()` channels used for
    * every other spawn failure, with message text that explicitly names
    * this as a timeout so it's distinguishable from an immediate failure.
+   *
+   * Identity-guarded (BLOCKING finding from review): this attempt can be
+   * orphaned by a concurrent `stopScanner()` call (design.md Decision 1's
+   * residual note) and only settle here up to ~45s later, by which point
+   * a fresh `addScanner()`/`initialize()` retry may have already
+   * installed a healthy replacement at the same `scannerId`. This method
+   * still attempts to reclaim ITS OWN `sub`'s resources unconditionally,
+   * but only touches `this.subprocesses`/`initErrors`/the emitted event
+   * if the map still points at `sub` — otherwise it would evict a
+   * healthy replacement and falsely report it as failed.
    */
   private async reclaimUnresponsive(
     scannerId: string,
@@ -564,8 +619,17 @@ export class ScanCoordinator
   ): Promise<void> {
     sub.removeAllListeners();
     const confirmed = await sub.shutdown();
-    this.subprocesses.delete(scannerId);
 
+    if (this.subprocesses.get(scannerId) !== sub) {
+      if (!confirmed) {
+        console.warn(
+          `[ScanCoordinator] Orphaned spawn attempt for ${scannerId} could not confirm its own subprocess exited (a newer attempt has since taken over that scannerId)`
+        );
+      }
+      return;
+    }
+
+    this.subprocesses.delete(scannerId);
     const message = `Scanner ${scannerId} did not become ready within ${SPAWN_READY_TIMEOUT_MS}ms (spawn-ready timeout)${
       confirmed ? '' : ' — shutdown could not be confirmed'
     }`;
@@ -936,7 +1000,14 @@ export class ScanCoordinator
 
     const shutdownPromises = Array.from(this.subprocesses.entries()).map(
       async ([scannerId, sub]) => {
-        const confirmed = await sub.shutdown(5000);
+        // Strip listeners first (matches stopScanner()'s convention):
+        // without this, a subprocess still mid-spawn has its own
+        // spawn()-internal 'exit' listener still attached, which rejects
+        // with "process exited before becoming ready" once this forced
+        // shutdown kills it — surfacing a spurious "init failed" report
+        // for a scanner that was deliberately, cleanly shut down.
+        sub.removeAllListeners();
+        const confirmed = await sub.shutdown();
         if (!confirmed) {
           console.warn(
             `[ScanCoordinator] shutdown(): scanner ${scannerId} could not be confirmed stopped`

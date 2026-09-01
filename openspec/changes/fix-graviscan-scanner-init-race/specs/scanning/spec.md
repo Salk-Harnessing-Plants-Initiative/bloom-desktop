@@ -130,6 +130,7 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **AND** force-kill any subprocess that does not exit within 5 seconds
 - **AND** clear the subprocess map
 - **AND** if a subprocess's exit could not be confirmed even after force-kill, the coordinator SHALL log a warning identifying that scanner rather than silently treating it as freed
+- **AND** a subprocess still mid-spawn (not yet `ready`) at the time of shutdown SHALL NOT have that shutdown reported as an init failure — the coordinator SHALL strip that subprocess's listeners before forcing it down, so its own in-flight spawn attempt does not surface a spurious `scanner-init-status` `error` event for a scanner that was deliberately, cleanly shut down
 
 #### Scenario: Coordinator implements ScanCoordinatorLike
 
@@ -321,6 +322,24 @@ user-facing messaging surface).
   settled attempt's `Promise`
 - **AND** SHALL perform its own fresh reuse/respawn decision
 
+#### Scenario: An orphaned reclaim does not evict or falsely fail-report a newer replacement
+
+- **GIVEN** a spawn attempt for `scannerId` `'A'` is orphaned (its
+  guard entry was cleared by a concurrent `stopScanner('A')` while it
+  was still mid-connect, per "stopScanner clears an in-flight spawn")
+  and is still running toward its own spawn-ready timeout
+- **AND** a subsequent `addScanner({scannerId: 'A', ...})` call has
+  already installed a healthy, `ready` replacement `ScannerSubprocess`
+  at `'A'` before the orphaned attempt's timeout elapses
+- **WHEN** the orphaned attempt's spawn-ready timeout fires and its
+  reclaim runs
+- **THEN** the reclaim SHALL NOT remove the replacement from the
+  subprocess map
+- **AND** SHALL NOT record an `initErrors` entry or emit a
+  `scanner-init-status` `error` event for `'A'`
+- **AND** `hasWorker('A')` SHALL continue to return `true` for the
+  healthy replacement, unaffected by the orphaned attempt's outcome
+
 ### Requirement: Coordinator Stop-Scanner API
 
 The `ScanCoordinator` class SHALL expose
@@ -371,6 +390,24 @@ resolve without error (idempotent).
   subprocess map
 - **AND** SHALL log a warning identifying `'A'` as not confirmed
   stopped, rather than silently treating it as freed
+
+#### Scenario: stopScanner frees the scannerId for a concurrent spawn immediately, not only after shutdown confirms
+
+- **GIVEN** a `ScanCoordinator` has a `ready` worker for `scannerId`
+  `'A'`
+- **WHEN** `stopScanner('A')` is called, and its own shutdown attempt
+  has not yet resolved (still within its multi-second grace/confirm
+  window)
+- **AND** `addScanner({scannerId: 'A', ...})` is called concurrently
+  during that window
+- **THEN** the concurrent `addScanner()` call SHALL NOT treat `'A'`
+  as already satisfied (it SHALL NOT observe a stale `ready` worker
+  for `'A'` during `stopScanner`'s shutdown window)
+- **AND** SHALL construct a fresh `ScannerSubprocess` for `'A'`
+- **AND** after both calls settle, `hasWorker('A')` SHALL return
+  `true` — the scanner SHALL NOT silently end up with no worker and
+  no error reported, which is the failure mode this scenario guards
+  against
 
 ### Requirement: ScannerSubprocess Worker Management
 

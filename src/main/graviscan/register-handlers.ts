@@ -139,15 +139,19 @@ export function registerGraviScanHandlers(
         // interval per new scanner (potentially hours for a continuous
         // session).
         //
-        // Second-round fix: the spawns themselves must still be
-        // serialized among each other (NOT fired concurrently) — per
-        // scan-coordinator.ts's own "Staggered initialization" doc
-        // comment, spawning subprocesses one at a time prevents SANE
-        // init contention, and parallel init is explicitly deferred to
-        // a future increment. Build a promise chain so each addScanner()
-        // call only starts after the previous one has settled, but
-        // `void` only the tail of the chain — the handler's own return
-        // never waits on it.
+        // Second-round fix: the spawns themselves are serialized among
+        // each other (not fired concurrently) via this promise chain.
+        // NOTE (fix-graviscan-scanner-init-race): the original rationale
+        // cited here — scan-coordinator.ts's now-renamed "Staggered
+        // initialization" doc comment, arguing sequential spawns prevent
+        // SANE contention — no longer holds; each subprocess has its own
+        // independent SANE context, and ScanCoordinator.initialize()
+        // itself now spawns concurrently for exactly that reason (closes
+        // #144). This chain is kept serialized anyway as an independent,
+        // lower-priority choice (avoids bursting several Python subprocess
+        // spawns at once from a single live "detect scanners" IPC call);
+        // revisit if that also proves unnecessary. `void` only the tail
+        // of the chain — the handler's own return never waits on it.
         let spawnChain: Promise<void> = Promise.resolve();
         for (const saved of result.scanners) {
           if (!saved.enabled || coordinator.hasWorker(saved.id)) continue;
