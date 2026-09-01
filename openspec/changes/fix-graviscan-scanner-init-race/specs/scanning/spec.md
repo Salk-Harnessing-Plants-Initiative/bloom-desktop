@@ -17,6 +17,21 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **AND** existing subprocesses not in the new config SHALL be shut down
 - **AND** existing subprocesses that are already ready SHALL be reused
 
+#### Scenario: Concurrent initialize calls do not race shared preamble state
+
+- **GIVEN** a `ScanCoordinator` call to `initialize(scannersA)` is in
+  progress (has not yet resolved)
+- **WHEN** `initialize(scannersB)` is called before the first call
+  resolves, where `scannersB` is a different list of scanners than
+  `scannersA` (not merely a repeat of the same call)
+- **THEN** the second call SHALL NOT independently run the
+  stale-subprocess cleanup loop or clear `initErrors` while the first
+  call's own run of that same preamble is still in progress
+- **AND** the second call's returned `Promise` SHALL resolve only after
+  the first call's entire `initialize()` run has completed
+- **AND** no subprocess SHALL be shut down or spawned twice as a result
+  of the overlap
+
 #### Scenario: Initialize with zero scanners
 
 - **GIVEN** a `ScanCoordinator` is constructed
@@ -281,7 +296,77 @@ user-facing messaging surface).
   `ScannerSubprocess` for `'Z'` within the same spawn attempt
 - **AND** the coordinator SHALL record an entry in `initErrors` for
   `'Z'` and emit `scanner-init-status` with `status: 'error'`
+- **AND** the recorded message SHALL explicitly identify that the
+  failure was a spawn-ready timeout (naming the timeout duration),
+  distinguishable from an immediate spawn failure's message (e.g. an
+  ENOENT or exit-before-ready message)
+- **AND** the failure SHALL also be written via `scanLog()` so it
+  survives in the persistent log in a packaged app, not only via
+  `console.error`
 - **AND** `hasWorker('Z')` SHALL return `false`
+
+#### Scenario: A settled spawn attempt does not block a later, independent spawn for the same id
+
+- **GIVEN** a spawn attempt for `scannerId` `'W'` has already settled
+  (the subprocess is `ready`, or the attempt failed and the entry was
+  removed)
+- **WHEN** a later, unrelated call to spawn `'W'` again is made (e.g.
+  after the worker later exits and a new `initialize()`/`addScanner()`
+  call runs)
+- **THEN** the later call SHALL NOT be handed the earlier, already-
+  settled attempt's `Promise`
+- **AND** SHALL perform its own fresh reuse/respawn decision
+
+### Requirement: Coordinator Stop-Scanner API
+
+The `ScanCoordinator` class SHALL expose
+`stopScanner(scannerId): Promise<void>` to support per-scanner
+shutdown without affecting other workers. The method SHALL clear any
+in-flight spawn-guard entry for `scannerId` (see "Coordinator
+Single-Scanner Spawn API"), kill the subprocess (or send quit +
+force-kill after timeout), remove the entry from the subprocess map,
+and resolve. If no worker exists for `scannerId`, the method SHALL
+resolve without error (idempotent).
+
+#### Scenario: stopScanner removes one worker
+
+- **GIVEN** a `ScanCoordinator` with workers for `[A, B]`
+- **WHEN** `stopScanner('A')` is called
+- **THEN** the worker for `A` SHALL be killed and removed from the
+  subprocess map
+- **AND** the worker for `B` SHALL be unaffected
+- **AND** after the call, `hasWorker('A')` returns `false` and
+  `hasWorker('B')` returns `true`
+
+#### Scenario: stopScanner on unknown id is a no-op
+
+- **GIVEN** a `ScanCoordinator` with no workers
+- **WHEN** `stopScanner('does-not-exist')` is called
+- **THEN** the method SHALL resolve without error
+
+#### Scenario: stopScanner clears an in-flight spawn so a subsequent spawn starts fresh
+
+- **GIVEN** a spawn attempt for `scannerId` `'A'` is in flight (the
+  subprocess is `starting`, not yet `ready`)
+- **WHEN** `stopScanner('A')` is called
+- **AND** a new spawn for `'A'` (via `addScanner()` or `initialize()`)
+  is requested immediately afterward
+- **THEN** the new spawn attempt SHALL NOT be handed the original
+  in-flight attempt's `Promise`
+- **AND** the new spawn attempt SHALL construct a fresh
+  `ScannerSubprocess` for `'A'` without waiting for the original
+  in-flight attempt's own timeout to elapse
+
+#### Scenario: stopScanner logs when the process's exit cannot be confirmed
+
+- **GIVEN** a `ScanCoordinator` with a worker for `scannerId` `'A'`
+  that does not exit in response to `stopScanner`'s shutdown attempt
+  even after force-kill
+- **WHEN** `stopScanner('A')` is called
+- **THEN** the method SHALL still resolve and remove `'A'` from the
+  subprocess map
+- **AND** SHALL log a warning identifying `'A'` as not confirmed
+  stopped, rather than silently treating it as freed
 
 ### Requirement: ScannerSubprocess Worker Management
 
