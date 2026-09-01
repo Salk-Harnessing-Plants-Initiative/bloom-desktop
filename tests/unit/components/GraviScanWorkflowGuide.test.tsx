@@ -77,6 +77,20 @@ describe('GraviScanWorkflowGuide structure', () => {
     );
   });
 
+  it('does not describe Capture Scan or Experiments as gravitropism-only — GraviScan scanners run other kinds of studies too', () => {
+    renderGuide();
+
+    const captureStep = screen.getByTestId('workflow-step-capture-scan');
+    expect(captureStep).toHaveTextContent('Capture a time-lapse scan');
+    expect(captureStep).not.toHaveTextContent(/gravitropism/i);
+
+    const experimentsStep = screen.getByTestId('workflow-step-experiments');
+    expect(experimentsStep).toHaveTextContent(
+      'Create experiments to run on the scanner'
+    );
+    expect(experimentsStep).not.toHaveTextContent(/gravitropism/i);
+  });
+
   it('Setup contains Scientists, Phenotypers, Metadata, Experiments as unordered cards with no step-number badge', () => {
     renderGuide();
 

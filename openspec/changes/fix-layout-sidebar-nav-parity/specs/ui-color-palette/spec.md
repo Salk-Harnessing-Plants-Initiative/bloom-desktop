@@ -22,8 +22,9 @@
 
 - **GIVEN** a sidebar nav link in either scan mode
 - **WHEN** the link is not active and is hovered
-- **THEN** it SHALL use `hover:bg-stone-50 hover:text-stone-900` in place of
-  `hover:bg-blue-50 hover:text-blue-600` — hover SHALL NOT turn the text lime
+- **THEN** it SHALL use `hover:bg-stone-50/70 hover:text-stone-900` in place
+  of `hover:bg-blue-50 hover:text-blue-600` — hover SHALL NOT turn the text
+  lime
 - **WHEN** the link's route is the active route
 - **THEN** it SHALL use `bg-stone-50 text-lime-700 font-medium` in place of
   `bg-blue-50 text-blue-600 border-r-4 border-blue-600` — the active state

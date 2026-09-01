@@ -30,16 +30,19 @@ border-stone-200`.
 - Sidebar nav-link colors now match `salk-bloom`'s (the production web app
   bloom-desktop uploads scans to) actual convention, read directly from its
   source rather than extrapolated: base `text-gray-700` → `text-stone-700`;
-  hover `hover:bg-blue-50 hover:text-blue-600` → `hover:bg-stone-50
+  hover `hover:bg-blue-50 hover:text-blue-600` → `hover:bg-stone-50/70
 hover:text-stone-900` (hover no longer previews the active color); active
   `bg-blue-50 text-blue-600 border-r-4 border-blue-600` → `bg-stone-50
-text-lime-700 font-medium` (no border accent). An earlier revision of this
-  proposal invented a "lime-on-hover + border-accent" pattern that was
-  internally contrast-correct but never checked against `salk-bloom` itself
-  — this revision replaces it with `salk-bloom`'s real classes; see
-  `design.md`'s "Revision 2" for the full comparison and why `lime-700`
-  (not `lime-800`) is still contrast-safe against the new, lighter
-  `bg-stone-50` background (≈4.79:1, clears WCAG AA).
+text-lime-700 font-medium` (no border accent). An earlier revision of
+  this proposal invented a hover-turns-lime, border-accent-on-active
+  pattern that was internally contrast-correct but never checked against
+  `salk-bloom` itself — this revision replaces it with `salk-bloom`'s real
+  classes; see `design.md`'s "Revision 2" for the full comparison and why
+  `lime-700` (not `lime-800`) is still contrast-safe against the new,
+  lighter `bg-stone-50` background (≈4.79:1, clears WCAG AA). A subsequent
+  `/review-pr` round caught that the hover class had shipped at full
+  opacity (`hover:bg-stone-50`) rather than `salk-bloom`'s literal `/70`
+  opacity — fixed to match exactly.
 - This is cross-mode by design (both scan modes share `Layout.tsx`'s shell)
   and was already user-approved as an intentional, visible change to
   GraviScan's shell too, back when Tier 4 first scoped it.
@@ -53,7 +56,10 @@ text-lime-700 font-medium` (no border accent). An earlier revision of this
   Phenotypers, Metadata, Experiments). Capture Scan's and Experiments'
   descriptions are generalized, not carried over verbatim from the retired
   `graviScanSteps` data — the old text described both in gravitropism-only
-  terms, but GraviScan scanners run other kinds of studies too.
+  terms, but GraviScan scanners run other kinds of studies too. A
+  subsequent `/review-pr` round found this fix had shipped with no
+  regression test on either side (old or new copy) — closed with explicit
+  assertions in `GraviScanWorkflowGuide.test.tsx`.
 - `Home.tsx` renders `<GraviScanWorkflowGuide />` in `graviscan` mode instead
   of `<WorkflowSteps steps={graviScanSteps} />`. `WorkflowSteps.tsx`'s
   `graviScanSteps` export and the `WorkflowStep` interface become dead code

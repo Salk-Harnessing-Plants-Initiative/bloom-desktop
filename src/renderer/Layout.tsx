@@ -489,7 +489,7 @@ export function Layout({ mode = null }: LayoutProps) {
               end
               onClick={(event) => confirmNavAway(event, link.to)}
               className={({ isActive }) =>
-                `flex items-center px-6 py-3 text-stone-700 hover:bg-stone-50 hover:text-stone-900 transition-colors ${
+                `flex items-center px-6 py-3 text-stone-700 hover:bg-stone-50/70 hover:text-stone-900 transition-colors ${
                   isActive ? 'bg-stone-50 text-lime-700 font-medium' : ''
                 }`
               }

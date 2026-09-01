@@ -145,13 +145,20 @@ text-stone-50` — confirms the button-side lime-700→lime-800 hover-shade
    per-link SVG icon (which `salk-bloom`'s nav doesn't have), and the icon
    already serves the "at-a-glance identify this row" role a dot exists to
    provide in an icon-less nav — adding a redundant dot alongside an
-   existing icon would be clutter, not a faithful port. The bg-stone-50 pill
-   - lime-700 text + font-medium weight is the actual signal salk-bloom
-     relies on to mark "active" (the dot is secondary, reinforcing the same
-     three properties), so dropping only the dot preserves the real mechanism.
+   existing icon would be clutter, not a faithful port. The combination of
+   background, text color, and font weight (`bg-stone-50`, `text-lime-700`,
+   `font-medium`) is the actual signal salk-bloom relies on to mark
+   "active" (the dot is secondary, reinforcing the same three properties),
+   so dropping only the dot preserves the real mechanism.
 3. **Hover state drops lime entirely**, matching `salk-bloom`:
-   `hover:bg-stone-50 hover:text-stone-900` — hover no longer previews the
-   active color; it's a plain stone darken, exactly like the reference app.
+   `hover:bg-stone-50/70 hover:text-stone-900` — hover no longer previews
+   the active color; it's a plain stone darken, exactly like the reference
+   app. (Round-2 `/review-pr` correction: this was first shipped as
+   `hover:bg-stone-50` at full opacity — cosmetically almost identical, but
+   not a literal port; `salk-bloom/web/components/navigation.tsx:47` uses
+   `/70` opacity specifically. Fixed to match exactly, since the whole
+   point of this revision was reading the real source rather than
+   approximating it.)
 4. **Active text reverts to `lime-700`, not `lime-800`.** This is safe
    contrast-wise specifically because the background also changed — active
    state is now `bg-stone-50` (`#fafaf9`), lighter than the abandoned

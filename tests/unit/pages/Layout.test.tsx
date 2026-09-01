@@ -265,14 +265,25 @@ describe('Layout shell and nav-link colors', () => {
     expect(homeLink.className).not.toMatch(/border-lime/);
   });
 
-  it('non-active links hover to a stone-50/stone-900 treatment, not lime', async () => {
+  it('non-active links hover to a stone-50/70 / stone-900 treatment, not lime', async () => {
     renderLayout('cylinderscan', '/');
     await waitFor(() => screen.getByText(/scanner:/i));
 
     const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
-    expect(scientistsLink.className).toContain('hover:bg-stone-50');
+    // salk-bloom's real hover class is hover:bg-stone-50/70 (70% opacity), not
+    // a fully-opaque hover:bg-stone-50 — match it exactly, not just a substring.
+    expect(scientistsLink.className).toContain('hover:bg-stone-50/70');
     expect(scientistsLink.className).toContain('hover:text-stone-900');
     expect(scientistsLink.className).not.toMatch(/hover:text-lime/);
+  });
+
+  it('non-active, non-hover links use stone-700 as their base text color, not gray-700', async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
+    expect(scientistsLink.className).toContain('text-stone-700');
+    expect(scientistsLink.className).not.toContain('text-gray-700');
   });
 
   it('no nav link has any blue-* class in cylinderscan mode', async () => {
