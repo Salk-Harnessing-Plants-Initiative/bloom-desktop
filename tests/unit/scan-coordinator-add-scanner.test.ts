@@ -62,10 +62,11 @@ class MockSubprocess extends EventEmitter {
     this._isReady = true;
   }
 
-  async shutdown(): Promise<void> {
+  async shutdown(): Promise<boolean> {
     this.shutdownCalled = true;
     this._isReady = false;
     this.emit('exit', { scannerId: this.scannerId, code: 0 });
+    return true;
   }
 
   removeAllListeners(event?: string | symbol): this {
