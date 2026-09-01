@@ -135,6 +135,12 @@ export function GraviMetadataUpload({
   // plates than the sheet appears to contain.
   const blankRowCount = useMemo(() => {
     if (!sheet) return 0;
+    // Do not change this to `mapping[field] !== undefined` — mapping[field]
+    // is '' for both "never touched" and "explicitly cleared" fields, and
+    // '' !== undefined, so that check silently resolved a cleared field to
+    // column 0 instead of unmapped (see PR #356, closes #353). Every real
+    // column index stringifies to a non-empty, truthy string ('0', '1',
+    // ...), so the falsy check below is safe and correctly excludes both.
     const colIndex = (field: string) =>
       mapping[field] ? Number(mapping[field]) : -1;
     return sheet.rows.filter((row) =>
@@ -258,6 +264,8 @@ export function GraviMetadataUpload({
         return;
       }
 
+      // Do not change this to `mapping[field] !== undefined` — see the
+      // identical guard in blankRowCount above for why.
       const colIndex = (field: string) =>
         mapping[field] ? Number(mapping[field]) : -1;
 

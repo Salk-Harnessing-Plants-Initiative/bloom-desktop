@@ -688,6 +688,32 @@ describe('GraviMetadataUpload', () => {
         expect(plates[0].custom_note).toBe('');
       });
 
+      it('clearing two already-mapped required fields at once does not falsely report them as colliding, and blocks with a partial-row error instead', async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '');
+        await user.selectOptions(screen.getByLabelText(/^medium$/i), '');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(screen.getByText(/row 2/i)).toBeInTheDocument();
+        });
+        expect(
+          screen.getByText(/some required fields are blank/i)
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText(/mapped to the same column/i)
+        ).not.toBeInTheDocument();
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
       it('disambiguates a collision on a blank-header column by position, since header text alone is unavailable', async () => {
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet('Sheet1');
@@ -728,6 +754,11 @@ describe('GraviMetadataUpload', () => {
         }).textContent;
         expect(message).toMatch(/custom note/i);
         expect(message).toMatch(/column 2/i);
+        // Pin the branch, not just a substring match: a blank header must
+        // produce "column 2" alone, not "column 2, header ''" — asserting
+        // the header clause is entirely absent (not merely empty) is what
+        // actually distinguishes this from the header-present branch.
+        expect(message).not.toMatch(/header/i);
         expect(createWithSections).not.toHaveBeenCalled();
       });
     });

@@ -50,6 +50,14 @@ export function GraviMetadataList() {
       } else {
         setError(result.error ?? 'Failed to load metadata files');
       }
+    } catch (err) {
+      // A rejected promise (vs. a resolved `{success: false}`) is a distinct
+      // IPC failure shape — without this catch it would fall through to the
+      // empty-state branch, reproducing the exact silent-failure bug this
+      // state was added to fix, just via a different trigger.
+      setError(
+        err instanceof Error ? err.message : 'Failed to load metadata files'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -73,14 +81,27 @@ export function GraviMetadataList() {
         delete withoutStaleError[fileId];
         return withoutStaleError;
       });
-      const result =
-        await window.electron.database.graviPlateAccessions.list(fileId);
-      if (result.success) {
-        setPlates((prev) => ({ ...prev, [fileId]: result.data as Plate[] }));
-      } else {
+      try {
+        const result =
+          await window.electron.database.graviPlateAccessions.list(fileId);
+        if (result.success) {
+          setPlates((prev) => ({
+            ...prev,
+            [fileId]: result.data as Plate[],
+          }));
+        } else {
+          setExpandErrors((prev) => ({
+            ...prev,
+            [fileId]: result.error ?? 'Failed to load plate data',
+          }));
+        }
+      } catch (err) {
+        // See fetchFiles's identical catch — a rejected promise must also
+        // surface an error, not fall through to rendering nothing.
         setExpandErrors((prev) => ({
           ...prev,
-          [fileId]: result.error ?? 'Failed to load plate data',
+          [fileId]:
+            err instanceof Error ? err.message : 'Failed to load plate data',
         }));
       }
     }

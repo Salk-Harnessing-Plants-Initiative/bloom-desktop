@@ -102,6 +102,18 @@ describe('GraviMetadataList', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('surfaces an error when the file list fetch rejects outright, not just resolves with success: false', async () => {
+    listFiles.mockRejectedValue(new Error('IPC channel closed'));
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('IPC channel closed')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/no graviscan metadata uploaded yet/i)
+    ).not.toBeInTheDocument();
+  });
+
   it('shows an empty-state message when there are no metadata files', async () => {
     listFiles.mockResolvedValue({ success: true, data: [] });
     render(<GraviMetadataList />);
@@ -124,6 +136,21 @@ describe('GraviMetadataList', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Failed to load plates')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('surfaces an error when the expand fetch rejects outright, not just resolves with success: false', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockRejectedValue(new Error('IPC channel closed'));
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    await waitFor(() => {
+      expect(screen.getByText('IPC channel closed')).toBeInTheDocument();
     });
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
