@@ -2,7 +2,7 @@
 
 ### Requirement: Cross-Mode Shell, Sidebar, and Workflow-Guide Palette
 
-`Layout.tsx`'s shell background and sidebar nav-link hover/active states, shared by both CylinderScan and GraviScan modes, SHALL use a lime/stone accent convention in place of their current gray/blue treatment.
+`Layout.tsx`'s shell background, sidebar panel, and sidebar nav-link hover/active states, shared by both CylinderScan and GraviScan modes, SHALL use a lime/stone accent convention matching `salk-bloom` (the production web app bloom-desktop uploads scans to), in place of their current gray/blue/white treatment.
 
 #### Scenario: Shell background is stone, not gray
 
@@ -10,36 +10,56 @@
 - **WHEN** the outer shell container renders
 - **THEN** it SHALL use `bg-stone-100` in place of `bg-gray-50`
 
-#### Scenario: Sidebar nav-link hover and active states use a lime-accented treatment, adapted (not a literal port) from the pilot
+#### Scenario: Sidebar panel is unified into the stone shell, not a separate white panel
+
+- **GIVEN** `Layout.tsx` renders, in either scan mode
+- **WHEN** the sidebar panel renders
+- **THEN** it SHALL use `bg-stone-100 border-r border-stone-200` in place of
+  `bg-white shadow-lg`, matching `salk-bloom`'s `<aside>` element
+  (`web/app/app/layout.tsx`) rather than remaining a visually distinct panel
+
+#### Scenario: Sidebar nav-link hover and active states match `salk-bloom`'s real convention, not an invented pattern
 
 - **GIVEN** a sidebar nav link in either scan mode
-- **WHEN** the link is hovered
-- **THEN** it SHALL use `hover:bg-stone-100 hover:text-lime-800` in place of
-  `hover:bg-blue-50 hover:text-blue-600`
+- **WHEN** the link is not active and is hovered
+- **THEN** it SHALL use `hover:bg-stone-50 hover:text-stone-900` in place of
+  `hover:bg-blue-50 hover:text-blue-600` — hover SHALL NOT turn the text lime
 - **WHEN** the link's route is the active route
-- **THEN** it SHALL use `bg-stone-200 text-lime-800 border-r-4 border-lime-800`
-  in place of `bg-blue-50 text-blue-600 border-r-4 border-blue-600`
+- **THEN** it SHALL use `bg-stone-50 text-lime-700 font-medium` in place of
+  `bg-blue-50 text-blue-600 border-r-4 border-blue-600` — the active state
+  SHALL NOT use a border accent
+- **GIVEN** any sidebar nav link, active or not
+- **WHEN** it is not hovered or active
+- **THEN** its base text color SHALL be `text-stone-700`, not `text-gray-700`
 
 **Acceptance Criteria**:
 
-- This is an adaptation, not a literal port of `bloom-desktop-pilot`'s
-  `Layout.tsx:207-211`, which uses only a bare `bg-stone-200` on active with
-  no text-color or border change — this convention deliberately keeps
-  today's two existing UX affordances (colored hover feedback, a persistent
-  active-route border indicator), recolored to lime/stone, rather than
-  adopting the pilot's flatter style and losing them.
-- `lime-800` (not `lime-700`) is used specifically for WCAG AA contrast
-  compliance: computed against Tailwind's default palette hex values using
-  the standard relative-luminance formula, `text-lime-700` on `bg-stone-200`
-  is ≈3.98:1 — below the 4.5:1 minimum for normal-size text. `text-lime-800`
-  on `bg-stone-200` computes to ≈5.64:1 (active state), and `text-lime-800`
-  on `bg-stone-100` computes to ≈6.49:1 (hover state) — both comfortably
-  clear AA. This is a computed decision, not a subjective eyeball call; the
-  manual dev-server visual check in `tasks.md` confirms real-browser
-  rendering matches this computation, it does not substitute for it.
+- Verified directly against `salk-bloom/web/components/navigation.tsx` and
+  `salk-bloom/web/app/app/layout.tsx`: `salk-bloom`'s real sidebar/nav
+  convention is `bg-stone-100 border-r border-stone-200` for the panel,
+  `text-stone-700 hover:bg-stone-50/70 hover:text-stone-900` for inactive/
+  hover, and `bg-stone-50 text-lime-700 font-medium` (plus a small leading
+  dot, not adopted here — see below) for active. This requirement matches
+  that convention exactly, superseding an earlier, ungrounded design
+  (lime text on hover, plus a border accent on active) that was checked
+  against contrast math but never against `salk-bloom` itself.
+- `salk-bloom`'s active-state also uses a small leading dot
+  (`bg-stone-400`/`bg-lime-700`) as its "you are here" marker, since its nav
+  links have no icons of their own. bloom-desktop's nav links already carry
+  a per-link SVG icon serving that role — the dot is intentionally not
+  ported, since a redundant marker alongside an existing icon would be
+  clutter, not a faithful match. The `bg-stone-50`/`text-lime-700`/
+  `font-medium` combination (the properties the dot itself reinforces, not
+  substitutes for) is the part that is ported.
+- `text-lime-700` (not `text-lime-800`) is contrast-safe specifically
+  because the background changed alongside it: computed against Tailwind's
+  default palette hex values using the standard relative-luminance formula,
+  `text-lime-700` on `bg-stone-50` (`#fafaf9`) is ≈4.79:1 — clears the 4.5:1
+  WCAG AA minimum for normal-size text (unlike the earlier, abandoned
+  `text-lime-700` on `bg-stone-200` pairing, which failed at ≈3.98:1).
 - Applies identically in CylinderScan mode, GraviScan mode, and the
   default/no-mode state — `Layout.tsx` has no mode-conditional styling for
-  the shell background or nav-link hover/active classes.
+  the shell background, sidebar panel, or nav-link hover/active classes.
 
 #### Scenario: GraviScanWorkflowGuide uses the lime convention natively (new component, not a recolor)
 

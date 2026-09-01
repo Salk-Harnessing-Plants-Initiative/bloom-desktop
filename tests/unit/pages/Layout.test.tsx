@@ -241,24 +241,38 @@ describe('Layout shell and nav-link colors', () => {
     expect(shell?.className).not.toContain('bg-gray-50');
   });
 
-  it('the active Home link uses the lime/stone active treatment, not blue', async () => {
+  it('the sidebar panel is unified into the stone shell, not its own white panel', async () => {
+    const { container } = renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const sidebar = container.querySelector('.w-64');
+    expect(sidebar?.className).toContain('bg-stone-100');
+    expect(sidebar?.className).toContain('border-r');
+    expect(sidebar?.className).toContain('border-stone-200');
+    expect(sidebar?.className).not.toContain('bg-white');
+    expect(sidebar?.className).not.toContain('shadow-lg');
+  });
+
+  it("the active Home link matches salk-bloom's convention: a stone-50 pill with lime-700 text, no border accent", async () => {
     renderLayout('cylinderscan', '/');
     await waitFor(() => screen.getByText(/scanner:/i));
 
     const homeLink = screen.getByRole('link', { name: /^home$/i });
-    expect(homeLink.className).toContain('bg-stone-200');
-    expect(homeLink.className).toContain('text-lime-800');
-    expect(homeLink.className).toContain('border-r-4');
-    expect(homeLink.className).toContain('border-lime-800');
+    expect(homeLink.className).toContain('bg-stone-50');
+    expect(homeLink.className).toContain('text-lime-700');
+    expect(homeLink.className).toContain('font-medium');
+    expect(homeLink.className).not.toContain('border-r-4');
+    expect(homeLink.className).not.toMatch(/border-lime/);
   });
 
-  it('non-active links carry the lime/stone hover treatment, not blue', async () => {
+  it('non-active links hover to a stone-50/stone-900 treatment, not lime', async () => {
     renderLayout('cylinderscan', '/');
     await waitFor(() => screen.getByText(/scanner:/i));
 
     const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
-    expect(scientistsLink.className).toContain('hover:bg-stone-100');
-    expect(scientistsLink.className).toContain('hover:text-lime-800');
+    expect(scientistsLink.className).toContain('hover:bg-stone-50');
+    expect(scientistsLink.className).toContain('hover:text-stone-900');
+    expect(scientistsLink.className).not.toMatch(/hover:text-lime/);
   });
 
   it('no nav link has any blue-* class in cylinderscan mode', async () => {

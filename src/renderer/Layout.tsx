@@ -475,7 +475,7 @@ export function Layout({ mode = null }: LayoutProps) {
   return (
     <div className="flex h-screen bg-stone-100">
       {/* Sidebar */}
-      <div className="w-64 bg-white shadow-lg flex flex-col">
+      <div className="w-64 bg-stone-100 border-r border-stone-200 flex flex-col">
         <div className="p-6">
           <h1 className="text-2xl font-bold text-gray-800">Bloom Desktop</h1>
           <p className="text-sm text-gray-500 mt-1">{modeLabel(mode)}</p>
@@ -489,10 +489,8 @@ export function Layout({ mode = null }: LayoutProps) {
               end
               onClick={(event) => confirmNavAway(event, link.to)}
               className={({ isActive }) =>
-                `flex items-center px-6 py-3 text-gray-700 hover:bg-stone-100 hover:text-lime-800 transition-colors ${
-                  isActive
-                    ? 'bg-stone-200 text-lime-800 border-r-4 border-lime-800'
-                    : ''
+                `flex items-center px-6 py-3 text-stone-700 hover:bg-stone-50 hover:text-stone-900 transition-colors ${
+                  isActive ? 'bg-stone-50 text-lime-700 font-medium' : ''
                 }`
               }
             >

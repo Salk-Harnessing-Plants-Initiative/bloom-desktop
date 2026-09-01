@@ -94,6 +94,86 @@ correction, not a re-run of the same eyeball check that missed it the first
 time; the manual visual-check task still runs, but as confirmation of a
 known-good computed choice, not as the only check.
 
+**Superseded by Revision 2 below** — the "lime-accented hybrid" framing
+above turned out to be a self-consistent but ungrounded invention: neither
+the pilot nor `salk-bloom` (the production web app this desktop app
+uploads to) actually uses a hover-turns-lime + border-accent pattern. It
+was never checked against `salk-bloom`'s real convention during the
+original design pass, only against the pilot (which this decision already,
+correctly, declined to copy literally) and an internal contrast
+computation. The shade-correction math above (`lime-800` fixing a real
+contrast failure) is still valid and reused in Revision 2, just applied to
+a different, better-grounded target design.
+
+### Revision 2: match `salk-bloom`'s actual nav/shell convention (post-implementation, live-app review)
+
+After implementation, a manual walkthrough of the running app prompted the
+user to ask that this match `salk-bloom` (`Salk-Harnessing-Plants-Initiative/bloom`,
+the production web app bloom-desktop uploads scans to) more closely — not
+just "lime/stone instead of blue/gray" in the abstract, but the actual
+classes that app uses. Read directly, not assumed:
+
+- `salk-bloom/web/app/app/layout.tsx` — the sidebar (`<aside>`) is
+  `bg-stone-100 border-r border-stone-200`, the same surface as the main
+  content area, not a separate white panel with its own shadow.
+- `salk-bloom/web/components/navigation.tsx` — nav link **inactive/hover**:
+  `text-stone-700 hover:bg-stone-50/70 hover:text-stone-900` (hover never
+  turns lime — only the text darkens toward stone-900). Nav link
+  **active**: `bg-stone-50 text-lime-700 font-medium` (a subtle lighter-stone
+  pill + lime text + weight change — no border accent at all; salk-bloom
+  instead pairs each link with a small leading dot, `bg-stone-400` inactive
+  / `bg-lime-700` active, as its "you are here" marker).
+- Primary buttons everywhere in `salk-bloom` use `bg-lime-700 hover:bg-lime-800
+text-stone-50` — confirms the button-side lime-700→lime-800 hover-shade
+  convention this proposal already uses elsewhere (`GraviScanWorkflowGuide`'s
+  primary card, matching `CylinderScanWorkflowGuide`) is correct and doesn't
+  need to change.
+- `amber` in `salk-bloom` is reserved strictly for warning/caution UI, never
+  primary/active state — consistent with this proposal's existing usage.
+
+**Decisions made from this research:**
+
+1. **Sidebar panel is unified into the shell**, not a separate white panel:
+   `bg-white shadow-lg` → `bg-stone-100 border-r border-stone-200`, matching
+   `salk-bloom`'s `<aside>` exactly. (User explicitly chose this "full match"
+   over a narrower "just fix the nav-link colors, keep the white panel"
+   option when asked.)
+2. **Active nav-link state drops the border accent entirely**, matching
+   `salk-bloom`: `bg-stone-50 text-lime-700 font-medium` — no
+   `border-r-4`/`border-lime-*`. No dot indicator is added, unlike
+   `salk-bloom`'s literal markup: bloom-desktop's nav links already carry a
+   per-link SVG icon (which `salk-bloom`'s nav doesn't have), and the icon
+   already serves the "at-a-glance identify this row" role a dot exists to
+   provide in an icon-less nav — adding a redundant dot alongside an
+   existing icon would be clutter, not a faithful port. The bg-stone-50 pill
+   - lime-700 text + font-medium weight is the actual signal salk-bloom
+     relies on to mark "active" (the dot is secondary, reinforcing the same
+     three properties), so dropping only the dot preserves the real mechanism.
+3. **Hover state drops lime entirely**, matching `salk-bloom`:
+   `hover:bg-stone-50 hover:text-stone-900` — hover no longer previews the
+   active color; it's a plain stone darken, exactly like the reference app.
+4. **Active text reverts to `lime-700`, not `lime-800`.** This is safe
+   contrast-wise specifically because the background also changed — active
+   state is now `bg-stone-50` (`#fafaf9`), lighter than the abandoned
+   `bg-stone-200` (`#e7e5e4`) the Revision 1 contrast failure was computed
+   against. Recomputed directly: `lime-700` (`#4d7c0f`) on `bg-stone-50`
+   (`#fafaf9`) is ≈4.79:1 — clears WCAG AA's 4.5:1 minimum for normal-size
+   text (a slim margin, but a real pass, and better than Revision 1's
+   original `lime-700`-on-`stone-200` failure at ≈3.98:1). `lime-700` was
+   not re-adopted carelessly; it was re-verified against the new background
+   before use, and matches `salk-bloom`'s literal active-text color, not an
+   independent shade choice.
+5. **Base (non-active, non-hover) nav-link text becomes `text-stone-700`**,
+   not `text-gray-700` — matching `salk-bloom` and completing the move off
+   the `gray-*` scale for this component, consistent with the rest of this
+   proposal's stone/lime convention.
+
+**Deliberately not changed:** the "Bloom Desktop" title, mode label, and
+scanner-name footer text colors in `Layout.tsx` (still `text-gray-800`/
+`text-gray-500`) — out of scope for both #328's original ask and this
+correction; touching every gray text label in the file is a larger sweep
+than "match the shell/sidebar/nav-link convention" calls for.
+
 ### Decision: GraviScan workflow guide — new standalone component, not a `WorkflowSteps.tsx` restructure
 
 Mirrors `CylinderScanWorkflowGuide.tsx` (Tier 4, #175) exactly rather than
@@ -284,8 +364,22 @@ regression-guard test, not just left as an assumption.
   grep alone to catch.
 - **Judgment-call shading**: resolved by computation, not left to
   eyeballing alone — see the "nav-link color" decision's shade correction
-  above (`lime-800`, not `lime-700`, computed to clear WCAG AA). The manual
-  visual check confirms real-browser rendering matches the computed choice.
+  above (`lime-800`, not `lime-700`, computed to clear WCAG AA in Revision
+  1's design). Revision 2 subsequently replaced that design with
+  `salk-bloom`'s real convention (`lime-700` on a lighter `bg-stone-50`,
+  independently recomputed to still clear AA) — the manual visual check
+  that finally ran (a real screenshot from the user, once port 9000 freed
+  up) is exactly what surfaced that Revision 1's invented pattern, while
+  internally contrast-correct, didn't match the app it was supposed to
+  align with. This is the risk this checklist item was meant to catch,
+  working as intended, just later than planned.
+- **Copy drifted from the app's real scope**: `GraviScanWorkflowGuide.tsx`'s
+  Capture Scan/Experiments descriptions were carried over verbatim from the
+  retired `graviScanSteps` data, which described both in gravitropism-only
+  terms. The user caught this during the same walkthrough — GraviScan
+  scanners run other kinds of studies too. Corrected to
+  mode-appropriate, non-overclaiming copy ("Capture a time-lapse scan",
+  "Create experiments to run on the scanner").
 - **Operator muscle-memory disruption**: the sidebar reorder (#337) changes
   spatial positions operators click by habit, under real lab time pressure,
   dozens of times a day. Round-1 review flagged that neither this design doc
@@ -302,7 +396,10 @@ Revertible via `git revert`.
 
 ## Open Questions
 
-None outstanding — all decisions above (nav-link color treatment,
+None outstanding. All Revision 1 decisions (nav-link color treatment,
 GraviScan-guide architecture, Configure Scanner placement, both-modes
-reorder scope) were explicitly resolved with the user before this document
-was written.
+reorder scope) were explicitly resolved with the user before implementation
+started. Revision 2's one open question — whether matching `salk-bloom`
+should extend to unifying the sidebar's own background/panel, or stop at
+just the nav-link colors — was also explicitly resolved with the user (full
+unification chosen) before implementing.
