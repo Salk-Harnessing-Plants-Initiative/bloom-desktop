@@ -633,6 +633,103 @@ describe('GraviMetadataUpload', () => {
           screen.queryByText(/mapped to the same column/i)
         ).not.toBeInTheDocument();
       });
+
+      it("clearing an already-mapped required field back to unmapped blocks import with a validation error, instead of silently reusing another column's data", async () => {
+        // Regression test for a bug in the pre-existing `colIndex` helper
+        // (unrelated to findMappingCollisions itself, but exercised by the
+        // same "explicitly cleared to ''" input this PR's collision check
+        // relies on being treated as unmapped): `colIndex` used
+        // `mapping[field] !== undefined` to distinguish mapped from
+        // unmapped, but an explicitly-cleared field's value is the string
+        // '', which IS !== undefined, so `Number('')` resolved to column 0
+        // — silently reusing column 0's data (here, Plate ID's) as if it
+        // were the cleared field's own value, with no error at all. This
+        // is exactly the silent-corruption class of bug #353 was filed to
+        // close, just reached through a different interaction than the
+        // mapping-collision path.
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.selectOptions(screen.getByLabelText(/^medium$/i), '');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(screen.getByText(/row 2/i)).toBeInTheDocument();
+        });
+        expect(
+          screen.getByText(/some required fields are blank/i)
+        ).toBeInTheDocument();
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it("clearing an already-mapped optional field back to unmapped imports it as genuinely blank, not another column's data", async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', 'a note'],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.selectOptions(screen.getByLabelText(/^custom note$/i), '');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(createWithSections).toHaveBeenCalledTimes(1);
+        });
+        const [, plates] = createWithSections.mock.calls[0];
+        expect(plates[0].custom_note).toBe('');
+      });
+
+      it('disambiguates a collision on a blank-header column by position, since header text alone is unavailable', async () => {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Sheet1');
+        sheet.addRow([
+          'Plate ID',
+          '',
+          'Plant QR',
+          'Accession',
+          'Medium',
+          'Transplant Date',
+          'Custom Note',
+        ]);
+        sheet.addRow(['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', '']);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const file = new File([buffer], 'metadata.xlsx', {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const user = userEvent.setup();
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        // Column index 1 has a blank header, so nothing auto-maps to it by
+        // name — map both "Section ID" and "Custom Note" there explicitly
+        // to force a collision on that blank-header column.
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '1');
+        await user.selectOptions(screen.getByLabelText(/^custom note$/i), '1');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(
+            screen.getByText(/section id/i, { selector: 'li' })
+          ).toBeInTheDocument();
+        });
+        const message = screen.getByText(/section id/i, {
+          selector: 'li',
+        }).textContent;
+        expect(message).toMatch(/custom note/i);
+        expect(message).toMatch(/column 2/i);
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -723,6 +820,37 @@ describe('GraviMetadataUpload', () => {
     expect(screen.queryByText(/done uploading/i)).not.toBeInTheDocument();
     const [, plates] = createWithSections.mock.calls[0];
     expect(plates).toHaveLength(0);
+  });
+
+  it('clears a stale top-level error from a prior failed attempt when the next attempt is blocked by a mapping collision', async () => {
+    createWithSections.mockResolvedValue({
+      success: false,
+      error: 'Failed to import metadata',
+    });
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+    ]);
+    renderUpload();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Failed to import metadata')).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText(/^section id$/i), '0');
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/plate id/i, { selector: 'li' })
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText('Failed to import metadata')
+    ).not.toBeInTheDocument();
   });
 
   it('surfaces an error instead of a false "Done uploading!" when no column headers auto-map', async () => {

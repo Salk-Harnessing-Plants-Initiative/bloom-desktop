@@ -97,6 +97,9 @@ describe('GraviMetadataList', () => {
         screen.getByText(/failed to load metadata files/i)
       ).toBeInTheDocument();
     });
+    expect(
+      screen.queryByText(/no graviscan metadata uploaded yet/i)
+    ).not.toBeInTheDocument();
   });
 
   it('shows an empty-state message when there are no metadata files', async () => {
@@ -140,6 +143,44 @@ describe('GraviMetadataList', () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('clears a stale expand error as soon as a retry attempt starts, not just once the retry resolves', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockResolvedValue({ success: false, error: 'Failed to load plates' });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    // First attempt fails.
+    await user.click(screen.getByText('batch3.xlsx'));
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load plates')).toBeInTheDocument();
+    });
+
+    // Collapse, then retry with a promise that doesn't resolve immediately
+    // — the stale error must disappear as soon as the retry starts, not
+    // linger for the whole in-flight window.
+    await user.click(screen.getByText('batch3.xlsx'));
+    let resolveRetry: (value: {
+      success: boolean;
+      data?: unknown[];
+    }) => void = () => {};
+    list.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        })
+    );
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    expect(screen.queryByText('Failed to load plates')).not.toBeInTheDocument();
+
+    resolveRetry({
+      success: true,
+      data: [{ plate_id: 'P1', accession: 'Col-0', sections: [] }],
+    });
+    await waitFor(() => screen.getByRole('table'));
   });
 
   it('lists files with name, date, linked experiments, and plate count, chronologically, no filter/sort UI', async () => {

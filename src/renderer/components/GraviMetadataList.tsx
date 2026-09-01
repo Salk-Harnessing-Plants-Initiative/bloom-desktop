@@ -63,6 +63,16 @@ export function GraviMetadataList() {
     const next = expandedId === fileId ? null : fileId;
     setExpandedId(next);
     if (next && !plates[fileId]) {
+      // Clear any stale error from a prior failed attempt before retrying —
+      // otherwise the old message stays visible for the entire in-flight
+      // window of a retry (no loading indicator masks it), misleadingly
+      // suggesting the retry click had no effect.
+      setExpandErrors((prev) => {
+        if (!(fileId in prev)) return prev;
+        const withoutStaleError = { ...prev };
+        delete withoutStaleError[fileId];
+        return withoutStaleError;
+      });
       const result =
         await window.electron.database.graviPlateAccessions.list(fileId);
       if (result.success) {

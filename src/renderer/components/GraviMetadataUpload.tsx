@@ -136,7 +136,7 @@ export function GraviMetadataUpload({
   const blankRowCount = useMemo(() => {
     if (!sheet) return 0;
     const colIndex = (field: string) =>
-      mapping[field] !== undefined ? Number(mapping[field]) : -1;
+      mapping[field] ? Number(mapping[field]) : -1;
     return sheet.rows.filter((row) =>
       REQUIRED_FIELDS.every((f) => (row[colIndex(f)] ?? '').trim() === '')
     ).length;
@@ -249,6 +249,7 @@ export function GraviMetadataUpload({
     // the dismissable confirm instead of the hard block this exists for.
     setBlockNavigation(true);
     setRowErrors([]);
+    setError(null);
 
     try {
       const collisionErrors = findMappingCollisions(mapping, sheet.headers);
@@ -258,7 +259,7 @@ export function GraviMetadataUpload({
       }
 
       const colIndex = (field: string) =>
-        mapping[field] !== undefined ? Number(mapping[field]) : -1;
+        mapping[field] ? Number(mapping[field]) : -1;
 
       const errors: string[] = [];
       sheet.rows.forEach((row, i) => {
@@ -449,7 +450,7 @@ export function GraviMetadataUpload({
                   <option value="">-- Select column --</option>
                   {sheet.headers.map((h, i) => (
                     <option key={i} value={i}>
-                      {h}
+                      {i + 1}. {h || '(blank header)'}
                     </option>
                   ))}
                 </select>
@@ -466,7 +467,7 @@ export function GraviMetadataUpload({
                     data-testid={`preview-header-${i}`}
                     className={getColumnClass(i, mapping)}
                   >
-                    {h}
+                    {i + 1}. {h || '(blank header)'}
                   </th>
                 ))}
               </tr>

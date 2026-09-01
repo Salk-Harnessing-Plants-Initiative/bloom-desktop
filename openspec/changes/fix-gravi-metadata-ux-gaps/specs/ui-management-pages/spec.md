@@ -10,6 +10,7 @@
 **When** it is parsed client-side
 **Then** the user SHALL be prompted to choose a sheet (if multiple exist) and map columns to: Plate ID, Section ID, Plant QR, Accession, Medium, Transplant Date (all required) and Custom Note (optional)
 **And** a live preview table (capped at 20 rows) SHALL reflect the current mapping with color-coded columns
+**And** each column's dropdown option and preview-table header SHALL show its 1-based position alongside its header text (or a placeholder if the header is blank), so a column named only by position in a collision error is locatable in the mapping UI
 
 #### Scenario: Column mapping collision blocked
 
