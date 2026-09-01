@@ -123,7 +123,7 @@ describe('GraviScanWorkflowGuide color palette (native lime, not a recolor)', ()
     expect(captureStep.className).toContain('bg-lime-700');
   });
 
-  it('uses text-white on the primary card\'s nested heading, not the button itself', () => {
+  it("uses text-white on the primary card's nested heading, not the button itself", () => {
     renderGuide();
 
     const captureStep = screen.getByTestId('workflow-step-capture-scan');

@@ -50,8 +50,8 @@ The pilot's actual active-nav-link styling
 (`bloom-desktop-pilot/app/src/renderer/Layout.tsx:207-211`) is:
 
 ```tsx
-"p-4 rounded-md text-gray-600 hover:text-gray-900 flex flex-row items-center " +
-  (isActive ? "bg-stone-200" : isPending ? "pending" : "")
+'p-4 rounded-md text-gray-600 hover:text-gray-900 flex flex-row items-center ' +
+  (isActive ? 'bg-stone-200' : isPending ? 'pending' : '');
 ```
 
 That's it — no text-color change on active, no border accent, no background
@@ -126,7 +126,7 @@ that not all four originally-cited issues carry equal weight:
   different USB ports, Configure Scanner shows every historically-detected
   scanner (13 shown for 5 physically connected in one observed case) with no
   in-app way to clear stale rows, permanently blocking a valid configuration
-  state. This is squarely about the Configure Scanner *screen* failing
+  state. This is squarely about the Configure Scanner _screen_ failing
   operators after a real, common physical event — the strongest direct
   support for putting it somewhere operators will actually revisit.
 - **#182, #228 (general fragility context, not direct evidence for
@@ -180,10 +180,10 @@ workflow-guide-only change — flagged as a follow-up issue to file (see
 This also gives Daily Workflow / Setup a clean structural parallel across
 both modes:
 
-| | Daily Workflow | Setup |
-|---|---|---|
-| CylinderScan | Camera Settings, Capture Scan (primary), Browse Scans | Scientists, Phenotypers, Accessions, Experiments |
-| GraviScan | Configure Scanner, Capture Scan (primary), Browse GraviScans | Scientists, Phenotypers, Metadata, Experiments |
+|              | Daily Workflow                                               | Setup                                            |
+| ------------ | ------------------------------------------------------------ | ------------------------------------------------ |
+| CylinderScan | Camera Settings, Capture Scan (primary), Browse Scans        | Scientists, Phenotypers, Accessions, Experiments |
+| GraviScan    | Configure Scanner, Capture Scan (primary), Browse GraviScans | Scientists, Phenotypers, Metadata, Experiments   |
 
 **Out of scope, confirmed not a gap:** the user's stated pain point also
 mentioned wanting a scan preview before starting large experiments and
@@ -214,7 +214,7 @@ Today's `alwaysLinks` (Home, Scientists, Phenotypers, Experiments) is reused
 verbatim by every mode's link composition. The target orders interleave Home
 alone at the top with mode-specific Daily Workflow links, then group the
 Setup-category links (which differ per mode: CylinderScan adds Accessions
-*before* Experiments, GraviScan adds Metadata *before* Experiments)
+_before_ Experiments, GraviScan adds Metadata _before_ Experiments)
 afterward — a monolithic `alwaysLinks` block can't produce this.
 
 **Composition bug found and fixed (round-1 review):** the first draft of
@@ -223,7 +223,7 @@ and composed each mode as `[...setupLinks, accessionsLink]` /
 `[...setupLinks, metadataLink]`. Two independent reviewers (code-feasibility
 and TDD-strategy) confirmed this is mechanically wrong: spreading an array
 that already ends in `Experiments` and appending one more link after it can
-only ever place that link *last* — producing `...Experiments, Accessions`
+only ever place that link _last_ — producing `...Experiments, Accessions`
 and `...Experiments, Metadata`, the exact reverse of the target order
 (`...Accessions, Experiments` / `...Metadata, Experiments`) stated in this
 proposal's own spec delta and `tasks.md`'s own test description. The fix:

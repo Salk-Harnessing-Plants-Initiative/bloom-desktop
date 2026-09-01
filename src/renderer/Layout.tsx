@@ -424,7 +424,13 @@ export function Layout({ mode = null }: LayoutProps) {
           metadataLink,
           experimentsLink,
         ]
-      : [homeLink, ...setupLinks, experimentsLink, browseScansLink, exportScansLink];
+      : [
+          homeLink,
+          ...setupLinks,
+          experimentsLink,
+          browseScansLink,
+          exportScansLink,
+        ];
 
   // Load scanner name from scanner identity service
   useEffect(() => {
