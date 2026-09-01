@@ -175,6 +175,29 @@ describe('GraviMetadataList', () => {
     expect(screen.getByText('2026-07-01T00:00:00.000Z')).toBeInTheDocument();
   });
 
+  it('renders a header row on the expanded plate/section table with the 7 expected columns, in order', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+    await waitFor(() => screen.getByRole('table'));
+
+    const headers = screen
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent);
+    expect(headers).toEqual([
+      'Plate ID',
+      'Accession',
+      'Transplant Date',
+      'Custom Note',
+      'Section',
+      'Plant QR',
+      'Medium',
+    ]);
+  });
+
   it('surfaces the blocked-deletion error without removing the entry', async () => {
     listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
     deleteFile.mockResolvedValue({

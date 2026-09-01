@@ -16,10 +16,10 @@
 
 ## 2. GraviMetadataList: table column headers (closes #352, part 2)
 
-- [ ] 2.1 Write a test in `tests/unit/components/GraviMetadataList.test.tsx` asserting the expanded plate/section table renders a header row with the 7 expected column labels, in order: Plate ID, Accession, Transplant Date, Custom Note, Section, Plant QR, Medium.
-- [ ] 2.2 Run the test and confirm it fails (no `<thead>` exists yet).
-- [ ] 2.3 Implement: add a `<thead>` row with those 7 `<th>` cells above the existing `<tbody>`, matching the existing `<td className="px-3 py-2">` styling convention.
-- [ ] 2.4 Run the test from 2.1 and confirm it passes, then run `npm run test:unit` (full suite) to confirm no regressions.
+- [x] 2.1 Write a test in `tests/unit/components/GraviMetadataList.test.tsx` asserting the expanded plate/section table renders a header row with the 7 expected column labels, in order: Plate ID, Accession, Transplant Date, Custom Note, Section, Plant QR, Medium.
+- [x] 2.2 Run the test and confirm it fails (no `<thead>` exists yet).
+- [x] 2.3 Implement: add a `<thead>` row with those 7 `<th>` cells above the existing `<tbody>`, matching the existing `<td className="px-3 py-2">` styling convention.
+- [x] 2.4 Run the test from 2.1 and confirm it passes, then run `npm run test:unit` (full suite) to confirm no regressions.
 
 ## 3. GraviMetadataUpload: block colliding column mappings (closes #353)
 

@@ -148,6 +148,17 @@ export function GraviMetadataList() {
 
                 {expanded && plates[file.id] && (
                   <table className="w-full text-sm border-t">
+                    <thead>
+                      <tr className="text-left text-gray-500">
+                        <th className="px-3 py-2">Plate ID</th>
+                        <th className="px-3 py-2">Accession</th>
+                        <th className="px-3 py-2">Transplant Date</th>
+                        <th className="px-3 py-2">Custom Note</th>
+                        <th className="px-3 py-2">Section</th>
+                        <th className="px-3 py-2">Plant QR</th>
+                        <th className="px-3 py-2">Medium</th>
+                      </tr>
+                    </thead>
                     <tbody className="divide-y divide-gray-100">
                       {plates[file.id].map((plate) =>
                         plate.sections.map((section, i) => (
