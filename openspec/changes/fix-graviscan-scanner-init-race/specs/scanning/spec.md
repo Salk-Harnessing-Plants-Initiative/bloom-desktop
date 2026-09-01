@@ -131,6 +131,7 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **AND** clear the subprocess map
 - **AND** if a subprocess's exit could not be confirmed even after force-kill, the coordinator SHALL log a warning identifying that scanner rather than silently treating it as freed
 - **AND** a subprocess still mid-spawn (not yet `ready`) at the time of shutdown SHALL NOT have that shutdown reported as an init failure — the coordinator SHALL strip that subprocess's listeners before forcing it down, so its own in-flight spawn attempt does not surface a spurious `scanner-init-status` `error` event for a scanner that was deliberately, cleanly shut down
+- **AND** any in-flight spawn-guard entry for a torn-down scanner SHALL also be cleared, so a subsequent `initialize()`/`addScanner()` call for that same scanner starts a genuinely fresh spawn attempt instead of being handed the now-orphaned, listener-stripped attempt from before this shutdown (which could otherwise only settle after its own full spawn-ready timeout)
 
 #### Scenario: Coordinator implements ScanCoordinatorLike
 

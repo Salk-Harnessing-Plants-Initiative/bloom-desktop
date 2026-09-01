@@ -1000,6 +1000,20 @@ export class ScanCoordinator
 
     const shutdownPromises = Array.from(this.subprocesses.entries()).map(
       async ([scannerId, sub]) => {
+        // Clear any in-flight spawn-guard entry FIRST (matches
+        // stopScanner()'s convention) — found via a real E2E failure
+        // (graviscan-ipc.e2e.ts's "Reset All USB Connections" test): if a
+        // scanner was still mid-spawn when this bulk shutdown ran, its
+        // original spawnSingleScanner() call is still holding the
+        // spawnInFlight entry for that scannerId. Without clearing it
+        // here, a caller that re-initializes right after this shutdown
+        // (e.g. resetUsb()'s own coordinator.initialize() call) would be
+        // handed that same orphaned promise instead of starting fresh —
+        // and since the line below now strips its listeners, that
+        // orphaned promise can only settle via its own
+        // SPAWN_READY_TIMEOUT_MS bound, stalling the new caller for the
+        // full 45s instead of respawning immediately.
+        this.spawnInFlight.delete(scannerId);
         // Strip listeners first (matches stopScanner()'s convention):
         // without this, a subprocess still mid-spawn has its own
         // spawn()-internal 'exit' listener still attached, which rejects
@@ -1028,6 +1042,13 @@ export class ScanCoordinator
     for (const sub of this.subprocesses.values()) {
       sub.kill();
     }
+    // Clear any in-flight spawn-guard entries too — matching the bulk
+    // shutdown() fix above, so nothing left in spawnInFlight can strand a
+    // future caller on an instance this method just discarded. killAll()
+    // is the app-quit fallback, so this is defensive rather than a
+    // reproduced failure, but the invariant should hold everywhere the
+    // subprocess map is torn down.
+    this.spawnInFlight.clear();
     this.subprocesses.clear();
     this.state = 'idle';
   }

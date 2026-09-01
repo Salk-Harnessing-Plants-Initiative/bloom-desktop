@@ -1012,6 +1012,70 @@ describe('ScanCoordinator', () => {
       void initPromise.catch(() => {});
     });
 
+    it('a fresh initialize() right after a bulk shutdown() does not hang on an orphaned in-flight spawn guard entry left by addScanner()', async () => {
+      // Real bug found by CI's graviscan-ipc.e2e.ts ("Reset All USB
+      // Connections marks rows starting, then settles back to a
+      // populated list") — not a unit test, a genuine regression this
+      // PR introduced. Exact real trigger sequence: "Detect Scanners"
+      // calls addScanner() (via the save-scanners-db IPC handler in
+      // register-handlers.ts) — NOT initialize(). If that worker is
+      // still mid-spawn when "Reset All USB Connections" fires
+      // resetUsb()'s coordinator.shutdown() (bulk) then
+      // coordinator.initialize(...), bulk shutdown()'s
+      // removeAllListeners() (this file's own I2 fix) strips that
+      // worker's spawn()-internal listeners, so its original
+      // addScanner()-triggered spawnSingleScanner() call can now ONLY
+      // settle via its own SPAWN_READY_TIMEOUT_MS bound — but bulk
+      // shutdown() didn't clear spawnInFlight for that scannerId, so the
+      // subsequent initialize() call for the SAME scanner got handed
+      // that same orphaned, now-45s-bound promise instead of spawning
+      // fresh.
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+      const scannerId = 'scanner-1';
+      const config: ScannerConfig = {
+        scannerId,
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      };
+
+      const { mock: pendingMock } = createPendingMockSubprocess(scannerId);
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      // "Detect Scanners" → addScanner(), still mid-spawn.
+      const orphanedAdd = coordinator.addScanner(config);
+      await Promise.resolve();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      // "Reset All USB Connections" → resetUsb()'s own
+      // coordinator.shutdown() call, while scanner-1 is still mid-spawn.
+      await coordinator.shutdown();
+
+      // ...then resetUsb()'s own coordinator.initialize(...) call, for
+      // the same scanner, must spawn a genuinely new subprocess promptly
+      // — NOT hang for SPAWN_READY_TIMEOUT_MS waiting on the orphaned
+      // addScanner() attempt.
+      const freshMock = createMockSubprocess(scannerId);
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(freshMock);
+        return freshMock as unknown as ScannerSubprocess;
+      });
+      const freshInit = coordinator.initialize([config]);
+      await Promise.resolve();
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      await freshInit;
+      expect(coordinator.hasWorker(scannerId)).toBe(true);
+
+      void orphanedAdd.catch(() => {});
+      vi.useRealTimers();
+    });
+
     it('the defensive respawn-branch fallback logs a warning when its own reclaim shutdown cannot confirm exit', async () => {
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
