@@ -261,15 +261,17 @@ describe('Layout shell and nav-link colors', () => {
     expect(scientistsLink.className).toContain('hover:text-lime-800');
   });
 
-  it('no nav link, in either mode, has any blue-* class', async () => {
+  it('no nav link has any blue-* class in cylinderscan mode', async () => {
     renderLayout('cylinderscan', '/');
     await waitFor(() => screen.getByText(/scanner:/i));
     screen.getAllByRole('link').forEach((link) => {
       expect(link.className).not.toMatch(/blue-/);
     });
+  });
 
+  it('no nav link has any blue-* class in graviscan mode', async () => {
     renderLayout('graviscan', '/');
-    await waitFor(() => screen.getAllByText(/scanner:/i));
+    await waitFor(() => screen.getByText(/scanner:/i));
     screen.getAllByRole('link').forEach((link) => {
       expect(link.className).not.toMatch(/blue-/);
     });
