@@ -68,10 +68,9 @@ const SETUP_STEPS: DailyWorkflowStep[] = [
 
 /**
  * GraviScan-only workflow guide. Restructures the prior flat numbered
- * list (graviScanSteps) into a prominent Daily Workflow section (scanner
- * check, capture, browse) and a less-prominent, unordered Setup section
- * (#328 piece 2) — a new component rather than a change to the shared
- * WorkflowSteps.tsx, which this component fully replaces for GraviScan.
+ * list into a prominent Daily Workflow section (scanner check, capture,
+ * browse) and a less-prominent, unordered Setup section (#328 piece 2) —
+ * mirrors CylinderScanWorkflowGuide.tsx's pattern (#175).
  */
 export function GraviScanWorkflowGuide() {
   const navigate = useNavigate();

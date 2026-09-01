@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { PythonStatus } from './components/PythonStatus';
-import { WorkflowSteps, graviScanSteps } from './components/WorkflowSteps';
 import { CylinderScanWorkflowGuide } from './components/CylinderScanWorkflowGuide';
+import { GraviScanWorkflowGuide } from './components/GraviScanWorkflowGuide';
 import { countUploadStatuses } from '../utils/upload-status';
 
 interface HomeProps {
@@ -125,12 +125,7 @@ export function Home({ mode = null }: HomeProps) {
       </p>
 
       {mode === 'graviscan' ? (
-        <>
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">
-            Workflow Steps
-          </h2>
-          <WorkflowSteps steps={graviScanSteps} />
-        </>
+        <GraviScanWorkflowGuide />
       ) : (
         <CylinderScanWorkflowGuide />
       )}

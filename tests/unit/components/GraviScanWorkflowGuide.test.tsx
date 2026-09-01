@@ -3,7 +3,7 @@
  *
  * Mirrors CylinderScanWorkflowGuide.tsx's pattern exactly — a new,
  * GraviScan-only component implementing the Daily-Workflow/Setup
- * restructure, not a change to the shared WorkflowSteps.tsx component.
+ * restructure.
  */
 
 import { describe, it, expect, vi } from 'vitest';

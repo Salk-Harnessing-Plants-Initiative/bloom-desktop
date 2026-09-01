@@ -272,14 +272,16 @@ describe('App routing', () => {
       expect(screen.queryByText(/Loading/i)).not.toBeInTheDocument();
     });
     // The catch-all route redirects unknown/gated paths to Home, which
-    // re-renders the sidebar and workflow steps; confirm we did NOT land
-    // there by checking the Home-only "workflow-step-1" testid is absent.
-    expect(screen.queryByTestId('workflow-step-1')).not.toBeInTheDocument();
+    // re-renders the sidebar and GraviScanWorkflowGuide; confirm we did NOT
+    // land there by checking the Home-only "Daily Workflow" heading is
+    // absent (the numeric workflow-step-1 testid this guard used to check
+    // no longer exists — GraviScanWorkflowGuide uses slug testids instead).
+    expect(screen.queryByText('Daily Workflow')).not.toBeInTheDocument();
 
     const metadataLink = screen.getByRole('link', { name: /^metadata$/i });
     fireEvent.click(metadataLink);
     await waitFor(() => {
-      expect(screen.queryByTestId('workflow-step-1')).not.toBeInTheDocument();
+      expect(screen.queryByText('Daily Workflow')).not.toBeInTheDocument();
     });
   });
 
