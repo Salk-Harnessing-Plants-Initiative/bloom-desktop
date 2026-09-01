@@ -129,6 +129,42 @@ describe('pr-checks.yml test-make-linux job', () => {
       ]
     ).toBe(1);
   });
+
+  it('installs dpkg and fakeroot before the deb maker runs, not just fakeroot', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-make-linux'];
+    const installStep = (job?.steps ?? []).find((step) =>
+      step.run?.includes('apt-get install')
+    );
+
+    expect(installStep).toBeDefined();
+    // @electron-forge/maker-deb's requiredExternalBinaries lists both —
+    // fakeroot was already installed explicitly; dpkg must be too, for the
+    // same "don't assume the runner image has it" reasoning.
+    expect(installStep?.run).toContain('dpkg');
+    expect(installStep?.run).toContain('fakeroot');
+  });
+
+  it('verifies maker artifacts were produced before launching the app', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['test-make-linux'];
+    const artifactsStep = (job?.steps ?? []).find((step) =>
+      step.run?.includes('test:make:artifacts')
+    );
+
+    expect(artifactsStep).toBeDefined();
+    expect(artifactsStep?.run).toContain('npm run test:make:artifacts');
+  });
+});
+
+describe('pr-checks.yml all-checks-passed', () => {
+  it('requires test-make-linux to pass', () => {
+    const workflow = loadWorkflow();
+    const job = workflow.jobs['all-checks-passed'];
+
+    expect(job).toBeDefined();
+    expect(job?.needs).toContain('test-make-linux');
+  });
 });
 
 describe('pr-checks.yml test-e2e-dev sharding', () => {

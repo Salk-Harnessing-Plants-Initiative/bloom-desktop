@@ -8,7 +8,7 @@
  * globals — matching resolveStagedAppPath's existing pattern.
  */
 
-const PRODUCT_NAME = 'Bloom Desktop';
+import { PRODUCT_NAME } from './product-name';
 
 export function resolveExecutableName(platform: NodeJS.Platform): string {
   return platform === 'linux' ? 'bloom-desktop' : PRODUCT_NAME;
