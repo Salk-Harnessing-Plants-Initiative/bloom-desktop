@@ -96,6 +96,7 @@ function renderLayout(mode: string | null, initialPath = '/') {
                 path="metadata-importing"
                 element={<FakeImportingMetadataPage />}
               />
+              <Route path="*" element={<div>Other content</div>} />
             </Route>
           </Routes>
         </UnsavedChangesProvider>
@@ -162,6 +163,143 @@ describe('Layout nav links', () => {
     expect(
       screen.queryByRole('link', { name: /browse graviscans/i })
     ).not.toBeInTheDocument();
+  });
+
+  it('orders cylinderscan-mode links Daily-Workflow-first: Home, Camera Settings, Capture Scan, Browse Scans, Export Scans, then Setup: Scientists, Phenotypers, Accessions, Experiments', async () => {
+    renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/',
+      '/camera-settings',
+      '/capture-scan',
+      '/browse-scans',
+      '/export',
+      '/scientists',
+      '/phenotypers',
+      '/accessions',
+      '/experiments',
+    ]);
+  });
+
+  it('orders graviscan-mode links Daily-Workflow-first: Home, Configure Scanner, Capture Scan, Browse GraviScans, then Setup: Scientists, Phenotypers, Metadata, Experiments', async () => {
+    renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/',
+      '/configure-scanner',
+      '/capture-scan',
+      '/browse-graviscans',
+      '/scientists',
+      '/phenotypers',
+      '/metadata',
+      '/experiments',
+    ]);
+  });
+
+  it('leaves the default/no-mode link order unchanged: Home, Scientists, Phenotypers, Experiments, Browse Scans, Export Scans', async () => {
+    renderLayout(null);
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/',
+      '/scientists',
+      '/phenotypers',
+      '/experiments',
+      '/browse-scans',
+      '/export',
+    ]);
+  });
+});
+
+describe('Layout shell and nav-link colors', () => {
+  it('uses bg-stone-100 for the shell background, not bg-gray-50, in cylinderscan mode', async () => {
+    const { container } = renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const shell = container.querySelector('.flex.h-screen');
+    expect(shell?.className).toContain('bg-stone-100');
+    expect(shell?.className).not.toContain('bg-gray-50');
+  });
+
+  it('uses bg-stone-100 for the shell background, not bg-gray-50, in graviscan mode', async () => {
+    const { container } = renderLayout('graviscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const shell = container.querySelector('.flex.h-screen');
+    expect(shell?.className).toContain('bg-stone-100');
+    expect(shell?.className).not.toContain('bg-gray-50');
+  });
+
+  it('the sidebar panel is unified into the stone shell, not its own white panel', async () => {
+    const { container } = renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const sidebar = container.querySelector('.w-64');
+    expect(sidebar?.className).toContain('bg-stone-100');
+    expect(sidebar?.className).toContain('border-r');
+    expect(sidebar?.className).toContain('border-stone-200');
+    expect(sidebar?.className).not.toContain('bg-white');
+    expect(sidebar?.className).not.toContain('shadow-lg');
+  });
+
+  it("the active Home link matches salk-bloom's convention: a stone-50 pill with lime-700 text, no border accent", async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const homeLink = screen.getByRole('link', { name: /^home$/i });
+    expect(homeLink.className).toContain('bg-stone-50');
+    expect(homeLink.className).toContain('text-lime-700');
+    expect(homeLink.className).toContain('font-medium');
+    expect(homeLink.className).not.toContain('border-r-4');
+    expect(homeLink.className).not.toMatch(/border-lime/);
+  });
+
+  it('non-active links hover to a stone-50/70 / stone-900 treatment, not lime', async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
+    // salk-bloom's real hover class is hover:bg-stone-50/70 (70% opacity), not
+    // a fully-opaque hover:bg-stone-50 — match it exactly, not just a substring.
+    expect(scientistsLink.className).toContain('hover:bg-stone-50/70');
+    expect(scientistsLink.className).toContain('hover:text-stone-900');
+    expect(scientistsLink.className).not.toMatch(/hover:text-lime/);
+  });
+
+  it('non-active, non-hover links use stone-700 as their base text color, not gray-700', async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
+    expect(scientistsLink.className).toContain('text-stone-700');
+    expect(scientistsLink.className).not.toContain('text-gray-700');
+  });
+
+  it('no nav link has any blue-* class in cylinderscan mode', async () => {
+    renderLayout('cylinderscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+    screen.getAllByRole('link').forEach((link) => {
+      expect(link.className).not.toMatch(/blue-/);
+    });
+  });
+
+  it('no nav link has any blue-* class in graviscan mode', async () => {
+    renderLayout('graviscan', '/');
+    await waitFor(() => screen.getByText(/scanner:/i));
+    screen.getAllByRole('link').forEach((link) => {
+      expect(link.className).not.toMatch(/blue-/);
+    });
   });
 });
 

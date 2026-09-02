@@ -42,6 +42,46 @@ export const USB_STAGGER_DELAY_MS = 5000;
  */
 export const SCAN_ROW_TIMEOUT_MS = 90_000;
 
+/**
+ * Bound on how long a single scanner's spawn attempt is allowed to run
+ * without becoming ready or dying, before the coordinator gives up on it
+ * (design.md Decision 2). `ScannerSubprocess.spawn()` itself has no
+ * internal timeout — this bound exists so a worker that never signals
+ * ready or dies doesn't hang the coordinator (and every caller sharing its
+ * in-flight-spawn guard promise) forever. The observed device-open budget
+ * on the reference rig was a flat 30.0s under worse-than-normal USB
+ * contention; this adds 15s margin for scheduling jitter.
+ */
+export const SPAWN_READY_TIMEOUT_MS = 45_000;
+
+/** Thrown by `withTimeout()` when the wrapped promise doesn't settle in time. */
+class SpawnTimeoutError extends Error {}
+
+/**
+ * Races `promise` against a timeout. If the timeout wins, rejects with
+ * `SpawnTimeoutError` — the original `promise` is left to settle on its
+ * own (it is not cancelled); attaching a rejection handler to it here
+ * (via the two-argument `.then()` below) ensures its eventual settlement,
+ * whenever it comes, is never reported as an unhandled rejection.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new SpawnTimeoutError(`Timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -86,6 +126,21 @@ export class ScanCoordinator
   // collapse concurrent requests for the SAME scanner onto one queued
   // spawn; the entry is removed once that spawn settles.
   private pendingAdds: Map<string, Promise<void>> = new Map();
+  // Layer A (design.md Decision 1): serializes overlapping initialize()
+  // calls so their shared preamble (initErrors.clear(), stale-subprocess
+  // cleanup) never races. This is a QUEUE, not a memoized single promise —
+  // each call still gets its own doInitialize() run with its own scanner
+  // list, strictly ordered after any call already chained. Memoizing would
+  // silently drop a concurrent call's differently-scoped scanner list.
+  private initQueue: Promise<void> = Promise.resolve();
+  // Layer B (design.md Decision 1): per-scannerId in-flight-spawn guard at
+  // the shared spawnSingleScanner() choke point used by both initialize()
+  // and addScanner(). While a spawn attempt for a scannerId is in flight,
+  // any other caller for that same scannerId awaits this same promise
+  // instead of independently inspecting subprocess state and deciding to
+  // reuse, respawn, or shut down — this is what prevents a second caller
+  // from misdiagnosing a still-connecting worker as dead.
+  private spawnInFlight: Map<string, Promise<void>> = new Map();
 
   constructor(pythonPath: string, isPackaged: boolean, mock = false) {
     super();
@@ -137,15 +192,32 @@ export class ScanCoordinator
   }
 
   /**
-   * Staggered initialization: spawn subprocesses one at a time,
-   * waiting for each to signal ready before starting the next.
-   * This prevents SANE init contention.
+   * Concurrent initialization: spawn all subprocesses at once via
+   * Promise.allSettled (design.md Decision 4, closes #144) — each runs in
+   * its own OS process with its own independent SANE context, so the
+   * sequential-init-to-avoid-SANE-contention concern this method used to
+   * guard against doesn't apply across processes. One scanner's failure
+   * does not block the others.
    *
-   * NOTE: Issue #144 argues that subprocess isolation makes sequential
-   * init unnecessary. Kept sequential for now; parallel init deferred
-   * to a future increment that designs partial-failure error semantics.
+   * Public entry point only: serializes overlapping calls via `initQueue`
+   * (design.md Decision 1, Layer A) so their shared preamble
+   * (`initErrors.clear()`, stale-subprocess cleanup) never races — see
+   * `doInitialize()` for the actual work.
    */
   async initialize(scanners: ScannerConfig[]): Promise<void> {
+    // Layer A: serialize overlapping calls (design.md Decision 1). A
+    // queue, not a memoized single promise — every call gets its own
+    // doInitialize(scanners) run, strictly ordered after any call already
+    // chained, so no caller's scanner list is ever silently dropped.
+    const run = this.initQueue.then(
+      () => this.doInitialize(scanners),
+      () => this.doInitialize(scanners) // run even if the previous call in the chain somehow threw
+    );
+    this.initQueue = run.catch(() => {}); // keep the chain alive regardless of this run's outcome
+    return run;
+  }
+
+  private async doInitialize(scanners: ScannerConfig[]): Promise<void> {
     this.state = 'initializing';
     this.cancelled = false;
 
@@ -153,8 +225,19 @@ export class ScanCoordinator
     for (const [id, sub] of this.subprocesses) {
       if (!scanners.find((s) => s.scannerId === id)) {
         console.log(`[ScanCoordinator] Shutting down stale subprocess ${id}`);
-        await sub.shutdown(5000);
+        // Remove from the map BEFORE awaiting shutdown, not after — same
+        // reasoning as stopScanner(): `sub.isReady` stays stale (true)
+        // until the OS process actually exits, which can take several
+        // seconds, and a concurrent addScanner()/hasWorker() caller must
+        // not see this doomed instance as still healthy during that
+        // window (see stopScanner()'s comment for the full failure mode).
         this.subprocesses.delete(id);
+        const confirmed = await sub.shutdown();
+        if (!confirmed) {
+          console.warn(
+            `[ScanCoordinator] Stale subprocess ${id} shutdown could not be confirmed`
+          );
+        }
       }
     }
 
@@ -168,9 +251,20 @@ export class ScanCoordinator
     this.initErrors.clear();
 
     try {
-      for (const scanner of scanners) {
-        if (this.cancelled) break;
-        await this.spawnSingleScanner(scanner);
+      const results = await Promise.allSettled(
+        scanners.map((scanner) => this.spawnSingleScanner(scanner))
+      );
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          // spawnSingleScanner() never throws (it isolates failures into
+          // initErrors/scanner-init-status internally) — this should be
+          // unreachable. Logged defensively so a future regression that
+          // reintroduces a throw is visible instead of silently swallowed.
+          console.error(
+            '[ScanCoordinator] Unexpected spawn rejection (should be unreachable):',
+            result.reason
+          );
+        }
       }
     } finally {
       this.state = 'idle';
@@ -272,33 +366,82 @@ export class ScanCoordinator
    * No-op if no worker exists for `scannerId`.
    */
   async stopScanner(scannerId: string): Promise<void> {
+    // Clear any in-flight spawn-guard entry for this scannerId FIRST, so a
+    // subsequent addScanner()/initialize() call for it starts a genuinely
+    // fresh spawn attempt instead of joining the (about-to-be-orphaned)
+    // in-flight attempt this call is going to strip listeners from below —
+    // design.md Decision 1's fix for the retry-scanner regression.
+    this.spawnInFlight.delete(scannerId);
+
     const sub = this.subprocesses.get(scannerId);
     if (!sub) return;
-    sub.removeAllListeners();
-    await sub.shutdown(5000);
+
+    // Remove from the map and clear any stale error BEFORE awaiting
+    // shutdown (which can take up to ~7s), not after. `sub.isReady`
+    // doesn't flip until the OS process's real `exit` event fires, so
+    // leaving the old entry in place during that window would let a
+    // concurrent addScanner()/hasWorker() caller see a doomed instance as
+    // still healthy and silently no-op instead of spawning a
+    // replacement — a scanner would vanish with no error ever surfaced.
     this.subprocesses.delete(scannerId);
     this.initErrors.delete(scannerId);
+
+    sub.removeAllListeners();
+    const confirmed = await sub.shutdown();
+    if (!confirmed) {
+      console.warn(
+        `[ScanCoordinator] stopScanner(${scannerId}): shutdown could not be confirmed`
+      );
+    }
   }
 
   /**
-   * Internal: spawn one ScannerSubprocess and wire its events.
-   * Shared by both `initialize()`'s per-scanner loop and
-   * `addScanner()` (closes task 7.3 — these used to be two parallel,
-   * duplicated implementations).
+   * Internal: spawn one ScannerSubprocess and wire its events. Shared by
+   * both `initialize()`'s per-scanner spawns and `addScanner()` (closes
+   * task 7.3 — these used to be two parallel, duplicated implementations).
    *
-   * Carries the same reuse-existing-ready / shut-down-dead-before-
-   * respawn checks `initialize()` used to run inline, so both call
-   * sites get identical semantics from one place.
-   *
-   * Does not throw on spawn failure — the entry is removed from the
-   * map, the error recorded in `initErrors`, and a `scanner-init-status`
-   * event emitted. This isolates one scanner's spawn failure from the
-   * others (fixes a latent bug: previously an exception from
-   * `sub.spawn()` inside `initialize()`'s loop propagated out of the
-   * whole method uncaught, so remaining scanners in the list never
-   * got spawned).
+   * Public entry point only: guards each `scannerId` against concurrent
+   * spawn attempts via `spawnInFlight` (design.md Decision 1, Layer B) —
+   * see `doSpawnSingleScanner()` for the actual reuse/respawn/spawn work.
    */
   private async spawnSingleScanner(config: ScannerConfig): Promise<void> {
+    // Layer B (design.md Decision 1): a spawn attempt already in flight
+    // for this scannerId wins — a second caller awaits its outcome
+    // instead of independently inspecting subprocess state and deciding
+    // to reuse, respawn, or shut down. This is what prevents a healthy,
+    // still-connecting worker from being misdiagnosed as dead.
+    const inFlight = this.spawnInFlight.get(config.scannerId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const promise = this.doSpawnSingleScanner(config).finally(() => {
+      // Identity-guarded: only clear the guard entry if it's still THIS
+      // call's promise — stopScanner() can clear it earlier (design.md
+      // Decision 1), and without this check a very-late-settling orphaned
+      // attempt could otherwise delete a different, newer attempt's
+      // still-active guard entry out from under it.
+      if (this.spawnInFlight.get(config.scannerId) === promise) {
+        this.spawnInFlight.delete(config.scannerId);
+      }
+    });
+    this.spawnInFlight.set(config.scannerId, promise);
+    return promise;
+  }
+
+  /**
+   * Carries the same reuse-existing-ready / shut-down-dead-before-respawn
+   * checks `initialize()` used to run inline, so both call sites get
+   * identical semantics from one place.
+   *
+   * Does not throw on spawn failure — the entry is removed from the map,
+   * the error recorded in `initErrors`, and a `scanner-init-status` event
+   * emitted. This isolates one scanner's spawn failure from the others
+   * (fixes a latent bug: previously an exception from `sub.spawn()`
+   * inside `initialize()`'s loop propagated out of the whole method
+   * uncaught, so remaining scanners in the list never got spawned).
+   */
+  private async doSpawnSingleScanner(config: ScannerConfig): Promise<void> {
     // Reuse existing subprocess if it's still alive and ready
     const existing = this.subprocesses.get(config.scannerId);
     if (existing && existing.isReady) {
@@ -308,14 +451,35 @@ export class ScanCoordinator
       return;
     }
 
-    // Shut down dead/stuck subprocess before respawning
+    // Shut down dead/stuck subprocess before respawning. Unreachable in
+    // normal operation once the spawnInFlight guard above is in place: by
+    // the time a new spawn attempt begins here, `existing` is guaranteed
+    // to be either absent or ready — never `'starting'` — since no two
+    // doSpawnSingleScanner() executions for the same scannerId ever run
+    // concurrently. A truthy, not-ready `existing` here means that
+    // invariant was violated by something outside this guard. Kept as a
+    // defensive fallback (this is safety-relevant hardware-control code)
+    // rather than deleted, and logged loudly so an invariant violation is
+    // visible instead of silently "working" via the old respawn path
+    // (design.md Decision 3).
     if (existing) {
-      console.log(
-        `[ScanCoordinator] Scanner ${config.scannerId} subprocess not ready, respawning`
+      console.error(
+        `[ScanCoordinator] INVARIANT VIOLATION: scanner ${config.scannerId} had a not-ready subprocess with no in-flight spawn guard — respawning via the defensive fallback path`
       );
-      existing.removeAllListeners();
-      await existing.shutdown(5000);
+      // Remove from the map before awaiting shutdown, not after (same
+      // reasoning as stopScanner()/doInitialize()'s stale-cleanup): we're
+      // already committed to replacing `existing` regardless of the
+      // shutdown outcome, so there's no reason to leave a doomed,
+      // stale-`isReady` entry visible to a concurrent caller in the
+      // meantime.
       this.subprocesses.delete(config.scannerId);
+      existing.removeAllListeners();
+      const confirmed = await existing.shutdown();
+      if (!confirmed) {
+        console.warn(
+          `[ScanCoordinator] Scanner ${config.scannerId} defensive-fallback shutdown could not be confirmed`
+        );
+      }
     }
 
     const sub = new ScannerSubprocess(
@@ -369,7 +533,16 @@ export class ScanCoordinator
       console.log(
         `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
       );
-      this.subprocesses.delete(info.scannerId);
+      // Identity-guarded: only remove the map entry if it still points at
+      // THIS instance. A natural exit racing a concurrent replacement is
+      // not currently reachable (every path that replaces an entry always
+      // strips the old instance's listeners first, synchronously, before
+      // any replacement can be constructed) but this guard makes that
+      // invariant self-enforcing rather than relying on reasoning about
+      // every call site staying that way under future changes.
+      if (this.subprocesses.get(info.scannerId) === sub) {
+        this.subprocesses.delete(info.scannerId);
+      }
     });
 
     this.subprocesses.set(config.scannerId, sub);
@@ -384,17 +557,29 @@ export class ScanCoordinator
     );
 
     try {
-      await sub.spawn();
+      await withTimeout(sub.spawn(), SPAWN_READY_TIMEOUT_MS);
       console.log(`[ScanCoordinator] Scanner ${config.scannerId} ready`);
       this.emit('scanner-init-status', {
         scannerId: config.scannerId,
         status: 'ready',
       });
     } catch (error) {
+      if (error instanceof SpawnTimeoutError) {
+        await this.reclaimUnresponsive(config.scannerId, sub);
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       console.error(
         `[ScanCoordinator] Scanner ${config.scannerId} init failed: ${message}`
       );
+      scanLog(`[${config.scannerId}] init failed: ${message}`);
+      if (this.subprocesses.get(config.scannerId) !== sub) {
+        // A concurrent stopScanner()+addScanner()/initialize() sequence
+        // already replaced this entry (e.g. while `withTimeout`'s own
+        // internal await gave a narrow window for it) — don't clobber the
+        // newer instance's bookkeeping or falsely report it as failed.
+        return;
+      }
       this.subprocesses.delete(config.scannerId);
       this.initErrors.set(config.scannerId, message);
       this.emit('scanner-init-status', {
@@ -403,6 +588,59 @@ export class ScanCoordinator
         error: message,
       });
     }
+  }
+
+  /**
+   * Called when a spawn attempt's `withTimeout()` race times out
+   * (design.md Decisions 2 & 3): the worker neither became ready nor
+   * died within `SPAWN_READY_TIMEOUT_MS`. Attempts to reclaim it, but
+   * regardless of whether that reclaim confirms the process actually
+   * exited, does NOT spawn a replacement in this cycle — a future
+   * initialize()/addScanner() call will retry from a clean slate since
+   * the entry is removed from both `this.subprocesses` and (by the
+   * caller's `finally`) `this.spawnInFlight`. Reports through the same
+   * `initErrors`/`scanner-init-status`/`scanLog()` channels used for
+   * every other spawn failure, with message text that explicitly names
+   * this as a timeout so it's distinguishable from an immediate failure.
+   *
+   * Identity-guarded (BLOCKING finding from review): this attempt can be
+   * orphaned by a concurrent `stopScanner()` call (design.md Decision 1's
+   * residual note) and only settle here up to ~45s later, by which point
+   * a fresh `addScanner()`/`initialize()` retry may have already
+   * installed a healthy replacement at the same `scannerId`. This method
+   * still attempts to reclaim ITS OWN `sub`'s resources unconditionally,
+   * but only touches `this.subprocesses`/`initErrors`/the emitted event
+   * if the map still points at `sub` — otherwise it would evict a
+   * healthy replacement and falsely report it as failed.
+   */
+  private async reclaimUnresponsive(
+    scannerId: string,
+    sub: ScannerSubprocess
+  ): Promise<void> {
+    sub.removeAllListeners();
+    const confirmed = await sub.shutdown();
+
+    if (this.subprocesses.get(scannerId) !== sub) {
+      if (!confirmed) {
+        console.warn(
+          `[ScanCoordinator] Orphaned spawn attempt for ${scannerId} could not confirm its own subprocess exited (a newer attempt has since taken over that scannerId)`
+        );
+      }
+      return;
+    }
+
+    this.subprocesses.delete(scannerId);
+    const message = `Scanner ${scannerId} did not become ready within ${SPAWN_READY_TIMEOUT_MS}ms (spawn-ready timeout)${
+      confirmed ? '' : ' — shutdown could not be confirmed'
+    }`;
+    console.error(`[ScanCoordinator] ${message}`);
+    scanLog(`[${scannerId}] ${message}`);
+    this.initErrors.set(scannerId, message);
+    this.emit('scanner-init-status', {
+      scannerId,
+      status: 'error',
+      error: message,
+    });
   }
 
   /**
@@ -760,8 +998,36 @@ export class ScanCoordinator
       this.sleepResolve = null;
     }
 
-    const shutdownPromises = Array.from(this.subprocesses.values()).map((sub) =>
-      sub.shutdown(5000)
+    const shutdownPromises = Array.from(this.subprocesses.entries()).map(
+      async ([scannerId, sub]) => {
+        // Clear any in-flight spawn-guard entry FIRST (matches
+        // stopScanner()'s convention) — found via a real E2E failure
+        // (graviscan-ipc.e2e.ts's "Reset All USB Connections" test): if a
+        // scanner was still mid-spawn when this bulk shutdown ran, its
+        // original spawnSingleScanner() call is still holding the
+        // spawnInFlight entry for that scannerId. Without clearing it
+        // here, a caller that re-initializes right after this shutdown
+        // (e.g. resetUsb()'s own coordinator.initialize() call) would be
+        // handed that same orphaned promise instead of starting fresh —
+        // and since the line below now strips its listeners, that
+        // orphaned promise can only settle via its own
+        // SPAWN_READY_TIMEOUT_MS bound, stalling the new caller for the
+        // full 45s instead of respawning immediately.
+        this.spawnInFlight.delete(scannerId);
+        // Strip listeners first (matches stopScanner()'s convention):
+        // without this, a subprocess still mid-spawn has its own
+        // spawn()-internal 'exit' listener still attached, which rejects
+        // with "process exited before becoming ready" once this forced
+        // shutdown kills it — surfacing a spurious "init failed" report
+        // for a scanner that was deliberately, cleanly shut down.
+        sub.removeAllListeners();
+        const confirmed = await sub.shutdown();
+        if (!confirmed) {
+          console.warn(
+            `[ScanCoordinator] shutdown(): scanner ${scannerId} could not be confirmed stopped`
+          );
+        }
+      }
     );
 
     await Promise.all(shutdownPromises);
@@ -776,6 +1042,13 @@ export class ScanCoordinator
     for (const sub of this.subprocesses.values()) {
       sub.kill();
     }
+    // Clear any in-flight spawn-guard entries too — matching the bulk
+    // shutdown() fix above, so nothing left in spawnInFlight can strand a
+    // future caller on an instance this method just discarded. killAll()
+    // is the app-quit fallback, so this is defensive rather than a
+    // reproduced failure, but the invariant should hold everywhere the
+    // subprocess map is torn down.
+    this.spawnInFlight.clear();
     this.subprocesses.clear();
     this.state = 'idle';
   }

@@ -13,6 +13,7 @@
     "dev": "npm run build:python && npm run build:native && electron-forge start",
     "package": "npm run build:python && npm run build:native && electron-forge package",
     "make": "npm run build:python && npm run build:native && electron-forge make",
+    "make:linux": "npm run build:python && npm run build:native && electron-forge make --targets=deb",
     "build:python": "node scripts/build-python.js",
     "build:native": "node scripts/build-libusb-filter.cjs",
     "build:webpack": "npx webpack --config webpack.main.config.ts --config webpack.renderer.config.ts",

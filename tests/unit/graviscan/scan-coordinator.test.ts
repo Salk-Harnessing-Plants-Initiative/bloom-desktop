@@ -27,6 +27,7 @@ vi.mock('fs', () => ({
 import * as fs from 'fs';
 import { ScannerSubprocess } from '../../../src/main/graviscan/scanner-subprocess';
 import { scanLog } from '../../../src/main/graviscan/scan-logger';
+import { SPAWN_READY_TIMEOUT_MS } from '../../../src/main/graviscan/scan-coordinator';
 import type { PlateConfig, ScannerConfig } from '../../../src/types/graviscan';
 
 // Helper to create a mock subprocess instance
@@ -52,7 +53,11 @@ function createMockSubprocess(scannerId: string): EventEmitter & {
     cancel: vi.fn(),
     quit: vi.fn(),
     kill: vi.fn(),
-    shutdown: vi.fn().mockResolvedValue(undefined),
+    // Resolves `true` (confirmed exit) by default — the new
+    // `if (!confirmed) warn(...)` logic (design.md Decision 3) would
+    // otherwise treat every healthy mock's `undefined`/void return as an
+    // unconfirmed shutdown and spuriously warn across unrelated tests.
+    shutdown: vi.fn().mockResolvedValue(true),
     removeAllListeners: vi.fn().mockReturnThis(),
   });
 }
@@ -73,6 +78,48 @@ function emitScanCompleteForPlates(
       path: plate.output_path,
     });
   }
+}
+
+// A controllable-delay mock subprocess for exercising the concurrency
+// guards (design.md Decision 1): `isReady` starts `false` (a real worker
+// mid-`sane.open()` is not ready yet) and `spawn()` returns a promise that
+// stays pending until the test explicitly resolves or rejects it via the
+// returned `resolveSpawn`/`rejectSpawn` helpers. This MUST start
+// `isReady: false` — a fixture that copies `createMockSubprocess()`'s
+// hardcoded `isReady: true` would make the guard tests below pass by
+// accident against unguarded code too, since both `addScanner()`'s
+// `hasWorker()` check and `spawnSingleScanner()`'s reuse check key off
+// `isReady`.
+function createPendingMockSubprocess(scannerId: string) {
+  const emitter = new EventEmitter();
+  let resolveSpawnFn: () => void = () => {};
+  let rejectSpawnFn: (err: Error) => void = () => {};
+  const spawnPromise = new Promise<void>((resolve, reject) => {
+    resolveSpawnFn = resolve;
+    rejectSpawnFn = reject;
+  });
+  const mock = Object.assign(emitter, {
+    scannerId,
+    isReady: false,
+    isAlive: true,
+    spawn: vi.fn().mockReturnValue(spawnPromise),
+    scan: vi.fn(),
+    cancel: vi.fn(),
+    quit: vi.fn(),
+    kill: vi.fn(),
+    shutdown: vi.fn().mockResolvedValue(true),
+    removeAllListeners: vi.fn().mockReturnThis(),
+  });
+  return {
+    mock,
+    resolveSpawn: () => {
+      mock.isReady = true;
+      resolveSpawnFn();
+    },
+    rejectSpawn: (err: Error) => {
+      rejectSpawnFn(err);
+    },
+  };
 }
 
 // Track created subprocesses
@@ -180,7 +227,7 @@ describe('ScanCoordinator', () => {
   }
 
   describe('initialize()', () => {
-    it('spawns subprocesses sequentially', async () => {
+    it('spawns one subprocess per scanner and results in all of them ready (design.md Decision 4 — no longer sequential, see the concurrency test below)', async () => {
       const coordinator = await createCoordinator();
       const scanners = makeScanners(2);
 
@@ -190,6 +237,66 @@ describe('ScanCoordinator', () => {
       // Both should have spawn called
       expect(createdSubprocesses[0].spawn).toHaveBeenCalled();
       expect(createdSubprocesses[1].spawn).toHaveBeenCalled();
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+      expect(coordinator.hasWorker('scanner-2')).toBe(true);
+    });
+
+    it('spawns all scanners concurrently, not sequentially — none waits for a previous one to finish (design.md Decision 4, closes #144)', async () => {
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(3);
+
+      const pending = scanners.map((s) =>
+        createPendingMockSubprocess(s.scannerId)
+      );
+      vi.mocked(ScannerSubprocess)
+        .mockImplementationOnce(() => {
+          createdSubprocesses.push(
+            pending[0].mock as unknown as ReturnType<
+              typeof createMockSubprocess
+            >
+          );
+          return pending[0].mock as unknown as ScannerSubprocess;
+        })
+        .mockImplementationOnce(() => {
+          createdSubprocesses.push(
+            pending[1].mock as unknown as ReturnType<
+              typeof createMockSubprocess
+            >
+          );
+          return pending[1].mock as unknown as ScannerSubprocess;
+        })
+        .mockImplementationOnce(() => {
+          createdSubprocesses.push(
+            pending[2].mock as unknown as ReturnType<
+              typeof createMockSubprocess
+            >
+          );
+          return pending[2].mock as unknown as ScannerSubprocess;
+        });
+
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+
+      // A sequential implementation would only have constructed the
+      // FIRST subprocess by now, since it awaits each spawn() before
+      // moving to the next. A concurrent implementation constructs all
+      // three up front, before any of their spawn() calls resolve.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(3);
+      expect(pending[0].mock.spawn).toHaveBeenCalled();
+      expect(pending[1].mock.spawn).toHaveBeenCalled();
+      expect(pending[2].mock.spawn).toHaveBeenCalled();
+
+      // Resolve out of order — a sequential implementation awaiting
+      // scanner-1 before ever calling scanner-2's spawn() would make this
+      // ordering meaningless; here it proves nothing was blocked on order.
+      pending[2].resolveSpawn();
+      pending[0].resolveSpawn();
+      pending[1].resolveSpawn();
+      await initPromise;
+
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+      expect(coordinator.hasWorker('scanner-2')).toBe(true);
+      expect(coordinator.hasWorker('scanner-3')).toBe(true);
     });
 
     it('reuses ready subprocesses', async () => {
@@ -291,6 +398,731 @@ describe('ScanCoordinator', () => {
 
       expect(coordinator.hasWorker(scanners[0].scannerId)).toBe(false);
       expect(coordinator.hasWorker(scanners[1].scannerId)).toBe(true);
+    });
+  });
+
+  describe('concurrency guards (design.md Decision 1)', () => {
+    it('a still-connecting worker is awaited, not respawned, by a second overlapping initialize() call for the same scanner', async () => {
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1); // scanner-1
+
+      const { mock: pendingMock, resolveSpawn } =
+        createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const firstInit = coordinator.initialize(scanners);
+      // Let the first call's synchronous prefix run (construct + call
+      // spawn()) before the second call is issued.
+      await Promise.resolve();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      const secondInit = coordinator.initialize(scanners);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Still only one subprocess, and it was never shut down as a side
+      // effect of the second call.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(pendingMock.shutdown).not.toHaveBeenCalled();
+
+      resolveSpawn();
+      await firstInit;
+      await secondInit;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+    });
+
+    it('addScanner() racing an in-flight initialize() for the same id spawns exactly one subprocess', async () => {
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1); // scanner-1
+
+      const { mock: pendingMock, resolveSpawn } =
+        createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      // addScanner() does not go through initialize()'s queue — it calls
+      // the same shared spawnSingleScanner() choke point directly, so
+      // this only proves the guard if it's keyed at that shared choke
+      // point (Layer B), not merely at initialize() itself.
+      const addPromise = coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(pendingMock.shutdown).not.toHaveBeenCalled();
+
+      resolveSpawn();
+      await initPromise;
+      await addPromise;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+    });
+
+    it('two concurrent addScanner() calls for a new id while idle spawn exactly one subprocess', async () => {
+      const coordinator = await createCoordinator();
+
+      const { mock: pendingMock, resolveSpawn } =
+        createPendingMockSubprocess('scanner-new');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const config: ScannerConfig = {
+        scannerId: 'scanner-new',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      };
+
+      const add1 = coordinator.addScanner(config);
+      const add2 = coordinator.addScanner(config);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(pendingMock.shutdown).not.toHaveBeenCalled();
+
+      resolveSpawn();
+      await add1;
+      await add2;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(coordinator.hasWorker('scanner-new')).toBe(true);
+    });
+
+    it('concurrent initialize() calls with DIFFERENT scanner lists do not race preamble state, and neither list is dropped', async () => {
+      const coordinator = await createCoordinator();
+
+      const pendingA = createPendingMockSubprocess('scanner-a');
+      const pendingB = createPendingMockSubprocess('scanner-b');
+      vi.mocked(ScannerSubprocess)
+        .mockImplementationOnce(() => {
+          createdSubprocesses.push(
+            pendingA.mock as unknown as ReturnType<typeof createMockSubprocess>
+          );
+          return pendingA.mock as unknown as ScannerSubprocess;
+        })
+        .mockImplementationOnce(() => {
+          createdSubprocesses.push(
+            pendingB.mock as unknown as ReturnType<typeof createMockSubprocess>
+          );
+          return pendingB.mock as unknown as ScannerSubprocess;
+        });
+
+      const initA = coordinator.initialize([
+        {
+          scannerId: 'scanner-a',
+          saneName: 'epkowa:interpreter:001:002',
+          plates: [],
+        },
+      ]);
+      await Promise.resolve();
+      // The second call is issued while the first is still in flight
+      // (scanner-a's spawn() has not resolved) — a naive implementation
+      // that runs both bodies concurrently would race initErrors.clear()
+      // and the stale-subprocess cleanup loop.
+      const initB = coordinator.initialize([
+        {
+          scannerId: 'scanner-b',
+          saneName: 'epkowa:interpreter:001:003',
+          plates: [],
+        },
+      ]);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // The second call's doInitialize() body (and its own initErrors
+      // clear) must not have started yet — scanner-b's subprocess is not
+      // constructed until scanner-a's entire initialize() run completes.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      pendingA.resolveSpawn();
+      await initA;
+
+      // Only now should the second call's own doInitialize() run.
+      pendingB.resolveSpawn();
+      await initB;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      // The critical anti-vacuity assertion (round-2 review finding): a
+      // memoized-single-promise implementation would have handed initB
+      // the SAME promise as initA and never spawned scanner-b at all.
+      // Only a serialization queue passes this. (scanner-a is correctly
+      // torn down by initB's own stale-subprocess cleanup, since it's not
+      // in scannersB's list — that's initialize()'s pre-existing,
+      // intentional "fully replace the roster" semantics, not a bug.)
+      expect(coordinator.hasWorker('scanner-b')).toBe(true);
+    });
+
+    it('stopScanner() clears an in-flight spawn so a subsequent addScanner() starts fresh instead of hanging', async () => {
+      // Fake timers: the original in-flight attempt this test orphans
+      // only ever settles via the spawn-ready timeout (its spawn()
+      // promise is never resolved/rejected) — without fake timers that
+      // would leave a real ~45s timer running past the end of this test.
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1); // scanner-1
+
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      // Operator retries while scanner-1 is still mid-connect — this is
+      // retryScanner()'s exact sequence: stopScanner() then addScanner().
+      await coordinator.stopScanner('scanner-1');
+
+      const { mock: freshMock } = createPendingMockSubprocess('scanner-1');
+      freshMock.isReady = true;
+      vi.mocked(freshMock.spawn).mockResolvedValue(undefined);
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          freshMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return freshMock as unknown as ScannerSubprocess;
+      });
+
+      const addPromise = coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      // Must resolve promptly — NOT be joined to the original,
+      // now-orphaned in-flight spawn, and NOT wait for the spawn-ready
+      // timeout to elapse.
+      await addPromise;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+
+      // The orphaned original attempt is left to resolve on its own in
+      // the background (design.md's accepted residual limitation) — this
+      // test only needs to prove the retry itself was prompt, so it must
+      // NOT await `initPromise` to completion (it may not settle at all
+      // until the spawn-ready timeout exists / fires, which would hang
+      // this test rather than fail it cleanly if awaited unconditionally).
+      void initPromise.catch(() => {});
+
+      vi.useRealTimers();
+    });
+
+    it('addScanner() racing a concurrent stopScanner() for the same id spawns a fresh worker instead of silently dropping it', async () => {
+      // Regression test for a bug found in review: ScannerSubprocess.isReady
+      // stays `true` for the entire multi-second shutdown() grace window
+      // (it only flips once the real OS process exits), so a naive
+      // stopScanner() that deletes the map entry only AFTER awaiting
+      // shutdown() lets a concurrent addScanner()'s hasWorker() check see
+      // the doomed instance as still healthy and no-op — silently dropping
+      // the scanner with zero error ever surfaced. The fix: stopScanner()
+      // removes the map entry BEFORE awaiting shutdown.
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1)); // scanner-1, ready
+      const oldSub = createdSubprocesses[0];
+
+      // Make shutdown() slow (never resolving within this test) so the
+      // race window is observable.
+      let resolveShutdown: (v: boolean) => void = () => {};
+      vi.mocked(oldSub.shutdown).mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          resolveShutdown = resolve;
+        })
+      );
+
+      const stopPromise = coordinator.stopScanner('scanner-1');
+      // stopScanner()'s synchronous prefix (clearing spawnInFlight and
+      // deleting the map entry) has already run by the time the above
+      // call returns its promise — no microtask flush needed for that
+      // part, only for what follows.
+
+      const freshMock = createMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(freshMock);
+        return freshMock as unknown as ScannerSubprocess;
+      });
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      // The scanner must NOT have silently vanished — a fresh subprocess
+      // was constructed and is ready, not left as a no-op.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+
+      resolveShutdown(true);
+      await stopPromise;
+    });
+  });
+
+  describe('bounded spawn-ready timeout with no-duplicate reclaim (design.md Decisions 2 & 3)', () => {
+    it('a spawn attempt that never confirms readiness triggers a reclaim, reports a distinguishable timeout message, and does not spawn a duplicate', async () => {
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1); // scanner-1
+
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const initStatus = vi.fn();
+      coordinator.on('scanner-init-status', initStatus);
+
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+
+      await vi.advanceTimersByTimeAsync(SPAWN_READY_TIMEOUT_MS + 1000);
+      await initPromise;
+
+      // Reclaim was attempted.
+      expect(pendingMock.shutdown).toHaveBeenCalled();
+      // No duplicate spawn.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(coordinator.hasWorker('scanner-1')).toBe(false);
+
+      // The reported message names this as a timeout, distinguishable
+      // from an immediate spawn failure's message.
+      expect(initStatus).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scannerId: 'scanner-1',
+          status: 'error',
+          error: expect.stringMatching(/timeout/i),
+        })
+      );
+      const errorCall = initStatus.mock.calls.find(
+        ([e]) => e.status === 'error'
+      );
+      expect(errorCall![0].error).toContain(String(SPAWN_READY_TIMEOUT_MS));
+
+      // Written via scanLog() (durable in a packaged app), not just
+      // console — scientific-rigor review finding.
+      expect(scanLog).toHaveBeenCalledWith(expect.stringMatching(/timeout/i));
+
+      vi.useRealTimers();
+    });
+
+    it('produces the same no-duplicate outcome regardless of whether the reclaim shutdown confirms exit', async () => {
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1);
+
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-1');
+      vi.mocked(pendingMock.shutdown).mockResolvedValue(false);
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const initStatus = vi.fn();
+      coordinator.on('scanner-init-status', initStatus);
+
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(SPAWN_READY_TIMEOUT_MS + 1000);
+      await initPromise;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(coordinator.hasWorker('scanner-1')).toBe(false);
+      expect(initStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ scannerId: 'scanner-1', status: 'error' })
+      );
+
+      vi.useRealTimers();
+    });
+
+    it('does not produce an unhandled rejection when the abandoned spawn() promise settles after the timeout wins the race', async () => {
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1);
+
+      const { mock: pendingMock, rejectSpawn } =
+        createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(SPAWN_READY_TIMEOUT_MS + 1000);
+      await initPromise;
+
+      // Switch to real timers: Node's unhandled-rejection detector fires
+      // on a genuine event-loop tick, which fake timers/macrotasks do not
+      // reliably simulate — a fake-timer version of this assertion could
+      // pass vacuously regardless of whether the fix is correct.
+      vi.useRealTimers();
+
+      const unhandled = vi.fn();
+      process.on('unhandledRejection', unhandled);
+      try {
+        // Simulate the original spawn() promise settling late — e.g. the
+        // real ScannerSubprocess's exit/process-error listeners firing
+        // after reclaimUnresponsive()'s kill(), well after this attempt
+        // was abandoned by the timeout race.
+        rejectSpawn(new Error('late failure after abandonment'));
+        await new Promise((r) => setImmediate(r));
+        expect(unhandled).not.toHaveBeenCalled();
+      } finally {
+        process.off('unhandledRejection', unhandled);
+      }
+    });
+
+    it('an immediate spawn failure and a spawn-ready timeout produce distinguishable initErrors messages', async () => {
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+
+      // Scanner A: fails immediately (ENOENT-style).
+      const scannerA = makeScanners(1)[0];
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(
+        (_pythonPath, _isPackaged, scannerId) => {
+          const mock = createMockSubprocess(scannerId as string);
+          mock.spawn.mockRejectedValue(new Error('spawn ENOENT'));
+          createdSubprocesses.push(mock);
+          return mock as unknown as ScannerSubprocess;
+        }
+      );
+      const initStatusA = vi.fn();
+      const coordinatorA = coordinator;
+      coordinatorA.on('scanner-init-status', initStatusA);
+      await coordinatorA.initialize([scannerA]);
+
+      // Scanner B: never confirms readiness (spawn-ready timeout).
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-b');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+      const initPromiseB = coordinatorA.initialize([
+        {
+          scannerId: 'scanner-b',
+          saneName: 'epkowa:interpreter:001:009',
+          plates: [],
+        },
+      ]);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(SPAWN_READY_TIMEOUT_MS + 1000);
+      await initPromiseB;
+
+      const messageA = initStatusA.mock.calls.find(
+        ([e]) => e.scannerId === scannerA.scannerId && e.status === 'error'
+      )![0].error as string;
+      const messageB = initStatusA.mock.calls.find(
+        ([e]) => e.scannerId === 'scanner-b' && e.status === 'error'
+      )![0].error as string;
+
+      expect(messageA).not.toMatch(/timeout/i);
+      expect(messageB).toMatch(/timeout/i);
+      expect(messageA).not.toBe(messageB);
+
+      vi.useRealTimers();
+    });
+
+    it('an orphaned reclaim does not evict or falsely fail-report a healthy replacement installed by a concurrent retry', async () => {
+      // BLOCKING regression test from review: reclaimUnresponsive() used to
+      // delete this.subprocesses / report initErrors unconditionally by
+      // scannerId. If stopScanner()+addScanner() successfully installed a
+      // healthy replacement while the original attempt was orphaned
+      // (design.md's accepted residual limitation — the original attempt
+      // keeps running in the background until its own timeout), the
+      // orphaned attempt's eventual reclaim would otherwise silently evict
+      // the healthy replacement and falsely report it as failed.
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1); // scanner-1
+
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const orphanedInit = coordinator.initialize(scanners);
+      await Promise.resolve();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      // Operator retries while scanner-1 is still mid-connect.
+      await coordinator.stopScanner('scanner-1');
+
+      const freshMock = createMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(freshMock);
+        return freshMock as unknown as ScannerSubprocess;
+      });
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+      expect(coordinator.hasWorker('scanner-1')).toBe(true); // fresh, healthy
+
+      const initStatus = vi.fn();
+      coordinator.on('scanner-init-status', initStatus);
+
+      // Let the ORIGINAL orphaned attempt's own spawn-ready timeout fire.
+      await vi.advanceTimersByTimeAsync(SPAWN_READY_TIMEOUT_MS + 1000);
+      await orphanedInit;
+
+      // The healthy replacement must survive untouched — not evicted, not
+      // falsely reported as failed.
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+      expect(initStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ scannerId: 'scanner-1', status: 'error' })
+      );
+
+      vi.useRealTimers();
+    });
+  });
+
+  describe('all shutdown() call sites act on the confirmed/unconfirmed signal (design.md Decision 3)', () => {
+    it("initialize()'s stale-subprocess cleanup logs a warning when shutdown cannot confirm exit", async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+      const sub2 = createdSubprocesses[1];
+      vi.mocked(sub2.shutdown).mockResolvedValue(false);
+
+      const warnSpy = vi.spyOn(console, 'warn');
+
+      // Re-initialize with only scanner-1 — scanner-2 is now stale.
+      await coordinator.initialize(makeScanners(1));
+
+      expect(sub2.shutdown).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('scanner-2')
+      );
+    });
+
+    it('stopScanner() logs a warning when shutdown cannot confirm exit, but still resolves and removes the entry', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const sub = createdSubprocesses[0];
+      vi.mocked(sub.shutdown).mockResolvedValue(false);
+
+      const warnSpy = vi.spyOn(console, 'warn');
+
+      await coordinator.stopScanner('scanner-1');
+
+      expect(coordinator.hasWorker('scanner-1')).toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('scanner-1')
+      );
+    });
+
+    it('the bulk shutdown() method logs a warning identifying only the scanner whose exit could not be confirmed', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+      const sub1 = createdSubprocesses[0];
+      const sub2 = createdSubprocesses[1];
+      vi.mocked(sub2.shutdown).mockResolvedValue(false);
+
+      const warnSpy = vi.spyOn(console, 'warn');
+
+      await coordinator.shutdown();
+
+      expect(sub1.shutdown).toHaveBeenCalled();
+      expect(sub2.shutdown).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('scanner-2')
+      );
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('scanner-1')
+      );
+    });
+
+    it('the bulk shutdown() method does not report a spurious init failure for a subprocess still mid-spawn', async () => {
+      // IMPORTANT regression test from review: bulk shutdown() used to
+      // call sub.shutdown() without first removing listeners, unlike
+      // every other teardown path (stopScanner(), the defensive
+      // fallback). A subprocess still mid-connect has its own spawn()-
+      // internal 'exit' listener still attached; without removeAllListeners()
+      // first, force-killing it during a bulk shutdown made that listener
+      // reject with "process exited before becoming ready", which the
+      // generic catch branch then reported as a spurious init-failure —
+      // right after a clean, deliberate app shutdown/cancel.
+      const coordinator = await createCoordinator();
+      const scanners = makeScanners(1);
+
+      const { mock: pendingMock } = createPendingMockSubprocess('scanner-1');
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      const initStatus = vi.fn();
+      const initPromise = coordinator.initialize(scanners);
+      await Promise.resolve();
+      coordinator.on('scanner-init-status', initStatus);
+      initStatus.mockClear(); // ignore the earlier 'starting' event
+
+      await coordinator.shutdown();
+
+      expect(pendingMock.removeAllListeners).toHaveBeenCalled();
+      expect(initStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'error' })
+      );
+
+      // Settle the still-pending initialize() call so it doesn't leak
+      // into a later test as an unresolved promise.
+      void initPromise.catch(() => {});
+    });
+
+    it('a fresh initialize() right after a bulk shutdown() does not hang on an orphaned in-flight spawn guard entry left by addScanner()', async () => {
+      // Real bug found by CI's graviscan-ipc.e2e.ts ("Reset All USB
+      // Connections marks rows starting, then settles back to a
+      // populated list") — not a unit test, a genuine regression this
+      // PR introduced. Exact real trigger sequence: "Detect Scanners"
+      // calls addScanner() (via the save-scanners-db IPC handler in
+      // register-handlers.ts) — NOT initialize(). If that worker is
+      // still mid-spawn when "Reset All USB Connections" fires
+      // resetUsb()'s coordinator.shutdown() (bulk) then
+      // coordinator.initialize(...), bulk shutdown()'s
+      // removeAllListeners() (this file's own I2 fix) strips that
+      // worker's spawn()-internal listeners, so its original
+      // addScanner()-triggered spawnSingleScanner() call can now ONLY
+      // settle via its own SPAWN_READY_TIMEOUT_MS bound — but bulk
+      // shutdown() didn't clear spawnInFlight for that scannerId, so the
+      // subsequent initialize() call for the SAME scanner got handed
+      // that same orphaned, now-45s-bound promise instead of spawning
+      // fresh.
+      vi.useFakeTimers();
+      const coordinator = await createCoordinator();
+      const scannerId = 'scanner-1';
+      const config: ScannerConfig = {
+        scannerId,
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      };
+
+      const { mock: pendingMock } = createPendingMockSubprocess(scannerId);
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(
+          pendingMock as unknown as ReturnType<typeof createMockSubprocess>
+        );
+        return pendingMock as unknown as ScannerSubprocess;
+      });
+
+      // "Detect Scanners" → addScanner(), still mid-spawn.
+      const orphanedAdd = coordinator.addScanner(config);
+      await Promise.resolve();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+
+      // "Reset All USB Connections" → resetUsb()'s own
+      // coordinator.shutdown() call, while scanner-1 is still mid-spawn.
+      await coordinator.shutdown();
+
+      // ...then resetUsb()'s own coordinator.initialize(...) call, for
+      // the same scanner, must spawn a genuinely new subprocess promptly
+      // — NOT hang for SPAWN_READY_TIMEOUT_MS waiting on the orphaned
+      // addScanner() attempt.
+      const freshMock = createMockSubprocess(scannerId);
+      vi.mocked(ScannerSubprocess).mockImplementationOnce(() => {
+        createdSubprocesses.push(freshMock);
+        return freshMock as unknown as ScannerSubprocess;
+      });
+      const freshInit = coordinator.initialize([config]);
+      await Promise.resolve();
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      await freshInit;
+      expect(coordinator.hasWorker(scannerId)).toBe(true);
+
+      void orphanedAdd.catch(() => {});
+      vi.useRealTimers();
+    });
+
+    it('the defensive respawn-branch fallback logs a warning when its own reclaim shutdown cannot confirm exit', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const staleSub = createdSubprocesses[0];
+      staleSub.isReady = false;
+      vi.mocked(staleSub.shutdown).mockResolvedValue(false);
+
+      const warnSpy = vi.spyOn(console, 'warn');
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'defensive-fallback shutdown could not be confirmed'
+        )
+      );
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+    });
+
+    it('the defensive respawn-branch fallback still shuts down and respawns if the guard invariant is ever violated, logging loudly', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const staleSub = createdSubprocesses[0];
+      // Force the invariant-violation condition directly: a not-ready
+      // subprocess left in the map with no in-flight guard entry. Normal
+      // operation can no longer reach this after the Layer B guard, so it
+      // must be constructed by hand to exercise the fallback path itself.
+      staleSub.isReady = false;
+
+      const errorSpy = vi.spyOn(console, 'error');
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+      });
+
+      expect(staleSub.shutdown).toHaveBeenCalled();
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('INVARIANT VIOLATION')
+      );
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
     });
   });
 

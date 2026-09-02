@@ -113,4 +113,35 @@ describe('findMakerArtifact', () => {
 
     expect(result).toBeNull();
   });
+
+  it('finds a .deb under a Linux-shaped nested path', () => {
+    const makeDir = makeTempDir();
+    writeFile(
+      path.join(makeDir, 'deb', 'x64', 'bloom-desktop_0.1.0_amd64.deb'),
+      'fake-deb-bytes'
+    );
+
+    const result = findMakerArtifact(makeDir, 'linux');
+
+    expect(result).not.toBeNull();
+    expect(result?.path.endsWith('.deb')).toBe(true);
+    expect(result?.size).toBeGreaterThan(0);
+  });
+
+  it('prefers .deb over .rpm when both exist on Linux', () => {
+    const makeDir = makeTempDir();
+    writeFile(
+      path.join(makeDir, 'rpm', 'x64', 'bloom-desktop-0.1.0.x86_64.rpm'),
+      'fake-rpm-bytes'
+    );
+    writeFile(
+      path.join(makeDir, 'deb', 'x64', 'bloom-desktop_0.1.0_amd64.deb'),
+      'fake-deb-bytes'
+    );
+
+    const result = findMakerArtifact(makeDir, 'linux');
+
+    expect(result).not.toBeNull();
+    expect(result?.path.endsWith('.deb')).toBe(true);
+  });
 });

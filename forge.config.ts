@@ -9,9 +9,11 @@ import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
+import { resolveExecutableName } from './scripts/resolve-executable-name';
 
 const config: ForgeConfig = {
   packagerConfig: {
+    executableName: resolveExecutableName(process.platform),
     asar: {
       unpack: '*.{node,dll,dylib,so,prisma,db,db-*}',
     },

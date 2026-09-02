@@ -20,6 +20,18 @@ import * as readline from 'readline';
 import { scanLog } from './scan-logger';
 import type { PlateConfig } from '../../types/graviscan';
 
+/** Default graceful-quit budget before force-killing (matches every existing call site's prior literal default). */
+export const SHUTDOWN_TIMEOUT_MS = 5_000;
+
+/**
+ * Bound on how long to wait, after force-killing, for the OS to actually
+ * confirm the process exited. A live process is reaped within milliseconds
+ * of SIGKILL; a longer wait doesn't help a genuinely stuck (D-state)
+ * process, so this only needs to be long enough to observe a normal kill's
+ * exit event.
+ */
+export const KILL_CONFIRM_TIMEOUT_MS = 2_000;
+
 // =============================================================================
 // Subprocess env construction (Task 4 #228 — testable pure function)
 // =============================================================================
@@ -355,27 +367,45 @@ export class ScannerSubprocess extends EventEmitter {
   }
 
   /**
-   * Quit gracefully, then force-kill after timeout.
+   * Quit gracefully, then force-kill after timeout. Resolves `true` only
+   * once the process's actual `exit` event was observed (directly, or
+   * within a further bounded window after force-kill); resolves `false`
+   * if a force-killed process still couldn't be confirmed to have exited
+   * (e.g. stuck in an uninterruptible kernel wait) — callers must not
+   * treat `false` as "freed the slot."
    */
-  async shutdown(timeoutMs = 5000): Promise<void> {
-    if (!this.proc || this.state === 'dead' || this.state === 'idle') return;
+  async shutdown(timeoutMs = SHUTDOWN_TIMEOUT_MS): Promise<boolean> {
+    if (!this.proc || this.state === 'dead' || this.state === 'idle') {
+      return true;
+    }
 
     this.quit();
     this.rl?.close();
     this.stderrRl?.close();
 
-    return new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
+    return new Promise<boolean>((resolve) => {
+      const graceTimeout = setTimeout(() => {
         console.warn(
           `[ScannerSubprocess:${this.scannerId}] Force-killing after timeout`
         );
         this.kill();
-        resolve();
+
+        const confirmTimeout = setTimeout(() => {
+          console.warn(
+            `[ScannerSubprocess:${this.scannerId}] Could not confirm exit after force-kill`
+          );
+          resolve(false);
+        }, KILL_CONFIRM_TIMEOUT_MS);
+
+        this.proc!.once('exit', () => {
+          clearTimeout(confirmTimeout);
+          resolve(true);
+        });
       }, timeoutMs);
 
       this.proc!.once('exit', () => {
-        clearTimeout(timeout);
-        resolve();
+        clearTimeout(graceTimeout);
+        resolve(true);
       });
     });
   }
