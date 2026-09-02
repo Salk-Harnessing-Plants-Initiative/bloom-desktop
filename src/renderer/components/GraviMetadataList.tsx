@@ -34,13 +34,32 @@ export function GraviMetadataList() {
   const [files, setFiles] = useState<MetadataFile[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [plates, setPlates] = useState<Record<string, Plate[]>>({});
+  const [expandErrors, setExpandErrors] = useState<Record<string, string>>({});
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchFiles = async () => {
-    const result =
-      await window.electron.database.graviPlateAccessions.listFiles();
-    if (result.success) {
-      setFiles((result.data as MetadataFile[]) ?? []);
+    setIsLoading(true);
+    try {
+      const result =
+        await window.electron.database.graviPlateAccessions.listFiles();
+      if (result.success) {
+        setError(null);
+        setFiles((result.data as MetadataFile[]) ?? []);
+      } else {
+        setError(result.error ?? 'Failed to load metadata files');
+      }
+    } catch (err) {
+      // A rejected promise (vs. a resolved `{success: false}`) is a distinct
+      // IPC failure shape — without this catch it would fall through to the
+      // empty-state branch, reproducing the exact silent-failure bug this
+      // state was added to fix, just via a different trigger.
+      setError(
+        err instanceof Error ? err.message : 'Failed to load metadata files'
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -52,10 +71,38 @@ export function GraviMetadataList() {
     const next = expandedId === fileId ? null : fileId;
     setExpandedId(next);
     if (next && !plates[fileId]) {
-      const result =
-        await window.electron.database.graviPlateAccessions.list(fileId);
-      if (result.success) {
-        setPlates((prev) => ({ ...prev, [fileId]: result.data as Plate[] }));
+      // Clear any stale error from a prior failed attempt before retrying —
+      // otherwise the old message stays visible for the entire in-flight
+      // window of a retry (no loading indicator masks it), misleadingly
+      // suggesting the retry click had no effect.
+      setExpandErrors((prev) => {
+        if (!(fileId in prev)) return prev;
+        const withoutStaleError = { ...prev };
+        delete withoutStaleError[fileId];
+        return withoutStaleError;
+      });
+      try {
+        const result =
+          await window.electron.database.graviPlateAccessions.list(fileId);
+        if (result.success) {
+          setPlates((prev) => ({
+            ...prev,
+            [fileId]: result.data as Plate[],
+          }));
+        } else {
+          setExpandErrors((prev) => ({
+            ...prev,
+            [fileId]: result.error ?? 'Failed to load plate data',
+          }));
+        }
+      } catch (err) {
+        // See fetchFiles's identical catch — a rejected promise must also
+        // surface an error, not fall through to rendering nothing.
+        setExpandErrors((prev) => ({
+          ...prev,
+          [fileId]:
+            err instanceof Error ? err.message : 'Failed to load plate data',
+        }));
       }
     }
   };
@@ -83,95 +130,121 @@ export function GraviMetadataList() {
       {deleteError && (
         <p className="text-sm text-red-600 mb-2">{deleteError}</p>
       )}
-      <ul className="space-y-2">
-        {files.map((file) => {
-          const expanded = expandedId === file.id;
-          return (
-            <li
-              key={file.id}
-              className="bg-gray-50 rounded-lg border border-gray-100"
-            >
-              <div className="flex items-center gap-2 px-3 py-2">
-                <span
-                  onClick={() => handleExpand(file.id)}
-                  className={`text-gray-400 cursor-pointer transition-transform ${expanded ? 'rotate-90' : ''}`}
-                >
-                  &rsaquo;
-                </span>
-                <span
-                  onClick={() => handleExpand(file.id)}
-                  className="font-medium cursor-pointer"
-                >
-                  {file.name}
-                </span>
-                <span className="text-sm text-gray-600">
-                  {formatDate(file.createdAt)}
-                </span>
-                <span className="text-sm text-gray-600">
-                  {file.experimentNames.join(', ')}
-                </span>
-                <span className="text-sm text-gray-600">
-                  {file.plateCount} plates
-                </span>
-                <button
-                  onClick={() => handleDelete(file.id, file.name)}
-                  className="ml-auto text-red-600 hover:bg-red-50 rounded px-2 py-1 text-sm"
-                >
-                  Delete
-                </button>
-              </div>
+      {isLoading ? (
+        <p className="text-sm text-gray-500">Loading metadata files...</p>
+      ) : error ? (
+        <p className="text-sm text-red-600 mb-2">{error}</p>
+      ) : files.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          No GraviScan metadata uploaded yet
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {files.map((file) => {
+            const expanded = expandedId === file.id;
+            return (
+              <li
+                key={file.id}
+                className="bg-gray-50 rounded-lg border border-gray-100"
+              >
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <span
+                    onClick={() => handleExpand(file.id)}
+                    className={`text-gray-400 cursor-pointer transition-transform ${expanded ? 'rotate-90' : ''}`}
+                  >
+                    &rsaquo;
+                  </span>
+                  <span
+                    onClick={() => handleExpand(file.id)}
+                    className="font-medium cursor-pointer"
+                  >
+                    {file.name}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {formatDate(file.createdAt)}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {file.experimentNames.join(', ')}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {file.plateCount} plates
+                  </span>
+                  <button
+                    onClick={() => handleDelete(file.id, file.name)}
+                    className="ml-auto text-red-600 hover:bg-red-50 rounded px-2 py-1 text-sm"
+                  >
+                    Delete
+                  </button>
+                </div>
 
-              {expanded && plates[file.id] && (
-                <table className="w-full text-sm border-t">
-                  <tbody className="divide-y divide-gray-100">
-                    {plates[file.id].map((plate) =>
-                      plate.sections.map((section, i) => (
-                        <tr
-                          key={`${plate.plate_id}-${section.plate_section_id}`}
-                        >
-                          {i === 0 && (
-                            <>
-                              <td
-                                rowSpan={plate.sections.length}
-                                className="px-3 py-2"
-                              >
-                                {plate.plate_id}
-                              </td>
-                              <td
-                                rowSpan={plate.sections.length}
-                                className="px-3 py-2"
-                              >
-                                {plate.accession}
-                              </td>
-                              <td
-                                rowSpan={plate.sections.length}
-                                className="px-3 py-2"
-                              >
-                                {formatDate(plate.transplant_date)}
-                              </td>
-                              <td
-                                rowSpan={plate.sections.length}
-                                className="px-3 py-2"
-                              >
-                                {plate.custom_note}
-                              </td>
-                            </>
-                          )}
-                          <td className="px-3 py-2">
-                            {section.plate_section_id}
-                          </td>
-                          <td className="px-3 py-2">{section.plant_qr}</td>
-                          <td className="px-3 py-2">{section.medium}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                {expanded && plates[file.id] && (
+                  <table className="w-full text-sm border-t">
+                    <thead>
+                      <tr className="text-left text-gray-500">
+                        <th className="px-3 py-2">Plate ID</th>
+                        <th className="px-3 py-2">Accession</th>
+                        <th className="px-3 py-2">Transplant Date</th>
+                        <th className="px-3 py-2">Custom Note</th>
+                        <th className="px-3 py-2">Section</th>
+                        <th className="px-3 py-2">Plant QR</th>
+                        <th className="px-3 py-2">Medium</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {plates[file.id].map((plate) =>
+                        plate.sections.map((section, i) => (
+                          <tr
+                            key={`${plate.plate_id}-${section.plate_section_id}`}
+                          >
+                            {i === 0 && (
+                              <>
+                                <td
+                                  rowSpan={plate.sections.length}
+                                  className="px-3 py-2"
+                                >
+                                  {plate.plate_id}
+                                </td>
+                                <td
+                                  rowSpan={plate.sections.length}
+                                  className="px-3 py-2"
+                                >
+                                  {plate.accession}
+                                </td>
+                                <td
+                                  rowSpan={plate.sections.length}
+                                  className="px-3 py-2"
+                                >
+                                  {formatDate(plate.transplant_date)}
+                                </td>
+                                <td
+                                  rowSpan={plate.sections.length}
+                                  className="px-3 py-2"
+                                >
+                                  {plate.custom_note}
+                                </td>
+                              </>
+                            )}
+                            <td className="px-3 py-2">
+                              {section.plate_section_id}
+                            </td>
+                            <td className="px-3 py-2">{section.plant_qr}</td>
+                            <td className="px-3 py-2">{section.medium}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                )}
+                {expanded && !plates[file.id] && expandErrors[file.id] && (
+                  <p className="text-sm text-red-600 px-3 py-2">
+                    {expandErrors[file.id]}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

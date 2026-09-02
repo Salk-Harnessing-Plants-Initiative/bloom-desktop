@@ -50,6 +50,166 @@ describe('GraviMetadataList', () => {
     };
   });
 
+  it('shows a loading message while the initial file list fetch is in flight', async () => {
+    let resolveListFiles: (value: {
+      success: boolean;
+      data: unknown[];
+    }) => void = () => {};
+    listFiles.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveListFiles = resolve;
+        })
+    );
+    render(<GraviMetadataList />);
+
+    expect(screen.getByText(/loading metadata files/i)).toBeInTheDocument();
+
+    resolveListFiles({ success: true, data: [] });
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/loading metadata files/i)
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('surfaces an error when the file list fetch fails, instead of an empty-state message', async () => {
+    listFiles.mockResolvedValue({
+      success: false,
+      error: 'Could not reach database',
+    });
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not reach database')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/no graviscan metadata uploaded yet/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('falls back to a default message when the file list fetch fails with no error field', async () => {
+    listFiles.mockResolvedValue({ success: false });
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/failed to load metadata files/i)
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/no graviscan metadata uploaded yet/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('surfaces an error when the file list fetch rejects outright, not just resolves with success: false', async () => {
+    listFiles.mockRejectedValue(new Error('IPC channel closed'));
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(screen.getByText('IPC channel closed')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(/no graviscan metadata uploaded yet/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows an empty-state message when there are no metadata files', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [] });
+    render(<GraviMetadataList />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/no graviscan metadata uploaded yet/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('surfaces an error when expanding fails to fetch plates, without rendering an empty table', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockResolvedValue({ success: false, error: 'Failed to load plates' });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load plates')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('surfaces an error when the expand fetch rejects outright, not just resolves with success: false', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockRejectedValue(new Error('IPC channel closed'));
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    await waitFor(() => {
+      expect(screen.getByText('IPC channel closed')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('falls back to a default message when expanding fails with no error field', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockResolvedValue({ success: false });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/failed to load plate data/i)
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('clears a stale expand error as soon as a retry attempt starts, not just once the retry resolves', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    list.mockResolvedValue({ success: false, error: 'Failed to load plates' });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    // First attempt fails.
+    await user.click(screen.getByText('batch3.xlsx'));
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load plates')).toBeInTheDocument();
+    });
+
+    // Collapse, then retry with a promise that doesn't resolve immediately
+    // — the stale error must disappear as soon as the retry starts, not
+    // linger for the whole in-flight window.
+    await user.click(screen.getByText('batch3.xlsx'));
+    let resolveRetry: (value: {
+      success: boolean;
+      data?: unknown[];
+    }) => void = () => {};
+    list.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        })
+    );
+    await user.click(screen.getByText('batch3.xlsx'));
+
+    expect(screen.queryByText('Failed to load plates')).not.toBeInTheDocument();
+
+    resolveRetry({
+      success: true,
+      data: [{ plate_id: 'P1', accession: 'Col-0', sections: [] }],
+    });
+    await waitFor(() => screen.getByRole('table'));
+  });
+
   it('lists files with name, date, linked experiments, and plate count, chronologically, no filter/sort UI', async () => {
     listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
     render(<GraviMetadataList />);
@@ -81,6 +241,29 @@ describe('GraviMetadataList', () => {
     expect(screen.getByText('S1')).toBeInTheDocument();
     expect(screen.getByText('QR1')).toBeInTheDocument();
     expect(screen.getByText('2026-07-01T00:00:00.000Z')).toBeInTheDocument();
+  });
+
+  it('renders a header row on the expanded plate/section table with the 7 expected columns, in order', async () => {
+    listFiles.mockResolvedValue({ success: true, data: [makeFile()] });
+    const user = userEvent.setup();
+    render(<GraviMetadataList />);
+    await waitFor(() => screen.getByText('batch3.xlsx'));
+
+    await user.click(screen.getByText('batch3.xlsx'));
+    await waitFor(() => screen.getByRole('table'));
+
+    const headers = screen
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent);
+    expect(headers).toEqual([
+      'Plate ID',
+      'Accession',
+      'Transplant Date',
+      'Custom Note',
+      'Section',
+      'Plant QR',
+      'Medium',
+    ]);
   });
 
   it('surfaces the blocked-deletion error without removing the entry', async () => {

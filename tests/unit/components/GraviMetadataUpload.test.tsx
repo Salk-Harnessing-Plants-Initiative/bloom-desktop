@@ -461,6 +461,307 @@ describe('GraviMetadataUpload', () => {
         expect(createWithSections).toHaveBeenCalledTimes(1);
       });
     });
+
+    describe('column-mapping collision (closes #353)', () => {
+      it('blocks submission when two fields are mapped to the same column, naming both and the column', async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        // HEADERS auto-maps "Section ID" to column 1 (its own column);
+        // re-point it at column 0, the same column "Plate ID" is mapped to.
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '0');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(
+            screen.getByText(/plate id/i, { selector: 'li' })
+          ).toBeInTheDocument();
+        });
+        const message = screen.getByText(/plate id/i, {
+          selector: 'li',
+        }).textContent;
+        expect(message).toMatch(/section id/i);
+        expect(message).toMatch(/column/i);
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it('blocks submission when the optional Custom Note field collides with a required field', async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', 'a note'],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        // "Medium" auto-maps to column 4; re-point "Custom Note" (column 6)
+        // at that same column.
+        await user.selectOptions(screen.getByLabelText(/^custom note$/i), '4');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(
+            screen.getByText(/medium/i, { selector: 'li' })
+          ).toBeInTheDocument();
+        });
+        const message = screen.getByText(/medium/i, {
+          selector: 'li',
+        }).textContent;
+        expect(message).toMatch(/custom note/i);
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it('reports a three-way collision as a single message naming all three fields, not three pairwise messages', async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        // Re-point both "Section ID" and "Accession" at column 0, so three
+        // fields (Plate ID, Section ID, Accession) all claim the same column.
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '0');
+        await user.selectOptions(screen.getByLabelText(/^accession$/i), '0');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(screen.getAllByRole('listitem')).toHaveLength(1);
+        });
+        const message = screen.getAllByRole('listitem')[0].textContent;
+        expect(message).toMatch(/plate id/i);
+        expect(message).toMatch(/section id/i);
+        expect(message).toMatch(/accession/i);
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it('reports two independent collisions as two separate messages', async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        // Two unrelated collisions: Section ID -> Plate ID's column (0), and
+        // Custom Note -> Medium's column (4).
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '0');
+        await user.selectOptions(screen.getByLabelText(/^custom note$/i), '4');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(screen.getAllByRole('listitem')).toHaveLength(2);
+        });
+        const messages = screen
+          .getAllByRole('listitem')
+          .map((li) => li.textContent ?? '');
+        expect(
+          messages.some((m) => /plate id/i.test(m) && /section id/i.test(m))
+        ).toBe(true);
+        expect(
+          messages.some((m) => /medium/i.test(m) && /custom note/i.test(m))
+        ).toBe(true);
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it('shows only the collision error, not a mix of collision and partial-row messages, when a mapping collision coincides with a row that would also fail partial-row validation', async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+          ['P2', '', 'QR2', 'Col-0', '', '', ''], // would fail partial-row validation on its own
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '0');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(
+            screen.getByText(/plate id/i, { selector: 'li' })
+          ).toBeInTheDocument();
+        });
+        expect(
+          screen.queryByText(/some required fields are blank/i)
+        ).not.toBeInTheDocument();
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it('does not treat several never-mapped fields as colliding with each other', async () => {
+        // A spreadsheet whose headers don't match any field name exactly, so
+        // every field stays unmapped (mapping = {}, i.e. every value is
+        // undefined, not ''). If the collision check only excluded explicit
+        // '' and not undefined, every unmapped field would appear to
+        // collide with every other one.
+        createWithSections.mockResolvedValue({
+          success: false,
+          error:
+            'No plates found — check that every required column is mapped correctly',
+        });
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Sheet1');
+        sheet.addRow(['ColA', 'ColB', 'ColC', 'ColD', 'ColE', 'ColF', 'ColG']);
+        sheet.addRow(['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', '']);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const file = new File([buffer], 'metadata.xlsx', {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const user = userEvent.setup();
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(screen.getByText(/no plates found/i)).toBeInTheDocument();
+        });
+        expect(
+          screen.queryByText(/mapped to the same column/i)
+        ).not.toBeInTheDocument();
+      });
+
+      it("clearing an already-mapped required field back to unmapped blocks import with a validation error, instead of silently reusing another column's data", async () => {
+        // Regression test for a bug in the pre-existing `colIndex` helper
+        // (unrelated to findMappingCollisions itself, but exercised by the
+        // same "explicitly cleared to ''" input this PR's collision check
+        // relies on being treated as unmapped): `colIndex` used
+        // `mapping[field] !== undefined` to distinguish mapped from
+        // unmapped, but an explicitly-cleared field's value is the string
+        // '', which IS !== undefined, so `Number('')` resolved to column 0
+        // — silently reusing column 0's data (here, Plate ID's) as if it
+        // were the cleared field's own value, with no error at all. This
+        // is exactly the silent-corruption class of bug #353 was filed to
+        // close, just reached through a different interaction than the
+        // mapping-collision path.
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.selectOptions(screen.getByLabelText(/^medium$/i), '');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(screen.getByText(/row 2/i)).toBeInTheDocument();
+        });
+        expect(
+          screen.getByText(/some required fields are blank/i)
+        ).toBeInTheDocument();
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it("clearing an already-mapped optional field back to unmapped imports it as genuinely blank, not another column's data", async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', 'a note'],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.selectOptions(screen.getByLabelText(/^custom note$/i), '');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(createWithSections).toHaveBeenCalledTimes(1);
+        });
+        const [, plates] = createWithSections.mock.calls[0];
+        expect(plates[0].custom_note).toBe('');
+      });
+
+      it('clearing two already-mapped required fields at once does not falsely report them as colliding, and blocks with a partial-row error instead', async () => {
+        const user = userEvent.setup();
+        const file = await buildWorkbookFile([
+          ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+        ]);
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '');
+        await user.selectOptions(screen.getByLabelText(/^medium$/i), '');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(screen.getByText(/row 2/i)).toBeInTheDocument();
+        });
+        expect(
+          screen.getByText(/some required fields are blank/i)
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText(/mapped to the same column/i)
+        ).not.toBeInTheDocument();
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+
+      it('disambiguates a collision on a blank-header column by position, since header text alone is unavailable', async () => {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Sheet1');
+        sheet.addRow([
+          'Plate ID',
+          '',
+          'Plant QR',
+          'Accession',
+          'Medium',
+          'Transplant Date',
+          'Custom Note',
+        ]);
+        sheet.addRow(['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', '']);
+        const buffer = await workbook.xlsx.writeBuffer();
+        const file = new File([buffer], 'metadata.xlsx', {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const user = userEvent.setup();
+        renderUpload();
+        await user.upload(getFileInput(), file);
+        await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+        // Column index 1 has a blank header, so nothing auto-maps to it by
+        // name — map both "Section ID" and "Custom Note" there explicitly
+        // to force a collision on that blank-header column.
+        await user.selectOptions(screen.getByLabelText(/^section id$/i), '1');
+        await user.selectOptions(screen.getByLabelText(/^custom note$/i), '1');
+
+        await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+        await waitFor(() => {
+          expect(
+            screen.getByText(/section id/i, { selector: 'li' })
+          ).toBeInTheDocument();
+        });
+        const message = screen.getByText(/section id/i, {
+          selector: 'li',
+        }).textContent;
+        expect(message).toMatch(/custom note/i);
+        expect(message).toMatch(/column 2/i);
+        // Pin the branch, not just a substring match: a blank header must
+        // produce "column 2" alone, not "column 2, header ''" — asserting
+        // the header clause is entirely absent (not merely empty) is what
+        // actually distinguishes this from the header-present branch.
+        expect(message).not.toMatch(/header/i);
+        expect(createWithSections).not.toHaveBeenCalled();
+      });
+    });
   });
 
   it('warns how many rows were skipped when a row has no data in any required field', async () => {
@@ -550,6 +851,37 @@ describe('GraviMetadataUpload', () => {
     expect(screen.queryByText(/done uploading/i)).not.toBeInTheDocument();
     const [, plates] = createWithSections.mock.calls[0];
     expect(plates).toHaveLength(0);
+  });
+
+  it('clears a stale top-level error from a prior failed attempt when the next attempt is blocked by a mapping collision', async () => {
+    createWithSections.mockResolvedValue({
+      success: false,
+      error: 'Failed to import metadata',
+    });
+    const user = userEvent.setup();
+    const file = await buildWorkbookFile([
+      ['P1', 'S1', 'QR1', 'Col-0', 'Soil', '2026-07-01', ''],
+    ]);
+    renderUpload();
+    await user.upload(getFileInput(), file);
+    await waitFor(() => screen.getByLabelText(/^plate id$/i));
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Failed to import metadata')).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText(/^section id$/i), '0');
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/plate id/i, { selector: 'li' })
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText('Failed to import metadata')
+    ).not.toBeInTheDocument();
   });
 
   it('surfaces an error instead of a false "Done uploading!" when no column headers auto-map', async () => {

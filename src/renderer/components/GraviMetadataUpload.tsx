@@ -40,6 +40,55 @@ function getColumnClass(
   return field ? COLUMN_COLORS[field] : '';
 }
 
+function describeCollision(
+  fields: string[],
+  position: number,
+  headerText: string
+): string {
+  const columnDescriptor = headerText
+    ? `column ${position}, header '${headerText}'`
+    : `column ${position}`;
+  const fieldList =
+    fields.length === 2
+      ? `${fields[0]} and ${fields[1]} are both`
+      : `${fields.slice(0, -1).join(', ')}, and ${fields[fields.length - 1]} are all`;
+  return `${fieldList} mapped to the same ${columnDescriptor} — choose a different column for each.`;
+}
+
+// Finds fields whose mapping points at the same spreadsheet column — the
+// mapping dropdowns are otherwise fully independent, so nothing else stops
+// e.g. Medium and Custom Note both being assigned column 4. Excludes
+// unmapped fields: an untouched field's mapping value is `undefined` (only
+// a field guessMapping matched, or one the user explicitly set, has a key
+// at all), and an explicitly-cleared field's value is `''` — both must be
+// excluded, or every unmapped field would appear to collide with every
+// other one on a phantom shared "column". Named by position (not solely by
+// header text), since a real spreadsheet's header row can be blank or have
+// duplicate text across columns.
+function findMappingCollisions(
+  mapping: Record<string, string>,
+  headers: string[]
+): string[] {
+  const fieldsByColumn = new Map<number, string[]>();
+  for (const field of ALL_FIELDS) {
+    const raw = mapping[field] ?? '';
+    if (raw === '') continue;
+    const columnIndex = Number(raw);
+    const fields = fieldsByColumn.get(columnIndex) ?? [];
+    fields.push(field);
+    fieldsByColumn.set(columnIndex, fields);
+  }
+  const errors: string[] = [];
+  for (const [columnIndex, fields] of fieldsByColumn) {
+    if (fields.length > 1) {
+      errors.push(
+        describeCollision(fields, columnIndex + 1, headers[columnIndex] ?? '')
+      );
+    }
+  }
+  return errors;
+}
+
 interface ParsedSheet {
   headers: string[];
   rows: string[][];
@@ -86,8 +135,14 @@ export function GraviMetadataUpload({
   // plates than the sheet appears to contain.
   const blankRowCount = useMemo(() => {
     if (!sheet) return 0;
+    // Do not change this to `mapping[field] !== undefined` — mapping[field]
+    // is '' for both "never touched" and "explicitly cleared" fields, and
+    // '' !== undefined, so that check silently resolved a cleared field to
+    // column 0 instead of unmapped (see PR #356, closes #353). Every real
+    // column index stringifies to a non-empty, truthy string ('0', '1',
+    // ...), so the falsy check below is safe and correctly excludes both.
     const colIndex = (field: string) =>
-      mapping[field] !== undefined ? Number(mapping[field]) : -1;
+      mapping[field] ? Number(mapping[field]) : -1;
     return sheet.rows.filter((row) =>
       REQUIRED_FIELDS.every((f) => (row[colIndex(f)] ?? '').trim() === '')
     ).length;
@@ -200,10 +255,19 @@ export function GraviMetadataUpload({
     // the dismissable confirm instead of the hard block this exists for.
     setBlockNavigation(true);
     setRowErrors([]);
+    setError(null);
 
     try {
+      const collisionErrors = findMappingCollisions(mapping, sheet.headers);
+      if (collisionErrors.length > 0) {
+        setRowErrors(collisionErrors);
+        return;
+      }
+
+      // Do not change this to `mapping[field] !== undefined` — see the
+      // identical guard in blankRowCount above for why.
       const colIndex = (field: string) =>
-        mapping[field] !== undefined ? Number(mapping[field]) : -1;
+        mapping[field] ? Number(mapping[field]) : -1;
 
       const errors: string[] = [];
       sheet.rows.forEach((row, i) => {
@@ -394,7 +458,7 @@ export function GraviMetadataUpload({
                   <option value="">-- Select column --</option>
                   {sheet.headers.map((h, i) => (
                     <option key={i} value={i}>
-                      {h}
+                      {i + 1}. {h || '(blank header)'}
                     </option>
                   ))}
                 </select>
@@ -411,7 +475,7 @@ export function GraviMetadataUpload({
                     data-testid={`preview-header-${i}`}
                     className={getColumnClass(i, mapping)}
                   >
-                    {h}
+                    {i + 1}. {h || '(blank header)'}
                   </th>
                 ))}
               </tr>
