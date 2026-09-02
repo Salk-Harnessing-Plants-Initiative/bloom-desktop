@@ -640,6 +640,7 @@ Watch for these patterns in error reports:
 - [Database Setup and Management](./DATABASE.md) - Prisma schema, migrations, and development
 - [Configuration Constants](./CONFIGURATION.md) - Application settings and defaults
 - [Project Structure](./STRUCTURE.md) - Overall codebase organization
+- [GraviScan Linux Deployment](./GRAVISCAN_LINUX_DEPLOYMENT.md) - libusb-filter/LD_PRELOAD wiring, deb-vs-rpm choice, and systemd/permissions for the packaged app on a GraviScan Linux lab machine
 
 ## References
 

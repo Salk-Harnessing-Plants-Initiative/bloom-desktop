@@ -1,9 +1,11 @@
 /**
  * Verifies electron-forge's `make` maker stage actually produced an
- * installer artifact (DMG/ZIP on macOS, Squirrel exe/nupkg on Windows).
+ * installer artifact (DMG/ZIP on macOS, Squirrel exe/nupkg on Windows,
+ * .deb on Linux).
  *
  * Run with: npm run test:make:artifacts
- * Prerequisites: npm run make must have been run
+ * Prerequisites: npm run make (or, on Linux, npm run make:linux) must
+ * have been run
  */
 
 import fs from 'fs';
@@ -18,6 +20,7 @@ export interface MakerArtifact {
 const PLATFORM_EXTENSIONS: Record<string, string[]> = {
   darwin: ['.dmg', '.zip'],
   win32: ['.exe', '.nupkg'],
+  linux: ['.deb'],
 };
 
 function walkFiles(dir: string): string[] {

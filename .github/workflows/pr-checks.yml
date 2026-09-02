@@ -788,6 +788,94 @@ jobs:
           path: out/make/**
           retention-days: 7
 
+  # Linux equivalent of test-make/test-make-windows: exercises the deb
+  # maker and is GraviScan's first Linux packaged-app verification (the
+  # actual lab machine deployment target). Scoped to --targets=deb via
+  # make:linux, not the shared make script — @electron-forge/maker-rpm
+  # (also configured in forge.config.ts) has a real rpm/rpmdb-permission
+  # incompatibility unrelated to this job, and electron-forge make aborts
+  # entirely (including the otherwise-valid .deb) if any configured maker
+  # throws. See openspec/changes/add-graviscan-linux-packaging-ci/design.md
+  # Decision 3.
+  test-make-linux:
+    needs: build-python
+    name: Test - Make (Linux)
+    runs-on: ubuntu-latest
+    # Bounds a hung job so it can't indefinitely block a subsequently-queued
+    # push-to-main run (see the concurrency block above). Provisional
+    # estimate (not yet CI-observed) — see "CI Job Timeout Bounds" in
+    # specs/developer-workflows/spec.md and this change's design.md.
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'pyproject.toml'
+          python-version: '3.12'
+
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Make executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x dist/bloom-hardware
+
+      - name: Install system dependencies for native build + deb maker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libusb-1.0-0-dev pkg-config fakeroot dpkg
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: 'file:./dev.db'
+
+      - name: Make application (maker stage, deb only)
+        run: npm run make:linux
+
+      - name: Verify maker artifacts were produced
+        run: npm run test:make:artifacts
+
+      - name: Verify packaged app window renders and database initializes
+        run: xvfb-run --auto-servernum npm run test:package:launch
+        env:
+          ELECTRON_DISABLE_SANDBOX: 1
+
+      - name: Upload verified maker artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-app-${{ runner.os }}
+          path: out/make/**
+          retention-days: 7
+
   all-checks-passed:
     name: All Checks Passed
     runs-on: ubuntu-latest
@@ -805,6 +893,7 @@ jobs:
       - test-package-database
       - test-make
       - test-make-windows
+      - test-make-linux
 
     steps:
       - name: All checks passed

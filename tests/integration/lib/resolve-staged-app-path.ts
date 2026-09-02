@@ -10,8 +10,7 @@
  */
 
 import path from 'path';
-
-const PRODUCT_NAME = 'Bloom Desktop';
+import { PRODUCT_NAME } from '../../../scripts/product-name';
 
 export function resolveStagedAppPath(
   platform: NodeJS.Platform,
