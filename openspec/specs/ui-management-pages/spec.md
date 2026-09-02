@@ -3466,7 +3466,7 @@ The application SHALL provide a `Metadata` page at `/metadata`, visible only in 
 
 ### Requirement: GraviScan Metadata Upload
 
-`GraviMetadataUpload.tsx` SHALL accept an Excel (`.xlsx`/`.xls`) file up to 15MB, let the user map spreadsheet columns to required fields, validate the data, and create a metadata-file record via `database.graviPlateAccessions.createWithSections`.
+`GraviMetadataUpload.tsx` SHALL accept an Excel (`.xlsx`/`.xls`) file up to 15MB, let the user map spreadsheet columns to required fields, reject mappings that assign two fields to the same column, validate the data, and create a metadata-file record via `database.graviPlateAccessions.createWithSections`.
 
 #### Scenario: Column mapping
 
@@ -3474,6 +3474,16 @@ The application SHALL provide a `Metadata` page at `/metadata`, visible only in 
 **When** it is parsed client-side
 **Then** the user SHALL be prompted to choose a sheet (if multiple exist) and map columns to: Plate ID, Section ID, Plant QR, Accession, Medium, Transplant Date (all required) and Custom Note (optional)
 **And** a live preview table (capped at 20 rows) SHALL reflect the current mapping with color-coded columns
+**And** each column's dropdown option and preview-table header SHALL show its 1-based position alongside its header text (or a placeholder if the header is blank), so a column named only by position in a collision error is locatable in the mapping UI
+
+#### Scenario: Column mapping collision blocked
+
+**Given** two or more fields (whether required or optional) are mapped to the same spreadsheet column, with unmapped fields excluded from consideration
+**When** the user submits
+**Then** the submission SHALL be blocked before any row-level validation runs, even if the resulting rows would otherwise pass that validation
+**And** the page SHALL show an inline error naming every field mapped to that column and disambiguating the column by position (not solely by header text, which may be blank or duplicated across columns)
+**And** each independently colliding column SHALL produce its own such error, and a column claimed by three or more fields SHALL produce one error naming all of them rather than one error per pair
+**And** SHALL NOT call `createWithSections`
 
 #### Scenario: Partial-row validation
 
@@ -3504,7 +3514,33 @@ The application SHALL provide a `Metadata` page at `/metadata`, visible only in 
 
 ### Requirement: GraviScan Metadata List
 
-`GraviMetadataList.tsx` SHALL list existing metadata files via `database.graviPlateAccessions.listFiles`, with per-file expansion to view plates/sections and a Delete action.
+`GraviMetadataList.tsx` SHALL list existing metadata files via `database.graviPlateAccessions.listFiles`, with per-file expansion to view plates/sections and a Delete action, surfacing loading, error, and empty states for the file list itself.
+
+#### Scenario: Loading state
+
+**Given** a `listFiles()` call is in flight, whether from initial mount or a later refresh
+**When** the call has not yet resolved
+**Then** the page SHALL show a loading message instead of an empty or stale list
+
+#### Scenario: Fetch failure surfaced
+
+**Given** `listFiles()` resolves with `success: false`
+**When** the fetch completes
+**Then** the page SHALL show the returned error inline, falling back to a default message if none is provided
+**And** SHALL NOT render an empty-state message in its place
+
+#### Scenario: Empty-state message
+
+**Given** `listFiles()` resolves successfully with zero files
+**When** the fetch completes
+**Then** the page SHALL show an explanatory empty-state message instead of a blank list
+
+#### Scenario: Expand fetch failure surfaced
+
+**Given** a file entry is expanded and `graviPlateAccessions.list(fileId)` resolves with `success: false`
+**When** the fetch completes
+**Then** the page SHALL show the returned error inline, falling back to a default message if none is provided
+**And** SHALL NOT render an empty plate/section table in its place
 
 #### Scenario: File list
 
@@ -3516,7 +3552,7 @@ The application SHALL provide a `Metadata` page at `/metadata`, visible only in 
 
 **Given** a file entry
 **When** the user expands it
-**Then** the page SHALL lazily fetch `graviPlateAccessions.list(fileId)` and render a table with row-spanned plate-level cells (plate ID/accession/transplant date/note) over per-section rows (section ID/plant QR/medium)
+**Then** the page SHALL lazily fetch `graviPlateAccessions.list(fileId)` and render a table with a header row (Plate ID, Accession, Transplant Date, Custom Note, Section, Plant QR, Medium) over row-spanned plate-level cells (plate ID/accession/transplant date/note) and per-section rows (section ID/plant QR/medium)
 
 #### Scenario: Delete blocked while referenced
 
