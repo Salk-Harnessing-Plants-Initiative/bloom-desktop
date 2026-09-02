@@ -371,7 +371,7 @@ describe('ScannerSubprocess', () => {
   });
 
   describe('shutdown()', () => {
-    it('sends quit command and resolves on exit', async () => {
+    it('sends quit command and resolves true on graceful exit, without force-killing', async () => {
       const spawnPromise = subprocess.spawn();
       emitLine('EVENT:{"type":"ready","scanner_id":"scanner-1"}');
       await spawnPromise;
@@ -387,10 +387,11 @@ describe('ScannerSubprocess', () => {
       const procExitHandler = mockProcessHandlers['exit'];
       if (procExitHandler) procExitHandler(0, null);
 
-      await shutdownPromise;
+      await expect(shutdownPromise).resolves.toBe(true);
+      expect(mockProc.kill).not.toHaveBeenCalled();
     });
 
-    it('force-kills after timeout', async () => {
+    it('force-kills after the graceful timeout, then resolves true once exit is confirmed within the kill-confirm window', async () => {
       vi.useFakeTimers();
 
       const spawnPromise = subprocess.spawn();
@@ -399,20 +400,47 @@ describe('ScannerSubprocess', () => {
 
       const shutdownPromise = subprocess.shutdown(100);
 
-      // Advance past timeout without triggering exit
-      vi.advanceTimersByTime(150);
-
-      await shutdownPromise;
-
+      // Advance past the graceful-quit timeout without triggering exit —
+      // this forces the SIGKILL branch.
+      await vi.advanceTimersByTimeAsync(150);
       expect(mockProc.kill).toHaveBeenCalledWith('SIGKILL');
+
+      // Now simulate the exit event actually arriving within the
+      // post-kill confirmation window.
+      const procExitHandler = mockProcessHandlers['exit'];
+      if (procExitHandler) procExitHandler(0, null);
+
+      await expect(shutdownPromise).resolves.toBe(true);
 
       vi.useRealTimers();
     });
 
-    it('resolves immediately if already dead', async () => {
+    it('resolves false when the process never confirms exit even after force-kill (D-state / truly stuck)', async () => {
+      vi.useFakeTimers();
+
+      const spawnPromise = subprocess.spawn();
+      emitLine('EVENT:{"type":"ready","scanner_id":"scanner-1"}');
+      await spawnPromise;
+
+      const shutdownPromise = subprocess.shutdown(100);
+
+      // Advance past the graceful-quit timeout — triggers force-kill.
+      await vi.advanceTimersByTimeAsync(150);
+      expect(mockProc.kill).toHaveBeenCalledWith('SIGKILL');
+
+      // Advance past the post-kill confirmation window too, WITHOUT ever
+      // triggering the mock's exit handler — simulates a process stuck in
+      // an uninterruptible kernel wait that SIGKILL cannot reap.
+      await vi.advanceTimersByTimeAsync(3000);
+
+      await expect(shutdownPromise).resolves.toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it('resolves true immediately if already dead', async () => {
       // Never spawned — state is idle
-      await subprocess.shutdown();
-      // Should resolve without error
+      await expect(subprocess.shutdown()).resolves.toBe(true);
     });
   });
 
