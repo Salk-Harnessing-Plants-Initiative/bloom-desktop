@@ -49,7 +49,7 @@
 
 ## 6. Spec and documentation sync
 
-- [ ] 6.1 Apply the spec deltas in `openspec/changes/fix-graviscan-scanner-init-race/specs/scanning/spec.md` to `openspec/specs/scanning/spec.md` (via `openspec archive` at the end of this change, not manually before then).
+- [x] 6.1 Apply the spec deltas in `openspec/changes/fix-graviscan-scanner-init-race/specs/scanning/spec.md` to `openspec/specs/scanning/spec.md` (via `openspec archive` at the end of this change, not manually before then). Satisfied by the `openspec archive` run as part of post-merge cleanup.
 - [x] 6.2 Run `npx openspec validate fix-graviscan-scanner-init-race --strict` and resolve any issues.
 - [ ] 6.3 Check open PR #145 ("Parallelize scanner subprocess initialization", claims `Closes #144`) for whether it should be closed as superseded once this change merges (per proposal.md's Impact section) — flag for the user's decision, do not close unilaterally.
 
@@ -59,7 +59,7 @@
 - [x] 7.2 Run lint (`npm run lint` / the `/lint` command) and fix any issues. Clean.
 - [x] 7.3 Run `npx tsc --noEmit` and confirm no type errors from the `shutdown()` signature change or the new coordinator fields/helpers, across ALL affected files including `tests/unit/scan-coordinator-add-scanner.test.ts`. Clean.
 - [x] 7.4 Run the FULL unit test suite (`npm run test:unit`, not just `tests/unit/graviscan/`) and confirm all green, including every test added in sections 1-5 and the sibling file updated in task 2.8. 2075 passed, 9 skipped, 0 failed (required setting up the test DB per `database-handlers.test.ts`'s own documented prerequisite — `BLOOM_DATABASE_URL="file:./dev.db" npx prisma generate && npx prisma migrate deploy` — a fresh-worktree setup step, unrelated to this change).
-- [ ] 7.5 Run any targeted GraviScan E2E spec(s) covering scanner init/Capture Scan locally for a real-Electron sanity check. **Blocked, not skipped**: `npm run start` (the dev server `tests/e2e/graviscan-ipc.e2e.ts` requires) fails with `EADDRINUSE :::9000` — port 9000 is already held by another process (PID confirmed via `netstat`, not investigated further to avoid disrupting the concurrent session working in the sibling `bloom-desktop-layout-nav-parity` worktree, which may be the owner). Did not kill it. This change makes no IPC/handler-signature/renderer changes — only internal `ScanCoordinator`/`ScannerSubprocess` logic reached via the same unchanged public methods — so residual IPC-level risk is low, but this task is left unchecked rather than marked done on the strength of that argument alone. CI's full E2E suite will exercise this on the PR; flag for the user in case they want it verified locally before merge once port 9000 is free.
+- [x] 7.5 Run any targeted GraviScan E2E spec(s) covering scanner init/Capture Scan locally for a real-Electron sanity check. Local run was blocked by a port-9000 conflict (`npm run start` failed with `EADDRINUSE :::9000`, held by a concurrent session's sibling worktree). Superseded by real-hardware validation on rig `pbiob-gh-04` instead, and CI's full E2E suite also exercised this on the PR before merge.
 
 ## 8. Post-implementation `/review-pr` fixes
 

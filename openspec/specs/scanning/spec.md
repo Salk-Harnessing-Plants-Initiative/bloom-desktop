@@ -1455,16 +1455,39 @@ The system SHALL provide image reading, export, and cloud backup as testable fun
 
 ### Requirement: ScanCoordinator Multi-Scanner Orchestration
 
-The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-coordinator.ts` that orchestrates multiple `ScannerSubprocess` instances for parallel scanning, with staggered initialization, grid-based scan sequencing, interval/continuous mode timing, and graceful shutdown. The USB stagger delay SHALL be defined as a named module-level constant `USB_STAGGER_DELAY_MS = 5000`. File verification in `handleScanComplete()` SHALL use asynchronous filesystem operations (`fs.promises`) instead of synchronous calls to avoid blocking the Electron main process event loop during scan completion. Critical events (`grid-complete` with file paths) SHALL be logged via `scanLog()` for scientific traceability. Per-job scan events SHALL be emitted on three granular channels — `scan-started`, `scan-complete`, `scan-error` — each carrying `jobId` (`` `${scannerId}:${plateIndex}` `` when a single plate applies, or `scannerId` alone for a whole-row failure with no single plate), `scannerId`, and `plateIndex` in addition to that event's existing fields. The generic `scan-event` channel (an embedded `type` field distinguishing these three cases) SHALL NOT be emitted. **Note on the bare-`scannerId` `jobId` shape**: it is a novel third shape relative to the per-plate `` `${scannerId}:${plateIndex}` `` shape used everywhere else, including `session-handlers.ts`'s existing `session.jobs` map — there is no existing single-key lookup pattern for it. A future consumer (e.g. a Tier 3/4 UI) that needs to mark every plate on a row as affected by a whole-row failure will have to enumerate all `` `${scannerId}:*` `` job-map entries for that scanner rather than perform a single key lookup. This is stated explicitly so a future implementer designs for it deliberately rather than discovering it during implementation.
+The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-coordinator.ts` that orchestrates multiple `ScannerSubprocess` instances for parallel scanning, with concurrent initialization, grid-based scan sequencing, interval/continuous mode timing, and graceful shutdown. The USB stagger delay SHALL be defined as a named module-level constant `USB_STAGGER_DELAY_MS = 5000`. File verification in `handleScanComplete()` SHALL use asynchronous filesystem operations (`fs.promises`) instead of synchronous calls to avoid blocking the Electron main process event loop during scan completion. Critical events (`grid-complete` with file paths) SHALL be logged via `scanLog()` for scientific traceability. Per-job scan events SHALL be emitted on three granular channels — `scan-started`, `scan-complete`, `scan-error` — each carrying `jobId` (`` `${scannerId}:${plateIndex}` `` when a single plate applies, or `scannerId` alone for a whole-row failure with no single plate), `scannerId`, and `plateIndex` in addition to that event's existing fields. The generic `scan-event` channel (an embedded `type` field distinguishing these three cases) SHALL NOT be emitted. **Note on the bare-`scannerId` `jobId` shape**: it is a novel third shape relative to the per-plate `` `${scannerId}:${plateIndex}` `` shape used everywhere else, including `session-handlers.ts`'s existing `session.jobs` map — there is no existing single-key lookup pattern for it. A future consumer (e.g. a Tier 3/4 UI) that needs to mark every plate on a row as affected by a whole-row failure will have to enumerate all `` `${scannerId}:*` `` job-map entries for that scanner rather than perform a single key lookup. This is stated explicitly so a future implementer designs for it deliberately rather than discovering it during implementation.
 
-#### Scenario: Staggered scanner initialization
+Per-scanner spawns made by `initialize()` go through the same guarded, per-`scannerId` spawn path as `addScanner()` — see the "Coordinator Single-Scanner Spawn API" requirement for the concurrency-guard semantics shared by both entry points.
+
+#### Scenario: Concurrent scanner initialization
 
 - **GIVEN** a `ScanCoordinator` is constructed with a Python path and packaging flag
 - **WHEN** `initialize(scanners)` is called with a list of `ScannerConfig` objects
 - **THEN** the coordinator SHALL spawn one `ScannerSubprocess` per scanner
-- **AND** subprocesses SHALL be initialized sequentially (one at a time) to prevent SANE global state contention
+- **AND** subprocesses SHALL be initialized concurrently (via `Promise.allSettled`), not sequentially — each subprocess's own process isolation means SANE global-state contention does not apply across separate OS processes
+- **AND** one scanner's spawn failure SHALL NOT prevent the others from initializing
+- **AND** total initialization time SHALL be bounded by the slowest single scanner's spawn time, not the sum of all scanners' spawn times
 - **AND** existing subprocesses not in the new config SHALL be shut down
 - **AND** existing subprocesses that are already ready SHALL be reused
+
+#### Scenario: Concurrent initialize calls do not race shared preamble state, and neither call's scanner list is dropped
+
+- **GIVEN** a `ScanCoordinator` call to `initialize(scannersA)` is in
+  progress (has not yet resolved)
+- **WHEN** `initialize(scannersB)` is called before the first call
+  resolves, where `scannersB` is a different list of scanners than
+  `scannersA` (not merely a repeat of the same call)
+- **THEN** the second call SHALL NOT independently run the
+  stale-subprocess cleanup loop or clear `initErrors` while the first
+  call's own run of that same preamble is still in progress
+- **AND** the second call SHALL still run its own `doInitialize`
+  against `scannersB` once the first call's run completes — it SHALL
+  NOT be silently merged into or dropped by the first call's result
+- **AND** after both calls resolve, every scanner unique to `scannersB`
+  SHALL have been spawned (`hasWorker()` returns `true` for it),
+  proving `scannersB` was actually processed and not discarded
+- **AND** no subprocess SHALL be shut down or spawned twice as a result
+  of the overlap
 
 #### Scenario: Initialize with zero scanners
 
@@ -1559,6 +1582,9 @@ The system SHALL provide a `ScanCoordinator` class in `src/main/graviscan/scan-c
 - **THEN** the coordinator SHALL send quit commands to all subprocesses
 - **AND** force-kill any subprocess that does not exit within 5 seconds
 - **AND** clear the subprocess map
+- **AND** if a subprocess's exit could not be confirmed even after force-kill, the coordinator SHALL log a warning identifying that scanner rather than silently treating it as freed
+- **AND** a subprocess still mid-spawn (not yet `ready`) at the time of shutdown SHALL NOT have that shutdown reported as an init failure — the coordinator SHALL strip that subprocess's listeners before forcing it down, so its own in-flight spawn attempt does not surface a spurious `scanner-init-status` `error` event for a scanner that was deliberately, cleanly shut down
+- **AND** any in-flight spawn-guard entry for a torn-down scanner SHALL also be cleared, so a subsequent `initialize()`/`addScanner()` call for that same scanner starts a genuinely fresh spawn attempt instead of being handed the now-orphaned, listener-stripped attempt from before this shutdown (which could otherwise only settle after its own full spawn-ready timeout)
 
 #### Scenario: Coordinator implements ScanCoordinatorLike
 
@@ -1643,8 +1669,17 @@ The system SHALL provide a `ScannerSubprocess` class in `src/main/graviscan/scan
 - **GIVEN** the subprocess is alive
 - **WHEN** `shutdown(timeoutMs)` is called
 - **THEN** the subprocess SHALL send a `quit` command
-- **AND** force-kill with SIGKILL if the process does not exit within the timeout
-- **AND** resolve when the process exits
+- **AND** if the process exits within `timeoutMs`, `shutdown()` SHALL resolve `true`
+- **AND** if the process does not exit within `timeoutMs`, the subprocess SHALL be force-killed with SIGKILL
+- **AND** after force-killing, `shutdown()` SHALL wait a further bounded confirmation window for the process's actual `exit` event
+- **AND** if that `exit` event is observed within the confirmation window, `shutdown()` SHALL resolve `true`
+- **AND** if the `exit` event is NOT observed within the confirmation window, `shutdown()` SHALL resolve `false` rather than assuming the process exited
+
+#### Scenario: Shutdown of an already-dead or never-started subprocess
+
+- **GIVEN** a `ScannerSubprocess` whose state is `dead` or `idle` (never spawned, or already confirmed exited)
+- **WHEN** `shutdown(timeoutMs)` is called
+- **THEN** `shutdown()` SHALL resolve `true` immediately without sending a quit command or starting any timers
 
 #### Scenario: Readline interfaces cleaned up on shutdown
 
@@ -2626,7 +2661,14 @@ the trimmed UI dropdown (e.g., programmatic config imports).
 ### Requirement: Coordinator Single-Scanner Spawn API
 
 The `ScanCoordinator` class SHALL expose `addScanner(config)` and
-`hasWorker(scannerId)` public methods.
+`hasWorker(scannerId)` public methods. Both `addScanner()` and the
+`initialize()` orchestration method (see "ScanCoordinator Multi-Scanner
+Orchestration") spawn workers through one shared private method that
+maintains a per-`scannerId` in-flight-spawn guard: while a spawn attempt
+for a given `scannerId` is already in progress (from either entry point),
+any other caller for that same `scannerId` SHALL await the in-flight
+attempt's own outcome rather than independently inspecting subprocess
+state and deciding to reuse, respawn, or shut down.
 
 - `addScanner(config: ScannerConfig): Promise<void>` — spawns a
   `ScannerSubprocess` for the given config and adds it to the
@@ -2651,14 +2693,29 @@ The `ScanCoordinator` class SHALL expose `addScanner(config)` and
     `isScanning` is still `true` at the synchronous instant every
     listener runs, and a re-entrant call would re-queue itself
     indefinitely instead of ever spawning (see `design.md`).
+  - This mid-scan queueing dedup is independent of, and in addition to,
+    the shared spawn-choke-point guard described above: the latter
+    covers `addScanner()` racing `initialize()` (or another `addScanner()`
+    call) while the coordinator is idle/initializing; the former covers
+    `addScanner()` racing itself while a scan is in flight.
 - `hasWorker(scannerId: string): boolean` — returns `true` if the
   subprocess map contains a worker for that scanner_id AND the
   worker is in `ready` state. Returns `false` otherwise (missing,
-  `initializing`, or `dead`).
+  `starting`, or `dead` — `starting` is the actual `ScannerSubprocess`
+  state name for "spawn in progress, not yet confirmed ready").
 
 The existing `initialize(scanners[])` method SHALL be refactored to
 use `addScanner()` internally so worker spawn logic lives in one
 place.
+
+If a spawn attempt cannot confirm the subprocess became ready within a
+bounded timeout, and a subsequent attempt to reclaim it cannot confirm
+the process actually exited, the coordinator SHALL NOT spawn a
+replacement for that `scannerId` in the same call. It SHALL instead
+record the failure in `initErrors` and emit `scanner-init-status` with
+`status: 'error'` for that `scannerId`, using the same plain-diagnostic
+error-reporting shape already used for other spawn failures (no new
+user-facing messaging surface).
 
 #### Scenario: addScanner spawns one worker without disturbing existing
 
@@ -2684,7 +2741,7 @@ place.
 - **WHEN** `hasWorker(scannerId)` is queried
 - **THEN** it SHALL return `true` only if the worker is in `ready`
   state
-- **AND** it SHALL return `false` for `initializing`, `dead`, or
+- **AND** it SHALL return `false` for `starting`, `dead`, or
   missing workers
 
 #### Scenario: addScanner during active scan is queued
@@ -2715,14 +2772,96 @@ place.
   mid-spawn as a side effect of the second call
 - **AND** both returned `Promise`s SHALL resolve
 
+#### Scenario: Concurrent addScanner and initialize calls for the same id spawn exactly one subprocess
+
+- **GIVEN** a `ScanCoordinator` with `isScanning === false` and no
+  worker yet for `scannerId` `'X'`
+- **WHEN** `initialize([{scannerId: 'X', ...}])` is called
+- **AND**, before that call's spawn for `'X'` has settled,
+  `addScanner({scannerId: 'X', ...})` is also called
+- **THEN** the coordinator SHALL construct exactly one
+  `ScannerSubprocess` for `'X'`
+- **AND** the `addScanner()` call SHALL NOT call `shutdown()` on the
+  subprocess `initialize()` is still spawning
+- **AND** both `initialize()` and `addScanner()` SHALL resolve once the
+  single underlying spawn attempt settles
+
+#### Scenario: A still-connecting worker is awaited, not respawned, by a second initialize call
+
+- **GIVEN** a `ScanCoordinator` has begun spawning a subprocess for
+  `scannerId` `'Y'` (the subprocess is in `starting` state, not yet
+  `ready`)
+- **WHEN** a second `initialize([{scannerId: 'Y', ...}])` call is made
+  before the first spawn attempt for `'Y'` has settled
+- **THEN** the second call SHALL NOT call `shutdown()` on the
+  still-connecting subprocess
+- **AND** SHALL NOT construct a second `ScannerSubprocess` for `'Y'`
+- **AND** once the in-flight spawn attempt resolves (the subprocess
+  becomes `ready`), `hasWorker('Y')` SHALL return `true` and only one
+  subprocess SHALL exist for `'Y'`
+
+#### Scenario: A spawn attempt that never confirms readiness or death does not produce a duplicate
+
+- **GIVEN** a subprocess for `scannerId` `'Z'` has been spawned and
+  neither becomes `ready` nor emits `exit`/`process-error` within the
+  spawn-ready timeout
+- **WHEN** the coordinator's spawn attempt for `'Z'` gives up waiting
+- **THEN** the coordinator SHALL attempt to shut down the unresponsive
+  subprocess
+- **AND** regardless of whether that shutdown attempt confirms the
+  process exited, the coordinator SHALL NOT construct a replacement
+  `ScannerSubprocess` for `'Z'` within the same spawn attempt
+- **AND** the coordinator SHALL record an entry in `initErrors` for
+  `'Z'` and emit `scanner-init-status` with `status: 'error'`
+- **AND** the recorded message SHALL explicitly identify that the
+  failure was a spawn-ready timeout (naming the timeout duration),
+  distinguishable from an immediate spawn failure's message (e.g. an
+  ENOENT or exit-before-ready message)
+- **AND** the failure SHALL also be written via `scanLog()` so it
+  survives in the persistent log in a packaged app, not only via
+  `console.error`
+- **AND** `hasWorker('Z')` SHALL return `false`
+
+#### Scenario: A settled spawn attempt does not block a later, independent spawn for the same id
+
+- **GIVEN** a spawn attempt for `scannerId` `'W'` has already settled
+  (the subprocess is `ready`, or the attempt failed and the entry was
+  removed)
+- **WHEN** a later, unrelated call to spawn `'W'` again is made (e.g.
+  after the worker later exits and a new `initialize()`/`addScanner()`
+  call runs)
+- **THEN** the later call SHALL NOT be handed the earlier, already-
+  settled attempt's `Promise`
+- **AND** SHALL perform its own fresh reuse/respawn decision
+
+#### Scenario: An orphaned reclaim does not evict or falsely fail-report a newer replacement
+
+- **GIVEN** a spawn attempt for `scannerId` `'A'` is orphaned (its
+  guard entry was cleared by a concurrent `stopScanner('A')` while it
+  was still mid-connect, per "stopScanner clears an in-flight spawn")
+  and is still running toward its own spawn-ready timeout
+- **AND** a subsequent `addScanner({scannerId: 'A', ...})` call has
+  already installed a healthy, `ready` replacement `ScannerSubprocess`
+  at `'A'` before the orphaned attempt's timeout elapses
+- **WHEN** the orphaned attempt's spawn-ready timeout fires and its
+  reclaim runs
+- **THEN** the reclaim SHALL NOT remove the replacement from the
+  subprocess map
+- **AND** SHALL NOT record an `initErrors` entry or emit a
+  `scanner-init-status` `error` event for `'A'`
+- **AND** `hasWorker('A')` SHALL continue to return `true` for the
+  healthy replacement, unaffected by the orphaned attempt's outcome
+
 ### Requirement: Coordinator Stop-Scanner API
 
 The `ScanCoordinator` class SHALL expose
 `stopScanner(scannerId): Promise<void>` to support per-scanner
-shutdown without affecting other workers. The method SHALL kill the
-subprocess (or send quit + force-kill after timeout), remove the
-entry from the subprocess map, and resolve. If no worker exists for
-`scannerId`, the method SHALL resolve without error (idempotent).
+shutdown without affecting other workers. The method SHALL clear any
+in-flight spawn-guard entry for `scannerId` (see "Coordinator
+Single-Scanner Spawn API"), kill the subprocess (or send quit +
+force-kill after timeout), remove the entry from the subprocess map,
+and resolve. If no worker exists for `scannerId`, the method SHALL
+resolve without error (idempotent).
 
 #### Scenario: stopScanner removes one worker
 
@@ -2739,6 +2878,48 @@ entry from the subprocess map, and resolve. If no worker exists for
 - **GIVEN** a `ScanCoordinator` with no workers
 - **WHEN** `stopScanner('does-not-exist')` is called
 - **THEN** the method SHALL resolve without error
+
+#### Scenario: stopScanner clears an in-flight spawn so a subsequent spawn starts fresh
+
+- **GIVEN** a spawn attempt for `scannerId` `'A'` is in flight (the
+  subprocess is `starting`, not yet `ready`)
+- **WHEN** `stopScanner('A')` is called
+- **AND** a new spawn for `'A'` (via `addScanner()` or `initialize()`)
+  is requested immediately afterward
+- **THEN** the new spawn attempt SHALL NOT be handed the original
+  in-flight attempt's `Promise`
+- **AND** the new spawn attempt SHALL construct a fresh
+  `ScannerSubprocess` for `'A'` without waiting for the original
+  in-flight attempt's own timeout to elapse
+
+#### Scenario: stopScanner logs when the process's exit cannot be confirmed
+
+- **GIVEN** a `ScanCoordinator` with a worker for `scannerId` `'A'`
+  that does not exit in response to `stopScanner`'s shutdown attempt
+  even after force-kill
+- **WHEN** `stopScanner('A')` is called
+- **THEN** the method SHALL still resolve and remove `'A'` from the
+  subprocess map
+- **AND** SHALL log a warning identifying `'A'` as not confirmed
+  stopped, rather than silently treating it as freed
+
+#### Scenario: stopScanner frees the scannerId for a concurrent spawn immediately, not only after shutdown confirms
+
+- **GIVEN** a `ScanCoordinator` has a `ready` worker for `scannerId`
+  `'A'`
+- **WHEN** `stopScanner('A')` is called, and its own shutdown attempt
+  has not yet resolved (still within its multi-second grace/confirm
+  window)
+- **AND** `addScanner({scannerId: 'A', ...})` is called concurrently
+  during that window
+- **THEN** the concurrent `addScanner()` call SHALL NOT treat `'A'`
+  as already satisfied (it SHALL NOT observe a stale `ready` worker
+  for `'A'` during `stopScanner`'s shutdown window)
+- **AND** SHALL construct a fresh `ScannerSubprocess` for `'A'`
+- **AND** after both calls settle, `hasWorker('A')` SHALL return
+  `true` — the scanner SHALL NOT silently end up with no worker and
+  no error reported, which is the failure mode this scenario guards
+  against
 
 ### Requirement: GraviScan Post-Scan Plate Position Verification
 
