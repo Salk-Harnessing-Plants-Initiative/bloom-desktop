@@ -1,0 +1,167 @@
+# GraviScan Production-Cutover Roadmap
+
+**Status:** Drafted 2026-09-02, immediately after the GraviScan renderer roadmap's completion (all 6 tiers merged, most recently Tier 6 via PR #360, 2026-09-02). Tier structure and scope approved by the user 2026-09-02. Adversarially reviewed same-day by 4 independent agents (factual accuracy, dependency sequencing, completeness, scope/safety consistency), mirroring how the renderer roadmap itself was reviewed — findings incorporated below (notably: #353 turned out to already be fixed same-day by PR #356 and moved out of Tier 1; #224 corrected from "issue" to "PR" throughout; #204/#331/#332/#288/#233/#242/#354/#276 added to Tier 1; #281 sequenced ahead of #279; a post-cutover commit-SHA-recording step added to Tier 2; the rig-safety-constraint scope and the Tier 1→2 dependency framing both tightened for consistency). No tier has started implementation.
+
+## Owner context
+
+The renderer roadmap (`docs/superpowers/plans/2026-07-30-graviscan-renderer-roadmap.md`) brought `main` to feature parity with the stranded production branch `fix/v600-wedge-followups-metadata_propogation_followup`, currently running on rig `graviscan-ms-7c56`. That roadmap explicitly scoped out three things as "someone else's problem, later": the actual cutover mechanics (tracked as issue #306), a real release/versioning pipeline (issue #296), and Slack-alert consolidation (issue #248, pre-dating the roadmap entirely). This roadmap picks up those three threads, plus the data-integrity risks discovered along the way that should be closed *before* trusting a main-based build with the rig's actual experiments.
+
+This is **not** a rebuild — main already has the code. This roadmap is about the operational and process gaps standing between "main has parity" and "the rig is safely running main."
+
+## Rig safety constraint — read before doing anything that touches the rig (Tiers 0, 1, 2, 3, 4 — see list below)
+
+Re-verified read-only on 2026-09-02 (not trusted from memory or prior session notes):
+
+- Rig `graviscan-ms-7c56`, checkout at `/home/graviscan/.dev/bloom-desktop`, branch `fix/v600-wedge-followups-metadata_propogation_followup`, commit `18657bc1367ff6c852d36fae3527c6a0d055d643`. The rig name, branch, and the `GRAVISCAN_OUTPUT_DIR` gotcha match issue #306's description; the specific checkout path and commit hash come from this session's live rig check, not from #306 itself (#306 doesn't specify either).
+- **An experiment is actively in flight**: 10 `bloom-hardware --scan-worker` processes (5 scanners × 2 processes each) running continuously since 2026-08-31.
+- The rig's `~/.bloom/.env` currently defines `BLOOM_ANON_KEY`, `BLOOM_API_URL`, `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL`, `BLOOM_SCANNER_PASSWORD`, `BLOOM_SCANNER_USERNAME`, `LIBUSB_ENDPOINT_RECOVERY`, `SCANS_DIR` — **`GRAVISCAN_OUTPUT_DIR` is genuinely absent**, confirming issue #306's gotcha #1 is real, not stale.
+
+**No git checkout/reset/stash, no killing processes, no destructive action of any kind on this machine** is in scope for any tier below until a fresh check at execution time re-confirms no active experiment. This constraint is not limited to Tier 2 — every rig-touching step in this roadmap carries it:
+
+- **Tier 0**'s "close #231/#243/#230" bullets call for a quick manual rig sanity-check before closing.
+- **Tier 1**'s fixes that need hardware validation (notably #279's checklist).
+- **Tier 2**'s cutover execution (the whole point of the tier).
+- **Tier 3**'s real-hardware dry-run validation of the release artifact.
+- **Tier 4**'s "ship + verify on the dev rig before production rig" step — deploying new code to the machine currently running the active experiment is exactly the kind of action this constraint exists for.
+
+Tier 5 has no rig-touching steps as scoped.
+
+## Why a roadmap (not one proposal)
+
+Same reasoning as the renderer roadmap: this spans five substantively different kinds of work (bug fixes, a physical-machine runbook, CI/release infrastructure, a notification-system rewrite, and a stack of deferred nice-to-haves), each with its own stakeholders, review needs, and risk profile. Bundling them into one proposal would force one all-or-nothing review gate on work that has no shared dependency graph — Tier 3 (versioning) and Tier 4 (Slack) don't depend on each other at all, and while most of Tier 1's fixes can proceed independently of Tier 2, the rig-facing cutover itself should wait on Tier 1's safety-critical items (see the Coordination note under the tier table).
+
+## No numeric oracle — substitute validation target
+
+Like the renderer roadmap, none of this work has a scientific ground-truth to validate against. Substitute validation, per tier:
+
+1. **Spec conformance** — each tier's OpenSpec change matches its scope below.
+2. **Known-bug avoidance** — Tier 1 fixes are validated against the specific reproduction each issue documents, not just "tests pass."
+3. **TDD + E2E coverage** — new IPC handlers get real coverage in `tests/e2e/renderer-database-ipc.e2e.ts` (the IPC coverage gate statically scans this file; unit tests alone won't satisfy it).
+4. **No regressions** — full CI green, plus for Tier 2/3 specifically, a real dry-run on hardware (Linux for GraviScan) before calling it done — CI alone was insufficient for the Tier 6 packaging work and found 2 real bugs only on real hardware.
+
+## Tier table
+
+| # | Tier | Depends on | New backend? | Related issues | Status |
+|---|------|------------|---------------|-----------------|--------|
+| 0 | Housekeeping (close-outs, no new code) | — | No | #236, #162, #231, #243, #230, #353, #195, #194, #159, #185 | Not started |
+| 1 | Data-integrity risk fixes | Tier 0 (for accurate scoping) | Yes, targeted | #232, #233, #281, #279, #204, #331, #332, #288, #313, #309, #347, #242, #354, #330, #358, #226, #361, #276 | Not started |
+| 2 | Cutover mechanics (#306) | Tier 1, but only #279/#226/#361 hard-block *execution* — runbook drafting has no code dependency and can start in parallel | Small (pre-flight check tooling) | #306, #226, #361, #204, #284, #325 | Not started |
+| 3 | Versioning + build traceability (#296, Linux-only) | Tier 6 of renderer roadmap (done) | Yes (CI workflow) | #296 | Scoped, decisions confirmed — implementation not started |
+| 4 | Slack alert consolidation (#248 + #348 Phase 1) | None (independent of 1–3) | Yes (SlackNotifier extension) | #248, #348 | Scoped, decisions confirmed — implementation not started |
+| 5 | Nice-to-haves / explicitly deferred | — | N/A | #349, PR #224, #343, #245, #348 (Phases 2–3) | Deferred |
+
+**Coordination note:** Tiers 3 and 4 touch disjoint files (`forge.config.ts`/CI workflows vs. `slack-notifier.ts`/`graviscan-handlers.ts`) and have no ordering dependency on each other — they can run in parallel if capacity allows.
+
+Tier 1 → Tier 2 is a **mixed-strength** dependency, not a uniform one: Tier 2's runbook-drafting (the `.env` migration section, the `docs/GRAVISCAN_CUTOVER.md` skeleton, the rollback plan) has no technical dependency on Tier 1 and can start immediately. Only the actual rig-facing cutover *execution* is hard-blocked, and only by three specific Tier 1 items — **#279** (validated wedge-response safety), **#226** (apt lock blocking post-cutover maintenance), **#361** (working Linux dev/build setup). The other Tier 1 items are correctness fixes with no stated gate on Tier 2 starting.
+
+## Tier 0 — Housekeeping (close-outs, no new code)
+
+Pure GitHub hygiene, safe to do at any time, independent of every other tier. Verified this session, not from paraphrase. **Every closure below is a recommendation pending your explicit sign-off — nothing here authorizes closing an issue or PR automatically.**
+
+- **Recommend closing #236** (Slack notification on wedge detection) — confirmed shipped via merged PR #266 (`slack-notifier.ts`/`wedge-detector.ts` live on `main`, header comment cites #236 directly). Never auto-closed because #266's body used inline mentions instead of a closing keyword.
+- **Recommend closing #162** (QR verification not wave-scoped) — confirmed merged: `src/main/graviscan/verify-plates.ts` requires a non-empty `experimentId` and scopes queries to `(experiment_id, wave_number)`.
+- **Recommend closing #231, #243, #230** (production-branch-specific bugs: grid_mode dropped on save, upsert creating duplicate UUIDs, stale scanner rows) — all three confirmed already-fixed on `main` by static code inspection (schema change removed per-scanner `grid_mode` entirely; `scanner-upsert.ts` matches existing rows by `(usb_bus, usb_device)`/`usb_port` before creating; `disableStaleScannerRows`/`disableScannerById` already implement stale-row handling). **Caveat:** static-code confirmation only — do a quick manual rig sanity-check before closing, not a fix task.
+- **Recommend closing #353** (`GraviMetadataUpload` duplicate-column-mapping) — **confirmed already fixed same-day**: merged PR #356 (2026-09-02) shipped `findMappingCollisions`/`describeCollision` in `src/renderer/components/GraviMetadataUpload.tsx`, closing the exact gap #353 describes. This issue was originally scoped into Tier 1 as open work; the adversarial review caught that it had been resolved hours before this draft was reviewed. No longer a Tier 1 risk.
+- **Verify-or-reopen #195, #194, #159** — labeled `pr-ready`, linked only to PR #196 (the first-generation renderer, confirmed superseded entirely by the Tier 1–6 rebuild). Likely already resolved by the rebuild's proper main-process IPC architecture, but unconfirmed — check against current `main` behavior before closing or before carrying into Tier 1 as real work.
+- **Verify-or-reopen #185** (parallel subprocess init) — possibly superseded by merged PR #357 (`scanner-init re-entrancy race + parallelize startup`); needs a scope comparison, not an assumption either way.
+- **Recommend closing ~34 stale pre-tier PRs** (#135–#227, excluding PR #224 and PR #221) as superseded by the Tier 1–6 rebuild and the earlier backend-hardening plan (PRs #258–#266). Confirmed via git ancestry, not just staleness-by-date, for the major ones (libusb-filter → PR #262, SlackNotifier → PR #266, wave-metadata → PRs #278/#290, scan-path → PR #260). **Do not close #227 or #237** — both are explicitly-preserved reference/evidence branches (rig-validated findings, real Slack messages, dpkg install/rollback notes) worth mining during Tier 1–2, not merge candidates.
+
+## Tier 1 — Data-integrity risk fixes
+
+Real, verified risks to data correctness on the live rig — prioritized above cutover mechanics because moving the rig to a new build is pointless if the new build has known ways to corrupt or mislabel data.
+
+**Sequencing note (from adversarial review):** fix **#281 before running #279's checklist** — #279 is a manual rig-validation pass of the exact wedge auto-pause/retry feature whose unsafe gaps #281 documents (an un-timed retry-spawn and a SIGKILL-corruption path). Running the checklist first risks both triggering #281's corruption bug on a real plate during the test, and validating a feature that isn't actually safe yet.
+
+- **#232** (+ **#233** as a direct companion) — V600 only supports discrete DPI values (400/800/1600/3200); requesting 1200 silently rounds to 1600, but the DB still records `resolution=1200`. Confirmed against production data — historic rows are suspected mislabeled by ~33%. #233 asks specifically whether x/y resolution flags are honored at 1200 DPI — verify together with #232's fix. Needs both a code fix (reject/clamp to supported values, don't silently round) and a decision on how to handle already-uploaded historical data (flag, re-derive, or leave documented as a known caveat). Fold in the incomplete DPI-runtime-validation safety net flagged in the 2026-07-29 parity-gaps doc's Increment 8 (`V600_VALIDATED_DPI`/`_validate_dpi()`/`dpi-warning` event) — never issue-tracked, address alongside #232/#233.
+- **#281** (fix before #279 — see sequencing note above) — Three related coordinator/subprocess gaps made more reachable by the wedge auto-pause feature: `stopScanner()`'s 5s force-kill can SIGKILL the Python worker mid-`image.save()` (corrupts an otherwise-healthy TIFF with no atomic write, invisible to verification since listeners are stripped first); retry-spawn has no timeout (can hang the UI with no escape hatch); `addScanner()` has no concurrency guard when idle (two concurrent spawns can orphan a subprocess holding the physical USB handle).
+- **#279** (run after #281 is fixed) — Manual rig-validation checklist for the wedge auto-pause/retry feature has never been checked off. Its own text calls this "a data-loss-prevention safety feature" that "should be done before this feature is relied on for an unattended multi-day production run." One of three items that hard-block Tier 2's cutover *execution* (see Coordination note above), not a standalone deferred item.
+- **#204** — `~/.bloom/.env` is never loaded into the main process's `process.env` (no `dotenv` load at startup) — `GRAVISCAN_MOCK` and other env vars silently have no effect unless set inline in the shell. Directly relevant to Tier 2's entire `.env`-migration step (the `GRAVISCAN_OUTPUT_DIR` fix depends on env vars actually being loaded) and is the documented prerequisite for #197/#343 (Machine Config UI).
+- **#331** — App quit (`before-quit`) doesn't await in-flight IPC writes; a plate-assignment edit can be silently lost if the operator quits mid-write. Accepted/tracked as a named limitation from PR #289 review — exactly the class of silent-data-loss risk this tier exists to catch.
+- **#332** — `path-containment.ts`'s missing-tail reappension has a TOCTOU gap on `graviscan:start-scan`'s write path (the function was originally scoped to read-only callers). Also an accepted/tracked PR #289 finding.
+- **#288** — `downloadImages` CSV export still uses experiment-level `accession_id` instead of the per-wave metadata link, silently mismatching for wave-scoped experiments. A UI warning banner exists, but the underlying export logic still produces wrong data.
+- **#313** — Missing DB uniqueness constraints (`plate_section_id` per plate, `plant_qr` per experiment/wave). Audited against a real production DB copy: zero current violations, so safe to add proactively before it becomes a real conflict.
+- **#309** — No duplicate-barcode validation at scan-assignment time (CylinderScan already has this; GraviScan has the backend check but no renderer caller).
+- **#347** — GraviScan Bloom uploads use the unvalidated local scanner name instead of the required Bloom-validated Station Identity; `GRAVISCAN_SYSTEM_NAME` has no required validation/UI and is already commonly unset.
+- **#242** — Orphaned GraviScan DB rows (pointing at deleted `.tif`s) cause Box backup to fail repeatedly and permanently. The issue's own text warns this trains operators to ignore Box errors, risking real failures being missed — relevant to Tier 4's Slack alerting too (an alert-fatigue risk on top of the data gap).
+- **#354** — `ConfigureScanner`'s Reset USB / Remove Scanner actions have no confirmation guard — more exposed now that this page moved into the daily operator workflow.
+- **#330** — Job can get stuck "pending" if the renderer crashes between `recordCompletedJob()` and `markJobRecorded()` — the real DB write already succeeded, but QR verification silently never runs for that plate, no error surfaced. Narrow timing window, accepted/named limitation from PR #289 review.
+- **#358** — `ScanCoordinator.shutdown()`/`killAll()`'s trailing `.clear()` can silently discard a subprocess spawned concurrently with shutdown, leaking a never-stopped process handle. Narrow (app-quit/teardown timing only).
+- **#226** — `iscan` was force-installed via `dpkg --ignore-depends=libsane` on the rig, creating a **permanent apt lock** blocking all future `apt install`/`upgrade` — confirmed still affecting `graviscan-ms-7c56` today. Directly blocks routine post-cutover maintenance; one of three items that hard-block Tier 2's cutover *execution* (see Coordination note above).
+- **#361** — `npm run dev`/`build:python` never installs `python-sane` on Linux (it's in an optional `graviscan-linux` extras group `uv sync` skips by default); `GRAVISCAN_MOCK=true` masks this in most dev flows. A fresh Linux dev setup following the documented README steps fails on first real (non-mock) scanner spawn. One of three items that hard-block Tier 2's cutover *execution* (see Coordination note above).
+- **#276** — Minor/latent, tracked but not urgent: `experiments.delete` can silently cascade-erase all of an experiment's wave-metadata links. Currently unreachable (no renderer caller), so it's a real gap but not blocking Tier 2. Also noted for later, lower priority: **#292** (Box-backup progress bleeds between same-named experiments), **#303** (untested, Windows-only symlink bug in `box-backup.ts` — low relevance since the rig is Linux-only).
+
+## Tier 2 — Cutover mechanics (#306)
+
+The actual runbook and pre-flight tooling for moving `graviscan-ms-7c56` from its current branch to a main-based build.
+
+- Write `docs/GRAVISCAN_CUTOVER.md` (or fold into an existing deployment doc): pre-flight checks, the `.env` migration step, install/verification steps, rollback plan. Distinct from #295's general Linux packaged-app deployment docs — this is specifically about migrating *this* rig off its current install.
+- **`.env` migration (confirmed real, not stale):** add `GRAVISCAN_OUTPUT_DIR=/data/bloom/graviscan` to the rig's `~/.bloom/.env` **additively** — do not remove the existing `SCANS_DIR` line, which `config-store.ts` still uses for an unrelated setting. Without this, `main`'s `graviscan-output-dir.ts` silently falls back to `<homeDir>/.bloom/graviscan`, not the `/data` partition where existing experiment data lives.
+- **Pre-flight tooling**: a repeatable check (script or documented command sequence) for "is an experiment currently in flight" — process check (`ps aux | grep bloom-graviscan`) plus recent-file-activity check under `SCANS_DIR` — so this isn't re-derived ad hoc by whoever runs the cutover.
+- Fold in #226 (apt lock) and #361 (python-sane gap) as install-time gotchas the runbook must address, not silent landmines.
+- Fold in #284 (E2E test harness writes to the real `~/.bloom/.env` instead of an isolated path) — a real incident already happened once; the runbook's own verification steps shouldn't risk repeating it. Fix the test harness isolation before using it to verify the cutover.
+- Fold in #325 (no canonical `~/.bloom/.env` schema doc) — directly supports the runbook's config-migration section; write this alongside rather than have the runbook reference a doc that doesn't exist.
+- Fold in #204 (`~/.bloom/.env` never loaded into `process.env`) as a precondition check — the `.env` migration step above is meaningless if the env file isn't actually being read.
+- **Record the post-cutover commit SHA.** The rig's current install is a git dev checkout, not a packaged build — `git rev-parse HEAD` on the rig after cutover gives commit-level traceability for free. Mirror the same rigor this roadmap's own safety-constraint check used pre-cutover: write the exact commit now running into the runbook or a rig-status log, so a future session doesn't have to re-derive it from scratch the way this roadmap did.
+- Rollback plan: how to revert the rig to its current build if the main-based build fails post-cutover.
+- Windows `.exe` packaging quirk noted in #306 (exits immediately on direct launch) is a lower-priority side note since the rig target is Linux — don't block Tier 2 on root-causing it, just note it's unverified.
+
+## Tier 3 — Versioning + build traceability (#296, Linux-only)
+
+This tier is **Linux-only** — everything below targets the `test-make-linux` artifact path, not the Windows/macOS makers. Confirmed via direct repo inspection this session: `.github/workflows/` contains only `pr-checks.yml` (no release workflow exists today); `forge.config.ts` configures five makers total (`MakerSquirrel` for Windows, `MakerDMG` and `MakerZIP` for macOS, `MakerDeb` and `MakerRpm` for Linux) and all five are unsigned stubs; `package.json` is still `0.1.0`; `/update-changelog` documents Keep-a-Changelog conventions and a manual tag workflow but automates nothing. The concrete gap (from the user's own 2026-09-02 comment on #296): the CI-produced `.deb` filename (`bloom-desktop_0.1.0_amd64.deb`) is static and carries no git SHA/build id — every CI run produces an identically-named artifact, distinguishable only by the GitHub Actions run URL.
+
+Decisions confirmed with the user (2026-09-02):
+
+- **No signing/notarization.** Internal lab machines; unsigned installers already behave exactly as they do today (SmartScreen click-through on Windows, no signature requirement for `dpkg -i` on Linux). No cert/notarization pipeline in scope.
+- **Publish target: GitHub Releases.** Free, versioned, durable, replaces today's untracked transient CI build artifacts.
+- **Cadence/trigger: both.** Tag-push triggers a release build as the normal path; `workflow_dispatch` stays available as a manual escape hatch.
+- **Scope: GraviScan/Linux only in this roadmap.** CylinderScan/Windows versioning is an explicit follow-up that reuses the same mechanism once this proves out — not bundled into this tier's PR(s).
+
+Scope for the tier itself:
+
+- Semver scheme: one version ↔ one commit. Where the version lives (`package.json` vs. git tags) and how it bumps needs a design decision during the tier's own proposal — not pre-decided here.
+- CI workflow: tag-push (`v*`) and `workflow_dispatch` both trigger a release build of the `test-make-linux` artifact path, embedding the git SHA into the artifact (filename or embedded metadata — proposal-time decision) so a `.deb` is traceable to its commit.
+- Changelog automation building on `/update-changelog`'s existing Keep-a-Changelog format and semver conventions — the gap is automation (generating entries from merged PRs, or at minimum scaffolding the release-PR workflow it already documents as "Option 1"), not format or convention.
+- Publish the versioned `.deb` as a GitHub Release asset.
+- Explicitly **not** in this tier: signing, CylinderScan/Windows, the self-hosted-runner deploy-automation half tracked separately in #349, and PR #224's TIFF metadata embedding (that's scientific data provenance, not software build traceability — see Tier 5).
+
+## Tier 4 — Slack alert consolidation (#248 + #348 Phase 1)
+
+Full taxonomy and open questions already drafted in #248 (verified via `gh issue view`, word-for-word match to prior recollection); five open questions were resolved with the user this session:
+
+- **Channel routing:** single channel, `#topic-graviscan-alerts`, all 3 tiers. (Per-tier routing would need multiple webhooks or a Slack Bot token — out of scope; incoming webhooks route to one fixed channel each.)
+- **Alert Tier 3 (heartbeat) default** *(note: "Alert Tier" here is #248's own internal severity tier, unrelated to this roadmap's Tier numbering)*: on by default, per-event — **not** a digest. Clarified during discussion: "session complete" means once per full multi-day experiment run (`ScanCoordinator`'s `sessionId`/`totalCycles`), not per scan cycle (which happens hundreds of times/day and is explicitly excluded from any alert tier already). Once that distinction was clear, per-event/default-on was confirmed as correct.
+- **Webhook ownership:** `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL` already points at a shared team Slack app — confirmed, no migration task needed.
+- **Canonical channel:** confirmed `#topic-graviscan-alerts`.
+
+Scope:
+
+- Extend `SlackNotifier` with `notifyBackupComplete`, `notifyScanSessionComplete`, and the Alert Tier 2 (data-integrity warning) messages from #248's taxonomy — QR verification mismatches, scan-on-unlinked-wave, stale-scanner auto-disable, partial Box-backup failure.
+- Wire into the `graviscan:upload-all-scans` IPC handler's success/failure branches.
+- Per-alert opt-out env vars in `~/.bloom/.env`, so a rig can silence Alert Tier 3 specifically if it proves noisy in practice — default stays on.
+- Ship + verify on the dev rig before the production rig.
+- Retire the Zapier "Bloom Graviscan Bot" zap — **archive, don't delete** — once the in-app equivalent is verified shipping the same information (folder path, file count via Box).
+- Write `docs/slack-alerts.md`: Slack app/owner/workspace/channel, each alert type with example message and how to silence it, webhook setup for new rigs, a note on the retired Zapier zap so no one recreates it.
+- **Fold in #348 Phase 1** (disk-space monitoring alert) — reuses the same `SlackNotifier`/rate-limit pattern, explicitly labeled low-risk/ship-first by its own author. Ship alongside or immediately after the core consolidation work, not as a separate later tier.
+
+## Tier 5 — Nice-to-haves / explicitly deferred
+
+- **#349** (automated build/deploy/verify pipeline via self-hosted GitHub Actions runners) — correctly deferred. Confirmed genuinely about self-hosted runners on the rig fleet (canary/fleet rollout, idle-gated install, DB-backup-before-migration). Has its own real, unresolved security question: `bloom-desktop` is a **public** repo, and self-hosted runners on a public repo are the exact configuration GitHub warns against (fork-PR workflows can target the runner label). Blocked on a policy call — private the repo, tighten fork-PR approval policy, or a private deploy-only repo — before this pipeline should be built at all, independent of anything else in this roadmap.
+- **PR #224** (embed TIFF metadata: `exp_name`/`wave_number`/`start_timestamp`/`phenotyper_name`) — note this is a pull request, not an issue; still open/unmerged, source only exists on the dead `feature/graviscan-prod` branch. A genuine, still-unaddressed gap, but this is **scientific data provenance**, not software build traceability — deliberately kept separate from Tier 3 despite the similar "traceability" language (Tier 3's own scope explicitly excludes it too, see above). Worth a fresh, from-scratch proposal against current `main` rather than resurrecting the stale PR #224 branch.
+- **#343** — Machine Config UI for `graviscan_system_name`, `slack_webhook_url`, `libusb_endpoint_recovery` (currently manual-`.env`-edit only). Quality-of-life, not blocking.
+- **#245** — No UI indicator for Slack-webhook/`LIBUSB_ENDPOINT_RECOVERY` env state — a misconfigured webhook today means zero wedge alerts with no visible sign. Worth folding into Tier 4 if capacity allows, otherwise stays here.
+- **#348 Phases 2–3** (Box archive-verification reporting, gated local pruning) — explicitly phased by the issue's own author as lower-risk-first; Phase 1 (Tier 4) ships independently.
+- CylinderScan/Windows versioning follow-up (see Tier 3).
+
+## Process per tier
+
+Same as the renderer roadmap: brainstorm → `/openspec:proposal` → `openspec-review` (5 subagents) → user approval → `/openspec:apply` (TDD) → `/pre-merge` → PR → `/cleanup-merged`. Cycle reviews at both ends until convergence (pre-implementation `openspec-review` rounds, post-implementation `/copilot-review` + `/review-pr` rounds) — not a fixed count. Tier 0 is the exception: it's GitHub housekeeping (closing issues/PRs), not code, and doesn't need the OpenSpec pipeline.
+
+For any rig-touching step — Tier 0's sanity-checks on #231/#243/#230, Tier 1's hardware-validation items (notably #279), Tier 2's cutover execution, Tier 3's real-hardware dry-run, and Tier 4's production-rig deployment — re-run the pre-flight "is an experiment in flight" check immediately before that step. The check done for this roadmap (2026-09-02) is a point-in-time fact, not a standing guarantee.
+
+## Tracking issues
+
+Existing GitHub issues already cover this roadmap's scope (#306, #296, #248, #348, plus the Tier 1 issues listed above) — no new issues needed to describe the work itself. (PR #224, cited in Tier 5, is a pull request, not an issue — its own stale branch is the reference, not a tracking issue.) Whether to file a per-tier tracking/EPIC issue (mirroring the renderer roadmap's open question, never resolved there either) is still an open question for the user.
+
+## Closing the loop
+
+After each tier merges, re-check the next tier's scope against what actually shipped, not what this roadmap assumed — the renderer roadmap's own tiers shifted scope repeatedly (wave-scoped-metadata-linking wasn't on its original plan at all) and the same should be expected here, especially for Tier 1's issue list once rig-level verification happens.
