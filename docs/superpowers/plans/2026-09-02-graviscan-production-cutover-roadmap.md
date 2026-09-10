@@ -16,15 +16,26 @@ Re-verified read-only on 2026-09-02 (not trusted from memory or prior session no
 - **An experiment is actively in flight**: 10 `bloom-hardware --scan-worker` processes (5 scanners × 2 processes each) running continuously since 2026-08-31.
 - The rig's `~/.bloom/.env` currently defines `BLOOM_ANON_KEY`, `BLOOM_API_URL`, `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL`, `BLOOM_SCANNER_PASSWORD`, `BLOOM_SCANNER_USERNAME`, `LIBUSB_ENDPOINT_RECOVERY`, `SCANS_DIR` — **`GRAVISCAN_OUTPUT_DIR` is genuinely absent**, confirming issue #306's gotcha #1 is real, not stale.
 
-**No git checkout/reset/stash, no killing processes, no destructive action of any kind on this machine** is in scope for any tier below until a fresh check at execution time re-confirms no active experiment. This constraint is not limited to Tier 2 — every rig-touching step in this roadmap carries it:
+**No git checkout/reset/stash, no killing processes, no destructive action of any kind on the production rig `graviscan-ms-7c56`** is in scope for any tier below until a fresh check at execution time re-confirms no active experiment. This constraint is not limited to Tier 2 — every step below that actually touches the *production* rig carries it:
 
-- **Tier 0**'s "close #231/#243/#230" bullets call for a quick manual rig sanity-check before closing.
-- **Tier 1**'s fixes that need hardware validation (notably #279's checklist).
-- **Tier 2**'s cutover execution (the whole point of the tier).
-- **Tier 3**'s real-hardware dry-run validation of the release artifact.
-- **Tier 4**'s "ship + verify on the dev rig before production rig" step — deploying new code to the machine currently running the active experiment is exactly the kind of action this constraint exists for.
+- **Tier 0**'s "close #231/#243/#230" bullets call for a quick manual sanity-check against production before closing.
+- **Tier 2**'s cutover execution (the whole point of the tier) — the actual production-rig-facing step.
+
+Everything else that needs real hardware — Tier 1's #279 checklist, Tier 3's release-artifact dry-run, Tier 4's pre-production verification — now has a dedicated, experiment-free machine to run on instead: see the dev/test rig section immediately below. Those steps don't carry the production-rig safety constraint, but they still deserve the same "confirm the machine's actual state before acting" discipline this roadmap keeps re-learning (see #353, and the SSH-access mixup earlier this session).
 
 Tier 5 has no rig-touching steps as scoped.
+
+## Development/test rig — pbiob-gh-04 (distinct from the production rig)
+
+`pbiob-gh-04` (Tailscale IP `100.96.231.23`) is a separate machine from the production rig — no active experiment, safe to use freely for the hardware-validation work below without the safety constraint above. Confirmed 2026-09-10:
+
+- Real Epson Perfection V600 attached (`Bus 001 Device 004: ID 04b8:013a Seiko Epson Corp. GT-X820 [Perfection V600 Photo]`) — the same scanner model the production rig runs, so DPI/wedge-detection behavior (#232, #233, #279, #281) can be validated here on real hardware, not just mocked.
+- A monitor is attached for manual UI testing (per-tier manual verification steps, e.g. Tier 1's UI-facing fixes, Tier 4's Slack-notification UI).
+- 1.8TB free disk (`/dev/nvme0n1p2`), no active `bloom-hardware`/Electron processes.
+- Checkout at `/home/elizabeth/bloom-desktop` — was stale (branch `fix/scan-worker-mode-206`, pre-dating the entire backend-hardening/renderer-roadmap effort) until updated 2026-09-10; now on `main` at `c9fedf4` (this roadmap's own commit).
+- SSH access: `ssh elizabeth@100.96.231.23`, key-based (set up 2026-09-10, no password needed going forward).
+
+**Use this machine, not the production rig, for:** #279's manual wedge-response checklist, #232/#233's DPI reproduction and fix verification, Tier 3's real-hardware release-artifact dry-run, Tier 4's "verify on a dev rig before production" step, and rehearsing Tier 2's cutover runbook end-to-end before ever running it against the production rig. Keep its checkout current (re-`git pull origin main` before each use — it will drift out of date between sessions) rather than assuming today's `c9fedf4` state holds.
 
 ## Why a roadmap (not one proposal)
 
@@ -37,7 +48,7 @@ Like the renderer roadmap, none of this work has a scientific ground-truth to va
 1. **Spec conformance** — each tier's OpenSpec change matches its scope below.
 2. **Known-bug avoidance** — Tier 1 fixes are validated against the specific reproduction each issue documents, not just "tests pass."
 3. **TDD + E2E coverage** — new IPC handlers get real coverage in `tests/e2e/renderer-database-ipc.e2e.ts` (the IPC coverage gate statically scans this file; unit tests alone won't satisfy it).
-4. **No regressions** — full CI green, plus for Tier 2/3 specifically, a real dry-run on hardware (Linux for GraviScan) before calling it done — CI alone was insufficient for the Tier 6 packaging work and found 2 real bugs only on real hardware.
+4. **No regressions** — full CI green, plus for Tier 2/3 specifically, a real dry-run on hardware (`pbiob-gh-04`, see the dev/test rig section above) before calling it done — CI alone was insufficient for the Tier 6 packaging work and found 2 real bugs only on real hardware.
 
 ## Tier table
 
@@ -74,7 +85,7 @@ Real, verified risks to data correctness on the live rig — prioritized above c
 
 - **#232** (+ **#233** as a direct companion) — V600 only supports discrete DPI values (400/800/1600/3200); requesting 1200 silently rounds to 1600, but the DB still records `resolution=1200`. Confirmed against production data — historic rows are suspected mislabeled by ~33%. #233 asks specifically whether x/y resolution flags are honored at 1200 DPI — verify together with #232's fix. Needs both a code fix (reject/clamp to supported values, don't silently round) and a decision on how to handle already-uploaded historical data (flag, re-derive, or leave documented as a known caveat). Fold in the incomplete DPI-runtime-validation safety net flagged in the 2026-07-29 parity-gaps doc's Increment 8 (`V600_VALIDATED_DPI`/`_validate_dpi()`/`dpi-warning` event) — never issue-tracked, address alongside #232/#233.
 - **#281** (fix before #279 — see sequencing note above) — Three related coordinator/subprocess gaps made more reachable by the wedge auto-pause feature: `stopScanner()`'s 5s force-kill can SIGKILL the Python worker mid-`image.save()` (corrupts an otherwise-healthy TIFF with no atomic write, invisible to verification since listeners are stripped first); retry-spawn has no timeout (can hang the UI with no escape hatch); `addScanner()` has no concurrency guard when idle (two concurrent spawns can orphan a subprocess holding the physical USB handle).
-- **#279** (run after #281 is fixed) — Manual rig-validation checklist for the wedge auto-pause/retry feature has never been checked off. Its own text calls this "a data-loss-prevention safety feature" that "should be done before this feature is relied on for an unattended multi-day production run." One of three items that hard-block Tier 2's cutover *execution* (see Coordination note above), not a standalone deferred item.
+- **#279** (run after #281 is fixed) — Manual rig-validation checklist for the wedge auto-pause/retry feature has never been checked off. Its own text calls this "a data-loss-prevention safety feature" that "should be done before this feature is relied on for an unattended multi-day production run." Run this on `pbiob-gh-04` (real V600 attached, no active experiment), not the production rig. One of three items that hard-block Tier 2's cutover *execution* (see Coordination note above), not a standalone deferred item.
 - **#204** — `~/.bloom/.env` is never loaded into the main process's `process.env` (no `dotenv` load at startup) — `GRAVISCAN_MOCK` and other env vars silently have no effect unless set inline in the shell. Directly relevant to Tier 2's entire `.env`-migration step (the `GRAVISCAN_OUTPUT_DIR` fix depends on env vars actually being loaded) and is the documented prerequisite for #197/#343 (Machine Config UI).
 - **#331** — App quit (`before-quit`) doesn't await in-flight IPC writes; a plate-assignment edit can be silently lost if the operator quits mid-write. Accepted/tracked as a named limitation from PR #289 review — exactly the class of silent-data-loss risk this tier exists to catch.
 - **#332** — `path-containment.ts`'s missing-tail reappension has a TOCTOU gap on `graviscan:start-scan`'s write path (the function was originally scoped to read-only callers). Also an accepted/tracked PR #289 finding.
@@ -102,6 +113,7 @@ The actual runbook and pre-flight tooling for moving `graviscan-ms-7c56` from it
 - Fold in #325 (no canonical `~/.bloom/.env` schema doc) — directly supports the runbook's config-migration section; write this alongside rather than have the runbook reference a doc that doesn't exist.
 - Fold in #204 (`~/.bloom/.env` never loaded into `process.env`) as a precondition check — the `.env` migration step above is meaningless if the env file isn't actually being read.
 - **Record the post-cutover commit SHA.** The rig's current install is a git dev checkout, not a packaged build — `git rev-parse HEAD` on the rig after cutover gives commit-level traceability for free. Mirror the same rigor this roadmap's own safety-constraint check used pre-cutover: write the exact commit now running into the runbook or a rig-status log, so a future session doesn't have to re-derive it from scratch the way this roadmap did.
+- **Rehearse the whole runbook on `pbiob-gh-04` first** — it has a real V600, no active experiment, and is now on `main`. Run the drafted cutover steps there end-to-end before ever running them against the production rig.
 - Rollback plan: how to revert the rig to its current build if the main-based build fails post-cutover.
 - Windows `.exe` packaging quirk noted in #306 (exits immediately on direct launch) is a lower-priority side note since the rig target is Linux — don't block Tier 2 on root-causing it, just note it's unverified.
 
@@ -138,7 +150,7 @@ Scope:
 - Extend `SlackNotifier` with `notifyBackupComplete`, `notifyScanSessionComplete`, and the Alert Tier 2 (data-integrity warning) messages from #248's taxonomy — QR verification mismatches, scan-on-unlinked-wave, stale-scanner auto-disable, partial Box-backup failure.
 - Wire into the `graviscan:upload-all-scans` IPC handler's success/failure branches.
 - Per-alert opt-out env vars in `~/.bloom/.env`, so a rig can silence Alert Tier 3 specifically if it proves noisy in practice — default stays on.
-- Ship + verify on the dev rig before the production rig.
+- Ship + verify on `pbiob-gh-04` before the production rig.
 - Retire the Zapier "Bloom Graviscan Bot" zap — **archive, don't delete** — once the in-app equivalent is verified shipping the same information (folder path, file count via Box).
 - Write `docs/slack-alerts.md`: Slack app/owner/workspace/channel, each alert type with example message and how to silence it, webhook setup for new rigs, a note on the retired Zapier zap so no one recreates it.
 - **Fold in #348 Phase 1** (disk-space monitoring alert) — reuses the same `SlackNotifier`/rate-limit pattern, explicitly labeled low-risk/ship-first by its own author. Ship alongside or immediately after the core consolidation work, not as a separate later tier.
@@ -156,7 +168,7 @@ Scope:
 
 Same as the renderer roadmap: brainstorm → `/openspec:proposal` → `openspec-review` (5 subagents) → user approval → `/openspec:apply` (TDD) → `/pre-merge` → PR → `/cleanup-merged`. Cycle reviews at both ends until convergence (pre-implementation `openspec-review` rounds, post-implementation `/copilot-review` + `/review-pr` rounds) — not a fixed count. Tier 0 is the exception: it's GitHub housekeeping (closing issues/PRs), not code, and doesn't need the OpenSpec pipeline.
 
-For any rig-touching step — Tier 0's sanity-checks on #231/#243/#230, Tier 1's hardware-validation items (notably #279), Tier 2's cutover execution, Tier 3's real-hardware dry-run, and Tier 4's production-rig deployment — re-run the pre-flight "is an experiment in flight" check immediately before that step. The check done for this roadmap (2026-09-02) is a point-in-time fact, not a standing guarantee.
+For any step touching the *production* rig — Tier 0's sanity-checks on #231/#243/#230, Tier 2's cutover execution, and Tier 4's final production deployment — re-run the pre-flight "is an experiment in flight" check immediately before that step. The check done for this roadmap (2026-09-02) is a point-in-time fact, not a standing guarantee. Steps that run on `pbiob-gh-04` instead (Tier 1's #279 checklist, Tier 3's dry-run, Tier 4's pre-production verification) don't need that specific check, but should re-confirm the checkout is current (`git pull origin main`) before use — it was found 82 commits stale on 2026-09-10.
 
 ## Tracking issues
 
