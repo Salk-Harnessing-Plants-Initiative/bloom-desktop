@@ -707,11 +707,19 @@ export class ScanCoordinator
         `Cycle ${this.currentCycle}: row [${rowGrids.join(',')}] starting (st_${stTimestamp})`
       );
 
-      // For each scanner, find all plates in this row and send them together
-      const rowDonePromises: Promise<{
-        scannerId: string;
-        outputPaths: { plateIndex: string; path: string }[];
-      } | null>[] = [];
+      // For each scanner, find all plates in this row and send them together.
+      // A row's outcome is discriminated so the verification loop below can
+      // tell "subprocess exited before cycle-done" (previously silent) apart
+      // from "row timed out" (already fully diagnosed at the moment it
+      // fired) — conflating them would double-log the timed-out case.
+      type RowOutcome =
+        | {
+            scannerId: string;
+            outputPaths: { plateIndex: string; path: string }[];
+          }
+        | { scannerId: string; rowPlates: PlateConfig[]; reason: 'exit' }
+        | { scannerId: string; rowPlates: PlateConfig[]; reason: 'timeout' };
+      const rowDonePromises: Promise<RowOutcome>[] = [];
       let isFirst = true;
 
       for (const [scannerId, sub] of this.subprocesses) {
@@ -753,10 +761,7 @@ export class ScanCoordinator
         // the event, not assume it.
         const outputPaths: { plateIndex: string; path: string }[] = [];
 
-        const promise = new Promise<{
-          scannerId: string;
-          outputPaths: { plateIndex: string; path: string }[];
-        } | null>((resolve) => {
+        const promise = new Promise<RowOutcome>((resolve) => {
           const cleanup = () => {
             clearTimeout(rowTimeout);
             sub.removeListener('scan-complete', onScanComplete);
@@ -777,7 +782,7 @@ export class ScanCoordinator
           };
           const onExit = () => {
             cleanup();
-            resolve(null);
+            resolve({ scannerId, rowPlates, reason: 'exit' });
           };
           const rowTimeout = setTimeout(() => {
             cleanup();
@@ -792,7 +797,7 @@ export class ScanCoordinator
               jobId: scannerId,
               error: `Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`,
             });
-            resolve(null);
+            resolve({ scannerId, rowPlates, reason: 'timeout' });
           }, SCAN_ROW_TIMEOUT_MS);
           sub.on('scan-complete', onScanComplete);
           sub.on('cycle-done', onCycleDone);
@@ -824,7 +829,23 @@ export class ScanCoordinator
       for (const gridIndex of rowGrids) verifiedByGrid.set(gridIndex, 0);
 
       for (const result of results) {
-        if (!result) continue;
+        if ('reason' in result) {
+          // 'timeout' is already fully diagnosed (scanLog + scan-error) at
+          // the moment the row timeout fired — nothing further to do here,
+          // and logging again would double-diagnose the same row.
+          if (result.reason === 'exit' && !this.cancelled) {
+            // The coordinator cannot know what final filename (with its
+            // worker-assigned _et_ timestamp) would have been produced —
+            // scan-complete never arrived, so there's nothing to verify on
+            // disk. This is a log-only diagnostic, not a filesystem check.
+            for (const plate of result.rowPlates) {
+              scanLog(
+                `[${result.scannerId}] Cycle ${this.currentCycle}: row verification skipped for plate ${plate.plate_index}: no completion signal received (subprocess exited mid-row) — output presence unknown`
+              );
+            }
+          }
+          continue;
+        }
         for (const { plateIndex, path: outputPath } of result.outputPaths) {
           // Verify file existence and non-zero size
           try {

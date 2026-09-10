@@ -814,6 +814,59 @@ describe('image-handlers', () => {
       expect(result.files[0].size).toBe(1024);
     });
 
+    it('excludes .tmp-prefixed stray files from an interrupted atomic write (flat mode)', () => {
+      // Closes #281 item 1 / fix-graviscan-scan-write-atomicity: a .tif
+      // extension alone must not be enough to surface a leftover
+      // .tmp-<uuid>-<name>.tif from scan_worker.py's atomic-write helper.
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readdirSync).mockReturnValue([
+        { name: 'scan_00.tif', isDirectory: () => false },
+        {
+          name: '.tmp-abc123-scan_01_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif',
+          isDirectory: () => false,
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ] as any);
+      vi.mocked(fs.statSync).mockReturnValue({
+        size: 1024,
+        mtime: new Date('2026-07-01T00:00:00.000Z'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = listScanFiles('/scans/session-1');
+
+      expect(result.success).toBe(true);
+      expect(result.files.map((f) => f.name)).toEqual(['scan_00.tif']);
+    });
+
+    it('excludes .tmp-prefixed stray files from subfolders (base-dir mode)', () => {
+      vi.mocked(app.getAppPath).mockReturnValue('/project/root');
+      vi.mocked(app.getPath).mockReturnValue('/home/user');
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      vi.mocked(fs.readdirSync).mockImplementation(((dir: string) => {
+        if (path.basename(dir) === 'graviscan') {
+          return [{ name: 'exp1', isDirectory: () => true }] as unknown[];
+        }
+        return [
+          'plate_00.tif',
+          '.tmp-def456-plate_01_st_20260910T120000_et_20260910T120010_cy1_S1_01.tif',
+        ] as unknown[];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any);
+      vi.mocked(fs.statSync).mockReturnValue({
+        size: 2048,
+        mtime: new Date('2026-07-02T00:00:00.000Z'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      const result = listScanFiles();
+
+      expect(result.success).toBe(true);
+      expect(result.files.map((f) => f.name)).toEqual(['plate_00.tif']);
+    });
+
     it('recurses into subfolders when no dirPath is given (base-dir mode)', () => {
       vi.mocked(app.getAppPath).mockReturnValue('/project/root');
       vi.mocked(app.getPath).mockReturnValue('/home/user');

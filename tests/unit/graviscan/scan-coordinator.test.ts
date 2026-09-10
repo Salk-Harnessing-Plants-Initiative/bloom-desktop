@@ -1496,6 +1496,107 @@ describe('ScanCoordinator', () => {
       vi.useRealTimers();
     });
 
+    it('logs one scanLog diagnostic per plate when a subprocess exits mid-row without a full cancellation (closes #281 item 1\'s silent-skip gap; extends "handles partial scanner failure mid-grid" above with the new diagnostic assertion)', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // scanner-1's subprocess exits mid-row — no cycle-done, no
+      // scan-complete for either plate in this row.
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => sub.emit('exit', {}));
+      });
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      // 4grid gives this one scanner 2 plates per row group (00+01 in the
+      // top row, 10+11 in the bottom row) — since the mock exits on every
+      // sub.scan() call, both row groups exit, giving 4 plates total
+      // across 2 rows. This proves "one line per plate" (not one combined
+      // line per row) across multiple rows, not just within a single one.
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const exitDiagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+      expect(exitDiagnosticCalls).toHaveLength(4);
+      for (const plateIndex of ['00', '01', '10', '11']) {
+        expect(
+          exitDiagnosticCalls.some(
+            ([msg]) =>
+              typeof msg === 'string' &&
+              msg.includes('scanner-1') &&
+              msg.includes(`plate ${plateIndex}`)
+          )
+        ).toBe(true);
+      }
+      // Cycle number included, so the line is self-sufficient across a
+      // multi-cycle interval session.
+      expect(
+        exitDiagnosticCalls.every(
+          ([msg]) => typeof msg === 'string' && msg.includes('Cycle 1')
+        )
+      ).toBe(true);
+
+      // No scan-error emitted as a result of this diagnostic — avoids
+      // feeding a synthetic error back into wedge-detection for a scanner
+      // that may already be correctly auto-paused.
+      expect(scanError).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('does not double-log the exit diagnostic for a row that already timed out', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        // Never resolves — triggers the existing row-timeout path, which
+        // already logs its own scanLog + scan-error at the moment it fires.
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const exitDiagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+      expect(exitDiagnosticCalls).toHaveLength(0);
+
+      // The existing timeout diagnostic still fires as before.
+      const timeoutLogCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('Row scan timeout')
+        );
+      expect(timeoutLogCalls.length).toBeGreaterThan(0);
+
+      vi.useRealTimers();
+    }, 15000);
+
     it('skips file verification after cancel during active row', async () => {
       vi.useFakeTimers();
 

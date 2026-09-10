@@ -115,6 +115,36 @@ def log(scanner_id: str, msg: str) -> None:
     print(f"[{scanner_id}] {msg}", file=sys.stderr, flush=True)
 
 
+def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> None:
+    """Write `image` to a temp file in final_path's directory, then
+    atomically replace final_path only after the write succeeds.
+
+    A process termination (e.g. SIGKILL) during the write can now only
+    ever leave a stray `.tmp-*` file or a complete final file — never a
+    truncated one at `final_path` (closes #281 item 1). `*save_args`/
+    `**save_kwargs` are forwarded to `image.save()` unchanged, since both
+    call sites pass the format ("TIFF") positionally.
+    """
+    directory = os.path.dirname(final_path)
+    basename = os.path.basename(final_path)
+    tmp_path = os.path.join(directory, f".tmp-{uuid.uuid4()}-{basename}")
+    image.save(tmp_path, *save_args, **save_kwargs)
+    _slow_write_for_testing()
+    os.replace(tmp_path, final_path)
+
+
+def _slow_write_for_testing() -> None:
+    """Test-only hook: pause after the temp file is written, before the
+    atomic rename, when `GRAVISCAN_TEST_SLOW_WRITE_MS` is set. Lets an
+    external test process reliably land a SIGKILL inside the window
+    between "temp file exists" and "rename completes" without adding
+    timing flakiness to any real code path — a no-op unless explicitly
+    opted into by a test."""
+    delay_ms = os.environ.get("GRAVISCAN_TEST_SLOW_WRITE_MS")
+    if delay_ms:
+        time.sleep(int(delay_ms) / 1000)
+
+
 class ScanWorker:
     """Long-lived scan worker for a single scanner."""
 
@@ -515,8 +545,12 @@ class ScanWorker:
                     st_timestamp,
                     phenotyper_name,
                 )
-                image.save(
-                    final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+                _atomic_image_save(
+                    image,
+                    final_path,
+                    "TIFF",
+                    compression="tiff_lzw",
+                    tiffinfo=tiff_meta,
                 )
 
                 # Cancel to return device to IDLE state for next scan
@@ -736,7 +770,9 @@ class ScanWorker:
             st_timestamp,
             phenotyper_name,
         )
-        image.save(final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
+        _atomic_image_save(
+            image, final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+        )
 
         log(self.scanner_id, f"Mock scan saved: {final_path}")
         return final_path

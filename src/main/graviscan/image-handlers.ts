@@ -376,6 +376,7 @@ export function listScanFiles(dirPath?: string): {
         try {
           const subEntries = fs.readdirSync(folderPath);
           for (const subName of subEntries) {
+            if (subName.startsWith('.tmp-')) continue;
             const ext = path.extname(subName).toLowerCase();
             if (!IMAGE_EXTENSIONS.includes(ext)) continue;
             const subPath = path.join(folderPath, subName);
@@ -393,6 +394,7 @@ export function listScanFiles(dirPath?: string): {
         }
       } else {
         // Direct files in session folder (dirPath specified)
+        if (entry.name.startsWith('.tmp-')) continue;
         const ext = path.extname(entry.name).toLowerCase();
         if (!IMAGE_EXTENSIONS.includes(ext)) continue;
         const filePath = path.join(outputDir, entry.name);
