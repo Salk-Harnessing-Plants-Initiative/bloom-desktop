@@ -19,9 +19,12 @@ import pytest
 from PIL import Image
 
 from python.graviscan.scan_worker import (
+    MAX_TEST_SLOW_WRITE_MS,
+    TMP_PREFIX,
     ScanWorker,
     _atomic_image_save,
     _build_tiff_metadata,
+    _slow_write_for_testing,
     emit_event,
     log,
     run_worker,
@@ -256,10 +259,14 @@ class TestAtomicImageSave:
                 _atomic_image_save(image, final_path, "TIFF")
 
         assert not os.path.exists(final_path)
+        # A HANDLED failure must not leak its temp file: _sane_scan() retries
+        # up to MAX_RETRIES times with a fresh temp name each attempt, so
+        # leaking here would strand one full-resolution TIFF per attempt —
+        # invisible, since listScanFiles() hides them. Only a SIGKILL (which
+        # cannot run a cleanup handler at all) may leave residue; that case is
+        # the accepted one in design.md Decision 1.
         leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
-        assert (
-            len(leftovers) == 1
-        ), f"expected exactly one leftover temp file, found {leftovers}"
+        assert leftovers == [], f"handled failure leaked temp file(s): {leftovers}"
 
     def test_successful_write_produces_only_the_final_file(self, tmp_path):
         final_path = str(
@@ -332,6 +339,121 @@ class TestAtomicImageSave:
                 _atomic_image_save(image, final_path, "TIFF")
 
         assert not os.path.exists(final_path)
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert (
+            leftovers == []
+        ), f"handled rename failure leaked temp file(s): {leftovers}"
+
+    def test_bytes_are_fsynced_before_the_rename_publishes_the_name(self, tmp_path):
+        # Without an fsync, a power loss can make the rename durable while
+        # the data blocks are not, leaving a zero-length file at the FINAL
+        # path — precisely the outcome this helper exists to prevent. ext4's
+        # auto_da_alloc heuristic does not rescue this case, because it fires
+        # on rename-over-an-existing-file and the _et_-stamped destination
+        # never exists beforehand.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+        call_order = []
+        real_fsync = os.fsync
+        real_replace = os.replace
+
+        def tracking_fsync(fd):
+            call_order.append("fsync")
+            return real_fsync(fd)
+
+        def tracking_replace(src, dst):
+            call_order.append("replace")
+            return real_replace(src, dst)
+
+        with (
+            patch("python.graviscan.scan_worker.os.fsync", side_effect=tracking_fsync),
+            patch(
+                "python.graviscan.scan_worker.os.replace", side_effect=tracking_replace
+            ),
+        ):
+            _atomic_image_save(image, final_path, "TIFF")
+
+        assert "fsync" in call_order, "temp file was never fsynced before the rename"
+        assert call_order.index("fsync") < call_order.index(
+            "replace"
+        ), f"fsync must precede the rename, got {call_order}"
+        assert os.path.exists(final_path)
+
+    def test_temp_name_uses_the_shared_prefix_constant(self, tmp_path):
+        # Guards the cross-language contract: listScanFiles() hides exactly
+        # this prefix (GRAVISCAN_TMP_PREFIX in src/types/graviscan.ts). A
+        # drift guard for the TypeScript side lives in
+        # tests/unit/graviscan/image-handlers.test.ts.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+        seen = {}
+
+        def capture_replace(src, dst):
+            seen["tmp"] = os.path.basename(src)
+            os.unlink(src)
+
+        with patch(
+            "python.graviscan.scan_worker.os.replace", side_effect=capture_replace
+        ):
+            _atomic_image_save(image, final_path, "TIFF")
+
+        assert seen["tmp"].startswith(TMP_PREFIX)
+        assert seen["tmp"].endswith(os.path.basename(final_path))
+
+
+class TestSlowWriteTestHook:
+    """_slow_write_for_testing() — a test-only seam that ships in the
+    production write path, so it must be inert and un-weaponisable there.
+    buildSubprocessEnv() spreads the whole main-process environment into
+    the worker, so any value in an operator's shell profile, .desktop
+    launcher, or systemd unit reaches this code on the real rig."""
+
+    def test_is_a_noop_outside_mock_mode_even_when_the_env_var_is_set(self):
+        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": "5000"}):
+            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
+                _slow_write_for_testing(mock=False)
+        mock_sleep.assert_not_called()
+
+    def test_is_a_noop_when_the_env_var_is_unset(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
+                _slow_write_for_testing(mock=True)
+        mock_sleep.assert_not_called()
+
+    @pytest.mark.parametrize("bad_value", ["abc", "true", "1500.5", "", "  "])
+    def test_ignores_a_non_numeric_value_instead_of_raising(self, bad_value):
+        # A ValueError here would surface AFTER the temp write and BEFORE the
+        # rename, be swallowed by _sane_scan()'s per-attempt handler, and burn
+        # all MAX_RETRIES attempts — failing every plate with an error message
+        # that never names the offending variable.
+        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": bad_value}):
+            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
+                _slow_write_for_testing(mock=True)
+        mock_sleep.assert_not_called()
+
+    @pytest.mark.parametrize("non_positive", ["0", "-5000"])
+    def test_ignores_a_non_positive_value(self, non_positive):
+        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": non_positive}):
+            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
+                _slow_write_for_testing(mock=True)
+        mock_sleep.assert_not_called()
+
+    def test_clamps_an_absurd_value_to_the_bounded_maximum(self):
+        # Unbounded, "999999999" sleeps for ~11.5 days inside the write path.
+        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": "999999999"}):
+            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
+                _slow_write_for_testing(mock=True)
+        mock_sleep.assert_called_once_with(MAX_TEST_SLOW_WRITE_MS / 1000)
+
+    def test_honours_a_valid_in_range_value(self):
+        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": "250"}):
+            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
+                _slow_write_for_testing(mock=True)
+        mock_sleep.assert_called_once_with(0.25)
 
 
 class TestAtomicWriteSurvivesRealSigkill:
@@ -384,10 +506,34 @@ class TestAtomicWriteSurvivesRealSigkill:
             proc.stdin.write(json.dumps(command) + "\n")
             proc.stdin.flush()
 
-            # Land inside the 3s slow-write window (after the temp file
-            # exists, before the rename) — the mock scan's own 0.5s
-            # capture-simulation delay happens first.
-            time.sleep(1.5)
+            # POLL for the temp file's real appearance rather than guessing
+            # an elapsed time. A fixed sleep makes this test vacuous on a
+            # loaded runner: if the kill lands before the write starts, every
+            # assertion below still passes while proving nothing about
+            # atomicity. (Measured locally, the temp file appears at
+            # t=0.64-1.09s — a fixed 1.5s kill had only ~0.4s of margin.)
+            # Guessed kill timing has bitten this project on real hardware
+            # before; poll for actual state instead.
+            deadline = time.monotonic() + 20
+            tmp_files = []
+            while time.monotonic() < deadline:
+                tmp_files = glob.glob(str(tmp_path / f"{TMP_PREFIX}*"))
+                if tmp_files:
+                    break
+                assert proc.poll() is None, (
+                    f"worker exited before writing a temp file "
+                    f"(rc={proc.returncode}); stderr: {proc.stderr.read()!r}"
+                )
+                time.sleep(0.02)
+
+            # Assert the POSITIVE precondition: the kill is about to land
+            # inside the real write window, so a pass below is meaningful.
+            assert tmp_files, (
+                "temp file never appeared within 20s — the SIGKILL below "
+                "would not land inside the write window, making this test's "
+                "assertions vacuous"
+            )
+
             proc.kill()  # SIGKILL
             proc.wait(timeout=10)
         finally:
@@ -398,11 +544,18 @@ class TestAtomicWriteSurvivesRealSigkill:
         assert not os.path.exists(
             output_path
         ), "nothing should ever be written directly to the pre-_et_ path"
+        # NB: glob() skips dotfiles, so this cannot match the .tmp- residue —
+        # that exclusion is load-bearing and deliberate here.
         tif_files = glob.glob(str(tmp_path / "*.tif"))
         assert tif_files == [], (
             f"a SIGKILL mid-write must never leave a file at the final "
             f"(_et_-stamped) path — found: {tif_files}"
         )
+        # The stray temp file is the accepted residue (design.md Decision 1):
+        # a SIGKILLed process cannot run a cleanup handler.
+        assert glob.glob(
+            str(tmp_path / f"{TMP_PREFIX}*")
+        ), "expected the interrupted write's temp file to remain on disk"
 
 
 class TestSaneScanRetryLogic:

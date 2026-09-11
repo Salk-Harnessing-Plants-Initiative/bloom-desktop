@@ -44,6 +44,20 @@ try:
 except Exception:
     _BLOOM_VERSION = "0.1.0"
 
+# Filename prefix marking an in-progress atomic write (see
+# _atomic_image_save). CROSS-LANGUAGE CONTRACT: this must stay byte-for-byte
+# identical to GRAVISCAN_TMP_PREFIX in src/types/graviscan.ts, which
+# listScanFiles() uses to hide these from the scan file browser. If they
+# drift, stray partial TIFFs reappear in the operator's browser with valid
+# .tif extensions — exactly the failure the atomic write exists to prevent.
+# A drift guard reads this literal back out of this file:
+# tests/unit/graviscan/image-handlers.test.ts.
+TMP_PREFIX = ".tmp-"
+
+# Upper bound for the GRAVISCAN_TEST_SLOW_WRITE_MS test hook. Unbounded, a
+# fat-fingered value sleeps for days inside the write path.
+MAX_TEST_SLOW_WRITE_MS = 10_000
+
 
 def _build_tiff_metadata(
     scanner_id: str,
@@ -115,34 +129,94 @@ def log(scanner_id: str, msg: str) -> None:
     print(f"[{scanner_id}] {msg}", file=sys.stderr, flush=True)
 
 
-def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> None:
+def _atomic_image_save(
+    image, final_path: str, *save_args, mock: bool = False, **save_kwargs
+) -> None:
     """Write `image` to a temp file in final_path's directory, then
     atomically replace final_path only after the write succeeds.
 
     A process termination (e.g. SIGKILL) during the write can now only
-    ever leave a stray `.tmp-*` file or a complete final file — never a
+    ever leave a stray temp file or a complete final file — never a
     truncated one at `final_path` (closes #281 item 1). `*save_args`/
     `**save_kwargs` are forwarded to `image.save()` unchanged, since both
     call sites pass the format ("TIFF") positionally.
+
+    A *handled* failure (save error, rename error) cleans its temp file up
+    before re-raising, so `_sane_scan()`'s retry loop cannot strand one
+    full-resolution TIFF per attempt. Only a SIGKILL leaves residue, since
+    no cleanup handler can run at all in that case.
     """
     directory = os.path.dirname(final_path)
     basename = os.path.basename(final_path)
-    tmp_path = os.path.join(directory, f".tmp-{uuid.uuid4()}-{basename}")
-    image.save(tmp_path, *save_args, **save_kwargs)
-    _slow_write_for_testing()
-    os.replace(tmp_path, final_path)
+    tmp_path = os.path.join(
+        directory, f"{TMP_PREFIX}{uuid.uuid4().hex[:12]}-{basename}"
+    )
+    try:
+        image.save(tmp_path, *save_args, **save_kwargs)
+        # Force the bytes to stable storage BEFORE the rename publishes the
+        # final name. Without this, a power loss can make the rename durable
+        # while the data blocks are not, leaving a zero-length file at the
+        # final path — the exact outcome this helper exists to prevent.
+        # ext4's auto_da_alloc heuristic does not rescue this case: it fires
+        # on rename-over-an-existing-file, and the _et_-stamped destination
+        # never exists beforehand.
+        with open(tmp_path, "r+b") as fh:
+            os.fsync(fh.fileno())
+        _slow_write_for_testing(mock=mock)
+        os.replace(tmp_path, final_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            # Best-effort: never mask the original failure with a cleanup one.
+            pass
+        raise
+    # Make the rename itself durable too. POSIX-only and advisory — a
+    # filesystem that refuses a directory fsync changes nothing about the
+    # guarantee above, so failure here is deliberately not fatal.
+    try:
+        dir_fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except (OSError, AttributeError):
+        pass
 
 
-def _slow_write_for_testing() -> None:
+def _slow_write_for_testing(mock: bool = False) -> None:
     """Test-only hook: pause after the temp file is written, before the
     atomic rename, when `GRAVISCAN_TEST_SLOW_WRITE_MS` is set. Lets an
     external test process reliably land a SIGKILL inside the window
     between "temp file exists" and "rename completes" without adding
-    timing flakiness to any real code path — a no-op unless explicitly
-    opted into by a test."""
-    delay_ms = os.environ.get("GRAVISCAN_TEST_SLOW_WRITE_MS")
-    if delay_ms:
-        time.sleep(int(delay_ms) / 1000)
+    timing flakiness to any real code path.
+
+    Only honoured in mock mode. `buildSubprocessEnv()` spreads the entire
+    main-process environment into this worker, so on the real rig any value
+    in an operator's shell profile, .desktop launcher, or systemd unit
+    would otherwise reach the live SANE write path — widening precisely the
+    window the atomic write closes. The value is parsed defensively and
+    clamped for the same reason: an unguarded `int()` would raise *after*
+    the temp write and *before* the rename, be swallowed by `_sane_scan()`'s
+    per-attempt handler, and burn every retry with an error that never names
+    the offending variable.
+    """
+    if not mock:
+        return
+    raw = os.environ.get("GRAVISCAN_TEST_SLOW_WRITE_MS")
+    if not raw:
+        return
+    try:
+        delay_ms = int(raw)
+    except ValueError:
+        log(
+            "scan_worker",
+            f"Ignoring non-numeric GRAVISCAN_TEST_SLOW_WRITE_MS={raw!r}",
+        )
+        return
+    if delay_ms <= 0:
+        return
+    time.sleep(min(delay_ms, MAX_TEST_SLOW_WRITE_MS) / 1000)
 
 
 class ScanWorker:
@@ -549,6 +623,7 @@ class ScanWorker:
                     image,
                     final_path,
                     "TIFF",
+                    mock=self.mock,
                     compression="tiff_lzw",
                     tiffinfo=tiff_meta,
                 )
@@ -771,7 +846,12 @@ class ScanWorker:
             phenotyper_name,
         )
         _atomic_image_save(
-            image, final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+            image,
+            final_path,
+            "TIFF",
+            mock=self.mock,
+            compression="tiff_lzw",
+            tiffinfo=tiff_meta,
         )
 
         log(self.scanner_id, f"Mock scan saved: {final_path}")

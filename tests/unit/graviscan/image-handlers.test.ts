@@ -78,6 +78,7 @@ import {
   ensureDir,
   listScanFiles,
 } from '../../../src/main/graviscan/image-handlers';
+import { GRAVISCAN_TMP_PREFIX } from '../../../src/types/graviscan';
 
 describe('image-handlers', () => {
   let db: ReturnType<typeof createMockDb>;
@@ -932,6 +933,28 @@ describe('image-handlers', () => {
       expect(result.success).toBe(false);
       expect(result.files).toEqual([]);
       expect(result.error).toContain('EACCES');
+    });
+  });
+  describe('temp-file prefix cross-language contract', () => {
+    it("matches scan_worker.py's TMP_PREFIX literal byte-for-byte", async () => {
+      // listScanFiles() hides in-progress atomic writes by prefix, but the
+      // writer that produces them lives in Python. Nothing at compile time
+      // connects the two, so a one-sided rename would silently un-hide stray
+      // partial TIFFs — which carry valid .tif extensions and would then look
+      // like real scan output to the operator. Read the Python literal back
+      // out of the source and assert they still agree.
+      // `fs` is mocked module-wide in this file, so reach for the real one.
+      const realFs = await vi.importActual<typeof import('fs')>('fs');
+      const workerSrc = realFs.readFileSync(
+        path.resolve(process.cwd(), 'python/graviscan/scan_worker.py'),
+        'utf-8'
+      );
+      const match = workerSrc.match(/^TMP_PREFIX = "([^"]*)"/m);
+      expect(
+        match,
+        'TMP_PREFIX assignment not found in python/graviscan/scan_worker.py'
+      ).not.toBeNull();
+      expect(match![1]).toBe(GRAVISCAN_TMP_PREFIX);
     });
   });
 });

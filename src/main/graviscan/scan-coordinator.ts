@@ -57,6 +57,39 @@ export const SPAWN_READY_TIMEOUT_MS = 45_000;
 /** Thrown by `withTimeout()` when the wrapped promise doesn't settle in time. */
 class SpawnTimeoutError extends Error {}
 
+/** A plate's real final path, as reported by its own scan-complete event. */
+export interface PlateOutputPath {
+  plateIndex: string;
+  path: string;
+}
+
+/**
+ * How a single scanner's row group ended.
+ *
+ * - `done` — the worker reported `cycle-done` for the row.
+ * - `exit` — the worker process died mid-row on its own (crash, OOM-kill,
+ *   or `killAll()` on app quit).
+ * - `stopped` — the coordinator deliberately ended the row via
+ *   `stopScanner()`, most commonly from wedge auto-pause.
+ * - `timeout` — the row hit `SCAN_ROW_TIMEOUT_MS`; already diagnosed at the
+ *   moment it fired, so the verification loop must not re-diagnose it.
+ *
+ * Every outcome carries BOTH the plates the row asked for and whichever
+ * real paths arrived before it ended. A row can end after some of its
+ * plates already succeeded, so dropping either half would misreport a
+ * known-good plate as unknown and skip its on-disk verification.
+ */
+export type RowOutcomeKind = 'done' | 'exit' | 'stopped' | 'timeout';
+
+export interface RowOutcome {
+  kind: RowOutcomeKind;
+  scannerId: string;
+  /** Real final paths learned from each plate's own scan-complete event. */
+  outputPaths: PlateOutputPath[];
+  /** Plates sent for this row, with cycle/timestamp-corrected output paths. */
+  rowPlates: PlateConfig[];
+}
+
 /**
  * Races `promise` against a timeout. If the timeout wins, rejects with
  * `SpawnTimeoutError` — the original `promise` is left to settle on its
@@ -141,6 +174,15 @@ export class ScanCoordinator
   // reuse, respawn, or shut down — this is what prevents a second caller
   // from misdiagnosing a still-connecting worker as dead.
   private spawnInFlight: Map<string, Promise<void>> = new Map();
+
+  /**
+   * Per-scanner hook that settles that scanner's in-flight row, if any, as
+   * `stopped`. Registered while a row is awaiting and cleared as soon as it
+   * settles by any route, so an entry here always refers to a live row.
+   * `stopScanner()` calls it before stripping listeners — see the comment
+   * at the registration site for why the `exit` event cannot serve.
+   */
+  private inFlightRowSettlers: Map<string, () => void> = new Map();
 
   constructor(pythonPath: string, isPackaged: boolean, mock = false) {
     super();
@@ -385,6 +427,13 @@ export class ScanCoordinator
     // replacement — a scanner would vanish with no error ever surfaced.
     this.subprocesses.delete(scannerId);
     this.initErrors.delete(scannerId);
+
+    // Settle this scanner's in-flight row (if it has one) BEFORE stripping
+    // listeners — afterwards the row's `exit` handler is gone and the row
+    // could only end by burning the full SCAN_ROW_TIMEOUT_MS. This is the
+    // wedge auto-pause path: wiring.ts calls stopScanner() on the wedged
+    // scanner mid-row, and every other scanner's row waits behind it.
+    this.inFlightRowSettlers.get(scannerId)?.();
 
     sub.removeAllListeners();
     const confirmed = await sub.shutdown();
@@ -708,17 +757,10 @@ export class ScanCoordinator
       );
 
       // For each scanner, find all plates in this row and send them together.
-      // A row's outcome is discriminated so the verification loop below can
-      // tell "subprocess exited before cycle-done" (previously silent) apart
-      // from "row timed out" (already fully diagnosed at the moment it
-      // fired) — conflating them would double-log the timed-out case.
-      type RowOutcome =
-        | {
-            scannerId: string;
-            outputPaths: { plateIndex: string; path: string }[];
-          }
-        | { scannerId: string; rowPlates: PlateConfig[]; reason: 'exit' }
-        | { scannerId: string; rowPlates: PlateConfig[]; reason: 'timeout' };
+      // A row's outcome is tagged (see `RowOutcome`) so the verification loop
+      // below can tell a deliberate stop and a spontaneous subprocess death
+      // apart from a row timeout, which is already fully diagnosed at the
+      // moment it fires — conflating them would double-log the timed-out case.
       const rowDonePromises: Promise<RowOutcome>[] = [];
       let isFirst = true;
 
@@ -759,14 +801,28 @@ export class ScanCoordinator
         // (including `_et_`) at save time, so the path we sent above is no
         // longer guaranteed to be the path on disk — we must learn it from
         // the event, not assume it.
-        const outputPaths: { plateIndex: string; path: string }[] = [];
+        const outputPaths: PlateOutputPath[] = [];
 
         const promise = new Promise<RowOutcome>((resolve) => {
           const cleanup = () => {
             clearTimeout(rowTimeout);
+            this.inFlightRowSettlers.delete(scannerId);
             sub.removeListener('scan-complete', onScanComplete);
             sub.removeListener('cycle-done', onCycleDone);
             sub.removeListener('exit', onExit);
+          };
+          const settle = (kind: RowOutcomeKind) => {
+            cleanup();
+            // `platesToScan`, not `rowPlates`: the former carries the
+            // rewritten `_st_` timestamp and the current `_cy<N>_`, so a
+            // diagnostic that quotes a plate's expected path reports the
+            // right cycle rather than the stale one this row was built from.
+            resolve({
+              kind,
+              scannerId,
+              outputPaths,
+              rowPlates: platesToScan,
+            });
           };
           const onScanComplete = (event: ScanWorkerEvent) => {
             if (event.plate_index && event.path) {
@@ -776,16 +832,9 @@ export class ScanCoordinator
               });
             }
           };
-          const onCycleDone = () => {
-            cleanup();
-            resolve({ scannerId, outputPaths });
-          };
-          const onExit = () => {
-            cleanup();
-            resolve({ scannerId, rowPlates, reason: 'exit' });
-          };
+          const onCycleDone = () => settle('done');
+          const onExit = () => settle('exit');
           const rowTimeout = setTimeout(() => {
-            cleanup();
             scanLog(
               `[${scannerId}] Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`
             );
@@ -797,8 +846,18 @@ export class ScanCoordinator
               jobId: scannerId,
               error: `Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`,
             });
-            resolve({ scannerId, rowPlates, reason: 'timeout' });
+            settle('timeout');
           }, SCAN_ROW_TIMEOUT_MS);
+
+          // Let stopScanner() end this row explicitly. It strips the
+          // subprocess's listeners before awaiting shutdown, so the later
+          // `exit` can never reach onExit above — without this hook the row
+          // could only settle by burning the full SCAN_ROW_TIMEOUT_MS,
+          // stalling every other scanner's row behind it (Promise.all) and
+          // leaving no per-plate record at all. Resolve is once-only, so a
+          // settle here races harmlessly with any other path.
+          this.inFlightRowSettlers.set(scannerId, () => settle('stopped'));
+
           sub.on('scan-complete', onScanComplete);
           sub.on('cycle-done', onCycleDone);
           sub.on('exit', onExit);
@@ -826,26 +885,71 @@ export class ScanCoordinator
       // (including `_et_`) at save time, so the paths from the scan-complete
       // events above are already final — no rename is needed here.
       const verifiedByGrid: Map<string, number> = new Map();
-      for (const gridIndex of rowGrids) verifiedByGrid.set(gridIndex, 0);
+      const expectedByGrid: Map<string, number> = new Map();
+      for (const gridIndex of rowGrids) {
+        verifiedByGrid.set(gridIndex, 0);
+        expectedByGrid.set(gridIndex, 0);
+      }
+      for (const result of results) {
+        for (const plate of result.rowPlates) {
+          expectedByGrid.set(
+            plate.plate_index,
+            (expectedByGrid.get(plate.plate_index) || 0) + 1
+          );
+        }
+      }
 
       for (const result of results) {
-        if ('reason' in result) {
+        // Diagnose the plates this row never heard back about. A row can end
+        // after some of its plates already succeeded, so this is driven by
+        // which plates actually reported — not by the outcome alone.
+        if (result.kind !== 'done') {
+          const reported = new Set(result.outputPaths.map((o) => o.plateIndex));
+          const unreported = result.rowPlates.filter(
+            (p) => !reported.has(p.plate_index)
+          );
           // 'timeout' is already fully diagnosed (scanLog + scan-error) at
-          // the moment the row timeout fired — nothing further to do here,
-          // and logging again would double-diagnose the same row.
-          if (result.reason === 'exit' && !this.cancelled) {
-            // The coordinator cannot know what final filename (with its
-            // worker-assigned _et_ timestamp) would have been produced —
-            // scan-complete never arrived, so there's nothing to verify on
-            // disk. This is a log-only diagnostic, not a filesystem check.
-            for (const plate of result.rowPlates) {
+          // the moment the row timeout fired — logging again would
+          // double-diagnose the same row.
+          //
+          // Deliberately NOT gated on `this.cancelled`: the loop already
+          // breaks on cancel before this point, so the only way it could
+          // flip here is a cancel landing on one of the `await`s below —
+          // and that cancel happened AFTER this row's outcome was already
+          // determined. Suppressing the line then would non-deterministically
+          // erase the only trace of a genuinely unknown outcome, depending on
+          // nothing more than this row's position in `results`. The line is
+          // log-only (it emits no scan-error), so recording it on a
+          // subsequently-cancelled session is harmless.
+          if (result.kind === 'exit' || result.kind === 'stopped') {
+            const cause =
+              result.kind === 'exit'
+                ? 'subprocess exited mid-row'
+                : 'scanner stopped mid-row (e.g. wedge auto-pause)';
+            for (const plate of unreported) {
+              // The coordinator cannot know what final filename (with its
+              // worker-assigned _et_ timestamp) would have been produced —
+              // scan-complete never arrived, so there's nothing to verify on
+              // disk. This is a log-only diagnostic, not a filesystem check.
+              //
+              // It is the ONLY durable record that this plate's outcome is
+              // unknown, so it carries enough context to reconstruct the
+              // affected wave later without the database: experiment, wave,
+              // cycle, scanner, plate, and the expected output directory.
+              const expName = plate.exp_name ?? 'unknown-exp';
+              const wave = plate.wave_number ?? 'unknown';
               scanLog(
-                `[${result.scannerId}] Cycle ${this.currentCycle}: row verification skipped for plate ${plate.plate_index}: no completion signal received (subprocess exited mid-row) — output presence unknown`
+                `[${result.scannerId}] Cycle ${this.currentCycle}: row verification skipped for plate ${plate.plate_index} ` +
+                  `(experiment ${expName}, wave ${wave}): no completion signal received (${cause}) — ` +
+                  `output presence unknown; expected under ${path.dirname(plate.output_path)}`
               );
             }
           }
-          continue;
         }
+
+        // Verify whatever DID report a real path, whatever the outcome —
+        // a plate that completed before its row ended still has a file on
+        // disk that deserves the same existence/size check as any other.
         for (const { plateIndex, path: outputPath } of result.outputPaths) {
           // Verify file existence and non-zero size
           try {
@@ -903,8 +1007,17 @@ export class ScanCoordinator
           scanStartedAt: gridStartedAt.toISOString(),
           scanEndedAt: gridEndedAt.toISOString(),
         });
+        // Report the expected denominator, not just the count: "4 files
+        // verified" reads identically whether the grid produced 4 of 4 or
+        // 4 of 5, which makes a short grid indistinguishable from a
+        // complete one in the log — the cheapest completeness check the
+        // system has.
+        const verified = verifiedByGrid.get(gridIndex) || 0;
+        const expected = expectedByGrid.get(gridIndex) || 0;
+        const shortfall =
+          verified < expected ? ` — ${expected - verified} MISSING` : '';
         scanLog(
-          `Cycle ${this.currentCycle}: grid ${gridIndex} complete — ${verifiedByGrid.get(gridIndex) || 0} files verified`
+          `Cycle ${this.currentCycle}: grid ${gridIndex} complete — ${verified}/${expected} files verified${shortfall}`
         );
       }
     }

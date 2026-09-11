@@ -21,7 +21,10 @@ import { resolveGraviScanPath } from '../graviscan-path-utils';
 import { runBoxBackup } from '../box-backup';
 import { uploadAllPendingScans } from '../graviscan-upload';
 import { getGraviscanOutputDir } from '../graviscan-output-dir';
-import { UploadAllScansResult } from '../../types/graviscan';
+import {
+  GRAVISCAN_TMP_PREFIX,
+  UploadAllScansResult,
+} from '../../types/graviscan';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -376,7 +379,7 @@ export function listScanFiles(dirPath?: string): {
         try {
           const subEntries = fs.readdirSync(folderPath);
           for (const subName of subEntries) {
-            if (subName.startsWith('.tmp-')) continue;
+            if (subName.startsWith(GRAVISCAN_TMP_PREFIX)) continue;
             const ext = path.extname(subName).toLowerCase();
             if (!IMAGE_EXTENSIONS.includes(ext)) continue;
             const subPath = path.join(folderPath, subName);
@@ -394,7 +397,7 @@ export function listScanFiles(dirPath?: string): {
         }
       } else {
         // Direct files in session folder (dirPath specified)
-        if (entry.name.startsWith('.tmp-')) continue;
+        if (entry.name.startsWith(GRAVISCAN_TMP_PREFIX)) continue;
         const ext = path.extname(entry.name).toLowerCase();
         if (!IMAGE_EXTENSIONS.includes(ext)) continue;
         const filePath = path.join(outputDir, entry.name);

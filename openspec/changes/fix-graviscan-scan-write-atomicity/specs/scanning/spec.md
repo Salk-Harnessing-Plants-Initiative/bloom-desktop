@@ -9,7 +9,7 @@ The scan worker SHALL save scan output files with both `_st_TIMESTAMP` (start) a
 - **GIVEN** the worker receives `output_path = "..._st_20260413T120530_cy1_S1_00.tif"`
 - **WHEN** the plate scan completes
 - **THEN** the file SHALL be saved as `..._st_20260413T120530_et_20260413T120545_cy1_S1_00.tif`
-- **AND** no rename operation SHALL occur after save
+- **AND** no rename to a DIFFERENT final path SHALL occur after save (the atomic temp-to-final replace described below is not such a rename: the final path is fixed before the write begins and never changes)
 - **AND** the `scan-complete` event SHALL contain the final path (with `_et_`)
 
 #### Scenario: Coordinator learns the real path from scan-complete, not the path it sent
@@ -24,15 +24,45 @@ The scan worker SHALL save scan output files with both `_st_TIMESTAMP` (start) a
 - **GIVEN** the worker is writing a plate's scan output
 - **WHEN** the worker process is terminated (e.g., force-killed) before the write completes
 - **THEN** no file SHALL exist at the plate's final output path
-- **AND** any partial data SHALL exist only at a temporary path distinguishable from the final filename (e.g., a `.tmp`-prefixed name in the same directory)
+- **AND** any partial data SHALL exist only at a temporary path in the same directory whose basename begins with the prefix `.tmp-`
 
 #### Scenario: Successful write is atomic
 
 - **GIVEN** the worker has fully captured and encoded a plate's image data
 - **WHEN** the worker saves the file
 - **THEN** the file SHALL first be written to a temporary path in the same directory as the final path
+- **AND** the written bytes SHALL be flushed to stable storage (`fsync`) before the rename publishes the final name, so that a power loss cannot make the rename durable while the data is not
 - **AND** SHALL be atomically renamed into the final path only after the write completes successfully
 - **AND** at no point SHALL a partially-written file be visible at the final path
+
+#### Scenario: A handled write failure leaves no temporary file behind
+
+- **GIVEN** the worker is writing a plate's scan output to its temporary path
+- **WHEN** the write or the rename fails with an exception the worker can handle (e.g. an I/O error, or a rename refused by the filesystem)
+- **THEN** the worker SHALL remove the temporary file before propagating the failure
+- **AND** SHALL propagate the original failure, not any error raised while cleaning up
+- **AND** no file SHALL exist at the final output path
+
+> Only a process termination that runs no handler at all (SIGKILL) may leave a temporary file behind. This distinction matters because `_sane_scan()` retries a failed plate up to `MAX_RETRIES` times with a fresh temporary name each attempt, so a leak here would strand one full-resolution TIFF per attempt — invisible, since `listScanFiles()` hides this prefix.
+
+#### Scenario: The temporary-file prefix is a single cross-language contract
+
+- **GIVEN** the worker names temporary files with a prefix, and the file browser hides files by that same prefix
+- **WHEN** either side's prefix literal is changed without the other
+- **THEN** the test suite SHALL fail
+- **AND** the prefix SHALL be defined as a named constant on each side (`TMP_PREFIX` in `python/graviscan/scan_worker.py`, `GRAVISCAN_TMP_PREFIX` in `src/types/graviscan.ts`) rather than inlined at each use site
+
+> Without this guard a one-sided rename is silent and its consequence is the exact failure the atomic write exists to prevent: stray partial TIFFs reappearing in the operator's file browser carrying valid `.tif` extensions.
+
+#### Scenario: A test-only timing hook cannot affect a real scan
+
+- **GIVEN** the worker supports a test-only delay hook (`GRAVISCAN_TEST_SLOW_WRITE_MS`) that pauses between the temporary write and the rename
+- **WHEN** the worker is running a real (non-mock) scan
+- **THEN** the hook SHALL be ignored regardless of the environment variable's value
+- **AND** when the hook IS honoured, a non-numeric or non-positive value SHALL be ignored rather than raising
+- **AND** the delay SHALL be clamped to a bounded maximum
+
+> The main process spreads its entire environment into the worker, so without these guards a value in an operator's shell profile or service unit would reach the live SANE write path — widening precisely the window the atomic write closes, or failing every plate with an error that never names the variable responsible.
 
 #### Scenario: Rename failure after a successful write is treated as a scan failure, not silently swallowed
 
@@ -163,22 +193,58 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **AND** the coordinator SHALL skip file verification for unfinished rows
 - **AND** `isScanning` SHALL return `false` after `scanOnce()` returns
 
-#### Scenario: A row ended by subprocess exit, outside a full cancellation, logs a diagnostic instead of silent skip
+#### Scenario: A row ended without a completion signal logs a diagnostic instead of silent skip
 
 - **GIVEN** the coordinator is actively awaiting `scanOnce()`'s row completion
-- **AND** `cancelAll()` has NOT been called (`this.cancelled` is `false`)
-- **WHEN** one scanner's row promise resolves with outcome reason `exit` (its subprocess emitted `exit` before `cycle-done`, e.g. because `stopScanner()` was called for that scanner mid-row) — as distinct from outcome reason `timeout` (see the next scenario)
-- **THEN** the coordinator SHALL NOT attempt to guess or verify a specific file path for that scanner's plates in this row
-- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per expected plate identifying the cycle number, scanner ID, and plate index, and stating that no completion signal was received
+- **WHEN** one scanner's row ends with outcome `exit` (its subprocess died on its own — a crash, an OOM-kill, or `killAll()` on app quit) or outcome `stopped` (the coordinator deliberately ended the row via `stopScanner()`, most commonly from wedge auto-pause) — as distinct from outcome `timeout` (see the next scenario)
+- **THEN** the coordinator SHALL NOT attempt to guess or verify a specific file path for the plates in that row that never reported one
+- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per such plate, identifying the cycle number, scanner ID, plate index, experiment name, wave number, the expected output directory, and which of the two causes applied
 - **AND** the coordinator SHALL NOT emit a `scan-error` event as a result of this diagnostic (to avoid feeding a synthetic error back into wedge-detection for a scanner that may have already been correctly auto-paused)
-- **AND** this diagnostic SHALL NOT fire when `this.cancelled` is `true` (the existing "Cancel during active scanOnce aborts cleanly" silent-skip behavior for a deliberate, whole-session cancel is unchanged)
+
+> The `stopped` outcome exists because `stopScanner()` removes the subprocess's listeners before awaiting its shutdown, so the subsequent `exit` event can never reach the row. Without an explicit settle, the wedge-auto-pause path — the most common real trigger — could only end the row by burning the full `SCAN_ROW_TIMEOUT_MS`, stalling every other scanner's row behind it and producing no per-plate record at all.
+
+#### Scenario: A deliberately stopped scanner does not delay the rest of the row
+
+- **GIVEN** a row is in flight across several scanners
+- **WHEN** `stopScanner()` is called for one of them mid-row
+- **THEN** that scanner's row SHALL settle immediately rather than waiting for `SCAN_ROW_TIMEOUT_MS`
+- **AND** the remaining scanners' rows SHALL proceed without additional delay
+
+#### Scenario: Plates that reported a path before the row ended are still verified
+
+- **GIVEN** a row ends with outcome `exit`, `stopped`, or `timeout`
+- **AND** one or more of its plates had already emitted `scan-complete` with a real final path before the row ended
+- **WHEN** the verification loop processes this row's results
+- **THEN** each such plate's file SHALL undergo the same existence and non-zero-size verification as a plate from a normally-completed row
+- **AND** each such plate SHALL count toward its grid's verified tally
+- **AND** the "no completion signal received" diagnostic SHALL NOT be logged for it
+
+> A row can end after some of its plates have already succeeded. Reporting a plate whose path is known as "output presence unknown", or skipping its on-disk check, would make the diagnostic actively misleading about the very provenance it exists to record.
+
+#### Scenario: A grid's verified tally is logged against its expected count
+
+- **GIVEN** a grid's plates have been verified
+- **WHEN** the coordinator logs the grid-complete tally via `scanLog()`
+- **THEN** the line SHALL report both the verified count and the expected count
+- **AND** SHALL explicitly mark a shortfall when the verified count is lower
+
+> A bare count is ambiguous: "4 files verified" reads identically whether the grid produced 4 of 4 or 4 of 5. This is the cheapest completeness signal available for an unattended run.
 
 #### Scenario: A row ended by per-row timeout is not double-logged by the exit diagnostic
 
-- **GIVEN** one scanner's row promise resolves with outcome reason `timeout` (the `SCAN_ROW_TIMEOUT_MS` per-row timeout fired, which already logs via `scanLog()` and emits a `scan-error` event at the moment it fires)
+- **GIVEN** one scanner's row ends with outcome `timeout` (the `SCAN_ROW_TIMEOUT_MS` per-row timeout fired, which already logs via `scanLog()` and emits a `scan-error` event at the moment it fires)
 - **WHEN** the verification loop processes this row's results
 - **THEN** the coordinator SHALL NOT log an additional "no completion signal received" diagnostic for this row
 - **AND** SHALL NOT emit a second `scan-error` event for it
+
+#### Scenario: A cancel arriving mid-verification does not erase an already-determined diagnostic
+
+- **GIVEN** the verification loop has begun processing a row's results
+- **AND** one scanner's row had already ended with outcome `exit` or `stopped` before the loop started
+- **WHEN** `cancelAll()` is called while the loop is suspended on a filesystem check for a different scanner
+- **THEN** the already-determined diagnostic SHALL still be logged
+
+> The loop already breaks on `this.cancelled` before this point, so the flag can only flip here via a cancel landing on one of the loop's own `await`s — after the outcome was determined. Suppressing the line then would erase the only trace of a genuinely unknown outcome based on nothing more than that row's position in the results array. The line emits no `scan-error`, so recording it on a subsequently-cancelled session is harmless.
 
 #### Scenario: Graceful shutdown
 
