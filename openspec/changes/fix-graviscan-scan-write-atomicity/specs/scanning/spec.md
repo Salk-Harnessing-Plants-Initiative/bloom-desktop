@@ -31,7 +31,8 @@ The scan worker SHALL save scan output files with both `_st_TIMESTAMP` (start) a
 - **GIVEN** the worker has fully captured and encoded a plate's image data
 - **WHEN** the worker saves the file
 - **THEN** the file SHALL first be written to a temporary path in the same directory as the final path
-- **AND** the written bytes SHALL be flushed to stable storage (`fsync`) before the rename publishes the final name, so that a power loss cannot make the rename durable while the data is not
+- **AND** the worker SHALL attempt to flush the written bytes to stable storage (`fsync`) before the rename publishes the final name, so that a power loss cannot make the rename durable while the data is not
+- **AND** a failed flush SHALL be logged and the write SHALL proceed — the atomicity guarantee comes from the temp-then-replace sequence alone, so refusing to publish a fully-written image because durability could not be confirmed would trade a real scan for a weaker guarantee
 - **AND** SHALL be atomically renamed into the final path only after the write completes successfully
 - **AND** at no point SHALL a partially-written file be visible at the final path
 
@@ -198,7 +199,8 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **GIVEN** the coordinator is actively awaiting `scanOnce()`'s row completion
 - **WHEN** one scanner's row ends with outcome `exit` (its subprocess died on its own — a crash, an OOM-kill, or `killAll()` on app quit) or outcome `stopped` (the coordinator deliberately ended the row via `stopScanner()`, most commonly from wedge auto-pause) — as distinct from outcome `timeout` (see the next scenario)
 - **THEN** the coordinator SHALL NOT attempt to guess or verify a specific file path for the plates in that row that never reported one
-- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per such plate, identifying the cycle number, scanner ID, plate index, experiment name, wave number, the expected output directory, and which of the two causes applied
+- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per such plate, identifying the cycle number, scanner ID, plate index, wave number, which of the two causes applied, and the path the coordinator sent for that plate — labelled as the pre-`_et_` path, since the worker stamps `_et_` itself at save time and never reported one for this plate
+- **AND** that path SHALL be the cycle-corrected one actually dispatched for this row, not the path the row was originally built from, so the line names the cycle the plate belonged to
 - **AND** the coordinator SHALL NOT emit a `scan-error` event as a result of this diagnostic (to avoid feeding a synthetic error back into wedge-detection for a scanner that may have already been correctly auto-paused)
 
 > The `stopped` outcome exists because `stopScanner()` removes the subprocess's listeners before awaiting its shutdown, so the subsequent `exit` event can never reach the row. Without an explicit settle, the wedge-auto-pause path — the most common real trigger — could only end the row by burning the full `SCAN_ROW_TIMEOUT_MS`, stalling every other scanner's row behind it and producing no per-plate record at all.
@@ -209,6 +211,24 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **WHEN** `stopScanner()` is called for one of them mid-row
 - **THEN** that scanner's row SHALL settle immediately rather than waiting for `SCAN_ROW_TIMEOUT_MS`
 - **AND** the remaining scanners' rows SHALL proceed without additional delay
+
+#### Scenario: Every teardown path that strips listeners settles the in-flight row first
+
+- **GIVEN** a scanner has a row in flight
+- **WHEN** the coordinator tears that scanner down by a path that removes its event listeners — `stopScanner()` or `shutdown()`
+- **THEN** that scanner's in-flight row SHALL be settled before the listeners are removed
+- **AND** the row SHALL NOT be left to settle by the per-row timeout
+
+> `shutdown()` is the Cancel Scan path: `cancelScan` calls `cancelAll()` then `shutdown()` in the same tick, and `cancelAll()` only writes a `cancel` to the worker's stdin — which the worker cannot read until its current blocking save returns. An orphaned row there produces a spurious row-timeout `scan-error` 90 seconds after the operator cancelled. `killAll()` does not strip listeners (its rows settle via `exit`), and `reclaimUnresponsive()` only runs for a spawn that never became ready, so neither needs this.
+
+#### Scenario: A scanner stopped during the USB stagger window is skipped, not left to time out
+
+- **GIVEN** the coordinator is waiting out `USB_STAGGER_DELAY_MS` before dispatching a scanner's row
+- **WHEN** that scanner is stopped during the wait, before its row promise exists
+- **THEN** the coordinator SHALL skip that scanner for this row rather than dispatching to the stopped subprocess
+- **AND** SHALL record the skip via `scanLog()`
+
+> The stagger is precisely the window in which USB contention makes a wedge most likely, and it is the one window where `stopScanner()` has no row to settle — the promise has not been created yet. Without the check, fresh listeners are attached to a dead subprocess and the row burns the full timeout, stalling every other scanner behind it.
 
 #### Scenario: Plates that reported a path before the row ended are still verified
 
@@ -235,7 +255,9 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **GIVEN** one scanner's row ends with outcome `timeout` (the `SCAN_ROW_TIMEOUT_MS` per-row timeout fired, which already logs via `scanLog()` and emits a `scan-error` event at the moment it fires)
 - **WHEN** the verification loop processes this row's results
 - **THEN** the coordinator SHALL NOT log an additional "no completion signal received" diagnostic for this row
-- **AND** SHALL NOT emit a second `scan-error` event for it
+- **AND** SHALL NOT emit a second `scan-error` event for it, including from the file verification below — a plate of a timed-out row whose file is missing or zero-size SHALL be recorded to the log only
+
+> Each coordinator `scan-error` feeds `WedgeDetector`'s confirmed-failure count, where two is enough to trip `consecutive_failures` and auto-pause the scanner. A row-level timeout plus a plate-level verification failure for the same row would therefore auto-pause a scanner that was merely slow.
 
 #### Scenario: A cancel arriving mid-verification does not erase an already-determined diagnostic
 

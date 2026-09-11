@@ -73,24 +73,37 @@ Temp filenames use a `.tmp-` prefix plus a UUID (e.g. `.tmp-<uuid4>-<final_basen
 
 `scanOnce()`'s per-scanner promise construction (`scan-coordinator.ts:756-800`) is extended so each row promise resolves to a **discriminated** result instead of a bare `null`:
 
+**Revised after review rounds 1 and 2** — the shape below is what shipped; an earlier draft used a structurally-discriminated union with a `reason` field and split payloads, which review showed misreported plates that had already completed (see round 1's B2):
+
 ```ts
-type RowOutcome =
-  | { scannerId: string; outputPaths: {...}[] }   // cycle-done (success)
-  | { scannerId: string; rowPlates: PlateConfig[]; reason: 'exit' }     // onExit fired
-  | { scannerId: string; rowPlates: PlateConfig[]; reason: 'timeout' }; // rowTimeout fired
+export type RowOutcomeKind = 'done' | 'exit' | 'stopped' | 'timeout';
+
+export interface RowOutcome {
+  kind: RowOutcomeKind;
+  scannerId: string;
+  outputPaths: PlateOutputPath[]; // real paths from each plate's scan-complete
+  rowPlates: PlateConfig[]; // the cycle-corrected plates this row asked for
+}
 ```
 
-(`rowPlates` — the plates assigned to this scanner for this row — is already available in the enclosing loop and simply needs to be captured into the `onExit`/`rowTimeout` resolution instead of discarded.)
+Every outcome carries **both** halves deliberately. A row can end after some of its plates already succeeded, so the diagnostic is driven by set difference (`rowPlates` minus the plate indices present in `outputPaths`) rather than by the outcome kind alone — otherwise a plate whose real path is known gets logged as "output presence unknown" and skips its on-disk verification.
 
-In the verification loop, a `reason: 'timeout'` entry is handled exactly as today (the `rowTimeout` branch's own `scanLog()` + `scan-error` already ran at the moment it fired — the verification loop does nothing further for it, avoiding a duplicate). A `reason: 'exit'` entry, when `this.cancelled` is `false`, now logs one line per expected plate via `scanLog()`:
+`stopped` exists because `stopScanner()` and `shutdown()` both strip a subprocess's listeners before awaiting shutdown, so the later `exit` can never reach the row. Both now call an `inFlightRowSettlers` hook first. `killAll()` does not strip listeners, so its rows settle via `exit`.
+
+In the verification loop:
+
+- `timeout` is not re-diagnosed — its own `scanLog()` + `scan-error` already ran when it fired. Its plates are still verified and still counted, but a verification failure there is logged only, never re-emitted as a `scan-error` (two coordinator `scan-error`s for one row would trip `WedgeDetector`'s `consecutive_failures` and auto-pause a merely-slow scanner).
+- `exit` and `stopped` log one line per _unreported_ plate:
 
 ```
-[<scannerId>] Cycle <cycle>: row verification skipped for plate <plateIndex>: no completion signal received (subprocess exited mid-row) — output presence unknown
+[<scannerId>] Cycle <cycle>: row verification skipped for plate <plateIndex> (wave <N>): no completion signal received (<cause>) — output presence unknown; expected at (pre-_et_) <path>
 ```
+
+The path is the cycle-corrected one actually dispatched (from `platesToScan`, not the stale `rowPlates` the row was built from) and is labelled pre-`_et_`, since the worker stamps `_et_` at save time and never reported one for this plate. It encodes experiment id, wave, scanner and cycle, which is why the line does not carry a separate experiment field: `PlateConfig.exp_name` is optional and nothing in `src/` populates it, so quoting it would have printed a constant `unknown-exp` in production — review round 2 caught that the test asserting otherwise was passing only on a fixture-injected value.
 
 Cycle number (`this.currentCycle`, already in scope at this point in `scanOnce()`) is included because the session's live job-tracking (`session-handlers.ts`'s `jobs` map, keyed by `` `${scannerId}:${plateIndex}` `` with no cycle component) cannot otherwise disambiguate which cycle's occurrence of that plate this diagnostic refers to across a multi-day interval session — this log line is, in the exit case, the _only_ durable record that plate's outcome is unknown, so it must be self-sufficient to reconstruct later.
 
-No `scan-error` event is emitted for the `reason: 'exit'` case (unlike the existing missing-file/zero-size branches a few lines below, and unlike the `reason: 'timeout'` case, both of which do emit `scan-error`). This is deliberate: emitting a synthetic `scan-error` here would feed back into `WedgeDetector`'s `scan-error` subscription for a scanner that, in the common case, was _already_ correctly auto-paused by that same detector — a second, coordinator-synthesized error for the same underlying wedge risks a confusing double-signal rather than new information.
+No `scan-error` event is emitted for the `exit` or `stopped` cases (unlike the missing-file/zero-size verification branches, and unlike the `timeout` case's own row-level error). This is deliberate: emitting a synthetic `scan-error` here would feed back into `WedgeDetector`'s `scan-error` subscription for a scanner that, in the common case, was _already_ correctly auto-paused by that same detector — a second, coordinator-synthesized error for the same underlying wedge risks a confusing double-signal rather than new information.
 
 **The per-iteration `!this.cancelled` guard was removed (correction from review).** An earlier draft claimed `this.cancelled` "is always `false` in practice" within the row-results loop and used that to justify leaving the branch untested. That reasoning was wrong: the loop `await`s `fs.promises.access`/`stat` (`scan-coordinator.ts:851,864`) **inside** the same `for (const result of results)` body, and each `await` yields to the event loop, letting the synchronous `cancelAll()` IPC handler run. With `results = [scanner-1 done, scanner-2 exit]`, a cancel landing during scanner-1's filesystem check suppressed scanner-2's diagnostic entirely — so whether a plate's unknown outcome was recorded depended on nothing more than its position in the array.
 
@@ -115,7 +128,7 @@ These re-confirm already-merged behavior (PR #357) rather than introduce new beh
 - `os.replace()` on Windows can raise `PermissionError` if a lingering file handle (e.g. antivirus/indexer, or a test that left a file open) holds the source or destination. This is a known-flaky-on-Windows-only area (already present in this test suite's pre-existing, unrelated `TestMockScanTiffMetadata` teardown failures) and does not affect the production rig (Linux). No retry logic is added for this in Windows local dev — not worth the complexity for a non-production environment.
 - **Power loss vs. process kill.** `os.replace()` alone makes the rename atomic, not durable: without an `fsync` the rename can be journaled while the data blocks are not, leaving a zero-length file at the final path after a power cut. ext4's `auto_da_alloc` heuristic does not rescue this, since it fires on rename-over-an-existing-file and the `_et_`-stamped destination never pre-exists. The spec's guarantee was scoped to process termination, so this was not an overclaim — but "atomically renamed" reads stronger than that, and the target is an unattended multi-day rig, so the `fsync` is now done rather than documented around.
 - **A scanner paused for the rest of a session is still entirely unlogged** (pre-existing, not introduced here). `stopScanner()` deletes the entry from `this.subprocesses`, and `scanOnce()` iterates that live map — so from the _next_ row group onward a paused scanner's plates produce no promise, no outcome, and no log line at all, not even a timeout. On a 24-hour session where a wedge pauses a scanner early and the banner is missed, that is the dominant silent-loss case, larger than the one this change closes. Belongs to #363 and is now named in its text rather than left implicit.
-- **Named, accepted gap**: the log-only diagnostic (Decision 2) gives zero _live-session_ signal — no banner, no event — for a `reason: 'exit'` row outside the common wedge-auto-pause case (e.g. an unhandled Python exception, an OOM kill, or a manual `stopScanner()` call unrelated to a wedge). An operator could complete a multi-day session with several silently-missing plates and only discover it when reviewing logs afterward. This is a real limitation for a feature explicitly framed as data-loss-prevention, and is not fixed here — building a renderer-visible "N plates unverified this session" indicator would require touching session-state aggregation and renderer UI, which is out of scope for a change focused on the write-path/backend data-integrity fix. **Filed as issue #363** rather than silently accepted (matching this Tier 1 increment's established pattern of splitting out real-but-separable gaps, as already done for issue #362).
+- **Named, accepted gap**: the log-only diagnostic (Decision 2) gives zero _live-session_ signal — no banner, no event — for an `exit` or `stopped` row (e.g. an unhandled Python exception, an OOM kill, or a manual `stopScanner()` call unrelated to a wedge). An operator could complete a multi-day session with several silently-missing plates and only discover it when reviewing logs afterward. This is a real limitation for a feature explicitly framed as data-loss-prevention, and is not fixed here — building a renderer-visible "N plates unverified this session" indicator would require touching session-state aggregation and renderer UI, which is out of scope for a change focused on the write-path/backend data-integrity fix. **Filed as issue #363** rather than silently accepted (matching this Tier 1 increment's established pattern of splitting out real-but-separable gaps, as already done for issue #362).
 
 ## Migration Plan
 

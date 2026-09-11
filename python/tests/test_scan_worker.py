@@ -344,6 +344,58 @@ class TestAtomicImageSave:
             leftovers == []
         ), f"handled rename failure leaked temp file(s): {leftovers}"
 
+    def test_keyboard_interrupt_mid_write_still_removes_the_temp_file(self, tmp_path):
+        # Locks in the `except BaseException` (rather than `except Exception`)
+        # in _atomic_image_save. KeyboardInterrupt and SystemExit do NOT
+        # inherit from Exception, so the narrower clause — the single most
+        # likely "tidy up this handler" edit — would let a Ctrl-C or an
+        # interpreter shutdown between the temp write and the rename strand a
+        # full-resolution TIFF that the app then hides from the operator.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        def fake_save(path, *args, **kwargs):
+            with open(path, "wb") as f:
+                f.write(b"PARTIAL")
+            raise KeyboardInterrupt()
+
+        with patch.object(image, "save", side_effect=fake_save):
+            with pytest.raises(KeyboardInterrupt):
+                _atomic_image_save(image, final_path, "TIFF")
+
+        assert not os.path.exists(final_path)
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert leftovers == [], f"KeyboardInterrupt leaked temp file(s): {leftovers}"
+
+    def test_a_failing_fsync_does_not_fail_an_otherwise_successful_write(
+        self, tmp_path
+    ):
+        # The atomicity guarantee comes from write-temp-then-replace; the
+        # fsync only adds power-loss durability on top. A filesystem that
+        # refuses the sync (or a transient Windows AV lock on a just-closed
+        # file) must not turn a fully successful write into a failed plate —
+        # that would burn a retry and, if deterministic, fail the plate after
+        # five full-resolution rescans.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10), color=(7, 8, 9))
+
+        with patch(
+            "python.graviscan.scan_worker.os.fsync",
+            side_effect=OSError("simulated fsync refusal"),
+        ):
+            _atomic_image_save(image, final_path, "TIFF")
+
+        assert os.path.exists(final_path)
+        with Image.open(final_path) as saved:
+            saved.load()
+            assert saved.getpixel((0, 0)) == (7, 8, 9)
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert leftovers == []
+
     def test_bytes_are_fsynced_before_the_rename_publishes_the_name(self, tmp_path):
         # Without an fsync, a power loss can make the rename durable while
         # the data blocks are not, leaving a zero-length file at the FINAL
@@ -424,7 +476,7 @@ class TestSlowWriteTestHook:
                 _slow_write_for_testing(mock=True)
         mock_sleep.assert_not_called()
 
-    @pytest.mark.parametrize("bad_value", ["abc", "true", "1500.5", "", "  "])
+    @pytest.mark.parametrize("bad_value", ["abc", "true", "1500.5", "  ", "12x"])
     def test_ignores_a_non_numeric_value_instead_of_raising(self, bad_value):
         # A ValueError here would surface AFTER the temp write and BEFORE the
         # rename, be swallowed by _sane_scan()'s per-attempt handler, and burn

@@ -160,8 +160,21 @@ def _atomic_image_save(
         # ext4's auto_da_alloc heuristic does not rescue this case: it fires
         # on rename-over-an-existing-file, and the _et_-stamped destination
         # never exists beforehand.
-        with open(tmp_path, "r+b") as fh:
-            os.fsync(fh.fileno())
+        # Best-effort, deliberately: the atomicity guarantee (never a
+        # truncated file at final_path) comes entirely from write-temp-then-
+        # replace, and the fsync only adds power-loss durability on top. A
+        # filesystem that refuses the reopen or the sync, or a transient
+        # Windows AV lock on a just-closed file, must not turn a fully
+        # successful write into a failed plate — that would burn a retry and,
+        # if deterministic, fail the plate after five full-resolution
+        # rescans, which is a worse outcome than losing durability.
+        try:
+            # "r+b" rather than "rb": Windows' os.fsync maps to _commit(),
+            # which needs a writable handle. On POSIX either works.
+            with open(tmp_path, "r+b") as fh:
+                os.fsync(fh.fileno())
+        except OSError as e:
+            log("scan_worker", f"fsync before rename failed (continuing): {e}")
         _slow_write_for_testing(mock=mock)
         os.replace(tmp_path, final_path)
     except BaseException:
