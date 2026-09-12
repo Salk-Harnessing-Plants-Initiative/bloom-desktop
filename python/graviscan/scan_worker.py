@@ -44,6 +44,16 @@ try:
 except Exception:
     _BLOOM_VERSION = "0.1.0"
 
+# Filename prefix marking an in-progress atomic write (see
+# _atomic_image_save). CROSS-LANGUAGE CONTRACT: this must stay byte-for-byte
+# identical to GRAVISCAN_TMP_PREFIX in src/types/graviscan.ts, which
+# listScanFiles() uses to hide these from the scan file browser. If they
+# drift, stray partial TIFFs reappear in the operator's browser with valid
+# .tif extensions — exactly the failure the atomic write exists to prevent.
+# A drift guard reads this literal back out of this file:
+# tests/unit/graviscan/image-handlers.test.ts.
+TMP_PREFIX = ".tmp-"
+
 
 def _build_tiff_metadata(
     scanner_id: str,
@@ -113,6 +123,71 @@ def compose_output_path(output_path: str, et: str) -> str:
 def log(scanner_id: str, msg: str) -> None:
     """Log a debug message to stderr (not parsed as events)."""
     print(f"[{scanner_id}] {msg}", file=sys.stderr, flush=True)
+
+
+def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> None:
+    """Write `image` to a temp file in final_path's directory, then
+    atomically replace final_path only after the write succeeds.
+
+    A process termination (e.g. SIGKILL) during the write can now only
+    ever leave a stray temp file or a complete final file — never a
+    truncated one at `final_path` (closes #281 item 1). `*save_args`/
+    `**save_kwargs` are forwarded to `image.save()` unchanged, since both
+    call sites pass the format ("TIFF") positionally.
+
+    A *handled* failure (save error, rename error) cleans its temp file up
+    before re-raising, so `_sane_scan()`'s retry loop cannot strand one
+    full-resolution TIFF per attempt. Only a SIGKILL leaves residue, since
+    no cleanup handler can run at all in that case.
+    """
+    directory = os.path.dirname(final_path)
+    basename = os.path.basename(final_path)
+    tmp_path = os.path.join(
+        directory, f"{TMP_PREFIX}{uuid.uuid4().hex[:12]}-{basename}"
+    )
+    try:
+        image.save(tmp_path, *save_args, **save_kwargs)
+        # Force the bytes to stable storage BEFORE the rename publishes the
+        # final name. Without this, a power loss can make the rename durable
+        # while the data blocks are not, leaving a zero-length file at the
+        # final path — the exact outcome this helper exists to prevent.
+        # ext4's auto_da_alloc heuristic does not rescue this case: it fires
+        # on rename-over-an-existing-file, and the _et_-stamped destination
+        # never exists beforehand.
+        # Best-effort, deliberately: the atomicity guarantee (never a
+        # truncated file at final_path) comes entirely from write-temp-then-
+        # replace, and the fsync only adds power-loss durability on top. A
+        # filesystem that refuses the reopen or the sync, or a transient
+        # Windows AV lock on a just-closed file, must not turn a fully
+        # successful write into a failed plate — that would burn a retry and,
+        # if deterministic, fail the plate after five full-resolution
+        # rescans, which is a worse outcome than losing durability.
+        try:
+            # "r+b" rather than "rb": Windows' os.fsync maps to _commit(),
+            # which needs a writable handle. On POSIX either works.
+            with open(tmp_path, "r+b") as fh:
+                os.fsync(fh.fileno())
+        except OSError as e:
+            log("scan_worker", f"fsync before rename failed (continuing): {e}")
+        os.replace(tmp_path, final_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            # Best-effort: never mask the original failure with a cleanup one.
+            pass
+        raise
+    # Make the rename itself durable too. POSIX-only and advisory — a
+    # filesystem that refuses a directory fsync changes nothing about the
+    # guarantee above, so failure here is deliberately not fatal.
+    try:
+        dir_fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except (OSError, AttributeError):
+        pass
 
 
 class ScanWorker:
@@ -515,8 +590,12 @@ class ScanWorker:
                     st_timestamp,
                     phenotyper_name,
                 )
-                image.save(
-                    final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+                _atomic_image_save(
+                    image,
+                    final_path,
+                    "TIFF",
+                    compression="tiff_lzw",
+                    tiffinfo=tiff_meta,
                 )
 
                 # Cancel to return device to IDLE state for next scan
@@ -736,7 +815,13 @@ class ScanWorker:
             st_timestamp,
             phenotyper_name,
         )
-        image.save(final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
+        _atomic_image_save(
+            image,
+            final_path,
+            "TIFF",
+            compression="tiff_lzw",
+            tiffinfo=tiff_meta,
+        )
 
         log(self.scanner_id, f"Mock scan saved: {final_path}")
         return final_path

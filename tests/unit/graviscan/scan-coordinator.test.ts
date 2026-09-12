@@ -44,6 +44,13 @@ function createMockSubprocess(scannerId: string): EventEmitter & {
   removeAllListeners: ReturnType<typeof vi.fn>;
 } {
   const emitter = new EventEmitter();
+  // Delegate to the REAL EventEmitter implementation rather than
+  // `mockReturnThis()`. A no-op `removeAllListeners` is not merely a weaker
+  // mock — it actively hides bugs: `stopScanner()` strips listeners before
+  // awaiting shutdown, so a mock that keeps them makes a stripped listener
+  // look reachable and lets a row settle in tests via a path production can
+  // never take. That is exactly how the wedge-auto-pause gap went unnoticed.
+  const realRemoveAllListeners = emitter.removeAllListeners.bind(emitter);
   return Object.assign(emitter, {
     scannerId,
     isReady: true,
@@ -58,7 +65,9 @@ function createMockSubprocess(scannerId: string): EventEmitter & {
     // otherwise treat every healthy mock's `undefined`/void return as an
     // unconfirmed shutdown and spuriously warn across unrelated tests.
     shutdown: vi.fn().mockResolvedValue(true),
-    removeAllListeners: vi.fn().mockReturnThis(),
+    removeAllListeners: vi.fn((event?: string | symbol) =>
+      realRemoveAllListeners(event as string)
+    ),
   });
 }
 
@@ -184,24 +193,28 @@ describe('ScanCoordinator', () => {
               grid_mode: '4grid',
               resolution: 600,
               output_path: '/tmp/scan_st_20260410T120000_cy1_S1_00.tif',
+              wave_number: 1,
             },
             {
               plate_index: '01',
               grid_mode: '4grid',
               resolution: 600,
               output_path: '/tmp/scan_st_20260410T120000_cy1_S1_01.tif',
+              wave_number: 1,
             },
             {
               plate_index: '10',
               grid_mode: '4grid',
               resolution: 600,
               output_path: '/tmp/scan_st_20260410T120000_cy1_S1_10.tif',
+              wave_number: 1,
             },
             {
               plate_index: '11',
               grid_mode: '4grid',
               resolution: 600,
               output_path: '/tmp/scan_st_20260410T120000_cy1_S1_11.tif',
+              wave_number: 1,
             },
           ]
         : [
@@ -210,12 +223,14 @@ describe('ScanCoordinator', () => {
               grid_mode: '2grid',
               resolution: 600,
               output_path: '/tmp/scan_st_20260410T120000_cy1_S1_00.tif',
+              wave_number: 1,
             },
             {
               plate_index: '01',
               grid_mode: '2grid',
               resolution: 600,
               output_path: '/tmp/scan_st_20260410T120000_cy1_S1_01.tif',
+              wave_number: 1,
             },
           ];
 
@@ -1492,6 +1507,727 @@ describe('ScanCoordinator', () => {
 
       // Should still complete the cycle
       expect(cycleComplete).toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('logs one scanLog diagnostic per plate when a subprocess exits mid-row without a full cancellation (closes #281 item 1\'s silent-skip gap; extends "handles partial scanner failure mid-grid" above with the new diagnostic assertion)', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // scanner-1's subprocess exits mid-row — no cycle-done, no
+      // scan-complete for either plate in this row.
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => sub.emit('exit', {}));
+      });
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      // 4grid gives this one scanner 2 plates per row group (00+01 in the
+      // top row, 10+11 in the bottom row) — since the mock exits on every
+      // sub.scan() call, both row groups exit, giving 4 plates total
+      // across 2 rows. This proves "one line per plate" (not one combined
+      // line per row) across multiple rows, not just within a single one.
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const exitDiagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+      expect(exitDiagnosticCalls).toHaveLength(4);
+      for (const plateIndex of ['00', '01', '10', '11']) {
+        expect(
+          exitDiagnosticCalls.some(
+            ([msg]) =>
+              typeof msg === 'string' &&
+              msg.includes('scanner-1') &&
+              msg.includes(`plate ${plateIndex}`)
+          )
+        ).toBe(true);
+      }
+      // Cycle number included, so the line is self-sufficient across a
+      // multi-cycle interval session.
+      expect(
+        exitDiagnosticCalls.every(
+          ([msg]) => typeof msg === 'string' && msg.includes('Cycle 1')
+        )
+      ).toBe(true);
+
+      // No scan-error emitted as a result of this diagnostic — avoids
+      // feeding a synthetic error back into wedge-detection for a scanner
+      // that may already be correctly auto-paused.
+      expect(scanError).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('does not double-log the exit diagnostic for a row that already timed out', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        // Never resolves — triggers the existing row-timeout path, which
+        // already logs its own scanLog + scan-error at the moment it fires.
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const exitDiagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+      expect(exitDiagnosticCalls).toHaveLength(0);
+
+      // The existing timeout diagnostic still fires as before.
+      const timeoutLogCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('Row scan timeout')
+        );
+      expect(timeoutLogCalls.length).toBeGreaterThan(0);
+
+      vi.useRealTimers();
+    }, 15000);
+
+    it('diagnoses a row that stopScanner() ended mid-flight (the wedge auto-pause path) without waiting out the row timeout', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // This is what wedge auto-pause actually does: wiring.ts calls
+      // coordinator.stopScanner() on the wedged scanner mid-row. stopScanner()
+      // strips the subprocess's listeners BEFORE awaiting shutdown, so the
+      // later `exit` event can never reach the row promise — the row could
+      // previously only settle via the 90s SCAN_ROW_TIMEOUT_MS, stalling
+      // every other scanner's row and producing no per-plate record at all.
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => {
+          void coordinator.stopScanner('scanner-1');
+        });
+      });
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // Advance far LESS than SCAN_ROW_TIMEOUT_MS (90s). If the row still
+      // needed the timeout to settle, this would hang instead of resolving.
+      await vi.advanceTimersByTimeAsync(5_000);
+      await scanPromise;
+
+      const stopDiagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received') &&
+            msg.includes('scanner stopped mid-row')
+        );
+      expect(stopDiagnosticCalls.length).toBeGreaterThan(0);
+
+      // The row must NOT have fallen through to the timeout path.
+      const timeoutLogCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('Row scan timeout')
+        );
+      expect(timeoutLogCalls).toHaveLength(0);
+
+      // Same rationale as the exit case: no synthetic scan-error, so a
+      // scanner that is already correctly auto-paused isn't re-fed into
+      // wedge detection.
+      expect(scanError).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('verifies plates that already reported a path before the exit, and diagnoses only the unreported ones', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // 4grid row group ['00','01']: plate 00 completes and reports its real
+      // final path, then the worker dies before plate 01. Discarding the
+      // accumulated paths here would (a) log "output presence unknown" for a
+      // plate whose path is known, (b) skip its on-disk verification, and
+      // (c) undercount it in the grid-complete tally.
+      sub.scan.mockImplementation((plates: { plate_index: string }[]) => {
+        setImmediate(() => {
+          sub.emit('scan-complete', {
+            plate_index: '00',
+            path: '/scans/exp/wave1/scanner-1/plate_st_20260101T000000_et_20260101T000100_cy1_S1_00.tif',
+          });
+          void plates;
+          sub.emit('exit', {});
+        });
+      });
+
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const diagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+
+      // Plate 00 reported a path — it must NOT be described as unknown.
+      expect(
+        diagnosticCalls.some(
+          ([msg]) => typeof msg === 'string' && msg.includes('plate 00')
+        )
+      ).toBe(false);
+      // Plate 01 never reported — it must be.
+      expect(
+        diagnosticCalls.some(
+          ([msg]) => typeof msg === 'string' && msg.includes('plate 01')
+        )
+      ).toBe(true);
+
+      // And plate 00's file must have gone through real on-disk verification.
+      expect(fs.promises.access).toHaveBeenCalledWith(
+        '/scans/exp/wave1/scanner-1/plate_st_20260101T000000_et_20260101T000100_cy1_S1_00.tif'
+      );
+
+      // ...and must COUNT toward its grid's tally. Verifying it but not
+      // counting it would report `0/1 files verified — 1 MISSING` for a grid
+      // that produced and verified a real file, which makes the completeness
+      // signal actively wrong in exactly the early-ending-row case it exists
+      // for. (Spec: "each such plate SHALL count toward its grid's verified
+      // tally".)
+      const grid00Tally = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('grid 00 complete') &&
+            msg.includes('files verified')
+        );
+      expect(grid00Tally.length).toBeGreaterThan(0);
+      for (const [msg] of grid00Tally) {
+        expect(msg).toContain('1/1 files verified');
+        expect(msg).not.toContain('MISSING');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('ignores a late scan-complete belonging to a different row, and a duplicate for the same plate', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // 4grid: the first row group is ['00','01']. The worker emits plate
+      // 00 twice (a duplicate) and also emits plate '10', which belongs to
+      // the NEXT row group — the shape a timed-out row produces when its
+      // worker keeps running and its late events land on the following row's
+      // listener. Neither may reach this row's tally: the duplicate would
+      // inflate it past its denominator, and the foreign plate would be
+      // verified and counted against a grid this row never scanned.
+      let rowCall = 0;
+      sub.scan.mockImplementation(() => {
+        const isFirstRow = rowCall++ === 0;
+        setImmediate(() => {
+          const p = '/scans/exp/wave1/scanner-1/x_st_1_et_2_cy1_S1_';
+          if (isFirstRow) {
+            sub.emit('scan-complete', {
+              plate_index: '00',
+              path: `${p}00.tif`,
+            });
+            // Duplicate of a plate this row owns.
+            sub.emit('scan-complete', {
+              plate_index: '00',
+              path: `${p}00.tif`,
+            });
+            // Belongs to the NEXT row group — must not be adopted by this one.
+            sub.emit('scan-complete', {
+              plate_index: '10',
+              path: `${p}10-STRAY.tif`,
+            });
+          }
+          sub.emit('cycle-done', {});
+        });
+      });
+
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      // The foreign plate's file must never be verified by this row.
+      expect(fs.promises.access).not.toHaveBeenCalledWith(
+        '/scans/exp/wave1/scanner-1/x_st_1_et_2_cy1_S1_10-STRAY.tif'
+      );
+
+      // Plate 00 counted exactly once — never 2/1.
+      const tallies = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('files verified')
+        );
+      expect(tallies.length).toBeGreaterThan(0);
+      for (const [msg] of tallies) {
+        expect(msg).not.toContain('2/1');
+      }
+      const grid00 = tallies.filter(([msg]) =>
+        String(msg).includes('grid 00 complete')
+      );
+      expect(grid00.length).toBeGreaterThan(0);
+      for (const [msg] of grid00) {
+        expect(msg).toContain('1/1 files verified');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('includes wave and the cycle-corrected expected path in the diagnostic so a missing plate is traceable without the database', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => sub.emit('exit', {}));
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const diagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+      expect(diagnosticCalls.length).toBeGreaterThan(0);
+
+      // This line is the only durable record that the plate's outcome is
+      // unknown, so it has to be reconstructable on its own — a scanner UUID
+      // and a two-digit grid index are not enough to find the affected wave.
+      for (const [msg] of diagnosticCalls) {
+        expect(msg).toContain('wave 1');
+        // The expected path carries experiment id, wave, scanner and cycle.
+        expect(msg).toContain('expected at (pre-_et_)');
+        // And it must be the CYCLE-CORRECTED path (from platesToScan), not
+        // the stale one the row was built from. scanOnce() rewrites `_cy<N>_`
+        // per cycle; quoting the stale path would name the wrong cycle for a
+        // plate that is missing.
+        expect(msg).toContain('_cy1_');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('reports the current cycle in the diagnostic path on a later cycle, not the one the plates were built with', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => sub.emit('exit', {}));
+      });
+
+      // Two cycles: the fixture's output_path is built with `_cy1_`, so if
+      // the outcome carried the stale rowPlates rather than the rewritten
+      // platesToScan, cycle 2's diagnostic would still say `_cy1_`.
+      const platesMap = makePlatesMap(['scanner-1']);
+      const first = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await first;
+
+      vi.mocked(scanLog).mockClear();
+      const second = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await second;
+
+      const diagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+      expect(diagnosticCalls.length).toBeGreaterThan(0);
+      for (const [msg] of diagnosticCalls) {
+        expect(msg).toContain('_cy2_');
+        expect(msg).not.toContain('_cy1_');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('logs the grid-complete tally with an expected denominator, so a short grid is distinguishable from a complete one', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => sub.emit('exit', {}));
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      // Assert the actual NUMBERS, not just the shape. A regex like
+      // /\d+\/\d+ files verified/ passes just as happily against a hardcoded
+      // "0/0", which is precisely the ambiguity this line exists to remove.
+      const gridCompleteCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('files verified')
+        );
+      expect(gridCompleteCalls.length).toBeGreaterThan(0);
+
+      // 2grid, one scanner: each of grids 00 and 01 expected exactly 1 plate
+      // and the subprocess died before any completed, so each grid is 0/1
+      // and must say so explicitly.
+      for (const [msg] of gridCompleteCalls) {
+        expect(msg).toContain('0/1 files verified');
+        expect(msg).toContain('1 MISSING');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('keeps the expected denominator honest when a scanner is stopped mid-cycle, instead of shrinking both sides of the ratio', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+
+      const sub1 = createdSubprocesses[0];
+      const sub2 = createdSubprocesses[1];
+
+      // scanner-1 completes both its plates normally.
+      sub1.scan.mockImplementation((plates: { plate_index: string }[]) => {
+        setImmediate(() => {
+          emitScanCompleteForPlates(sub1, plates);
+          sub1.emit('cycle-done', {});
+        });
+      });
+      // scanner-2 is stopped on its very first row, so from the NEXT row
+      // group onward it is gone from the subprocess map and contributes no
+      // result at all. Deriving the denominator from dispatched results would
+      // therefore report the remaining grids as fully complete.
+      sub2.scan.mockImplementation(() => {
+        setImmediate(() => {
+          void coordinator.stopScanner('scanner-2');
+        });
+      });
+
+      const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const gridCompleteCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('files verified')
+        );
+      expect(gridCompleteCalls.length).toBeGreaterThan(0);
+
+      // Two scanners were asked for one plate each per grid, so the
+      // denominator is 2 for every grid — including the grids scanned after
+      // scanner-2 was already removed.
+      for (const [msg] of gridCompleteCalls) {
+        expect(msg).toContain('/2 files verified');
+        expect(msg).not.toContain('1/1');
+        expect(msg).not.toContain('0/0');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('settles a stopped scanner without delaying the other scanners in the same row', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+
+      const sub1 = createdSubprocesses[0];
+      const sub2 = createdSubprocesses[1];
+
+      sub1.scan.mockImplementation((plates: { plate_index: string }[]) => {
+        setImmediate(() => {
+          emitScanCompleteForPlates(sub1, plates);
+          sub1.emit('cycle-done', {});
+        });
+      });
+      sub2.scan.mockImplementation(() => {
+        setImmediate(() => {
+          void coordinator.stopScanner('scanner-2');
+        });
+      });
+
+      const cycleComplete = vi.fn();
+      coordinator.on('cycle-complete', cycleComplete);
+
+      const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // The whole cycle must finish well inside SCAN_ROW_TIMEOUT_MS. Rows are
+      // awaited with Promise.all, so a scanner that could only settle by
+      // timing out would hold every healthy scanner behind it for 90s.
+      await vi.advanceTimersByTimeAsync(30_000);
+      await scanPromise;
+
+      expect(cycleComplete).toHaveBeenCalled();
+      const timeoutLogCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('Row scan timeout')
+        );
+      expect(timeoutLogCalls).toHaveLength(0);
+
+      vi.useRealTimers();
+    });
+
+    it('settles in-flight rows when shutdown() strips listeners, instead of stranding them until the row timeout', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // This is the Cancel Scan path: cancelScan calls cancelAll() then
+      // shutdown() in the same tick, and cancelAll() only writes to stdin —
+      // which the worker cannot read until its current blocking save returns.
+      // shutdown() therefore strips the row's listeners while it is still in
+      // flight, exactly as stopScanner() did before it was fixed.
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => {
+          void coordinator.shutdown();
+        });
+      });
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // Far less than SCAN_ROW_TIMEOUT_MS: if the row were orphaned it would
+      // still be pending here, and would later emit a spurious row-timeout
+      // scan-error for a scan the operator deliberately cancelled.
+      await vi.advanceTimersByTimeAsync(5_000);
+      await scanPromise;
+
+      const timeoutLogCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('Row scan timeout')
+        );
+      expect(timeoutLogCalls).toHaveLength(0);
+
+      vi.useRealTimers();
+    });
+
+    it('skips a scanner stopped during the USB stagger window rather than attaching listeners to a dead subprocess', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+
+      const sub1 = createdSubprocesses[0];
+      // scanner-1 scans first; scanner-2 is then held in the 5s USB stagger.
+      // Stopping it inside that window is the likeliest moment for a wedge
+      // (USB contention peaks there) and the row promise — and therefore its
+      // settler — does not exist yet, so stopScanner() has nothing to call.
+      sub1.scan.mockImplementation((plates: { plate_index: string }[]) => {
+        // Land the stop INSIDE the stagger wait. Stopping before the loop
+        // reaches scanner-2 would just drop it from the Map iterator, which
+        // is already safe; the gap is the window after it has been read out
+        // of the map but before its row promise (and settler) exist.
+        setTimeout(() => {
+          void coordinator.stopScanner('scanner-2');
+        }, 1_000);
+        setImmediate(() => {
+          emitScanCompleteForPlates(sub1, plates);
+          sub1.emit('cycle-done', {});
+        });
+      });
+
+      const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await scanPromise;
+
+      expect(
+        vi
+          .mocked(scanLog)
+          .mock.calls.some(
+            ([msg]) =>
+              typeof msg === 'string' &&
+              msg.includes('stopped during the USB stagger window')
+          )
+      ).toBe(true);
+      // And crucially it must not have fallen through to the row timeout.
+      const timeoutLogCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('Row scan timeout')
+        );
+      expect(timeoutLogCalls).toHaveLength(0);
+
+      vi.useRealTimers();
+    });
+
+    it('does not emit a second scan-error while verifying a row that already timed out', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // Plate 00 completes and reports a path; plate 01 never does, so the
+      // row hits SCAN_ROW_TIMEOUT_MS. The timeout emits its own row-level
+      // scan-error. Verification then finds plate 00's file missing — which
+      // must NOT produce a second scan-error, because WedgeDetector counts
+      // two confirmed failures as grounds to auto-pause the scanner.
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => {
+          sub.emit('scan-complete', {
+            plate_index: '00',
+            path: '/scans/exp/wave1/scanner-1/gone_st_1_et_2_cy1_S1_00.tif',
+          });
+        });
+      });
+      vi.mocked(fs.promises.access).mockRejectedValue(new Error('ENOENT'));
+
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const rowTimeoutErrors = scanError.mock.calls.filter(([e]) =>
+        String(e?.error).includes('Row scan timeout')
+      );
+      const perPlateErrors = scanError.mock.calls.filter(([e]) =>
+        String(e?.error).includes('Output file missing')
+      );
+      expect(rowTimeoutErrors.length).toBeGreaterThan(0);
+      expect(perPlateErrors).toHaveLength(0);
+
+      // The missing file is still recorded in the log, just not re-reported
+      // as a fresh error event.
+      const missingLogs = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' && msg.includes('Output file missing')
+        );
+      expect(missingLogs.length).toBeGreaterThan(0);
+
+      vi.useRealTimers();
+    }, 15000);
+
+    it('still records an already-determined exit diagnostic when a cancel lands mid-verification', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+
+      const sub1 = createdSubprocesses[0];
+      const sub2 = createdSubprocesses[1];
+
+      // scanner-1 completes; scanner-2's worker died mid-row. Both outcomes
+      // are already determined before the verification loop runs. A cancel
+      // arriving while the loop awaits scanner-1's fs.access must not erase
+      // scanner-2's record — the exit happened BEFORE the operator cancelled,
+      // and the diagnostic is log-only (it emits no scan-error), so
+      // suppressing it loses the only trace of a genuinely unknown outcome.
+      sub1.scan.mockImplementation((plates: { plate_index: string }[]) => {
+        setImmediate(() => {
+          emitScanCompleteForPlates(sub1, plates);
+          sub1.emit('cycle-done', {});
+        });
+      });
+      sub2.scan.mockImplementation(() => {
+        setImmediate(() => sub2.emit('exit', {}));
+      });
+
+      vi.mocked(fs.promises.access).mockImplementation(async () => {
+        // Cancel exactly while the verification loop is suspended on an await.
+        coordinator.cancelAll();
+      });
+
+      const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const diagnosticCalls = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received') &&
+            msg.includes('scanner-2')
+        );
+      expect(diagnosticCalls.length).toBeGreaterThan(0);
 
       vi.useRealTimers();
     });

@@ -4,19 +4,24 @@ cancel behavior, command loop, error propagation, TIFF metadata, device
 state management, and USB reset platform mocking.
 """
 
+import glob
 import io
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
 
 from python.graviscan.scan_worker import (
+    TMP_PREFIX,
     ScanWorker,
+    _atomic_image_save,
     _build_tiff_metadata,
     emit_event,
     log,
@@ -226,6 +231,432 @@ class TestShutdown:
         w._device = None
         w._sane = None
         _capture_stderr(w._shutdown)  # should not raise
+
+
+class TestAtomicImageSave:
+    """_atomic_image_save() — write-then-atomic-rename helper closing
+    #281 item 1 (SIGKILL mid-write corruption). A process termination
+    during the write can now only ever leave a stray .tmp-* file or a
+    complete final file, never a truncated one at final_path."""
+
+    def test_interrupted_write_leaves_no_file_at_final_path(self, tmp_path):
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        def fake_save(path, *args, **kwargs):
+            # Real partial I/O, then a failure — a bare exception-raising
+            # mock would perform no I/O at all and couldn't validate this.
+            with open(path, "wb") as f:
+                f.write(b"PARTIAL-DATA-FROM-INTERRUPTED-WRITE")
+            raise OSError("simulated interrupted write")
+
+        with patch.object(image, "save", side_effect=fake_save):
+            with pytest.raises(OSError, match="simulated interrupted write"):
+                _atomic_image_save(image, final_path, "TIFF")
+
+        assert not os.path.exists(final_path)
+        # A HANDLED failure must not leak its temp file: _sane_scan() retries
+        # up to MAX_RETRIES times with a fresh temp name each attempt, so
+        # leaking here would strand one full-resolution TIFF per attempt —
+        # invisible, since listScanFiles() hides them. Only a SIGKILL (which
+        # cannot run a cleanup handler at all) may leave residue; that case is
+        # the accepted one in design.md Decision 1.
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert leftovers == [], f"handled failure leaked temp file(s): {leftovers}"
+
+    def test_successful_write_produces_only_the_final_file(self, tmp_path):
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10), color=(200, 100, 50))
+
+        _atomic_image_save(image, final_path, "TIFF")
+
+        assert os.path.exists(final_path)
+        with Image.open(final_path) as saved:
+            saved.load()
+            assert saved.size == (10, 10)
+        assert glob.glob(os.path.join(str(tmp_path), ".tmp-*")) == []
+
+    def test_rename_only_happens_after_temp_file_is_fully_written(self, tmp_path):
+        # Proves write-then-rename ORDER, not just end-state — a mock that
+        # only checks the end result could pass even for an implementation
+        # that writes directly to final_path and creates an unused temp
+        # file as a no-op side effect.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+        real_replace = os.replace
+
+        def fake_replace(src, dst):
+            assert os.path.exists(src)
+            assert os.path.getsize(src) > 0
+            assert not os.path.exists(dst)
+            real_replace(src, dst)
+
+        with patch(
+            "python.graviscan.scan_worker.os.replace", side_effect=fake_replace
+        ) as mock_replace:
+            _atomic_image_save(image, final_path, "TIFF")
+
+        mock_replace.assert_called_once()
+        assert os.path.exists(final_path)
+
+    def test_overwrites_a_pre_existing_file_at_final_path(self, tmp_path):
+        # This is the specific reason os.replace() was chosen over
+        # os.rename() (which raises on Windows if the destination exists).
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        with open(final_path, "wb") as f:
+            f.write(b"STALE-PRE-EXISTING-CONTENT")
+
+        image = Image.new("RGB", (10, 10), color=(1, 2, 3))
+        _atomic_image_save(image, final_path, "TIFF")
+
+        with Image.open(final_path) as saved:
+            saved.load()
+            assert saved.getpixel((0, 0)) == (1, 2, 3)
+
+    def test_rename_failure_after_successful_save_propagates_and_leaves_no_final_file(
+        self, tmp_path
+    ):
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        with patch(
+            "python.graviscan.scan_worker.os.replace",
+            side_effect=PermissionError("simulated rename failure"),
+        ):
+            with pytest.raises(PermissionError, match="simulated rename failure"):
+                _atomic_image_save(image, final_path, "TIFF")
+
+        assert not os.path.exists(final_path)
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert (
+            leftovers == []
+        ), f"handled rename failure leaked temp file(s): {leftovers}"
+
+    def test_keyboard_interrupt_mid_write_still_removes_the_temp_file(self, tmp_path):
+        # Locks in the `except BaseException` (rather than `except Exception`)
+        # in _atomic_image_save. KeyboardInterrupt and SystemExit do NOT
+        # inherit from Exception, so the narrower clause — the single most
+        # likely "tidy up this handler" edit — would let a Ctrl-C or an
+        # interpreter shutdown between the temp write and the rename strand a
+        # full-resolution TIFF that the app then hides from the operator.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        def fake_save(path, *args, **kwargs):
+            with open(path, "wb") as f:
+                f.write(b"PARTIAL")
+            raise KeyboardInterrupt()
+
+        with patch.object(image, "save", side_effect=fake_save):
+            with pytest.raises(KeyboardInterrupt):
+                _atomic_image_save(image, final_path, "TIFF")
+
+        assert not os.path.exists(final_path)
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert leftovers == [], f"KeyboardInterrupt leaked temp file(s): {leftovers}"
+
+    def test_a_failing_fsync_does_not_fail_an_otherwise_successful_write(
+        self, tmp_path
+    ):
+        # The atomicity guarantee comes from write-temp-then-replace; the
+        # fsync only adds power-loss durability on top. A filesystem that
+        # refuses the sync (or a transient Windows AV lock on a just-closed
+        # file) must not turn a fully successful write into a failed plate —
+        # that would burn a retry and, if deterministic, fail the plate after
+        # five full-resolution rescans.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10), color=(7, 8, 9))
+
+        with patch(
+            "python.graviscan.scan_worker.os.fsync",
+            side_effect=OSError("simulated fsync refusal"),
+        ):
+            _atomic_image_save(image, final_path, "TIFF")
+
+        assert os.path.exists(final_path)
+        with Image.open(final_path) as saved:
+            saved.load()
+            assert saved.getpixel((0, 0)) == (7, 8, 9)
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert leftovers == []
+
+    def test_a_cleanup_failure_does_not_mask_the_original_error(self, tmp_path):
+        # Spec: "SHALL propagate the original failure, not any error raised
+        # while cleaning up". Without the try/except around the cleanup
+        # unlink, a Windows AV lock on the temp file would replace the real
+        # I/O diagnosis with a confusing PermissionError from the handler.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        def fake_save(path, *args, **kwargs):
+            with open(path, "wb") as f:
+                f.write(b"PARTIAL")
+            raise OSError("the original failure")
+
+        with patch.object(image, "save", side_effect=fake_save):
+            with patch(
+                "python.graviscan.scan_worker.os.unlink",
+                side_effect=PermissionError("cleanup also failed"),
+            ):
+                with pytest.raises(OSError, match="the original failure"):
+                    _atomic_image_save(image, final_path, "TIFF")
+
+    def test_a_failed_fsync_is_logged(self, tmp_path):
+        # The write proceeding silently would hide a filesystem that never
+        # provides durability — the operator should be able to find out.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        with patch(
+            "python.graviscan.scan_worker.os.fsync",
+            side_effect=OSError("simulated fsync refusal"),
+        ):
+            stderr = _capture_stderr(_atomic_image_save, image, final_path, "TIFF")
+
+        assert "fsync" in stderr
+        assert os.path.exists(final_path)
+
+    def test_bytes_are_fsynced_before_the_rename_publishes_the_name(self, tmp_path):
+        # Without an fsync, a power loss can make the rename durable while
+        # the data blocks are not, leaving a zero-length file at the FINAL
+        # path — precisely the outcome this helper exists to prevent. ext4's
+        # auto_da_alloc heuristic does not rescue this case, because it fires
+        # on rename-over-an-existing-file and the _et_-stamped destination
+        # never exists beforehand.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+        call_order = []
+        real_fsync = os.fsync
+        real_replace = os.replace
+
+        def tracking_fsync(fd):
+            call_order.append("fsync")
+            return real_fsync(fd)
+
+        def tracking_replace(src, dst):
+            call_order.append("replace")
+            return real_replace(src, dst)
+
+        with (
+            patch("python.graviscan.scan_worker.os.fsync", side_effect=tracking_fsync),
+            patch(
+                "python.graviscan.scan_worker.os.replace", side_effect=tracking_replace
+            ),
+        ):
+            _atomic_image_save(image, final_path, "TIFF")
+
+        assert "fsync" in call_order, "temp file was never fsynced before the rename"
+        assert call_order.index("fsync") < call_order.index(
+            "replace"
+        ), f"fsync must precede the rename, got {call_order}"
+        assert os.path.exists(final_path)
+
+    def test_temp_name_uses_the_shared_prefix_constant(self, tmp_path):
+        # Guards the cross-language contract: listScanFiles() hides exactly
+        # this prefix (GRAVISCAN_TMP_PREFIX in src/types/graviscan.ts). A
+        # drift guard for the TypeScript side lives in
+        # tests/unit/graviscan/image-handlers.test.ts.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+        seen = {}
+
+        def capture_replace(src, dst):
+            seen["tmp"] = os.path.basename(src)
+            os.unlink(src)
+
+        with patch(
+            "python.graviscan.scan_worker.os.replace", side_effect=capture_replace
+        ):
+            _atomic_image_save(image, final_path, "TIFF")
+
+        assert seen["tmp"].startswith(TMP_PREFIX)
+        assert seen["tmp"].endswith(os.path.basename(final_path))
+
+
+class TestAtomicWriteSurvivesRealSigkill:
+    """End-to-end proof of the actual safety claim #281 item 1 exists to
+    make: a real `scan_worker.py --mock` subprocess, SIGKILLed mid-write,
+    leaves no truncated file at the final output path — only a stray
+    `.tmp-*` file, or nothing at all. Runs in mock mode, no hardware
+    required, so it's CI-feasible.
+
+    The kill lands *inside* `image.save()` — encoding a full-resolution
+    LZW TIFF takes long enough (~0.5s) that polling for the temp file's
+    first appearance reliably catches the write in progress, with a
+    partially-written temp file on disk. That is the production failure
+    mode #281 describes, and the strongest case to test: there is no
+    complete file anywhere to rename, so only the temp-then-replace
+    sequence can keep the final path clean.
+
+    The complementary window (temp fully written, rename not yet done) is
+    covered by TestAtomicImageSave's ordering test, which patches
+    `os.replace` and asserts the temp file is complete when it is called.
+
+    An earlier version of this test drove the timing with a
+    GRAVISCAN_TEST_SLOW_WRITE_MS hook in production code. Instrumentation
+    showed the poll always won the race first, so the hook never actually
+    executed here — it was removed rather than left shipping an unused
+    test seam in the live SANE write path."""
+
+    def test_sigkill_during_write_leaves_no_truncated_final_file(self, tmp_path):
+        output_path = str(tmp_path / "plate_st_20260910T120000_cy1_S1_00.tif")
+        env = os.environ.copy()
+
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "python.graviscan.scan_worker",
+                "--mock",
+                "--scanner-id",
+                "sigkill-test-scanner",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            cwd=os.getcwd(),
+        )
+        try:
+            ready_line = proc.stdout.readline()
+            assert (
+                '"ready"' in ready_line
+            ), f"worker never signaled ready: {ready_line!r}"
+
+            command = {
+                "action": "scan",
+                "plates": [
+                    {
+                        "plate_index": "00",
+                        "grid_mode": "2grid",
+                        "resolution": 300,
+                        "output_path": output_path,
+                    }
+                ],
+            }
+            proc.stdin.write(json.dumps(command) + "\n")
+            proc.stdin.flush()
+
+            # POLL for the temp file's real appearance rather than guessing
+            # an elapsed time. A fixed sleep makes this test vacuous on a
+            # loaded runner: if the kill lands before the write starts, every
+            # assertion below still passes while proving nothing about
+            # atomicity. (Measured locally, the temp file appears at
+            # t=0.64-1.09s — a fixed 1.5s kill had only ~0.4s of margin.)
+            # Guessed kill timing has bitten this project on real hardware
+            # before; poll for actual state instead.
+            deadline = time.monotonic() + 20
+            tmp_files = []
+            while time.monotonic() < deadline:
+                tmp_files = glob.glob(str(tmp_path / f"{TMP_PREFIX}*"))
+                if tmp_files:
+                    break
+                assert proc.poll() is None, (
+                    f"worker exited before writing a temp file "
+                    f"(rc={proc.returncode}); stderr: {proc.stderr.read()!r}"
+                )
+                time.sleep(0.02)
+
+            # Assert the POSITIVE precondition: the kill is about to land
+            # inside the real write window, so a pass below is meaningful.
+            assert tmp_files, (
+                "temp file never appeared within 20s — the SIGKILL below "
+                "would not land inside the write window, making this test's "
+                "assertions vacuous"
+            )
+
+            proc.kill()  # SIGKILL
+            proc.wait(timeout=10)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=10)
+
+        assert not os.path.exists(
+            output_path
+        ), "nothing should ever be written directly to the pre-_et_ path"
+        # NB: glob() skips dotfiles, so this cannot match the .tmp- residue —
+        # that exclusion is load-bearing and deliberate here.
+        tif_files = glob.glob(str(tmp_path / "*.tif"))
+        assert tif_files == [], (
+            f"a SIGKILL mid-write must never leave a file at the final "
+            f"(_et_-stamped) path — found: {tif_files}"
+        )
+        # The stray temp file is the accepted residue (design.md Decision 1):
+        # a SIGKILLed process cannot run a cleanup handler.
+        assert glob.glob(
+            str(tmp_path / f"{TMP_PREFIX}*")
+        ), "expected the interrupted write's temp file to remain on disk"
+
+
+class TestSaneScanUsesAtomicWrite:
+    """The REAL (non-mock) write path goes through _atomic_image_save.
+
+    `_mock_scan` is covered end-to-end by TestAtomicWriteSurvivesRealSigkill,
+    but `_sane_scan` — the path that actually runs on the rig — is the one
+    #281 item 1 is about. Without this, reverting `_sane_scan` alone to a
+    direct `image.save(final_path, ...)` passes the entire suite: the
+    surrounding retry/resolution tests only assert that *a* .tif exists,
+    which is equally true of a non-atomic save.
+    """
+
+    @patch("time.sleep")
+    def test_real_scan_path_writes_via_temp_then_rename(self, mock_sleep, tmp_path):
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+
+        mock_device = MagicMock()
+        mock_device.start = MagicMock()
+        mock_device.snap.return_value = Image.new("RGB", (100, 100))
+        w._device = mock_device
+        w._sane = MagicMock()
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        real_replace = os.replace
+        renames = []
+
+        def tracking_replace(src, dst):
+            # The temp file must be complete and the destination absent at
+            # the moment of the rename — i.e. a genuine atomic publish, not a
+            # direct write with a cosmetic rename bolted on afterwards.
+            assert os.path.basename(src).startswith(TMP_PREFIX)
+            assert os.path.getsize(src) > 0
+            assert not os.path.exists(dst)
+            renames.append((src, dst))
+            real_replace(src, dst)
+
+        with patch(
+            "python.graviscan.scan_worker.os.replace", side_effect=tracking_replace
+        ):
+            _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+
+        assert len(renames) == 1, "the real scan path did not publish via os.replace"
+        tifs = list(tmp_path.glob("*.tif"))
+        assert len(tifs) == 1
+        assert not glob.glob(os.path.join(str(tmp_path), f"{TMP_PREFIX}*"))
 
 
 class TestSaneScanRetryLogic:
@@ -1333,8 +1764,10 @@ class TestBuildTiffMetadata:
 
 @pytest.mark.hardware
 class TestRealHardwarePathComposition:
-    """11.1 real (non-mock) scan writes directly to its final _et_-stamped
-    filename — no write-then-rename.
+    """11.1 real (non-mock) scan writes to its final _et_-stamped filename
+    via a write-then-atomic-rename to a `.tmp-*` temp path (see
+    _atomic_image_save) — the caller-visible `output_path` (pre-_et_) is
+    never written to at all, only the final path ever appears on disk.
 
     Requires the physical GraviScan rig (a real SANE scanner attached).
     Excluded from default/CI runs via `-m "not hardware"` in pyproject.toml.
@@ -1375,7 +1808,9 @@ class TestRealHardwarePathComposition:
             # _et_ timestamp segment appears after _st_ in the filename.
             assert st_match.start() < et_match.start()
 
-            # No write-then-rename: nothing exists at the original pre-_et_ path.
+            # The caller-visible pre-_et_ path is never written to at all —
+            # the real write happens to a .tmp-* temp path, then an atomic
+            # rename lands only at the final (_et_-stamped) path.
             assert not os.path.exists(output_path)
         finally:
             if final_path and os.path.exists(final_path):
