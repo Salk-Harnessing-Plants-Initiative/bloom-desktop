@@ -55,16 +55,6 @@ The scan worker SHALL save scan output files with both `_st_TIMESTAMP` (start) a
 
 > Without this guard a one-sided rename is silent and its consequence is the exact failure the atomic write exists to prevent: stray partial TIFFs reappearing in the operator's file browser carrying valid `.tif` extensions.
 
-#### Scenario: A test-only timing hook cannot affect a real scan
-
-- **GIVEN** the worker supports a test-only delay hook (`GRAVISCAN_TEST_SLOW_WRITE_MS`) that pauses between the temporary write and the rename
-- **WHEN** the worker is running a real (non-mock) scan
-- **THEN** the hook SHALL be ignored regardless of the environment variable's value
-- **AND** when the hook IS honoured, a non-numeric or non-positive value SHALL be ignored rather than raising
-- **AND** the delay SHALL be clamped to a bounded maximum
-
-> The main process spreads its entire environment into the worker, so without these guards a value in an operator's shell profile or service unit would reach the live SANE write path — widening precisely the window the atomic write closes, or failing every plate with an error that never names the variable responsible.
-
 #### Scenario: Rename failure after a successful write is treated as a scan failure, not silently swallowed
 
 - **GIVEN** the worker has fully and successfully written a plate's image data to a temporary path
@@ -241,11 +231,21 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 
 > A row can end after some of its plates have already succeeded. Reporting a plate whose path is known as "output presence unknown", or skipping its on-disk check, would make the diagnostic actively misleading about the very provenance it exists to record.
 
+#### Scenario: A completion event is only accepted for the row that asked for it
+
+- **GIVEN** a row's listener is attached to a scanner's subprocess
+- **WHEN** a `scan-complete` arrives for a plate index that is not part of this row, or repeats a plate index this row has already recorded
+- **THEN** the coordinator SHALL ignore it
+- **AND** SHALL neither verify its path nor count it toward any grid's tally
+
+> A row ended by timeout leaves its worker still running, so its late completions arrive after the next row's listener is attached. Without this guard a plate from the previous row is verified and counted against a grid that never scanned it, and a duplicate inflates a tally past its own denominator.
+
 #### Scenario: A grid's verified tally is logged against its expected count
 
 - **GIVEN** a grid's plates have been verified
 - **WHEN** the coordinator logs the grid-complete tally via `scanLog()`
 - **THEN** the line SHALL report both the verified count and the expected count
+- **AND** the expected count SHALL be derived from the plates the cycle was ASKED to scan, never from the rows that happened to be dispatched — a scanner removed mid-cycle must not shrink both sides of the ratio and make a short grid read as complete
 - **AND** SHALL explicitly mark a shortfall when the verified count is lower
 
 > A bare count is ambiguous: "4 files verified" reads identically whether the grid produced 4 of 4 or 4 of 5. This is the cheapest completeness signal available for an unattended run.

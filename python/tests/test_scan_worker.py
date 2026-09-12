@@ -19,12 +19,10 @@ import pytest
 from PIL import Image
 
 from python.graviscan.scan_worker import (
-    MAX_TEST_SLOW_WRITE_MS,
     TMP_PREFIX,
     ScanWorker,
     _atomic_image_save,
     _build_tiff_metadata,
-    _slow_write_for_testing,
     emit_event,
     log,
     run_worker,
@@ -457,70 +455,34 @@ class TestAtomicImageSave:
         assert seen["tmp"].endswith(os.path.basename(final_path))
 
 
-class TestSlowWriteTestHook:
-    """_slow_write_for_testing() — a test-only seam that ships in the
-    production write path, so it must be inert and un-weaponisable there.
-    buildSubprocessEnv() spreads the whole main-process environment into
-    the worker, so any value in an operator's shell profile, .desktop
-    launcher, or systemd unit reaches this code on the real rig."""
-
-    def test_is_a_noop_outside_mock_mode_even_when_the_env_var_is_set(self):
-        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": "5000"}):
-            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
-                _slow_write_for_testing(mock=False)
-        mock_sleep.assert_not_called()
-
-    def test_is_a_noop_when_the_env_var_is_unset(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
-                _slow_write_for_testing(mock=True)
-        mock_sleep.assert_not_called()
-
-    @pytest.mark.parametrize("bad_value", ["abc", "true", "1500.5", "  ", "12x"])
-    def test_ignores_a_non_numeric_value_instead_of_raising(self, bad_value):
-        # A ValueError here would surface AFTER the temp write and BEFORE the
-        # rename, be swallowed by _sane_scan()'s per-attempt handler, and burn
-        # all MAX_RETRIES attempts — failing every plate with an error message
-        # that never names the offending variable.
-        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": bad_value}):
-            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
-                _slow_write_for_testing(mock=True)
-        mock_sleep.assert_not_called()
-
-    @pytest.mark.parametrize("non_positive", ["0", "-5000"])
-    def test_ignores_a_non_positive_value(self, non_positive):
-        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": non_positive}):
-            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
-                _slow_write_for_testing(mock=True)
-        mock_sleep.assert_not_called()
-
-    def test_clamps_an_absurd_value_to_the_bounded_maximum(self):
-        # Unbounded, "999999999" sleeps for ~11.5 days inside the write path.
-        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": "999999999"}):
-            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
-                _slow_write_for_testing(mock=True)
-        mock_sleep.assert_called_once_with(MAX_TEST_SLOW_WRITE_MS / 1000)
-
-    def test_honours_a_valid_in_range_value(self):
-        with patch.dict(os.environ, {"GRAVISCAN_TEST_SLOW_WRITE_MS": "250"}):
-            with patch("python.graviscan.scan_worker.time.sleep") as mock_sleep:
-                _slow_write_for_testing(mock=True)
-        mock_sleep.assert_called_once_with(0.25)
-
-
 class TestAtomicWriteSurvivesRealSigkill:
     """End-to-end proof of the actual safety claim #281 item 1 exists to
     make: a real `scan_worker.py --mock` subprocess, SIGKILLed mid-write,
     leaves no truncated file at the final output path — only a stray
     `.tmp-*` file, or nothing at all. Runs in mock mode, no hardware
-    required, so it's CI-feasible. Uses GRAVISCAN_TEST_SLOW_WRITE_MS
-    (a test-only hook, no-op unless set) to make the kill's timing
-    reliable rather than a race."""
+    required, so it's CI-feasible.
+
+    The kill lands *inside* `image.save()` — encoding a full-resolution
+    LZW TIFF takes long enough (~0.5s) that polling for the temp file's
+    first appearance reliably catches the write in progress, with a
+    partially-written temp file on disk. That is the production failure
+    mode #281 describes, and the strongest case to test: there is no
+    complete file anywhere to rename, so only the temp-then-replace
+    sequence can keep the final path clean.
+
+    The complementary window (temp fully written, rename not yet done) is
+    covered by TestAtomicImageSave's ordering test, which patches
+    `os.replace` and asserts the temp file is complete when it is called.
+
+    An earlier version of this test drove the timing with a
+    GRAVISCAN_TEST_SLOW_WRITE_MS hook in production code. Instrumentation
+    showed the poll always won the race first, so the hook never actually
+    executed here — it was removed rather than left shipping an unused
+    test seam in the live SANE write path."""
 
     def test_sigkill_during_write_leaves_no_truncated_final_file(self, tmp_path):
         output_path = str(tmp_path / "plate_st_20260910T120000_cy1_S1_00.tif")
         env = os.environ.copy()
-        env["GRAVISCAN_TEST_SLOW_WRITE_MS"] = "3000"
 
         proc = subprocess.Popen(
             [

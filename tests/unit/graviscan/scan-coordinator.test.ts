@@ -1724,6 +1724,98 @@ describe('ScanCoordinator', () => {
         '/scans/exp/wave1/scanner-1/plate_st_20260101T000000_et_20260101T000100_cy1_S1_00.tif'
       );
 
+      // ...and must COUNT toward its grid's tally. Verifying it but not
+      // counting it would report `0/1 files verified — 1 MISSING` for a grid
+      // that produced and verified a real file, which makes the completeness
+      // signal actively wrong in exactly the early-ending-row case it exists
+      // for. (Spec: "each such plate SHALL count toward its grid's verified
+      // tally".)
+      const grid00Tally = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('grid 00 complete') &&
+            msg.includes('files verified')
+        );
+      expect(grid00Tally.length).toBeGreaterThan(0);
+      for (const [msg] of grid00Tally) {
+        expect(msg).toContain('1/1 files verified');
+        expect(msg).not.toContain('MISSING');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('ignores a late scan-complete belonging to a different row, and a duplicate for the same plate', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      // 4grid: the first row group is ['00','01']. The worker emits plate
+      // 00 twice (a duplicate) and also emits plate '10', which belongs to
+      // the NEXT row group — the shape a timed-out row produces when its
+      // worker keeps running and its late events land on the following row's
+      // listener. Neither may reach this row's tally: the duplicate would
+      // inflate it past its denominator, and the foreign plate would be
+      // verified and counted against a grid this row never scanned.
+      let rowCall = 0;
+      sub.scan.mockImplementation(() => {
+        const isFirstRow = rowCall++ === 0;
+        setImmediate(() => {
+          const p = '/scans/exp/wave1/scanner-1/x_st_1_et_2_cy1_S1_';
+          if (isFirstRow) {
+            sub.emit('scan-complete', {
+              plate_index: '00',
+              path: `${p}00.tif`,
+            });
+            // Duplicate of a plate this row owns.
+            sub.emit('scan-complete', {
+              plate_index: '00',
+              path: `${p}00.tif`,
+            });
+            // Belongs to the NEXT row group — must not be adopted by this one.
+            sub.emit('scan-complete', {
+              plate_index: '10',
+              path: `${p}10-STRAY.tif`,
+            });
+          }
+          sub.emit('cycle-done', {});
+        });
+      });
+
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      // The foreign plate's file must never be verified by this row.
+      expect(fs.promises.access).not.toHaveBeenCalledWith(
+        '/scans/exp/wave1/scanner-1/x_st_1_et_2_cy1_S1_10-STRAY.tif'
+      );
+
+      // Plate 00 counted exactly once — never 2/1.
+      const tallies = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('files verified')
+        );
+      expect(tallies.length).toBeGreaterThan(0);
+      for (const [msg] of tallies) {
+        expect(msg).not.toContain('2/1');
+      }
+      const grid00 = tallies.filter(([msg]) =>
+        String(msg).includes('grid 00 complete')
+      );
+      expect(grid00.length).toBeGreaterThan(0);
+      for (const [msg] of grid00) {
+        expect(msg).toContain('1/1 files verified');
+      }
+
       vi.useRealTimers();
     });
 

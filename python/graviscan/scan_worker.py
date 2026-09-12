@@ -54,10 +54,6 @@ except Exception:
 # tests/unit/graviscan/image-handlers.test.ts.
 TMP_PREFIX = ".tmp-"
 
-# Upper bound for the GRAVISCAN_TEST_SLOW_WRITE_MS test hook. Unbounded, a
-# fat-fingered value sleeps for days inside the write path.
-MAX_TEST_SLOW_WRITE_MS = 10_000
-
 
 def _build_tiff_metadata(
     scanner_id: str,
@@ -129,9 +125,7 @@ def log(scanner_id: str, msg: str) -> None:
     print(f"[{scanner_id}] {msg}", file=sys.stderr, flush=True)
 
 
-def _atomic_image_save(
-    image, final_path: str, *save_args, mock: bool = False, **save_kwargs
-) -> None:
+def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> None:
     """Write `image` to a temp file in final_path's directory, then
     atomically replace final_path only after the write succeeds.
 
@@ -175,7 +169,6 @@ def _atomic_image_save(
                 os.fsync(fh.fileno())
         except OSError as e:
             log("scan_worker", f"fsync before rename failed (continuing): {e}")
-        _slow_write_for_testing(mock=mock)
         os.replace(tmp_path, final_path)
     except BaseException:
         try:
@@ -195,41 +188,6 @@ def _atomic_image_save(
             os.close(dir_fd)
     except (OSError, AttributeError):
         pass
-
-
-def _slow_write_for_testing(mock: bool = False) -> None:
-    """Test-only hook: pause after the temp file is written, before the
-    atomic rename, when `GRAVISCAN_TEST_SLOW_WRITE_MS` is set. Lets an
-    external test process reliably land a SIGKILL inside the window
-    between "temp file exists" and "rename completes" without adding
-    timing flakiness to any real code path.
-
-    Only honoured in mock mode. `buildSubprocessEnv()` spreads the entire
-    main-process environment into this worker, so on the real rig any value
-    in an operator's shell profile, .desktop launcher, or systemd unit
-    would otherwise reach the live SANE write path — widening precisely the
-    window the atomic write closes. The value is parsed defensively and
-    clamped for the same reason: an unguarded `int()` would raise *after*
-    the temp write and *before* the rename, be swallowed by `_sane_scan()`'s
-    per-attempt handler, and burn every retry with an error that never names
-    the offending variable.
-    """
-    if not mock:
-        return
-    raw = os.environ.get("GRAVISCAN_TEST_SLOW_WRITE_MS")
-    if not raw:
-        return
-    try:
-        delay_ms = int(raw)
-    except ValueError:
-        log(
-            "scan_worker",
-            f"Ignoring non-numeric GRAVISCAN_TEST_SLOW_WRITE_MS={raw!r}",
-        )
-        return
-    if delay_ms <= 0:
-        return
-    time.sleep(min(delay_ms, MAX_TEST_SLOW_WRITE_MS) / 1000)
 
 
 class ScanWorker:
@@ -636,7 +594,6 @@ class ScanWorker:
                     image,
                     final_path,
                     "TIFF",
-                    mock=self.mock,
                     compression="tiff_lzw",
                     tiffinfo=tiff_meta,
                 )
@@ -862,7 +819,6 @@ class ScanWorker:
             image,
             final_path,
             "TIFF",
-            mock=self.mock,
             compression="tiff_lzw",
             tiffinfo=tiff_meta,
         )
