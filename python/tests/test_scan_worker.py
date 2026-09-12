@@ -394,6 +394,46 @@ class TestAtomicImageSave:
         leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
         assert leftovers == []
 
+    def test_a_cleanup_failure_does_not_mask_the_original_error(self, tmp_path):
+        # Spec: "SHALL propagate the original failure, not any error raised
+        # while cleaning up". Without the try/except around the cleanup
+        # unlink, a Windows AV lock on the temp file would replace the real
+        # I/O diagnosis with a confusing PermissionError from the handler.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        def fake_save(path, *args, **kwargs):
+            with open(path, "wb") as f:
+                f.write(b"PARTIAL")
+            raise OSError("the original failure")
+
+        with patch.object(image, "save", side_effect=fake_save):
+            with patch(
+                "python.graviscan.scan_worker.os.unlink",
+                side_effect=PermissionError("cleanup also failed"),
+            ):
+                with pytest.raises(OSError, match="the original failure"):
+                    _atomic_image_save(image, final_path, "TIFF")
+
+    def test_a_failed_fsync_is_logged(self, tmp_path):
+        # The write proceeding silently would hide a filesystem that never
+        # provides durability — the operator should be able to find out.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        with patch(
+            "python.graviscan.scan_worker.os.fsync",
+            side_effect=OSError("simulated fsync refusal"),
+        ):
+            stderr = _capture_stderr(_atomic_image_save, image, final_path, "TIFF")
+
+        assert "fsync" in stderr
+        assert os.path.exists(final_path)
+
     def test_bytes_are_fsynced_before_the_rename_publishes_the_name(self, tmp_path):
         # Without an fsync, a power loss can make the rename durable while
         # the data blocks are not, leaving a zero-length file at the FINAL
@@ -570,6 +610,53 @@ class TestAtomicWriteSurvivesRealSigkill:
         assert glob.glob(
             str(tmp_path / f"{TMP_PREFIX}*")
         ), "expected the interrupted write's temp file to remain on disk"
+
+
+class TestSaneScanUsesAtomicWrite:
+    """The REAL (non-mock) write path goes through _atomic_image_save.
+
+    `_mock_scan` is covered end-to-end by TestAtomicWriteSurvivesRealSigkill,
+    but `_sane_scan` — the path that actually runs on the rig — is the one
+    #281 item 1 is about. Without this, reverting `_sane_scan` alone to a
+    direct `image.save(final_path, ...)` passes the entire suite: the
+    surrounding retry/resolution tests only assert that *a* .tif exists,
+    which is equally true of a non-atomic save.
+    """
+
+    @patch("time.sleep")
+    def test_real_scan_path_writes_via_temp_then_rename(self, mock_sleep, tmp_path):
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+
+        mock_device = MagicMock()
+        mock_device.start = MagicMock()
+        mock_device.snap.return_value = Image.new("RGB", (100, 100))
+        w._device = mock_device
+        w._sane = MagicMock()
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        real_replace = os.replace
+        renames = []
+
+        def tracking_replace(src, dst):
+            # The temp file must be complete and the destination absent at
+            # the moment of the rename — i.e. a genuine atomic publish, not a
+            # direct write with a cosmetic rename bolted on afterwards.
+            assert os.path.basename(src).startswith(TMP_PREFIX)
+            assert os.path.getsize(src) > 0
+            assert not os.path.exists(dst)
+            renames.append((src, dst))
+            real_replace(src, dst)
+
+        with patch(
+            "python.graviscan.scan_worker.os.replace", side_effect=tracking_replace
+        ):
+            _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+
+        assert len(renames) == 1, "the real scan path did not publish via os.replace"
+        tifs = list(tmp_path.glob("*.tif"))
+        assert len(tifs) == 1
+        assert not glob.glob(os.path.join(str(tmp_path), f"{TMP_PREFIX}*"))
 
 
 class TestSaneScanRetryLogic:
