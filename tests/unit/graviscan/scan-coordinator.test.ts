@@ -1491,7 +1491,7 @@ describe('ScanCoordinator', () => {
       });
       // sub2 exits (crash)
       sub2.scan.mockImplementation(() => {
-        setImmediate(() => sub2.emit('exit', {}));
+        setImmediate(() => sub2.emit('exit', { scannerId: sub2.scannerId, code: 1, signal: null }));
       });
 
       const cycleComplete = vi.fn();
@@ -1521,17 +1521,31 @@ describe('ScanCoordinator', () => {
       // scanner-1's subprocess exits mid-row — no cycle-done, no
       // scan-complete for either plate in this row.
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', {}));
+        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
       });
 
       const scanError = vi.fn();
       coordinator.on('scan-error', scanError);
 
       // 4grid gives this one scanner 2 plates per row group (00+01 in the
-      // top row, 10+11 in the bottom row) — since the mock exits on every
-      // sub.scan() call, both row groups exit, giving 4 plates total
-      // across 2 rows. This proves "one line per plate" (not one combined
-      // line per row) across multiple rows, not just within a single one.
+      // top row, 10+11 in the bottom row). All 4 plates must be diagnosed,
+      // proving "one line per plate" (not one combined line per row) across
+      // multiple rows, not just within a single one.
+      //
+      // The two rows get there by DIFFERENT routes, which is the point
+      // (review round 5, B2). The `exit` payload here is production's
+      // `{ scannerId, code, signal }`; when these tests emitted `{}`, the
+      // coordinator's identity-guarded eviction at the subprocess `exit`
+      // handler silently missed and the dead scanner kept receiving rows
+      // that production would never have sent it. With a faithful payload:
+      //   - row 00+01 exits mid-row  -> diagnosed from the row's `exit`
+      //     outcome, via its unreported plates;
+      //   - the scanner is then EVICTED from `this.subprocesses`, so row
+      //     10+11 is never dispatched at all and has no result -> diagnosed
+      //     by the end-of-row reconciliation against `platesPerScanner`.
+      // Before that reconciliation existed this assertion could only ever
+      // see 2 in production, and the plates of every row after the failure
+      // went unrecorded at plate level.
       const platesMap = makePlatesMap(['scanner-1'], '4grid');
       const scanPromise = coordinator.scanOnce(platesMap);
 
@@ -1687,7 +1701,7 @@ describe('ScanCoordinator', () => {
             path: '/scans/exp/wave1/scanner-1/plate_st_20260101T000000_et_20260101T000100_cy1_S1_00.tif',
           });
           void plates;
-          sub.emit('exit', {});
+          sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null });
         });
       });
 
@@ -1925,7 +1939,7 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', {}));
+        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
@@ -1949,8 +1963,18 @@ describe('ScanCoordinator', () => {
       // and a two-digit grid index are not enough to find the affected wave.
       for (const [msg] of diagnosticCalls) {
         expect(msg).toContain('wave 1');
+        // Shares the `MISSING` token with the grid tally, so one grep finds
+        // both halves of the signal rather than only the aggregate one.
+        expect(msg).toContain('MISSING?');
+        // Ends with an action a technician can take. "output presence
+        // unknown" never got a plate re-scanned.
+        expect(msg).toMatch(/re-scan this plate if it is absent/);
+        // Deliberately does NOT label the path `pre-_et_`: no `_et_`-stamped
+        // file exists to look for (#370), so the old wording sent the reader
+        // hunting for a filename that will never appear on disk.
+        expect(msg).not.toContain('_et_');
         // The expected path carries experiment id, wave, scanner and cycle.
-        expect(msg).toContain('expected at (pre-_et_)');
+        expect(msg).toContain('Check for ');
         // And it must be the CYCLE-CORRECTED path (from platesToScan), not
         // the stale one the row was built from. scanOnce() rewrites `_cy<N>_`
         // per cycle; quoting the stale path would name the wrong cycle for a
@@ -1969,7 +1993,7 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', {}));
+        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
       });
 
       // Two cycles: the fixture's output_path is built with `_cy1_`, so if
@@ -2011,7 +2035,7 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', {}));
+        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
@@ -2302,7 +2326,7 @@ describe('ScanCoordinator', () => {
         });
       });
       sub2.scan.mockImplementation(() => {
-        setImmediate(() => sub2.emit('exit', {}));
+        setImmediate(() => sub2.emit('exit', { scannerId: sub2.scannerId, code: 1, signal: null }));
       });
 
       vi.mocked(fs.promises.access).mockImplementation(async () => {

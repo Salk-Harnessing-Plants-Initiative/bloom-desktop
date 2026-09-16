@@ -694,6 +694,43 @@ export class ScanCoordinator
   }
 
   /**
+   * Record that a plate ended a cycle with no confirmed image.
+   *
+   * This line is the ONLY durable record that the plate's outcome is
+   * unknown, so it carries enough context to reconstruct the affected wave
+   * later without the database: cycle, wave, plate and the full expected
+   * path (which itself encodes experiment, wave and scanner).
+   *
+   * Written for a lab technician rather than an engineer (review round 5,
+   * I8):
+   *  - leads with `MISSING?`, the same token the grid tally uses, so one
+   *    grep finds both halves of the signal;
+   *  - states the consequence before the mechanism;
+   *  - ends with the action, because "output presence unknown" never got a
+   *    plate re-scanned;
+   *  - does not label the path `pre-_et_`. No `_et_`-stamped file exists to
+   *    look for today (#370), and sending someone hunting for one is worse
+   *    than saying nothing.
+   *
+   * `plate` must come from `platesToScan` where one exists, so its
+   * `_cy<N>_` is this cycle's rather than the stale one the row was built
+   * from.
+   */
+  private logUnverifiedPlate(
+    scannerId: string,
+    plate: PlateConfig,
+    cause: string
+  ): void {
+    const wave = plate.wave_number ?? 'unknown';
+    scanLog(
+      `[${scannerId}] MISSING? Cycle ${this.currentCycle} wave ${wave} ` +
+        `plate ${plate.plate_index} — ${cause}; no completion signal ` +
+        `received, so no image is confirmed. Check for ${plate.output_path} ` +
+        `and re-scan this plate if it is absent.`
+    );
+  }
+
+  /**
    * Scan all plates once, orchestrated per-grid.
    *
    * Iterates grids sequentially: for each grid index, all scanners scan
@@ -763,6 +800,10 @@ export class ScanCoordinator
       // apart from a row timeout, which is already fully diagnosed at the
       // moment it fires — conflating them would double-log the timed-out case.
       const rowDonePromises: Promise<RowOutcome>[] = [];
+      // Scanners that actually received this row. Anything in
+      // `platesPerScanner` but NOT here produced no result at all, and is
+      // reconciled into per-plate diagnostics after the results loop.
+      const dispatchedScannerIds = new Set<string>();
       let isFirst = true;
 
       for (const [scannerId, sub] of this.subprocesses) {
@@ -794,6 +835,8 @@ export class ScanCoordinator
           );
           continue;
         }
+
+        dispatchedScannerIds.add(scannerId);
 
         // Update timestamps and cycle numbers in output filenames only
         // (apply regex to basename to avoid mangling date-like directory names)
@@ -1021,27 +1064,9 @@ export class ScanCoordinator
                 ? 'subprocess exited mid-row'
                 : 'scanner stopped mid-row (e.g. wedge auto-pause)';
             for (const plate of unreported) {
-              // The coordinator cannot know what final filename (with its
-              // worker-assigned _et_ timestamp) would have been produced —
-              // scan-complete never arrived, so there's nothing to verify on
-              // disk. This is a log-only diagnostic, not a filesystem check.
-              //
-              // It is the ONLY durable record that this plate's outcome is
-              // unknown, so it carries enough context to reconstruct the
-              // affected wave later without the database. The expected path
-              // does most of that work: it encodes experiment id, wave,
-              // scanner and cycle. It is deliberately the path we SENT, not
-              // a guess at the final name — the worker stamps `_et_` itself
-              // at save time and never reported one for this plate, so the
-              // line says "pre-_et_" rather than implying a filename to look
-              // for. (`plate` comes from `platesToScan`, so its `_cy<N>_` is
-              // this cycle's, not the stale one the row was built from.)
-              const wave = plate.wave_number ?? 'unknown';
-              scanLog(
-                `[${result.scannerId}] Cycle ${this.currentCycle}: row verification skipped for plate ${plate.plate_index} ` +
-                  `(wave ${wave}): no completion signal received (${cause}) — ` +
-                  `output presence unknown; expected at (pre-_et_) ${plate.output_path}`
-              );
+              // Log-only, not a filesystem check: scan-complete never
+              // arrived, so the coordinator has no reported path to verify.
+              this.logUnverifiedPlate(result.scannerId, plate, cause);
             }
           }
         }
@@ -1103,6 +1128,48 @@ export class ScanCoordinator
           verifiedByGrid.set(
             plateIndex,
             (verifiedByGrid.get(plateIndex) || 0) + 1
+          );
+        }
+      }
+
+      // Reconcile what this row was ASKED to scan against what actually got
+      // dispatched. A scanner can be absent from `this.subprocesses`
+      // entirely — its worker died in an earlier row and the `exit` handler
+      // evicted it, it was stopped during the USB stagger window, or it
+      // never spawned — in which case it produces no row, no result, and
+      // therefore none of the per-plate diagnostics above.
+      //
+      // Without this, the diagnostic invariant held only for the row the
+      // failure happened in: every LATER row group in the same cycle went
+      // completely unrecorded at plate level, which is the larger half of
+      // the loss. The grid tally still counted them (its denominator comes
+      // from `platesPerScanner`), but a bare `1 MISSING` does not say which
+      // plate or which wave, which is the whole point of the per-plate line.
+      //
+      // This was invisible until the round-5 review found that every `exit`
+      // in the coordinator tests used `{}` instead of production's
+      // `{ scannerId, code, signal }`, so the identity-guarded eviction at
+      // the subprocess `exit` handler never fired and the dead scanner kept
+      // receiving rows that production would never have sent it.
+      for (const [scannerId, platesForScanner] of platesPerScanner) {
+        if (dispatchedScannerIds.has(scannerId)) continue;
+        const rowPlates = platesForScanner.filter((p) =>
+          rowGrids.includes(p.plate_index)
+        );
+        for (const plate of rowPlates) {
+          // Cycle-correct the quoted path the same way a dispatched row
+          // would have, so the line names the cycle the plate belonged to.
+          // No row was built for this scanner, so `platesToScan` never
+          // existed for it.
+          const dir = path.dirname(plate.output_path);
+          const basename = path
+            .basename(plate.output_path)
+            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
+          this.logUnverifiedPlate(
+            scannerId,
+            { ...plate, output_path: path.join(dir, basename) },
+            'scanner was not running when this row was dispatched (its ' +
+              'worker exited or it was stopped earlier in this session)'
           );
         }
       }
