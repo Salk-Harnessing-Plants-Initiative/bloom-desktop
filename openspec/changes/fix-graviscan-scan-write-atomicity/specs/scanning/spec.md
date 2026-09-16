@@ -2,11 +2,13 @@
 
 ### Requirement: Scan File Saved with Final Filename
 
-The scan worker SHALL save scan output files with both `_st_TIMESTAMP` (start) and `_et_TIMESTAMP` (end) in the filename at write time, via `compose_output_path()`. No post-save rename to a different final path SHALL occur. The worker SHALL write image data to a temporary file in the same directory as the final path and atomically replace the final path only after the image data has been fully and successfully written — a process termination (e.g., SIGKILL) at any point during the write SHALL NOT leave a truncated or invalid file at the final path.
+The scan worker SHALL compose the final filename at write time via `compose_output_path()`, which inserts `_et_TIMESTAMP` (end) after an `_st_TIMESTAMP` (start) segment when the dispatched path carries one. No post-save rename to a different final path SHALL occur.
+
+> **Note (corrected during review round 5):** the renderer does not currently emit an `_st_` segment — `useScanSession.ts` builds `<plateIndex>_cy1_<epoch ms>.tiff` — so in production today `compose_output_path()` matches nothing and returns the path unchanged, and no `_et_` stamp is written. This requirement is therefore stated conditionally rather than as an unconditional fact about filenames on disk. Restoring a self-describing, `_st_`-stamped convention is tracked as #370; this requirement is written so that it is already correct both before and after that lands. The worker SHALL write image data to a temporary file in the same directory as the final path and atomically replace the final path only after the image data has been fully and successfully written — a process termination (e.g., SIGKILL) at any point during the write SHALL NOT leave a truncated or invalid file at the final path.
 
 #### Scenario: Plate scan completes with final filename on disk
 
-- **GIVEN** the worker receives `output_path = "..._st_20260413T120530_cy1_S1_00.tif"`
+- **GIVEN** the worker receives an `_st_`-stamped `output_path = "..._st_20260413T120530_cy1_S1_00.tif"` (see the note above: the renderer does not produce this shape today)
 - **WHEN** the plate scan completes
 - **THEN** the file SHALL be saved as `..._st_20260413T120530_et_20260413T120545_cy1_S1_00.tif`
 - **AND** no rename to a DIFFERENT final path SHALL occur after save (the atomic temp-to-final replace described below is not such a rename: the final path is fixed before the write begins and never changes)
@@ -114,7 +116,7 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **AND** within each grid, scanners SHALL be triggered with a `USB_STAGGER_DELAY_MS` (5-second) stagger delay
 - **AND** each stagger delay SHALL be logged via `scanLog()` with the scanner ID and delay duration
 - **AND** the coordinator SHALL wait for all scanners to complete a grid before proceeding to the next
-- **AND** each plate's final output path (already including the `_et_YYYYMMDDTHHMMSS` end-timestamp, composed by the Python scan worker at save time) SHALL be learned from that plate's `scan-complete` event — the coordinator SHALL NOT assume the path it sent to the worker is the path that was saved
+- **AND** each plate's final output path SHALL be learned from that plate's `scan-complete` event — the coordinator SHALL NOT assume the path it sent to the worker is the path that was saved. (The worker composes the final name at save time and may insert `_et_YYYYMMDDTHHMMSS`; whether it actually does depends on the dispatched filename shape, so the coordinator SHALL NOT depend on either outcome.)
 - **AND** the coordinator SHALL emit `grid-start`, `grid-complete`, and `cycle-complete` events
 
 #### Scenario: File verification after scan-complete uses async FS
@@ -189,7 +191,7 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **GIVEN** the coordinator is actively awaiting `scanOnce()`'s row completion
 - **WHEN** one scanner's row ends with outcome `exit` (its subprocess died on its own — a crash, an OOM-kill, or `killAll()` on app quit) or outcome `stopped` (the coordinator deliberately ended the row via `stopScanner()`, most commonly from wedge auto-pause) — as distinct from outcome `timeout` (see the next scenario)
 - **THEN** the coordinator SHALL NOT attempt to guess or verify a specific file path for the plates in that row that never reported one
-- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per such plate, identifying the cycle number, scanner ID, plate index, wave number, which of the two causes applied, and the path the coordinator sent for that plate — labelled as the pre-`_et_` path, since the worker stamps `_et_` itself at save time and never reported one for this plate
+- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per such plate, identifying the cycle number, scanner ID, plate index, wave number, which of the two causes applied, and the path the coordinator sent for that plate. The line SHALL share a search token with the grid-completeness tally so one search finds both, and SHALL state the action to take. It SHALL NOT label the path as pre-`_et_`: no `_et_`-stamped file exists on disk under the current filename convention, so that label sends the reader looking for a filename that will never appear
 - **AND** that path SHALL be the cycle-corrected one actually dispatched for this row, not the path the row was originally built from, so the line names the cycle the plate belonged to
 - **AND** the coordinator SHALL NOT emit a `scan-error` event as a result of this diagnostic (to avoid feeding a synthetic error back into wedge-detection for a scanner that may have already been correctly auto-paused)
 
@@ -209,7 +211,11 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 - **THEN** that scanner's in-flight row SHALL be settled before the listeners are removed
 - **AND** the row SHALL NOT be left to settle by the per-row timeout
 
-> `shutdown()` is the Cancel Scan path: `cancelScan` calls `cancelAll()` then `shutdown()` in the same tick, and `cancelAll()` only writes a `cancel` to the worker's stdin — which the worker cannot read until its current blocking save returns. An orphaned row there produces a spurious row-timeout `scan-error` 90 seconds after the operator cancelled. `killAll()` does not strip listeners (its rows settle via `exit`), and `reclaimUnresponsive()` only runs for a spawn that never became ready, so neither needs this.
+> `shutdown()` is the Cancel Scan path: `cancelScan` calls `cancelAll()` then `shutdown()` in the same tick, and `cancelAll()` only writes a `cancel` to the worker's stdin — which the worker cannot read until its current blocking save returns. An orphaned row there produces a spurious row-timeout `scan-error` 90 seconds after the operator cancelled. `killAll()` does not strip listeners, so its rows settle via `exit` and it does not need this.
+>
+> `reclaimUnresponsive()` is a **known residual, not a case that cannot arise** (corrected during review round 5 — the original justification here, that it "only runs for a spawn that never became ready", does not hold). Not-ready does not imply no-row-in-flight: `this.subprocesses.set()` happens *before* `await sub.spawn()`, and `scanOnce()`'s dispatch loop iterates that map with no readiness filter, so a row can be attached to a subprocess whose spawn is still in flight. `reclaimUnresponsive()` then strips its listeners without settling, orphaning the row for the full `SCAN_ROW_TIMEOUT_MS`.
+>
+> It is reachable through the documented wedge-recovery flow — `retryScanner()` stops and re-adds a scanner, the respawn is deferred to the inter-cycle window, and in continuous mode the next `scanOnce()` can begin while that spawn is still pending; the spawn then times out at `SPAWN_READY_TIMEOUT_MS` and the orphaned row emits a spurious row-timeout `scan-error` that can feed `WedgeDetector` and auto-pause the scanner being recovered. It needs a cycle gap shorter than the spawn timeout, which is why it is accepted here rather than fixed. Closing it would mean settling the in-flight row before `removeAllListeners()` on that path too.
 
 #### Scenario: A scanner stopped during the USB stagger window is skipped, not left to time out
 
