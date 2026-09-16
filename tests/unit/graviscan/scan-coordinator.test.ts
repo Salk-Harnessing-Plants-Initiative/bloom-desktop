@@ -1747,6 +1747,104 @@ describe('ScanCoordinator', () => {
       vi.useRealTimers();
     });
 
+    it('does not count a PREVIOUS CYCLE\'s late scan-complete as this cycle\'s file (review round 5, B1)', async () => {
+      // `rowGrids` is the same list of grid indices on every cycle, so a
+      // guard keyed on plate_index alone separates rows WITHIN a cycle but
+      // cannot separate cycle N's row ['00'] from cycle N+1's row ['00'].
+      //
+      // A row timeout does not abort the worker — the Python side reads
+      // commands serially and keeps scanning, while the coordinator
+      // immediately dispatches the next row into the same pipe. So cycle 1's
+      // completion can land while cycle 2's listener is attached. Without a
+      // cycle discriminator it is accepted, verified against cycle 1's file
+      // (which genuinely exists), and counted as cycle 2's — logging
+      // `grid 00 complete — 1/1 files verified` for a cycle that scanned
+      // nothing. The spec calls that out as "an affirmative completeness
+      // claim that is false, and strictly worse than the bare count this
+      // replaced".
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const sub = createdSubprocesses[0];
+
+      const dispatched: PlateConfig[][] = [];
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        dispatched.push(plates);
+        if (dispatched.length === 1) {
+          // Cycle 1: worker is still busy. No cycle-done — the row times out
+          // while the physical scan continues.
+          return;
+        }
+        // Cycle 2: cycle 1's completion finally arrives, carrying cycle 1's
+        // own `_cy1_` path, and only then does this row report done with
+        // nothing of its own.
+        setImmediate(() => {
+          sub.emit('scan-complete', {
+            type: 'scan-complete',
+            scanner_id: 'scanner-1',
+            plate_index: '00',
+            path: dispatched[0][0].output_path,
+          });
+          sub.emit('cycle-done', {});
+        });
+      });
+
+      // A SINGLE grid index deliberately: one row group per cycle is the
+      // configuration in which `rowGrids` cannot discriminate anything at
+      // all, so it is the sharpest form of the bug (and is what a 2grid
+      // session with both plates on one scanner looks like).
+      const platesMap = new Map<string, PlateConfig[]>([
+        [
+          'scanner-1',
+          [
+            {
+              plate_index: '00',
+              grid_mode: '2grid',
+              resolution: 600,
+              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_00.tif',
+              wave_number: 1,
+            },
+          ],
+        ],
+      ]);
+
+      const cycle1 = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await cycle1;
+
+      const cycle2 = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await cycle2;
+
+      // Sanity: the two cycles really did dispatch different paths, or this
+      // test proves nothing.
+      expect(dispatched).toHaveLength(2);
+      expect(dispatched[0][0].output_path).toContain('_cy1_');
+      expect(dispatched[1][0].output_path).toContain('_cy2_');
+
+      const tallies = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('grid 00 complete') &&
+            msg.includes('files verified')
+        )
+        .map(([msg]) => msg as string);
+
+      expect(tallies.length).toBeGreaterThanOrEqual(2);
+      const cycle2Tally = tallies[tallies.length - 1];
+      expect(cycle2Tally).toContain('Cycle 2');
+      expect(cycle2Tally).toContain('0/1 files verified');
+      expect(cycle2Tally).toContain('1 MISSING');
+
+      // The stale path must never have been verified as cycle 2's output.
+      expect(fs.promises.access).not.toHaveBeenCalledWith(
+        dispatched[0][0].output_path
+      );
+    });
+
     it('ignores a late scan-complete belonging to a different row, and a duplicate for the same plate', async () => {
       vi.useFakeTimers();
 

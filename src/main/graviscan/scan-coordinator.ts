@@ -42,6 +42,7 @@ export const USB_STAGGER_DELAY_MS = 5000;
  */
 export const SCAN_ROW_TIMEOUT_MS = 90_000;
 
+
 /**
  * Bound on how long a single scanner's spawn attempt is allowed to run
  * without becoming ready or dying, before the coordinator gives up on it
@@ -809,11 +810,26 @@ export class ScanCoordinator
           };
         });
 
+        // The exact basename dispatched for each plate of this row, keyed by
+        // plate index. `onScanComplete` compares against it so a late
+        // completion from an earlier cycle cannot be counted here — see the
+        // comment there for why plate_index alone is insufficient.
+        const expectedBasenames = new Map(
+          platesToScan.map((p) => [p.plate_index, path.basename(p.output_path)])
+        );
+
         // Accumulate the REAL per-plate paths from each plate's own
-        // scan-complete event. The worker now composes the final filename
-        // (including `_et_`) at save time, so the path we sent above is no
-        // longer guaranteed to be the path on disk — we must learn it from
-        // the event, not assume it.
+        // scan-complete event. The worker composes the final filename at
+        // save time, so we learn the path from the event rather than
+        // assuming the one we sent.
+        //
+        // Today those are in fact identical, because the renderer no longer
+        // emits an `_st_` segment for `compose_output_path()` to stamp
+        // `_et_` into (#370) — so this is currently a design stance rather
+        // than a live necessity. It is still the right stance: it is what
+        // makes the coordinator correct again the moment #370 restores the
+        // stamped convention, and `dispatchedBasename()` below is written to
+        // compare correctly under both.
         const outputPaths: PlateOutputPath[] = [];
 
         const promise = new Promise<RowOutcome>((resolve) => {
@@ -849,12 +865,51 @@ export class ScanCoordinator
           const settleStopped = () => settle('stopped');
           const onScanComplete = (event: ScanWorkerEvent) => {
             if (!event.plate_index || !event.path) return;
-            // Only accept plates belonging to THIS row. A row that timed out
-            // leaves its worker still running, so its late `scan-complete`
-            // would otherwise land on the next row's listener and be counted
-            // against the wrong grid. Dedupe for the same reason the tally is
-            // now load-bearing: a repeated event must not inflate it.
-            if (!rowGrids.includes(event.plate_index)) return;
+            // Only accept a completion for a plate of THIS row of THIS
+            // cycle. A row that timed out leaves its worker still running,
+            // so its late `scan-complete` would otherwise land on a later
+            // listener and be counted against the wrong grid.
+            //
+            // Matching on plate_index alone is NOT enough: `rowGrids` holds
+            // the same grid indices on every cycle, so it separates rows
+            // within a cycle but cannot separate cycle N's row ['00'] from
+            // cycle N+1's row ['00'] — and with one row group per cycle it
+            // discriminates nothing at all. The stale event would then be
+            // verified against the PREVIOUS cycle's file (which really does
+            // exist) and logged as this cycle's `1/1 files verified`, an
+            // affirmative false completeness claim, while the dedupe below
+            // silently dropped this cycle's genuine event.
+            //
+            // So discriminate on the cycle token. `scanOnce()` rewrites
+            // `_cy<N>_` into every dispatched basename each cycle, and
+            // nothing downstream touches it: `compose_output_path()` only
+            // inserts `_et_`. Deliberately NOT a whole-basename comparison —
+            // the worker may legitimately report a different path than the
+            // one sent (that is why we learn it from the event at all), and
+            // the coordinator itself also rewrites the `_st_` stamp.
+            //
+            // Enforced only when the dispatched name actually carries a
+            // cycle token, so a naming scheme without one degrades to
+            // today's behaviour rather than silently dropping every event.
+            const expected = expectedBasenames.get(event.plate_index);
+            if (!expected) return;
+            const cycleToken = `_cy${this.currentCycle}_`;
+            if (
+              expected.includes(cycleToken) &&
+              !path.basename(event.path).includes(cycleToken)
+            ) {
+              scanLog(
+                `[${scannerId}] Cycle ${this.currentCycle}: ignored a ` +
+                  `scan-complete for plate ${event.plate_index} belonging ` +
+                  `to a different cycle — got ${path.basename(event.path)}, ` +
+                  `expected ${cycleToken}. The worker is running behind ` +
+                  `after an earlier row timed out; that file belongs to the ` +
+                  `earlier cycle and is counted there, not here.`
+              );
+              return;
+            }
+            // Dedupe for the same reason the tally is now load-bearing: a
+            // repeated event must not inflate it.
             if (outputPaths.some((o) => o.plateIndex === event.plate_index)) {
               return;
             }
