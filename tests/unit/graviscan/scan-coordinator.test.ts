@@ -89,6 +89,31 @@ function emitScanCompleteForPlates(
   }
 }
 
+// Emit `cycle-done` the way production does. `ScannerSubprocess` forwards
+// the worker's raw parsed event (`scanner-subprocess.ts:476`), which carries
+// `{ type, scanner_id, cycle }` — `scan_worker.py:404` — where `cycle` is
+// incremented once per SCAN COMMAND (`scan_worker.py:387`), i.e. once per
+// dispatched row, NOT once per coordinator cycle. Deriving it from
+// `sub.scan.mock.calls.length` reproduces exactly that semantics and keeps
+// working when a test replaces the `scan` implementation, since vi still
+// records the call.
+//
+// Round 6 found every site emitting a bare `{}` here — the same
+// mock-fidelity class as the `exit` payload round 5 fixed. `cycle-done` is
+// the event that SETTLES a row, and it currently has no cycle guard, so a
+// faithful payload is what makes that gap testable at all.
+function emitCycleDone(sub: {
+  emit: (event: string, payload: unknown) => boolean;
+  scannerId: string;
+  scan: { mock: { calls: unknown[] } };
+}): void {
+  sub.emit('cycle-done', {
+    type: 'cycle-done',
+    scanner_id: sub.scannerId,
+    cycle: sub.scan.mock.calls.length,
+  });
+}
+
 // A controllable-delay mock subprocess for exercising the concurrency
 // guards (design.md Decision 1): `isReady` starts `false` (a real worker
 // mid-`sane.open()` is not ready yet) and `spawn()` returns a promise that
@@ -1149,7 +1174,7 @@ describe('ScanCoordinator', () => {
       const sub = createdSubprocesses[0];
       // When scan() is called, immediately emit cycle-done
       sub.scan.mockImplementation(() => {
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const gridStart = vi.fn();
@@ -1187,7 +1212,7 @@ describe('ScanCoordinator', () => {
           scanner_id: 'scanner-1',
           plate_index: '00',
         });
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const scanStarted = vi.fn();
@@ -1225,7 +1250,7 @@ describe('ScanCoordinator', () => {
           path: '/tmp/out.tif',
           achieved_resolution: 400,
         });
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const scanComplete = vi.fn();
@@ -1259,7 +1284,7 @@ describe('ScanCoordinator', () => {
           bytes_received: 0,
           wall_seconds: 12,
         });
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const scanError = vi.fn();
@@ -1290,7 +1315,7 @@ describe('ScanCoordinator', () => {
       let capturedPlates: PlateConfig[] = [];
       sub.scan.mockImplementation((plates: PlateConfig[]) => {
         capturedPlates = plates;
-        setImmediate(() => sub.emit('cycle-done', {}));
+        setImmediate(() => emitCycleDone(sub));
       });
 
       // Create plates with a date-like directory path
@@ -1340,7 +1365,7 @@ describe('ScanCoordinator', () => {
           path: '/tmp/out.tif',
         });
         // Then cycle-done (all plates for this scanner done)
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const scanComplete = vi.fn();
@@ -1368,10 +1393,10 @@ describe('ScanCoordinator', () => {
 
       // Both emit cycle-done after scan
       sub1.scan.mockImplementation(() => {
-        setImmediate(() => sub1.emit('cycle-done', {}));
+        setImmediate(() => emitCycleDone(sub1));
       });
       sub2.scan.mockImplementation(() => {
-        setImmediate(() => sub2.emit('cycle-done', {}));
+        setImmediate(() => emitCycleDone(sub2));
       });
 
       const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
@@ -1395,7 +1420,7 @@ describe('ScanCoordinator', () => {
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation((plates: PlateConfig[]) => {
         emitScanCompleteForPlates(sub, plates);
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
@@ -1427,7 +1452,7 @@ describe('ScanCoordinator', () => {
           plate_index: '00',
           path: realFinalPath,
         });
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const platesMap = new Map<string, PlateConfig[]>();
@@ -1454,7 +1479,7 @@ describe('ScanCoordinator', () => {
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation((plates: PlateConfig[]) => {
         emitScanCompleteForPlates(sub, plates);
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       // File exists but stat rejects (e.g., permissions, race condition)
@@ -1487,7 +1512,7 @@ describe('ScanCoordinator', () => {
 
       // sub1 completes normally
       sub1.scan.mockImplementation(() => {
-        setImmediate(() => sub1.emit('cycle-done', {}));
+        setImmediate(() => emitCycleDone(sub1));
       });
       // sub2 exits (crash)
       sub2.scan.mockImplementation(() => {
@@ -1595,7 +1620,7 @@ describe('ScanCoordinator', () => {
       vi.useRealTimers();
     });
 
-    it('does not double-log the exit diagnostic for a row that already timed out', async () => {
+    it('gives a timed-out row per-plate diagnostics too, without a second scan-error (round 6 policy change)', async () => {
       vi.useFakeTimers();
 
       const coordinator = await createCoordinator();
@@ -1607,6 +1632,9 @@ describe('ScanCoordinator', () => {
         // already logs its own scanLog + scan-error at the moment it fires.
       });
 
+      const scanError = vi.fn();
+      coordinator.on('scan-error', scanError);
+
       const platesMap = makePlatesMap(['scanner-1']);
       const scanPromise = coordinator.scanOnce(platesMap);
 
@@ -1614,22 +1642,44 @@ describe('ScanCoordinator', () => {
       await vi.advanceTimersByTimeAsync(100_000);
       await scanPromise;
 
-      const exitDiagnosticCalls = vi
+      // Round 5 suppressed the per-plate line for a timed-out row on the
+      // grounds that the timeout was "already fully diagnosed". Round 6
+      // showed that diagnosis is row-level only — `Row scan timeout after
+      // Nms` plus a scan-error carrying `jobId: scannerId`, with no plate
+      // index, wave or path. That is exactly the aggregate-only shortfall
+      // the per-plate line exists to fix, and a row timeout is the
+      // commonest symptom of a wedged scanner, so suppressing it left the
+      // hole where hardware fails most often. Both row groups time out, one
+      // plate each in 2grid.
+      const perPlateCalls = vi
         .mocked(scanLog)
         .mock.calls.filter(
           ([msg]) =>
             typeof msg === 'string' &&
             msg.includes('no completion signal received')
         );
-      expect(exitDiagnosticCalls).toHaveLength(0);
+      expect(perPlateCalls).toHaveLength(2);
+      for (const [msg] of perPlateCalls) {
+        expect(msg).toContain('the row timed out after');
+      }
 
-      // The existing timeout diagnostic still fires as before.
+      // The existing row-level timeout diagnostic still fires as before.
       const timeoutLogCalls = vi
         .mocked(scanLog)
         .mock.calls.filter(
           ([msg]) => typeof msg === 'string' && msg.includes('Row scan timeout')
         );
       expect(timeoutLogCalls.length).toBeGreaterThan(0);
+
+      // The reason round 5 excluded timeout is still honoured where it
+      // actually mattered: no SECOND scan-error. A duplicate would
+      // double-count into WedgeDetector's confirmedFailures, where two is
+      // enough to auto-pause a scanner that was merely slow. One row-level
+      // error per timed-out row, and the per-plate lines stay log-only.
+      const perRowErrors = scanError.mock.calls.filter(
+        ([e]) => e && e.jobId === 'scanner-1'
+      );
+      expect(perRowErrors).toHaveLength(2);
 
       vi.useRealTimers();
     }, 15000);
@@ -1670,9 +1720,20 @@ describe('ScanCoordinator', () => {
           ([msg]) =>
             typeof msg === 'string' &&
             msg.includes('no completion signal received') &&
-            msg.includes('scanner stopped mid-row')
+            msg.includes('the scanner was stopped mid-row')
         );
-      expect(stopDiagnosticCalls.length).toBeGreaterThan(0);
+      // Exactly one plate in this 2grid row group, so exactly one line —
+      // a loose `> 0` would not notice a duplicate-logging regression.
+      expect(stopDiagnosticCalls).toHaveLength(1);
+
+      // The cause must name the wedge path, NOT the cancel path. Hoisting
+      // the diagnostic above the cancel check (round 5, I3) made
+      // `shutdown()` reach this same `stopped` outcome, so the two are now
+      // distinguished by `this.cancelled` (round 6). stopScanner() never
+      // sets it, so a deliberate Cancel must not be described as a wedge
+      // and this must not be described as a cancellation.
+      expect(stopDiagnosticCalls[0][0]).toContain('wedge auto-pause');
+      expect(stopDiagnosticCalls[0][0]).not.toContain('cancelled');
 
       // The row must NOT have fallen through to the timeout path.
       const timeoutLogCalls = vi
@@ -1810,14 +1871,73 @@ describe('ScanCoordinator', () => {
             msg.includes('no completion signal received')
         );
 
-      expect(diagnostics.length).toBeGreaterThan(0);
-      expect(
-        diagnostics.some(
-          ([msg]) => typeof msg === 'string' && msg.includes('plate 00')
-        )
-      ).toBe(true);
+      // Exactly one: 2grid dispatches one plate per row group, and the
+      // cancel `break` stops the second group. A loose `> 0` would not
+      // notice a duplicate-logging regression between the row-outcome
+      // diagnostic and the reconciliation, which now both run above the
+      // break and both call logUnverifiedPlate().
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0][0]).toContain('plate 00');
+      // And it must name the cancel, not imply a wedge.
+      expect(diagnostics[0][0]).toContain('cancelled');
+      expect(diagnostics[0][0]).not.toContain('wedge');
 
       vi.useRealTimers();
+    });
+
+    it('accepts a scan-complete unconditionally when the dispatched name carries no cycle token, instead of dropping every event (review round 6)', async () => {
+      // The cycle guard is armed by `expected.includes(cycleToken)`. That
+      // precondition exists so a filename scheme without `_cy<N>_` degrades
+      // to pre-guard behaviour rather than silently rejecting everything —
+      // an unconditional guard would turn a completely healthy grid into
+      // all-MISSING under such a scheme, with no error anywhere.
+      //
+      // Every other fixture in this file carries `_cy1_`, so without this
+      // test, deleting the precondition fails nothing. #370 may change the
+      // filename convention, which makes it worth pinning now.
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      const tokenless = '/tmp/plate-00-no-cycle-token.tif';
+
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        sub.emit('scan-complete', {
+          type: 'scan-complete',
+          scanner_id: 'scanner-1',
+          plate_index: plates[0].plate_index,
+          path: tokenless,
+        });
+        process.nextTick(() => emitCycleDone(sub));
+      });
+
+      const platesMap = new Map<string, PlateConfig[]>([
+        [
+          'scanner-1',
+          [
+            {
+              plate_index: '00',
+              grid_mode: '2grid',
+              resolution: 600,
+              output_path: tokenless,
+              wave_number: 1,
+            },
+          ],
+        ],
+      ]);
+
+      await coordinator.scanOnce(platesMap);
+
+      // Accepted and verified, not dropped.
+      expect(fs.promises.access).toHaveBeenCalledWith(tokenless);
+      const tally = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) => typeof msg === 'string' && msg.includes('grid 00 complete')
+        );
+      expect(tally).toHaveLength(1);
+      expect(tally[0][0]).toContain('1/1 files verified');
+      expect(tally[0][0]).not.toContain('MISSING');
     });
 
     it("does not count a PREVIOUS CYCLE's late scan-complete as this cycle's file (review round 5, B1)", async () => {
@@ -1859,7 +1979,7 @@ describe('ScanCoordinator', () => {
             plate_index: '00',
             path: dispatched[0][0].output_path,
           });
-          sub.emit('cycle-done', {});
+          emitCycleDone(sub);
         });
       });
 
@@ -1906,7 +2026,8 @@ describe('ScanCoordinator', () => {
         )
         .map(([msg]) => msg as string);
 
-      expect(tallies.length).toBeGreaterThanOrEqual(2);
+      // Exactly two: one grid, two cycles.
+      expect(tallies).toHaveLength(2);
       const cycle2Tally = tallies[tallies.length - 1];
       expect(cycle2Tally).toContain('Cycle 2');
       expect(cycle2Tally).toContain('0/1 files verified');
@@ -1953,7 +2074,7 @@ describe('ScanCoordinator', () => {
               path: `${p}10-STRAY.tif`,
             });
           }
-          sub.emit('cycle-done', {});
+          emitCycleDone(sub);
         });
       });
 
@@ -2144,7 +2265,7 @@ describe('ScanCoordinator', () => {
       sub1.scan.mockImplementation((plates: { plate_index: string }[]) => {
         setImmediate(() => {
           emitScanCompleteForPlates(sub1, plates);
-          sub1.emit('cycle-done', {});
+          emitCycleDone(sub1);
         });
       });
       // scanner-2 is stopped on its very first row, so from the NEXT row
@@ -2195,7 +2316,7 @@ describe('ScanCoordinator', () => {
       sub1.scan.mockImplementation((plates: { plate_index: string }[]) => {
         setImmediate(() => {
           emitScanCompleteForPlates(sub1, plates);
-          sub1.emit('cycle-done', {});
+          emitCycleDone(sub1);
         });
       });
       sub2.scan.mockImplementation(() => {
@@ -2285,7 +2406,7 @@ describe('ScanCoordinator', () => {
         }, 1_000);
         setImmediate(() => {
           emitScanCompleteForPlates(sub1, plates);
-          sub1.emit('cycle-done', {});
+          emitCycleDone(sub1);
         });
       });
 
@@ -2387,7 +2508,7 @@ describe('ScanCoordinator', () => {
       sub1.scan.mockImplementation((plates: { plate_index: string }[]) => {
         setImmediate(() => {
           emitScanCompleteForPlates(sub1, plates);
-          sub1.emit('cycle-done', {});
+          emitCycleDone(sub1);
         });
       });
       sub2.scan.mockImplementation(() => {
@@ -2435,7 +2556,7 @@ describe('ScanCoordinator', () => {
       sub.scan.mockImplementation(() => {
         // Cancel while the scan is "in progress" — then emit cycle-done
         coordinator.cancelAll();
-        setImmediate(() => sub.emit('cycle-done', {}));
+        setImmediate(() => emitCycleDone(sub));
       });
 
       // Reset fs mocks to track calls during this specific test
@@ -2545,7 +2666,7 @@ describe('ScanCoordinator', () => {
             sub.emit('event', evt);
           }
         }
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       // Plate 01's output file fails verification (access rejects); all
@@ -2574,7 +2695,7 @@ describe('ScanCoordinator', () => {
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation((plates: PlateConfig[]) => {
         emitScanCompleteForPlates(sub, plates);
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       // File does not exist
@@ -2603,7 +2724,7 @@ describe('ScanCoordinator', () => {
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation((plates: PlateConfig[]) => {
         emitScanCompleteForPlates(sub, plates);
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       vi.mocked(fs.promises.stat).mockResolvedValue({ size: 0 } as fs.Stats);
@@ -2628,7 +2749,7 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
@@ -2649,7 +2770,7 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const intervalStart = vi.fn();
@@ -2685,7 +2806,7 @@ describe('ScanCoordinator', () => {
           scanner_id: 'scanner-1',
           plate_index: '00',
         });
-        process.nextTick(() => sub.emit('cycle-done', {}));
+        process.nextTick(() => emitCycleDone(sub));
       });
 
       const scanStarted = vi.fn();
@@ -2738,7 +2859,7 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('cycle-done', {}));
+        setImmediate(() => emitCycleDone(sub));
       });
 
       const intervalComplete = vi.fn();
@@ -2778,7 +2899,7 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('cycle-done', {}));
+        setImmediate(() => emitCycleDone(sub));
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
@@ -2828,10 +2949,10 @@ describe('ScanCoordinator', () => {
         scanCallCount++;
         if (scanCallCount === 1) {
           // First row: delay cycle-done so we can check isScanning
-          setTimeout(() => sub.emit('cycle-done', {}), 50);
+          setTimeout(() => emitCycleDone(sub), 50);
         } else {
           // Subsequent rows: complete immediately
-          setImmediate(() => sub.emit('cycle-done', {}));
+          setImmediate(() => emitCycleDone(sub));
         }
       });
 
@@ -2892,7 +3013,7 @@ describe('ScanCoordinator', () => {
       sub2.scan.mockImplementation(() => {
         // Delay cycle-done so isScanning is observably true while the
         // operator's Retry click (addScanner) is in flight.
-        setTimeout(() => sub2.emit('cycle-done', {}), 50);
+        setTimeout(() => emitCycleDone(sub2), 50);
       });
 
       const platesMap = makePlatesMap(['scanner-2']);

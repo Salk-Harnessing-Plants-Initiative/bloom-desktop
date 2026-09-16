@@ -715,17 +715,53 @@ export class ScanCoordinator
    * `_cy<N>_` is this cycle's rather than the stale one the row was built
    * from.
    */
+  /**
+   * Plain-language cause for a row outcome that left a plate unreported.
+   *
+   * `stopped` covers two very different situations and must not be
+   * conflated (review round 6): `stopScanner()` is the wedge auto-pause
+   * path and never touches `this.cancelled`, while `cancelAll()` and
+   * `shutdown()` both set it before settling the row. Hoisting the
+   * diagnostic above the cancel check made the second reachable, so
+   * without this split a technician who deliberately pressed Cancel would
+   * be told their scanner may have wedged.
+   */
+  private rowOutcomeCause(kind: RowOutcomeKind): string {
+    switch (kind) {
+      case 'exit':
+        return 'the scanner subprocess exited mid-row';
+      case 'stopped':
+        return this.cancelled
+          ? 'the session was cancelled (or the app quit) mid-row'
+          : 'the scanner was stopped mid-row (e.g. wedge auto-pause)';
+      case 'timeout':
+        return `the row timed out after ${SCAN_ROW_TIMEOUT_MS}ms and the scanner may still have been working`;
+      default:
+        // 'done' with an unreported plate: the row reported complete
+        // without this plate ever arriving.
+        return 'the row reported complete without this plate reporting';
+    }
+  }
+
   private logUnverifiedPlate(
     scannerId: string,
     plate: PlateConfig,
-    cause: string
+    cause: string,
+    opts: { actionable?: boolean } = {}
   ): void {
+    const { actionable = true } = opts;
     const wave = plate.wave_number ?? 'unknown';
+    // `actionable: false` for a scanner that never came online — there is
+    // nothing for the operator to go and check, and repeating a re-scan
+    // instruction once per plate per cycle for a dead USB port would bury
+    // the records that do warrant action.
+    const action = actionable
+      ? `Check for ${plate.output_path} and re-scan this plate if it is absent.`
+      : `No image was produced; expected path would have been ${plate.output_path}.`;
     scanLog(
       `[${scannerId}] MISSING? Cycle ${this.currentCycle} wave ${wave} ` +
         `plate ${plate.plate_index} — ${cause}; no completion signal ` +
-        `received, so no image is confirmed. Check for ${plate.output_path} ` +
-        `and re-scan this plate if it is absent.`
+        `received, so no image is confirmed. ${action}`
     );
   }
 
@@ -870,8 +906,8 @@ export class ScanCoordinator
         // `_et_` into (#370) — so this is currently a design stance rather
         // than a live necessity. It is still the right stance: it is what
         // makes the coordinator correct again the moment #370 restores the
-        // stamped convention, and `dispatchedBasename()` below is written to
-        // compare correctly under both.
+        // stamped convention, and the cycle guard below is written
+        // to compare correctly under both.
         const outputPaths: PlateOutputPath[] = [];
 
         const promise = new Promise<RowOutcome>((resolve) => {
@@ -1017,24 +1053,101 @@ export class ScanCoordinator
       // no scan-error, so it cannot feed WedgeDetector. Only file
       // verification is skipped on cancel, which is what the "Cancel during
       // active scanOnce aborts cleanly" scenario actually asks for.
+      // One rule, every outcome: any plate that did not report gets a line.
+      //
+      // Round 5 gated this on `exit`/`stopped`, excluding `timeout` because
+      // it was "already fully diagnosed at the moment the row timeout
+      // fired". Round 6 pointed out that diagnosis is the row-level
+      // `Row scan timeout after ...ms` line plus a `scan-error` carrying
+      // `jobId: scannerId` — no plate index, no wave, no path. That is the
+      // same aggregate-only shortfall the reconciliation below exists to
+      // fix, so excluding timeout here contradicted this change's own
+      // argument, and left the hole exactly where the hardware fails most
+      // often: a row timeout is the commonest symptom of a wedged scanner,
+      // and it neither evicts the scanner nor goes through stopScanner().
+      //
+      // `done` matters too. The worker is strictly serial and a row timeout
+      // does not abort it, so a stale `cycle-done` from the previous row
+      // can settle this row as `done` with nothing reported — the pairing
+      // then stays off by one for the rest of the session. The cycle guard
+      // on `scan-complete` stops that being counted as a false COMPLETE,
+      // but the row still reports short. Including `done` here means such a
+      // plate is at least never lost silently. The underlying desync is
+      // tracked separately; it needs a coordinator-assigned row token
+      // echoed by the worker, because the worker's own `cycle` counter
+      // increments per scan command (twice per coordinator cycle in 4grid).
       for (const result of results) {
-        if (result.kind === 'exit' || result.kind === 'stopped') {
-          const reported = new Set(result.outputPaths.map((o) => o.plateIndex));
-          const unreported = result.rowPlates.filter(
-            (p) => !reported.has(p.plate_index)
+        const reported = new Set(result.outputPaths.map((o) => o.plateIndex));
+        const unreported = result.rowPlates.filter(
+          (p) => !reported.has(p.plate_index)
+        );
+        if (unreported.length === 0) continue;
+        for (const plate of unreported) {
+          // Log-only, not a filesystem check: scan-complete never arrived,
+          // so the coordinator has no reported path to verify.
+          this.logUnverifiedPlate(
+            result.scannerId,
+            plate,
+            this.rowOutcomeCause(result.kind)
           );
-          // 'timeout' is excluded above: it is already fully diagnosed
-          // (scanLog + scan-error) at the moment the row timeout fired, so
-          // logging again would double-diagnose the same row.
-          const cause =
-            result.kind === 'exit'
-              ? 'subprocess exited mid-row'
-              : 'scanner stopped mid-row (e.g. wedge auto-pause)';
-          for (const plate of unreported) {
-            // Log-only, not a filesystem check: scan-complete never
-            // arrived, so the coordinator has no reported path to verify.
-            this.logUnverifiedPlate(result.scannerId, plate, cause);
-          }
+        }
+      }
+
+      // Reconcile what this row was ASKED to scan against what actually got
+      // dispatched. A scanner can be absent from `this.subprocesses`
+      // entirely — it never came online at session start, its worker died
+      // in an earlier row and the `exit` handler evicted it, or it was
+      // stopped during the USB stagger window — in which case it produces
+      // no row, no result, and none of the per-plate diagnostics above.
+      //
+      // Without this, the diagnostic invariant held only for the row the
+      // failure happened in: every LATER row group in the same cycle went
+      // completely unrecorded at plate level, which is the larger half of
+      // the loss. The grid tally still counted them (its denominator comes
+      // from `platesPerScanner`), but a bare `1 MISSING` does not say which
+      // plate or which wave, which is the whole point of the per-plate line.
+      //
+      // This sits ABOVE the cancel break for the same reason the row
+      // diagnostic does (round 6): `shutdown()` sets `cancelled` before
+      // settling, and it can land during the USB stagger await, leaving
+      // later scanners in this row group never dispatched. Leaving it below
+      // meant the dispatched half of one row group got records and the
+      // undispatched half got none. Bounded: the break means only the
+      // current row group is affected.
+      for (const [scannerId, platesForScanner] of platesPerScanner) {
+        if (dispatchedScannerIds.has(scannerId)) continue;
+        const rowPlates = platesForScanner.filter((p) =>
+          rowGrids.includes(p.plate_index)
+        );
+        // Distinguish the three ways a scanner can be missing. A scanner
+        // that never came online is NOT a plate to go re-scan — telling an
+        // operator to check for a file on a scanner with a dead USB port,
+        // once per plate per cycle for the length of the session, buries
+        // the records that do matter.
+        const neverCameOnline = this.initErrors.has(scannerId);
+        const cause = this.cancelled
+          ? 'the session was cancelled before this row was dispatched'
+          : neverCameOnline
+            ? 'this scanner never came online for this session'
+            : 'the scanner was not running when this row was dispatched ' +
+              '(its worker exited, or it was stopped earlier in this session)';
+        for (const plate of rowPlates) {
+          // Correct the quoted path exactly as the dispatch path would
+          // have, BOTH rewrites — no `platesToScan` exists for a scanner
+          // that never received a row. Omitting the `_st_` rewrite would
+          // make two lines in the same cycle quote different filename
+          // conventions once #370 restores the stamped names.
+          const dir = path.dirname(plate.output_path);
+          const basename = path
+            .basename(plate.output_path)
+            .replace(/(\d{8}T\d{6})/, stTimestamp)
+            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
+          this.logUnverifiedPlate(
+            scannerId,
+            { ...plate, output_path: path.join(dir, basename) },
+            cause,
+            { actionable: !neverCameOnline }
+          );
         }
       }
 
@@ -1134,48 +1247,6 @@ export class ScanCoordinator
           verifiedByGrid.set(
             plateIndex,
             (verifiedByGrid.get(plateIndex) || 0) + 1
-          );
-        }
-      }
-
-      // Reconcile what this row was ASKED to scan against what actually got
-      // dispatched. A scanner can be absent from `this.subprocesses`
-      // entirely — its worker died in an earlier row and the `exit` handler
-      // evicted it, it was stopped during the USB stagger window, or it
-      // never spawned — in which case it produces no row, no result, and
-      // therefore none of the per-plate diagnostics above.
-      //
-      // Without this, the diagnostic invariant held only for the row the
-      // failure happened in: every LATER row group in the same cycle went
-      // completely unrecorded at plate level, which is the larger half of
-      // the loss. The grid tally still counted them (its denominator comes
-      // from `platesPerScanner`), but a bare `1 MISSING` does not say which
-      // plate or which wave, which is the whole point of the per-plate line.
-      //
-      // This was invisible until the round-5 review found that every `exit`
-      // in the coordinator tests used `{}` instead of production's
-      // `{ scannerId, code, signal }`, so the identity-guarded eviction at
-      // the subprocess `exit` handler never fired and the dead scanner kept
-      // receiving rows that production would never have sent it.
-      for (const [scannerId, platesForScanner] of platesPerScanner) {
-        if (dispatchedScannerIds.has(scannerId)) continue;
-        const rowPlates = platesForScanner.filter((p) =>
-          rowGrids.includes(p.plate_index)
-        );
-        for (const plate of rowPlates) {
-          // Cycle-correct the quoted path the same way a dispatched row
-          // would have, so the line names the cycle the plate belonged to.
-          // No row was built for this scanner, so `platesToScan` never
-          // existed for it.
-          const dir = path.dirname(plate.output_path);
-          const basename = path
-            .basename(plate.output_path)
-            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
-          this.logUnverifiedPlate(
-            scannerId,
-            { ...plate, output_path: path.join(dir, basename) },
-            'scanner was not running when this row was dispatched (its ' +
-              'worker exited or it was stopped earlier in this session)'
           );
         }
       }

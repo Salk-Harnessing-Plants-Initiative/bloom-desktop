@@ -209,20 +209,31 @@ def _atomic_image_save(
     # Make the rename itself durable too. POSIX-only and advisory — a
     # filesystem that refuses a directory fsync changes nothing about the
     # guarantee above, so failure here is deliberately not fatal.
-    # Windows raises PermissionError (an OSError) on opening a directory,
-    # which is expected and not worth logging there.
     try:
         dir_fd = os.open(directory, os.O_RDONLY)
         try:
             os.fsync(dir_fd)
         finally:
             os.close(dir_fd)
-    except OSError as e:
+    except Exception as e:
+        # `Exception`, not `OSError` (round 6): this block runs AFTER
+        # os.replace() has already published the file, and it is outside the
+        # cleanup handler above. Anything that escapes here propagates into
+        # _sane_scan()'s `except Exception` retry loop and triggers a full
+        # re-scan of a plate whose image is already written and synced —
+        # potentially five of them, and a spurious "Scan failed after 5
+        # attempts" for a plate that succeeded. A post-publish durability
+        # nicety must never be able to fail the plate. Round 5 narrowed this
+        # from `(OSError, AttributeError)` to `OSError`, which reintroduced
+        # exactly that hazard for every non-OSError.
         if sys.platform != "win32":
             # On Linux — the production platform — a directory fsync failing
             # is a real filesystem-health signal. It does not endanger the
             # file (already published and synced), so it is not fatal, but
             # it must not vanish silently either.
+            #
+            # Windows raises PermissionError on opening a directory, which
+            # is expected and deliberately not logged.
             log(
                 scanner_id,
                 f"directory fsync after rename failed for {basename}: {e} "

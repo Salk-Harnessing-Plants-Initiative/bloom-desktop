@@ -189,13 +189,30 @@ Per-scanner spawns made by `initialize()` go through the same guarded, per-`scan
 #### Scenario: A row ended without a completion signal logs a diagnostic instead of silent skip
 
 - **GIVEN** the coordinator is actively awaiting `scanOnce()`'s row completion
-- **WHEN** one scanner's row ends with outcome `exit` (its subprocess died on its own — a crash, an OOM-kill, or `killAll()` on app quit) or outcome `stopped` (the coordinator deliberately ended the row via `stopScanner()`, most commonly from wedge auto-pause) — as distinct from outcome `timeout` (see the next scenario)
-- **THEN** the coordinator SHALL NOT attempt to guess or verify a specific file path for the plates in that row that never reported one
-- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per such plate, identifying the cycle number, scanner ID, plate index, wave number, which of the two causes applied, and the path the coordinator sent for that plate. The line SHALL share a search token with the grid-completeness tally so one search finds both, and SHALL state the action to take. It SHALL NOT label the path as pre-`_et_`: no `_et_`-stamped file exists on disk under the current filename convention, so that label sends the reader looking for a filename that will never appear
-- **AND** that path SHALL be the cycle-corrected one actually dispatched for this row, not the path the row was originally built from, so the line names the cycle the plate belonged to
+- **WHEN** a plate that this cycle was asked to scan does not report a completion — whatever the row's outcome (`exit`, `stopped`, `timeout`, or even `done` where the row reported complete without that plate), **and including the case where the plate's scanner received no row at all**
+- **THEN** the coordinator SHALL NOT attempt to guess or verify a specific file path for that plate
+- **AND** the coordinator SHALL log, via `scanLog()`, one diagnostic line per such plate, identifying the cycle number, scanner ID, plate index, wave number, the cause, and the expected path. The line SHALL share a search token with the grid-completeness tally so one search finds both. It SHALL NOT label the path as pre-`_et_`: no `_et_`-stamped file exists on disk under the current filename convention, so that label sends the reader looking for a filename that will never appear
+- **AND** the quoted path SHALL be cycle-corrected to the cycle the plate belonged to, by the same rewrites the dispatch path applies, whether or not a row was actually dispatched for that scanner
+- **AND** the cause SHALL distinguish a wedge-style stop (`stopScanner()`) from a session cancellation or app quit, and SHALL distinguish a scanner that never came online from one that stopped during the session — a line that tells an operator to re-scan a plate on a scanner with a dead USB port, once per plate per cycle for the length of a multi-day session, buries the records that do warrant action
+- **AND** the line SHALL state an action to take only where an action exists; for a scanner that never came online it SHALL NOT instruct a re-scan
 - **AND** the coordinator SHALL NOT emit a `scan-error` event as a result of this diagnostic (to avoid feeding a synthetic error back into wedge-detection for a scanner that may have already been correctly auto-paused)
 
 > The `stopped` outcome exists because `stopScanner()` removes the subprocess's listeners before awaiting its shutdown, so the subsequent `exit` event can never reach the row. Without an explicit settle, the wedge-auto-pause path — the most common real trigger — could only end the row by burning the full `SCAN_ROW_TIMEOUT_MS`, stalling every other scanner's row behind it and producing no per-plate record at all.
+>
+> **Widened during review round 6.** This scenario originally covered only `exit` and `stopped`, excluding `timeout` because the row timeout "already diagnoses itself". That diagnosis is row-level — a `Row scan timeout` line plus a `scan-error` carrying `jobId: scannerId` — with no plate index, wave or path, which is precisely the aggregate-only shortfall this per-plate line exists to fix, and a row timeout is the commonest symptom of a wedged scanner. It also excluded two cases that produce no row at all: a scanner evicted after its worker died in an earlier row group, and a scanner stopped during the USB stagger window. The rule is now simply "any plate that did not report", reconciled against the plates the cycle was asked to scan.
+>
+> The suppression that timeout-exclusion was protecting is retained where it actually mattered: a timed-out row still emits only ONE `scan-error`, because a second would double-count into `WedgeDetector`'s `confirmedFailures` and auto-pause a scanner that was merely slow. The per-plate lines are log-only.
+
+#### Scenario: A late completion from an earlier cycle is not counted as the current cycle's
+
+- **GIVEN** an interval session in which a row has timed out, leaving its worker still scanning (a row timeout does not abort the worker, which reads commands serially)
+- **WHEN** that worker's `scan-complete` for the earlier cycle arrives while a later cycle's row listener is attached
+- **THEN** the coordinator SHALL NOT accept it as the later cycle's output
+- **AND** SHALL NOT verify it on disk or count it toward the later cycle's grid tally — the earlier cycle's file genuinely exists, so counting it would produce an affirmative but false `files verified` claim for a cycle that scanned nothing
+- **AND** SHALL log that it ignored the event, so the underlying worker desync is visible rather than only showing up as a wrong tally
+- **AND** where the dispatched filename carries no cycle token, the coordinator SHALL accept the event as before rather than rejecting every completion
+
+> **Known residual.** This guards `scan-complete`, but `cycle-done` — the event that actually *settles* a row — carries no such discriminator, so a stale `cycle-done` can still settle the following row as `done` with nothing reported, leaving the pairing off by one for the rest of the session. The result is a false `MISSING` rather than a false complete, and the widened diagnostic above guarantees such a plate is still recorded per-plate rather than lost silently. Fixing the desync itself needs a coordinator-assigned per-row token echoed back by the worker: the worker's own `cycle` field increments per *scan command*, i.e. twice per coordinator cycle in 4grid, so it cannot be compared to `currentCycle` directly. Tracked separately.
 
 #### Scenario: A deliberately stopped scanner does not delay the rest of the row
 

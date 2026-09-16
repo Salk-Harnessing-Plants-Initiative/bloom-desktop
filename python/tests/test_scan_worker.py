@@ -500,11 +500,104 @@ class TestAtomicImageSave:
         with patch("builtins.open", side_effect=refuse_rplusb):
             stderr = _capture_stderr(_atomic_image_save, image, final_path, "TIFF")
 
-        assert "durability" in stderr or "fsync" in stderr
+        # The distinctive phrase, not just "fsync": the directory-fsync
+        # branch also logs a line containing both "fsync" and the basename,
+        # so a loose match would pass even if this log were deleted.
+        assert "durability check skipped" in stderr
         assert os.path.basename(final_path) in stderr, (
             "the log line must name the file, or a multi-plate row cannot be triaged"
         )
         assert os.path.exists(final_path)
+
+    def test_the_log_names_the_scanner_not_a_hardcoded_module_string(self, tmp_path):
+        # Round 5 threaded `scanner_id` through this helper so a durability
+        # warning can be attributed on a multi-plate row; round 6 found
+        # nothing tested it, so deleting both `scanner_id=self.scanner_id`
+        # kwargs at the call sites failed no test while every line silently
+        # reverted to "[scan_worker]".
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        real_open = builtins.open
+
+        def refuse_rplusb(path, mode="r", *args, **kwargs):
+            if mode == "r+b":
+                raise OSError("simulated reopen refusal")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=refuse_rplusb):
+            stderr = _capture_stderr(
+                _atomic_image_save,
+                image,
+                final_path,
+                "TIFF",
+                scanner_id="scanner-abc123",
+            )
+
+        assert "[scanner-abc123]" in stderr
+        assert "[scan_worker]" not in stderr
+
+    def test_a_failing_directory_fsync_is_logged_and_never_fails_the_plate(
+        self, tmp_path
+    ):
+        # This block runs AFTER os.replace() has published the file and sits
+        # outside the cleanup handler, so it must never raise: doing so
+        # re-scans a plate whose image is already on disk. It must also not
+        # be silent, because on Linux a failing directory fsync is a real
+        # filesystem-health signal.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10), color=(4, 5, 6))
+
+        real_fsync = os.fsync
+
+        def fail_dir_fsync(fd):
+            # The file handle is a real file; only the directory fd fails.
+            try:
+                if os.fstat(fd).st_mode & 0o170000 == 0o040000:
+                    raise OSError("simulated directory fsync refusal")
+            except OSError as e:
+                if "simulated" in str(e):
+                    raise
+            return real_fsync(fd)
+
+        with patch("python.graviscan.scan_worker.sys.platform", "linux"):
+            with patch(
+                "python.graviscan.scan_worker.os.fsync", side_effect=fail_dir_fsync
+            ):
+                stderr = _capture_stderr(_atomic_image_save, image, final_path, "TIFF")
+
+        # Published despite the failure, and intact.
+        assert os.path.exists(final_path)
+        with Image.open(final_path) as saved:
+            saved.load()
+            assert saved.getpixel((0, 0)) == (4, 5, 6)
+        assert "directory fsync after rename failed" in stderr
+
+    def test_a_non_oserror_after_publish_never_fails_the_plate(self, tmp_path):
+        # Round 5 narrowed this handler to `except OSError`, which meant any
+        # other exception raised after the file was already published would
+        # escape into _sane_scan's retry loop and re-scan a good plate — up
+        # to five full-resolution rescans, then a spurious "Scan failed
+        # after 5 attempts" for a plate that succeeded.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10))
+
+        with patch(
+            "python.graviscan.scan_worker.os.open",
+            side_effect=AttributeError("simulated non-OSError after publish"),
+        ):
+            _atomic_image_save(image, final_path, "TIFF")
+
+        assert os.path.exists(final_path), (
+            "a post-publish durability step must never prevent the file "
+            "from being published"
+        )
 
     def test_bytes_are_fsynced_before_the_rename_publishes_the_name(self, tmp_path):
         # Without an fsync, a power loss can make the rename durable while
