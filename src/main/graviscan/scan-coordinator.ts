@@ -1073,9 +1073,9 @@ export class ScanCoordinator
       // on `scan-complete` stops that being counted as a false COMPLETE,
       // but the row still reports short. Including `done` here means such a
       // plate is at least never lost silently. The underlying desync is
-      // tracked separately; it needs a coordinator-assigned row token
-      // echoed by the worker, because the worker's own `cycle` counter
-      // increments per scan command (twice per coordinator cycle in 4grid).
+      // #371: it needs a coordinator-assigned row token echoed by the
+      // worker, because the worker's own `cycle` counter increments per
+      // scan command (twice per coordinator cycle in 4grid).
       for (const result of results) {
         const reported = new Set(result.outputPaths.map((o) => o.plateIndex));
         const unreported = result.rowPlates.filter(
