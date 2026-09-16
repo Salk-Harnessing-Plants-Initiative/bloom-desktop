@@ -125,7 +125,13 @@ def log(scanner_id: str, msg: str) -> None:
     print(f"[{scanner_id}] {msg}", file=sys.stderr, flush=True)
 
 
-def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> None:
+def _atomic_image_save(
+    image,  # PIL.Image.Image; PIL is imported lazily at its call site
+    final_path: str,
+    *save_args,
+    scanner_id: str = "scan_worker",
+    **save_kwargs,
+) -> None:
     """Write `image` to a temp file in final_path's directory, then
     atomically replace final_path only after the write succeeds.
 
@@ -135,10 +141,15 @@ def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> Non
     `**save_kwargs` are forwarded to `image.save()` unchanged, since both
     call sites pass the format ("TIFF") positionally.
 
-    A *handled* failure (save error, rename error) cleans its temp file up
-    before re-raising, so `_sane_scan()`'s retry loop cannot strand one
-    full-resolution TIFF per attempt. Only a SIGKILL leaves residue, since
-    no cleanup handler can run at all in that case.
+    A *handled* failure (save error, failed durability sync, rename error)
+    cleans its temp file up before re-raising, so `_sane_scan()`'s retry
+    loop cannot strand one full-resolution TIFF per attempt. Only a SIGKILL
+    leaves residue, since no cleanup handler can run at all in that case.
+
+    Note the asymmetry in the durability check below: failing to *reopen*
+    the temp file is tolerated (it only means we could not verify), while a
+    failing `os.fsync()` is fatal (it means the bytes never landed). See the
+    comment at that block.
     """
     directory = os.path.dirname(final_path)
     basename = os.path.basename(final_path)
@@ -154,21 +165,39 @@ def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> Non
         # ext4's auto_da_alloc heuristic does not rescue this case: it fires
         # on rename-over-an-existing-file, and the _et_-stamped destination
         # never exists beforehand.
-        # Best-effort, deliberately: the atomicity guarantee (never a
-        # truncated file at final_path) comes entirely from write-temp-then-
-        # replace, and the fsync only adds power-loss durability on top. A
-        # filesystem that refuses the reopen or the sync, or a transient
-        # Windows AV lock on a just-closed file, must not turn a fully
-        # successful write into a failed plate — that would burn a retry and,
-        # if deterministic, fail the plate after five full-resolution
-        # rescans, which is a worse outcome than losing durability.
+        # Two very different failures hide in this block, and conflating
+        # them is how a corrupt file still reaches the final path:
+        #
+        #   * The REOPEN failing means "we could not check". The write
+        #     itself already succeeded, so continuing is right — a
+        #     filesystem that refuses the reopen, or a transient Windows AV
+        #     lock on a just-closed file, must not burn a retry and, if
+        #     deterministic, fail the plate after five full-resolution
+        #     rescans.
+        #
+        #   * os.fsync() ITSELF failing means the bytes did not reach stable
+        #     storage. On ext4 with delayed allocation, image.save() plus
+        #     close() can return success with blocks still unallocated, so
+        #     ENOSPC and EIO surface here rather than at close. Publishing
+        #     anyway would put a short or zero-filled TIFF at the canonical
+        #     timepoint filename, indistinguishable from good data — the
+        #     exact corruption this helper exists to prevent, arriving by a
+        #     different route than SIGKILL. Let it propagate into
+        #     _sane_scan()'s existing retry loop like any other write
+        #     failure.
         try:
             # "r+b" rather than "rb": Windows' os.fsync maps to _commit(),
             # which needs a writable handle. On POSIX either works.
-            with open(tmp_path, "r+b") as fh:
-                os.fsync(fh.fileno())
+            fh = open(tmp_path, "r+b")
         except OSError as e:
-            log("scan_worker", f"fsync before rename failed (continuing): {e}")
+            log(
+                scanner_id,
+                f"durability check skipped for {basename}: could not reopen "
+                f"the temp file ({e}) — the write itself succeeded",
+            )
+        else:
+            with fh:
+                os.fsync(fh.fileno())
         os.replace(tmp_path, final_path)
     except BaseException:
         try:
@@ -180,14 +209,25 @@ def _atomic_image_save(image, final_path: str, *save_args, **save_kwargs) -> Non
     # Make the rename itself durable too. POSIX-only and advisory — a
     # filesystem that refuses a directory fsync changes nothing about the
     # guarantee above, so failure here is deliberately not fatal.
+    # Windows raises PermissionError (an OSError) on opening a directory,
+    # which is expected and not worth logging there.
     try:
         dir_fd = os.open(directory, os.O_RDONLY)
         try:
             os.fsync(dir_fd)
         finally:
             os.close(dir_fd)
-    except (OSError, AttributeError):
-        pass
+    except OSError as e:
+        if sys.platform != "win32":
+            # On Linux — the production platform — a directory fsync failing
+            # is a real filesystem-health signal. It does not endanger the
+            # file (already published and synced), so it is not fatal, but
+            # it must not vanish silently either.
+            log(
+                scanner_id,
+                f"directory fsync after rename failed for {basename}: {e} "
+                "(file is written; the rename's own durability is reduced)",
+            )
 
 
 class ScanWorker:
@@ -594,6 +634,7 @@ class ScanWorker:
                     image,
                     final_path,
                     "TIFF",
+                    scanner_id=self.scanner_id,
                     compression="tiff_lzw",
                     tiffinfo=tiff_meta,
                 )
@@ -819,6 +860,7 @@ class ScanWorker:
             image,
             final_path,
             "TIFF",
+            scanner_id=self.scanner_id,
             compression="tiff_lzw",
             tiffinfo=tiff_meta,
         )

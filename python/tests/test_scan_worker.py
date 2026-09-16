@@ -4,6 +4,7 @@ cancel behavior, command loop, error propagation, TIFF metadata, device
 state management, and USB reset platform mocking.
 """
 
+import builtins
 import glob
 import io
 import json
@@ -367,24 +368,31 @@ class TestAtomicImageSave:
         leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
         assert leftovers == [], f"KeyboardInterrupt leaked temp file(s): {leftovers}"
 
-    def test_a_failing_fsync_does_not_fail_an_otherwise_successful_write(
+    def test_a_failing_reopen_does_not_fail_an_otherwise_successful_write(
         self, tmp_path
     ):
-        # The atomicity guarantee comes from write-temp-then-replace; the
-        # fsync only adds power-loss durability on top. A filesystem that
-        # refuses the sync (or a transient Windows AV lock on a just-closed
-        # file) must not turn a fully successful write into a failed plate —
-        # that would burn a retry and, if deterministic, fail the plate after
-        # five full-resolution rescans.
+        # Reopening the just-closed temp file failing means "we could not
+        # check", NOT "the bytes are lost". A filesystem that refuses the
+        # reopen, or a transient Windows AV lock on a just-closed file, must
+        # not turn a fully successful write into a failed plate — that would
+        # burn a retry and, if deterministic, fail the plate after five
+        # full-resolution rescans.
+        #
+        # Contrast with the next test: a failing *fsync* is the opposite
+        # case and must fail the write.
         final_path = str(
             tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
         )
         image = Image.new("RGB", (10, 10), color=(7, 8, 9))
 
-        with patch(
-            "python.graviscan.scan_worker.os.fsync",
-            side_effect=OSError("simulated fsync refusal"),
-        ):
+        real_open = builtins.open
+
+        def refuse_rplusb(path, mode="r", *args, **kwargs):
+            if mode == "r+b":
+                raise OSError("simulated reopen refusal")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=refuse_rplusb):
             _atomic_image_save(image, final_path, "TIFF")
 
         assert os.path.exists(final_path)
@@ -393,6 +401,62 @@ class TestAtomicImageSave:
             assert saved.getpixel((0, 0)) == (7, 8, 9)
         leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
         assert leftovers == []
+
+    def test_a_failing_fsync_fails_the_write_and_publishes_nothing(self, tmp_path):
+        # A failing os.fsync means the bytes did NOT reach stable storage.
+        # On ext4 with delayed allocation, image.save() + close() can return
+        # success with blocks still unallocated, and ENOSPC/EIO surface here
+        # at fsync rather than at close. Publishing anyway would put a short
+        # or zero-filled TIFF at the canonical timepoint filename, which is
+        # indistinguishable from good data — precisely the corruption this
+        # helper exists to prevent, arriving by a different route than
+        # SIGKILL.
+        #
+        # So this must propagate into _sane_scan()'s existing retry loop and
+        # leave nothing at final_path.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        image = Image.new("RGB", (10, 10), color=(7, 8, 9))
+
+        with patch(
+            "python.graviscan.scan_worker.os.fsync",
+            side_effect=OSError("simulated ENOSPC at fsync"),
+        ):
+            with pytest.raises(OSError, match="simulated ENOSPC at fsync"):
+                _atomic_image_save(image, final_path, "TIFF")
+
+        assert not os.path.exists(final_path), (
+            "a file whose bytes never reached storage must never be "
+            "published at the final path"
+        )
+        leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
+        assert leftovers == [], "the failed write's temp file must be cleaned up"
+
+    def test_a_failing_fsync_does_not_publish_over_an_existing_good_file(
+        self, tmp_path
+    ):
+        # The destructive variant of the test above: if a previous cycle
+        # wrote a good file at this path, a failed fsync must not replace it
+        # with an unsynced one. os.replace() is never reached.
+        final_path = str(
+            tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
+        )
+        Image.new("RGB", (10, 10), color=(1, 2, 3)).save(final_path, "TIFF")
+
+        image = Image.new("RGB", (10, 10), color=(7, 8, 9))
+        with patch(
+            "python.graviscan.scan_worker.os.fsync",
+            side_effect=OSError("simulated ENOSPC at fsync"),
+        ):
+            with pytest.raises(OSError):
+                _atomic_image_save(image, final_path, "TIFF")
+
+        with Image.open(final_path) as saved:
+            saved.load()
+            assert saved.getpixel((0, 0)) == (1, 2, 3), (
+                "the pre-existing good file must survive a failed write"
+            )
 
     def test_a_cleanup_failure_does_not_mask_the_original_error(self, tmp_path):
         # Spec: "SHALL propagate the original failure, not any error raised
@@ -417,21 +481,30 @@ class TestAtomicImageSave:
                 with pytest.raises(OSError, match="the original failure"):
                     _atomic_image_save(image, final_path, "TIFF")
 
-    def test_a_failed_fsync_is_logged(self, tmp_path):
+    def test_a_skipped_durability_check_is_logged_with_the_path(self, tmp_path):
         # The write proceeding silently would hide a filesystem that never
-        # provides durability — the operator should be able to find out.
+        # provides durability — the operator should be able to find out, and
+        # on a multi-plate row they need to know WHICH file it was.
         final_path = str(
             tmp_path / "plate_st_20260910T120000_et_20260910T120010_cy1_S1_00.tif"
         )
         image = Image.new("RGB", (10, 10))
 
-        with patch(
-            "python.graviscan.scan_worker.os.fsync",
-            side_effect=OSError("simulated fsync refusal"),
-        ):
+        real_open = builtins.open
+
+        def refuse_rplusb(path, mode="r", *args, **kwargs):
+            if mode == "r+b":
+                raise OSError("simulated reopen refusal")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=refuse_rplusb):
             stderr = _capture_stderr(_atomic_image_save, image, final_path, "TIFF")
 
-        assert "fsync" in stderr
+        assert "durability" in stderr or "fsync" in stderr
+        assert os.path.basename(final_path) in stderr, (
+            "the log line must name the file, or a multi-plate row cannot be "
+            "triaged"
+        )
         assert os.path.exists(final_path)
 
     def test_bytes_are_fsynced_before_the_rename_publishes_the_name(self, tmp_path):
@@ -710,6 +783,51 @@ class TestSaneScanRetryLogic:
             _capture_stderr(
                 w._sane_scan, "2grid", "00", 300, str(tmp_path / "fail.tif")
             )
+
+    @patch("time.sleep")
+    def test_a_rename_failure_propagates_through_the_same_retry_path(
+        self, mock_sleep, tmp_path
+    ):
+        # Spec: a rename failure after a successful write "SHALL propagate as
+        # a scan failure through the same retry path already used for other
+        # scan errors". The helper's own unit test proves it re-raises; this
+        # proves the raise actually reaches _sane_scan's retry loop rather
+        # than being swallowed at the call site.
+        #
+        # Mutation this pins: wrapping the _atomic_image_save call site in
+        # `try/except Exception: pass`. The worker would then return
+        # final_path and emit scan-complete for a file that does not exist —
+        # exactly the "silently swallowed" outcome the spec forbids — and
+        # every other _sane_scan test would still pass, because none of them
+        # makes the save or the rename fail.
+        w = _make_worker(mock=False)
+        w._device_is_open = True
+
+        mock_device = MagicMock()
+        mock_device.snap.return_value = Image.new("RGB", (100, 100))
+        mock_sane = MagicMock()
+        mock_sane.open.return_value = mock_device
+        w._sane = mock_sane
+        w._device = mock_device
+
+        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+
+        with patch(
+            "python.graviscan.scan_worker.os.replace",
+            side_effect=OSError("simulated rename refusal"),
+        ) as mock_replace:
+            with pytest.raises(RuntimeError, match="Scan failed after 5 attempts"):
+                _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+
+        assert mock_replace.call_count == 5, (
+            "the rename failure must be retried by the same loop that "
+            "retries other scan errors, not swallowed after one attempt"
+        )
+        assert list(tmp_path.glob("*.tif")) == [], "nothing may be published"
+        assert glob.glob(os.path.join(str(tmp_path), ".tmp-*")) == [], (
+            "each failed attempt must clean up its own temp file rather "
+            "than stranding one full-resolution TIFF per retry"
+        )
 
 
 class _QuantizingDevice:
