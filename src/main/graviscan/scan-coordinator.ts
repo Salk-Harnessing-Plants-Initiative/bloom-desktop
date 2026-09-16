@@ -999,8 +999,49 @@ export class ScanCoordinator
       // Wait for ALL scanners to complete this row
       const results = await Promise.all(rowDonePromises);
 
+      // Diagnose the plates this row never heard back about, BEFORE the
+      // cancel check below. A row can end after some of its plates already
+      // succeeded, so this is driven by which plates actually reported, not
+      // by the outcome alone.
+      //
+      // This must sit above the `break` (review round 5, I3). Both
+      // deliberate mid-row stops — Cancel Scan and app quit — go through
+      // `shutdown()`, which sets `this.cancelled = true` BEFORE invoking
+      // the in-flight row settler. So a diagnostic placed after the break
+      // could never fire for either of them, and the `stopped` outcome
+      // delivered only half its stated value: it suppressed the spurious
+      // row-timeout scan-error, but produced no durable per-plate record.
+      // In practice the record only ever appeared on the `stopScanner()`
+      // wedge path, which is the one that happened to be hardware-validated.
+      //
+      // Safe to run on a cancelled session: the line is log-only and emits
+      // no scan-error, so it cannot feed WedgeDetector. Only file
+      // verification is skipped on cancel, which is what the "Cancel during
+      // active scanOnce aborts cleanly" scenario actually asks for.
+      for (const result of results) {
+        if (result.kind === 'exit' || result.kind === 'stopped') {
+          const reported = new Set(result.outputPaths.map((o) => o.plateIndex));
+          const unreported = result.rowPlates.filter(
+            (p) => !reported.has(p.plate_index)
+          );
+          // 'timeout' is excluded above: it is already fully diagnosed
+          // (scanLog + scan-error) at the moment the row timeout fired, so
+          // logging again would double-diagnose the same row.
+          const cause =
+            result.kind === 'exit'
+              ? 'subprocess exited mid-row'
+              : 'scanner stopped mid-row (e.g. wedge auto-pause)';
+          for (const plate of unreported) {
+            // Log-only, not a filesystem check: scan-complete never
+            // arrived, so the coordinator has no reported path to verify.
+            this.logUnverifiedPlate(result.scannerId, plate, cause);
+          }
+        }
+      }
+
       // Check cancelled after await — if cancel fired during the scan,
-      // skip file verification for this row
+      // skip file verification for this row. The per-plate diagnostic above
+      // deliberately already ran.
       if (this.cancelled) break;
 
       const gridEndedAt = new Date();
@@ -1037,40 +1078,6 @@ export class ScanCoordinator
       }
 
       for (const result of results) {
-        // Diagnose the plates this row never heard back about. A row can end
-        // after some of its plates already succeeded, so this is driven by
-        // which plates actually reported — not by the outcome alone.
-        if (result.kind !== 'done') {
-          const reported = new Set(result.outputPaths.map((o) => o.plateIndex));
-          const unreported = result.rowPlates.filter(
-            (p) => !reported.has(p.plate_index)
-          );
-          // 'timeout' is already fully diagnosed (scanLog + scan-error) at
-          // the moment the row timeout fired — logging again would
-          // double-diagnose the same row.
-          //
-          // Deliberately NOT gated on `this.cancelled`: the loop already
-          // breaks on cancel before this point, so the only way it could
-          // flip here is a cancel landing on one of the `await`s below —
-          // and that cancel happened AFTER this row's outcome was already
-          // determined. Suppressing the line then would non-deterministically
-          // erase the only trace of a genuinely unknown outcome, depending on
-          // nothing more than this row's position in `results`. The line is
-          // log-only (it emits no scan-error), so recording it on a
-          // subsequently-cancelled session is harmless.
-          if (result.kind === 'exit' || result.kind === 'stopped') {
-            const cause =
-              result.kind === 'exit'
-                ? 'subprocess exited mid-row'
-                : 'scanner stopped mid-row (e.g. wedge auto-pause)';
-            for (const plate of unreported) {
-              // Log-only, not a filesystem check: scan-complete never
-              // arrived, so the coordinator has no reported path to verify.
-              this.logUnverifiedPlate(result.scannerId, plate, cause);
-            }
-          }
-        }
-
         // A timed-out row ALREADY emitted its own row-level `scan-error` at
         // the moment the timeout fired. A second, plate-level one here would
         // double-count into WedgeDetector's `confirmedFailures`, where two is

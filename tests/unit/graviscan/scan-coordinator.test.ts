@@ -1761,6 +1761,57 @@ describe('ScanCoordinator', () => {
       vi.useRealTimers();
     });
 
+    it('still records the per-plate diagnostic when the row is ended by shutdown() (Cancel Scan / app quit) (review round 5, I3)', async () => {
+      // `shutdown()` sets `this.cancelled = true` BEFORE invoking the
+      // in-flight row settler, and the verification loop breaks on
+      // `this.cancelled`. So while the `stopped` outcome did suppress the
+      // spurious 90s row-timeout scan-error, the durable per-plate record —
+      // the half this change actually claims ("including when a scanner is
+      // deliberately stopped mid-row") — never fired for EITHER of the two
+      // deliberate mid-row stops: Cancel Scan (session-handlers cancelScan)
+      // and app quit (shutdownGraviScan). It only ever appeared on the
+      // stopScanner() wedge path.
+      //
+      // The line is log-only and emits no scan-error, so it cannot feed
+      // WedgeDetector and is safe to record on a cancelled session.
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const sub = createdSubprocesses[0];
+
+      // Worker takes the row and never reports: the session is cancelled
+      // out from under it.
+      sub.scan.mockImplementation(() => {});
+
+      const platesMap = makePlatesMap(['scanner-1']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // Let the row be dispatched and its listeners attach.
+      await vi.advanceTimersByTimeAsync(10);
+      await coordinator.shutdown();
+
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const diagnostics = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        );
+
+      expect(diagnostics.length).toBeGreaterThan(0);
+      expect(
+        diagnostics.some(
+          ([msg]) => typeof msg === 'string' && msg.includes('plate 00')
+        )
+      ).toBe(true);
+
+      vi.useRealTimers();
+    });
+
     it('does not count a PREVIOUS CYCLE\'s late scan-complete as this cycle\'s file (review round 5, B1)', async () => {
       // `rowGrids` is the same list of grid indices on every cycle, so a
       // guard keyed on plate_index alone separates rows WITHIN a cycle but
