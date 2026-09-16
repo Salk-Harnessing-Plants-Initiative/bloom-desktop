@@ -339,9 +339,9 @@ class TestAtomicImageSave:
 
         assert not os.path.exists(final_path)
         leftovers = glob.glob(os.path.join(str(tmp_path), ".tmp-*"))
-        assert (
-            leftovers == []
-        ), f"handled rename failure leaked temp file(s): {leftovers}"
+        assert leftovers == [], (
+            f"handled rename failure leaked temp file(s): {leftovers}"
+        )
 
     def test_keyboard_interrupt_mid_write_still_removes_the_temp_file(self, tmp_path):
         # Locks in the `except BaseException` (rather than `except Exception`)
@@ -502,8 +502,7 @@ class TestAtomicImageSave:
 
         assert "durability" in stderr or "fsync" in stderr
         assert os.path.basename(final_path) in stderr, (
-            "the log line must name the file, or a multi-plate row cannot be "
-            "triaged"
+            "the log line must name the file, or a multi-plate row cannot be triaged"
         )
         assert os.path.exists(final_path)
 
@@ -539,9 +538,9 @@ class TestAtomicImageSave:
             _atomic_image_save(image, final_path, "TIFF")
 
         assert "fsync" in call_order, "temp file was never fsynced before the rename"
-        assert call_order.index("fsync") < call_order.index(
-            "replace"
-        ), f"fsync must precede the rename, got {call_order}"
+        assert call_order.index("fsync") < call_order.index("replace"), (
+            f"fsync must precede the rename, got {call_order}"
+        )
         assert os.path.exists(final_path)
 
     def test_temp_name_uses_the_shared_prefix_constant(self, tmp_path):
@@ -615,9 +614,9 @@ class TestAtomicWriteSurvivesRealSigkill:
         )
         try:
             ready_line = proc.stdout.readline()
-            assert (
-                '"ready"' in ready_line
-            ), f"worker never signaled ready: {ready_line!r}"
+            assert '"ready"' in ready_line, (
+                f"worker never signaled ready: {ready_line!r}"
+            )
 
             command = {
                 "action": "scan",
@@ -668,9 +667,9 @@ class TestAtomicWriteSurvivesRealSigkill:
                 proc.kill()
                 proc.wait(timeout=10)
 
-        assert not os.path.exists(
-            output_path
-        ), "nothing should ever be written directly to the pre-_et_ path"
+        assert not os.path.exists(output_path), (
+            "nothing should ever be written directly to the pre-_et_ path"
+        )
         # NB: glob() skips dotfiles, so this cannot match the .tmp- residue —
         # that exclusion is load-bearing and deliberate here.
         tif_files = glob.glob(str(tmp_path / "*.tif"))
@@ -680,9 +679,9 @@ class TestAtomicWriteSurvivesRealSigkill:
         )
         # The stray temp file is the accepted residue (design.md Decision 1):
         # a SIGKILLed process cannot run a cleanup handler.
-        assert glob.glob(
-            str(tmp_path / f"{TMP_PREFIX}*")
-        ), "expected the interrupted write's temp file to remain on disk"
+        assert glob.glob(str(tmp_path / f"{TMP_PREFIX}*")), (
+            "expected the interrupted write's temp file to remain on disk"
+        )
 
 
 class TestSaneScanUsesAtomicWrite:

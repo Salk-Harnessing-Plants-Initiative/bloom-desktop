@@ -540,7 +540,7 @@ class ScanWorker:
         log(
             self.scanner_id,
             f"Scanning plate {plate_index} ({grid_mode}) at {resolution}dpi "
-            f"region=({region.left},{region.top})-({region.left+region.width},{region.top+region.height})",
+            f"region=({region.left},{region.top})-({region.left + region.width},{region.top + region.height})",
         )
 
         last_error = None

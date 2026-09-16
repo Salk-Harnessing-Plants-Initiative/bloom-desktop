@@ -42,7 +42,6 @@ export const USB_STAGGER_DELAY_MS = 5000;
  */
 export const SCAN_ROW_TIMEOUT_MS = 90_000;
 
-
 /**
  * Bound on how long a single scanner's spawn attempt is allowed to run
  * without becoming ready or dying, before the coordinator gives up on it

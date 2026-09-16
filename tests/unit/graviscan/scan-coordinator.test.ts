@@ -1491,7 +1491,13 @@ describe('ScanCoordinator', () => {
       });
       // sub2 exits (crash)
       sub2.scan.mockImplementation(() => {
-        setImmediate(() => sub2.emit('exit', { scannerId: sub2.scannerId, code: 1, signal: null }));
+        setImmediate(() =>
+          sub2.emit('exit', {
+            scannerId: sub2.scannerId,
+            code: 1,
+            signal: null,
+          })
+        );
       });
 
       const cycleComplete = vi.fn();
@@ -1521,7 +1527,9 @@ describe('ScanCoordinator', () => {
       // scanner-1's subprocess exits mid-row — no cycle-done, no
       // scan-complete for either plate in this row.
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
+        setImmediate(() =>
+          sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null })
+        );
       });
 
       const scanError = vi.fn();
@@ -1812,7 +1820,7 @@ describe('ScanCoordinator', () => {
       vi.useRealTimers();
     });
 
-    it('does not count a PREVIOUS CYCLE\'s late scan-complete as this cycle\'s file (review round 5, B1)', async () => {
+    it("does not count a PREVIOUS CYCLE's late scan-complete as this cycle's file (review round 5, B1)", async () => {
       // `rowGrids` is the same list of grid indices on every cycle, so a
       // guard keyed on plate_index alone separates rows WITHIN a cycle but
       // cannot separate cycle N's row ['00'] from cycle N+1's row ['00'].
@@ -1990,7 +1998,9 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
+        setImmediate(() =>
+          sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null })
+        );
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
@@ -2044,7 +2054,9 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
+        setImmediate(() =>
+          sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null })
+        );
       });
 
       // Two cycles: the fixture's output_path is built with `_cy1_`, so if
@@ -2086,7 +2098,9 @@ describe('ScanCoordinator', () => {
 
       const sub = createdSubprocesses[0];
       sub.scan.mockImplementation(() => {
-        setImmediate(() => sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null }));
+        setImmediate(() =>
+          sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null })
+        );
       });
 
       const platesMap = makePlatesMap(['scanner-1']);
@@ -2377,7 +2391,13 @@ describe('ScanCoordinator', () => {
         });
       });
       sub2.scan.mockImplementation(() => {
-        setImmediate(() => sub2.emit('exit', { scannerId: sub2.scannerId, code: 1, signal: null }));
+        setImmediate(() =>
+          sub2.emit('exit', {
+            scannerId: sub2.scannerId,
+            code: 1,
+            signal: null,
+          })
+        );
       });
 
       vi.mocked(fs.promises.access).mockImplementation(async () => {
