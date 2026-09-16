@@ -7,7 +7,7 @@ This is a genuine conflict, not an oversight: the issue's own text asks for the 
 ## Goals / Non-Goals
 
 - Goals:
-  - Every bench-testable item in #279's checklist gets executed and recorded against real hardware on `pbiob-gh-04`.
+  - Every bench-testable item in #279's checklist is attempted and its outcome recorded against real hardware on `pbiob-gh-04` — including items that fail or cannot be run, with their cause.
   - The production-rig-specific item is explicitly resolved, not silently dropped or silently satisfied by a substitute.
 - Non-Goals:
   - Running any part of this validation on `graviscan-ms-7c56` in this increment.
@@ -25,7 +25,7 @@ Rather than substitute an equivalent dev-rig session now, the multi-hour continu
 
 This decision was made in consultation with the person driving this increment, given the conflict is explicit in the issue text and not something to resolve unilaterally.
 
-**Concretely wired, not just asserted**: an earlier draft of this design said the deferral would be "mitigated by filing it as a concrete, linked tracking item" — but left that as a to-do rather than actually doing it, and the roadmap doc's own Tier 2 hard-block mechanism (`docs/superpowers/plans/2026-09-02-graviscan-production-cutover-roadmap.md`, line 59/66/85) checks `#279`'s open/closed state directly. Since this change's own task 3.3 closes #279 once its dev-rig-validatable items pass, closing #279 alone would silently clear that mechanical gate even though the production-rig item remains outstanding — exactly the failure mode this decision claims to avoid. **Fixed**: issue #364 was filed as the concrete tracking issue (not a future task), and the roadmap doc's Tier 2 hard-block list was updated to name #364 directly alongside #279/#226/#361, so the gate no longer silently clears when #279 closes.
+**Concretely wired, not just asserted**: an earlier draft of this design said the deferral would be "mitigated by filing it as a concrete, linked tracking item" — but left that as a to-do rather than actually doing it, and the roadmap doc's own Tier 2 hard-block mechanism (`docs/superpowers/plans/2026-09-02-graviscan-production-cutover-roadmap.md`, line 59/66/85) checks `#279`'s open/closed state directly. Task 3.3 was originally written to close #279 once its dev-rig-validatable items passed; as executed it does the opposite and keeps #279 open. Had it closed #279, that alone would have silently cleared the mechanical gate even though the production-rig item remains outstanding — exactly the failure mode this decision claims to avoid. **Fixed**: issue #364 was filed as the concrete tracking issue (not a future task), and the roadmap doc's Tier 2 hard-block list was updated to name #364 directly alongside #279/#226/#361, so the gate no longer silently clears when #279 closes.
 
 ### Decision: Depend on the fix's code being present on `pbiob-gh-04`, not on its PR being merged to `main`
 
@@ -37,5 +37,5 @@ These are not the same requirement. Checking out the fix's PR branch directly on
 
 ## Risks / Trade-offs
 
-- The wedge-response feature goes into broader use (dev-rig-validated only) before the production-rig-specific multi-hour check runs. Accepted: the bench-test items (the ones that actually exercise the wedge/retry logic paths) are fully covered on `pbiob-gh-04`; the deferred item is specifically about false-positive _rate_ under production's own conditions, a narrower and lower-severity concern than the bench-test items (which cover whether the safety mechanism works at all).
+- **Realized, not merely accepted.** The bench items were attempted and the result is mixed: detection, auto-pause, the banner, the confirmation gate and the counter all work on real hardware, but **retry after a power-cycle fails** (#182) — so the safety mechanism detects correctly and then cannot be recovered from by its own documented procedure. The earlier severity ordering in this document was inverted: the high-severity question (does the mechanism work end to end) is the one that failed, not the deferred false-positive-rate question. #279 stays open and hard-blocking Tier 2.
 - The Tier 2 gate must actually get scheduled and not slip indefinitely — mitigated by #364 existing as a real, filed issue directly named in the roadmap's Tier 2 hard-block list (see above), not merely a described intention.
