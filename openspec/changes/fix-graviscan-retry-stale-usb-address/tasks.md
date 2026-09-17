@@ -39,9 +39,73 @@ Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
 
 ## 0. Prerequisites
 
-- [ ] 0.1 `npm ci` in the worktree (it has no `node_modules`; `npx vitest` fails without it).
+- [x] 0.1 `npm ci` in the worktree — done 2026-09-17.
 - [ ] 0.2 Confirm `fix-graviscan-scanner-identity-precedence` is merged.
 - [ ] 0.3 Re-verify #182, #279, #366 and #371 are still in the state `proposal.md` assumes.
+- [ ] 0.4 **Re-resolve every line citation in this file, `design.md` and `proposal.md` by symbol
+  before starting.** The prerequisite change rewrites `scanner-upsert.ts:56-131`,
+  `scanner-handlers.ts:87-109` and `:402-415`, and the `lsusb-detection.ts:235` export list, so
+  every downstream number in these documents shifts.
+- [ ] 0.5 **Apply the round-4 review findings below**, which were recorded against this plan on
+  2026-09-17 but deliberately not merged into the task body, because the prerequisite's
+  implementation will move the code they reference. Work through them first, then the tasks.
+
+### Round-4 findings to apply before starting (recorded 2026-09-17)
+
+1. **Replace the predictive breakage inventory with measurement.** The sibling change's plan made
+   this switch after its table was wrong twice in opposite directions. Measured baseline for the
+   five relevant files: **92 passing** (`scanner-upsert` 25, `scanner-handlers` 27,
+   `session-handlers` 33, `reset-usb-handler` 4, `lsusb-detection` 3). Re-measure after the
+   prerequisite merges, then derive the inventory from a run rather than from reading.
+   In particular, the current table was written **before** task 1.0a introduced a defaulted
+   detection mock, and was never re-derived against it — with that default in place, several rows
+   currently marked HARD FAIL/VACUOUS would pass. Do not trust it.
+2. **Add task 1.0c — widen `tests/unit/lsusb-detection.test.ts`'s `child_process` mock.** It is a
+   complete-replacement factory exporting only `execFileSync` (`:18-20`). The moment
+   `lsusb-detection.ts` does `promisify(execFile)` at module scope, `execFile` is `undefined` and
+   `promisify` throws **at import**, killing all 3 existing tests plus the new ones. Mock
+   `execFile` in Node callback form so `promisify` can wrap it, or import it lazily inside the
+   async shell. Must land in the red commit.
+3. **Task 1.0b's export list is short by one, and its file list by two.** Once task 2.2 moves
+   `buildSaneName` into `lsusb-detection.ts`, every `vi.mock('.../lsusb-detection')` factory must
+   also export `buildSaneName` — with a *real* implementation, since `scanner-handlers.test.ts`
+   asserts its output — or files re-exporting it fail at import. Covers
+   `scanner-handlers.test.ts:5-7`, `reset-usb-handler.test.ts:5-7`, and the new mock 1.0a adds to
+   `session-handlers.test.ts`.
+4. **Task 1.5 must supply mock *defaults*, not just a wider type.** `createMockRetryDb`'s 13 call
+   sites pass literal `{usb_bus, usb_device, enabled}` rows; if the widening is type-only every
+   row has `usb_port: undefined` → `no-stable-port` → all 13 retry tests fail. Take a
+   `Partial<Row>` and merge defaults for `id`, `usb_port`, `display_name`, `name` and `update`.
+5. **Task 2.4 must pin `scanLog` field order.** Three existing tests assert
+   `expect.stringContaining('scanner=sc-1 session=session-42')` — a *contiguous* substring.
+   Append new fields **after** `session=<id>`, or update those assertions in the red commit and
+   list them as deliberate.
+6. **Task 2.7's "the same check the spawn applies" is not executable.** The spawn's validation
+   lives inside `buildSubprocessEnv`, throws rather than returning a boolean, and is gated on
+   `platform === 'linux' && !mock`. Add a green task extracting
+   `export function isValidSaneName(name: string): boolean` (≥4 colon tokens, `/^\d{3}$/` on the
+   bus and address), platform-unconditional, with `buildSubprocessEnv` throwing off it unchanged.
+   Otherwise the resolver-validation test is vacuous on non-Linux shards.
+7. **Task 2.4 must settle the deferred `findUnique`-vs-pass-the-row choice, not defer it.** It
+   determines `refreshScannerUsbAddress`'s signature, which determines the stub in 1.0, which
+   determines every assertion in 1.2 — all of which come earlier. Recommend `(db, scannerId)` with
+   its own `findUnique`, so `row-missing` stays reachable from the refresh module's own tests.
+8. **Split the oversized tasks.** 2.3 is at least five (matcher+union+interface / happy path+write
+   / retry+backoff / TTL cache / mock-mode and `unusable-address` guards) and 2.7 is one per
+   `design.md` Decision 3 bullet. 1.2's eleven outcome bullets and 1.6's seven concurrency cases
+   should be numbered so they are not checked off as single boxes covering ~700 lines of test.
+9. **Task 1.7b's E2E test runs on 3 OSes × 4 shards** (`test-e2e-dev`, `fail-fast: false`,
+   90-minute timeout), and the full suite is CI-only. Assert only the `{ success: boolean }` shape
+   and no unhandled main-process error — nothing platform-dependent — and verify locally with a
+   `-g 'retry-scanner'` filter before pushing.
+10. **Renumber 1.7 → 1.7b → 1.7a**, and point 1.7's `resetUsb` assertion at
+    `reset-usb-handler.test.ts` rather than "same file (or …)".
+11. **Task 2.8 changes `resetUsb`'s duplicate-port tie-break** from `Map.set` last-wins to
+    first-in-list-order. `design.md` Decision 2 says so; the task does not. Add a
+    `reset-usb-handler.test.ts` case pinning the new order with two mock-branch entries on one port.
+12. **`tsc --noEmit` does not typecheck `tests/`** (`tsconfig.json` is `"include": ["src/**/*"]`),
+    so no compile gate validates any widened mock. Task 1.0's rationale should drop its `tsc`
+    claim and keep the two real ones (Vitest collection error, ESLint `import/no-unresolved`).
 
 ## 1. Red phase — commit failing tests first
 
