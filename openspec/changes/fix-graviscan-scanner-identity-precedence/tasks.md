@@ -197,16 +197,41 @@ device-number match never assigns, changes or transfers a `usb_port`.*
 
 ## 4. Hardware validation
 
-- [ ] 4.1 On `pbiob-gh-04`: run the audit against the real row and confirm it reports clean.
+### Hardware validation evidence — commit tested `ab0d383`, 2026-09-17
+
+Rig `pbiob-gh-04`, idle (no scan workers), real Epson V600 live at `usb_port` `1-8`, `busnum=1
+devnum=9`. Branch deployed as a patch onto `origin/main` @ `92a0a8a` in a scratch branch;
+`npm ci` + `npx prisma generate`. Exercised against a **copy** of `~/.bloom/dev.db`
+(`BLOOM_DATABASE_URL=file:/tmp/rig-eval.db`), so the live database was never mutated — confirmed
+afterwards: mtime unchanged, row still `usb_device=8`. Rig restored to
+`eberrigan/fix-graviscan-scan-write-atomicity` @ `daa1cba`, scratch branch and temp files removed.
+
+Method: a rig-only vitest file driving the real `detectScanners`, `saveScannersToDB`,
+`matchDetectedToDb` and `auditScannerPorts` against a real `PrismaClient` and real `lsusb` — the
+one thing the mocked unit tests structurally cannot cover. Not committed (it needs real hardware
+and would fail CI); its content is recorded in the vault write-up. 79 unit tests also re-run green
+on the rig.
+
+| Item | Outcome | Evidence |
+|---|---|---|
+| A — audit reports the real database | **passed** | `findings: []` on the live single-row fixture |
+| B — real Prisma accepts the address-tier query *with* its `OR` restriction, and excludes a usable-port row | **passed** | `findMany({usb_bus:1, usb_device:8, OR:[{usb_port:null},{usb_port:''}]})` → **0 rows**, because the row holds `'1-8'`. The misattribution guard proven against real SQL rather than a mock. |
+| C — live scanner binds to its saved row by port despite a moved address | **passed** | `scanner_id` is the real uuid, not a `new:` placeholder; `usb_port: '1-8'` |
+| D — **the real write path updates, not duplicates** (task 4.2) | **passed** | before `usb_device: 8` → after `usb_device: 9`; same `id` `5566356b-…`, same `usb_port`, same `createdAt`; row count unchanged; `refused: []` |
+| E — ambiguous port refuses to write, and the audit reports it | **passed** | `{scanners: [], refused: ['1-8']}`; audit → `duplicate-port` naming both ids |
+| F — unidentifiable scanner creates no row; fleet guard holds | **passed** | `{scanners: [], refused: ['1:99'], disabled: []}`; row count unchanged; all rows still enabled |
+| G — a `null`-port row is audited and **not** captured by a usable-port scanner sharing its device number | **passed** | audit → `no-port`; orphan row's `usb_port` still `null` and its `id` unchanged after a real save. This is the exact cell three review rounds got wrong, now proven on real data. |
+
+- [x] 4.1 On `pbiob-gh-04`: run the audit against the real row and confirm it reports clean.
   Pre-flighted read-only 2026-09-17 — one row, `usb_port: '1-8'`, no duplicates,
   `display_name: null`. Re-confirm at execution time. Do **not** run `npm run dev` or
   `npm run build:python` — they uninstall `python-sane` (#361). `npm ci` first; leave
   `~/.bloom/.env` in place (#367).
-- [ ] 4.2 Exercise the real write path: click Detect Scanners against the live scanner and confirm
+- [x] 4.2 Exercise the real write path: click Detect Scanners against the live scanner and confirm
   the existing row is **updated**, not duplicated. The one thing mocked tests cannot establish — a
   mock cannot show that the real `where` clause and real Prisma semantics agree, which is exactly
   how the round-3 inventory error happened.
-- [ ] 4.3 Synthesise what the rig cannot produce, then restore: a second row sharing
+- [x] 4.3 Synthesise what the rig cannot produce, then restore: a second row sharing
   `usb_port: '1-8'` (audit reports; upsert refuses); a row with `usb_port: ''` (audit reports;
   upsert refreshes its address without assigning a port); a disabled row still holding a port
   (audit reports as stranded). Record the exact DB path and commands; restore the table afterwards.
@@ -237,7 +262,7 @@ device-number match never assigns, changes or transfers a `usb_port`.*
   enabled rows' addresses will have changed again. Record `lsusb --version` per rig (older
   `usbutils` printed 0-based port numbers, which would shift every path by one per level).
   **Re-check for an active experiment first**; read-only only, no app launch and no scan.
-- [ ] 4.5 Record outcomes under the `hardware-validation-evidence` convention (per-item
+- [x] 4.5 Record outcomes under the `hardware-validation-evidence` convention (per-item
   passed/failed/blocked/not-executed, **naming the commit tested**) and write the account to the
   Obsidian vault at `C:\vaults\graviscan\`.
 
