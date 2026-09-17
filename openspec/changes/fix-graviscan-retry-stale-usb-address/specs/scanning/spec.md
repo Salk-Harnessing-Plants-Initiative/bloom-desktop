@@ -349,9 +349,17 @@ The action SHALL require an active scan session and a live coordinator. The hand
 fail without calling `addScanner` when the scanner row cannot be found, when the row's
 `enabled` field is `false`, or when the refresh outcome is `not-detected`,
 `no-stable-port`, `row-missing` or `detection-failed`. Each of those failures SHALL carry an
-operator-actionable message that identifies the scanner by its `display_name` where one is
-recorded, and SHALL NOT fall back to the stored `usb_bus`/`usb_device`, which after a
-power-cycle is known to be stale.
+operator-actionable message, and SHALL NOT fall back to the stored `usb_bus`/`usb_device`,
+which after a power-cycle is known to be stale.
+
+Those messages SHALL identify the scanner in terms an operator can act on, preferring
+`display_name`, then `usb_port`, and using the `scanner_id` only when neither is recorded.
+`display_name` is nullable and is null on real installations; the `name` column holds the USB
+model string (`'Perfection V600 Photo'`), which is identical across every scanner on a
+multi-scanner rig and so SHALL NOT be used to distinguish one. A bare `scanner_id` UUID
+SHALL NOT be the only identifier in an operator-facing message where a `usb_port` is
+available, because the port corresponds to a physical, labellable location and the UUID does
+not.
 
 A `no-stable-port` failure SHALL NOT direct the operator to run scanner detection while a
 scan session is active: doing so disables saved scanners that are not currently enumerated,
@@ -415,6 +423,18 @@ A concurrent retry for the same `scannerId` SHALL be rejected while a prior retr
 - **WHEN** `graviscan:retry-scanner` is invoked with `scannerId: 'sc-1'`
 - **THEN** the handler SHALL resolve `{ success: false, error }` where `error` names `'Bench 3'`
   and `'1-2.3'` and states that no scanner was detected at that port
+
+#### Scenario: A scanner with no display_name is identified by its port, not its UUID
+
+- **GIVEN** an active scan session with a running coordinator
+- **AND** the database's `GraviScanner` row for `sc-1` has `display_name: null`,
+  `name: 'Perfection V600 Photo'` and `usb_port: '1-8'` (the state of a real installation, where
+  `display_name` is unset and `name` is the USB model string shared by every scanner on the rig)
+- **AND** live detection reports no scanner on `usb_port: '1-8'`
+- **WHEN** `graviscan:retry-scanner` is invoked with `scannerId: 'sc-1'`
+- **THEN** the error message SHALL name `'1-8'`
+- **AND** it SHALL NOT identify the scanner solely by its `scanner_id` UUID
+- **AND** it SHALL NOT rely on `name` to distinguish the scanner
 - **AND** neither `coordinator.stopScanner` nor `coordinator.addScanner` SHALL be called
 - **AND** a log entry recording the failed retry SHALL be written
 

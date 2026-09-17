@@ -101,6 +101,12 @@ tests written here are the only automated protection. (`pr-checks.yml:218` comme
   `stopScanner` (call ordering, not just call counts). Update — do not duplicate — the existing
   `:581` test, whose assertion Decision 6 deliberately inverts: null columns plus a usable port
   now **succeed**.
+- [ ] 1.4d Same file — the real-installation identifier case: row with `display_name: null`,
+  `name: 'Perfection V600 Photo'`, `usb_port: '1-8'`; assert the `not-detected` message contains
+  `'1-8'`, does **not** consist solely of the `scanner_id` UUID, and does not lean on `name`.
+  *Why:* this is the state of the actual rig row (pre-flighted 2026-09-17 — `display_name` is
+  null and `name` is the model string, identical across all five production scanners), so the
+  `display_name`-first message degrades to a UUID on exactly the hardware this feature runs on.
 - [ ] 1.4a Same file — `'retries successfully without a DB write when the address has not moved'`:
   row `usb_bus: 3, usb_device: 7, usb_port: '3-1'`; assert `addScanner` with
   `'epkowa:interpreter:003:007'`, `update` **not** called, `{ success: true }`.
@@ -270,7 +276,32 @@ and `openspec validate --strict` checks delta *structure*, not whether prose mat
 CI structurally cannot exercise #182: mock mode is the only mode CI has, and mock scanners never
 re-enumerate. These are the only real verification.
 
-- [ ] 4.1 Pre-flight `pbiob-gh-04`. Confirm reachability. Confirm the V600's live `lsusb`/`lsusb -t`
+### Pre-flight already performed, 2026-09-17 (read-only; rig left untouched)
+
+Recorded here because it validated three load-bearing assumptions and refuted one risk:
+
+- **Rig reachable**, `pbiob-gh-04`, kernel `7.0.0-28-generic`, V600 live at
+  `Bus 001 Device 009: ID 04b8:013a`.
+- **Decision 8's sysfs mapping confirmed on real hardware.** `lsusb -t` reports
+  `Port 008: Dev 009`, so `parseLsusbTree`/`buildUsbPort` yield `'1-8'`, and
+  `/sys/bus/usb/devices/1-8/` exists with `busnum=1`, `devnum=9`, `idVendor=04b8`,
+  `idProduct=013a`. The directory name matches `buildUsbPort()`'s output exactly. Interface
+  directories (`1-8:1.0`) carry no `idVendor`, so filtering on that file excludes them naturally.
+  Root hubs appear as `usb1`/`usb2` and as `1-0:1.0`, none of which collide with a device path.
+- **#243's notation-drift hypothesis refuted for the single-level case.** The stored `usb_port`
+  is `'1-8'`, byte-identical to live output. **Not** generalisable to the production rig, whose
+  hub-attached scanners produce multi-level paths (`1-2.3`) — re-run this check there.
+- **The rig row is already stale**, unprompted: `usb_bus: 1, usb_device: 8` against a live
+  `devnum` of 9. #182's precondition exists right now with no inducement.
+- **One row only**, so the duplicate-`usb_port` path cannot be exercised here; it needs a
+  synthetic row or the production rig.
+- **`display_name` is `null`** and `name` is `'Perfection V600 Photo'` — see task 1.4d.
+- Trap for whoever runs layer 3: `usb_port` is `'1-8'` and `usb_device` is `8`, while the live
+  device number is `9`. The two 8s are unrelated. Confusing them makes a stale-address test look
+  like a passing one.
+
+- [ ] 4.1 Re-confirm the pre-flight above still holds at execution time (device numbers move),
+  then complete the remaining items. Confirm reachability. Confirm the V600's live `lsusb`/`lsusb -t`
   address **and port path**. Read the `GraviScanner` row's actual `usb_port` and compare it
   **byte-exactly** against live `buildUsbPort()` output — not merely "non-empty" — because #243's
   unresolved hypothesis is that notations diverge (`1-10` vs `1-10.0` vs `1-10:1.0`), and a port
