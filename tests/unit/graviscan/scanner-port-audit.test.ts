@@ -81,20 +81,38 @@ describe('auditScannerPorts', () => {
     );
   });
 
-  it('reports a disabled row that still holds a usable port as stranded', async () => {
+  it('reports a disabled row whose port another row now holds as stranded', async () => {
     const { db } = makeDb([
-      makeRow({ id: 'sc-stranded', usb_port: '1-10.0', enabled: false }),
+      makeRow({ id: 'sc-old', usb_port: '1-2.3', enabled: false }),
+      makeRow({ id: 'sc-new', usb_port: '1-2.3', enabled: true }),
     ]);
 
     const findings = await auditScannerPorts(db);
 
-    expect(findings).toContainEqual(
-      expect.objectContaining({
-        kind: 'stranded-disabled',
-        usbPort: '1-10.0',
-        scannerIds: ['sc-stranded'],
-      })
+    const stranded = findings.find((f) => f.kind === 'stranded-disabled');
+    expect(stranded).toBeDefined();
+    expect((stranded as any).usbPort).toBe('1-2.3');
+    expect((stranded as any).scannerIds).toEqual(
+      expect.arrayContaining(['sc-old', 'sc-new'])
     );
+  });
+
+  it('does not report a merely retired disabled row as stranded', async () => {
+    // `disableStaleScannerRows` disables a row while deliberately preserving
+    // its usb_port, so "disabled and holds a port" is the resting state of
+    // any scanner ever unplugged or re-cabled. Measured on the production rig
+    // 2026-09-17: 12 of 17 rows are in exactly this state, all legitimate
+    // history. Reporting them would be pure noise.
+    const { db } = makeDb([
+      makeRow({ id: 'sc-retired-1', usb_port: '1-10', enabled: false }),
+      makeRow({ id: 'sc-retired-2', usb_port: '17-1', enabled: false }),
+      makeRow({ id: 'sc-live', usb_port: '9-1', enabled: true }),
+    ]);
+
+    const findings = await auditScannerPorts(db);
+
+    expect(findings.filter((f) => f.kind === 'stranded-disabled')).toEqual([]);
+    expect(findings).toEqual([]);
   });
 
   it('reports nothing for a clean installation', async () => {

@@ -138,8 +138,11 @@ The audit SHALL report:
 - rows whose `usb_port` is `null` or the empty string, which cannot be matched by port and
   therefore cannot be recovered by the wedge-retry path;
 - `usb_port` values held by more than one row, counting enabled and disabled rows alike;
-- disabled rows that still hold a usable `usb_port`, which is the signature of a row stranded when
-  a duplicate superseded it.
+- disabled rows whose `usb_port` is **also held by another row**, which is the signature of a row
+  superseded by a duplicate. A disabled row that merely still holds a port SHALL NOT be reported:
+  stale-row handling disables a row while deliberately preserving its `usb_port`, so that state is
+  the normal resting condition of any scanner ever unplugged or re-cabled, and reporting it would
+  bury the real findings in noise.
 
 The audit SHALL derive every finding from the database alone, without invoking USB detection, and
 SHALL therefore neither block nor delay application startup. Comparing a stored `usb_port` against
@@ -170,13 +173,21 @@ renderer code invokes.
 - **THEN** it SHALL record `'1-2.3'` as held by more than one row, naming both
 - **AND** neither row SHALL be modified
 
-#### Scenario: The audit reports a stranded disabled row
+#### Scenario: The audit reports a disabled row superseded by a duplicate
 
-- **GIVEN** a disabled row holding `usb_port: '1-10.0'`
+- **GIVEN** a disabled row holding `usb_port: '1-2.3'`
+- **AND** another row that also holds `usb_port: '1-2.3'`
+- **WHEN** the startup audit runs
+- **THEN** it SHALL record the disabled row as superseded, naming both rows
+- **AND** neither row SHALL be modified
+
+#### Scenario: The audit does not report a merely retired disabled row
+
+- **GIVEN** a disabled row holding `usb_port: '1-10'`
 - **AND** no other row holds that port
 - **WHEN** the startup audit runs
-- **THEN** it SHALL record that row as disabled while still holding a usable port
-- **AND** the row SHALL NOT be modified
+- **THEN** it SHALL NOT report that row
+- **AND** a fleet whose only disabled rows are of this kind SHALL audit clean
 
 #### Scenario: A clean installation logs a clean audit
 

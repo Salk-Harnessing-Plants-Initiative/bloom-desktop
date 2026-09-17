@@ -114,15 +114,28 @@ export async function auditScannerPorts(
       }
     }
 
-    // A disabled row still holding a usable port is the signature of a row
-    // stranded when a duplicate superseded it. It is invisible to every other
-    // read path, all of which filter `enabled: true`.
+    // A disabled row is "stranded" only when another row now holds its port —
+    // i.e. it was superseded rather than merely retired.
+    //
+    // NOT simply "disabled and still holds a port": `disableStaleScannerRows`
+    // disables a row while deliberately *preserving* its `usb_port`, so that
+    // state is the normal resting condition of any scanner that was ever
+    // unplugged or re-cabled. Measured on the production rig
+    // (graviscan-ms-7c56, 2026-09-17): 17 rows for 5 scanners, of which 12
+    // are disabled and hold a port — all legitimate history from earlier
+    // cablings. The broad predicate reported all 12 as findings, which is
+    // noise an operator would learn to ignore, and none of them indicated a
+    // problem.
     for (const row of rows) {
       if (row.enabled || !isUsablePort(row.usb_port)) continue;
+      const supersededBy = rows.filter(
+        (other) => other.id !== row.id && other.usb_port === row.usb_port
+      );
+      if (supersededBy.length === 0) continue;
       findings.push({
         kind: 'stranded-disabled',
         usbPort: row.usb_port,
-        scannerIds: [row.id],
+        scannerIds: [row.id, ...supersededBy.map((o) => o.id)],
       });
     }
 

@@ -210,11 +210,33 @@ device-number match never assigns, changes or transfers a `usb_port`.*
   `usb_port: '1-8'` (audit reports; upsert refuses); a row with `usb_port: ''` (audit reports;
   upsert refreshes its address without assigning a port); a disabled row still holding a port
   (audit reports as stranded). Record the exact DB path and commands; restore the table afterwards.
-- [ ] 4.4 **Verify the hub-attached, multi-level port case on the production rig**
-  (`graviscan-ms-7c56`), read-only: compare each stored `usb_port` against live detection's value
-  for a hub-attached V600. Only the single-level case (`1-8`) has been verified, and #243's
-  notation hypothesis is unresolved precisely for multi-level paths. Record `lsusb --version` per
-  rig — older `usbutils` printed 0-based port numbers. **Re-check for an active experiment first.**
+- [x] 4.4 **Production rig (`graviscan-ms-7c56`) read-only inspection — done 2026-09-17.** No
+  active scan workers at the time. Findings, which settled three open questions and found one
+  defect:
+  - **Live topology:** 5 V600s, each on its own Renesas controller root hub — ports `9-1`, `11-1`,
+    `13-2`, `15-1`, `15-2`, all **single-level**, at device numbers 2/2/2/2/3. `buildUsbPort`
+    output matches the sysfs directory names exactly.
+  - **The live database is `~/.bloom/data/bloom.db`** (56 MB, written 2026-08-31), *not*
+    `~/.bloom/dev.db`, which is a 2026-05-02 leftover describing a long-gone bus-1 topology.
+    `.env` sets no `BLOOM_DATABASE_URL`, so the default path applies. Read the right file.
+  - **17 rows for 5 scanners.** The 5 enabled rows' `usb_port` values match live detection
+    byte-for-byte; their `usb_bus`/`usb_device` are stale (9/4, 11/5, 13/4, 15/6, 15/7 against
+    live 9/2, 11/2, 13/2, 15/2, 15/3). So **#182's precondition is live on all five production
+    scanners**, and the precedence change binds each correctly and merely refreshes the address —
+    the duplicate-row trade of `design.md` Decision 2 does **not** fire on this data.
+  - **#243's notation-drift hypothesis is refuted on production too**, and the multi-level case
+    this task was written to check does not currently exist there. It *has* existed: the disabled
+    history includes `1-2.3` and `1-2.4` from a hub-attached era, so multi-level paths do occur on
+    this hardware over time.
+  - **Defect found in this change's own audit:** the `stranded-disabled` predicate as first
+    implemented ("disabled and still holds a port") reported **12 of the 17 rows**, every one a
+    false positive — legitimate history from earlier cablings, because stale-row handling
+    preserves `usb_port` on disable. Narrowed to "disabled *and* its port is held by another row";
+    the corrected predicate reports **0 findings** on production, verified against the live data.
+- [ ] 4.4a Re-run the read-only inspection at execution time — device numbers move, and the
+  enabled rows' addresses will have changed again. Record `lsusb --version` per rig (older
+  `usbutils` printed 0-based port numbers, which would shift every path by one per level).
+  **Re-check for an active experiment first**; read-only only, no app launch and no scan.
 - [ ] 4.5 Record outcomes under the `hardware-validation-evidence` convention (per-item
   passed/failed/blocked/not-executed, **naming the commit tested**) and write the account to the
   Obsidian vault at `C:\vaults\graviscan\`.
