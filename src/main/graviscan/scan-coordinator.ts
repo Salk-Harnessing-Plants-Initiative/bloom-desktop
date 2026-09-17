@@ -84,6 +84,19 @@ export type RowOutcomeKind = 'done' | 'exit' | 'stopped' | 'timeout';
 export interface RowOutcome {
   kind: RowOutcomeKind;
   scannerId: string;
+  /**
+   * Whether the session was already cancelled at the moment this row's
+   * outcome was determined.
+   *
+   * Captured at settle time, NOT read at log time (review round 7).
+   * `await Promise.all(rowDonePromises)` can span the full
+   * SCAN_ROW_TIMEOUT_MS while other scanners finish, so a cancel arriving
+   * in that window would otherwise re-label an already-settled wedge stop
+   * as an operator cancellation — the exact inverse of the distinction
+   * round 6 introduced. `shutdown()` sets `cancelled` before invoking the
+   * settler, so the cancel path still reads `true` here.
+   */
+  cancelledAtSettle: boolean;
   /** Real final paths learned from each plate's own scan-complete event. */
   outputPaths: PlateOutputPath[];
   /** Plates sent for this row, with cycle/timestamp-corrected output paths. */
@@ -608,6 +621,15 @@ export class ScanCoordinator
     try {
       await withTimeout(sub.spawn(), SPAWN_READY_TIMEOUT_MS);
       console.log(`[ScanCoordinator] Scanner ${config.scannerId} ready`);
+      // Clear any earlier failure for this scanner (review round 7).
+      // Nothing else does: `stopScanner()`'s delete sits below its
+      // `if (!sub) return;`, and a scanner that failed to spawn is by
+      // definition absent from `this.subprocesses` — so the retry path
+      // (`stopScanner()` then `addScanner()`) left the entry in place even
+      // after a successful respawn. That stale entry then misreported the
+      // scanner as "never came online" for the rest of the session, and
+      // also fed `getScannerStatuses()` a failure for a healthy scanner.
+      this.initErrors.delete(config.scannerId);
       this.emit('scanner-init-status', {
         scannerId: config.scannerId,
         status: 'ready',
@@ -725,13 +747,16 @@ export class ScanCoordinator
    * diagnostic above the cancel check made the second reachable, so
    * without this split a technician who deliberately pressed Cancel would
    * be told their scanner may have wedged.
+   *
+   * `cancelled` is the flag AS AT SETTLE TIME, passed in rather than read
+   * from `this` (review round 7) — see `RowOutcome.cancelledAtSettle`.
    */
-  private rowOutcomeCause(kind: RowOutcomeKind): string {
+  private rowOutcomeCause(kind: RowOutcomeKind, cancelled: boolean): string {
     switch (kind) {
       case 'exit':
         return 'the scanner subprocess exited mid-row';
       case 'stopped':
-        return this.cancelled
+        return cancelled
           ? 'the session was cancelled (or the app quit) mid-row'
           : 'the scanner was stopped mid-row (e.g. wedge auto-pause)';
       case 'timeout':
@@ -928,6 +953,8 @@ export class ScanCoordinator
           };
           const settle = (kind: RowOutcomeKind) => {
             cleanup();
+            // Snapshot the cancel flag HERE, where the outcome is decided.
+            const cancelledAtSettle = this.cancelled;
             // `platesToScan`, not `rowPlates`: the former carries the
             // rewritten `_st_` timestamp and the current `_cy<N>_` in its
             // basename, which the diagnostic quotes so a missing plate names
@@ -936,6 +963,7 @@ export class ScanCoordinator
             resolve({
               kind,
               scannerId,
+              cancelledAtSettle,
               outputPaths,
               rowPlates: platesToScan,
             });
@@ -1088,7 +1116,7 @@ export class ScanCoordinator
           this.logUnverifiedPlate(
             result.scannerId,
             plate,
-            this.rowOutcomeCause(result.kind)
+            this.rowOutcomeCause(result.kind, result.cancelledAtSettle)
           );
         }
       }
@@ -1119,11 +1147,9 @@ export class ScanCoordinator
         const rowPlates = platesForScanner.filter((p) =>
           rowGrids.includes(p.plate_index)
         );
-        // Distinguish the three ways a scanner can be missing. A scanner
-        // that never came online is NOT a plate to go re-scan — telling an
-        // operator to check for a file on a scanner with a dead USB port,
-        // once per plate per cycle for the length of the session, buries
-        // the records that do matter.
+        // Distinguish the three ways a scanner can be missing. This only
+        // shapes the CAUSE text — actionability is decided below on a
+        // different basis.
         const neverCameOnline = this.initErrors.has(scannerId);
         const cause = this.cancelled
           ? 'the session was cancelled before this row was dispatched'
@@ -1142,11 +1168,26 @@ export class ScanCoordinator
             .basename(plate.output_path)
             .replace(/(\d{8}T\d{6})/, stTimestamp)
             .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
+          // Never actionable, whatever the reason the scanner is missing
+          // (review round 7). Keying this on `initErrors` was wrong in both
+          // directions: that map is populated only by SPAWN failure, so a
+          // worker that died mid-session — the commonest case — was told to
+          // re-scan plates it never attempted, once per plate per cycle for
+          // the rest of the session; and a scanner that failed to spawn,
+          // was retried successfully, and later died kept a stale entry and
+          // was wrongly told there was nothing to do.
+          //
+          // The honest predicate is simply whether the plate was
+          // DISPATCHED. Every plate reaching this loop belongs to a scanner
+          // that received no scan command for this row, so no file can
+          // exist for it and there is nothing to go and check. Plates that
+          // WERE dispatched are handled by the row-outcome loop above,
+          // where a partial file genuinely may exist.
           this.logUnverifiedPlate(
             scannerId,
             { ...plate, output_path: path.join(dir, basename) },
             cause,
-            { actionable: !neverCameOnline }
+            { actionable: false }
           );
         }
       }

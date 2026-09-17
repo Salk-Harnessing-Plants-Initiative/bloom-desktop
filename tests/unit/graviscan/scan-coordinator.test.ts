@@ -2391,21 +2391,30 @@ describe('ScanCoordinator', () => {
         // Shares the `MISSING` token with the grid tally, so one grep finds
         // both halves of the signal rather than only the aggregate one.
         expect(msg).toContain('MISSING?');
-        // Ends with an action a technician can take. "output presence
-        // unknown" never got a plate re-scanned.
-        expect(msg).toMatch(/re-scan this plate if it is absent/);
+        // Every line names an expected path, whether or not it is
+        // actionable. The re-scan INSTRUCTION is asserted separately below,
+        // because it applies only to plates that were actually dispatched —
+        // a plate whose scanner never received the row has no file to check
+        // for (review round 7).
         // Deliberately does NOT label the path `pre-_et_`: no `_et_`-stamped
         // file exists to look for (#370), so the old wording sent the reader
         // hunting for a filename that will never appear on disk.
         expect(msg).not.toContain('_et_');
-        // The expected path carries experiment id, wave, scanner and cycle.
-        expect(msg).toContain('Check for ');
+        // The expected path carries experiment id, wave, scanner and cycle,
+        // and is named whether or not the line is actionable.
+        expect(msg).toContain('.tif');
         // And it must be the CYCLE-CORRECTED path (from platesToScan), not
         // the stale one the row was built from. scanOnce() rewrites `_cy<N>_`
         // per cycle; quoting the stale path would name the wrong cycle for a
         // plate that is missing.
         expect(msg).toContain('_cy1_');
       }
+
+      // The dispatched-vs-reconciled split of the re-scan instruction is
+      // owned by its own test ("does not tell an operator to re-scan a
+      // plate whose scanner never received the row"); this 4grid scenario
+      // produces both kinds, so asserting it here would only duplicate it
+      // less precisely.
 
       vi.useRealTimers();
     });
