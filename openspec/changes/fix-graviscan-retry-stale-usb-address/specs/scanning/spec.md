@@ -240,7 +240,7 @@ scanner's worker (`stopScanner`, a no-op if already stopped by auto-pause) and r
 (`addScanner`) using a `saneName` built from the **refreshed** `usb_bus`/`usb_device`.
 
 The refresh SHALL be performed as described in "Scanner USB Address Refresh". A fresh
-*database* read is NOT sufficient: `usb_bus`/`usb_device` are written only by `resetUsb()` and
+_database_ read is NOT sufficient: `usb_bus`/`usb_device` are written only by `resetUsb()` and
 `upsertScannerRow()`, neither of which is on the retry path, and a physical power-cycle — the
 precondition the operator has just satisfied — always re-enumerates the device at a new number.
 The handler SHALL NOT reuse a refresh result obtained during an earlier retry, and SHALL NOT
@@ -526,7 +526,7 @@ exceeds its timeout, the spawn path SHALL fall back to
 `config.saneName` and proceed as it otherwise would. Resolution SHALL
 NOT be able to fail a spawn that would otherwise have been attempted.
 
-Every fallback caused by a resolution *failure* SHALL be recorded in the
+Every fallback caused by a resolution _failure_ SHALL be recorded in the
 durable scan log with its cause, distinctly from the ordinary case of no
 resolver being attached. A silent fallback would spawn the worker on a
 known-stale address — the precise defect resolution exists to prevent —
@@ -703,7 +703,6 @@ reject either.
   `scanner-init-status` `error` event for `'A'`
 - **AND** `hasWorker('A')` SHALL continue to return `true` for the
   healthy replacement, unaffected by the orphaned attempt's outcome
-
 
 #### Scenario: A queued spawn resolves its device name at spawn time, not enqueue time
 

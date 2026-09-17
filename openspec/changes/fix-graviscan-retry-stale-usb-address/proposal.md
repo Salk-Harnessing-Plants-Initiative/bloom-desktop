@@ -29,7 +29,7 @@ at `Bus 001 Device 008`; a scan session started **successfully** on the live-det
 `epkowa:interpreter:001:008`, proving the scanner was healthy and openable; `retryScanner` then
 **failed** on that same device. The only difference was the source of the name — live `lsusb`
 versus the stale DB row. Device numbers were observed climbing 005 → 006 → 007 → 008 within one
-session. A read-only pre-flight on 2026-09-17 found the rig's row *already* stale
+session. A read-only pre-flight on 2026-09-17 found the rig's row _already_ stale
 (`usb_device: 8` against a live `devnum` of 9) with no inducement.
 
 This is why #279 checklist item 4 FAILS, making #182 a Tier 2 hard-block on the cutover
@@ -42,7 +42,7 @@ This is why #279 checklist item 4 FAILS, making #182 a Tier 2 hard-block on the 
    in a `useEffect` with `[]` dependencies — once per page mount. `useScanSession.ts:897` reads
    `saneNames[scannerId] ?? ''` into the `startScan` payload and `session-handlers.ts:158-162`
    maps it straight to `ScannerConfig[]`. So the most plausible operator recovery — cancel the
-   session, power-cycle, start a new one, without leaving the page — fails with the *identical*
+   session, power-cycle, start a new one, without leaving the page — fails with the _identical_
    error. Fixing the button without this would fix the feature and leave the workaround broken.
 3. **Spawn-time staleness on the retry path itself.** `retryScanner` requires an active session,
    and `isScanning` is true for both `'scanning'` and `'waiting'`
@@ -54,10 +54,10 @@ This is why #279 checklist item 4 FAILS, making #182 a Tier 2 hard-block on the 
 
 ### The standing spec currently certifies the bug
 
-`openspec/specs/scanning/spec.md:4104` prescribes the broken mechanism *by name* — a `saneName`
+`openspec/specs/scanning/spec.md:4104` prescribes the broken mechanism _by name_ — a `saneName`
 "rebuilt from a **fresh database read** of the scanner's current `usb_bus`/`usb_device`" — and
-its first scenario pins the literal `'epkowa:interpreter:003:007'`. A fresh *database* read is
-not a fresh *USB identity*, so that requirement cannot be satisfied and #182 fixed at once. A
+its first scenario pins the literal `'epkowa:interpreter:003:007'`. A fresh _database_ read is
+not a fresh _USB identity_, so that requirement cannot be satisfied and #182 fixed at once. A
 `MODIFIED` delta on it is mandatory.
 
 ## What Changes
@@ -73,7 +73,7 @@ rather than stopped and unrecoverable.
 
 Detection on this path is **asynchronous**. `detectEpsonScanners()` is `execFileSync` twice over
 (`src/main/lsusb-detection.ts:148` and `:161`, each `timeout: 5000`), which would block the
-Electron main-process event loop for up to ~10s *during an active session* — delaying
+Electron main-process event loop for up to ~10s _during an active session_ — delaying
 `scanInterval`'s sleep, which is a real interval error in a gravitropism time series, and pushing
 other scanners' in-flight rows toward `SCAN_ROW_TIMEOUT_MS`, the entry condition for #371's
 permanent false `MISSING` on an unrelated healthy scanner. An async variant is added, sharing one
@@ -93,8 +93,8 @@ Three constraints make this safe, and each is a defect the design would otherwis
 
 - **A generation token.** Resolution adds the first `await` between entering the spawn path and
   registering the subprocess in the coordinator's map. `spawnSingleScanner` installs its
-  in-flight guard *after* the body's first synchronous segment (`:481-490`), and `stopScanner`
-  deletes that guard *first* then early-returns when the map has no entry (`:429-433`). So an
+  in-flight guard _after_ the body's first synchronous segment (`:481-490`), and `stopScanner`
+  deletes that guard _first_ then early-returns when the map has no entry (`:429-433`). So an
   attempt suspended in resolution would be cancellable by nothing and awaited by nothing —
   permitting two live workers for one scanner, or a worker spawned against an already-shut-down
   coordinator. A per-`scannerId` token, captured before resolution and re-checked after, closes
@@ -102,7 +102,7 @@ Three constraints make this safe, and each is a defect the design would otherwis
 - **Its own timeout.** `withTimeout(sub.spawn(), SPAWN_READY_TIMEOUT_MS)` covers only `spawn()`.
   An unbounded resolver could strand the in-flight guard and make a scanner un-spawnable for the
   rest of the session, while `retriesInFlight` holds the operator's button dead.
-- **Logged fallback.** An absent resolver is ordinary; a *failing* one means the worker is about
+- **Logged fallback.** An absent resolver is ordinary; a _failing_ one means the worker is about
   to spawn on a known-stale address, which is the defect this change exists to remove — after
   the operator has been told the retry succeeded. Every failure-caused fallback is logged with
   its cause, distinctly from the no-resolver case.
@@ -128,7 +128,7 @@ Three constraints make this safe, and each is a defect the design would otherwis
   the existing scenario "Retry failure keeps the entry visible with an inline error"
   (`ui-management-pages/spec.md:2358`, under the requirement at `:2331`) renders the returned
   `error` inline, keeps the entry, and re-arms Confirm Retry. #279 item 5 confirmed that gate
-  behaves well. Its *mechanism* changes, though — a powered-off scanner is now refused before
+  behaves well. Its _mechanism_ changes, though — a powered-off scanner is now refused before
   `stopScanner`/`addScanner` rather than re-attempted — so item 5's evidence must be re-recorded.
 - **No schema change,** therefore no migration.
 - **Out of scope:** the identity-matching precedence inversion (now
@@ -137,7 +137,7 @@ Three constraints make this safe, and each is a defect the design would otherwis
 
 ### #182's worker half is deliberately not fixed here
 
-#182's title and body are about the *worker's* automatic reconnect after a scan failure, with no
+#182's title and body are about the _worker's_ automatic reconnect after a scan failure, with no
 operator involved: `scan_worker.py` sets `self.device_name` once (`:249`) and `_reopen_device()`
 re-opens that frozen name (`:774`). Re-resolving it inside the worker **cannot work**, because
 `src/main/native/libusb-filter.c` reads `SANE_USB_FILTER` exactly once per process into a
@@ -157,7 +157,7 @@ not close it.
 
 - Partially addresses #182 (the operator-retry half). Unblocks #279 item 4.
 - Prerequisite: `fix-graviscan-scanner-identity-precedence` (#167, #203, #243).
-- **#366 must land before #279 item 4 is marked passed.** This change makes retry *correct*, but
+- **#366 must land before #279 item 4 is marked passed.** This change makes retry _correct_, but
   during an interval session the queued respawn leaves Confirm Retry disabled with no feedback
   for up to a full interval. So "the button doesn't work" becomes "the button appears to do
   nothing for up to an interval". #366 bounds that wait and surfaces the queued state. Keeping

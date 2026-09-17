@@ -32,19 +32,19 @@ own module.
 The retry path's DB interface must gain an `update` method, which is in tension with that
 read-only rationale. Resolved by declaring `ScannerUsbRefreshDb` (read + write) in the refresh
 module and having `ScannerRetryLookupDb` extend it. Note TypeScript will not let the derived
-interface *narrow* `graviScanner`'s shape, so the base row type carries the union of fields both
+interface _narrow_ `graviScanner`'s shape, so the base row type carries the union of fields both
 need; the alternative is a confusing "incorrectly extends" error at implementation time.
 
 ### Decision 2 — the shared unit is the pure matcher, not the IO wrapper
 
-`resetUsb()` needs the same *matching* but must keep its **single** detection pass across all
+`resetUsb()` needs the same _matching_ but must keep its **single** detection pass across all
 scanners; calling the IO wrapper in its loop would spawn detection per scanner and give each row
 a different view of the bus. So the extracted, shared unit is the pure matcher.
 
 `resetUsb()` currently builds a `Map<usb_port, DetectedScanner>` (`scanner-handlers.ts:688-704`);
 the matcher is a linear scan. For a duplicate port, `Map.set` keeps the **last** entry and a
 linear scan finds the **first**. Real detection dedupes by port (`lsusb-detection.ts:193-211`) so
-this cannot arise there — but it *can* in mock mode, where `resetUsb`'s mock branch synthesises
+this cannot arise there — but it _can_ in mock mode, where `resetUsb`'s mock branch synthesises
 `usb_port: s.usb_port || \`1-${i + 1}\`` (`:669`). The matcher's tie-break is therefore specified
 as first-in-list-order and tested, rather than left to a map's iteration order.
 
@@ -69,7 +69,7 @@ The window this opens is real and is spelled out in the spec because it is easy 
 
 - **Generation token.** Today `doSpawnSingleScanner` has no `await` on the normal path between
   entry and `subprocesses.set` (`:610`), and `spawnSingleScanner` installs its in-flight guard
-  *after* the body's first synchronous segment (`:481-490`). `stopScanner` deletes that guard
+  _after_ the body's first synchronous segment (`:481-490`). `stopScanner` deletes that guard
   first and then early-returns if the map has no entry (`:429-433`). An attempt suspended in
   resolution is therefore in neither structure — uncancellable by `stopScanner` and un-awaited by
   `shutdown()`. Two live workers on one scanner, or a worker spawned against a shut-down
@@ -79,7 +79,7 @@ The window this opens is real and is spelled out in the spec because it is easy 
 - **Resolver timeout.** `SPAWN_READY_TIMEOUT_MS` wraps `spawn()` only. An unbounded resolver
   could leave the in-flight guard set forever, making that `scannerId` un-spawnable for the
   session while `retriesInFlight` holds the operator's button dead.
-- **Logged fallback.** Falling back to the enqueue-time name is the *same* thing Decision 5
+- **Logged fallback.** Falling back to the enqueue-time name is the _same_ thing Decision 5
   rejects at click time, so it must not be silent. An absent resolver is ordinary and is not
   logged as a failure; a rejection, a validation failure or a timeout is.
 
@@ -94,7 +94,7 @@ contradicts the requirement that resolution cannot fail a spawn.
 `timeout: 5000`) — up to ~10s with the **main-process event loop fully blocked**. During an
 active session that is not latency but a stall: no IPC handler runs, no subprocess output is
 parsed, `scanInterval`'s sleep is delayed with no drift compensation, and because libuv runs the
-timers phase before the poll phase, a row whose `cycle-done` arrived on the pipe *during* the
+timers phase before the poll phase, a row whose `cycle-done` arrived on the pipe _during_ the
 stall but whose `SCAN_ROW_TIMEOUT_MS` also expired during it can settle as `'timeout'` — #371's
 entry condition for permanent false `MISSING` on a healthy scanner.
 
@@ -111,10 +111,10 @@ deliberately as out of scope.
 when `lsusb -t` fails. So each non-`refreshed` outcome needs a distinct meaning and message.
 
 - `not-detected`, `no-stable-port`, `row-missing`, `unusable-address` — fail. After a power-cycle
-  the stored address is *always* wrong, so a fallback is a guaranteed false positive that reports
+  the stored address is _always_ wrong, so a fallback is a guaranteed false positive that reports
   success and then fails opaquely.
 - `detection-failed` — **retry up to three times with backoff first.** Here the scanner may be
-  healthy and the *diagnostic* failed; `execFile` with a 5s timeout can fail transiently under
+  healthy and the _diagnostic_ failed; `execFile` with a 5s timeout can fail transiently under
   exactly the bus contention a wedge creates. Refusing on one failure would cost a run's
   remaining timepoints for a reason unrelated to the scanner.
 
@@ -132,7 +132,7 @@ the union.
 **The message must not name Detect Scanners while a session is active.** That path is not gated
 on an active scan (unlike Reset USB), and `saveScannersToDB` calls `disableStaleScannerRows`,
 which disables every enabled row whose `usb_port` is absent from the current detection set — i.e.
-a powered-off wedged scanner, which is the *likeliest* reason a retry fails. The prohibition
+a powered-off wedged scanner, which is the _likeliest_ reason a retry fails. The prohibition
 therefore covers `not-detected` as well as `no-stable-port`, not just the latter. The missing
 guard is filed separately.
 
@@ -166,7 +166,7 @@ and ships before its replacement; that is a real, accepted gap rather than a neu
 CI has only mock mode, and mock scanners are deterministically `usb_bus: 1, usb_device: i + 1`
 (`scanner-handlers.ts:51-81`) and never re-enumerate. So CI structurally cannot exercise #182.
 
-The insight: **a power-cycle is only one *cause*; the fault is a stale address.** That can be
+The insight: **a power-cycle is only one _cause_; the fault is a stale address.** That can be
 induced deterministically by writing a wrong `usb_device` while the scanner sits healthy — the
 2026-09-16 reproduction with the hardware step removed.
 
@@ -200,7 +200,7 @@ Two honest qualifications:
   invalidates the click-time refresh — while `retriesInFlight` refuses the second retry for that
   whole period. Resolve-at-spawn is what makes refresh immune to the queue's duration.
 - **This change alone does not honestly clear #279 item 4.** Retry becomes correct while still
-  *appearing* to do nothing for up to an interval. #366 must land before item 4 is marked passed.
+  _appearing_ to do nothing for up to an interval. #366 must land before item 4 is marked passed.
 
 Bounded in the other direction: refresh's detection is async with a 5s timeout per call and at
 most three attempts, and every non-`refreshed` outcome returns **before** `addScanner`, which
@@ -233,21 +233,21 @@ Recorded so the next reviewer does not re-derive it.
 - **`wiring.ts`'s `ScannerLookupDb` reads `usb_port` but not `usb_bus`/`usb_device`**, so it
   cannot race the refresh write.
 - **A string-literal discriminant narrows correctly** under this repo's `tsconfig`; a
-  *boolean*-literal one does not, which is why `WedgeBanner.tsx:48-53` needs its manual cast. The
+  _boolean_-literal one does not, which is why `WedgeBanner.tsx:48-53` needs its manual cast. The
   outcome union therefore uses a string `status` deliberately.
 
 ## Risks
 
-| Risk | Mitigation |
-|---|---|
-| Resolution's new `await` makes double-spawn and spawn-past-shutdown reachable | Generation token, specified as a requirement and tested with `stopScanner`-during-resolution and `shutdown`-during-resolution cases. |
-| An unbounded or hung resolver strands a scanner for the session | Explicit resolver timeout, separate from `SPAWN_READY_TIMEOUT_MS`, with a never-settling-resolver test. |
-| Several scanners retried in sequence resolve concurrently at one cycle boundary | Each queued add registers its own `cycle-complete` listener and they are not serialized, so N resolvers can run at once — up to 2N `lsusb` invocations on a bus that already has a wedged device. Bounded by the resolver timeout; detection results are cached for a short TTL so concurrent resolvers share one pass. |
-| A failing resolver silently spawns on a stale address | Failure-caused fallbacks are logged with their cause, distinctly from the absent-resolver case. |
-| Retry inside `reset-usb`'s 5s null window now proceeds where it used to refuse | Stated in Decision 6 as an accepted gap; the handler-level guard is filed. Unreachable from the UI, reachable over IPC. |
-| `usb_port` notation may differ from live detection (#243's open hypothesis), and a mismatch now hard-fails a retry | The prerequisite change's startup audit reports mismatches before they matter. Rig pre-flight compares byte-exactly; only the single-level case (`1-8`) is verified so far — the production rig's hub-attached multi-level paths need the same check. |
-| The `lsusb` dedupe keeps the highest `usb_device` as "most recent"; device numbers are reused and wrap at 127 | After a wrap a ghost could win and refresh would persist a dead address. Pinned as a named assumption with tests; the block has partial coverage today, not zero. |
-| A test passing only because the mock is more forgiving than production | Mock-mode spawning skips `saneName` validation entirely, which is how `epkowa:interpreter:null:null` became reachable; guarded by `unusable-address` with its own scenario. Mock row shapes audited against the schema wholesale. |
+| Risk                                                                                                               | Mitigation                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Resolution's new `await` makes double-spawn and spawn-past-shutdown reachable                                      | Generation token, specified as a requirement and tested with `stopScanner`-during-resolution and `shutdown`-during-resolution cases.                                                                                                                                                                                    |
+| An unbounded or hung resolver strands a scanner for the session                                                    | Explicit resolver timeout, separate from `SPAWN_READY_TIMEOUT_MS`, with a never-settling-resolver test.                                                                                                                                                                                                                 |
+| Several scanners retried in sequence resolve concurrently at one cycle boundary                                    | Each queued add registers its own `cycle-complete` listener and they are not serialized, so N resolvers can run at once — up to 2N `lsusb` invocations on a bus that already has a wedged device. Bounded by the resolver timeout; detection results are cached for a short TTL so concurrent resolvers share one pass. |
+| A failing resolver silently spawns on a stale address                                                              | Failure-caused fallbacks are logged with their cause, distinctly from the absent-resolver case.                                                                                                                                                                                                                         |
+| Retry inside `reset-usb`'s 5s null window now proceeds where it used to refuse                                     | Stated in Decision 6 as an accepted gap; the handler-level guard is filed. Unreachable from the UI, reachable over IPC.                                                                                                                                                                                                 |
+| `usb_port` notation may differ from live detection (#243's open hypothesis), and a mismatch now hard-fails a retry | The prerequisite change's startup audit reports mismatches before they matter. Rig pre-flight compares byte-exactly; only the single-level case (`1-8`) is verified so far — the production rig's hub-attached multi-level paths need the same check.                                                                   |
+| The `lsusb` dedupe keeps the highest `usb_device` as "most recent"; device numbers are reused and wrap at 127      | After a wrap a ghost could win and refresh would persist a dead address. Pinned as a named assumption with tests; the block has partial coverage today, not zero.                                                                                                                                                       |
+| A test passing only because the mock is more forgiving than production                                             | Mock-mode spawning skips `saneName` validation entirely, which is how `epkowa:interpreter:null:null` became reachable; guarded by `unusable-address` with its own scenario. Mock row shapes audited against the schema wholesale.                                                                                       |
 
 ## Deferred, and named so it is not rediscovered as a defect
 
@@ -255,7 +255,7 @@ Recorded so the next reviewer does not re-derive it.
   `proposal.md`. Filed with the finding and the cheapest falsification (grep an existing wedge-run
   worker log for `libusb-filter] Blocked`).
 - `usb_bus`/`usb_device` are **not** audit-grade identity. The audit-grade record is the scan-log
-  line, which carries before *and* after values, the port and the session. A durable per-rebind
+  line, which carries before _and_ after values, the port and the session. A durable per-rebind
   record (the `GraviScannerBinding` table from PR #196's stranded proposal) is deferred: it brings
   append-only enforcement, a reason enum and a confirmation modal.
 - `usb_port` is captured in no per-scan artifact, so an image is not self-describing as to which

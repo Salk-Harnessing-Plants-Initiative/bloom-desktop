@@ -7,7 +7,7 @@ GraviScan matches a detected USB scanner to its saved `GraviScanner` row on
 `matchDetectedToDb()` (`src/main/graviscan/scanner-handlers.ts:87-109`) and
 `upsertScannerRow()` (`src/main/graviscan/scanner-upsert.ts:56-81`). The operating
 system reassigns `usb_device` on every reconnect, so after a re-enumeration a device's
-new number can coincide with a *different* saved scanner's stored `usb_device` and bind
+new number can coincide with a _different_ saved scanner's stored `usb_device` and bind
 the wrong `scanner_id`. Device numbers were observed climbing 005 → 006 → 007 → 008
 within one session on a five-scanner rig where every scanner is the same model.
 
@@ -15,16 +15,16 @@ within one session on a five-scanner rig where every scanner is the same model.
 between "whose plate barcodes" and "which physical scanner": its output becomes
 `GraviScan.tsx`'s `saneNames` map, which `useScanSession.ts:897` turns into each
 worker's `--device` argument. On a coincidence, scanner A's barcodes are applied to
-images produced by a *different* physical scanner — **and** the legitimate owner gets no
+images produced by a _different_ physical scanner — **and** the legitimate owner gets no
 `saneName`, resolves to `?? ''`, fails `buildSubprocessEnv`'s validation and drops out of
 the run. That drop-out is not loudly reported: the failure appears as an `error` badge on
 the scanner panel and a `scanLog` line, and the dedicated `graviscan:scanner-init-status`
-event is forwarded to the renderer but has no subscriber. So the *plates* are silently not
+event is forwarded to the renderer but has no subscriber. So the _plates_ are silently not
 scanned even though the spawn failure itself is recorded.
 
 On the write path it is worse. `upsertScannerRow` overwrites the mis-matched row's
 `usb_port`, `display_name` **and `name`** — and `name` is what
-`src/main/graviscan-upload.ts:281` resolves *at upload time* into `scanner_name` for
+`src/main/graviscan-upload.ts:281` resolves _at upload time_ into `scanner_name` for
 every historical scan on that row. So the corruption reaches data that was already
 captured and uploaded.
 
@@ -81,7 +81,7 @@ surfaced by Decision 4's startup audit as an accepted trade rather than assumed 
 
 > **A match on `usb_bus`+`usb_device` never assigns, changes or transfers a `usb_port`.**
 
-So the device-number tier is reachable only when *both* the detected port and the candidate row's
+So the device-number tier is reachable only when _both_ the detected port and the candidate row's
 port are unusable, and it may refresh only `usb_bus`/`usb_device`. A scanner that arrives with a
 usable port and matches no row is a **new** scanner; it never falls through to a device number.
 
@@ -154,7 +154,7 @@ disabled rows still holding a port (the signature of a row stranded by a duplica
 Three properties matter:
 
 - **It examines all rows, not just enabled ones.** The duplicate-row failure in §1 leaves its
-  victim *disabled*, and every read path filters `enabled: true`, so an enabled-only audit
+  victim _disabled_, and every read path filters `enabled: true`, so an enabled-only audit
   could not see the population it exists to surface.
 - **It uses no USB detection.** That keeps it off the startup critical path. The only
   detection function available in this change is synchronous — `execFileSync` twice, each
@@ -198,7 +198,7 @@ canonical has data-attribution consequences.
   by a re-detect.
 - **No feature flag.** §1's fallbacks are behaviour-preserving for clean installs and the audit
   is read-only. Rollback is a redeploy of the previous build, after which rows created under the
-  new precedence remain and the old code will match *them* by device number — stated so it is a
+  new precedence remain and the old code will match _them_ by device number — stated so it is a
   known consequence rather than a surprise.
 - **Out of scope:** the retry-path address refresh (`fix-graviscan-retry-stale-usb-address`),
   comparing stored ports against live detection, #203 (identity following the port is accepted),

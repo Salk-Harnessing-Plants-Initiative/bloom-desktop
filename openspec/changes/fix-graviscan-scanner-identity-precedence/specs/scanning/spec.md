@@ -13,7 +13,7 @@ A port value SHALL be considered unusable when it is `null` or the empty string.
 values SHALL NOT be treated as equal to each other.
 
 **A match on `usb_bus`+`usb_device` SHALL NEVER assign, change or transfer a `usb_port`.** It
-SHALL be reachable only when the detected scanner's own port is unusable *and* the candidate
+SHALL be reachable only when the detected scanner's own port is unusable _and_ the candidate
 row's port is unusable, and it SHALL be permitted to refresh only `usb_bus`/`usb_device` on that
 row. This single invariant is what prevents a device number from moving identity between physical
 scanners, and it is stated as an invariant rather than as a set of prohibitions because each
