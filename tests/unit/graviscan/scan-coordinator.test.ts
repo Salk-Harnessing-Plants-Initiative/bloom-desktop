@@ -76,17 +76,57 @@ function createMockSubprocess(scannerId: string): EventEmitter & {
 // (already-_et_-stamped) path. `sub` is whatever mock subprocess received
 // the `scan()` call; `plates` is the array `scan()` was called with.
 function emitScanCompleteForPlates(
-  sub: EventEmitter,
+  sub: EventEmitter & { scannerId: string },
   plates: PlateConfig[]
 ): void {
   for (const plate of plates) {
-    sub.emit('scan-complete', {
-      type: 'scan-complete',
-      scanner_id: 'test-scanner',
+    // Was hardcoding `scanner_id: 'test-scanner'` regardless of which mock
+    // emitted, and emitting only the specific channel. Both are fixed by
+    // going through emitScanComplete().
+    emitScanComplete(sub, {
       plate_index: plate.plate_index,
       path: plate.output_path,
     });
   }
+}
+
+// Emit a worker event the way production does: `ScannerSubprocess.handleLine()`
+// (`scanner-subprocess.ts:443-487`) emits the SPECIFIC channel and then
+// unconditionally mirrors the same payload onto the generic `'event'`
+// channel. The coordinator subscribes to both — `onScanComplete` per row,
+// and a persistent `sub.on('event')` relay that feeds the renderer and DB.
+//
+// Round 7 found that 6 of 7 emit sites used one channel only. That is the
+// fifth instance of this change's recurring defect class (a mock more
+// forgiving than production), one level up from the payload-shape instances
+// rounds 5 and 6 fixed: two tests drove the coordinator into a
+// `done`-with-an-unreported-plate state production cannot reach, which is
+// also the only place the `done` diagnostic branch executed.
+function emitWorkerEvent(
+  sub: {
+    emit: (event: string, payload: unknown) => boolean;
+    scannerId: string;
+  },
+  type: string,
+  fields: Record<string, unknown>
+): void {
+  const payload = { type, scanner_id: sub.scannerId, ...fields };
+  sub.emit(type, payload);
+  sub.emit('event', payload);
+}
+
+/** `scan-complete` as production delivers it — both channels. */
+function emitScanComplete(
+  sub: {
+    emit: (event: string, payload: unknown) => boolean;
+    scannerId: string;
+  },
+  fields: { plate_index: string; path: string; [k: string]: unknown }
+): void {
+  emitWorkerEvent(sub, 'scan-complete', {
+    job_id: `${sub.scannerId}:${fields.plate_index}`,
+    ...fields,
+  });
 }
 
 // Emit `cycle-done` the way production does. `ScannerSubprocess` forwards
@@ -1883,6 +1923,209 @@ describe('ScanCoordinator', () => {
       expect(diagnostics[0][0]).not.toContain('wedge');
 
       vi.useRealTimers();
+    });
+
+    it('attributes a wedge stop to the wedge even when a cancel arrives before the row is logged (review round 7)', async () => {
+      // `rowOutcomeCause()` reads `this.cancelled` at LOG time, but the
+      // outcome was determined at SETTLE time, and the two are separated by
+      // `await Promise.all(rowDonePromises)` — which can span the full
+      // SCAN_ROW_TIMEOUT_MS while other scanners finish.
+      //
+      // Production interleaving: scanner-1 wedges and stopScanner() settles
+      // its row as `stopped` with cancelled=false; scanner-2's row is still
+      // in flight; the operator sees the wedge banner and presses Cancel,
+      // which sets cancelled=true before the logging runs. Scanner-1's
+      // plates — lost to a wedge — then get logged as "the session was
+      // cancelled", the exact inverse of the defect round 6 fixed.
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+      const sub1 = createdSubprocesses[0];
+      const sub2 = createdSubprocesses[1];
+
+      // scanner-1 wedges: its row is settled by stopScanner(), NOT by a
+      // cancel. scanner-2 never reports, holding Promise.all open.
+      sub1.scan.mockImplementation(() => {
+        setImmediate(() => {
+          void coordinator.stopScanner('scanner-1');
+        });
+      });
+      sub2.scan.mockImplementation(() => {});
+
+      const platesMap = makePlatesMap(['scanner-1', 'scanner-2']);
+      const scanPromise = coordinator.scanOnce(platesMap);
+
+      // Let scanner-1's row settle as `stopped` while cancelled is false...
+      await vi.advanceTimersByTimeAsync(6_000);
+      // ...then the operator cancels, flipping the flag before logging.
+      await coordinator.shutdown();
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const scanner1Lines = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received') &&
+            msg.includes('[scanner-1]')
+        );
+
+      expect(scanner1Lines.length).toBeGreaterThan(0);
+      for (const [msg] of scanner1Lines) {
+        expect(msg).toContain('wedge auto-pause');
+        expect(msg).not.toContain('cancelled');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('does not tell an operator to re-scan a plate whose scanner never received the row (review round 7)', async () => {
+      // A plate reconciled because its scanner was not dispatched was never
+      // sent to any worker, so no file can exist and there is nothing to go
+      // and check. Emitting "Check for <path> and re-scan this plate if it
+      // is absent" for it — once per plate per cycle, for the life of a
+      // multi-day session — buries the records that do warrant action.
+      //
+      // Actionability keys on whether the plate was DISPATCHED, not on
+      // `initErrors`: a worker that died mid-session is exactly as
+      // un-actionable as one that never came online, and `initErrors` is
+      // only populated by spawn failure.
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const sub = createdSubprocesses[0];
+
+      // 4grid: the worker dies in row group ['00','01'], is evicted, and
+      // row group ['10','11'] is then never dispatched at all.
+      sub.scan.mockImplementation(() => {
+        setImmediate(() =>
+          sub.emit('exit', {
+            scannerId: sub.scannerId,
+            code: 1,
+            signal: null,
+          })
+        );
+      });
+
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      const scanPromise = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const lines = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received')
+        )
+        .map(([msg]) => msg as string);
+
+      const dispatched = lines.filter((m) => /plate 0[01]/.test(m));
+      const neverDispatched = lines.filter((m) => /plate 1[01]/.test(m));
+
+      expect(dispatched).toHaveLength(2);
+      expect(neverDispatched).toHaveLength(2);
+
+      // Plates 00/01 WERE sent to the worker, so a partial file may exist.
+      for (const m of dispatched) {
+        expect(m).toContain('re-scan this plate if it is absent');
+      }
+      // Plates 10/11 were never sent anywhere.
+      for (const m of neverDispatched) {
+        expect(m).not.toContain('re-scan this plate');
+        expect(m).toContain('No image was produced');
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('cycle-corrects BOTH the start stamp and the cycle number on a reconciled plate (review round 7)', async () => {
+      // The reconciliation rewrites the quoted path by hand because no
+      // `platesToScan` exists for a scanner that received no row. It must
+      // apply the same TWO rewrites the dispatch path does — the `_st_`
+      // stamp as well as `_cy<N>_` — or two lines in the same cycle quote
+      // different filename conventions once #370 restores stamped names.
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const sub = createdSubprocesses[0];
+
+      sub.scan.mockImplementation(() => {
+        setImmediate(() =>
+          sub.emit('exit', {
+            scannerId: sub.scannerId,
+            code: 1,
+            signal: null,
+          })
+        );
+      });
+
+      const platesMap = makePlatesMap(['scanner-1'], '4grid');
+      const scanPromise = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scanPromise;
+
+      const reconciled = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes('no completion signal received') &&
+            /plate 1[01]/.test(msg)
+        )
+        .map(([msg]) => msg as string);
+
+      expect(reconciled.length).toBeGreaterThan(0);
+      for (const m of reconciled) {
+        // The fixture's `_st_20260410T120000` must have been REPLACED with
+        // this row's real start stamp, exactly as a dispatched plate's is.
+        expect(m).not.toContain('_st_20260410T120000');
+        expect(m).toMatch(/_st_\d{8}T\d{6}/);
+      }
+
+      vi.useRealTimers();
+    });
+
+    it('names the cause when a row reports complete without a plate reporting (review round 7)', async () => {
+      // The `done` branch of rowOutcomeCause() is the one round 6 added to
+      // cover #371's desync, and nothing asserted it. Production emits
+      // scan-complete on BOTH the specific channel and the generic 'event'
+      // channel, so a faithful test that omits a plate's completion
+      // entirely is the only way to reach `done` with an unreported plate.
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const sub = createdSubprocesses[0];
+
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        // Report ONLY the first plate of the row group; the second never
+        // reports, yet the row still settles `done`.
+        emitScanComplete(sub, {
+          plate_index: plates[0].plate_index,
+          path: plates[0].output_path,
+        });
+        process.nextTick(() => emitCycleDone(sub));
+      });
+
+      await coordinator.scanOnce(makePlatesMap(['scanner-1'], '4grid'));
+
+      const doneLines = vi
+        .mocked(scanLog)
+        .mock.calls.filter(
+          ([msg]) =>
+            typeof msg === 'string' &&
+            msg.includes(
+              'the row reported complete without this plate reporting'
+            )
+        );
+
+      expect(doneLines).toHaveLength(2);
     });
 
     it('accepts a scan-complete unconditionally when the dispatched name carries no cycle token, instead of dropping every event (review round 6)', async () => {

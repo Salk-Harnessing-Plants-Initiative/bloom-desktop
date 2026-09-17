@@ -541,6 +541,36 @@ class TestAtomicImageSave:
         assert "[scanner-abc123]" in stderr
         assert "[scan_worker]" not in stderr
 
+    def test_the_production_call_sites_pass_the_real_scanner_id(self, tmp_path):
+        # Round 7 found the sibling test above only exercises the helper's
+        # PARAMETER, because it passes `scanner_id=` explicitly. Deleting
+        # `scanner_id=self.scanner_id` at both production call sites left
+        # every durability line reading "[scan_worker]" and failed nothing,
+        # so tasks.md's claim that the threading was covered did not hold.
+        #
+        # This drives a real ScanWorker through _mock_scan and asserts the
+        # prefix, so the call site itself is pinned.
+        w = _make_worker(scanner_id="rig-scanner-7", mock=True)
+
+        out_path = str(tmp_path / "plate_st_20260301T120000_cy1_S1_00.tif")
+
+        real_open = builtins.open
+
+        def refuse_rplusb(path, mode="r", *args, **kwargs):
+            if mode == "r+b":
+                raise OSError("simulated reopen refusal")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("time.sleep"):
+            with patch("builtins.open", side_effect=refuse_rplusb):
+                stderr = _capture_stderr(w._mock_scan, "2grid", "00", 300, out_path)
+
+        assert "durability check skipped" in stderr
+        assert "[rig-scanner-7]" in stderr, (
+            "the durability log must carry the real scanner id, or a "
+            "multi-plate row cannot be triaged"
+        )
+
     def test_a_failing_directory_fsync_is_logged_and_never_fails_the_plate(
         self, tmp_path
     ):
