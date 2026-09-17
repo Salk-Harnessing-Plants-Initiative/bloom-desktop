@@ -21,29 +21,49 @@ degenerates to exactly bus+device. Widen it if mixed models ever share a rig.
 
 ## Decisions
 
-### Decision 1 — the fallback is restricted on *both* sides
+### Decision 1 — one invariant, not a set of prohibitions
 
-The fallback is reached when the `usb_port` lookup finds no row, **and** is then restricted to rows
-whose own `usb_port` is unusable.
+**A match on `usb_bus`+`usb_device` never assigns, changes or transfers a `usb_port`.** It is
+reachable only when *both* the detected port and the candidate row's port are unusable, and it may
+refresh only `usb_bus`/`usb_device`. Separately, a detected scanner whose port is unusable never
+causes a row to be **created**.
 
-Getting this wrong in either direction causes a distinct defect:
+This is stated as an invariant because three successive drafts of this rule each closed the cell
+they were looking at and opened one they were not. The full table, which should be checked
+cell-by-cell rather than re-reasoned in prose:
 
-- **No restriction** (today's code, or a naive block swap): a detected scanner whose port matches
-  no row still matches by device number, so a relocated or re-enumerated scanner captures whichever
-  row shares its current device number — the misattribution hazard.
-- **Restricted to the detected side only**: rows holding an unusable `usb_port` stop matching
-  entirely. They accumulate duplicates on every detection, and because `disableStaleScannerRows`
-  leaves a strictly-`null` port untouched (`scanner-upsert.ts:166`, pinned by an existing test),
-  such a row stays **enabled and unmatchable indefinitely**. It then appears in
-  `getScannerStatus`, so an operator can assign real plate barcodes to a ghost row whose plates are
-  never scanned, and `validateConfig` reports it missing forever.
+| # | detected port | row port | device eq | current code | draft 2 (detected-side gate) | draft 3 (row-side gate) | **this design** |
+|---|---|---|---|---|---|---|---|
+| 1 | usable | = detected | any | may bind wrong row | update | update | **update** |
+| 2 | usable | usable ≠ | yes | **capture** | create | create | **create** |
+| 3 | usable | usable ≠ | no | create | create | create | **create** |
+| 4 | usable | null | yes | **capture** | create | **capture** | **create** |
+| 5 | usable | null | no | create | create | create | **create** |
+| 6 | usable | `''` | yes | **capture** | create | **capture** | **create** |
+| 7 | unusable | usable | yes | update | **create (dup)** | **create (dup)** | **refuse create** |
+| 8 | unusable | usable | no | create | create | create | **refuse create** |
+| 9 | unusable | unusable | yes | update | update | update | **update, address only** |
+| 10 | unusable | unusable | no | create | create | create | **refuse create** |
 
-Restricting both sides separates the hazard from the repair. A row holding a *usable* port has a
-competing identity claim and must never be captured by a device number. A row holding *no* usable
-port has no claim to protect, and a device-number match is the only way it can ever acquire a port.
+Cells 4 and 6 are why draft 3 was wrong: a `null`-port row has no *port* claim, but it holds a
+`scanner_id`, a `name`, and FK'd `GraviScan` and `GraviScanPlateAssignment` rows. Binding it by
+device number can move all of that onto a different physical scanner, because a scanner can
+inherit an address another one used to have.
 
-This also gives the audit's null/empty findings an in-app remedy: such a row heals on the next
-successful detection instead of requiring manual SQL.
+Cell 7 is why draft 3 was wrong a second time: with only the row side restricted, one transient
+`lsusb -t` failure makes every detected port `''`, so nothing matches and **every** healthy row is
+duplicated — while Decision 7's fleet-disable guard keeps the originals enabled. Three scanners
+become six enabled rows. Refusing to create a row for a scanner whose port is unusable removes
+that entire source, rather than handling its output afterwards.
+
+The cost is that a legacy `null`-port row is **not** auto-healed; cell 9 only refreshes its
+address. That is accepted, and Decision 4's audit is what makes such rows visible. Automatic
+healing would require exactly the device-number-assigns-a-port move that cells 4 and 6 prove
+unsafe.
+
+Cell 9 retains a narrow residual: both sides portless, so a different scanner on the same address
+could refresh that row's `usb_bus`/`usb_device`. Nothing identity-bearing is written, and it can
+only happen during a degraded detection pass. Stated rather than eliminated.
 
 ### Decision 2 — one trade is accepted, and it is genuinely silent
 
@@ -123,16 +143,27 @@ Three properties are load-bearing:
 and `detectEpsonScanners` produces `''` for every scanner whenever `lsusb -t` fails
 (`lsusb-detection.ts:185`), so an empty port is persisted over a good one.
 
-Fix: `payload.usb_port || existing.usb_port || null` on update, and coerce `''` to `null` on create.
+Fix: never write an unusable port over a usable one, and never persist `''` — a stored port is
+either usable or `null`.
 
-Note *why* preserving is safe rather than merely convenient: `existing` is only reachable via the
-port lookup (where payload and existing ports are equal, so the payload wins anyway) or via the
-device-number fallback (which now requires *both* ports to be unusable). So a genuinely-moved
-scanner's new port can never lose to a stale stored one. The gating makes the preservation safe by
-construction.
+Under Decision 1's invariant the preservation branch is **unreachable by construction**:
+`existing` is only reachable via the port lookup (where the two ports are equal) or via the
+device-number tier (which requires both to be unusable), so there is no state where a usable
+stored port meets an unusable payload port. `|| existing.usb_port ||` stays in the implementation
+as a defensive no-op with a comment saying so, and **no test is written for it** — the only way to
+make such a test green is to hand the mock a row the real query could never return, which is the
+mock-more-forgiving-than-production failure this plan exists to avoid.
 
-The `''`→`null` coercion on create is only safe *because* of Decision 1's two-sided restriction:
-with a one-sided gate it would have produced the permanently-enabled ghost described there.
+The earlier `''`→`null`-on-create coercion is superseded: no row is created at all for a scanner
+whose port is unusable (Decision 1, cells 7/8/10), so there is no create-path port to coerce.
+
+That refusal has a consequence worth stating rather than burying: on a host where the USB topology
+query never succeeds, scanners could never be configured. Detection treats that failure as
+optional today and only warns (`lsusb-detection.ts` catches and continues). Refusing is still
+right — a portless row can never be matched again under this precedence, so creating one produces
+a record that is unidentifiable from birth — but it must be **reported to the operator**, not
+silently skipped, which is why the spec requires a could-not-identify report rather than a bare
+no-op.
 
 ### Decision 6 — an ambiguous port lookup writes nothing
 

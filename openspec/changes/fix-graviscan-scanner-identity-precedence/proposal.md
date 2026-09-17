@@ -77,18 +77,24 @@ surfaced by Decision 4's startup audit as an accepted trade rather than assumed 
 
 ### 1. Invert the precedence in both functions — **BREAKING** (data identity, no migration)
 
-`matchDetectedToDb()` and `upsertScannerRow()` match on `usb_port` first. `usb_bus`+
-`usb_device` is retained as a fallback, reached when the port lookup finds no row and then
-**restricted to rows whose own `usb_port` is unusable**.
+`matchDetectedToDb()` and `upsertScannerRow()` match on `usb_port`, governed by one invariant:
 
-Both sides of that restriction carry weight. Without any restriction, a scanner whose port
-matches no row still captures whichever row shares its current device number — the
-misattribution hazard. Restricted to the detected side only, rows holding an unusable port
-stop matching at all: they accumulate duplicates, and since `disableStaleScannerRows` leaves
-a strictly-`null` port untouched (`scanner-upsert.ts:166`), such a row stays **enabled and
-unmatchable indefinitely** — visible in the scanner list, assignable real plate barcodes, and
-never scanned. Restricting both sides protects rows that hold a real identity claim while
-letting rows that hold none be repaired.
+> **A match on `usb_bus`+`usb_device` never assigns, changes or transfers a `usb_port`.**
+
+So the device-number tier is reachable only when *both* the detected port and the candidate row's
+port are unusable, and it may refresh only `usb_bus`/`usb_device`. A scanner that arrives with a
+usable port and matches no row is a **new** scanner; it never falls through to a device number.
+
+It is written as an invariant because narrower phrasings kept failing. Three drafts of this rule
+each closed the cell under examination and opened another: matching a `null`-port row by device
+number still moves a `scanner_id`, a `name`, and FK'd scan and plate-assignment rows onto a
+different physical scanner, because scanners inherit addresses other scanners used to have.
+`design.md` carries the full 10-cell table; check cells rather than re-reasoning from prose.
+
+Correspondingly, **no row is created for a detected scanner whose `usb_port` is unusable.** Such a
+row could never be matched again under this precedence, so creating one manufactures an
+unidentifiable record — and one transient topology-query failure would create a duplicate of every
+scanner at once. The scanner is reported as unidentifiable instead.
 
 `validateConfig()` and `resetUsb()` are **not** changed: they already match on `usb_port` only
 and have no fallback, intentionally. Note `validateConfig()` does not merely report an
@@ -105,8 +111,9 @@ installs, where the history-bearing original is typically the disabled one.
 **Why BREAKING:** `usb_port` is nullable and no migration ever backfilled it. Four populations
 change behaviour under an unchanged user action:
 
-- rows with a `null` or `''` port — now healed by the restricted fallback instead of
-  matched-then-overwritten;
+- rows with a `null` or `''` port — no longer matched-then-overwritten by a coincident device
+  number, and deliberately not auto-healed either: the audit reports them and an operator
+  resolves them;
 - rows whose stored port is usable but no longer matches live detection (relocated, or
   notation drift) — now yield a **new** row, changing which `scanner_id` later plates attach
   to while historical scans stay on the old row;
@@ -118,9 +125,12 @@ change behaviour under an unchanged user action:
 
 ### 2. Stop destroying `usb_port`, and stop disabling the fleet
 
-`upsertScannerRow` preserves a usable stored port rather than overwriting it with a less
-usable value (`payload.usb_port || existing.usb_port || null`), and records `null` rather than
-`''` on create.
+A stored `usb_port` is henceforth either usable or `null` — never the empty string — and an
+unusable value never overwrites a usable one. Under §1's invariant that preservation branch is
+in fact unreachable by construction, so it stays in the code as a defensive no-op, gets a comment
+saying so, and gets no test: the only way to make such a test green is to hand the mock a row the
+real query could never return. There is no create-path coercion left to make either, since no row
+is created for a scanner whose port is unusable.
 
 The same transient `lsusb -t` failure has a second effect that must be fixed with it:
 `saveScannersToDB` builds `currentUsbPorts` from the payload and filters out empty strings
