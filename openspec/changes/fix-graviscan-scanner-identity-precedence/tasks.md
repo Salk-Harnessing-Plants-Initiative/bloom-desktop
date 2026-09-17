@@ -41,7 +41,7 @@ Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
 
 ### 1.0 — make the new tests capable of failing for the right reason
 
-- [ ] 1.0a Create `src/main/graviscan/scanner-port-audit.ts` as a **signature-only stub**: the
+- [x] 1.0a Create `src/main/graviscan/scanner-port-audit.ts` as a **signature-only stub**: the
   `ScannerPortAuditDb` interface, the finding union (`no-port` | `duplicate-port` |
   `stranded-disabled`), and `auditScannerPorts(db): Promise<ScannerPortFinding[]>` with body
   `throw new Error('not implemented')`. Without it, task 1.4's tests produce a single Vitest
@@ -49,7 +49,7 @@ Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
   `npm run lint` goes red on `import/no-unresolved` (an error via `plugin:import/recommended`,
   and `eslint --ext .ts,.tsx .` covers `tests/`). Note `tsc` would *not* go red — it does not see
   `tests/`.
-- [ ] 1.0b **Rebuild `scanner-upsert.test.ts`'s `makeMockDb` (`:51-115`) into a real predicate
+- [x] 1.0b **Rebuild `scanner-upsert.test.ts`'s `makeMockDb` (`:51-115`) into a real predicate
   evaluator** before writing any assertion below. Today `findFirst` (`:55-77`) matches an OR
   across key families — (`usb_bus` AND `usb_device`) OR `usb_port` — and understands neither a
   Prisma `OR:[...]` array nor ANDing the families. Against a correct implementation, several
@@ -59,7 +59,7 @@ Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
   answering `disableStaleScannerRows`'s `{ where: { enabled: true } }`. Extend
   `interface MockGraviScanner` (`:24-34`) to the full model — `createdAt`/`updatedAt` are absent
   today — with `new Date()` defaults in `makeRow`.
-- [ ] 1.0c Give `scanner-handlers.test.ts`'s `createMockDb` (`:26-40`) the same treatment: its
+- [x] 1.0c Give `scanner-handlers.test.ts`'s `createMockDb` (`:26-40`) the same treatment: its
   `findMany` is `mockResolvedValue([])` regardless of `where`, `create` is a bare `vi.fn()`
   returning `undefined`, and several tests install per-test `findFirst.mockImplementation`s that
   answer one key family and ignore everything else. Make `create` return a row. Then **re-run the
@@ -70,37 +70,37 @@ Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
 Write one test per cell of `design.md`'s matching table. The invariant under test is: *a
 device-number match never assigns, changes or transfers a `usb_port`.*
 
-- [ ] 1.1a Usable payload port equal to a row's port → that row is updated.
-- [ ] 1.1b Usable payload port, a different row holds a usable port, device numbers equal → **no
+- [x] 1.1a Usable payload port equal to a row's port → that row is updated.
+- [x] 1.1b Usable payload port, a different row holds a usable port, device numbers equal → **no
   match**, a new row is created, and the other row's `usb_port`/`name`/`display_name` are
   untouched.
-- [ ] 1.1c Usable payload port, a row has `usb_port: null` and the same device numbers → **no
+- [x] 1.1c Usable payload port, a row has `usb_port: null` and the same device numbers → **no
   match**; that row's `usb_port` stays `null`; a new row is created. Repeat for `''`. *This is the
   cell that two earlier drafts got wrong in opposite directions — it is the misattribution guard.*
-- [ ] 1.1d Unusable payload port, row port unusable, device numbers equal → matched, and the
+- [x] 1.1d Unusable payload port, row port unusable, device numbers equal → matched, and the
   update payload contains **only** `usb_bus`/`usb_device` — no `usb_port` key at all.
-- [ ] 1.1e Unusable payload port, no matching row → **no row is created**, and the
+- [x] 1.1e Unusable payload port, no matching row → **no row is created**, and the
   could-not-identify report is emitted.
-- [ ] 1.1f Assert query order and shape: the port lookup runs before any device-number lookup
+- [x] 1.1f Assert query order and shape: the port lookup runs before any device-number lookup
   (compare `mock.invocationCallOrder`), and the device-number query carries both the address and
   the row-side unusable-port restriction.
 
 ### 1.2 — ambiguity refusal (`scanner-upsert.test.ts`)
 
-- [ ] 1.2a Two rows sharing a usable `usb_port` → no `update`, no `create`, and a `scanLog` line
+- [x] 1.2a Two rows sharing a usable `usb_port` → no `update`, no `create`, and a `scanLog` line
   containing the stable prefix `[GraviScan:SAVE] ambiguous usb_port` naming the port and both ids.
-- [ ] 1.2b Two unusable-port rows sharing `usb_bus`+`usb_device`, with an unusable payload port →
+- [x] 1.2b Two unusable-port rows sharing `usb_bus`+`usb_device`, with an unusable payload port →
   the same refusal in the device-number tier. (An earlier draft scoped the refusal to the port
   tier only, leaving this tier to take scan order silently.)
 
 ### 1.3 — port preservation and the fleet guard
 
-- [ ] 1.3a `scanner-upsert.test.ts` — an update whose matched row has an unusable port writes
+- [x] 1.3a `scanner-upsert.test.ts` — an update whose matched row has an unusable port writes
   `usb_port: null`, never `''`. Note the "unusable payload, *usable* stored port" case is
   **unreachable by construction** under the invariant, so do not write a test for it; keep
   `|| existing.usb_port ||` in the implementation only as a defensive no-op and say so in a
   comment.
-- [ ] 1.3b `tests/unit/graviscan/scanner-handlers.test.ts` — the fleet guard: `saveScannersToDB`
+- [x] 1.3b `tests/unit/graviscan/scanner-handlers.test.ts` — the fleet guard: `saveScannersToDB`
   with a non-empty payload whose every entry has `usb_port: ''` disables no row. Model it on the
   sibling test at `:292`. **`scanner-upsert.test.ts:344` and `:198` call
   `disableStaleScannerRows` directly and this change does not modify that function — leave both
@@ -109,14 +109,14 @@ device-number match never assigns, changes or transfers a `usb_port`.*
 
 ### 1.4 — `matchDetectedToDb` and the audit
 
-- [ ] 1.4a `scanner-handlers.test.ts` — `matchDetectedToDb`: the same cells as 1.1b/1.1c/1.1d, plus
+- [x] 1.4a `scanner-handlers.test.ts` — `matchDetectedToDb`: the same cells as 1.1b/1.1c/1.1d, plus
   an empty-string port not matching another empty-string port (the `s.usb_port &&` guard at
   `scanner-handlers.ts:101` must survive). Export it for direct testing — it is private today, has
   no direct tests, and is named in no standing requirement. Test it directly **and** keep one
   assertion through `detectScanners()` so the production call site is exercised. Note its candidate
   set is `enabled`-only, unlike `upsertScannerRow`'s; assert that difference rather than
   accidentally relying on it.
-- [ ] 1.4b New audit test file: a null-port row is reported; a `''`-port row is reported; an
+- [x] 1.4b New audit test file: a null-port row is reported; a `''`-port row is reported; an
   enabled and a disabled row sharing a port are both named; a disabled row holding a usable port is
   reported as stranded; a clean fixture reports nothing; detection is never invoked; a throwing
   audit does not propagate and produces no unhandled rejection. Assert no `update`/`delete` call is
@@ -128,24 +128,24 @@ device-number match never assigns, changes or transfers a `usb_port`.*
 
 ### 1.5 — gate and commit
 
-- [ ] 1.5a Run `npm run test:unit`. Confirm every new test fails **on an assertion**, not a
+- [x] 1.5a Run `npm run test:unit`. Confirm every new test fails **on an assertion**, not a
   collection error. Record the actual counts.
-- [ ] 1.5b Re-run the five-file baseline and **record which pre-existing tests moved**, with their
+- [x] 1.5b Re-run the five-file baseline and **record which pre-existing tests moved**, with their
   names. Do not carry forward any earlier prediction.
-- [ ] 1.5c **Commit the failing tests plus the stub (1.0a) and the mock rebuilds (1.0b, 1.0c)
+- [x] 1.5c **Commit the failing tests plus the stub (1.0a) and the mock rebuilds (1.0b, 1.0c)
   alone.** The message lists failing tests in three groups: (i) new, intended; (ii) pre-existing
   tests deliberately re-fixtured or inverted, from 1.5b's measurement; (iii) anything else, which
   must be empty — and if it is not, stop and explain rather than proceeding.
 
 ## 2. Green phase
 
-- [ ] 2.1 `scanner-upsert.ts` — the port lookup becomes `findMany({ where: { usb_port } })` so
+- [x] 2.1 `scanner-upsert.ts` — the port lookup becomes `findMany({ where: { usb_port } })` so
   ambiguity is detectable; `> 1` result refuses. (`findFirst` cannot report a second candidate,
   which is why the ambiguity requirement forces the method change.)
-- [ ] 2.2 `scanner-upsert.ts` — the device-number tier: reachable only when the payload port is
+- [x] 2.2 `scanner-upsert.ts` — the device-number tier: reachable only when the payload port is
   unusable, restricted to rows whose own port is unusable, writing only `usb_bus`/`usb_device`.
   Refuse on `> 1` candidate here too.
-- [ ] 2.3 `scanner-upsert.ts` — refuse to create when the payload port is unusable; preserve a
+- [x] 2.3 `scanner-upsert.ts` — refuse to create when the payload port is unusable; preserve a
   usable stored port; coerce `''` to `null`. **Return contract:** `upsertScannerRow` returns
   `GraviScannerRow | null`, where `null` means refused (ambiguous or unidentifiable), and emits one
   `scanLog()` line with a stable greppable prefix naming the port/address and every candidate id.
@@ -154,16 +154,16 @@ device-number match never assigns, changes or transfers a `usb_port`.*
   loop needs no change. Keep the `enabled: true` re-detect re-enable behaviour and the
   disable-not-delete policy. Update the now-false `// Prefer match on (usb_bus, usb_device)`
   comment at `:56` and the module doc-comment at `:17-19`.
-- [ ] 2.4 `scanner-handlers.ts` — `matchDetectedToDb` to the same rules over its `enabled`-only
+- [x] 2.4 `scanner-handlers.ts` — `matchDetectedToDb` to the same rules over its `enabled`-only
   candidate set; export it.
-- [ ] 2.5 `scanner-handlers.ts` — in `saveScannersToDB`, skip `disableStaleScannerRows` when no
+- [x] 2.5 `scanner-handlers.ts` — in `saveScannersToDB`, skip `disableStaleScannerRows` when no
   payload entry carries a usable `usb_port`. (`:403`'s `scanners.length > 0` guard already handles
   the genuinely-all-unplugged case, because `detectEpsonScanners` returns an empty array then — so
   this new guard's only effect is the degraded-topology case it targets.)
-- [ ] 2.6 Implement the audit in `scanner-port-audit.ts`: every finding derived from the database,
+- [x] 2.6 Implement the audit in `scanner-port-audit.ts`: every finding derived from the database,
   no detection, all rows, read-only, own failures caught. One `scanLog()` line per finding class
   plus a clean-result line, stable greppable prefix, pinned by 1.4b.
-- [ ] 2.7 Wire it into **`initGraviScan()` (`src/main/graviscan/wiring.ts:453`)**, called from
+- [x] 2.7 Wire it into **`initGraviScan()` (`src/main/graviscan/wiring.ts:453`)**, called from
   `src/main/main.ts:1199` — the real executing GraviScan startup path. It is already mode-gated,
   already holds `db`, and already does startup housekeeping (`cleanupOldLogs()` at `wiring.ts:475`).
   **Invoke it fire-and-forget (`void auditScannerPorts(db).catch(…)`), not awaited** —
@@ -171,8 +171,8 @@ device-number match never assigns, changes or transfers a `usb_port`.*
   would delay startup, which the spec forbids.
 - [ ] 2.8 `npm run test:unit` green. Confirm 1.5a's recorded count is now zero and the baseline's
   92 are all accounted for.
-- [ ] 2.9 `npm run lint` and `npx tsc --noEmit` clean.
-- [ ] 2.10 **Commit the implementation** separately from 1.5c.
+- [x] 2.9 `npm run lint` and `npx tsc --noEmit` clean.
+- [x] 2.10 **Commit the implementation** separately from 1.5c.
 
 ## 3. Documentation
 

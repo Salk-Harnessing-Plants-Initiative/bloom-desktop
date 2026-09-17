@@ -322,6 +322,44 @@ describe('scanner-handlers', () => {
       expect(db.graviScanner.findMany).not.toHaveBeenCalled();
       expect(db.graviScanner.update).not.toHaveBeenCalled();
     });
+
+    it('does not disable the fleet when no detected scanner has a usable usb_port', async () => {
+      // A payload in which EVERY entry reports an empty usb_port is the
+      // signature of a failed USB topology query, not of every scanner having
+      // been unplugged — detectEpsonScanners reports '' for all of them when
+      // `lsusb -t` fails. Disabling on that would take the whole fleet out on
+      // evidence that says nothing about whether the scanners are present.
+      db.graviScanner.findMany.mockResolvedValue([
+        { id: 'a', usb_port: '1-1', enabled: true },
+        { id: 'b', usb_port: '1-2', enabled: true },
+      ]);
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 4,
+          usb_port: '',
+        },
+        {
+          name: 'Perfection V600 Photo',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 5,
+          usb_port: '',
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.disabled).toEqual([]);
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+      // Nor may it silently create duplicates for the unidentifiable scanners.
+      expect(db.graviScanner.create).not.toHaveBeenCalled();
+      expect(result.refused).toHaveLength(2);
+    });
   });
 
   describe('getConfig', () => {
