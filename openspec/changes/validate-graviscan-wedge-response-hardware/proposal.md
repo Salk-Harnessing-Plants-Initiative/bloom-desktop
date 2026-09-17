@@ -1,0 +1,20 @@
+## Why
+
+Issue #279: PR #277's wedge auto-pause/retry feature is covered by 91 unit tests, but a real wedge scenario cannot be exercised via mock hardware or CI's E2E suite — CI's mock path has no fault-injection mechanism, so nothing in CI ever actually triggers a real `sane_start_invalid` wedge, a real physical power-cycle + retry, or real Slack+in-app-banner correlation. This is a data-loss-prevention safety feature and should be validated against real hardware before it is relied upon for an unattended multi-day production run.
+
+Per this Tier 1 increment's ordering, this validation must not run against the pre-fix code — running it unfixed risks actually triggering that change's SIGKILL-corruption bug on a real plate during the validation run itself, and would validate a safety feature that isn't fully safe yet. **The actual requirement is that the atomic-write fix be present in the code under test on `pbiob-gh-04`, not that `fix-graviscan-scan-write-atomicity` have merged to `main` first** — checking out that PR's branch directly satisfies this. Running this validation against the PR branch pre-merge is, if anything, additional evidence in that PR's favor (matching this project's own standing practice of dry-running hardware-facing changes for real before trusting CI/unit tests alone).
+
+## What Changes
+
+- Attempt issue #279's bench-test checklist against real hardware on `pbiob-gh-04`, recording each item's outcome (passed / failed / blocked / not executed, with cause) (the dev/test rig with a real Epson V600 attached) — `graviscan-ms-7c56` (the production rig) is never touched for this work.
+- Record results as a comment on issue #279 and in the GraviScan rig-test vault (this project's established convention for empirical hardware findings), with enough detail per checklist item to reproduce.
+- The one checklist item that explicitly calls for the **production** rig (a multi-hour continuous-interval session confirming no false-positive auto-pauses under normal operation) is deliberately **deferred out of this increment** to issue #364, a new Tier 2 pre-cutover gate on `graviscan-ms-7c56` — not silently substituted with a dev-rig run, and not silently dropped. The production-cutover roadmap doc's Tier 2 hard-block list has been updated to name #364 directly, so closing #279 does not by itself clear that gate.
+- No application code changes in this change. It requires the `fix-graviscan-scan-write-atomicity` fix to be checked out on `pbiob-gh-04` (its PR branch, pre-merge, is sufficient) before running any of this checklist.
+
+## Impact
+
+- Affected specs: `hardware-validation-evidence` (new capability: recording of manual, human-executed hardware-validation evidence for safety-critical features before unattended production reliance — distinct from `hardware-testing-documentation`, which covers documentation-completeness for already-shipped features, not point-in-time test-run evidence)
+- Affected code: none — this change is validation-only. Outputs produced by the run: **#367** filed (config-screen lockout), corrections posted to **#361** (`build:python` uninstalls `python-sane`), reproduction commented onto **#182**, a new issue for unobservable worker death, and real-hardware evidence recorded on PR #365.
+- Affected docs: `docs/superpowers/plans/2026-09-02-graviscan-production-cutover-roadmap.md` (Tier 2 hard-block list now names #364 alongside #279/#226/#361)
+- Requires: `fix-graviscan-scan-write-atomicity`'s fix checked out on `pbiob-gh-04` (PR branch, pre-merge, is sufficient — not gated on merging to `main`)
+- **Does NOT close #279.** As executed: 2.1/2.5/2.6/2.8 pass, 2.2 is partial (Slack half descoped), 2.3 is blocked on scanner count, 2.7 was not reached, and **2.4 fails with a confirmed defect** (retry after a power-cycle builds a stale SANE name — existing issue #182). #279 stays open and remains a Tier 2 hard-block. The production-rig multi-hour item is separately tracked as #364.

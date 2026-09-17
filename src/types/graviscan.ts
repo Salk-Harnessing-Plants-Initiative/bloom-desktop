@@ -633,3 +633,21 @@ export interface ScanSessionState {
   nextScanAt: number | null;
   waveNumber: number;
 }
+
+/**
+ * Filename prefix marking an in-progress atomic image write.
+ *
+ * `scan_worker.py` writes each scan to `<GRAVISCAN_TMP_PREFIX><id>-<final
+ * basename>` in the destination directory and only `os.replace()`s it into
+ * the final path once the write has fully succeeded, so a killed process can
+ * never leave a truncated file at the name a downstream pipeline expects.
+ * The residue it CAN leave must stay hidden from the scan file browser.
+ *
+ * CROSS-LANGUAGE CONTRACT: this must stay byte-for-byte identical to
+ * `TMP_PREFIX` in python/graviscan/scan_worker.py. If the two drift, stray
+ * partial TIFFs reappear in the operator's file browser carrying valid
+ * `.tif` extensions — exactly the failure the atomic write exists to
+ * prevent, and silent. A drift guard that reads the Python literal back out
+ * of the source lives in tests/unit/graviscan/image-handlers.test.ts.
+ */
+export const GRAVISCAN_TMP_PREFIX = '.tmp-';

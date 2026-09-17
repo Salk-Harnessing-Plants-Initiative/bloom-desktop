@@ -57,6 +57,52 @@ export const SPAWN_READY_TIMEOUT_MS = 45_000;
 /** Thrown by `withTimeout()` when the wrapped promise doesn't settle in time. */
 class SpawnTimeoutError extends Error {}
 
+/** A plate's real final path, as reported by its own scan-complete event. */
+export interface PlateOutputPath {
+  plateIndex: string;
+  path: string;
+}
+
+/**
+ * How a single scanner's row group ended.
+ *
+ * - `done` — the worker reported `cycle-done` for the row.
+ * - `exit` — the worker process died mid-row on its own (crash, OOM-kill,
+ *   or `killAll()` on app quit).
+ * - `stopped` — the coordinator deliberately ended the row via
+ *   `stopScanner()`, most commonly from wedge auto-pause.
+ * - `timeout` — the row hit `SCAN_ROW_TIMEOUT_MS`; already diagnosed at the
+ *   moment it fired, so the verification loop must not re-diagnose it.
+ *
+ * Every outcome carries BOTH the plates the row asked for and whichever
+ * real paths arrived before it ended. A row can end after some of its
+ * plates already succeeded, so dropping either half would misreport a
+ * known-good plate as unknown and skip its on-disk verification.
+ */
+export type RowOutcomeKind = 'done' | 'exit' | 'stopped' | 'timeout';
+
+export interface RowOutcome {
+  kind: RowOutcomeKind;
+  scannerId: string;
+  /**
+   * Whether the session was already cancelled at the moment this row's
+   * outcome was determined.
+   *
+   * Captured at settle time, NOT read at log time (review round 7).
+   * `await Promise.all(rowDonePromises)` can span the full
+   * SCAN_ROW_TIMEOUT_MS while other scanners finish, so a cancel arriving
+   * in that window would otherwise re-label an already-settled wedge stop
+   * as an operator cancellation — the exact inverse of the distinction
+   * round 6 introduced. `shutdown()` sets `cancelled` before invoking the
+   * settler, so the cancel path still reads `true` here.
+   */
+  cancelledAtSettle: boolean;
+  /** Real final paths learned from each plate's own scan-complete event. */
+  outputPaths: PlateOutputPath[];
+  /** Plates sent for this row, with cycle/timestamp-corrected output paths. */
+  rowPlates: PlateConfig[];
+}
+
 /**
  * Races `promise` against a timeout. If the timeout wins, rejects with
  * `SpawnTimeoutError` — the original `promise` is left to settle on its
@@ -141,6 +187,15 @@ export class ScanCoordinator
   // reuse, respawn, or shut down — this is what prevents a second caller
   // from misdiagnosing a still-connecting worker as dead.
   private spawnInFlight: Map<string, Promise<void>> = new Map();
+
+  /**
+   * Per-scanner hook that settles that scanner's in-flight row, if any, as
+   * `stopped`. Registered while a row is awaiting and cleared as soon as it
+   * settles by any route, so an entry here always refers to a live row.
+   * `stopScanner()` calls it before stripping listeners — see the comment
+   * at the registration site for why the `exit` event cannot serve.
+   */
+  private inFlightRowSettlers: Map<string, () => void> = new Map();
 
   constructor(pythonPath: string, isPackaged: boolean, mock = false) {
     super();
@@ -386,6 +441,13 @@ export class ScanCoordinator
     this.subprocesses.delete(scannerId);
     this.initErrors.delete(scannerId);
 
+    // Settle this scanner's in-flight row (if it has one) BEFORE stripping
+    // listeners — afterwards the row's `exit` handler is gone and the row
+    // could only end by burning the full SCAN_ROW_TIMEOUT_MS. This is the
+    // wedge auto-pause path: wiring.ts calls stopScanner() on the wedged
+    // scanner mid-row, and every other scanner's row waits behind it.
+    this.inFlightRowSettlers.get(scannerId)?.();
+
     sub.removeAllListeners();
     const confirmed = await sub.shutdown();
     if (!confirmed) {
@@ -559,6 +621,15 @@ export class ScanCoordinator
     try {
       await withTimeout(sub.spawn(), SPAWN_READY_TIMEOUT_MS);
       console.log(`[ScanCoordinator] Scanner ${config.scannerId} ready`);
+      // Clear any earlier failure for this scanner (review round 7).
+      // Nothing else does: `stopScanner()`'s delete sits below its
+      // `if (!sub) return;`, and a scanner that failed to spawn is by
+      // definition absent from `this.subprocesses` — so the retry path
+      // (`stopScanner()` then `addScanner()`) left the entry in place even
+      // after a successful respawn. That stale entry then misreported the
+      // scanner as "never came online" for the rest of the session, and
+      // also fed `getScannerStatuses()` a failure for a healthy scanner.
+      this.initErrors.delete(config.scannerId);
       this.emit('scanner-init-status', {
         scannerId: config.scannerId,
         status: 'ready',
@@ -644,6 +715,82 @@ export class ScanCoordinator
   }
 
   /**
+   * Record that a plate ended a cycle with no confirmed image.
+   *
+   * This line is the ONLY durable record that the plate's outcome is
+   * unknown, so it carries enough context to reconstruct the affected wave
+   * later without the database: cycle, wave, plate and the full expected
+   * path (which itself encodes experiment, wave and scanner).
+   *
+   * Written for a lab technician rather than an engineer (review round 5,
+   * I8):
+   *  - leads with `MISSING?`, the same token the grid tally uses, so one
+   *    grep finds both halves of the signal;
+   *  - states the consequence before the mechanism;
+   *  - ends with the action, because "output presence unknown" never got a
+   *    plate re-scanned;
+   *  - does not label the path `pre-_et_`. No `_et_`-stamped file exists to
+   *    look for today (#370), and sending someone hunting for one is worse
+   *    than saying nothing.
+   *
+   * `plate` must come from `platesToScan` where one exists, so its
+   * `_cy<N>_` is this cycle's rather than the stale one the row was built
+   * from.
+   */
+  /**
+   * Plain-language cause for a row outcome that left a plate unreported.
+   *
+   * `stopped` covers two very different situations and must not be
+   * conflated (review round 6): `stopScanner()` is the wedge auto-pause
+   * path and never touches `this.cancelled`, while `cancelAll()` and
+   * `shutdown()` both set it before settling the row. Hoisting the
+   * diagnostic above the cancel check made the second reachable, so
+   * without this split a technician who deliberately pressed Cancel would
+   * be told their scanner may have wedged.
+   *
+   * `cancelled` is the flag AS AT SETTLE TIME, passed in rather than read
+   * from `this` (review round 7) — see `RowOutcome.cancelledAtSettle`.
+   */
+  private rowOutcomeCause(kind: RowOutcomeKind, cancelled: boolean): string {
+    switch (kind) {
+      case 'exit':
+        return 'the scanner subprocess exited mid-row';
+      case 'stopped':
+        return cancelled
+          ? 'the session was cancelled (or the app quit) mid-row'
+          : 'the scanner was stopped mid-row (e.g. wedge auto-pause)';
+      case 'timeout':
+        return `the row timed out after ${SCAN_ROW_TIMEOUT_MS}ms and the scanner may still have been working`;
+      default:
+        // 'done' with an unreported plate: the row reported complete
+        // without this plate ever arriving.
+        return 'the row reported complete without this plate reporting';
+    }
+  }
+
+  private logUnverifiedPlate(
+    scannerId: string,
+    plate: PlateConfig,
+    cause: string,
+    opts: { actionable?: boolean } = {}
+  ): void {
+    const { actionable = true } = opts;
+    const wave = plate.wave_number ?? 'unknown';
+    // `actionable: false` for a scanner that never came online — there is
+    // nothing for the operator to go and check, and repeating a re-scan
+    // instruction once per plate per cycle for a dead USB port would bury
+    // the records that do warrant action.
+    const action = actionable
+      ? `Check for ${plate.output_path} and re-scan this plate if it is absent.`
+      : `No image was produced; expected path would have been ${plate.output_path}.`;
+    scanLog(
+      `[${scannerId}] MISSING? Cycle ${this.currentCycle} wave ${wave} ` +
+        `plate ${plate.plate_index} — ${cause}; no completion signal ` +
+        `received, so no image is confirmed. ${action}`
+    );
+  }
+
+  /**
    * Scan all plates once, orchestrated per-grid.
    *
    * Iterates grids sequentially: for each grid index, all scanners scan
@@ -707,11 +854,16 @@ export class ScanCoordinator
         `Cycle ${this.currentCycle}: row [${rowGrids.join(',')}] starting (st_${stTimestamp})`
       );
 
-      // For each scanner, find all plates in this row and send them together
-      const rowDonePromises: Promise<{
-        scannerId: string;
-        outputPaths: { plateIndex: string; path: string }[];
-      } | null>[] = [];
+      // For each scanner, find all plates in this row and send them together.
+      // A row's outcome is tagged (see `RowOutcome`) so the verification loop
+      // below can tell a deliberate stop and a spontaneous subprocess death
+      // apart from a row timeout, which is already fully diagnosed at the
+      // moment it fires — conflating them would double-log the timed-out case.
+      const rowDonePromises: Promise<RowOutcome>[] = [];
+      // Scanners that actually received this row. Anything in
+      // `platesPerScanner` but NOT here produced no result at all, and is
+      // reconciled into per-plate diagnostics after the results loop.
+      const dispatchedScannerIds = new Set<string>();
       let isFirst = true;
 
       for (const [scannerId, sub] of this.subprocesses) {
@@ -731,6 +883,21 @@ export class ScanCoordinator
         }
         isFirst = false;
 
+        // The stagger above yields for seconds, and it is precisely the
+        // window in which USB contention makes a wedge most likely. If this
+        // scanner was stopped while we waited, its row promise does not exist
+        // yet, so stopScanner() had no settler to call — attaching listeners
+        // to the dead subprocess now would leave the row to burn the full
+        // SCAN_ROW_TIMEOUT_MS and stall every other scanner behind it.
+        if (this.subprocesses.get(scannerId) !== sub) {
+          scanLog(
+            `[${scannerId}] Cycle ${this.currentCycle}: skipped this row — scanner was stopped during the USB stagger window`
+          );
+          continue;
+        }
+
+        dispatchedScannerIds.add(scannerId);
+
         // Update timestamps and cycle numbers in output filenames only
         // (apply regex to basename to avoid mangling date-like directory names)
         const platesToScan: PlateConfig[] = rowPlates.map((plate) => {
@@ -746,41 +913,120 @@ export class ScanCoordinator
           };
         });
 
-        // Accumulate the REAL per-plate paths from each plate's own
-        // scan-complete event. The worker now composes the final filename
-        // (including `_et_`) at save time, so the path we sent above is no
-        // longer guaranteed to be the path on disk — we must learn it from
-        // the event, not assume it.
-        const outputPaths: { plateIndex: string; path: string }[] = [];
+        // The exact basename dispatched for each plate of this row, keyed by
+        // plate index. `onScanComplete` compares against it so a late
+        // completion from an earlier cycle cannot be counted here — see the
+        // comment there for why plate_index alone is insufficient.
+        const expectedBasenames = new Map(
+          platesToScan.map((p) => [p.plate_index, path.basename(p.output_path)])
+        );
 
-        const promise = new Promise<{
-          scannerId: string;
-          outputPaths: { plateIndex: string; path: string }[];
-        } | null>((resolve) => {
+        // Accumulate the REAL per-plate paths from each plate's own
+        // scan-complete event. The worker composes the final filename at
+        // save time, so we learn the path from the event rather than
+        // assuming the one we sent.
+        //
+        // Today those are in fact identical, because the renderer no longer
+        // emits an `_st_` segment for `compose_output_path()` to stamp
+        // `_et_` into (#370) — so this is currently a design stance rather
+        // than a live necessity. It is still the right stance: it is what
+        // makes the coordinator correct again the moment #370 restores the
+        // stamped convention, and the cycle guard below is written
+        // to compare correctly under both.
+        const outputPaths: PlateOutputPath[] = [];
+
+        const promise = new Promise<RowOutcome>((resolve) => {
           const cleanup = () => {
             clearTimeout(rowTimeout);
+            // Identity-guarded, matching `spawnInFlight`'s `finally` above:
+            // an orphaned row (one whose listeners were stripped by a
+            // teardown path) can settle long after a LATER row registered
+            // under the same scannerId, and an unconditional delete would
+            // then destroy the live row's settler — silently restoring the
+            // very gap this map exists to close.
+            if (this.inFlightRowSettlers.get(scannerId) === settleStopped) {
+              this.inFlightRowSettlers.delete(scannerId);
+            }
             sub.removeListener('scan-complete', onScanComplete);
             sub.removeListener('cycle-done', onCycleDone);
             sub.removeListener('exit', onExit);
           };
+          const settle = (kind: RowOutcomeKind) => {
+            cleanup();
+            // Snapshot the cancel flag HERE, where the outcome is decided.
+            const cancelledAtSettle = this.cancelled;
+            // `platesToScan`, not `rowPlates`: the former carries the
+            // rewritten `_st_` timestamp and the current `_cy<N>_` in its
+            // basename, which the diagnostic quotes so a missing plate names
+            // the cycle it belonged to rather than the stale one this row was
+            // built from.
+            resolve({
+              kind,
+              scannerId,
+              cancelledAtSettle,
+              outputPaths,
+              rowPlates: platesToScan,
+            });
+          };
+          const settleStopped = () => settle('stopped');
           const onScanComplete = (event: ScanWorkerEvent) => {
-            if (event.plate_index && event.path) {
-              outputPaths.push({
-                plateIndex: event.plate_index,
-                path: event.path,
-              });
+            if (!event.plate_index || !event.path) return;
+            // Only accept a completion for a plate of THIS row of THIS
+            // cycle. A row that timed out leaves its worker still running,
+            // so its late `scan-complete` would otherwise land on a later
+            // listener and be counted against the wrong grid.
+            //
+            // Matching on plate_index alone is NOT enough: `rowGrids` holds
+            // the same grid indices on every cycle, so it separates rows
+            // within a cycle but cannot separate cycle N's row ['00'] from
+            // cycle N+1's row ['00'] — and with one row group per cycle it
+            // discriminates nothing at all. The stale event would then be
+            // verified against the PREVIOUS cycle's file (which really does
+            // exist) and logged as this cycle's `1/1 files verified`, an
+            // affirmative false completeness claim, while the dedupe below
+            // silently dropped this cycle's genuine event.
+            //
+            // So discriminate on the cycle token. `scanOnce()` rewrites
+            // `_cy<N>_` into every dispatched basename each cycle, and
+            // nothing downstream touches it: `compose_output_path()` only
+            // inserts `_et_`. Deliberately NOT a whole-basename comparison —
+            // the worker may legitimately report a different path than the
+            // one sent (that is why we learn it from the event at all), and
+            // the coordinator itself also rewrites the `_st_` stamp.
+            //
+            // Enforced only when the dispatched name actually carries a
+            // cycle token, so a naming scheme without one degrades to
+            // today's behaviour rather than silently dropping every event.
+            const expected = expectedBasenames.get(event.plate_index);
+            if (!expected) return;
+            const cycleToken = `_cy${this.currentCycle}_`;
+            if (
+              expected.includes(cycleToken) &&
+              !path.basename(event.path).includes(cycleToken)
+            ) {
+              scanLog(
+                `[${scannerId}] Cycle ${this.currentCycle}: ignored a ` +
+                  `scan-complete for plate ${event.plate_index} belonging ` +
+                  `to a different cycle — got ${path.basename(event.path)}, ` +
+                  `expected ${cycleToken}. The worker is running behind ` +
+                  `after an earlier row timed out; that file belongs to the ` +
+                  `earlier cycle and is counted there, not here.`
+              );
+              return;
             }
+            // Dedupe for the same reason the tally is now load-bearing: a
+            // repeated event must not inflate it.
+            if (outputPaths.some((o) => o.plateIndex === event.plate_index)) {
+              return;
+            }
+            outputPaths.push({
+              plateIndex: event.plate_index,
+              path: event.path,
+            });
           };
-          const onCycleDone = () => {
-            cleanup();
-            resolve({ scannerId, outputPaths });
-          };
-          const onExit = () => {
-            cleanup();
-            resolve(null);
-          };
+          const onCycleDone = () => settle('done');
+          const onExit = () => settle('exit');
           const rowTimeout = setTimeout(() => {
-            cleanup();
             scanLog(
               `[${scannerId}] Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`
             );
@@ -792,8 +1038,18 @@ export class ScanCoordinator
               jobId: scannerId,
               error: `Row scan timeout after ${SCAN_ROW_TIMEOUT_MS}ms`,
             });
-            resolve(null);
+            settle('timeout');
           }, SCAN_ROW_TIMEOUT_MS);
+
+          // Let stopScanner() end this row explicitly. It strips the
+          // subprocess's listeners before awaiting shutdown, so the later
+          // `exit` can never reach onExit above — without this hook the row
+          // could only settle by burning the full SCAN_ROW_TIMEOUT_MS,
+          // stalling every other scanner's row behind it (Promise.all) and
+          // leaving no per-plate record at all. Resolve is once-only, so a
+          // settle here races harmlessly with any other path.
+          this.inFlightRowSettlers.set(scannerId, settleStopped);
+
           sub.on('scan-complete', onScanComplete);
           sub.on('cycle-done', onCycleDone);
           sub.on('exit', onExit);
@@ -806,8 +1062,139 @@ export class ScanCoordinator
       // Wait for ALL scanners to complete this row
       const results = await Promise.all(rowDonePromises);
 
+      // Diagnose the plates this row never heard back about, BEFORE the
+      // cancel check below. A row can end after some of its plates already
+      // succeeded, so this is driven by which plates actually reported, not
+      // by the outcome alone.
+      //
+      // This must sit above the `break` (review round 5, I3). Both
+      // deliberate mid-row stops — Cancel Scan and app quit — go through
+      // `shutdown()`, which sets `this.cancelled = true` BEFORE invoking
+      // the in-flight row settler. So a diagnostic placed after the break
+      // could never fire for either of them, and the `stopped` outcome
+      // delivered only half its stated value: it suppressed the spurious
+      // row-timeout scan-error, but produced no durable per-plate record.
+      // In practice the record only ever appeared on the `stopScanner()`
+      // wedge path, which is the one that happened to be hardware-validated.
+      //
+      // Safe to run on a cancelled session: the line is log-only and emits
+      // no scan-error, so it cannot feed WedgeDetector. Only file
+      // verification is skipped on cancel, which is what the "Cancel during
+      // active scanOnce aborts cleanly" scenario actually asks for.
+      // One rule, every outcome: any plate that did not report gets a line.
+      //
+      // Round 5 gated this on `exit`/`stopped`, excluding `timeout` because
+      // it was "already fully diagnosed at the moment the row timeout
+      // fired". Round 6 pointed out that diagnosis is the row-level
+      // `Row scan timeout after ...ms` line plus a `scan-error` carrying
+      // `jobId: scannerId` — no plate index, no wave, no path. That is the
+      // same aggregate-only shortfall the reconciliation below exists to
+      // fix, so excluding timeout here contradicted this change's own
+      // argument, and left the hole exactly where the hardware fails most
+      // often: a row timeout is the commonest symptom of a wedged scanner,
+      // and it neither evicts the scanner nor goes through stopScanner().
+      //
+      // `done` matters too. The worker is strictly serial and a row timeout
+      // does not abort it, so a stale `cycle-done` from the previous row
+      // can settle this row as `done` with nothing reported — the pairing
+      // then stays off by one for the rest of the session. The cycle guard
+      // on `scan-complete` stops that being counted as a false COMPLETE,
+      // but the row still reports short. Including `done` here means such a
+      // plate is at least never lost silently. The underlying desync is
+      // #371: it needs a coordinator-assigned row token echoed by the
+      // worker, because the worker's own `cycle` counter increments per
+      // scan command (twice per coordinator cycle in 4grid).
+      for (const result of results) {
+        const reported = new Set(result.outputPaths.map((o) => o.plateIndex));
+        const unreported = result.rowPlates.filter(
+          (p) => !reported.has(p.plate_index)
+        );
+        if (unreported.length === 0) continue;
+        for (const plate of unreported) {
+          // Log-only, not a filesystem check: scan-complete never arrived,
+          // so the coordinator has no reported path to verify.
+          this.logUnverifiedPlate(
+            result.scannerId,
+            plate,
+            this.rowOutcomeCause(result.kind, result.cancelledAtSettle)
+          );
+        }
+      }
+
+      // Reconcile what this row was ASKED to scan against what actually got
+      // dispatched. A scanner can be absent from `this.subprocesses`
+      // entirely — it never came online at session start, its worker died
+      // in an earlier row and the `exit` handler evicted it, or it was
+      // stopped during the USB stagger window — in which case it produces
+      // no row, no result, and none of the per-plate diagnostics above.
+      //
+      // Without this, the diagnostic invariant held only for the row the
+      // failure happened in: every LATER row group in the same cycle went
+      // completely unrecorded at plate level, which is the larger half of
+      // the loss. The grid tally still counted them (its denominator comes
+      // from `platesPerScanner`), but a bare `1 MISSING` does not say which
+      // plate or which wave, which is the whole point of the per-plate line.
+      //
+      // This sits ABOVE the cancel break for the same reason the row
+      // diagnostic does (round 6): `shutdown()` sets `cancelled` before
+      // settling, and it can land during the USB stagger await, leaving
+      // later scanners in this row group never dispatched. Leaving it below
+      // meant the dispatched half of one row group got records and the
+      // undispatched half got none. Bounded: the break means only the
+      // current row group is affected.
+      for (const [scannerId, platesForScanner] of platesPerScanner) {
+        if (dispatchedScannerIds.has(scannerId)) continue;
+        const rowPlates = platesForScanner.filter((p) =>
+          rowGrids.includes(p.plate_index)
+        );
+        // Distinguish the three ways a scanner can be missing. This only
+        // shapes the CAUSE text — actionability is decided below on a
+        // different basis.
+        const neverCameOnline = this.initErrors.has(scannerId);
+        const cause = this.cancelled
+          ? 'the session was cancelled before this row was dispatched'
+          : neverCameOnline
+            ? 'this scanner never came online for this session'
+            : 'the scanner was not running when this row was dispatched ' +
+              '(its worker exited, or it was stopped earlier in this session)';
+        for (const plate of rowPlates) {
+          // Correct the quoted path exactly as the dispatch path would
+          // have, BOTH rewrites — no `platesToScan` exists for a scanner
+          // that never received a row. Omitting the `_st_` rewrite would
+          // make two lines in the same cycle quote different filename
+          // conventions once #370 restores the stamped names.
+          const dir = path.dirname(plate.output_path);
+          const basename = path
+            .basename(plate.output_path)
+            .replace(/(\d{8}T\d{6})/, stTimestamp)
+            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
+          // Never actionable, whatever the reason the scanner is missing
+          // (review round 7). Keying this on `initErrors` was wrong in both
+          // directions: that map is populated only by SPAWN failure, so a
+          // worker that died mid-session — the commonest case — was told to
+          // re-scan plates it never attempted, once per plate per cycle for
+          // the rest of the session; and a scanner that failed to spawn,
+          // was retried successfully, and later died kept a stale entry and
+          // was wrongly told there was nothing to do.
+          //
+          // The honest predicate is simply whether the plate was
+          // DISPATCHED. Every plate reaching this loop belongs to a scanner
+          // that received no scan command for this row, so no file can
+          // exist for it and there is nothing to go and check. Plates that
+          // WERE dispatched are handled by the row-outcome loop above,
+          // where a partial file genuinely may exist.
+          this.logUnverifiedPlate(
+            scannerId,
+            { ...plate, output_path: path.join(dir, basename) },
+            cause,
+            { actionable: false }
+          );
+        }
+      }
+
       // Check cancelled after await — if cancel fired during the scan,
-      // skip file verification for this row
+      // skip file verification for this row. The per-plate diagnostic above
+      // deliberately already ran.
       if (this.cancelled) break;
 
       const gridEndedAt = new Date();
@@ -821,23 +1208,62 @@ export class ScanCoordinator
       // (including `_et_`) at save time, so the paths from the scan-complete
       // events above are already final — no rename is needed here.
       const verifiedByGrid: Map<string, number> = new Map();
-      for (const gridIndex of rowGrids) verifiedByGrid.set(gridIndex, 0);
+      const expectedByGrid: Map<string, number> = new Map();
+      for (const gridIndex of rowGrids) {
+        verifiedByGrid.set(gridIndex, 0);
+        expectedByGrid.set(gridIndex, 0);
+      }
+      // The denominator comes from what this cycle was ASKED to scan
+      // (`platesPerScanner`), never from the rows that happened to be
+      // dispatched. A scanner removed mid-cycle by stopScanner() produces no
+      // result, so counting results would shrink both sides of the ratio in
+      // lockstep and report a short grid as "3/3 complete" — an affirmative
+      // completeness claim that is false, and strictly worse than the bare
+      // count this replaced, which claimed nothing.
+      for (const platesForScanner of platesPerScanner.values()) {
+        for (const plate of platesForScanner) {
+          if (!rowGrids.includes(plate.plate_index)) continue;
+          expectedByGrid.set(
+            plate.plate_index,
+            (expectedByGrid.get(plate.plate_index) || 0) + 1
+          );
+        }
+      }
 
       for (const result of results) {
-        if (!result) continue;
+        // A timed-out row ALREADY emitted its own row-level `scan-error` at
+        // the moment the timeout fired. A second, plate-level one here would
+        // double-count into WedgeDetector's `confirmedFailures`, where two is
+        // enough to trip `consecutive_failures` and auto-pause a scanner that
+        // was merely slow. For that outcome the verification result is
+        // recorded to the log only — the plate is still checked and still
+        // counted, just not re-reported as a new error.
+        const reportVerificationFailure = (
+          plateIndex: string,
+          msg: string
+        ): void => {
+          scanLog(`[${result.scannerId}] ${msg}`);
+          if (result.kind === 'timeout') return;
+          this.emit('scan-error', {
+            scannerId: result.scannerId,
+            plateIndex,
+            jobId: `${result.scannerId}:${plateIndex}`,
+            error: msg,
+          });
+        };
+
+        // Verify whatever DID report a real path, whatever the outcome —
+        // a plate that completed before its row ended still has a file on
+        // disk that deserves the same existence/size check as any other.
         for (const { plateIndex, path: outputPath } of result.outputPaths) {
           // Verify file existence and non-zero size
           try {
             await fs.promises.access(outputPath);
           } catch {
-            const msg = `Output file missing after scan-complete: ${outputPath}`;
-            scanLog(`[${result.scannerId}] ${msg}`);
-            this.emit('scan-error', {
-              scannerId: result.scannerId,
+            reportVerificationFailure(
               plateIndex,
-              jobId: `${result.scannerId}:${plateIndex}`,
-              error: msg,
-            });
+              `Output file missing after scan-complete: ${outputPath}`
+            );
             continue;
           }
 
@@ -845,25 +1271,17 @@ export class ScanCoordinator
           try {
             fileSize = (await fs.promises.stat(outputPath)).size;
           } catch (statErr) {
-            const msg = `Cannot stat output file: ${outputPath}: ${statErr instanceof Error ? statErr.message : String(statErr)}`;
-            scanLog(`[${result.scannerId}] ${msg}`);
-            this.emit('scan-error', {
-              scannerId: result.scannerId,
+            reportVerificationFailure(
               plateIndex,
-              jobId: `${result.scannerId}:${plateIndex}`,
-              error: msg,
-            });
+              `Cannot stat output file: ${outputPath}: ${statErr instanceof Error ? statErr.message : String(statErr)}`
+            );
             continue;
           }
           if (fileSize === 0) {
-            const msg = `Output file is zero-size: ${outputPath}`;
-            scanLog(`[${result.scannerId}] ${msg}`);
-            this.emit('scan-error', {
-              scannerId: result.scannerId,
+            reportVerificationFailure(
               plateIndex,
-              jobId: `${result.scannerId}:${plateIndex}`,
-              error: msg,
-            });
+              `Output file is zero-size: ${outputPath}`
+            );
             continue;
           }
 
@@ -882,8 +1300,17 @@ export class ScanCoordinator
           scanStartedAt: gridStartedAt.toISOString(),
           scanEndedAt: gridEndedAt.toISOString(),
         });
+        // Report the expected denominator, not just the count: "4 files
+        // verified" reads identically whether the grid produced 4 of 4 or
+        // 4 of 5, which makes a short grid indistinguishable from a
+        // complete one in the log — the cheapest completeness check the
+        // system has.
+        const verified = verifiedByGrid.get(gridIndex) || 0;
+        const expected = expectedByGrid.get(gridIndex) || 0;
+        const shortfall =
+          verified < expected ? ` — ${expected - verified} MISSING` : '';
         scanLog(
-          `Cycle ${this.currentCycle}: grid ${gridIndex} complete — ${verifiedByGrid.get(gridIndex) || 0} files verified`
+          `Cycle ${this.currentCycle}: grid ${gridIndex} complete — ${verified}/${expected} files verified${shortfall}`
         );
       }
     }
@@ -1014,6 +1441,15 @@ export class ScanCoordinator
         // SPAWN_READY_TIMEOUT_MS bound, stalling the new caller for the
         // full 45s instead of respawning immediately.
         this.spawnInFlight.delete(scannerId);
+        // Settle this scanner's in-flight row, if any, BEFORE stripping its
+        // listeners — same reasoning as stopScanner(). This path is reached
+        // by the Cancel Scan button (`cancelScan` calls cancelAll() then
+        // shutdown() in the same tick, and cancelAll() only writes to stdin,
+        // which the worker cannot read until its current blocking save
+        // returns). Without this the row is orphaned and can only settle at
+        // SCAN_ROW_TIMEOUT_MS, 90s later, emitting a spurious row-timeout
+        // scan-error for a scan the operator deliberately cancelled.
+        this.inFlightRowSettlers.get(scannerId)?.();
         // Strip listeners first (matches stopScanner()'s convention):
         // without this, a subprocess still mid-spawn has its own
         // spawn()-internal 'exit' listener still attached, which rejects

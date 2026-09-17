@@ -44,6 +44,16 @@ try:
 except Exception:
     _BLOOM_VERSION = "0.1.0"
 
+# Filename prefix marking an in-progress atomic write (see
+# _atomic_image_save). CROSS-LANGUAGE CONTRACT: this must stay byte-for-byte
+# identical to GRAVISCAN_TMP_PREFIX in src/types/graviscan.ts, which
+# listScanFiles() uses to hide these from the scan file browser. If they
+# drift, stray partial TIFFs reappear in the operator's browser with valid
+# .tif extensions — exactly the failure the atomic write exists to prevent.
+# A drift guard reads this literal back out of this file:
+# tests/unit/graviscan/image-handlers.test.ts.
+TMP_PREFIX = ".tmp-"
+
 
 def _build_tiff_metadata(
     scanner_id: str,
@@ -113,6 +123,122 @@ def compose_output_path(output_path: str, et: str) -> str:
 def log(scanner_id: str, msg: str) -> None:
     """Log a debug message to stderr (not parsed as events)."""
     print(f"[{scanner_id}] {msg}", file=sys.stderr, flush=True)
+
+
+def _atomic_image_save(
+    image,  # PIL.Image.Image; PIL is imported lazily at its call site
+    final_path: str,
+    *save_args,
+    scanner_id: str = "scan_worker",
+    **save_kwargs,
+) -> None:
+    """Write `image` to a temp file in final_path's directory, then
+    atomically replace final_path only after the write succeeds.
+
+    A process termination (e.g. SIGKILL) during the write can now only
+    ever leave a stray temp file or a complete final file — never a
+    truncated one at `final_path` (closes #281 item 1). `*save_args`/
+    `**save_kwargs` are forwarded to `image.save()` unchanged, since both
+    call sites pass the format ("TIFF") positionally.
+
+    A *handled* failure (save error, failed durability sync, rename error)
+    cleans its temp file up before re-raising, so `_sane_scan()`'s retry
+    loop cannot strand one full-resolution TIFF per attempt. Only a SIGKILL
+    leaves residue, since no cleanup handler can run at all in that case.
+
+    Note the asymmetry in the durability check below: failing to *reopen*
+    the temp file is tolerated (it only means we could not verify), while a
+    failing `os.fsync()` is fatal (it means the bytes never landed). See the
+    comment at that block.
+    """
+    directory = os.path.dirname(final_path)
+    basename = os.path.basename(final_path)
+    tmp_path = os.path.join(
+        directory, f"{TMP_PREFIX}{uuid.uuid4().hex[:12]}-{basename}"
+    )
+    try:
+        image.save(tmp_path, *save_args, **save_kwargs)
+        # Force the bytes to stable storage BEFORE the rename publishes the
+        # final name. Without this, a power loss can make the rename durable
+        # while the data blocks are not, leaving a zero-length file at the
+        # final path — the exact outcome this helper exists to prevent.
+        # ext4's auto_da_alloc heuristic does not rescue this case: it fires
+        # on rename-over-an-existing-file, and the _et_-stamped destination
+        # never exists beforehand.
+        # Two very different failures hide in this block, and conflating
+        # them is how a corrupt file still reaches the final path:
+        #
+        #   * The REOPEN failing means "we could not check". The write
+        #     itself already succeeded, so continuing is right — a
+        #     filesystem that refuses the reopen, or a transient Windows AV
+        #     lock on a just-closed file, must not burn a retry and, if
+        #     deterministic, fail the plate after five full-resolution
+        #     rescans.
+        #
+        #   * os.fsync() ITSELF failing means the bytes did not reach stable
+        #     storage. On ext4 with delayed allocation, image.save() plus
+        #     close() can return success with blocks still unallocated, so
+        #     ENOSPC and EIO surface here rather than at close. Publishing
+        #     anyway would put a short or zero-filled TIFF at the canonical
+        #     timepoint filename, indistinguishable from good data — the
+        #     exact corruption this helper exists to prevent, arriving by a
+        #     different route than SIGKILL. Let it propagate into
+        #     _sane_scan()'s existing retry loop like any other write
+        #     failure.
+        try:
+            # "r+b" rather than "rb": Windows' os.fsync maps to _commit(),
+            # which needs a writable handle. On POSIX either works.
+            fh = open(tmp_path, "r+b")
+        except OSError as e:
+            log(
+                scanner_id,
+                f"durability check skipped for {basename}: could not reopen "
+                f"the temp file ({e}) — the write itself succeeded",
+            )
+        else:
+            with fh:
+                os.fsync(fh.fileno())
+        os.replace(tmp_path, final_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            # Best-effort: never mask the original failure with a cleanup one.
+            pass
+        raise
+    # Make the rename itself durable too. POSIX-only and advisory — a
+    # filesystem that refuses a directory fsync changes nothing about the
+    # guarantee above, so failure here is deliberately not fatal.
+    try:
+        dir_fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except Exception as e:
+        # `Exception`, not `OSError` (round 6): this block runs AFTER
+        # os.replace() has already published the file, and it is outside the
+        # cleanup handler above. Anything that escapes here propagates into
+        # _sane_scan()'s `except Exception` retry loop and triggers a full
+        # re-scan of a plate whose image is already written and synced —
+        # potentially five of them, and a spurious "Scan failed after 5
+        # attempts" for a plate that succeeded. A post-publish durability
+        # nicety must never be able to fail the plate. Round 5 narrowed this
+        # from `(OSError, AttributeError)` to `OSError`, which reintroduced
+        # exactly that hazard for every non-OSError.
+        if sys.platform != "win32":
+            # On Linux — the production platform — a directory fsync failing
+            # is a real filesystem-health signal. It does not endanger the
+            # file (already published and synced), so it is not fatal, but
+            # it must not vanish silently either.
+            #
+            # Windows raises PermissionError on opening a directory, which
+            # is expected and deliberately not logged.
+            log(
+                scanner_id,
+                f"directory fsync after rename failed for {basename}: {e} "
+                "(file is written; the rename's own durability is reduced)",
+            )
 
 
 class ScanWorker:
@@ -425,7 +551,7 @@ class ScanWorker:
         log(
             self.scanner_id,
             f"Scanning plate {plate_index} ({grid_mode}) at {resolution}dpi "
-            f"region=({region.left},{region.top})-({region.left+region.width},{region.top+region.height})",
+            f"region=({region.left},{region.top})-({region.left + region.width},{region.top + region.height})",
         )
 
         last_error = None
@@ -515,8 +641,13 @@ class ScanWorker:
                     st_timestamp,
                     phenotyper_name,
                 )
-                image.save(
-                    final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta
+                _atomic_image_save(
+                    image,
+                    final_path,
+                    "TIFF",
+                    scanner_id=self.scanner_id,
+                    compression="tiff_lzw",
+                    tiffinfo=tiff_meta,
                 )
 
                 # Cancel to return device to IDLE state for next scan
@@ -736,7 +867,14 @@ class ScanWorker:
             st_timestamp,
             phenotyper_name,
         )
-        image.save(final_path, "TIFF", compression="tiff_lzw", tiffinfo=tiff_meta)
+        _atomic_image_save(
+            image,
+            final_path,
+            "TIFF",
+            scanner_id=self.scanner_id,
+            compression="tiff_lzw",
+            tiffinfo=tiff_meta,
+        )
 
         log(self.scanner_id, f"Mock scan saved: {final_path}")
         return final_path

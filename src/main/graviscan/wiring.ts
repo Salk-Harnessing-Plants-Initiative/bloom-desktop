@@ -75,14 +75,29 @@ let _db: ScannerLookupDb | null = null;
  *    `wall_seconds` on error) AND add camelCase `scannerId`/`plateIndex`/
  *    `jobId` — both casings are present.
  *  - Coordinator-originated `scan-error` events (row-timeout, missing-
- *    output-file, cannot-stat-file, zero-size-file — `scanOnce()`'s 4
- *    direct `this.emit('scan-error', ...)` call sites) use ONLY the
+ *    output-file, cannot-stat-file, zero-size-file) use ONLY the
  *    camelCase `scannerId`/`plateIndex`/`jobId` shape — they never went
  *    through the subprocess relay, so they have no snake_case fields at
  *    all. This is exactly the design.md Decision 2 "found bug": these
  *    events were previously invisible to wedge detection because
  *    `setupWedgeDetection()` only listened on the old generic
  *    `scan-event` bus, which they were never emitted on either.
+ *
+ * Which of those reach wedge detection (corrected in review round 5 — this
+ * comment previously said "`scanOnce()`'s 4 direct `this.emit` call sites",
+ * which is both the wrong count and the wrong semantics now):
+ *  - `scanOnce()` has TWO literal `this.emit('scan-error', ...)` sites: the
+ *    row timeout, and the shared `reportVerificationFailure()` closure that
+ *    the three file-verification failures were refactored into.
+ *  - `reportVerificationFailure()` SUPPRESSES the emit when the row's
+ *    outcome was `timeout`. That row already emitted its own row-level
+ *    `scan-error` when the timeout fired; a second, plate-level one would
+ *    double-count into `WedgeDetector`'s `confirmedFailures`, where two is
+ *    enough to trip `consecutive_failures` and auto-pause a scanner that
+ *    was merely slow. For a timed-out row the verification result is
+ *    therefore logged only — the plate is still checked and still counted.
+ *  - The per-plate "no completion signal received" diagnostic is log-only
+ *    by design and never emits `scan-error`, so it cannot feed detection.
  *
  * `resolveScannerId()`/`resolvePlateIndex()` below accept either shape.
  */
