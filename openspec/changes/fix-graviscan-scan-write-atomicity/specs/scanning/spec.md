@@ -34,7 +34,9 @@ The scan worker SHALL compose the final filename at write time via `compose_outp
 - **WHEN** the worker saves the file
 - **THEN** the file SHALL first be written to a temporary path in the same directory as the final path
 - **AND** the worker SHALL attempt to flush the written bytes to stable storage (`fsync`) before the rename publishes the final name, so that a power loss cannot make the rename durable while the data is not
-- **AND** a failed flush SHALL be logged and the write SHALL proceed — the atomicity guarantee comes from the temp-then-replace sequence alone, so refusing to publish a fully-written image because durability could not be confirmed would trade a real scan for a weaker guarantee
+- **AND** the two ways that flush can fail SHALL be treated differently, because they mean different things:
+  - if the temp file cannot be **reopened** for the flush, that means only that durability could not be _verified_ — the write itself succeeded, so this SHALL be logged and the write SHALL proceed, rather than trading a real scan for an unconfirmable guarantee
+  - if the **flush itself fails**, the bytes did not reach stable storage. On a filesystem with delayed allocation, a successful write and close can leave blocks unallocated and surface ENOSPC or EIO here — so the failure SHALL propagate through the same retry path as any other write failure, the temp file SHALL be cleaned up, and nothing SHALL be published at the final path. In particular a pre-existing good file at that path SHALL survive
 - **AND** SHALL be atomically renamed into the final path only after the write completes successfully
 - **AND** at no point SHALL a partially-written file be visible at the final path
 

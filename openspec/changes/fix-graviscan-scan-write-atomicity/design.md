@@ -43,7 +43,7 @@ This gap was invisible to the test suite because `createMockSubprocess`'s `remov
 
 - Goals:
   - A process termination during a plate's write can never leave a truncated or invalid file at that plate's final output path — only a stray temp file or a complete final file.
-  - A row whose subprocess exited before `cycle-done`, outside of a full session cancel, is no longer silently swallowed — it produces a durable, attributable log line, without duplicating the timeout branch's existing diagnostic.
+  - A row whose subprocess exited before `cycle-done`, outside of a full session cancel, is no longer silently swallowed — it produces a durable, attributable log line, without duplicating the timeout branch's row-level `scan-error`.
   - This change's own test run reconfirms #281 items 2/3 (already fixed by PR #357). Review established that item 2 is only partly closed by them — the queued-retry path is still unbounded — so #281 closes on what was delivered, with the remainder split out to #366 rather than implied fixed.
   - A stray `.tmp-*` file left behind by an interrupted write is never presented to the operator as if it were real scan data.
 - Non-Goals:
@@ -69,7 +69,7 @@ Temp filenames use a `.tmp-` prefix plus a UUID (e.g. `.tmp-<uuid4>-<final_basen
 
 **`os.replace()` failure after a successful save.** If `image.save()` to the temp path succeeds but the subsequent `os.replace()` raises (e.g. a permissions error, or a lingering file handle on Windows), `_atomic_image_save()` cleans up its temp file and re-raises (see the handled-failure decision above); the exception then propagates up through `_scan_plate()`'s existing `try/except` in `_sane_scan()`'s per-attempt retry loop (`MAX_RETRIES` with backoff), exactly as any other scan failure already does today. No new error-handling path is needed: this failure mode was already structurally covered by the existing retry loop once `_atomic_image_save()` is a normal function call inside it. Tested explicitly (tasks.md 1.3b) rather than left as an unstated assumption.
 
-### Decision 2: Log-only diagnostic for a `null` result caused by subprocess exit — NOT for a `null` result caused by row timeout
+### Decision 2: Log-only diagnostic for any plate that ends a row unreported
 
 `scanOnce()`'s per-scanner promise construction (`scan-coordinator.ts:756-800`) is extended so each row promise resolves to a **discriminated** result instead of a bare `null`:
 
@@ -92,12 +92,33 @@ Every outcome carries **both** halves deliberately. A row can end after some of 
 
 In the verification loop:
 
-- `timeout` is not re-diagnosed — its own `scanLog()` + `scan-error` already ran when it fired. Its plates are still verified and still counted, but a verification failure there is logged only, never re-emitted as a `scan-error` (two coordinator `scan-error`s for one row would trip `WedgeDetector`'s `consecutive_failures` and auto-pause a merely-slow scanner).
-- `exit` and `stopped` log one line per _unreported_ plate:
+- **Any** plate that did not report gets one line, whatever the outcome — `done`, `exit`, `stopped` or `timeout` (widened in review round 6).
+
+  `timeout` was originally excluded, on the grounds that its own `scanLog()` + `scan-error` already ran when it fired. That diagnosis is row-level: `Row scan timeout after Nms` plus a `scan-error` carrying `jobId: scannerId`, with no plate index, wave or path. That is exactly the aggregate-only shortfall the per-plate line exists to fix, and a row timeout is the commonest symptom of a wedged scanner, so excluding it left the hole where the hardware fails most often.
+
+  `done` is included because the worker is strictly serial and a row timeout does not abort it, so a stale `cycle-done` can settle the following row as `done` with nothing reported (#371). Including it means such a plate is never lost silently.
+
+  What the `timeout` exclusion was really protecting is retained: a timed-out row still emits exactly **one** `scan-error`. Verification failures on such a row are logged only, never re-emitted, because two coordinator `scan-error`s for one row would trip `WedgeDetector`'s `consecutive_failures` and auto-pause a merely-slow scanner. The per-plate lines are log-only and cannot feed detection.
+
+- Plates whose scanner received **no row at all** are reconciled against `platesPerScanner` at the end of each row group and get the same line. A scanner can be absent because its worker died in an earlier row group and the `exit` handler evicted it, because it was stopped during the USB stagger window, or because it never came online. Without this the invariant held only for the row the failure happened in, and every later row group in the cycle went unrecorded at plate level.
+
+- The line states a re-scan action **only for plates that were dispatched**. A plate reaching the reconciliation was never sent to a worker, so no file can exist for it and there is nothing to check; emitting a re-scan instruction once per plate per cycle for the life of a multi-day session would bury the records that do warrant action.
+
+- The cause distinguishes a wedge-style stop from a session cancellation or app quit, using the cancel flag **as at settle time** rather than at log time — `Promise.all` can separate the two by the full row timeout, so reading it late re-labels an already-settled wedge stop as an operator cancellation (review round 7).
+
+The line, after round 5 rewrote it for a lab technician rather than an engineer:
 
 ```
-[<scannerId>] Cycle <cycle>: row verification skipped for plate <plateIndex> (wave <N>): no completion signal received (<cause>) — output presence unknown; expected at (pre-_et_) <path>
+[<scannerId>] MISSING? Cycle <cycle> wave <N> plate <plateIndex> — <cause>; no completion signal received, so no image is confirmed. Check for <path> and re-scan this plate if it is absent.
 ```
+
+and, for a plate whose scanner never received the row:
+
+```
+[<scannerId>] MISSING? Cycle <cycle> wave <N> plate <plateIndex> — <cause>; no completion signal received, so no image is confirmed. No image was produced; expected path would have been <path>.
+```
+
+It leads with `MISSING?`, the token the grid tally also uses, so one search finds both halves of the signal; states the consequence before the mechanism; and does not label the path `pre-_et_`, which sent readers hunting for a filename that does not exist under the current convention (#370).
 
 The path is the cycle-corrected one actually dispatched (from `platesToScan`, not the stale `rowPlates` the row was built from) and is labelled pre-`_et_`, since the worker stamps `_et_` at save time and never reported one for this plate. It encodes experiment id, wave, scanner and cycle, which is why the line does not carry a separate experiment field: `PlateConfig.exp_name` is optional and nothing in `src/` populates it, so quoting it would have printed a constant `unknown-exp` in production — review round 2 caught that the test asserting otherwise was passing only on a fixture-injected value.
 
