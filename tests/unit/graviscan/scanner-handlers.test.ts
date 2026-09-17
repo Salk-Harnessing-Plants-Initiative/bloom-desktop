@@ -9,6 +9,7 @@ vi.mock('../../../src/main/lsusb-detection', () => ({
 import { detectEpsonScanners } from '../../../src/main/lsusb-detection';
 import {
   detectScanners,
+  matchDetectedToDb,
   saveScannersToDB,
   getConfig,
   saveConfig,
@@ -28,7 +29,10 @@ function createMockDb() {
     graviScanner: {
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
-      create: vi.fn(),
+      // Returns a row rather than `undefined`: upsertScannerRow reads
+      // `created.id`, so a bare vi.fn() turns any create-path test into an
+      // opaque TypeError swallowed by saveScannersToDB's try/catch.
+      create: vi.fn(async ({ data }: any) => ({ id: 'created-1', ...data })),
       update: vi.fn(),
     },
     graviConfig: {
@@ -154,18 +158,26 @@ describe('scanner-handlers', () => {
       expect(db.graviScanner.create).toHaveBeenCalled();
     });
 
-    it('should update existing scanner matched by USB bus+device', async () => {
-      db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
-        if (where?.usb_bus === 1 && where?.usb_device === 2) {
-          return {
-            id: 'existing-1',
-            name: 'Old Name',
-            usb_bus: 1,
-            usb_device: 2,
-            display_name: null,
-          };
+    it('should update a portless existing scanner matched by USB bus+device', async () => {
+      // Re-fixtured: under the identity-matching precedence, the address tier
+      // is reachable only when BOTH the payload port and the row's port are
+      // unusable. The previous fixture passed a usable `usb_port: '1-2'`, so
+      // it never exercised the address tier its title names — it matched by
+      // port. Keeping the title honest means giving both sides no usable port.
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) => {
+        if (where?.usb_bus === 1 && where?.usb_device === 2 && where?.OR) {
+          return [
+            {
+              id: 'existing-1',
+              name: 'Old Name',
+              usb_bus: 1,
+              usb_device: 2,
+              usb_port: null,
+              display_name: null,
+            },
+          ];
         }
-        return null;
+        return [];
       });
       db.graviScanner.update.mockResolvedValue({
         id: 'existing-1',
@@ -174,7 +186,7 @@ describe('scanner-handlers', () => {
         product_id: '013a',
         usb_bus: 1,
         usb_device: 2,
-        usb_port: '1-2',
+        usb_port: null,
         enabled: true,
       });
 
@@ -185,7 +197,7 @@ describe('scanner-handlers', () => {
           product_id: '013a',
           usb_bus: 1,
           usb_device: 2,
-          usb_port: '1-2',
+          usb_port: '',
         },
       ]);
 
@@ -194,16 +206,20 @@ describe('scanner-handlers', () => {
     });
 
     it('should update existing scanner matched by USB port', async () => {
-      db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
+      // Lookups go through `findMany`, not `findFirst`, so that a second
+      // candidate on the same port is detectable and can be refused.
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) => {
         if (where?.usb_port === '1-2') {
-          return {
-            id: 'existing-1',
-            name: 'Old Name',
-            usb_port: '1-2',
-            display_name: null,
-          };
+          return [
+            {
+              id: 'existing-1',
+              name: 'Old Name',
+              usb_port: '1-2',
+              display_name: null,
+            },
+          ];
         }
-        return null;
+        return [];
       });
       db.graviScanner.update.mockResolvedValue({
         id: 'existing-1',
@@ -595,5 +611,72 @@ describe('buildSaneName', () => {
 
   it('zero-pads independently when one value already has 3 digits', () => {
     expect(buildSaneName(123, 45)).toBe('epkowa:interpreter:123:045');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchDetectedToDb — identity matching precedence
+// ---------------------------------------------------------------------------
+
+/**
+ * This is the only join between "whose plate barcodes" and "which physical
+ * scanner": its output becomes GraviScan.tsx's saneNames map and from there
+ * each worker's --device. A wrong binding applies one scanner's barcodes to
+ * another scanner's images.
+ */
+describe('matchDetectedToDb — identity matching precedence', () => {
+  const detected = (
+    overrides: Partial<DetectedScanner> = {}
+  ): DetectedScanner => ({
+    ...MOCK_SCANNER,
+    scanner_id: '',
+    ...overrides,
+  });
+
+  it('binds by port, not by a coincident device number', async () => {
+    const list = [detected({ usb_port: '1-4', usb_bus: 1, usb_device: 8 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 },
+      { id: 'sc-B', name: 'B', usb_port: '1-4', usb_bus: 1, usb_device: 5 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('sc-B');
+  });
+
+  it('treats a scanner on an unknown port as new rather than claiming a row', async () => {
+    const list = [detected({ usb_port: '1-9', usb_bus: 1, usb_device: 8 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+  });
+
+  it('never claims a null-port row by device number when it has a usable port', async () => {
+    const list = [detected({ usb_port: '1-7', usb_bus: 1, usb_device: 5 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: null, usb_bus: 1, usb_device: 5 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+  });
+
+  it('falls back to the address only when both ports are unusable', async () => {
+    const list = [detected({ usb_port: '', usb_bus: 1, usb_device: 4 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-2.3', usb_bus: 1, usb_device: 4 },
+      { id: 'sc-B', name: 'B', usb_port: null, usb_bus: 1, usb_device: 4 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('sc-B');
+  });
+
+  it('does not treat two empty-string ports as a match', async () => {
+    const list = [detected({ usb_port: '', usb_bus: 9, usb_device: 9 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '', usb_bus: 1, usb_device: 4 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
   });
 });

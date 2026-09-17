@@ -23,6 +23,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { GraviScanner } from '../../types/graviscan';
 import type { ScanCoordinatorLike } from './session-handlers';
+import { scanLog } from './scan-logger';
 
 /** Alias matching the brief's naming for the upsert helper's return type. */
 export type GraviScannerRow = GraviScanner;
@@ -41,43 +42,93 @@ export interface UpsertScannerPayload {
   usb_device?: number;
 }
 
+/** A port value is usable only when it is a non-empty string. */
+function isUsablePort(port: string | null | undefined): port is string {
+  return typeof port === 'string' && port.length > 0;
+}
+
 /**
- * Upsert a single GraviScanner row by (usb_bus, usb_device) or usb_port.
+ * Upsert a single GraviScanner row, matching on `usb_port`.
  *
- * - If a matching row exists (including previously-disabled rows — this is
- *   how re-detected scanners come back online without a duplicate row):
- *   update its fields.
- * - If no matching row exists: create a new row with `enabled: true`.
+ * Governed by one invariant:
+ *
+ *   **A match on usb_bus+usb_device never assigns, changes or transfers a
+ *   usb_port.** It is reachable only when BOTH the payload port and the
+ *   candidate row's port are unusable, and may refresh only the address.
+ *
+ * `usb_device` is reassigned by the kernel on every reconnect, so a device
+ * number that coincides with a saved row's stored value says nothing about
+ * physical identity. A row holding no usable port still holds a `scanner_id`,
+ * a `name`, and FK'd `GraviScan`/`GraviScanPlateAssignment` rows — so binding
+ * it by device number can move that history onto a different physical scanner.
+ * Three earlier formulations of this rule each closed one such path while
+ * opening another; stating it as an invariant is what makes the remaining
+ * cells unreachable rather than separately prohibited.
+ *
+ * Returns `null` — writing nothing — when the scanner cannot be identified
+ * (no usable port and no address match) or when a lookup is ambiguous. Both
+ * are reported to the durable scan log, because each is a decision about
+ * scientific-data attribution that an operator may need to reconstruct later.
+ *
+ * Previously-disabled rows are still matched and re-enabled; that is how a
+ * re-detected scanner comes back without a duplicate row.
  */
 export async function upsertScannerRow(
   db: PrismaClient,
   payload: UpsertScannerPayload
-): Promise<GraviScannerRow> {
+): Promise<GraviScannerRow | null> {
   let existing: GraviScannerRow | null = null;
+  const payloadPortUsable = isUsablePort(payload.usb_port);
 
-  // Prefer match on (usb_bus, usb_device) — physical USB hardware address.
-  if (payload.usb_bus != null && payload.usb_device != null) {
-    existing = (await (db as any).graviScanner.findFirst({
+  if (payloadPortUsable) {
+    // Primary tier: the stable port path. `findMany` rather than `findFirst`
+    // because a second candidate must be *detectable* — see the refusal below.
+    const portMatches = (await (db as any).graviScanner.findMany({
+      where: { usb_port: payload.usb_port },
+    })) as GraviScannerRow[];
+
+    if (portMatches.length > 1) {
+      scanLog(
+        `[GraviScan:SAVE] ambiguous usb_port port=${payload.usb_port} ` +
+          `candidates=${portMatches.map((r) => r.id).join(',')} — wrote nothing`
+      );
+      return null;
+    }
+    existing = portMatches[0] ?? null;
+  } else if (payload.usb_bus != null && payload.usb_device != null) {
+    // Address tier. Restricted to rows that themselves hold no usable port,
+    // so it can never take a port away from a row that has one. Only reached
+    // when the payload has no usable port either.
+    const addressMatches = (await (db as any).graviScanner.findMany({
       where: {
         usb_bus: payload.usb_bus,
         usb_device: payload.usb_device,
+        OR: [{ usb_port: null }, { usb_port: '' }],
       },
-    })) as GraviScannerRow | null;
+    })) as GraviScannerRow[];
+
+    if (addressMatches.length > 1) {
+      scanLog(
+        `[GraviScan:SAVE] ambiguous usb address ` +
+          `bus=${payload.usb_bus} device=${payload.usb_device} ` +
+          `candidates=${addressMatches.map((r) => r.id).join(',')} — wrote nothing`
+      );
+      return null;
+    }
+    existing = addressMatches[0] ?? null;
   }
 
-  // Fallback: match on usb_port (stable across replug, unlike usb_device).
-  if (!existing && payload.usb_port) {
-    existing = (await (db as any).graviScanner.findFirst({
-      where: { usb_port: payload.usb_port },
-    })) as GraviScannerRow | null;
-    if (existing) {
-      console.log(
-        '[GraviScan:SAVE] Matched by usb_port fallback:',
-        existing.name,
-        existing.id,
-        `port:${existing.usb_port}`
-      );
-    }
+  if (!existing && !payloadPortUsable) {
+    // No usable port and no portless row at this address. Creating a row here
+    // would produce a record that can never be matched again under this
+    // precedence — and since a failed USB topology query makes *every*
+    // detected port empty, it would duplicate the entire fleet at once.
+    scanLog(
+      `[GraviScan:SAVE] scanner could not be identified — no usable usb_port ` +
+        `(bus=${payload.usb_bus ?? 'null'} device=${payload.usb_device ?? 'null'}) — ` +
+        `no row created`
+    );
+    return null;
   }
 
   if (existing) {
@@ -88,7 +139,11 @@ export async function upsertScannerRow(
         display_name: payload.display_name ?? existing.display_name ?? null,
         vendor_id: payload.vendor_id,
         product_id: payload.product_id,
-        usb_port: payload.usb_port ?? null,
+        // Only ever written from a usable payload port. When the payload has
+        // none we are on the address tier, which by the invariant above must
+        // not touch `usb_port` at all — so the key is omitted rather than set
+        // to null, leaving whatever the row already holds untouched.
+        ...(payloadPortUsable ? { usb_port: payload.usb_port } : {}),
         usb_bus: payload.usb_bus ?? null,
         usb_device: payload.usb_device ?? null,
         // Critical fix (final-review #1): re-detecting a scanner MUST

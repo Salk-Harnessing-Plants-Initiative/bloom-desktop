@@ -81,29 +81,50 @@ function buildMockScanners(dbScanners: any[]): DetectedScanner[] {
 }
 
 /**
- * Match detected scanners to DB records by USB bus+device, falling back to
- * usb_port. Mutates `detectedScanners` in-place (sets scanner_id and name).
+ * Match detected scanners to DB records by `usb_port`. Mutates
+ * `detectedScanners` in-place (sets scanner_id and name).
+ *
+ * Governed by the same invariant as `upsertScannerRow`:
+ *
+ *   **A match on usb_bus+usb_device never assigns, changes or transfers a
+ *   usb_port.** It is reachable only when BOTH the detected scanner's port
+ *   and the candidate row's port are unusable.
+ *
+ * This is the only join between "whose plate barcodes" and "which physical
+ * scanner" — its output becomes `GraviScan.tsx`'s `saneNames` map and from
+ * there each worker's `--device`. A wrong binding here applies one scanner's
+ * barcodes to another scanner's images, so a coincident `usb_device` (which
+ * the kernel reassigns on every reconnect) must never be sufficient to claim
+ * a row that holds a real port.
+ *
+ * Note the candidate set differs from `upsertScannerRow`'s: callers pass only
+ * `enabled` rows, so a disabled row cannot compete for identity during a live
+ * detection pass while remaining re-enableable on re-detect.
  */
-function matchDetectedToDb(
+export function matchDetectedToDb(
   detectedScanners: DetectedScanner[],
   dbScanners: any[]
 ): void {
+  const usable = (p: unknown): p is string =>
+    typeof p === 'string' && p.length > 0;
+
   for (const detected of detectedScanners) {
-    const match = dbScanners.find(
-      (s: any) =>
-        s.usb_bus === detected.usb_bus && s.usb_device === detected.usb_device
-    );
+    let match: any;
+
+    if (usable(detected.usb_port)) {
+      match = dbScanners.find((s: any) => s.usb_port === detected.usb_port);
+    } else {
+      match = dbScanners.find(
+        (s: any) =>
+          !usable(s.usb_port) &&
+          s.usb_bus === detected.usb_bus &&
+          s.usb_device === detected.usb_device
+      );
+    }
+
     if (match) {
       detected.scanner_id = match.id;
       detected.name = match.name;
-    } else {
-      const portMatch = dbScanners.find(
-        (s: any) => s.usb_port && s.usb_port === detected.usb_port
-      );
-      if (portMatch) {
-        detected.scanner_id = portMatch.id;
-        detected.name = portMatch.name;
-      }
     }
   }
 }
@@ -377,11 +398,23 @@ export async function saveScannersToDB(
 ) {
   try {
     const savedScanners: GraviScanner[] = [];
+    const refused: string[] = [];
 
     for (const scanner of scanners) {
       // Delegate the find-existing-and-upsert logic to the testable
       // helper (scanner-upsert.ts), shared with graviscan:disable-scanner.
       const saved = await upsertScannerRow(db, scanner);
+      if (!saved) {
+        // Refused: the scanner has no usable usb_port and so cannot be
+        // identified, or a lookup was ambiguous. Either way nothing was
+        // written and the reason is in the durable scan log. Never push a
+        // null — register-handlers' spawn-on-discovery loop reads `.enabled`
+        // and `.id` off every element of this array.
+        refused.push(
+          scanner.usb_port || `${scanner.usb_bus}:${scanner.usb_device}`
+        );
+        continue;
+      }
       savedScanners.push(saved as GraviScanner);
     }
 
@@ -400,10 +433,17 @@ export async function saveScannersToDB(
     // empty) list of currently-detected ports explicitly rather than
     // omitting scanners altogether.
     let disabled: string[] = [];
-    if (scanners.length > 0) {
-      const currentUsbPorts = scanners
-        .map((s) => s.usb_port)
-        .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    const currentUsbPorts = scanners
+      .map((s) => s.usb_port)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    // A payload in which NO entry carries a usable usb_port is the signature
+    // of an unavailable USB topology query, not of every scanner having been
+    // unplugged — `detectEpsonScanners` reports an empty port for all of them
+    // when `lsusb -t` fails. Disabling on that signal would disable the whole
+    // fleet on evidence that says nothing about whether the scanners are
+    // present. (The genuinely-all-unplugged case yields an empty `scanners`
+    // array instead, which the length guard below already skips.)
+    if (scanners.length > 0 && currentUsbPorts.length > 0) {
       const staleResult = await disableStaleScannerRows(db, currentUsbPorts);
       disabled = staleResult.disabled;
       if (disabled.length > 0) {
@@ -423,6 +463,12 @@ export async function saveScannersToDB(
        * orphaned worker subprocesses (#20). Always [] for an empty
        * payload — see final-review fix #6 above. */
       disabled,
+      /** Detected scanners this call deliberately refused to persist: one
+       * per scanner with no usable `usb_port` (unidentifiable) or whose
+       * lookup was ambiguous. Each wrote nothing and logged its reason.
+       * Surfaced separately so a caller can tell "nothing to do" apart from
+       * "we declined to guess at scanner identity". */
+      refused,
     };
   } catch (error) {
     return {

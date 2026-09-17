@@ -25,7 +25,7 @@
  * See openspec/changes/fix-graviscan-scanner-identity-precedence.
  */
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
+import { scanLog } from './scan-logger';
 
 /** The subset of the scanner row this audit reads. */
 export interface ScannerPortAuditRow {
@@ -59,13 +59,101 @@ export type ScannerPortFinding =
       scannerIds: string[];
     };
 
+/** Stable, greppable prefix for every line this audit writes. */
+const LOG_PREFIX = '[GraviScan:PortAudit]';
+
+function isUsablePort(port: string | null | undefined): port is string {
+  return typeof port === 'string' && port.length > 0;
+}
+
 /**
- * Audit saved scanner port integrity. Never throws: any failure is reported to
- * the caller as an empty result after logging, so a startup path can invoke
- * this fire-and-forget without risking an unhandled rejection.
+ * Audit saved scanner port integrity. Never throws: any failure is logged and
+ * reported as an empty result, so a startup path can invoke this
+ * fire-and-forget without risking an unhandled rejection at app start.
  */
 export async function auditScannerPorts(
-  _db: ScannerPortAuditDb
+  db: ScannerPortAuditDb
 ): Promise<ScannerPortFinding[]> {
-  throw new Error('not implemented');
+  let rows: ScannerPortAuditRow[];
+  try {
+    rows = (await db?.graviScanner?.findMany?.()) ?? [];
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    scanLog(`${LOG_PREFIX} audit failed, skipping: ${message}`);
+    return [];
+  }
+
+  try {
+    const findings: ScannerPortFinding[] = [];
+
+    const portless = rows.filter((r) => !isUsablePort(r.usb_port));
+    if (portless.length > 0) {
+      findings.push({
+        kind: 'no-port',
+        scannerIds: portless.map((r) => r.id),
+      });
+    }
+
+    // Duplicates are counted across enabled AND disabled rows: a duplicate's
+    // victim is disabled in the same save that creates the duplicate, so an
+    // enabled-only tally would miss every real instance.
+    const byPort = new Map<string, ScannerPortAuditRow[]>();
+    for (const row of rows) {
+      if (!isUsablePort(row.usb_port)) continue;
+      const bucket = byPort.get(row.usb_port);
+      if (bucket) bucket.push(row);
+      else byPort.set(row.usb_port, [row]);
+    }
+    for (const [usbPort, bucket] of byPort) {
+      if (bucket.length > 1) {
+        findings.push({
+          kind: 'duplicate-port',
+          usbPort,
+          scannerIds: bucket.map((r) => r.id),
+        });
+      }
+    }
+
+    // A disabled row still holding a usable port is the signature of a row
+    // stranded when a duplicate superseded it. It is invisible to every other
+    // read path, all of which filter `enabled: true`.
+    for (const row of rows) {
+      if (row.enabled || !isUsablePort(row.usb_port)) continue;
+      findings.push({
+        kind: 'stranded-disabled',
+        usbPort: row.usb_port,
+        scannerIds: [row.id],
+      });
+    }
+
+    if (findings.length === 0) {
+      scanLog(`${LOG_PREFIX} clean — ${rows.length} scanner row(s) checked`);
+      return findings;
+    }
+
+    for (const finding of findings) {
+      if (finding.kind === 'no-port') {
+        scanLog(
+          `${LOG_PREFIX} no-port scanners=${finding.scannerIds.join(',')} — ` +
+            `these cannot be re-identified, so Power-Cycled & Retry will not work for them`
+        );
+      } else if (finding.kind === 'duplicate-port') {
+        scanLog(
+          `${LOG_PREFIX} duplicate-port port=${finding.usbPort} ` +
+            `scanners=${finding.scannerIds.join(',')} — scanner identity is ambiguous`
+        );
+      } else {
+        scanLog(
+          `${LOG_PREFIX} stranded-disabled port=${finding.usbPort} ` +
+            `scanners=${finding.scannerIds.join(',')} — disabled row still holding a port`
+        );
+      }
+    }
+
+    return findings;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    scanLog(`${LOG_PREFIX} audit failed, skipping: ${message}`);
+    return [];
+  }
 }

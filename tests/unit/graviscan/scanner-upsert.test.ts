@@ -594,7 +594,28 @@ describe('upsertScannerRow — identity matching precedence', () => {
     expect(db._rows.find((r) => r.id === 'sc-A')?.usb_port).toBe('');
   });
 
-  it('refreshes only the address when both ports are unusable', async () => {
+  it('refreshes a portless row at the same address without touching its port', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 4 }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 4 }) as any
+    );
+
+    expect(result?.id).toBe('sc-A');
+    const updateArgs = vi.mocked(db.graviScanner.update).mock
+      .calls[0]?.[0] as any;
+    expect(updateArgs.data).not.toHaveProperty('usb_port');
+    expect(db._rows.find((r) => r.id === 'sc-A')?.usb_port).toBeNull();
+  });
+
+  it('leaves a portless row whose address has also moved unmatched', async () => {
+    // The address tier matches on the *current* address, so it can only reach
+    // a row whose stored address still agrees. A portless row whose address
+    // has also moved is unmatchable — the accepted "no auto-healing"
+    // consequence of the invariant, surfaced by the startup audit instead.
     const db = makeMockDb([
       makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 4 }),
     ]);
@@ -604,10 +625,8 @@ describe('upsertScannerRow — identity matching precedence', () => {
       payload({ usb_port: '', usb_bus: 1, usb_device: 6 }) as any
     );
 
-    expect(result?.id).toBe('sc-A');
-    const updateArgs = vi.mocked(db.graviScanner.update).mock
-      .calls[0]?.[0] as any;
-    expect(updateArgs.data).not.toHaveProperty('usb_port');
+    expect(result).toBeNull();
+    expect(db.graviScanner.create).not.toHaveBeenCalled();
     expect(db._rows.find((r) => r.id === 'sc-A')?.usb_port).toBeNull();
   });
 
@@ -630,7 +649,9 @@ describe('upsertScannerRow — identity matching precedence', () => {
     );
   });
 
-  it('queries by port before querying by address, and restricts the address query', async () => {
+  it('restricts the address query to rows that hold no usable port', async () => {
+    // Lookups use findMany, not findFirst, because a second candidate has to
+    // be *detectable* for the ambiguity refusal to be possible at all.
     const db = makeMockDb([
       makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 4 }),
     ]);
@@ -641,10 +662,30 @@ describe('upsertScannerRow — identity matching precedence', () => {
     );
 
     const addressCall = vi
-      .mocked(db.graviScanner.findFirst)
+      .mocked(db.graviScanner.findMany)
       .mock.calls.find((c) => (c[0] as any)?.where?.usb_bus !== undefined);
     expect(addressCall).toBeDefined();
-    expect((addressCall![0] as any).where).toHaveProperty('OR');
+    expect((addressCall![0] as any).where.OR).toEqual([
+      { usb_port: null },
+      { usb_port: '' },
+    ]);
+  });
+
+  it('queries by port, not by address, when the payload port is usable', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }),
+    ]);
+
+    await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }) as any
+    );
+
+    const calls = vi.mocked(db.graviScanner.findMany).mock.calls;
+    expect((calls[0]?.[0] as any)?.where).toEqual({ usb_port: '1-2.3' });
+    expect(calls.some((c) => (c[0] as any)?.where?.usb_bus !== undefined)).toBe(
+      false
+    );
   });
 
   it('refuses to write when a port lookup resolves more than one row', async () => {
