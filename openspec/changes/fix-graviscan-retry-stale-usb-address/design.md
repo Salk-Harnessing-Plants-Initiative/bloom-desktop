@@ -1,182 +1,317 @@
-# Design — fix GraviScan retry-scanner's stale USB address
+# Design — fix GraviScan's stale USB address on scanner reconnect
 
 ## Context
 
 A physical power-cycle is the only way to clear a V600 wedge (#228), and it always
-re-enumerates the device at a new USB device number. `retryScanner()` builds its SANE
-name from DB columns that only `resetUsb()` and `saveScannersToDB()` ever write, so it
-always builds a dead address. Full evidence chain in `proposal.md`.
+re-enumerates the device at a new USB device number. Both of GraviScan's reconnect paths —
+the operator's Retry button and the worker's own `_reopen_device()` — rebuild their SANE
+device name from a value captured before that happened. Full evidence chain in `proposal.md`.
 
-The constraint that shapes every decision below: **the V600 exposes no usable
-`iSerial`** (#182's 2026-05-06 comment, confirmed across all five rig scanners). The
-USB port path is the only stable physical identifier available, so there is no
-scanner-side identity to fall back on.
+Two hardware constraints shape every decision below.
 
-A second hardware constraint bans an obvious approach: `USBDEVFS_RESET` /
-`pyusb dev.reset()` **wedges V600s rather than recovering them** — a rig test took 2/5
-working scanners to 0/5 working, requiring physical power-cycles to recover. This is
-already codified as `scanning/spec.md:2655` ("USBDEVFS_RESET Removed from Recovery
-Path"). No design here may reintroduce a device-level USB reset.
+**The V600 exposes no usable `iSerial`** (#182's 2026-05-06 comment, confirmed across all five
+rig scanners): *"the USB path is the ONLY stable identifier for a physical port across
+reconnects/resets… there's no scanner-side identifier we could use instead."* So `usb_port` is
+the terminal identity tier for this hardware, and a `firmware_serial` tier stays a future
+insertion point (#219, #203 Option B). That ladder is not invented here — the stranded
+`add-scanner-firmware-serial-identity` proposal (commit `5e294cd`, PR #196) specifies
+`firmware_serial → usb_port → composite`, with an explicit note that the V600 returns
+`iSerial 0` and the system must degrade to `usb_port`-primary.
+
+**A device-level USB reset makes V600s worse, not better.** A rig test of `pyusb dev.reset()`
+took 2/5 working scanners to 0/5; all five then enumerated and opened but timed out on every
+bulk read, and needed physical power-cycles. This is already codified as `scanning/spec.md:2655`
+("USBDEVFS_RESET Removed from Recovery Path"), and `scan_worker.py:757-760` records the removal
+in-line. No design here reintroduces one.
+
+**Deliberate divergence from #196's ladder, recorded:** its fallback tier is the full composite
+`(vendor_id, product_id, name, usb_bus, usb_device)`; this change's fallback is the bare
+bus/device pair. On the V600 rig all five scanners share `vendor_id`, `product_id` and `name`,
+so the composite degenerates to exactly bus+device and the two are functionally identical
+today. The reduction is safe only while that holds; if mixed models ever share a rig, the
+fallback should be widened. #196 also lists `disableMissingScanners` in its uniformity set; that
+function matches on `usb_port` only and has no fallback, so it is unaffected — see Decision 6.
 
 ## Decisions
 
-### Decision 1 — a shared helper, not re-detection inlined in `retryScanner()`
-
-**Chosen:** a new module `src/main/graviscan/scanner-usb-refresh.ts`.
+### Decision 1 — a shared helper module, not re-detection inlined in `retryScanner()`
 
 Re-detection inlined in `retryScanner()` would be the smallest diff, but `session-handlers.ts`
-deliberately carries almost no DB dependency (its own comment at :25-28 notes it "otherwise
-has zero DB dependency"), and there are already three other call sites that want the same
-"refresh this one scanner's USB address" operation:
+deliberately carries almost no DB dependency (its own comment at `:25-28`), and there are other
+call sites that want the same "refresh this one scanner's address" operation — `resetUsb()`'s
+loop (Decision 2), the spawn-time resolver (Decision 3), and #159's future "Start Scan must
+check real scanner readiness" work.
 
-- `resetUsb()`'s per-scanner loop (shares the matcher today — Decision 2)
-- the coordinator on a device-open failure (a plausible follow-up; not built here)
-- #159's "Start Scan must check real scanner readiness" work
-
-A separate module also keeps the pure matcher unit-testable without a DB or Electron.
+A consequence worth naming: task 2.2 widens the retry path's DB interface with an `update`
+method, which is in tension with that read-only rationale. Resolved by declaring
+`ScannerUsbRefreshDb` (read + write) in the refresh module and having `ScannerRetryLookupDb`
+extend it, rather than growing a write method onto a lookup interface.
 
 ### Decision 2 — the shared unit is the pure matcher, not the IO wrapper
 
-`refreshScannerUsbAddress()` performs IO in a fixed order: read row → detect → match →
-write. `resetUsb()` needs the same *matching* but must keep its **single** detection pass
-across all scanners. Calling the IO wrapper inside `resetUsb()`'s loop would invoke
-`lsusb` once per scanner — N subprocess spawns per reset instead of one, plus a
-per-scanner inconsistent view of the bus.
+`refreshScannerUsbAddress()` performs IO in a fixed order: read row → detect → match → write.
+`resetUsb()` needs the same *matching* but must keep its **single** detection pass across all
+scanners; calling the IO wrapper in its loop would spawn detection once per scanner and give
+each row a different view of the bus.
 
-So the extracted, shared unit is:
+So the extracted, shared unit is the pure `matchScannerByPort(detected, row)`. `resetUsb()`
+keeps its own detection call and its own loop.
 
-```ts
-export function matchScannerByPort(
-  detected: DetectedScanner[],
-  row: { usb_port: string | null }
-): DetectedScanner | null
-```
+**Behavioural caveat, not identity:** `resetUsb()` currently builds a `Map<usb_port, DetectedScanner>`
+(`scanner-handlers.ts:688-704`) and does O(1) lookups; the shared matcher is a linear `find`.
+`Map.set` keeps the **last** entry for a duplicate key while `find` returns the **first**. For
+real detection this is moot — `detectEpsonScanners` already dedupes by port
+(`lsusb-detection.ts:193-211`). It is **not** moot in mock mode, where `resetUsb`'s mock branch
+synthesises `usb_port: s.usb_port || \`1-${i + 1}\`` (`:669`), so a row with `usb_port: '1-2'`
+plus a null-port row at `i === 1` produces two entries on `'1-2'`. The tie-break is therefore
+specified (prefer `enabled`, then most recent) rather than left to iteration order, and tested.
 
-`resetUsb()` keeps its own `detectEpsonScanners()` call and its own loop, and calls
-`matchScannerByPort()` per row. `refreshScannerUsbAddress()` calls it once. One
-definition of "which detected device is this row?", two call patterns.
-
-**Rejected:** calling `resetUsb()` itself from the retry path. It is spec-blocked during
-an active scan (`scanning/spec.md:2379`, `ui-management-pages/spec.md:2159`) while retry
-*requires* an active session (`scanning/spec.md:4104`) — so the two are mutually
-exclusive by specification. It would also `coordinator.shutdown()` the whole fleet and
-re-`initialize()` it to recover a single scanner mid-session, losing every other
+**Rejected:** calling `resetUsb()` itself from the retry path. It would `coordinator.shutdown()`
+the whole fleet and re-`initialize()` it to recover one scanner mid-session, losing every other
 scanner's in-flight row.
 
-### Decision 3 — refresh runs BEFORE `stopScanner()`
+Note the justification for that rejection is *not* "the two are mutually exclusive by
+specification", which an earlier draft of this document claimed. `scanning/spec.md:2379` and
+`ui-management-pages/spec.md:2170-2174` gate Reset USB **in the renderer only**;
+`graviscan:reset-usb` (`register-handlers.ts:251`) and `resetUsb()` itself have no `isScanning`
+guard, and the only such guard in that file is on `graviscan:upload-all-scans` (`:433`). See
+Decision 7.
 
-Order: `refresh → stop → add`.
+### Decision 3 — resolve the address at spawn time, not only at click time
 
-Detection is read-only (`lsusb` reads sysfs; it does not open the device, so it is safe
-while a worker holds the handle). Running it first means a `not-detected` or
-`detection-failed` outcome leaves the existing worker exactly as it was, instead of
-stopping a scanner we have just discovered we cannot respawn. In the wedge case the
-worker is already stopped by auto-pause, so nothing is lost in the common path either.
+`retryScanner()` requires an active session, and `isScanning` is true for `'scanning'` **and**
+`'waiting'` (`scan-coordinator.ts:207-209`), so a retry during any interval session takes
+`addScanner()`'s queued branch (`:377-416`). That branch captures `config` in a closure and
+spawns on the next `cycle-complete` — which `register-handlers.ts:137-141` describes in the
+repo's own words as "potentially hours for a continuous session".
 
-### Decision 4 — `no-stable-port` and `detection-failed` fail hard, with actionable text
+Refreshing only inside `retryScanner()` would therefore make the address correct *at refresh
+time*, not at use time. `ScannerConfig` gains an optional `resolveSaneName` that the shared
+spawn path calls immediately before constructing the `ScannerSubprocess`.
 
-`usb_port` is fragile: nullable, never backfilled by any migration, no unique constraint
-or index, written by exactly one code path, and returned as `''` (empty string, not
-null) when `lsusb -t` fails (`lsusb-detection.ts:185`). So "row has no usable
-`usb_port`" is a real state that must be handled explicitly.
+The window is not merely theoretical, and #366 is what makes it likely: a queued retry gives
+the operator no feedback for a full interval, which is exactly what prompts a second
+power-cycle — and a second power-cycle re-enumerates the device, invalidating the first
+refresh. Meanwhile `retriesInFlight` refuses the second retry for that whole period. So the
+staleness returns through a path the operator is actively pushed toward. Resolve-at-spawn
+removes it regardless of how long the queue takes, which is why this is the right fix rather
+than bounding the queue (that is #366's job).
 
-**Chosen:** both outcomes fail the retry with a specific message, rather than silently
-falling back to the stored `usb_bus`/`usb_device`.
+Both refreshes are kept: the one in `retryScanner()` gives immediate operator feedback and
+corrects the DB row; the resolver guarantees correctness at the moment of use.
 
-**Rejected:** falling back to the stored address. It is superficially attractive as
-"no worse than today", but after a power-cycle the stored address is *always* wrong, so
-the fallback guarantees the same misleading `Failed to open device after 3 attempts`
-that #182 is about — while hiding the actual cause. Failing with
-"no stable USB port recorded for this scanner — run Detect Scanners on the Configure
-Scanner page" names a fix the operator can actually perform. Mock mode short-circuits
-before detection (Decision 5), so this hard-fail cannot regress E2E or non-Linux dev.
+### Decision 4 — detection on this path must be asynchronous
 
-**Rejected:** a singleton heuristic ("exactly one detected device and exactly one
-enabled row ⇒ they must be the same scanner"). It would rescue the `no-stable-port`
-case on a single-scanner bench, but on a multi-scanner rig it can bind a row to the
-wrong physical scanner — the precise class of error this change exists to remove. YAGNI.
+`detectEpsonScanners()` is `execFileSync` twice (`lsusb-detection.ts:148` and `:161`, each
+`timeout: 5000`) — up to ~10s with the **main-process event loop fully blocked**. Refresh runs
+during an active session, where that is not latency but a stall: no IPC handler runs, no
+subprocess stdout line is parsed, `scanInterval`'s sleep is delayed (pushing the next cycle's
+start out with no drift compensation — a real st→st interval error in a gravitropism series),
+and other scanners' row timers resume late. Because libuv runs the timers phase before the poll
+phase, a row whose `cycle-done` arrived on the pipe *during* the stall but whose
+`SCAN_ROW_TIMEOUT_MS` also expired during it can settle as `'timeout'` — the entry condition
+for #371's permanent false `MISSING` on an unrelated, healthy scanner.
 
-### Decision 5 — mock mode short-circuits before detection
+So a new async detection variant (promisified `execFile`) is added and used by refresh. The
+three existing synchronous call sites are untouched; this is additive.
 
-`GRAVISCAN_MOCK=true` mock scanners are deterministically `usb_bus: 1, usb_device: i+1`
-(`scanner-handlers.ts:51-81`) and never re-enumerate, so there is nothing to refresh.
-`refreshScannerUsbAddress()` returns `refreshed` with the row's existing values and
-`changed: false` without calling `detect`, matching the mock branches already present in
-`detectScanners()`, `validateConfig()` and `resetUsb()`.
+That the 5s `lsusb -t` stall is most plausible exactly when the USB subsystem has a wedged
+device on it — the only situation this feature runs in — is what moves this from a nicety to a
+requirement.
 
-This is also why **CI structurally cannot exercise #182**: mock mode is the only mode CI
-has, and it never changes a device number. The same limitation was documented by
-`2026-09-17-validate-graviscan-wedge-response-hardware`. Hence Decision 7.
+### Decision 5 — `no-stable-port`, `not-detected` and `row-missing` fail hard; `detection-failed` retries first
 
-### Decision 6 — `usb_bus: null` stops being fatal when `usb_port` is present
+`usb_port` is fragile: nullable, never backfilled by any migration, no unique constraint or
+index, written by exactly one code path, and returned as `''` when `lsusb -t` fails
+(`lsusb-detection.ts:185`).
 
-Today retry fails outright if `usb_bus`/`usb_device` is null. With refresh in place,
-null columns are recoverable: re-detection supplies them. The guard therefore moves from
-"null ⇒ fail" to "null and no usable `usb_port` ⇒ fail". This is a deliberate
-behavioural improvement to the existing scenario "Retry fails without respawning when
-USB identity is unknown", not an accident of the refactor.
+- `not-detected` — fail. Nothing is on the bus; the retry cannot succeed, and attempting it
+  burns a queued `addScanner` that per #366 can hold the IPC open for a whole cycle.
+- `no-stable-port` — fail. After a power-cycle the stored address is *always* wrong, so a
+  fallback is a guaranteed false positive that reports success and then fails opaquely.
+- `row-missing` — fail, with its own status. Folding it into `not-detected` would produce
+  "no scanner detected at port `undefined`", and the retry requirement separately mandates a
+  distinct not-found message.
+- `detection-failed` — **retry up to three times with backoff first.** Here the scanner may be
+  perfectly healthy and the *diagnostic tool* failed; `execFile` with a 5s timeout can fail
+  transiently under exactly the bus contention a wedge creates. Refusing on a single failure
+  would cost a whole run's remaining timepoints for a reason unrelated to the scanner.
 
-### Decision 7 — verification is designed around a fault CI cannot reach
+**Rejected:** falling back to the stored address. Superficially "no worse than today", but it
+guarantees the same misleading `Failed to open device after 3 attempts` while hiding the cause.
 
-A wrong fix here is only detectable on real hardware, so the verification path is part
-of the design rather than an afterthought.
+**Rejected:** a singleton heuristic ("one detected device and one enabled row ⇒ same scanner").
+On a multi-scanner rig it can bind a row to the wrong physical scanner — the precise error class
+this change removes.
 
-The key insight: **a physical power-cycle is only one *cause* of the fault; the fault
-itself is DB staleness.** That can be induced deterministically, with no hardware
-interaction, by writing a wrong `usb_device` into the row while the scanner sits healthy
-at its current address. This is #182's 2026-09-16 reproduction with the hardware step
-removed — which makes it repeatable in unit tests *and* on the rig.
+**The remedy message must not name Detect Scanners while a session is active.** An earlier draft's
+`no-stable-port` text said "run Detect Scanners on the Configure Scanner page". That path is
+**not** gated on an active scan (unlike Reset USB), and `saveScannersToDB` calls
+`disableStaleScannerRows`, which sets `enabled: false` on every enabled row whose `usb_port` is
+absent from the current detection set — which, for a wedged scanner that is powered off, is the
+wedged scanner itself. Retry would then fail permanently with "Scanner X is disabled". (The
+`usb_port === null` half is spared, because `disableStaleScannerRows` skips strictly-null ports
+(`scanner-upsert.ts:166`) — but the `''` half is not.) The message now states plainly that the
+scanner cannot be recovered in this session. The missing guard is filed separately.
 
-Three layers:
+### Decision 6 — the precedence requirement covers two functions, not four
 
-1. **Unit** — the pure matcher and every `RefreshOutcome` branch, with `detect` injected.
-   Covers what CI can verify.
-2. **Rig, deterministic (unattended)** — on `pbiob-gh-04`, write a deliberately wrong
-   `usb_device` to the row, call `graviscan:retry-scanner` over IPC, assert it succeeds
-   and that the row was corrected to the live address. Asserting the *row was corrected*
-   is what distinguishes a real fix from a lucky retry.
-3. **Rig, physical (attended, pre-merge)** — one real wedge induction and power-cycle,
-   driven through the UI button rather than IPC, to close #279 item 2.4 on its own terms.
-   Recorded under the `hardware-validation-evidence` capability and in the Obsidian vault
-   at `C:\vaults\graviscan\`.
+An earlier draft asserted the precedence was "uniform across `matchDetectedToDb()`,
+`upsertScannerRow()`, `validateConfig()` and `resetUsb()`" with a retained bus/device fallback.
+That is false for half of them: `validateConfig()` (`scanner-handlers.ts:543-563`) and
+`resetUsb()` (`:687-704`) are **port-only with no fallback at all**, and this change adds none.
+The requirement now scopes the precedence to the two functions that actually have a fallback and
+states the other two's port-only behaviour explicitly.
 
-Layer 3 needs a human at the rig; layers 1 and 2 do not. Layer 2 is the one that makes
-this change re-verifiable by anyone later, without waiting for a wedge.
+The fallback is gated on the **detected** side's port being unusable, not on a port lookup
+missing — otherwise a scanner on a genuinely new port falls through to bus/device and takes over
+whichever row shares its device number, which is the hazard, not the fix.
 
-### Decision 8 — #366 is not bundled
+### Decision 7 — the `usb_bus == null` guard was doing a second job; replace it explicitly
 
-#366 (`retryScanner()`'s queued `addScanner` has no timeout; `retriesInFlight` strands
-the scannerId when `scanOnce()` throws) lands in the same function and is tempting to
-fix here. It is deliberately left out.
+`retryScanner`'s null-columns check carried the comment "likely mid reset-usb"
+(`session-handlers.ts:366-370`) and was, in practice, the only main-process detection of a retry
+racing a `reset-usb` — `resetUsb()` nulls both columns at `:646-649`, then sleeps 5s before
+rewriting them at `:712-718`. Decision 6's predecessor removed that guard as "a behavioural
+improvement" without noticing what it also deleted.
 
-PR #365's retrospective is explicit about the cost: that PR was ~15% its stated scope
-(atomic write) and ~85% an unrelated coordinator-observability change, and five of its
-seven review rounds plus every self-inflicted regression came from the half that did not
-need to be there. #182 is a *correctness* fix on the address; #366 is a *liveness* fix on
-the coordinator's queueing. Separate failure modes, separate reasoning, separate reviews.
+Since `graviscan:reset-usb` has no `isScanning` guard, that interleaving is reachable over IPC.
+Rather than infer the state from null columns — which is unreliable in both directions — the
+retry path treats null columns as recoverable (refresh supplies the address, which is the
+improvement) and the missing handler-level guard is filed as its own issue. This change does not
+add an `isScanning` guard to `reset-usb`, because doing so would alter Reset USB's contract and
+belongs with that issue.
 
-**Interaction checked:** the refresh step cannot worsen #366's hang. It runs strictly
-before `addScanner()`, and its only unbounded-looking operation is `detectEpsonScanners()`,
-which is `execFileSync` with an explicit `timeout: 5000` on both `lsusb` invocations
-(`lsusb-detection.ts:146,159`). Worst case the refresh adds ~10s before the queued wait
-that #366 describes — it does not extend that wait, and a `detection-failed` outcome now
-returns *before* reaching the queue at all, which strictly reduces the number of paths
-that can reach #366's hang.
+### Decision 8 — the worker re-resolves from sysfs, and can only fail safe
+
+`scan_worker.py` must recover without the coordinator's help, so it needs its own resolution
+path. sysfs is used rather than `lsusb`: the kernel names `/sys/bus/usb/devices/<bus>-<port-path>`
+with exactly the string `buildUsbPort()` already produces (`lsusb-detection.ts:128-130`), so
+`busnum` and `devnum` are two plain file reads with no subprocess, no parsing and no new
+dependency. `idVendor`/`idProduct` in the same directory are checked before the resolved address
+is trusted, so a different device occupying the port cannot capture the worker.
+
+Every failure mode — no `--usb-port`, empty port, absent directory, unreadable file, mismatched
+IDs, malformed contents — falls back to the spawn-time name and behaves exactly as today. The
+design constraint is that re-resolution can only **widen** the set of recoverable failures; it
+must not be able to turn a currently-recoverable failure into a new one.
+
+This is the half of #182 the issue was originally filed about. It also answers the flow #182's
+2026-05-06 comment prescribed: `cancel() → close() → exit()` (already at `scan_worker.py:743-756`),
+**re-query for address changes** and **rebuild the device string** (steps 2 and 3, added here),
+then `init() → open()` (already at `:773-774`). Only steps 2-3 were missing.
+
+For the operator-retry half, respawning the subprocess accomplishes the same flow and more — a
+fresh process gets a fresh address space and a freshly supplied name. One caveat worth stating:
+`ScannerSubprocess.shutdown()` falls back to `SIGKILL` on timeout (`scanner-subprocess.ts:391`),
+which skips `cancel()/close()/exit()` entirely, and for a *wedged* worker that is the likely
+path, not the exotic one. That is pre-existing behaviour and unchanged here, but it is the reason
+half 2 is worth fixing independently: a worker that self-heals never reaches the SIGKILL path.
+
+### Decision 9 — verification is designed around a fault CI cannot reach
+
+CI has only mock mode, and mock scanners are deterministically `usb_bus: 1, usb_device: i + 1`
+(`scanner-handlers.ts:51-81`) and never re-enumerate. So CI structurally cannot exercise #182 —
+the same limitation `2026-09-17-validate-graviscan-wedge-response-hardware` documented.
+
+The key insight: **a power-cycle is only one *cause*; the fault is a stale address.** That can be
+induced deterministically by writing a wrong `usb_device` into the row while the scanner sits
+healthy at its current address — #182's 2026-09-16 reproduction with the hardware step removed,
+repeatable in unit tests *and* on the rig.
+
+Four layers:
+
+1. **Unit** — the pure matcher, every outcome branch with `detect` injected, the spawn-time
+   resolver, and the worker's sysfs re-resolution with a faked sysfs tree.
+2. **Mock-mode E2E** — one real-IPC round trip through live Electron, which is the only automated
+   check that the widened DB interface is satisfied by the real `PrismaClient` at runtime rather
+   than merely at typecheck. This project's standing lesson is that unit tests cannot see that.
+3. **Rig, deterministic (unattended)** — induce staleness, retry over IPC, and assert both that
+   the call succeeds **and** that the row was corrected **and** that the respawned worker actually
+   received the refreshed name. The third assertion is load-bearing: without it the test passes
+   even if the queued spawn used a stale captured name, which is precisely the half-fix Decision 3
+   exists to prevent. Run against an **interval** session, not `scanOnce`, for the same reason.
+4. **Rig, physical (attended, pre-merge)** — one real wedge induction and power-cycle, driven
+   through the UI button, to close #279 item 4 on its own terms.
+
+Layer 4 needs a human at the rig; 1-3 do not.
+
+### Decision 10 — #366 stays out
+
+#366 (queued `addScanner` has no timeout; `retriesInFlight` strands the scannerId when the
+queued add never settles) lands in the same function. It is deliberately excluded.
+
+PR #365's retrospective is explicit about the cost: that PR was ~15% its stated scope and ~85% an
+unrelated coordinator-observability change, and five of its seven review rounds plus every
+self-inflicted regression came from the half that did not need to be there. #182 is a correctness
+fix on the address; #366 is a liveness fix on the queueing.
+
+**But the interaction is real and runs the other way from the earlier draft's claim.** That draft
+checked only whether refresh *worsens* #366; it did not check whether #366 *defeats* refresh. It
+does — see Decision 3 — which is why resolve-at-spawn is in scope even though the queue itself is
+not. With the resolver in place, refresh is immune to the queue's duration.
+
+Bounded in the other direction too: refresh's detection is now async with a 5s timeout per call
+and at most three attempts, and `not-detected`/`no-stable-port`/`row-missing`/`detection-failed`
+all return **before** `addScanner`, which strictly reduces the set of paths that can reach #366's
+unbounded wait.
+
+Note also that shipping a *working* retry into an unbounded queue means the first successful field
+use may still present as a hang. The rig runs record the session state at click time so this is
+distinguishable from a regression.
+
+## What was checked and found safe
+
+Recorded so the next reviewer does not re-derive it, and so the next change to touch these columns
+inherits the analysis.
+
+- **No mid-session record is made retroactively wrong by the refresh write.** Every reader of
+  `usb_bus`/`usb_device` was traced: `retryScanner`, `register-handlers.ts:165-175`,
+  `matchDetectedToDb`, `validateConfig`'s mock branch, `resetUsb`, and `ConfigureScanner.tsx:222`
+  (display). None feeds a TIFF tag, a `GraviScan` row, a file path or the cloud upload payload.
+  GraviScan writes no `metadata.json` (that is CylinderScan). A session's `saneName`s are captured
+  in the renderer at page mount.
+- **No plate is dropped or duplicated by the retry.** `plates: []` on the respawn is inert
+  (`scanOnce` reads `platesPerScanner` from the `startScan` closure, not `ScannerConfig.plates`);
+  `stopScanner` settles the in-flight row as `'stopped'` rather than letting it burn the timeout;
+  the respawn only takes effect at a cycle boundary; and duplicate rows are prevented by the
+  `(session_id, scanner_id, plate_index, cycle_number)` upsert at `database-handlers.ts:216`.
+- **`wiring.ts`'s `ScannerLookupDb` reads `usb_port` but not `usb_bus`/`usb_device`**, so it cannot
+  race the refresh write.
+- **A string-literal discriminant narrows correctly under this repo's `tsconfig`**, which sets only
+  `noImplicitAny` — no `strict`, no `strictNullChecks`. A *boolean*-literal discriminant does not,
+  which is why `WedgeBanner.tsx:48-53` needs its manual cast. `RefreshOutcome` therefore uses a
+  string `status` discriminant deliberately; "simplifying" it to `{ ok: true } | { ok: false }`
+  would silently require casts at every call site. And because `null` remains assignable to every
+  member type without `strictNullChecks`, the union gives **no** protection against the null
+  address in Decision 5 — that is guarded at runtime with `Number.isInteger`, not by the type.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| `usb_port` is `''`/null on rows created where `lsusb -t` failed; no migration ever backfilled it | Explicit `no-stable-port` outcome with operator-actionable text (Decision 4). Pre-flight the rig's actual row values before the layer-2 run. |
-| Inverting `upsertScannerRow()`'s precedence changes the write path used by every "Detect Scanners" click | `usb_bus`+`usb_device` retained as fallback, so the `lsusb -t`-unavailable path is unchanged. 25 existing tests in `scanner-upsert.test.ts` must stay green, and new tests pin the collision case in both directions. |
-| Port-primary matching means identity follows the *port*, not the device, if a scanner is physically moved | Known, accepted, and already documented as #203; unchanged by this work. Called out so a reviewer does not read it as newly introduced. |
-| `resetUsb()`'s coordinator mock (`reset-usb-handler.test.ts:25-31`) is very thin — `{ isScanning, initialize, shutdown }` only | The extracted matcher takes no coordinator, so the mock stays valid. If that changes, widen the mock rather than weakening the assertion. |
-| A test passing only because the mock is more forgiving than production — five instances of this class on PR #365 | `createMockRetryDb` (`session-handlers.test.ts:79-91`) currently returns a 3-field row with no `id` and no `usb_port`. Widening it is part of the red phase, and mock row shapes are audited against the real Prisma model rather than field-by-field as needed. |
+| `usb_port` is `''`/null on rows created where `lsusb -t` failed; no migration ever backfilled it | Explicit `no-stable-port` outcome with an actionable, non-destructive message (Decision 5). Rig pre-flight reads the actual stored values **byte-exactly** against live `buildUsbPort()` output, per #243's unresolved notation-drift hypothesis. |
+| Duplicate non-empty `usb_port` rows exist on installs the current defect already damaged; `findFirst` is unordered | Deterministic `orderBy: [{ enabled: 'desc' }, { updatedAt: 'desc' }]`, specified and tested. A unique constraint is the real structural fix and is filed, not taken here. |
+| Inverting `upsertScannerRow()` changes the write path used by every "Detect Scanners" click | Fallback retained and gated on the detected side; 25 existing tests in `scanner-upsert.test.ts` must stay green; new tests pin the collision in both directions and assert **which query ran first**. Marked BREAKING with an operator pre-upgrade check. |
+| Identity follows the *port*, so a physical swap of two same-model scanners misattributes images | Known and accepted (#203); now stated in the spec itself rather than only here, so an auditor reading the standing spec sees the non-guarantee. |
+| The `lsusb` dedupe keeps the highest `usb_device` as "most recent"; device numbers are reused and wrap at 127 | After a wrap a ghost could win and refresh would persist a dead address. Pinned as a named assumption with tests (the block has only partial coverage today, not zero). |
+| Worker sysfs re-resolution could mis-resolve or throw | Every failure falls back to the spawn-time name; `idVendor`/`idProduct` verified before use; re-resolution can only widen recoverable failures. |
+| A test passing only because the mock is more forgiving than production — five instances of this class on PR #365 | Mock-mode's spawn path skips the `/^\d{3}$/` `saneName` validation entirely (`scanner-subprocess.ts:83`), which is how `epkowa:interpreter:null:null` became reachable; guarded explicitly and given its own scenario. Mock row shapes are audited against `prisma/schema.prisma` wholesale. |
+| Read-then-write with no transaction; a concurrent "Detect Scanners" is last-write-wins | Each Prisma `update` is its own transaction so no row is torn. Accepted; noted because neither path is gated on an active scan. |
 
-## Open questions
+## Deferred, and named so it is not rediscovered as a defect
 
-None. Design questions 1-5 from the brainstorming brief are settled in Decisions 1-4 and
-7; the `matchDetectedToDb` question (brief question 3) resolved differently than the
-brief assumed — the premise that `usb_port` "is bus/device-derived and equally unstable"
-holds only for the **mock** builder (`scanner-handlers.ts:63`) and for the `lsusb -t`
-failure path, not for real detection, where it is the `lsusb -t` hierarchical port path.
+- `usb_bus`/`usb_device` are **not** audit-grade identity. The audit-grade record is the scan-log
+  line, which now carries before *and* after values, the port, the session and the cycle. A durable
+  per-rebind record (the `GraviScannerBinding` table from #196's stranded proposal) is deferred:
+  it brings append-only enforcement, a reason enum and a confirmation modal, and bundling it would
+  repeat exactly the scope split Decision 10 refuses.
+- `usb_port` is captured in no per-scan artifact, so an image is not self-describing as to which
+  physical scanner produced it. Adding `usb_port` and the device name to the TIFF
+  `ImageDescription` is the cheap durable fix and is filed separately.
+- `GRAVISCAN_LOG_RETENTION_DAYS` defaults to 180 days, shorter than the typical capture-to-analysis
+  interval; raising it on the production rig is a cutover consideration, not a code change.
+- `ConfigureScanner.tsx:214-216` sorts ports with `localeCompare`, so `'1-10'` sorts before
+  `'1-2'` and positional `Scanner N` labels mis-order. Port-primary matching makes `display_name`
+  stickier to ports and therefore makes that mis-sort more visible. Evaluated and deliberately not
+  fixed here.
