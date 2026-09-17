@@ -135,7 +135,20 @@ Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
   that would have caught the double-spawn window, so do not thin them.
 - [ ] 1.7 Same file (or `session-handlers.test.ts`) — session start attaches a resolver: a
   session started from a snapshot naming `usb_device: 7` spawns on `…:008` when detection reports
-  8. Assert `resetUsb`'s re-initialise path attaches **no** resolver.
+  8. Assert `resetUsb`'s re-initialise path attaches **no** resolver. Also assert the factory
+  wiring itself (task 2.5): that `startScan` calls `makeSaneNameResolver` once per scanner and
+  puts the result on each `ScannerConfig` — `register-handlers.test.ts` mocks `session-handlers`
+  wholesale, so nothing else can see that the handler actually supplies the factory. Add a direct
+  assertion in `register-handlers.test.ts` that the `startScan` invocation receives a factory
+  argument, since that is the seam the wholesale mock hides.
+- [ ] 1.7b `tests/e2e/graviscan-ipc.e2e.ts` — `'retry-scanner round-trips through real IPC in mock
+  mode'`: seed a `GraviScanner` row, start a mock session, invoke
+  `window.electron.gravi.retryScanner(id)`, and assert a `{ success: boolean }`-shaped resolution
+  with no unhandled main-process error. This is `design.md` Decision 7's layer 2 and it had no
+  task. Scope it honestly: mock mode short-circuits before any write, so this verifies the IPC
+  round trip and that the handler does not throw — **not** the widened DB interface, which only
+  layer 3 reaches. There is no E2E coverage of `retryScanner` today, and the standing project
+  lesson is to run real E2E against live Electron before calling IPC work merge-ready.
 - [ ] 1.7a `tests/unit/lsusb-detection.test.ts` — cover the two genuinely uncovered branches of
   the dedupe block (`:193-211`): the `!s.usb_port` early-push (`:199-202`) and the
   `s.usb_device > existing.usb_device` comparison (`:205`). The block already executes in all
@@ -182,10 +195,23 @@ this change touches no Python.
   synchronous call sites (`scanner-handlers.ts:166`, `:262`, `:523`, `:676`) on the sync shell.
 - [ ] 2.2 Deduplicate `buildSaneName`. It exists twice with identical bodies —
   `scanner-handlers.ts:39` (whose doc comment already falsely claims single-sourcing) and
-  `lsusb-detection.ts:116`, re-exported at `:235` and imported by nothing. This change moves name
-  construction into two callers, so collapse to one definition and update the doc comment to be
-  true. Check the import direction does not create a cycle: the refresh module must not import
-  from `scanner-handlers.ts`, which imports the matcher from it.
+  `lsusb-detection.ts:116`, re-exported at `:235` and imported from there by nothing. This change
+  moves name construction into two callers, so collapse to one definition and make that doc
+  comment true.
+  **The collapse must land in `lsusb-detection.ts` (or a new leaf module), not in
+  `scanner-handlers.ts`.** `lsusb-detection.ts` *uses* its own copy internally
+  (`sane_name: buildSaneName(dev.bus, dev.device)` inside `detectEpsonScanners`), and
+  `scanner-handlers.ts` already imports `detectEpsonScanners` from it — so keeping the
+  `scanner-handlers.ts` definition would force `lsusb-detection.ts` to import back from
+  `scanner-handlers.ts` and create a genuine runtime circular import. The edge to guard is
+  `lsusb-detection → scanner-handlers`, not the refresh module's.
+  Three call sites depend on the current location and must keep working: `session-handlers.ts:15`
+  imports it from `./scanner-handlers`, `register-handlers.ts:172` calls
+  `scannerHandlers.buildSaneName`, and `scanner-handlers.test.ts:20` imports it (with
+  `register-handlers.test.ts:18` mocking it). Keep a re-export from `scanner-handlers.ts` or
+  update all three.
+  Target graph: `lsusb-detection` (leaf, owns `buildSaneName`) ← `scanner-usb-refresh` ←
+  `scanner-handlers`; `session-handlers` → `scanner-usb-refresh` + the name builder.
 - [ ] 2.3 `src/main/graviscan/scanner-usb-refresh.ts` — replace the stub: the pure matcher; the
   refresh wrapper with `ScannerUsbRefreshDb`, the 6-status outcome union (string discriminant —
   a boolean one does not narrow under this repo's `tsconfig`), injectable async detection, ≤3
@@ -200,8 +226,20 @@ this change touches no Python.
   attach `resolveSaneName`; extend the `scanLog` lines to carry `usb_port`, before/after address
   and the session id. Fix the `session=null` that #279 item 8 recorded in these same lines while
   rewriting them. Keep `retriesInFlight` and the post-`addScanner` status check as they are.
-- [ ] 2.5 `session-handlers.ts` `startScan` (`:158-162`) — attach a resolver to each
-  `ScannerConfig`, so a session started from a stale page-mount snapshot spawns on live addresses.
+- [ ] 2.5 Wire a resolver into the session-start path **without giving `startScan` a database
+  handle**. `startScan(coordinator, params, sessionFns, onError?)` (`session-handlers.ts:98`) has
+  no `db` parameter and its call site (`register-handlers.ts:355`) passes none, so "attach a
+  resolver inside `startScan`" would mean adding a DB dependency to the main session entry point
+  — a larger intrusion than the retry path's, and directly against Decision 1's rationale that
+  `session-handlers.ts` deliberately carries almost no DB dependency.
+  Instead add an optional **resolver factory** parameter, `makeSaneNameResolver?: (scannerId:
+  string) => () => Promise<string>`, and have `register-handlers.ts` — which already holds `db`
+  — supply it. `startScan` then only calls the factory per scanner while building its
+  `ScannerConfig[]`; it never sees the database.
+  **This changes the `startScan` call site, and `register-handlers.test.ts:31-37` mocks
+  `session-handlers` wholesale (including `startScan`), so that change is invisible there** —
+  exactly the hazard task 1.0a refuses for `retryScanner`. Task 1.7 must therefore assert the
+  wiring directly rather than relying on the handler tests.
 - [ ] 2.6 `src/types/graviscan.ts` — optional `ScannerConfig.resolveSaneName`, typed to return a
   name or a promise of one, with a doc comment stating main-process-only and never serialisable
   (nothing but convention protects it, since `preload.ts` types `startScan`'s params loosely).
@@ -231,7 +269,7 @@ this change touches no Python.
 - [ ] 3.3 `npx openspec validate fix-graviscan-retry-stale-usb-address --strict` clean.
 - [ ] 3.4 **Dry-run the archive scenario-drop check before opening the PR.**
   `validate --strict` does **not** cross-check a delta against the standing spec, and
-  `specs-apply.js:333-335` throws at archive time — *after* merge — on any scenario **name**
+  `@fission-ai/openspec`'s archive path (`findMissingCurrentScenarios`, cited by function name since its file path moves between releases) throws at archive time — *after* merge — on any scenario **name**
   present in the standing spec but absent from a MODIFIED block. Both MODIFIED requirements here
   preserve every original name (retry 7→15, coordinator 10→17, verified 2026-09-17); re-verify
   after any spec edit.

@@ -534,15 +534,40 @@ after the operator has already been told the retry succeeded.
 
 Because resolution introduces an `await` between entering the spawn
 path and registering the subprocess in the coordinator's map, the spawn
-path SHALL carry a per-`scannerId` generation token, captured before
-resolution and re-checked after it. Where the token no longer matches,
-the attempt SHALL abort without constructing a subprocess. `stopScanner`
-and `shutdown` SHALL invalidate the token for the scanners they affect.
-Without this, an attempt suspended in resolution is registered in
-neither the in-flight-spawn guard's effective reach nor the subprocess
-map, so a concurrent `stopScanner` cannot cancel it and a later
-`shutdown` cannot await it — permitting two live workers for one
-scanner, or a worker spawned against an already-shut-down coordinator.
+path SHALL carry a per-`scannerId` generation token. Without it, an
+attempt suspended in resolution is registered in neither the
+in-flight-spawn guard's effective reach nor the subprocess map, so a
+concurrent `stopScanner` cannot cancel it and a later `shutdown` cannot
+await it — permitting two live workers for one scanner, or a worker
+spawned against an already-shut-down coordinator.
+
+The token SHALL be captured when the spawn request is **accepted** —
+that is, on entry to `addScanner()`, before any queueing — and not
+merely immediately before the resolver call. Capturing it at acceptance
+means a `stopScanner` arriving during the mid-scan queue wait also
+aborts the queued spawn, which is the behaviour an operator expects
+after stopping a scanner. Capturing it later would leave that window
+open, because the queued-spawn record is not itself cleared by
+`stopScanner`.
+
+`stopScanner` and `shutdown` SHALL invalidate the token for every
+scanner they affect. `initialize()` SHALL invalidate the tokens of the
+scanners it is initialising, so a second `initialize()` supersedes an
+earlier in-flight attempt rather than racing it. A successful spawn
+SHALL NOT invalidate the token.
+
+Where the token no longer matches after resolution, the attempt SHALL
+abort without constructing a subprocess. **An abort SHALL be treated as
+a superseded request, not as a spawn failure:** it SHALL NOT record an
+entry in `initErrors` and SHALL NOT emit `scanner-init-status` with
+`status: 'error'`, because the cause is a deliberate `stopScanner`,
+`shutdown` or re-`initialize()` rather than a scanner fault, and
+reporting it as an error would surface a spurious failure for a scanner
+the operator has just stopped. The `addScanner()` promise SHALL settle
+rather than remain pending, and callers that require a running worker
+SHALL determine that from `getScannerStatuses()` rather than from the
+promise alone — as they already must, since a spawn failure does not
+reject either.
 
 #### Scenario: addScanner spawns one worker without disturbing existing
 

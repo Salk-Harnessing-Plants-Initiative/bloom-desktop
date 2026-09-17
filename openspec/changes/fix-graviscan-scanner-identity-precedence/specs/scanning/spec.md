@@ -5,47 +5,54 @@
 ### Requirement: Scanner Identity Matching Precedence
 
 The system SHALL match a detected USB scanner to its saved `GraviScanner` row on `usb_port`
-first, and SHALL consult `usb_bus`+`usb_device` only when the **detected** scanner (or the
-upsert payload) carries no usable `usb_port`. `usb_bus`+`usb_device` SHALL NOT be treated as
-primary identity: the operating system reassigns `usb_device` on every reconnect, so a
-coincidental reuse of a device number can match an unrelated saved row.
+first. `usb_bus`+`usb_device` SHALL NOT be treated as primary identity: the operating system
+reassigns `usb_device` on every reconnect, so a coincidental reuse of a device number can match
+an unrelated saved row.
 
 A port value SHALL be considered unusable when it is `null` or the empty string. Two unusable
 values SHALL NOT be treated as equal to each other.
 
-The fallback SHALL NOT be reached merely because a port lookup found no match. A detected
-scanner that carries a usable `usb_port` matching no saved row SHALL be treated as a new
-scanner, and SHALL NOT be matched onto a saved row by its device number.
+Where the `usb_port` lookup finds no row, the system SHALL fall back to `usb_bus`+`usb_device`
+**restricted to rows whose own `usb_port` is unusable**. A row holding a usable `usb_port` SHALL
+NOT be matched by device number under any circumstance, because that is precisely how a relocated
+or re-enumerated scanner takes over an unrelated row's identity. A row holding *no* usable port
+carries no competing identity claim, so matching it by device number cannot misattribute anything
+— and is the only way such a row can ever acquire a port.
 
-This is a deliberate trade. It means a saved row whose `usb_port` no longer matches live
-detection — because the scanner was relocated, or because the stored notation differs from
-what detection now produces — SHALL result in a new row rather than being healed by a
-device-number match. Healing by device number is rejected because it cannot distinguish
-"this is the same scanner, recorded differently" from "this is a different scanner that
-happens to hold that device number now", and the second case silently attributes one
-scanner's plate barcodes to another scanner's images. A duplicated row is recoverable and
-detectable; a misattributed image is neither. The "Scanner Port Integrity Audit" requirement
-exists to surface the mismatch before it produces a duplicate.
+This two-sided restriction is what separates the hazard from the repair. Restricting the fallback
+to the detected side alone would additionally strand every row with an unusable port: those rows
+would stop matching, accumulate duplicates, and — because stale-row handling leaves a `null` port
+untouched — remain enabled and unmatchable indefinitely.
 
-This precedence SHALL apply to `matchDetectedToDb()` and `upsertScannerRow()`. It does not
-extend to `validateConfig()` and `resetUsb()`, which match on `usb_port` only and have no
-bus/device fallback; that port-only behaviour is intentional and unchanged, and a row with no
-usable `usb_port` SHALL continue to be reported as missing or disconnected by those two paths
-respectively.
+This precedence SHALL apply to `matchDetectedToDb()` and `upsertScannerRow()`. It does not extend
+to `validateConfig()` and `resetUsb()`, which match on `usb_port` only and have no bus/device
+fallback; that port-only behaviour is intentional and unchanged. Note `validateConfig()` does not
+merely report an unmatched row — it **writes** `enabled: false` on it, which is what removes such a
+row from every read path.
 
-Where a lookup by `usb_port` can match more than one saved row, the system SHALL select
-deterministically, preferring an `enabled` row and then the most recently updated row. The
-schema carries no uniqueness constraint on `usb_port`, and the defect this change fixes can
-itself have produced duplicate-port rows on existing installations.
+Where a `usb_port` lookup resolves more than one saved row, the system SHALL NOT silently choose
+one. It SHALL leave every candidate row unmodified and report the ambiguity, because choosing
+which of two duplicate rows is canonical determines which row future scans are attributed
+through, and that is an operator decision. The schema carries no uniqueness constraint on
+`usb_port`, and the defect this change fixes can itself have produced duplicate-port rows.
 
-The system SHALL NOT overwrite a saved row's usable `usb_port` with an unusable one. A
-detected scanner records an empty `usb_port` whenever the USB topology query is unavailable,
-and persisting that would destroy the only stable identity key the hardware affords.
+The system SHALL NOT overwrite a saved row's usable `usb_port` with an unusable one. A detected
+scanner records an empty `usb_port` whenever the USB topology query is unavailable, and persisting
+that would destroy the only stable identity key the hardware affords.
+
+A row created for a detected scanner whose `usb_port` is unusable SHALL record `null` rather than
+the empty string, so that stale-row handling treats it as unmatchable rather than as absent from
+the detection set.
+
+Where no detected scanner carries a usable `usb_port` — the signature of an unavailable topology
+query rather than of scanners having genuinely disappeared — the system SHALL NOT disable saved
+rows for absence from the detection set. Disabling on that signal would disable every enabled row
+at once, on evidence that says nothing about whether the scanners are present.
 
 `usb_port` identifies a physical **port**, not a physical scanner. The Epson Perfection V600
-exposes no USB serial number, so if two same-model scanners are physically swapped between
-ports, the system SHALL bind each row to the scanner now occupying its port, and SHALL NOT
-claim to detect the swap. This is a recorded non-guarantee, not an oversight (see issue #203).
+exposes no USB serial number, so if two same-model scanners are physically swapped between ports,
+the system SHALL bind each row to the scanner now occupying its port, and SHALL NOT claim to
+detect the swap. This is a recorded non-guarantee (see issue #203).
 
 #### Scenario: A reused device number does not bind a detected scanner to the wrong row
 
@@ -64,7 +71,7 @@ claim to detect the swap. This is a recorded non-guarantee, not an oversight (se
 - **AND** `sc-A`'s `usb_port`, `name` and `display_name` SHALL be left unchanged
 - **AND** no new `GraviScanner` row SHALL be created
 
-#### Scenario: A scanner on an unknown port is treated as new, not matched by device number
+#### Scenario: A scanner on an unknown port does not capture a row holding a usable port
 
 - **GIVEN** a saved row `sc-A` with `usb_port: '1-2.3'`, `usb_bus: 1`, `usb_device: 8`
 - **AND** a detected scanner with a usable `usb_port: '1-9'` and `usb_bus: 1`, `usb_device: 8`
@@ -73,98 +80,124 @@ claim to detect the swap. This is a recorded non-guarantee, not an oversight (se
 - **AND** it SHALL be treated as a new scanner
 - **AND** an upsert for it SHALL create a new row rather than overwriting `sc-A`'s `usb_port`
 
-#### Scenario: Matching falls back to bus and device only when the detected port is unusable
+#### Scenario: A row with no usable port is healed by a device-number match
 
 - **GIVEN** a saved row `sc-1` with `usb_port: null`, `usb_bus: 1`, `usb_device: 4`
-- **AND** a detected scanner with `usb_port: ''` (because the USB topology query was unavailable), `usb_bus: 1`, `usb_device: 4`
+- **AND** a detected scanner with a usable `usb_port: '1-4'`, `usb_bus: 1`, `usb_device: 4`
+- **WHEN** an upsert is performed for that detected scanner
+- **THEN** `sc-1` SHALL be updated rather than a new row created
+- **AND** `sc-1`'s `usb_port` SHALL become `'1-4'`
+- **AND** the same SHALL hold for a saved row whose `usb_port` is the empty string
+
+#### Scenario: The fallback never reaches a row that holds a usable port
+
+- **GIVEN** a saved row `sc-A` with `usb_port: '1-2.3'`, `usb_bus: 1`, `usb_device: 4`
+- **AND** a saved row `sc-B` with `usb_port: null`, `usb_bus: 1`, `usb_device: 4`
+- **AND** a detected scanner with `usb_port: ''`, `usb_bus: 1`, `usb_device: 4`
 - **WHEN** the detected scanner is matched against the saved rows
-- **THEN** it SHALL bind to `sc-1` via the `usb_bus`+`usb_device` fallback
-- **AND** an empty-string `usb_port` SHALL NOT be treated as matching another row's empty-string `usb_port`
+- **THEN** it SHALL bind to `sc-B`
+- **AND** it SHALL NOT bind to `sc-A`
 
-#### Scenario: A duplicate-port lookup prefers the enabled, most recent row
+#### Scenario: An ambiguous port lookup writes nothing and reports
 
-- **GIVEN** two saved rows both holding `usb_port: '1-2.3'`, one `enabled: false` created earlier
-  and one `enabled: true` updated more recently
+- **GIVEN** two saved rows both holding `usb_port: '1-2.3'`
 - **WHEN** an upsert resolves that port
-- **THEN** the `enabled`, most recently updated row SHALL be updated
-- **AND** the other row SHALL be left unchanged
+- **THEN** neither row SHALL be modified
+- **AND** no new row SHALL be created
+- **AND** the ambiguity SHALL be reported, naming both rows
 
 #### Scenario: An unusable detected port does not overwrite a usable stored port
 
-- **GIVEN** a saved row `sc-1` with `usb_port: '1-2.3'`, matched via the `usb_bus`+`usb_device` fallback
+- **GIVEN** a saved row `sc-1` with `usb_port: '1-2.3'`, matched via the device-number fallback
 - **AND** an upsert payload whose `usb_port` is the empty string
 - **WHEN** the upsert updates `sc-1`
 - **THEN** `sc-1`'s `usb_port` SHALL remain `'1-2.3'`
-- **AND** a subsequent detection reporting `usb_port: '1-2.3'` SHALL match `sc-1` rather than creating a new row
 
-#### Scenario: A newly created row records an unusable port as null rather than empty
+#### Scenario: A newly created row records an unusable port as null
 
 - **GIVEN** no saved row matches a detected scanner
 - **AND** the detected scanner's `usb_port` is the empty string
 - **WHEN** a row is created for it
-- **THEN** the row's `usb_port` SHALL be `null`
-- **AND** it SHALL NOT be the empty string, so that stale-row handling treats it as unmatchable rather than as absent from the detection set
+- **THEN** the row's `usb_port` SHALL be `null`, not the empty string
+
+#### Scenario: An unavailable topology query does not disable the fleet
+
+- **GIVEN** three enabled saved rows with usable `usb_port` values
+- **AND** a detection pass in which every detected scanner reports an empty `usb_port`
+- **WHEN** the detected scanners are saved
+- **THEN** no saved row SHALL be disabled for absence from the detection set
+- **AND** no saved row's `usb_port` SHALL be overwritten
 
 ### Requirement: Scanner Port Integrity Audit
 
-The system SHALL audit saved scanner port integrity at application startup and record the
-result in the durable scan log. Because `usb_port` is the primary identity key and the only
-stable physical identifier the supported hardware affords, but is nullable, was never
-backfilled by any migration, and carries no uniqueness constraint, an operator has today no
-way to discover that a scanner's identity is unrecoverable until recovery is attempted.
+The system SHALL audit saved scanner port integrity at application startup and record the result
+in the durable scan log. `usb_port` is the primary identity key and the only stable physical
+identifier the supported hardware affords, but it is nullable, was never backfilled by any
+migration, and carries no uniqueness constraint — so an operator has today no way to discover
+that a scanner's identity is degraded until recovery is attempted.
 
-The audit SHALL report, for enabled rows:
+The audit SHALL examine **all** saved rows, not only enabled ones. A row disabled for absence
+from a detection set is exactly the state a duplicate leaves behind, and it is invisible to every
+other read path, so an audit restricted to enabled rows could not see the population it exists to
+surface.
+
+The audit SHALL report:
 
 - rows whose `usb_port` is `null` or the empty string;
 - distinct non-empty `usb_port` values held by more than one row;
-- rows whose stored `usb_port` does not exactly equal the value live detection produces for
-  the same physical port.
+- disabled rows that still hold a non-empty `usb_port`, which is the signature of a row stranded
+  by a duplicate, together with any enabled row that now holds a port it previously held.
 
-The audit SHALL be read-only. It SHALL NOT modify, disable, merge or delete any row, because
-deciding which of two duplicate rows is canonical has data-attribution consequences that
-belong to an operator. It SHALL NOT block or delay application startup, and any failure of
-the audit itself SHALL be logged and otherwise ignored.
+The audit SHALL derive these findings from the database alone, without invoking USB detection. It
+SHALL therefore neither block nor delay application startup. Comparing a stored `usb_port` against
+what live detection currently reports requires a non-blocking detection interface, which this
+change does not introduce, and requires a rule for deciding which stored row corresponds to which
+detected device when the two notations differ — which is the finding itself. That comparison is
+deliberately out of scope here.
 
-Where USB detection is unavailable, the audit SHALL report the null/empty and duplicate
-findings, which need no detection, and SHALL record that the notation comparison was not
-performed rather than reporting it as passing.
+The audit SHALL be read-only: it SHALL NOT modify, disable, merge or delete any row, because
+deciding which of two duplicate rows is canonical has data-attribution consequences that belong to
+an operator. Any failure of the audit itself SHALL be logged and otherwise ignored, and SHALL NOT
+prevent startup.
+
+The audit SHALL be invoked from a main-process startup path that actually executes. It SHALL NOT
+be attached to `runStartupScannerValidation()`, which is reachable only through an IPC channel no
+renderer code invokes.
 
 #### Scenario: The audit reports a row with no usable port
 
 - **GIVEN** an enabled `GraviScanner` row whose `usb_port` is `null`
 - **WHEN** the startup audit runs
-- **THEN** it SHALL record that row's `scanner_id` as having no stable USB port
+- **THEN** it SHALL record that row as having no stable USB port
 - **AND** the row SHALL NOT be modified
 
 #### Scenario: The audit reports duplicate ports
 
-- **GIVEN** two enabled `GraviScanner` rows both holding `usb_port: '1-2.3'`
+- **GIVEN** two rows both holding `usb_port: '1-2.3'`
 - **WHEN** the startup audit runs
-- **THEN** it SHALL record `'1-2.3'` as held by more than one row, naming both `scanner_id`s
+- **THEN** it SHALL record `'1-2.3'` as held by more than one row, naming both rows
 - **AND** neither row SHALL be modified
 
-#### Scenario: The audit reports a notation mismatch against live detection
+#### Scenario: The audit sees a stranded disabled row
 
-- **GIVEN** an enabled `GraviScanner` row with `usb_port: '1-10.0'`
-- **AND** live detection reports the scanner at that physical port as `usb_port: '1-10'`
+- **GIVEN** a disabled row holding `usb_port: '1-10.0'`
+- **AND** an enabled row holding `usb_port: '1-10'`
 - **WHEN** the startup audit runs
-- **THEN** it SHALL record the stored and detected values as a mismatch
-- **AND** the row SHALL NOT be modified
+- **THEN** it SHALL record the disabled row as stranded while still holding a port
+- **AND** neither row SHALL be modified
 
 #### Scenario: A clean installation logs a clean audit
 
-- **GIVEN** enabled rows whose ports are non-empty, distinct, and equal to live detection's values
+- **GIVEN** rows whose ports are non-empty and distinct, with no stranded disabled rows
 - **WHEN** the startup audit runs
 - **THEN** it SHALL record that the audit found no findings
 
-#### Scenario: The audit degrades when detection is unavailable
+#### Scenario: The audit runs without USB detection
 
-- **GIVEN** USB detection returns a failure
-- **AND** one enabled row has `usb_port: null`
+- **GIVEN** any set of saved rows
 - **WHEN** the startup audit runs
-- **THEN** it SHALL still report the null-port finding
-- **AND** it SHALL record that the notation comparison was not performed
-- **AND** it SHALL NOT report the notation comparison as passing
+- **THEN** it SHALL NOT invoke USB detection
+- **AND** it SHALL NOT delay application startup
 
 #### Scenario: The audit does not fail startup
 

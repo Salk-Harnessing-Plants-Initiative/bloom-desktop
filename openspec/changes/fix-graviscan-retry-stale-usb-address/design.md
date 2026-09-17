@@ -84,7 +84,7 @@ The window this opens is real and is spelled out in the spec because it is easy 
   logged as a failure; a rejection, a validation failure or a timeout is.
 
 A resolved name must also pass the same device-name validation the spawn applies
-(`scanner-subprocess.ts:95-103`), and be discarded in favour of `config.saneName` if it does not
+(`scanner-subprocess.ts:91-103`), and be discarded in favour of `config.saneName` if it does not
 — otherwise a malformed resolved name would fail a spawn that would have succeeded, which
 contradicts the requirement that resolution cannot fail a spawn.
 

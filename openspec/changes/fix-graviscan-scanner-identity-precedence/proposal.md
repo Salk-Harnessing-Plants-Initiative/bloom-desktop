@@ -17,7 +17,10 @@ between "whose plate barcodes" and "which physical scanner": its output becomes
 worker's `--device` argument. On a coincidence, scanner A's barcodes are applied to
 images produced by a *different* physical scanner — **and** the legitimate owner gets no
 `saneName`, resolves to `?? ''`, fails `buildSubprocessEnv`'s validation and drops out of
-the run with no error surfaced.
+the run. That drop-out is not loudly reported: the failure appears as an `error` badge on
+the scanner panel and a `scanLog` line, and the dedicated `graviscan:scanner-init-status`
+event is forwarded to the renderer but has no subscriber. So the *plates* are silently not
+scanned even though the spawn failure itself is recorded.
 
 On the write path it is worse. `upsertScannerRow` overwrites the mis-matched row's
 `usb_port`, `display_name` **and `name`** — and `name` is what
@@ -42,7 +45,7 @@ makes port hygiene a precondition for it, which is why this change ships first.
 
 ### The code already contradicts its own specs and issues
 
-- `openspec/specs/scanning/spec.md:1229` already requires `saveScannersToDB` to upsert
+- `openspec/specs/scanning/spec.md:1233` already requires `saveScannersToDB` to upsert
   "matching by USB port". The code does not.
 - #167 states the bus/device-first ordering as the defect and asks to deduplicate on save
   by `usb_port`.
@@ -68,77 +71,128 @@ This change inverts precisely that order, so the non-regression argument has to 
 explicitly rather than assumed — see `design.md` Decision 3. #243's own **unresolved**
 root-cause hypothesis (that detection's `usb_port` string may differ in notation from the
 stored one: `1-10` vs `1-10.0` vs `1-10:1.0`) is a live risk for this change and is
-addressed by Decision 4's startup audit rather than assumed away.
+surfaced by Decision 4's startup audit as an accepted trade rather than assumed away (the audit reports it from the database; comparing stored ports against live detection is deferred to the sibling change).
 
 ## What Changes
 
 ### 1. Invert the precedence in both functions — **BREAKING** (data identity, no migration)
 
 `matchDetectedToDb()` and `upsertScannerRow()` match on `usb_port` first. `usb_bus`+
-`usb_device` is retained as a fallback, reached **only when the detected scanner (or the
-upsert payload) carries no usable `usb_port`** — never merely because a port lookup found
-no match. A detected scanner with a usable port that matches no row is a *new* scanner;
-matching it by device number is what lets a relocated scanner capture an unrelated row's
-identity.
+`usb_device` is retained as a fallback, reached when the port lookup finds no row and then
+**restricted to rows whose own `usb_port` is unusable**.
 
-`validateConfig()` and `resetUsb()` are **not** changed: they already match on `usb_port`
-only and have no fallback, and that is intentional.
+Both sides of that restriction carry weight. Without any restriction, a scanner whose port
+matches no row still captures whichever row shares its current device number — the
+misattribution hazard. Restricted to the detected side only, rows holding an unusable port
+stop matching at all: they accumulate duplicates, and since `disableStaleScannerRows` leaves
+a strictly-`null` port untouched (`scanner-upsert.ts:166`), such a row stays **enabled and
+unmatchable indefinitely** — visible in the scanner list, assignable real plate barcodes, and
+never scanned. Restricting both sides protects rows that hold a real identity claim while
+letting rows that hold none be repaired.
 
-Port lookups are made deterministic — `orderBy: [{ enabled: 'desc' }, { updatedAt: 'desc' }]`
-— because `usb_port` has no uniqueness constraint (`prisma/schema.prisma:237`) and the
-current defect can itself produce duplicate-port rows. An unordered `findFirst` would pick
-an arbitrary, possibly older and disabled, duplicate, which would be a *regression* on
-exactly the databases this bug has already damaged.
+`validateConfig()` and `resetUsb()` are **not** changed: they already match on `usb_port` only
+and have no fallback, intentionally. Note `validateConfig()` does not merely report an
+unmatched row — it writes `enabled: false` on it, which is what removes such a row from every
+read path and from the UI.
 
-**Why BREAKING:** `usb_port` is nullable and no migration ever backfilled it. On an install
-whose rows carry `null`/`''` ports — or ports whose notation differs from live detection —
-a subsequent "Detect Scanners" can now create a **new** `GraviScanner` row instead of
-updating the existing one, changing which `scanner_id` later plates attach to, while
-historical scans stay on the old row. That is a silent, un-migrated change to persisted
-scientific identity triggered by an unchanged user action.
+Where a port lookup resolves **more than one** row, nothing is written and the ambiguity is
+reported. `usb_port` has no uniqueness constraint (`prisma/schema.prisma:237`) and this defect
+can itself produce duplicate-port rows; silently picking one decides which row future scans
+are attributed through, which is an operator decision. An earlier draft ordered the lookup by
+`enabled` then `updatedAt` — that both usurped the decision and picked the wrong row on split
+installs, where the history-bearing original is typically the disabled one.
 
-### 2. Stop destroying `usb_port`
+**Why BREAKING:** `usb_port` is nullable and no migration ever backfilled it. Four populations
+change behaviour under an unchanged user action:
+
+- rows with a `null` or `''` port — now healed by the restricted fallback instead of
+  matched-then-overwritten;
+- rows whose stored port is usable but no longer matches live detection (relocated, or
+  notation drift) — now yield a **new** row, changing which `scanner_id` later plates attach
+  to while historical scans stay on the old row;
+- installs already holding duplicate ports — the lookup now refuses to write where it
+  previously took SQLite's scan-order row, so a Detect that used to silently update now
+  reports instead;
+- plate assignments keyed on `scanner_id` are orphaned for any scanner that acquires a new
+  row, presenting a blank grid for that experiment and wave.
+
+### 2. Stop destroying `usb_port`, and stop disabling the fleet
 
 `upsertScannerRow` preserves a usable stored port rather than overwriting it with a less
-usable value: `payload.usb_port || existing.usb_port || null`. This closes the transient-
-`lsusb -t`-failure fork described above. It is in scope rather than a follow-up precisely
-because §1 promotes `usb_port` to primary identity — the gap is one this change's own
-design creates.
+usable value (`payload.usb_port || existing.usb_port || null`), and records `null` rather than
+`''` on create.
 
-### 3. Read-only startup port audit
+The same transient `lsusb -t` failure has a second effect that must be fixed with it:
+`saveScannersToDB` builds `currentUsbPorts` from the payload and filters out empty strings
+(`scanner-handlers.ts:404-406`), so when every detected scanner reports `''` that set is empty
+while `scanners.length > 0` still holds — and `disableStaleScannerRows(db, [])` disables
+**every** enabled row with a non-null port. An existing test pins exactly that
+(`scanner-upsert.test.ts:344`). Stale-disabling is therefore skipped when no payload entry
+carries a usable port: absence of topology data says nothing about whether the scanners are
+present.
 
-Because §1 is BREAKING with no migration, the system reports — read-only, at startup, to
-the durable scan log — enabled rows with a null or empty `usb_port`, duplicate non-empty
-ports, and ports that do not byte-match live `buildUsbPort()` output. This is the honest
-substitute for the migration this change declines to write: it turns a one-rig manual
-pre-flight into something every install performs, and it is the only way an operator learns
-that wedge recovery will not work for a given scanner *before* they need it at 2am.
+Fixing only the port-destruction half would have left the fleet-disable intact, so this is one
+fix, not two. Both are in scope rather than follow-ups because §1 is what promotes `usb_port`
+to primary identity.
 
-It audits and reports only. It repairs nothing, because choosing which of two duplicate
-rows is canonical is a decision with data-attribution consequences that belongs to an
-operator, not to a startup path.
+### 3. Read-only, database-only startup port audit
+
+Because §1 is BREAKING with no migration, the system reports — read-only, at startup, to the
+durable scan log — rows with a null or empty `usb_port`, duplicate non-empty ports, and
+disabled rows still holding a port (the signature of a row stranded by a duplicate).
+
+Three properties matter:
+
+- **It examines all rows, not just enabled ones.** The duplicate-row failure in §1 leaves its
+  victim *disabled*, and every read path filters `enabled: true`, so an enabled-only audit
+  could not see the population it exists to surface.
+- **It uses no USB detection.** That keeps it off the startup critical path. The only
+  detection function available in this change is synchronous — `execFileSync` twice, each
+  `timeout: 5000` — so up to ~10s of blocked main-process event loop; the async variant
+  arrives with the sibling change, which lands second. Comparing stored ports against live
+  output is deferred there, and it needs a pairing rule that is unspecifiable precisely when
+  notations differ, since that difference is the finding.
+- **It hooks into a path that runs.** Not `runStartupScannerValidation()`, which is reachable
+  only via `graviscan:validate-scanners` — exposed on the preload bridge
+  (`preload.ts:419-420`) and invoked by no renderer or E2E code. Attaching a BREAKING change's
+  sole mitigation to dead code would ship a mitigation that never executes.
+
+It audits and reports only. Repair is not automated, because choosing which duplicate is
+canonical has data-attribution consequences.
 
 ## Impact
 
 - **Affected specs:** `scanning` — 2 ADDED
 - **Affected code:**
-  - `src/main/graviscan/scanner-handlers.ts` — `matchDetectedToDb()` (exported for testing)
-  - `src/main/graviscan/scanner-upsert.ts` — `upsertScannerRow()` precedence, ordering,
-    and `usb_port` preservation
-  - one startup audit function, called from GraviScan's existing startup validation path
+  - `src/main/graviscan/scanner-upsert.ts` — `upsertScannerRow()` precedence, ambiguity
+    refusal, and `usb_port` preservation
+  - `src/main/graviscan/scanner-handlers.ts` — `matchDetectedToDb()` (exported for testing);
+    `saveScannersToDB`'s stale-disable guard
+  - a new startup audit module, invoked from a main-process startup path that executes
+  - `src/main/lsusb-detection.ts` — export `buildUsbPort`, currently module-private at `:131`
+    and absent from the export list at `:235`, so tests and the audit can name a port the same
+    way detection does
 - **Affected consumers not edited but behaviourally affected:** `src/renderer/GraviScan.tsx`
   (`saneNames` at session start), `src/main/graviscan/register-handlers.ts:159-186`
   (spawn-on-discovery consumes `upsertScannerRow`'s returned row),
   `runStartupScannerValidation` (`scanner-handlers.ts:177`, the second `matchDetectedToDb`
-  caller)
+  caller — and itself dead code)
 - **Tests:** `tests/unit/graviscan/scanner-upsert.test.ts`,
   `tests/unit/graviscan/scanner-handlers.test.ts`, plus a new audit test file
-- **No schema change,** therefore no migration. A unique constraint on `usb_port` is the
-  honest structural consequence of promoting it to primary identity, and is deliberately
-  **not** taken here — it needs a migration and a duplicate-resolution policy. Filed instead.
+- **No schema change,** therefore no migration. A unique constraint on `usb_port` is the honest
+  structural consequence of promoting it to primary identity, and is deliberately **not** taken
+  here — it needs a migration and a duplicate-resolution policy. Filed instead. One consequence
+  of shipping without it: a row holding a usable-but-wrong port cannot be re-pointed by any
+  in-app path, since `upsertScannerRow` is the only writer of `usb_port` in the main process and
+  can no longer reach such a row. The recorded remedy is the existing per-row disable followed
+  by a re-detect.
+- **No feature flag.** §1's fallbacks are behaviour-preserving for clean installs and the audit
+  is read-only. Rollback is a redeploy of the previous build, after which rows created under the
+  new precedence remain and the old code will match *them* by device number — stated so it is a
+  known consequence rather than a surprise.
 - **Out of scope:** the retry-path address refresh (`fix-graviscan-retry-stale-usb-address`),
-  #203 (scanner moved to a different port — identity following the port is accepted
-  behaviour), #219 (Windows `firmware_serial`).
+  comparing stored ports against live detection, #203 (identity following the port is accepted),
+  #219 (Windows `firmware_serial`), and `display_name`'s positional rewriting on every Detect.
 
 ## Related
 
