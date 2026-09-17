@@ -222,6 +222,27 @@ on the rig.
 | F — unidentifiable scanner creates no row; fleet guard holds                                               | **passed** | `{scanners: [], refused: ['1:99'], disabled: []}`; row count unchanged; all rows still enabled                                                                                              |
 | G — a `null`-port row is audited and **not** captured by a usable-port scanner sharing its device number   | **passed** | audit → `no-port`; orphan row's `usb_port` still `null` and its `id` unchanged after a real save. This is the exact cell three review rounds got wrong, now proven on real data.            |
 
+| H — **E2E through real IPC in a live Electron app** | **passed** | `tests/e2e/graviscan-ipc.e2e.ts`, **16/16** on the rig, including the three Configure Scanner page tests that drive detect / save / Reset All USB Connections. This is the cross-process coverage for the changed `saveScannersToDB` return shape (the added `refused` field and the nullable `upsertScannerRow` result). |
+
+**E2E procedure, since it took several attempts.** Run it **on the rig, not a workstation** — and
+note the documented prerequisites, which are easy to miss:
+
+- `docs/E2E_TESTING.md` opens with a ⚠️ CRITICAL callout: the **dev server must already be running
+  on port 9000**. The tests do not start one; without it Electron opens a blank window and
+  `launchElectronApp` fails. The port is **9000**, confirmed empirically — a note in my briefing
+  claiming the renderer is on 3000 is wrong.
+- On Linux, set **`ELECTRON_DISABLE_SANDBOX=1`** (`docs/E2E_TESTING.md:391`), or Electron aborts
+  with `FATAL:setuid_sandbox_host.cc(158)` because `chrome-sandbox` is not root-owned mode 4755 —
+  which kills `npm start` and takes the dev server with it. No `sudo` is needed. Also run the suite
+  with `CI=true`, which is what makes the test helper add `--no-sandbox`.
+- Host the dev server in **tmux** (`tmux new-session -d -s forge "… npm start"`). `setsid` plus
+  stream redirection is _not_ sufficient: fork-ts-checker's internal RPC pipe still dies with
+  `EPIPE` when the SSH session closes.
+- **`launchElectronApp` rewrites `~/.bloom/.env`** with a test stub and restores it in cleanup.
+  Back that file up independently first — an interrupted run would otherwise leave the rig holding
+  the stub, which re-triggers #367's config-screen deadlock. Verified by md5 before and after here
+  (`08105388…` unchanged).
+
 - [x] 4.1 On `pbiob-gh-04`: run the audit against the real row and confirm it reports clean.
       Pre-flighted read-only 2026-09-17 — one row, `usb_port: '1-8'`, no duplicates,
       `display_name: null`. Re-confirm at execution time. Do **not** run `npm run dev` or
