@@ -203,10 +203,11 @@ export interface DisableStaleResult {
  * Disable (set enabled=false) on every enabled `GraviScanner` row whose
  * `usb_port` is NOT in the provided current-detection set.
  *
- * Rows with a null `usb_port` are NOT touched — they cannot be matched
- * against the detection set and are typically transient partially-saved
- * states (`reset-usb` clears bus/device for re-detection but preserves
- * the port). Already-disabled rows are excluded at the query level.
+ * Rows with an unusable `usb_port` (null or `''`) are NOT touched — they
+ * cannot be matched against the detection set and are typically transient
+ * partially-saved states (`reset-usb` clears bus/device for re-detection
+ * but preserves the port). Already-disabled rows are excluded at the
+ * query level.
  *
  * @returns the `id` of each row that was newly disabled.
  */
@@ -222,7 +223,7 @@ export async function disableStaleScannerRows(
   const disabled: string[] = [];
 
   for (const row of enabled) {
-    if (row.usb_port === null) continue; // can't match — leave alone
+    if (!isUsablePort(row.usb_port)) continue; // can't match — leave alone
     if (portSet.has(row.usb_port)) continue; // still present
 
     await (db as any).graviScanner.update({
