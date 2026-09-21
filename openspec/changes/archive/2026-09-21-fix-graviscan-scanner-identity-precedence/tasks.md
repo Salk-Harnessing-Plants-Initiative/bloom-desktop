@@ -415,8 +415,13 @@ pre-implementation rounds could not have caught. See `design.md` Decision 9 for 
       Converged: round 5 found 3 BLOCKING + 6 IMPORTANT and fixed all of them; round 6 (briefed
       exactly this question) found none new.
       Give one lens the brief to read the **native/C/packaging layer** any assumption rests on.
-- [ ] 6.5 Do not merge without explicit go-ahead from the user.
-- [ ] 6.6 Only after this merges, proceed with `fix-graviscan-retry-stale-usb-address`, and
+- [x] 6.5 Do not merge without explicit go-ahead from the user. User gave explicit go-ahead
+      2026-09-21 ("go ahead and merge"), after CI was confirmed fully green (one macOS E2E shard
+      failure was re-run and confirmed flaky — identical code passed clean on retry).
+- [x] 6.6 Only after this merges, proceed with `fix-graviscan-retry-stale-usb-address`, and
       **re-resolve its line citations by symbol first** — this change rewrites
       `scanner-upsert.ts:56-131`, `scanner-handlers.ts:87-109` and `:402-415`, and the
-      `lsusb-detection.ts:235` export list, so every downstream number shifts.
+      `lsusb-detection.ts:235` export list, so every downstream number shifts. Merged 2026-09-21
+      as PR #376 (squash commit `06cedea`). This pointer is satisfied by its own condition; the
+      actual re-resolution work is tracked in `fix-graviscan-retry-stale-usb-address/tasks.md`
+      0.4/0.5, not repeated here.
