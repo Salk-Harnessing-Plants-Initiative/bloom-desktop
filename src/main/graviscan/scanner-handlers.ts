@@ -428,7 +428,31 @@ export async function saveScannersToDB(
     const savedScanners: GraviScanner[] = [];
     const refused: string[] = [];
 
+    // Review round 5 (post-implementation review, BLOCKING #1): ports
+    // already written by an earlier entry in THIS SAME payload. Necessary
+    // because upsertScannerRow's own >1-candidate ambiguity check reads the
+    // database per call — it cannot see a duplicate claim made by an
+    // earlier iteration of this loop, since that earlier write already
+    // committed exactly one row for the port by the time the next entry's
+    // lookup runs. Without this, a payload reporting two different physical
+    // devices under the same usb_port (a plausible detection-layer glitch)
+    // would have its second entry silently update the row the first entry
+    // just created, overwriting one scanner's identity with another's.
+    const claimedPorts = new Set<string>();
+
     for (const scanner of scanners) {
+      if (
+        isUsablePort(scanner.usb_port) &&
+        claimedPorts.has(scanner.usb_port)
+      ) {
+        scanLog(
+          `[GraviScan:SAVE] duplicate usb_port within one payload port=${scanner.usb_port} ` +
+            `— refused the second claimant, wrote nothing`
+        );
+        refused.push(scanner.usb_port);
+        continue;
+      }
+
       // Delegate the find-existing-and-upsert logic to the testable
       // helper (scanner-upsert.ts), shared with graviscan:disable-scanner.
       const saved = await upsertScannerRow(db, scanner);
@@ -439,9 +463,13 @@ export async function saveScannersToDB(
         // null — register-handlers' spawn-on-discovery loop reads `.enabled`
         // and `.id` off every element of this array.
         refused.push(
-          scanner.usb_port || `${scanner.usb_bus}:${scanner.usb_device}`
+          scanner.usb_port ||
+            `${scanner.usb_bus ?? 'null'}:${scanner.usb_device ?? 'null'}`
         );
         continue;
+      }
+      if (isUsablePort(scanner.usb_port)) {
+        claimedPorts.add(scanner.usb_port);
       }
       savedScanners.push(saved as GraviScanner);
     }
