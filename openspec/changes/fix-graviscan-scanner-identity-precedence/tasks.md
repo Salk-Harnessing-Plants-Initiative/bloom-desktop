@@ -320,10 +320,20 @@ note the documented prerequisites, which are easy to miss:
     false positive — legitimate history from earlier cablings, because stale-row handling
     preserves `usb_port` on disable. Narrowed to "disabled _and_ its port is held by another row";
     the corrected predicate reports **0 findings** on production, verified against the live data.
-- [ ] 4.4a Re-run the read-only inspection at execution time — device numbers move, and the
+- [x] 4.4a Re-run the read-only inspection at execution time — device numbers move, and the
       enabled rows' addresses will have changed again. Record `lsusb --version` per rig (older
       `usbutils` printed 0-based port numbers, which would shift every path by one per level).
-      **Re-check for an active experiment first**; read-only only, no app launch and no scan.
+      **Re-check for an active experiment first**; read-only only, no app launch and no scan. Done
+      2026-09-21: no active scan/app process (only an idle `prisma studio` and system daemons) —
+      safe to proceed read-only. Same 17 rows as 2026-09-17, no new duplicates. The 5 enabled
+      rows' `usb_port` (`9-1`, `11-1`, `13-2`, `15-1`, `15-2`) still match live `lsusb -t`
+      byte-for-byte; `usb_bus`/`usb_device` have drifted further as expected (stale
+      `9/4,11/5,13/4,15/6,15/7` → now live `9/2,11/2,13/2,15/2,15/3`) — #182's precondition is
+      still live on all five. Corrected `stranded-disabled` predicate still reports 0 findings (no
+      port is shared by any two of the 17 rows). Still no multi-level ports — #243's
+      notation-drift hypothesis stays refuted. `lsusb (usbutils) 018`, 1-based port numbering,
+      matches the DB's stored notation with no shift. Nothing material changed since 2026-09-17;
+      the safety argument for this BREAKING change still holds.
 - [x] 4.5 Record outcomes under the `hardware-validation-evidence` convention (per-item
       passed/failed/blocked/not-executed, **naming the commit tested**) and write the account to the
       Obsidian vault at `C:\vaults\graviscan\`.
