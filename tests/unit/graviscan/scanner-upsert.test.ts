@@ -357,6 +357,23 @@ describe('disableStaleScannerRows (#230)', () => {
     expect(db._rows.find((r) => r.id === 'a')!.enabled).toBe(true);
   });
 
+  // Review round 5 (post-implementation review, PLAUSIBLE): the identity
+  // invariant treats a null and an empty-string usb_port as equally
+  // unusable (the address tier's `OR: [{usb_port: null}, {usb_port: ''}]`),
+  // but this pre-existing, unchanged function only ever skipped exact
+  // `null`. A legacy ''-port row must get the same protection.
+  it('ignores rows with an empty-string usb_port, same as a null one', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'a', usb_port: '' }),
+      makeRow({ id: 'b', usb_port: '1-2' }),
+    ]);
+
+    const result = await disableStaleScannerRows(db as never, ['1-2']);
+
+    expect(result.disabled).toEqual([]);
+    expect(db._rows.find((r) => r.id === 'a')!.enabled).toBe(true);
+  });
+
   it('does not touch rows that are already disabled', async () => {
     const db = makeMockDb([
       makeRow({ id: 'a', usb_port: '1-1' }),
@@ -669,6 +686,47 @@ describe('upsertScannerRow — identity matching precedence', () => {
       { usb_port: null },
       { usb_port: '' },
     ]);
+  });
+
+  // Review round 5 (post-implementation review, IMPORTANT): the test above
+  // only inspects the query *shape* sent to findMany against a mock pool
+  // containing no usable-port row, so it never observes the exclusion
+  // actually happen. This is design.md's table cell 7 end-to-end, against
+  // the real matchesWhere predicate evaluator — the exact cluster three
+  // earlier drafts got wrong.
+  it('cell 7: excludes a usable-port sibling row from the address tier, matching the portless row at the same address instead', async () => {
+    const db = makeMockDb([
+      makeRow({
+        id: 'sc-portful',
+        usb_port: '1-9',
+        usb_bus: 1,
+        usb_device: 4,
+      }),
+      makeRow({
+        id: 'sc-portless',
+        usb_port: null,
+        usb_bus: 1,
+        usb_device: 4,
+      }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 4 }) as any
+    );
+
+    expect(result?.id).toBe('sc-portless');
+    expect(db.graviScanner.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sc-portless' } })
+    );
+    // The usable-port sibling must never be touched by this match.
+    expect(db.graviScanner.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sc-portful' } })
+    );
+    const portfulRow = (db as any)._rows.find(
+      (r: any) => r.id === 'sc-portful'
+    );
+    expect(portfulRow.usb_port).toBe('1-9');
   });
 
   it('queries by port, not by address, when the payload port is usable', async () => {
