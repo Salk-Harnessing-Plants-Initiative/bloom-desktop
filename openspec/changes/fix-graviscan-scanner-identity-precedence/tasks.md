@@ -365,7 +365,11 @@ pre-implementation rounds could not have caught. See `design.md` Decision 9 for 
       there). Added two new spec scenarios (same-payload duplicate refusal; refusal reaching the
       operator, not just the log) and updated `proposal.md`'s Impact section; re-ran
       `openspec validate --strict` clean.
-- [ ] 5.8 Re-run `/pre-merge` (format, lint, typecheck, full unit suite) with all of 5.2-5.7 applied.
+- [x] 5.8 Re-run `/pre-merge` (format, lint, typecheck, full unit suite) with all of 5.2-5.7
+      applied. Confirmed 2026-09-21: format/lint/typecheck clean; `npm run test:unit` 2070
+      passed, 1 failed (the same pre-existing `electron-cleanup.test.ts` timing flake), 3 files
+      failed (`scans-export.test.ts`, `database-handlers.test.ts` x2) — all pre-existing, outside
+      this change's files, consistent with the baseline recorded at 2.8.
 - [ ] 5.9 Re-run `/review-pr` against the updated diff. **Give at least one lens the brief "did
       this round's fixes introduce defects of their own?"** — this project's history (PR #365, and
       3 of this change's own pre-implementation rounds) shows fixes routinely regress in exactly
