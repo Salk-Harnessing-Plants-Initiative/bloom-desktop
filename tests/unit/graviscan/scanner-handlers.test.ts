@@ -717,4 +717,30 @@ describe('matchDetectedToDb — identity matching precedence', () => {
 
     expect(list[0].scanner_id).toBe('');
   });
+
+  // Review round 5 (post-implementation): matchDetectedToDb is the sole join
+  // between "whose plate barcodes" and "which physical scanner" — it must
+  // refuse an ambiguous match exactly as upsertScannerRow does, rather than
+  // silently binding to the first candidate in array order.
+  it('refuses to bind when two rows share the same usable port, rather than picking the first in array order', async () => {
+    const list = [detected({ usb_port: '1-4', usb_bus: 1, usb_device: 8 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-4', usb_bus: 1, usb_device: 5 },
+      { id: 'sc-B', name: 'B', usb_port: '1-4', usb_bus: 1, usb_device: 6 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+    expect(list[0].name).toBe(MOCK_SCANNER.name);
+  });
+
+  it('refuses to bind on the address tier when two portless rows share the same bus+device', async () => {
+    const list = [detected({ usb_port: '', usb_bus: 1, usb_device: 4 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: null, usb_bus: 1, usb_device: 4 },
+      { id: 'sc-B', name: 'B', usb_port: '', usb_bus: 1, usb_device: 4 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+    expect(list[0].name).toBe(MOCK_SCANNER.name);
+  });
 });
