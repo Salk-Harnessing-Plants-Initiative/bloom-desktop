@@ -127,10 +127,11 @@ change behaviour under an unchanged user action:
 
 A stored `usb_port` is henceforth either usable or `null` — never the empty string — and an
 unusable value never overwrites a usable one. Under §1's invariant that preservation branch is
-in fact unreachable by construction, so it stays in the code as a defensive no-op, gets a comment
-saying so, and gets no test: the only way to make such a test green is to hand the mock a row the
-real query could never return. There is no create-path coercion left to make either, since no row
-is created for a scanner whose port is unusable.
+in fact unreachable by construction, so the update payload omits the `usb_port` key entirely on
+that tier rather than writing a defensive fallback value, gets a comment saying so, and gets no
+test: the only way to make such a test green is to hand the mock a row the real query could never
+return. There is no create-path coercion left to make either, since no row is created for a
+scanner whose port is unusable.
 
 The same transient `lsusb -t` failure has a second effect that must be fixed with it:
 `saveScannersToDB` builds `currentUsbPorts` from the payload and filters out empty strings
@@ -175,9 +176,17 @@ canonical has data-attribution consequences.
 - **Affected specs:** `scanning` — 2 ADDED
 - **Affected code:**
   - `src/main/graviscan/scanner-upsert.ts` — `upsertScannerRow()` precedence, ambiguity
-    refusal, and `usb_port` preservation
-  - `src/main/graviscan/scanner-handlers.ts` — `matchDetectedToDb()` (exported for testing);
-    `saveScannersToDB`'s stale-disable guard
+    refusal, and `usb_port` preservation; also exports the shared `isUsablePort` predicate
+    (review round 5: was duplicated in three files)
+  - `src/main/graviscan/scanner-handlers.ts` — `matchDetectedToDb()` (exported for testing,
+    and given the same `>1`-candidate ambiguity refusal as `upsertScannerRow` — review round 5,
+    BLOCKING #2: it originally used a plain `Array.find()`, silently binding the first
+    candidate); `saveScannersToDB`'s stale-disable guard and its new same-payload
+    duplicate-port guard (review round 5, BLOCKING #1)
+  - `src/types/graviscan.ts` — `SaveScannersToDBResult.refused` (review round 5, BLOCKING #3:
+    was produced but never declared on the type)
+  - `src/renderer/ConfigureScanner.tsx` — surfaces `refused` to the operator (review round 5,
+    BLOCKING #3: was produced but had zero consumers)
   - a new startup audit module, invoked from a main-process startup path that executes
 - **Affected consumers not edited but behaviourally affected:** `src/renderer/GraviScan.tsx`
   (`saneNames` at session start), `src/main/graviscan/register-handlers.ts:159-186`
@@ -185,7 +194,8 @@ canonical has data-attribution consequences.
   `runStartupScannerValidation` (`scanner-handlers.ts:158`, the second `matchDetectedToDb`
   caller — and itself dead code)
 - **Tests:** `tests/unit/graviscan/scanner-upsert.test.ts`,
-  `tests/unit/graviscan/scanner-handlers.test.ts`, plus a new audit test file
+  `tests/unit/graviscan/scanner-handlers.test.ts`, `tests/unit/pages/ConfigureScanner.test.tsx`,
+  plus a new audit test file
 - **No schema change,** therefore no migration. A unique constraint on `usb_port` is the honest
   structural consequence of promoting it to primary identity, and is deliberately **not** taken
   here — it needs a migration and a duplicate-resolution policy. Filed instead. One consequence

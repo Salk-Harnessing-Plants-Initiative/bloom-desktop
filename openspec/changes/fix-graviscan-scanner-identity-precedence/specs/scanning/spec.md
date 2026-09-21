@@ -110,6 +110,24 @@ detect the swap (see issue #203).
 - **THEN** neither row SHALL be modified, no row SHALL be created, and the ambiguity SHALL be reported naming both rows
 - **AND** the same SHALL hold when two rows with unusable ports share a `usb_bus`+`usb_device` and the device-number tier resolves them
 
+#### Scenario: A same-payload duplicate port is refused, not merged into the first claimant's row
+
+- **GIVEN** a single save call reporting two different detected devices under the same usable
+  `usb_port`
+- **WHEN** the detected scanners are saved
+- **THEN** exactly one `GraviScanner` row SHALL exist for that port, holding the first-claimant's
+  identity
+- **AND** the second entry SHALL be refused rather than updating that row with its own identity
+- **AND** the report of the refusal SHALL name the port
+
+#### Scenario: A refused or unidentifiable scanner is surfaced to the operator, not only the durable log
+
+- **GIVEN** a save call in which at least one detected scanner is refused
+- **WHEN** the caller reports the outcome of the save
+- **THEN** the overall save result SHALL distinguish "refused" from a simple absence of change
+- **AND** a UI surface consuming that result SHALL communicate the refusal to the operator even
+  when the save otherwise succeeds
+
 #### Scenario: An unavailable topology query neither disables nor duplicates
 
 - **GIVEN** three enabled saved rows with usable `usb_port` values

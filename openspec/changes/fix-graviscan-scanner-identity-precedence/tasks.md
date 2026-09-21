@@ -5,6 +5,13 @@
 **Failing tests are committed in their own commit, before the commit that makes them pass.**
 Red-green must be visible in `git log`, not asserted here.
 
+**Correction (review round 5, post-implementation `/review-pr`):** this claim was false for
+`matchDetectedToDb`, the fleet-disable guard (1.3b), and the fire-and-forget audit safety test
+(1.4c) — all three were implemented before their tests, two admitted in their own commit
+messages. Verified true only for `upsertScannerRow`'s precedence logic and the audit module
+itself. See `design.md` Decision 9 for the root-cause analysis and section 6 below for the fixes
+this finding led to, which _were_ built red-then-green.
+
 **Do not predict test outcomes in this file — measure them.** Earlier drafts carried a table
 predicting which pre-existing tests would break. It was wrong twice, in opposite directions, and
 the second time the error was caused by a hand-written mock that ignores the `where` clause it is
@@ -317,20 +324,68 @@ note the documented prerequisites, which are easy to miss:
       passed/failed/blocked/not-executed, **naming the commit tested**) and write the account to the
       Obsidian vault at `C:\vaults\graviscan\`.
 
-## 5. Pre-merge
+## 5. Review round 5 — post-implementation code review (`/review-pr`, first review of the merged diff)
 
-- [ ] 5.1 `/pre-merge`.
-- [ ] 5.2 Evidence gate: do not open the PR until 4.1-4.3 are recorded passed and 4.4 passed or
+All 4 prior review rounds were pre-implementation (openspec-review, scrutinising the design). This
+was the first review to read the actual diff, run 5 parallel lenses (code quality, testing/TDD,
+scientific rigor, security, behavioural correctness), and it found a genuine blocking bug 4
+pre-implementation rounds could not have caught. See `design.md` Decision 9 for the analysis.
+
+- [x] 5.1 Run `/review-pr` against `main...HEAD`. Findings: 3 BLOCKING, 6 IMPORTANT, 0 from
+      security. Full synthesis presented to the user 2026-09-21; not posted to GitHub (no PR
+      existed yet at review time).
+- [x] 5.2 Fix BLOCKING #1 — a same-payload duplicate `usb_port` across two different detected
+      devices silently overwrote the first claimant's row instead of being refused (TDD:
+      `8d9a763` red, `4cea2f6` green). `saveScannersToDB` now tracks ports claimed within the
+      current call and refuses a second claimant before it reaches `upsertScannerRow`.
+- [x] 5.3 Fix BLOCKING #2 — `matchDetectedToDb` had no ambiguity refusal, unlike
+      `upsertScannerRow`'s identical `>1` check; a plain `Array.find()` silently bound the first
+      candidate on a duplicate port (TDD: `4000f81` red, `353d441` green). Also consolidated the
+      previously-triplicated `isUsablePort` predicate into one export from `scanner-upsert.ts`,
+      and typed the parameter previously `any[]` as `MatchCandidateRow[]`.
+- [x] 5.4 Fix BLOCKING #3 — `refused` was produced by `saveScannersToDB` but never declared on
+      `SaveScannersToDBResult` and had zero consumers in `src/` (confirmed by grep, independently,
+      by two review lenses); `ConfigureScanner.tsx` checked only `success`, which stays `true` on
+      a refusal (TDD: `57b560d` red, `ba0483a` green). Also fixed the catch-all error path's
+      missing `refused: []` and the `undefined:undefined` log bug in the same code.
+- [x] 5.5 Fix IMPORTANT — `disableStaleScannerRows` (pre-existing, unchanged by §1) skipped only
+      exact-null ports; the new invariant treats `''` as equally unusable, so a legacy `''`-port
+      row could be auto-disabled by a stale sweep (TDD: `b853d5f` red, `df35c09` green).
+- [x] 5.6 Close the test-coverage gap — truth-table cell 7 (unusable payload port, matching device
+      numbers, a candidate row holding a _usable_ port) had only a query-shape assertion, never an
+      end-to-end observation of the exclusion. Added against the real `matchesWhere` predicate
+      evaluator; passed immediately (the underlying code was already correct — a coverage gap, not
+      a bug), bundled into `b853d5f`.
+- [x] 5.7 Correct the record: the TDD-protocol header's blanket red-green claim was false for
+      `matchDetectedToDb`, the fleet-disable guard, and the fire-and-forget audit test (two
+      admitted in their own commit messages) — annotated in place rather than silently rewritten.
+      Fixed `design.md`/`proposal.md`'s description of a `|| existing.usb_port ||` "defensive
+      no-op" branch that was never actually implemented that way (the real code omits the key via
+      a conditional spread — functionally equivalent, but the docs described code that isn't
+      there). Added two new spec scenarios (same-payload duplicate refusal; refusal reaching the
+      operator, not just the log) and updated `proposal.md`'s Impact section; re-ran
+      `openspec validate --strict` clean.
+- [ ] 5.8 Re-run `/pre-merge` (format, lint, typecheck, full unit suite) with all of 5.2-5.7 applied.
+- [ ] 5.9 Re-run `/review-pr` against the updated diff. **Give at least one lens the brief "did
+      this round's fixes introduce defects of their own?"** — this project's history (PR #365, and
+      3 of this change's own pre-implementation rounds) shows fixes routinely regress in exactly
+      this way.
+- [ ] 5.10 Open the PR only after 5.9 comes back clean or with issues resolved.
+
+## 6. Pre-merge
+
+- [ ] 6.1 `/pre-merge`.
+- [ ] 6.2 Evidence gate: do not open the PR until 4.1-4.3 are recorded passed and 4.4 passed or
       blocked-with-cause.
-- [ ] 5.3 Open the PR. Reference #167 and #203, note the #243 annotation, mark BREAKING with the
+- [ ] 6.3 Open the PR. Reference #167 and #203, note the #243 annotation, mark BREAKING with the
       operator note from 3.5, and point out that the sibling change's `Scanner USB Port Matching`
       requirement deliberately cross-references this one and disclaims governing `matchDetectedToDb()`.
-- [ ] 5.4 Review cycling to convergence. **Every round after the first gives at least one lens the
+- [ ] 6.4 Review cycling to convergence. **Every round after the first gives at least one lens the
       brief "did the previous round's fixes introduce defects of their own?"** — on this change's
       reviews that lens found, twice, that a fix had closed one matching cell while opening another.
       Give one lens the brief to read the **native/C/packaging layer** any assumption rests on.
-- [ ] 5.5 Do not merge without explicit go-ahead from the user.
-- [ ] 5.6 Only after this merges, proceed with `fix-graviscan-retry-stale-usb-address`, and
+- [ ] 6.5 Do not merge without explicit go-ahead from the user.
+- [ ] 6.6 Only after this merges, proceed with `fix-graviscan-retry-stale-usb-address`, and
       **re-resolve its line citations by symbol first** — this change rewrites
       `scanner-upsert.ts:56-131`, `scanner-handlers.ts:87-109` and `:402-415`, and the
       `lsusb-detection.ts:235` export list, so every downstream number shifts.

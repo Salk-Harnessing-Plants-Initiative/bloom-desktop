@@ -149,10 +149,11 @@ either usable or `null`.
 Under Decision 1's invariant the preservation branch is **unreachable by construction**:
 `existing` is only reachable via the port lookup (where the two ports are equal) or via the
 device-number tier (which requires both to be unusable), so there is no state where a usable
-stored port meets an unusable payload port. `|| existing.usb_port ||` stays in the implementation
-as a defensive no-op with a comment saying so, and **no test is written for it** — the only way to
-make such a test green is to hand the mock a row the real query could never return, which is the
-mock-more-forgiving-than-production failure this plan exists to avoid.
+stored port meets an unusable payload port. The implementation omits the `usb_port` key from the
+update payload entirely on that tier (`...(payloadPortUsable ? { usb_port: ... } : {})`) rather
+than writing a defensive `|| existing.usb_port ||` fallback — cleaner, and equally untestable for
+the same reason: the only way to exercise it is to hand the mock a row the real query could never
+return, which is the mock-more-forgiving-than-production failure this plan exists to avoid.
 
 The earlier `''`→`null`-on-create coercion is superseded: no row is created at all for a scanner
 whose port is unusable (Decision 1, cells 7/8/10), so there is no create-path port to coerce.
@@ -207,6 +208,41 @@ of `usb_port` in the main process, and it can no longer reach such a row. So the
 class the audit reports has no in-app remedy today; the recorded remedy is to remove the stale row
 via the existing per-row disable and re-detect. That is a real limitation of shipping without the
 constraint or a repair affordance, not an oversight.
+
+### Decision 9 — the first code review found the invariant was only half-implemented
+
+Four review rounds scrutinised this design before any implementation existed. A fifth,
+post-implementation round (`/review-pr`, the first review of the actual diff) found the invariant
+was stated once but enforced twice under two different disciplines, and only one of the two was
+tested:
+
+- **`matchDetectedToDb` had no ambiguity refusal.** `upsertScannerRow`'s `>1`-candidate check
+  (Decision 6) was never carried to the read path that actually binds a session's plate barcodes
+  to a physical scanner — it used a plain `Array.find()`, silently taking the first candidate in
+  array order on a duplicate port. Fixed to filter to all candidates and refuse on `>1`, exactly
+  as `upsertScannerRow` does, logging the ambiguity rather than leaving it silent.
+- **A same-payload duplicate `usb_port` bypassed the ambiguity check entirely.** `upsertScannerRow`
+  reads the database once per call, so it cannot see a duplicate claim made by an _earlier
+  iteration of the same `saveScannersToDB` loop_ — that entry's write already committed exactly
+  one row for the port by the time the next entry's lookup runs. A single payload reporting two
+  different detected devices under the same port (a plausible detection-layer glitch, not a
+  concurrency race) would have its second entry silently overwrite the first's row. Fixed by
+  tracking ports already claimed within the current call and refusing a second claimant before it
+  reaches `upsertScannerRow` at all.
+- **`refused` was produced but never consumed.** The field Decision 5's "report to the operator"
+  language was written for had no declared type and no reader anywhere in `src/` — confirmed by
+  grep, independently, by two of the five review lenses. `ConfigureScanner.tsx` checked only
+  `success`, which stays `true` on a refusal, reproducing the exact silent-drop-out failure mode
+  §1's own "Why" motivates fixing. Fixed by declaring the field on `SaveScannersToDBResult` and
+  wiring an operator-facing warning in `ConfigureScanner.tsx`, distinct from the existing
+  hard-failure banner.
+
+The root cause common to all three: `matchDetectedToDb`, the same-payload duplicate case, and the
+fire-and-forget audit safety test were implemented before their tests (confirmed against `git log
+-p`, two admitted in their own commit messages) — the task file's blanket TDD claim was true for
+`upsertScannerRow` and the audit module, not for these. Four pre-implementation review rounds
+scrutinised the design; none read the merged diff. This is why the workflow now runs `/review-pr`
+before every merge, not only `openspec-review` before implementation.
 
 ## Risks
 
