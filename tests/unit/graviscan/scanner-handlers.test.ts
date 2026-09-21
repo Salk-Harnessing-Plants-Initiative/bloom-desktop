@@ -134,7 +134,9 @@ describe('scanner-handlers', () => {
     // unconditionally (as ConfigureScanner.tsx now does) would throw on the
     // error branch instead of falling through to the `error` message.
     it('includes an empty refused array on the catch-all error path', async () => {
-      db.graviScanner.findMany.mockRejectedValue(new Error('DB connection lost'));
+      db.graviScanner.findMany.mockRejectedValue(
+        new Error('DB connection lost')
+      );
 
       const result = await saveScannersToDB(db, [
         {

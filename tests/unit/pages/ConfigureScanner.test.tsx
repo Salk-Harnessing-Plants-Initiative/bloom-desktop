@@ -340,7 +340,13 @@ describe('ConfigureScanner page', () => {
 
     mockGraviAPI.saveScannersToDB.mockResolvedValueOnce({
       success: true,
-      data: { success: true, scanners: [], count: 1, disabled: [], refused: [] },
+      data: {
+        success: true,
+        scanners: [],
+        count: 1,
+        disabled: [],
+        refused: [],
+      },
     });
     fireEvent.click(screen.getByRole('button', { name: /detect scanners/i }));
 

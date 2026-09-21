@@ -533,7 +533,8 @@ export async function saveScannersToDB(
       error: error instanceof Error ? error.message : 'Failed to save scanners',
       scanners: [] as GraviScanner[],
       disabled: [] as string[],
-    } as SaveScannersToDBResult;
+      refused: [] as string[],
+    };
   }
 }
 
