@@ -32,10 +32,14 @@ Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
 ## 0. Prerequisites
 
 - [x] 0.1 `npm ci` in the worktree — done 2026-09-17.
-- [ ] 0.2 Re-verify #167, #203 and #243 are still in the state `proposal.md` assumes.
-- [ ] 0.3 Read #243's closing comment in full before touching `upsertScannerRow`. This change
+- [x] 0.2 Re-verify #167, #203 and #243 are still in the state `proposal.md` assumes. Re-checked
+      2026-09-21: #243 CLOSED, #167 and #203 both still OPEN — unchanged.
+- [x] 0.3 Read #243's closing comment in full before touching `upsertScannerRow`. This change
       reverses the order that comment names as the fix; `design.md` Decision 3 is the argument, and it
-      should be re-checked against the issue rather than trusted.
+      should be re-checked against the issue rather than trusted. Re-read 2026-09-21: the closing
+      comment (2026-09-10) confirms `upsertScannerRow` matches `(usb_bus, usb_device)` first, then
+      falls back to `usb_port` — the exact order this change inverts. `design.md` Decision 3's
+      non-regression argument is what task 3.4 annotates the issue with.
 
 ## 1. Red phase
 
@@ -121,10 +125,14 @@ device-number match never assigns, changes or transfers a `usb_port`._
       reported as stranded; a clean fixture reports nothing; detection is never invoked; a throwing
       audit does not propagate and produces no unhandled rejection. Assert no `update`/`delete` call is
       ever made — read-only is the load-bearing property.
-- [ ] 1.4c `tests/unit/graviscan/main-wiring.test.ts` calls `initGraviScan('graviscan', {} as any, …)`
+- [x] 1.4c `tests/unit/graviscan/main-wiring.test.ts` calls `initGraviScan('graviscan', {} as any, …)`
       at `:99`, `:106`, `:112`, `:118`, `:128` — a `{}` database. Add a case proving startup still
       completes with the audit wired in and an unusable `db`, since the audit must swallow its own
-      failure and must not leak a rejection from a fire-and-forget call.
+      failure and must not leak a rejection from a fire-and-forget call. Done: `scanner-port-audit`
+      is now `vi.mock`ed in that file (default `mockResolvedValue([])`), and a new case forces
+      `auditScannerPorts` to reject, flushes the fire-and-forget microtask with a
+      `setImmediate` round-trip, and asserts `cleanupOldLogs`/`registerGraviScanHandlers` still ran
+      and no `unhandledRejection` fired (48 tests, was 47).
 
 ### 1.5 — gate and commit
 
@@ -169,21 +177,43 @@ device-number match never assigns, changes or transfers a `usb_port`._
       **Invoke it fire-and-forget (`void auditScannerPorts(db).catch(…)`), not awaited** —
       `initGraviScan` is awaited before `database:ready` and `resolveAppReady()`, so awaiting the audit
       would delay startup, which the spec forbids.
-- [ ] 2.8 `npm run test:unit` green. Confirm 1.5a's recorded count is now zero and the baseline's
-      92 are all accounted for.
+- [x] 2.8 `npm run test:unit` green. Confirm 1.5a's recorded count is now zero and the baseline's
+      92 are all accounted for. Confirmed 2026-09-21: the five relevant files
+      (`scanner-upsert.test.ts` 37, `scanner-handlers.test.ts` 33, `session-handlers.test.ts` 33,
+      `reset-usb-handler.test.ts` 4, `lsusb-detection.test.ts` 3, plus `main-wiring.test.ts` 48 after
+      1.4c) all pass. The full `npm run test:unit` run has 4 pre-existing failures
+      (`scans-export.test.ts`, `database-handlers.test.ts` x2, `electron-cleanup.test.ts`) that are
+      outside this change's file set and pass individually except `database-handlers.test.ts`, which
+      needs `BLOOM_DATABASE_URL` — not a regression from this diff.
 - [x] 2.9 `npm run lint` and `npx tsc --noEmit` clean.
 - [x] 2.10 **Commit the implementation** separately from 1.5c.
 
 ## 3. Documentation
 
-- [ ] 3.1 Re-read `proposal.md` and `design.md` against the final diff; re-verify every line
-      citation. Review rounds found citation drift in three successive drafts.
-- [ ] 3.2 `npx openspec validate fix-graviscan-scanner-identity-precedence --strict` clean, run
+- [x] 3.1 Re-read `proposal.md` and `design.md` against the final diff; re-verify every line
+      citation. Review rounds found citation drift in three successive drafts. Done 2026-09-21:
+      checked every file:line citation in both documents against the current worktree (baseline
+      `main` citations checked against `main`, post-diff citations checked against `HEAD`). Found
+      and fixed five drifted citations: `scanner-handlers.ts:177` → `:158`
+      (`runStartupScannerValidation`); `scanner-handlers.ts:646-649` → `:691-694` and `:711-718` →
+      `:757-764` (`resetUsb` steps 2 and 5, both docs); `scanner-handlers.ts:404-406` → `:436-438`
+      (`currentUsbPorts`, both docs); `scanner-upsert.test.ts:344` → `:378` (the actual
+      empty-current-port-set assertion, both docs). Also removed a stale `proposal.md` Impact
+      bullet claiming `lsusb-detection.ts` would export `buildUsbPort` — the implementation never
+      needed it (the audit reads raw `usb_port` strings from the DB and never reconstructs one),
+      and nothing in `src/` or `tests/` references it. All other citations (`scanner-upsert.ts`
+      line ranges, `useScanSession.ts:897`, `graviscan-upload.ts:281`, `lsusb-detection.ts:185`,
+      `preload.ts:419-420`, `prisma/schema.prisma:237`, `spec.md:1233`) confirmed accurate.
+- [x] 3.2 `npx openspec validate fix-graviscan-scanner-identity-precedence --strict` clean, run
       from the **worktree root** (from inside the change directory it reports "Unknown item").
-- [ ] 3.3 Confirm the archive scenario-name check is not applicable — this change is ADDED-only, so
+      Confirmed 2026-09-21: "Change 'fix-graviscan-scanner-identity-precedence' is valid".
+- [x] 3.3 Confirm the archive scenario-name check is not applicable — this change is ADDED-only, so
       it cannot drop a scenario name from a MODIFIED block. (The check is `findMissingCurrentScenarios`
       in `@fission-ai/openspec`'s archive module; cite it by function name, since its path moves
-      between releases.) Confirm rather than assume.
+      between releases.) Confirm rather than assume. Confirmed 2026-09-21:
+      `specs/scanning/spec.md` in this change directory has only a single `## ADDED Requirements`
+      header (`Scanner Identity Matching Precedence`, `Scanner Port Integrity Audit`) — no
+      `MODIFIED` block exists for the check to compare scenario names against.
 - [ ] 3.4 Annotate #243 with `design.md` Decision 3's argument. Comment on #167 and #203,
       correcting #203's false premise that port-primary matching already ships.
 - [ ] 3.5 Write the operator note. For each finding class say plainly what can be done: a duplicate

@@ -134,10 +134,10 @@ is created for a scanner whose port is unusable.
 
 The same transient `lsusb -t` failure has a second effect that must be fixed with it:
 `saveScannersToDB` builds `currentUsbPorts` from the payload and filters out empty strings
-(`scanner-handlers.ts:404-406`), so when every detected scanner reports `''` that set is empty
+(`scanner-handlers.ts:436-438`), so when every detected scanner reports `''` that set is empty
 while `scanners.length > 0` still holds — and `disableStaleScannerRows(db, [])` disables
 **every** enabled row with a non-null port. An existing test pins exactly that
-(`scanner-upsert.test.ts:344`). Stale-disabling is therefore skipped when no payload entry
+(`scanner-upsert.test.ts:378`). Stale-disabling is therefore skipped when no payload entry
 carries a usable port: absence of topology data says nothing about whether the scanners are
 present.
 
@@ -179,13 +179,10 @@ canonical has data-attribution consequences.
   - `src/main/graviscan/scanner-handlers.ts` — `matchDetectedToDb()` (exported for testing);
     `saveScannersToDB`'s stale-disable guard
   - a new startup audit module, invoked from a main-process startup path that executes
-  - `src/main/lsusb-detection.ts` — export `buildUsbPort`, currently module-private at `:131`
-    and absent from the export list at `:235`, so tests and the audit can name a port the same
-    way detection does
 - **Affected consumers not edited but behaviourally affected:** `src/renderer/GraviScan.tsx`
   (`saneNames` at session start), `src/main/graviscan/register-handlers.ts:159-186`
   (spawn-on-discovery consumes `upsertScannerRow`'s returned row),
-  `runStartupScannerValidation` (`scanner-handlers.ts:177`, the second `matchDetectedToDb`
+  `runStartupScannerValidation` (`scanner-handlers.ts:158`, the second `matchDetectedToDb`
   caller — and itself dead code)
 - **Tests:** `tests/unit/graviscan/scanner-upsert.test.ts`,
   `tests/unit/graviscan/scanner-handlers.test.ts`, plus a new audit test file

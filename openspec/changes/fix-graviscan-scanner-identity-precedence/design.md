@@ -99,12 +99,12 @@ argument.
 
 #243's reproduction was Reset USB followed by Detect. `resetUsb()` step 2 nulls `usb_bus`/
 `usb_device` on every enabled row while deliberately preserving `usb_port`
-(`scanner-handlers.ts:646-649`, comment: "keep usb_port for matching"). So for any scanner
+(`scanner-handlers.ts:691-694`, comment: "keep usb_port for matching"). So for any scanner
 `resetUsb` could not re-detect, the stored bus/device key is **absent** and the port key is
 present: the `usb_port` fallback is what actually fixed #243, and the closing comment credits the
 wrong half of the code. Port-primary promotes the key that was doing the work.
 
-(For scanners `resetUsb` _does_ re-detect, step 5 repopulates bus/device at `:711-718`, so the
+(For scanners `resetUsb` _does_ re-detect, step 5 repopulates bus/device at `:757-764`, so the
 null state is durable only for the unseen ones — which is the #243 case.)
 
 What genuinely changes is #243's **unresolved** hypothesis: that detection's `usb_port` string may
@@ -184,10 +184,10 @@ convention: every other read path in this module orders `createdAt: 'asc'`.
 ### Decision 7 — don't disable the fleet on an unavailable topology query
 
 `saveScannersToDB` builds `currentUsbPorts` from the payload and filters out empty strings
-(`scanner-handlers.ts:404-406`). When `lsusb -t` fails, _every_ detected scanner carries `''`, so
+(`scanner-handlers.ts:436-438`). When `lsusb -t` fails, _every_ detected scanner carries `''`, so
 that set is empty while `scanners.length > 0` still holds — and `disableStaleScannerRows(db, [])`
 disables **every** enabled row with a non-null port. An existing test pins this behaviour
-(`scanner-upsert.test.ts:344`).
+(`scanner-upsert.test.ts:378`).
 
 That is the other half of the same transient-failure fork Decision 5 addresses, and fixing only
 the port-destruction half would leave the fleet-disable intact. So stale-disabling is skipped when
