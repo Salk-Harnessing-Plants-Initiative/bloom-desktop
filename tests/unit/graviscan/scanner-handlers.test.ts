@@ -360,6 +360,65 @@ describe('scanner-handlers', () => {
       expect(db.graviScanner.create).not.toHaveBeenCalled();
       expect(result.refused).toHaveLength(2);
     });
+
+    // Review round 5 (post-implementation review, BLOCKING #1): a single
+    // payload reporting two DIFFERENT physical devices under the same
+    // usb_port (a plausible detection-layer glitch) must not let the second
+    // entry's upsert silently corrupt the row the first entry just wrote.
+    // upsertScannerRow's own >1-candidate ambiguity check cannot catch this,
+    // because by the time the second entry's port lookup runs, the first
+    // entry's create has already committed exactly one row for that port —
+    // so the loop itself must refuse a port already claimed within this call.
+    it('refuses the second of two payload entries claiming the same usb_port, rather than corrupting the row the first one wrote', async () => {
+      // A real (if minimal) stateful Prisma stand-in: the shared
+      // createMockDb()'s findMany/create are static and would hide this bug
+      // entirely, since they never reflect what the previous loop iteration
+      // just committed.
+      const rows: any[] = [];
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) =>
+        rows.filter((r) => !where?.usb_port || r.usb_port === where.usb_port)
+      );
+      db.graviScanner.create.mockImplementation(async ({ data }: any) => {
+        const row = { id: `row-${rows.length + 1}`, enabled: true, ...data };
+        rows.push(row);
+        return { ...row };
+      });
+      db.graviScanner.update.mockImplementation(
+        async ({ where, data }: any) => {
+          const row = rows.find((r) => r.id === where.id);
+          Object.assign(row, data);
+          return { ...row };
+        }
+      );
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo — device A',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 8,
+          usb_port: '1-3',
+        },
+        {
+          name: 'Perfection V600 Photo — device B',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 9,
+          usb_port: '1-3',
+        },
+      ]);
+
+      // Exactly one row exists for the port, holding device A's identity —
+      // the first claimant. The second entry must be refused, never allowed
+      // to update (and thereby overwrite) the row the first entry just wrote.
+      expect(rows).toHaveLength(1);
+      expect(rows[0].usb_device).toBe(8);
+      expect(result.refused).toContain('1-3');
+      expect(result.scanners).toHaveLength(1);
+      expect(result.scanners[0].usb_device).toBe(8);
+    });
   });
 
   describe('getConfig', () => {
