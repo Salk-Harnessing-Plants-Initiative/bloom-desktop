@@ -13,7 +13,15 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../../../src/main/graviscan/scan-logger', () => ({
+  scanLog: vi.fn(),
+  cleanupOldLogs: vi.fn(),
+  closeScanLog: vi.fn(),
+}));
+
+import { scanLog } from '../../../src/main/graviscan/scan-logger';
 import {
   upsertScannerRow,
   disableStaleScannerRows,
@@ -31,6 +39,8 @@ interface MockGraviScanner {
   usb_bus: number | null;
   usb_device: number | null;
   enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 function makeRow(overrides: Partial<MockGraviScanner> = {}): MockGraviScanner {
@@ -44,8 +54,49 @@ function makeRow(overrides: Partial<MockGraviScanner> = {}): MockGraviScanner {
     usb_bus: 1,
     usb_device: 7,
     enabled: true,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
     ...overrides,
   };
+}
+
+/**
+ * Evaluate a Prisma-ish `where` against one row.
+ *
+ * Supports only what production sends, but supports it *faithfully*: scalar
+ * equality on any column, AND across sibling keys, and `OR: [...]` as a
+ * disjunction of sub-predicates.
+ *
+ * The previous implementation matched a hard-coded disjunction of two key
+ * families — (usb_bus AND usb_device) OR usb_port — and ignored `OR` arrays
+ * entirely, which made it strictly more permissive than Prisma. That is not a
+ * harmless simplification: a review round wrongly predicted a test in
+ * scanner-handlers.test.ts would fail under the new precedence, because a
+ * *restricted* query still matched against a mock that never evaluated the
+ * restriction. A mock looser than the real query hides the precedence this
+ * suite exists to pin.
+ */
+function matchesWhere(
+  row: MockGraviScanner,
+  where: Record<string, unknown> | undefined
+): boolean {
+  if (!where) return true;
+  return Object.entries(where).every(([key, value]) => {
+    if (key === 'OR') {
+      return (value as Array<Record<string, unknown>>).some((clause) =>
+        matchesWhere(row, clause)
+      );
+    }
+    if (key === 'AND') {
+      return (value as Array<Record<string, unknown>>).every((clause) =>
+        matchesWhere(row, clause)
+      );
+    }
+    if (key === 'NOT') {
+      return !matchesWhere(row, value as Record<string, unknown>);
+    }
+    return (row as unknown as Record<string, unknown>)[key] === value;
+  });
 }
 
 function makeMockDb(initialRows: MockGraviScanner[] = []) {
@@ -53,39 +104,16 @@ function makeMockDb(initialRows: MockGraviScanner[] = []) {
   return {
     graviScanner: {
       findFirst: vi.fn(
-        async ({ where }: { where: Record<string, unknown> }) => {
-          return (
-            rows.find((r) => {
-              if (
-                where.usb_bus !== undefined &&
-                where.usb_device !== undefined &&
-                r.usb_bus === where.usb_bus &&
-                r.usb_device === where.usb_device
-              ) {
-                return true;
-              }
-              if (
-                where.usb_port !== undefined &&
-                r.usb_port === where.usb_port
-              ) {
-                return true;
-              }
-              return false;
-            }) ?? null
-          );
-        }
+        async ({ where }: { where?: Record<string, unknown> } = {}) =>
+          rows.find((r) => matchesWhere(r, where)) ?? null
       ),
       findUnique: vi.fn(
         async ({ where }: { where: { id: string } }) =>
           rows.find((r) => r.id === where.id) ?? null
       ),
       findMany: vi.fn(
-        async ({ where }: { where?: { enabled?: boolean } } = {}) => {
-          if (where?.enabled !== undefined) {
-            return rows.filter((r) => r.enabled === where.enabled);
-          }
-          return rows;
-        }
+        async ({ where }: { where?: Record<string, unknown> } = {}) =>
+          rows.filter((r) => matchesWhere(r, where))
       ),
       update: vi.fn(
         async ({
@@ -329,6 +357,23 @@ describe('disableStaleScannerRows (#230)', () => {
     expect(db._rows.find((r) => r.id === 'a')!.enabled).toBe(true);
   });
 
+  // Review round 5 (post-implementation review, PLAUSIBLE): the identity
+  // invariant treats a null and an empty-string usb_port as equally
+  // unusable (the address tier's `OR: [{usb_port: null}, {usb_port: ''}]`),
+  // but this pre-existing, unchanged function only ever skipped exact
+  // `null`. A legacy ''-port row must get the same protection.
+  it('ignores rows with an empty-string usb_port, same as a null one', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'a', usb_port: '' }),
+      makeRow({ id: 'b', usb_port: '1-2' }),
+    ]);
+
+    const result = await disableStaleScannerRows(db as never, ['1-2']);
+
+    expect(result.disabled).toEqual([]);
+    expect(db._rows.find((r) => r.id === 'a')!.enabled).toBe(true);
+  });
+
   it('does not touch rows that are already disabled', async () => {
     const db = makeMockDb([
       makeRow({ id: 'a', usb_port: '1-1' }),
@@ -467,5 +512,291 @@ describe('stopWorkersForDisabledScanners (Copilot #20)', () => {
     await stopWorkersForDisabledScanners(coordinator as never, []);
     expect(coordinator.stopScanner).not.toHaveBeenCalled();
     expect(coordinator.hasWorker).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Identity matching precedence
+// ---------------------------------------------------------------------------
+
+/**
+ * One invariant governs every case below:
+ *
+ *   A match on usb_bus+usb_device NEVER assigns, changes or transfers a
+ *   usb_port. It is reachable only when BOTH the payload port and the
+ *   candidate row's port are unusable, and may refresh only the address.
+ *
+ * Three earlier drafts of this rule each closed the cell they were looking at
+ * and opened another, so these tests walk the table cell by cell rather than
+ * spot-checking. See design.md in
+ * openspec/changes/fix-graviscan-scanner-identity-precedence.
+ */
+describe('upsertScannerRow — identity matching precedence', () => {
+  beforeEach(() => {
+    vi.mocked(scanLog).mockClear();
+  });
+
+  const payload = (overrides: Record<string, unknown> = {}) => ({
+    name: 'Perfection V600 Photo',
+    vendor_id: '04b8',
+    product_id: '013a',
+    ...overrides,
+  });
+
+  it('updates the row whose port equals the payload port', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '1-2.3', usb_bus: 1, usb_device: 9 }) as any
+    );
+
+    expect(result?.id).toBe('sc-A');
+    expect(db.graviScanner.create).not.toHaveBeenCalled();
+  });
+
+  it('does not let a usable port capture a row holding a different usable port', async () => {
+    const db = makeMockDb([
+      makeRow({
+        id: 'sc-A',
+        usb_port: '1-2.3',
+        usb_bus: 1,
+        usb_device: 8,
+        display_name: 'Bench A',
+      }),
+    ]);
+
+    await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '1-4', usb_bus: 1, usb_device: 8 }) as any
+    );
+
+    expect(db.graviScanner.create).toHaveBeenCalled();
+    const scA = db._rows.find((r) => r.id === 'sc-A');
+    expect(scA?.usb_port).toBe('1-2.3');
+    expect(scA?.display_name).toBe('Bench A');
+  });
+
+  it('does not let a usable port capture a null-port row by device number', async () => {
+    // The cell two earlier drafts got wrong. A null-port row has no port
+    // claim, but it holds a scanner_id, a name, and FK'd scan and
+    // plate-assignment rows — binding it by device number moves all of that
+    // onto a different physical scanner.
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 5 }),
+    ]);
+
+    await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '1-7', usb_bus: 1, usb_device: 5 }) as any
+    );
+
+    expect(db.graviScanner.create).toHaveBeenCalled();
+    expect(db._rows.find((r) => r.id === 'sc-A')?.usb_port).toBeNull();
+  });
+
+  it('does not let a usable port capture an empty-port row by device number', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: '', usb_bus: 1, usb_device: 5 }),
+    ]);
+
+    await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '1-7', usb_bus: 1, usb_device: 5 }) as any
+    );
+
+    expect(db.graviScanner.create).toHaveBeenCalled();
+    expect(db._rows.find((r) => r.id === 'sc-A')?.usb_port).toBe('');
+  });
+
+  it('refreshes a portless row at the same address without touching its port', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 4 }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 4 }) as any
+    );
+
+    expect(result?.id).toBe('sc-A');
+    const updateArgs = vi.mocked(db.graviScanner.update).mock
+      .calls[0]?.[0] as any;
+    expect(updateArgs.data).not.toHaveProperty('usb_port');
+    expect(db._rows.find((r) => r.id === 'sc-A')?.usb_port).toBeNull();
+  });
+
+  it('leaves a portless row whose address has also moved unmatched', async () => {
+    // The address tier matches on the *current* address, so it can only reach
+    // a row whose stored address still agrees. A portless row whose address
+    // has also moved is unmatchable — the accepted "no auto-healing"
+    // consequence of the invariant, surfaced by the startup audit instead.
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 4 }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 6 }) as any
+    );
+
+    expect(result).toBeNull();
+    expect(db.graviScanner.create).not.toHaveBeenCalled();
+    expect(db._rows.find((r) => r.id === 'sc-A')?.usb_port).toBeNull();
+  });
+
+  it('creates no row for a detected scanner whose port is unusable', async () => {
+    // One transient topology-query failure makes every detected port '' — if
+    // that created rows, a single failure would duplicate the whole fleet.
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 99 }) as any
+    );
+
+    expect(result).toBeNull();
+    expect(db.graviScanner.create).not.toHaveBeenCalled();
+    expect(vi.mocked(scanLog).mock.calls.flat().join(' ')).toContain(
+      'could not be identified'
+    );
+  });
+
+  it('restricts the address query to rows that hold no usable port', async () => {
+    // Lookups use findMany, not findFirst, because a second candidate has to
+    // be *detectable* for the ambiguity refusal to be possible at all.
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 4 }),
+    ]);
+
+    await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 4 }) as any
+    );
+
+    const addressCall = vi
+      .mocked(db.graviScanner.findMany)
+      .mock.calls.find((c) => (c[0] as any)?.where?.usb_bus !== undefined);
+    expect(addressCall).toBeDefined();
+    expect((addressCall![0] as any).where.OR).toEqual([
+      { usb_port: null },
+      { usb_port: '' },
+    ]);
+  });
+
+  // Review round 5 (post-implementation review, IMPORTANT): the test above
+  // only inspects the query *shape* sent to findMany against a mock pool
+  // containing no usable-port row, so it never observes the exclusion
+  // actually happen. This is design.md's table cell 7 end-to-end, against
+  // the real matchesWhere predicate evaluator — the exact cluster three
+  // earlier drafts got wrong.
+  it('cell 7: excludes a usable-port sibling row from the address tier, matching the portless row at the same address instead', async () => {
+    const db = makeMockDb([
+      makeRow({
+        id: 'sc-portful',
+        usb_port: '1-9',
+        usb_bus: 1,
+        usb_device: 4,
+      }),
+      makeRow({
+        id: 'sc-portless',
+        usb_port: null,
+        usb_bus: 1,
+        usb_device: 4,
+      }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 4 }) as any
+    );
+
+    expect(result?.id).toBe('sc-portless');
+    expect(db.graviScanner.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sc-portless' } })
+    );
+    // The usable-port sibling must never be touched by this match.
+    expect(db.graviScanner.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sc-portful' } })
+    );
+    const portfulRow = (db as any)._rows.find(
+      (r: any) => r.id === 'sc-portful'
+    );
+    expect(portfulRow.usb_port).toBe('1-9');
+  });
+
+  it('queries by port, not by address, when the payload port is usable', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }),
+    ]);
+
+    await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }) as any
+    );
+
+    const calls = vi.mocked(db.graviScanner.findMany).mock.calls;
+    expect((calls[0]?.[0] as any)?.where).toEqual({ usb_port: '1-2.3' });
+    expect(calls.some((c) => (c[0] as any)?.where?.usb_bus !== undefined)).toBe(
+      false
+    );
+  });
+
+  it('refuses to write when a port lookup resolves more than one row', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }),
+      makeRow({ id: 'sc-B', usb_port: '1-2.3', usb_bus: 1, usb_device: 9 }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '1-2.3', usb_bus: 1, usb_device: 8 }) as any
+    );
+
+    expect(result).toBeNull();
+    expect(db.graviScanner.update).not.toHaveBeenCalled();
+    expect(db.graviScanner.create).not.toHaveBeenCalled();
+    const logged = vi.mocked(scanLog).mock.calls.flat().join(' ');
+    expect(logged).toContain('ambiguous');
+    expect(logged).toContain('sc-A');
+    expect(logged).toContain('sc-B');
+  });
+
+  it('refuses to write when the address tier resolves more than one row', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: null, usb_bus: 1, usb_device: 4 }),
+      makeRow({ id: 'sc-B', usb_port: '', usb_bus: 1, usb_device: 4 }),
+    ]);
+
+    const result = await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 4 }) as any
+    );
+
+    expect(result).toBeNull();
+    expect(db.graviScanner.update).not.toHaveBeenCalled();
+    expect(db.graviScanner.create).not.toHaveBeenCalled();
+    expect(vi.mocked(scanLog).mock.calls.flat().join(' ')).toContain(
+      'ambiguous'
+    );
+  });
+
+  it('never persists an empty string as a port', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'sc-A', usb_port: '', usb_bus: 1, usb_device: 4 }),
+    ]);
+
+    await upsertScannerRow(
+      db as any,
+      payload({ usb_port: '', usb_bus: 1, usb_device: 4 }) as any
+    );
+
+    const updateArgs = vi.mocked(db.graviScanner.update).mock
+      .calls[0]?.[0] as any;
+    expect(updateArgs?.data?.usb_port).not.toBe('');
   });
 });

@@ -31,6 +31,12 @@ export function ConfigureScanner() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const [detectError, setDetectError] = useState<string | null>(null);
+  // Review round 5 (post-implementation review, BLOCKING #3): a refused
+  // scanner is a partial-success case (saveScannersToDB still reports
+  // success: true) distinct from detectError's hard-failure banner — the
+  // operator must still be told a scanner could not be identified/saved,
+  // rather than seeing an ordinary successful Detect.
+  const [refusedWarning, setRefusedWarning] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [resetUsbError, setResetUsbError] = useState<string | null>(null);
   const [isResettingUsb, setIsResettingUsb] = useState(false);
@@ -192,6 +198,7 @@ export function ConfigureScanner() {
     if (actionLockRef.current) return;
     actionLockRef.current = true;
     setDetectError(null);
+    setRefusedWarning(null);
     setIsDetecting(true);
     try {
       const detectResult = await window.electron.gravi.detectScanners();
@@ -231,6 +238,14 @@ export function ConfigureScanner() {
             'Save failed'
         );
         return;
+      }
+
+      const refused = saveResult.data.refused ?? [];
+      if (refused.length > 0) {
+        setRefusedWarning(
+          `${refused.length} scanner(s) could not be identified and were not saved ` +
+            `(port/address: ${refused.join(', ')}). Check the scan log and the list below.`
+        );
       }
 
       await refreshScannerStatus();
@@ -461,6 +476,9 @@ export function ConfigureScanner() {
 
           {detectError && (
             <p className="text-red-600 text-sm mb-4">{detectError}</p>
+          )}
+          {refusedWarning && (
+            <p className="text-amber-600 text-sm mb-4">{refusedWarning}</p>
           )}
           {resetUsbError && (
             <p className="text-red-600 text-sm mb-4">{resetUsbError}</p>

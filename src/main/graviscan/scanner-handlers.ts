@@ -10,7 +10,12 @@
 import { PrismaClient } from '@prisma/client';
 import { detectEpsonScanners } from '../lsusb-detection';
 import type { ScanCoordinatorLike } from './session-handlers';
-import { upsertScannerRow, disableStaleScannerRows } from './scanner-upsert';
+import {
+  upsertScannerRow,
+  disableStaleScannerRows,
+  isUsablePort,
+} from './scanner-upsert';
+import { scanLog } from './scan-logger';
 import type {
   DetectedScanner,
   GraviConfig,
@@ -18,6 +23,7 @@ import type {
   GraviScanner,
   GraviScanPlatformInfo,
   ResetUsbResult,
+  SaveScannersToDBResult,
   ScannerConfig,
 } from '../../types/graviscan';
 
@@ -81,29 +87,73 @@ function buildMockScanners(dbScanners: any[]): DetectedScanner[] {
 }
 
 /**
- * Match detected scanners to DB records by USB bus+device, falling back to
- * usb_port. Mutates `detectedScanners` in-place (sets scanner_id and name).
+ * Match detected scanners to DB records by `usb_port`. Mutates
+ * `detectedScanners` in-place (sets scanner_id and name).
+ *
+ * Governed by the same invariant as `upsertScannerRow`:
+ *
+ *   **A match on usb_bus+usb_device never assigns, changes or transfers a
+ *   usb_port.** It is reachable only when BOTH the detected scanner's port
+ *   and the candidate row's port are unusable.
+ *
+ * This is the only join between "whose plate barcodes" and "which physical
+ * scanner" — its output becomes `GraviScan.tsx`'s `saneNames` map and from
+ * there each worker's `--device`. A wrong binding here applies one scanner's
+ * barcodes to another scanner's images, so a coincident `usb_device` (which
+ * the kernel reassigns on every reconnect) must never be sufficient to claim
+ * a row that holds a real port.
+ *
+ * Note the candidate set differs from `upsertScannerRow`'s: callers pass only
+ * `enabled` rows, so a disabled row cannot compete for identity during a live
+ * detection pass while remaining re-enableable on re-detect.
+ *
+ * Review round 5 (post-implementation review): an ambiguous match — more
+ * than one candidate row on either tier — refuses to bind, exactly as
+ * `upsertScannerRow`'s `>1` check refuses to write. A plain `Array.find()`
+ * would silently apply one scanner's plate barcodes to another's images by
+ * picking the first candidate in array order, which is the exact failure
+ * mode this whole change exists to close — this function is the one place
+ * that failure would reach the running session, not just the database.
  */
-function matchDetectedToDb(
+export interface MatchCandidateRow {
+  id: string;
+  name: string;
+  usb_port: string | null;
+  usb_bus: number | null;
+  usb_device: number | null;
+}
+
+export function matchDetectedToDb(
   detectedScanners: DetectedScanner[],
-  dbScanners: any[]
+  dbScanners: MatchCandidateRow[]
 ): void {
   for (const detected of detectedScanners) {
-    const match = dbScanners.find(
-      (s: any) =>
-        s.usb_bus === detected.usb_bus && s.usb_device === detected.usb_device
-    );
+    let matches: MatchCandidateRow[];
+
+    if (isUsablePort(detected.usb_port)) {
+      matches = dbScanners.filter((s) => s.usb_port === detected.usb_port);
+    } else {
+      matches = dbScanners.filter(
+        (s) =>
+          !isUsablePort(s.usb_port) &&
+          s.usb_bus === detected.usb_bus &&
+          s.usb_device === detected.usb_device
+      );
+    }
+
+    if (matches.length > 1) {
+      scanLog(
+        `[GraviScan:DETECT] ambiguous match for detected scanner ` +
+          `port=${detected.usb_port || 'none'} bus=${detected.usb_bus ?? 'null'} device=${detected.usb_device ?? 'null'} ` +
+          `candidates=${matches.map((m) => m.id).join(',')} — left unbound`
+      );
+      continue;
+    }
+
+    const match = matches[0];
     if (match) {
       detected.scanner_id = match.id;
       detected.name = match.name;
-    } else {
-      const portMatch = dbScanners.find(
-        (s: any) => s.usb_port && s.usb_port === detected.usb_port
-      );
-      if (portMatch) {
-        detected.scanner_id = portMatch.id;
-        detected.name = portMatch.name;
-      }
     }
   }
 }
@@ -374,14 +424,54 @@ export async function saveScannersToDB(
     usb_bus?: number;
     usb_device?: number;
   }>
-) {
+): Promise<SaveScannersToDBResult> {
   try {
     const savedScanners: GraviScanner[] = [];
+    const refused: string[] = [];
+
+    // Review round 5 (post-implementation review, BLOCKING #1): ports
+    // already written by an earlier entry in THIS SAME payload. Necessary
+    // because upsertScannerRow's own >1-candidate ambiguity check reads the
+    // database per call — it cannot see a duplicate claim made by an
+    // earlier iteration of this loop, since that earlier write already
+    // committed exactly one row for the port by the time the next entry's
+    // lookup runs. Without this, a payload reporting two different physical
+    // devices under the same usb_port (a plausible detection-layer glitch)
+    // would have its second entry silently update the row the first entry
+    // just created, overwriting one scanner's identity with another's.
+    const claimedPorts = new Set<string>();
 
     for (const scanner of scanners) {
+      if (
+        isUsablePort(scanner.usb_port) &&
+        claimedPorts.has(scanner.usb_port)
+      ) {
+        scanLog(
+          `[GraviScan:SAVE] duplicate usb_port within one payload port=${scanner.usb_port} ` +
+            `— refused the second claimant, wrote nothing`
+        );
+        refused.push(scanner.usb_port);
+        continue;
+      }
+
       // Delegate the find-existing-and-upsert logic to the testable
       // helper (scanner-upsert.ts), shared with graviscan:disable-scanner.
       const saved = await upsertScannerRow(db, scanner);
+      if (!saved) {
+        // Refused: the scanner has no usable usb_port and so cannot be
+        // identified, or a lookup was ambiguous. Either way nothing was
+        // written and the reason is in the durable scan log. Never push a
+        // null — register-handlers' spawn-on-discovery loop reads `.enabled`
+        // and `.id` off every element of this array.
+        refused.push(
+          scanner.usb_port ||
+            `${scanner.usb_bus ?? 'null'}:${scanner.usb_device ?? 'null'}`
+        );
+        continue;
+      }
+      if (isUsablePort(scanner.usb_port)) {
+        claimedPorts.add(scanner.usb_port);
+      }
       savedScanners.push(saved as GraviScanner);
     }
 
@@ -400,10 +490,17 @@ export async function saveScannersToDB(
     // empty) list of currently-detected ports explicitly rather than
     // omitting scanners altogether.
     let disabled: string[] = [];
-    if (scanners.length > 0) {
-      const currentUsbPorts = scanners
-        .map((s) => s.usb_port)
-        .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    const currentUsbPorts = scanners
+      .map((s) => s.usb_port)
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    // A payload in which NO entry carries a usable usb_port is the signature
+    // of an unavailable USB topology query, not of every scanner having been
+    // unplugged — `detectEpsonScanners` reports an empty port for all of them
+    // when `lsusb -t` fails. Disabling on that signal would disable the whole
+    // fleet on evidence that says nothing about whether the scanners are
+    // present. (The genuinely-all-unplugged case yields an empty `scanners`
+    // array instead, which the length guard below already skips.)
+    if (scanners.length > 0 && currentUsbPorts.length > 0) {
       const staleResult = await disableStaleScannerRows(db, currentUsbPorts);
       disabled = staleResult.disabled;
       if (disabled.length > 0) {
@@ -423,6 +520,12 @@ export async function saveScannersToDB(
        * orphaned worker subprocesses (#20). Always [] for an empty
        * payload — see final-review fix #6 above. */
       disabled,
+      /** Detected scanners this call deliberately refused to persist: one
+       * per scanner with no usable `usb_port` (unidentifiable) or whose
+       * lookup was ambiguous. Each wrote nothing and logged its reason.
+       * Surfaced separately so a caller can tell "nothing to do" apart from
+       * "we declined to guess at scanner identity". */
+      refused,
     };
   } catch (error) {
     return {
@@ -430,6 +533,7 @@ export async function saveScannersToDB(
       error: error instanceof Error ? error.message : 'Failed to save scanners',
       scanners: [] as GraviScanner[],
       disabled: [] as string[],
+      refused: [] as string[],
     };
   }
 }

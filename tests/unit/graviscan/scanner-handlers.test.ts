@@ -9,6 +9,7 @@ vi.mock('../../../src/main/lsusb-detection', () => ({
 import { detectEpsonScanners } from '../../../src/main/lsusb-detection';
 import {
   detectScanners,
+  matchDetectedToDb,
   saveScannersToDB,
   getConfig,
   saveConfig,
@@ -28,7 +29,10 @@ function createMockDb() {
     graviScanner: {
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
-      create: vi.fn(),
+      // Returns a row rather than `undefined`: upsertScannerRow reads
+      // `created.id`, so a bare vi.fn() turns any create-path test into an
+      // opaque TypeError swallowed by saveScannersToDB's try/catch.
+      create: vi.fn(async ({ data }: any) => ({ id: 'created-1', ...data })),
       update: vi.fn(),
     },
     graviConfig: {
@@ -125,6 +129,30 @@ describe('scanner-handlers', () => {
   });
 
   describe('saveScannersToDB', () => {
+    // Review round 5 (post-implementation review, IMPORTANT): the catch-all
+    // error path omitted `refused`, so a caller that reads `result.refused`
+    // unconditionally (as ConfigureScanner.tsx now does) would throw on the
+    // error branch instead of falling through to the `error` message.
+    it('includes an empty refused array on the catch-all error path', async () => {
+      db.graviScanner.findMany.mockRejectedValue(
+        new Error('DB connection lost')
+      );
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.refused).toEqual([]);
+    });
+
     it('should create new scanner records', async () => {
       db.graviScanner.findFirst.mockResolvedValue(null);
       db.graviScanner.create.mockResolvedValue({
@@ -154,18 +182,26 @@ describe('scanner-handlers', () => {
       expect(db.graviScanner.create).toHaveBeenCalled();
     });
 
-    it('should update existing scanner matched by USB bus+device', async () => {
-      db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
-        if (where?.usb_bus === 1 && where?.usb_device === 2) {
-          return {
-            id: 'existing-1',
-            name: 'Old Name',
-            usb_bus: 1,
-            usb_device: 2,
-            display_name: null,
-          };
+    it('should update a portless existing scanner matched by USB bus+device', async () => {
+      // Re-fixtured: under the identity-matching precedence, the address tier
+      // is reachable only when BOTH the payload port and the row's port are
+      // unusable. The previous fixture passed a usable `usb_port: '1-2'`, so
+      // it never exercised the address tier its title names — it matched by
+      // port. Keeping the title honest means giving both sides no usable port.
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) => {
+        if (where?.usb_bus === 1 && where?.usb_device === 2 && where?.OR) {
+          return [
+            {
+              id: 'existing-1',
+              name: 'Old Name',
+              usb_bus: 1,
+              usb_device: 2,
+              usb_port: null,
+              display_name: null,
+            },
+          ];
         }
-        return null;
+        return [];
       });
       db.graviScanner.update.mockResolvedValue({
         id: 'existing-1',
@@ -174,7 +210,7 @@ describe('scanner-handlers', () => {
         product_id: '013a',
         usb_bus: 1,
         usb_device: 2,
-        usb_port: '1-2',
+        usb_port: null,
         enabled: true,
       });
 
@@ -185,7 +221,7 @@ describe('scanner-handlers', () => {
           product_id: '013a',
           usb_bus: 1,
           usb_device: 2,
-          usb_port: '1-2',
+          usb_port: '',
         },
       ]);
 
@@ -194,16 +230,20 @@ describe('scanner-handlers', () => {
     });
 
     it('should update existing scanner matched by USB port', async () => {
-      db.graviScanner.findFirst.mockImplementation(async ({ where }: any) => {
+      // Lookups go through `findMany`, not `findFirst`, so that a second
+      // candidate on the same port is detectable and can be refused.
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) => {
         if (where?.usb_port === '1-2') {
-          return {
-            id: 'existing-1',
-            name: 'Old Name',
-            usb_port: '1-2',
-            display_name: null,
-          };
+          return [
+            {
+              id: 'existing-1',
+              name: 'Old Name',
+              usb_port: '1-2',
+              display_name: null,
+            },
+          ];
         }
-        return null;
+        return [];
       });
       db.graviScanner.update.mockResolvedValue({
         id: 'existing-1',
@@ -305,6 +345,152 @@ describe('scanner-handlers', () => {
       expect(result.disabled).toEqual([]);
       expect(db.graviScanner.findMany).not.toHaveBeenCalled();
       expect(db.graviScanner.update).not.toHaveBeenCalled();
+    });
+
+    it('does not disable the fleet when no detected scanner has a usable usb_port', async () => {
+      // A payload in which EVERY entry reports an empty usb_port is the
+      // signature of a failed USB topology query, not of every scanner having
+      // been unplugged — detectEpsonScanners reports '' for all of them when
+      // `lsusb -t` fails. Disabling on that would take the whole fleet out on
+      // evidence that says nothing about whether the scanners are present.
+      db.graviScanner.findMany.mockResolvedValue([
+        { id: 'a', usb_port: '1-1', enabled: true },
+        { id: 'b', usb_port: '1-2', enabled: true },
+      ]);
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 4,
+          usb_port: '',
+        },
+        {
+          name: 'Perfection V600 Photo',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 5,
+          usb_port: '',
+        },
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.disabled).toEqual([]);
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+      // Nor may it silently create duplicates for the unidentifiable scanners.
+      expect(db.graviScanner.create).not.toHaveBeenCalled();
+      expect(result.refused).toHaveLength(2);
+    });
+
+    // Review round 5 (post-implementation review, BLOCKING #1): a single
+    // payload reporting two DIFFERENT physical devices under the same
+    // usb_port (a plausible detection-layer glitch) must not let the second
+    // entry's upsert silently corrupt the row the first entry just wrote.
+    // upsertScannerRow's own >1-candidate ambiguity check cannot catch this,
+    // because by the time the second entry's port lookup runs, the first
+    // entry's create has already committed exactly one row for that port —
+    // so the loop itself must refuse a port already claimed within this call.
+    it('refuses the second of two payload entries claiming the same usb_port, rather than corrupting the row the first one wrote', async () => {
+      // A real (if minimal) stateful Prisma stand-in: the shared
+      // createMockDb()'s findMany/create are static and would hide this bug
+      // entirely, since they never reflect what the previous loop iteration
+      // just committed.
+      const rows: any[] = [];
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) =>
+        rows.filter((r) => !where?.usb_port || r.usb_port === where.usb_port)
+      );
+      db.graviScanner.create.mockImplementation(async ({ data }: any) => {
+        const row = { id: `row-${rows.length + 1}`, enabled: true, ...data };
+        rows.push(row);
+        return { ...row };
+      });
+      db.graviScanner.update.mockImplementation(
+        async ({ where, data }: any) => {
+          const row = rows.find((r) => r.id === where.id);
+          Object.assign(row, data);
+          return { ...row };
+        }
+      );
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo — device A',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 8,
+          usb_port: '1-3',
+        },
+        {
+          name: 'Perfection V600 Photo — device B',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 9,
+          usb_port: '1-3',
+        },
+      ]);
+
+      // Exactly one row exists for the port, holding device A's identity —
+      // the first claimant. The second entry must be refused, never allowed
+      // to update (and thereby overwrite) the row the first entry just wrote.
+      expect(rows).toHaveLength(1);
+      expect(rows[0].usb_device).toBe(8);
+      expect(result.refused).toContain('1-3');
+      expect(result.scanners).toHaveLength(1);
+      expect(result.scanners[0].usb_device).toBe(8);
+    });
+
+    // Review round 6 (re-review after round 5's fixes): mirrors the test
+    // above with the payload order reversed, to pin that the winner is
+    // purely "whichever entry appears first in this call's array", not an
+    // accidental bias toward one device's data — there is no ground truth
+    // for which of two same-port entries in one detection pass is "right".
+    it('refuses whichever payload entry comes second, symmetric under reversed order', async () => {
+      const rows: any[] = [];
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) =>
+        rows.filter((r) => !where?.usb_port || r.usb_port === where.usb_port)
+      );
+      db.graviScanner.create.mockImplementation(async ({ data }: any) => {
+        const row = { id: `row-${rows.length + 1}`, enabled: true, ...data };
+        rows.push(row);
+        return { ...row };
+      });
+      db.graviScanner.update.mockImplementation(
+        async ({ where, data }: any) => {
+          const row = rows.find((r) => r.id === where.id);
+          Object.assign(row, data);
+          return { ...row };
+        }
+      );
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo — device B',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 9,
+          usb_port: '1-3',
+        },
+        {
+          name: 'Perfection V600 Photo — device A',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 8,
+          usb_port: '1-3',
+        },
+      ]);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].usb_device).toBe(9);
+      expect(result.refused).toContain('1-3');
+      expect(result.scanners).toHaveLength(1);
+      expect(result.scanners[0].usb_device).toBe(9);
     });
   });
 
@@ -595,5 +781,98 @@ describe('buildSaneName', () => {
 
   it('zero-pads independently when one value already has 3 digits', () => {
     expect(buildSaneName(123, 45)).toBe('epkowa:interpreter:123:045');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchDetectedToDb — identity matching precedence
+// ---------------------------------------------------------------------------
+
+/**
+ * This is the only join between "whose plate barcodes" and "which physical
+ * scanner": its output becomes GraviScan.tsx's saneNames map and from there
+ * each worker's --device. A wrong binding applies one scanner's barcodes to
+ * another scanner's images.
+ */
+describe('matchDetectedToDb — identity matching precedence', () => {
+  const detected = (
+    overrides: Partial<DetectedScanner> = {}
+  ): DetectedScanner => ({
+    ...MOCK_SCANNER,
+    scanner_id: '',
+    ...overrides,
+  });
+
+  it('binds by port, not by a coincident device number', async () => {
+    const list = [detected({ usb_port: '1-4', usb_bus: 1, usb_device: 8 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 },
+      { id: 'sc-B', name: 'B', usb_port: '1-4', usb_bus: 1, usb_device: 5 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('sc-B');
+  });
+
+  it('treats a scanner on an unknown port as new rather than claiming a row', async () => {
+    const list = [detected({ usb_port: '1-9', usb_bus: 1, usb_device: 8 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-2.3', usb_bus: 1, usb_device: 8 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+  });
+
+  it('never claims a null-port row by device number when it has a usable port', async () => {
+    const list = [detected({ usb_port: '1-7', usb_bus: 1, usb_device: 5 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: null, usb_bus: 1, usb_device: 5 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+  });
+
+  it('falls back to the address only when both ports are unusable', async () => {
+    const list = [detected({ usb_port: '', usb_bus: 1, usb_device: 4 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-2.3', usb_bus: 1, usb_device: 4 },
+      { id: 'sc-B', name: 'B', usb_port: null, usb_bus: 1, usb_device: 4 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('sc-B');
+  });
+
+  it('does not treat two empty-string ports as a match', async () => {
+    const list = [detected({ usb_port: '', usb_bus: 9, usb_device: 9 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '', usb_bus: 1, usb_device: 4 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+  });
+
+  // Review round 5 (post-implementation): matchDetectedToDb is the sole join
+  // between "whose plate barcodes" and "which physical scanner" — it must
+  // refuse an ambiguous match exactly as upsertScannerRow does, rather than
+  // silently binding to the first candidate in array order.
+  it('refuses to bind when two rows share the same usable port, rather than picking the first in array order', async () => {
+    const list = [detected({ usb_port: '1-4', usb_bus: 1, usb_device: 8 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: '1-4', usb_bus: 1, usb_device: 5 },
+      { id: 'sc-B', name: 'B', usb_port: '1-4', usb_bus: 1, usb_device: 6 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+    expect(list[0].name).toBe(MOCK_SCANNER.name);
+  });
+
+  it('refuses to bind on the address tier when two portless rows share the same bus+device', async () => {
+    const list = [detected({ usb_port: '', usb_bus: 1, usb_device: 4 })];
+    matchDetectedToDb(list, [
+      { id: 'sc-A', name: 'A', usb_port: null, usb_bus: 1, usb_device: 4 },
+      { id: 'sc-B', name: 'B', usb_port: '', usb_bus: 1, usb_device: 4 },
+    ]);
+
+    expect(list[0].scanner_id).toBe('');
+    expect(list[0].name).toBe(MOCK_SCANNER.name);
   });
 });

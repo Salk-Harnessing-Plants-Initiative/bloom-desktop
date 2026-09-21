@@ -474,6 +474,20 @@ export async function initGraviScan(
   // Clean up old scan logs on startup
   cleanupOldLogs();
 
+  // Report scanner-port identity problems to the durable scan log.
+  //
+  // Fire-and-forget deliberately: `initGraviScan` is awaited before
+  // `database:ready` is sent and before the app-ready gate resolves, so
+  // awaiting the audit here would delay startup. `auditScannerPorts` never
+  // throws — it catches its own failures, including an unusable `db` — and
+  // the extra `.catch` is belt-and-braces so nothing can surface as an
+  // unhandled rejection at app start.
+  void import('./scanner-port-audit')
+    .then(({ auditScannerPorts }) => auditScannerPorts(db))
+    .catch((error) => {
+      console.error('[Main] scanner port audit failed to run:', error);
+    });
+
   // Wire linkGraviMetadata/unlinkGraviMetadata's audit logging (database-
   // handlers.ts is shared code and cannot import graviscan/scan-logger
   // directly — see the eslint no-restricted-imports rule).
