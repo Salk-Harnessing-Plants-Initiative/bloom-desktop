@@ -35,6 +35,10 @@ vi.mock('../../../src/main/graviscan/scan-logger', () => ({
   closeScanLog: vi.fn(),
 }));
 
+vi.mock('../../../src/main/graviscan/scanner-port-audit', () => ({
+  auditScannerPorts: vi.fn().mockResolvedValue([]),
+}));
+
 import {
   graviSessionFns,
   setupCoordinatorEventForwarding,
@@ -50,6 +54,7 @@ import {
   closeScanLog,
   scanLog,
 } from '../../../src/main/graviscan/scan-logger';
+import { auditScannerPorts } from '../../../src/main/graviscan/scanner-port-audit';
 import { ScanCoordinator } from '../../../src/main/graviscan/scan-coordinator';
 
 describe('GraviScan wiring module', () => {
@@ -118,6 +123,26 @@ describe('GraviScan wiring module', () => {
       await initGraviScan('graviscan', {} as any, {} as any, () => null);
 
       expect(cleanupOldLogs).toHaveBeenCalled();
+    });
+
+    it('completes startup and leaks no unhandled rejection when the port audit fails against an unusable db (#182)', async () => {
+      vi.mocked(auditScannerPorts).mockRejectedValueOnce(new Error('boom'));
+      const onUnhandledRejection = vi.fn();
+      process.on('unhandledRejection', onUnhandledRejection);
+
+      try {
+        await initGraviScan('graviscan', {} as any, {} as any, () => null);
+        // The audit is fire-and-forget (`void import(...).then(...)`), so
+        // its rejection lands on a later microtask than `initGraviScan`'s
+        // own `await` — flush the queue before asserting nothing leaked.
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(cleanupOldLogs).toHaveBeenCalled();
+        expect(registerGraviScanHandlers).toHaveBeenCalled();
+        expect(onUnhandledRejection).not.toHaveBeenCalled();
+      } finally {
+        process.off('unhandledRejection', onUnhandledRejection);
+      }
     });
 
     it('wires arguments correctly to registerGraviScanHandlers', async () => {
