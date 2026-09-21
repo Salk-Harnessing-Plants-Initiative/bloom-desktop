@@ -221,16 +221,20 @@ device-number match never assigns, changes or transfers a `usb_port`._
       `specs/scanning/spec.md` in this change directory has only a single `## ADDED Requirements`
       header (`Scanner Identity Matching Precedence`, `Scanner Port Integrity Audit`) — no
       `MODIFIED` block exists for the check to compare scenario names against.
-- [ ] 3.4 Annotate #243 with `design.md` Decision 3's argument. Comment on #167 and #203,
-      correcting #203's false premise that port-primary matching already ships.
-- [ ] 3.5 Write the operator note. For each finding class say plainly what can be done: a duplicate
+- [x] 3.4 Annotate #243 with `design.md` Decision 3's argument. Comment on #167 and #203,
+      correcting #203's false premise that port-primary matching already ships. Posted 2026-09-21,
+      referencing PR #376.
+- [x] 3.5 Write the operator note. For each finding class say plainly what can be done: a duplicate
       port needs a canonical row chosen; a stranded disabled row needs removing or re-enabling; a
       null/empty port **cannot** be repaired in-app, because `upsertScannerRow` is the only writer of
       `usb_port` and the invariant forbids the device-number tier from assigning one — the remedy is
       the existing per-row disable followed by a re-detect once topology detection works. Note also
-      that `display_name` is positional and rewritten on every Detect, so labels reshuffle.
-- [ ] 3.6 File: the `usb_port` unique-constraint issue; the `graviscan:save-scanners-db` missing
+      that `display_name` is positional and rewritten on every Detect, so labels reshuffle. Written
+      into PR #376's description under "Operator note", covering all four populations plus the
+      `display_name` note.
+- [x] 3.6 File: the `usb_port` unique-constraint issue; the `graviscan:save-scanners-db` missing
       active-scan guard; the dead `graviscan:validate-scanners` path found while choosing the hook.
+      Filed 2026-09-21: #373, #374, #375.
 
 ## 4. Hardware validation
 
@@ -387,15 +391,19 @@ pre-implementation rounds could not have caught. See `design.md` Decision 9 for 
 
 ## 6. Pre-merge
 
-- [ ] 6.1 `/pre-merge`.
-- [ ] 6.2 Evidence gate: do not open the PR until 4.1-4.3 are recorded passed and 4.4 passed or
-      blocked-with-cause.
-- [ ] 6.3 Open the PR. Reference #167 and #203, note the #243 annotation, mark BREAKING with the
+- [x] 6.1 `/pre-merge`. Done as section 5.8 (re-run after all review-round-5 fixes landed).
+- [x] 6.2 Evidence gate: do not open the PR until 4.1-4.3 are recorded passed and 4.4 passed or
+      blocked-with-cause. 4.1-4.4 all recorded passed; only 4.4a (re-run at merge time, since
+      device numbers drift daily) remains, tracked as a pre-merge item in the PR itself.
+- [x] 6.3 Open the PR. Reference #167 and #203, note the #243 annotation, mark BREAKING with the
       operator note from 3.5, and point out that the sibling change's `Scanner USB Port Matching`
       requirement deliberately cross-references this one and disclaims governing `matchDetectedToDb()`.
-- [ ] 6.4 Review cycling to convergence. **Every round after the first gives at least one lens the
+      Opened as PR #376. #167/#203/#243 all annotated (3.4); operator note in the PR body (3.5).
+- [x] 6.4 Review cycling to convergence. **Every round after the first gives at least one lens the
       brief "did the previous round's fixes introduce defects of their own?"** — on this change's
       reviews that lens found, twice, that a fix had closed one matching cell while opening another.
+      Converged: round 5 found 3 BLOCKING + 6 IMPORTANT and fixed all of them; round 6 (briefed
+      exactly this question) found none new.
       Give one lens the brief to read the **native/C/packaging layer** any assumption rests on.
 - [ ] 6.5 Do not merge without explicit go-ahead from the user.
 - [ ] 6.6 Only after this merges, proceed with `fix-graviscan-retry-stale-usb-address`, and
