@@ -443,6 +443,55 @@ describe('scanner-handlers', () => {
       expect(result.scanners).toHaveLength(1);
       expect(result.scanners[0].usb_device).toBe(8);
     });
+
+    // Review round 6 (re-review after round 5's fixes): mirrors the test
+    // above with the payload order reversed, to pin that the winner is
+    // purely "whichever entry appears first in this call's array", not an
+    // accidental bias toward one device's data — there is no ground truth
+    // for which of two same-port entries in one detection pass is "right".
+    it('refuses whichever payload entry comes second, symmetric under reversed order', async () => {
+      const rows: any[] = [];
+      db.graviScanner.findMany.mockImplementation(async ({ where }: any) =>
+        rows.filter((r) => !where?.usb_port || r.usb_port === where.usb_port)
+      );
+      db.graviScanner.create.mockImplementation(async ({ data }: any) => {
+        const row = { id: `row-${rows.length + 1}`, enabled: true, ...data };
+        rows.push(row);
+        return { ...row };
+      });
+      db.graviScanner.update.mockImplementation(
+        async ({ where, data }: any) => {
+          const row = rows.find((r) => r.id === where.id);
+          Object.assign(row, data);
+          return { ...row };
+        }
+      );
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo — device B',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 9,
+          usb_port: '1-3',
+        },
+        {
+          name: 'Perfection V600 Photo — device A',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 8,
+          usb_port: '1-3',
+        },
+      ]);
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].usb_device).toBe(9);
+      expect(result.refused).toContain('1-3');
+      expect(result.scanners).toHaveLength(1);
+      expect(result.scanners[0].usb_device).toBe(9);
+    });
   });
 
   describe('getConfig', () => {
