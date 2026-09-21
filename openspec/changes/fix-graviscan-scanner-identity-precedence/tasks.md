@@ -370,11 +370,20 @@ pre-implementation rounds could not have caught. See `design.md` Decision 9 for 
       passed, 1 failed (the same pre-existing `electron-cleanup.test.ts` timing flake), 3 files
       failed (`scans-export.test.ts`, `database-handlers.test.ts` x2) — all pre-existing, outside
       this change's files, consistent with the baseline recorded at 2.8.
-- [ ] 5.9 Re-run `/review-pr` against the updated diff. **Give at least one lens the brief "did
+- [x] 5.9 Re-run `/review-pr` against the updated diff. **Give at least one lens the brief "did
       this round's fixes introduce defects of their own?"** — this project's history (PR #365, and
       3 of this change's own pre-implementation rounds) shows fixes routinely regress in exactly
-      this way.
-- [ ] 5.10 Open the PR only after 5.9 comes back clean or with issues resolved.
+      this way. Done 2026-09-21 as 2 parallel agents (one briefed exactly that; one re-walking all
+      10 truth-table cells and the full call chain end to end): **no new BLOCKING or IMPORTANT
+      findings.** Both independently confirmed: `claimedPorts` only tracks ports from a successful
+      save (never blocks a later entry because an earlier one failed); no circular import between
+      `scanner-upsert.ts` and `scanner-port-audit.ts`; `ConfigureScanner.tsx`'s `refusedWarning`
+      cannot fire post-unmount (no `await` between the mount check and the set); the same-payload
+      duplicate refusal is order-symmetric (whichever entry is first wins — there is no ground
+      truth for which is "correct" in a genuine detection-layer glitch, so the fix's contract is
+      "at most one write," not "the surviving write is provably right"). One suggestion from both
+      agents — a reversed-order mirror test — added and green (`1dda68d`).
+- [x] 5.10 Open the PR now that 5.9 came back clean.
 
 ## 6. Pre-merge
 
