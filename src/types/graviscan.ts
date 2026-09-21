@@ -281,6 +281,15 @@ export interface SaveScannersToDBResult {
   scanners: GraviScanner[];
   count?: number;
   disabled: string[];
+  /**
+   * Detected scanners this call deliberately refused to persist: one per
+   * scanner with no usable `usb_port` (unidentifiable), whose lookup was
+   * ambiguous, or that duplicated a `usb_port` already claimed earlier in
+   * the same payload. `success` stays `true` when this is non-empty — a
+   * caller MUST check it separately to avoid the silent-drop-out failure
+   * mode this field exists to report (see #182's review round 5).
+   */
+  refused: string[];
   error?: string;
 }
 

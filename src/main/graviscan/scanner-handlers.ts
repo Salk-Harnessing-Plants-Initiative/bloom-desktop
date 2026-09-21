@@ -23,6 +23,7 @@ import type {
   GraviScanner,
   GraviScanPlatformInfo,
   ResetUsbResult,
+  SaveScannersToDBResult,
   ScannerConfig,
 } from '../../types/graviscan';
 
@@ -423,7 +424,7 @@ export async function saveScannersToDB(
     usb_bus?: number;
     usb_device?: number;
   }>
-) {
+): Promise<SaveScannersToDBResult> {
   try {
     const savedScanners: GraviScanner[] = [];
     const refused: string[] = [];
@@ -532,7 +533,7 @@ export async function saveScannersToDB(
       error: error instanceof Error ? error.message : 'Failed to save scanners',
       scanners: [] as GraviScanner[],
       disabled: [] as string[],
-    };
+    } as SaveScannersToDBResult;
   }
 }
 

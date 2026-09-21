@@ -129,6 +129,28 @@ describe('scanner-handlers', () => {
   });
 
   describe('saveScannersToDB', () => {
+    // Review round 5 (post-implementation review, IMPORTANT): the catch-all
+    // error path omitted `refused`, so a caller that reads `result.refused`
+    // unconditionally (as ConfigureScanner.tsx now does) would throw on the
+    // error branch instead of falling through to the `error` message.
+    it('includes an empty refused array on the catch-all error path', async () => {
+      db.graviScanner.findMany.mockRejectedValue(new Error('DB connection lost'));
+
+      const result = await saveScannersToDB(db, [
+        {
+          name: 'Perfection V600 Photo',
+          vendor_id: '04b8',
+          product_id: '013a',
+          usb_bus: 1,
+          usb_device: 2,
+          usb_port: '1-2',
+        },
+      ]);
+
+      expect(result.success).toBe(false);
+      expect(result.refused).toEqual([]);
+    });
+
     it('should create new scanner records', async () => {
       db.graviScanner.findFirst.mockResolvedValue(null);
       db.graviScanner.create.mockResolvedValue({

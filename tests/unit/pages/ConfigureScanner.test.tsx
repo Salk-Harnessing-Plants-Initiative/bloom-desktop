@@ -290,6 +290,67 @@ describe('ConfigureScanner page', () => {
     expect(screen.getByText('Scanner 1')).toBeInTheDocument();
   });
 
+  // Review round 5 (post-implementation review, BLOCKING #3): a refused
+  // scanner is a partial-success case (`success: true`) distinct from a
+  // hard save failure — the operator must still be told, not just see a
+  // normal-looking successful Detect.
+  it('surfaces refused scanners even though saveScannersToDB() reports success', async () => {
+    mockGraviAPI.saveScannersToDB.mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        scanners: [],
+        count: 0,
+        disabled: [],
+        refused: ['1-3'],
+      },
+    });
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    fireEvent.click(screen.getByRole('button', { name: /detect scanners/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not be identified/i)).toBeInTheDocument();
+      expect(screen.getByText(/1-3/)).toBeInTheDocument();
+    });
+    // Unlike a hard save failure, a refusal must not block the status
+    // refresh — whatever DID save successfully should still show.
+    expect(mockGraviAPI.getScannerStatus).toHaveBeenCalled();
+  });
+
+  it('clears a previously-shown refused-scanner message on the next successful, fully-clean save', async () => {
+    mockGraviAPI.saveScannersToDB.mockResolvedValueOnce({
+      success: true,
+      data: {
+        success: true,
+        scanners: [],
+        count: 0,
+        disabled: [],
+        refused: ['1-3'],
+      },
+    });
+    render(<ConfigureScanner />);
+    await waitFor(() => screen.getByText('Scanner 1'));
+
+    fireEvent.click(screen.getByRole('button', { name: /detect scanners/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/could not be identified/i)).toBeInTheDocument();
+    });
+
+    mockGraviAPI.saveScannersToDB.mockResolvedValueOnce({
+      success: true,
+      data: { success: true, scanners: [], count: 1, disabled: [], refused: [] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /detect scanners/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/could not be identified/i)
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it('polls getScannerStatus() while a row is starting and stops once none are, cleaning up on unmount', async () => {
     vi.useFakeTimers();
     mockGraviAPI.getScannerStatus
