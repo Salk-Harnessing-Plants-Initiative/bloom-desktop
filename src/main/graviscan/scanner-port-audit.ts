@@ -26,6 +26,7 @@
  */
 
 import { scanLog } from './scan-logger';
+import { isUsablePort } from './scanner-upsert';
 
 /** The subset of the scanner row this audit reads. */
 export interface ScannerPortAuditRow {
@@ -61,10 +62,6 @@ export type ScannerPortFinding =
 
 /** Stable, greppable prefix for every line this audit writes. */
 const LOG_PREFIX = '[GraviScan:PortAudit]';
-
-function isUsablePort(port: string | null | undefined): port is string {
-  return typeof port === 'string' && port.length > 0;
-}
 
 /**
  * Audit saved scanner port integrity. Never throws: any failure is logged and

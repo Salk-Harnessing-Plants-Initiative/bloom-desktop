@@ -42,8 +42,12 @@ export interface UpsertScannerPayload {
   usb_device?: number;
 }
 
-/** A port value is usable only when it is a non-empty string. */
-function isUsablePort(port: string | null | undefined): port is string {
+/**
+ * A port value is usable only when it is a non-empty string. Shared with
+ * `scanner-handlers.ts` and `scanner-port-audit.ts` so the one predicate this
+ * whole change's invariant hangs on cannot drift between copies.
+ */
+export function isUsablePort(port: string | null | undefined): port is string {
   return typeof port === 'string' && port.length > 0;
 }
 

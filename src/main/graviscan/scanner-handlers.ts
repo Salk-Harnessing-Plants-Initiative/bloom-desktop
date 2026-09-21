@@ -10,7 +10,12 @@
 import { PrismaClient } from '@prisma/client';
 import { detectEpsonScanners } from '../lsusb-detection';
 import type { ScanCoordinatorLike } from './session-handlers';
-import { upsertScannerRow, disableStaleScannerRows } from './scanner-upsert';
+import {
+  upsertScannerRow,
+  disableStaleScannerRows,
+  isUsablePort,
+} from './scanner-upsert';
+import { scanLog } from './scan-logger';
 import type {
   DetectedScanner,
   GraviConfig,
@@ -100,28 +105,51 @@ function buildMockScanners(dbScanners: any[]): DetectedScanner[] {
  * Note the candidate set differs from `upsertScannerRow`'s: callers pass only
  * `enabled` rows, so a disabled row cannot compete for identity during a live
  * detection pass while remaining re-enableable on re-detect.
+ *
+ * Review round 5 (post-implementation review): an ambiguous match — more
+ * than one candidate row on either tier — refuses to bind, exactly as
+ * `upsertScannerRow`'s `>1` check refuses to write. A plain `Array.find()`
+ * would silently apply one scanner's plate barcodes to another's images by
+ * picking the first candidate in array order, which is the exact failure
+ * mode this whole change exists to close — this function is the one place
+ * that failure would reach the running session, not just the database.
  */
+export interface MatchCandidateRow {
+  id: string;
+  name: string;
+  usb_port: string | null;
+  usb_bus: number | null;
+  usb_device: number | null;
+}
+
 export function matchDetectedToDb(
   detectedScanners: DetectedScanner[],
-  dbScanners: any[]
+  dbScanners: MatchCandidateRow[]
 ): void {
-  const usable = (p: unknown): p is string =>
-    typeof p === 'string' && p.length > 0;
-
   for (const detected of detectedScanners) {
-    let match: any;
+    let matches: MatchCandidateRow[];
 
-    if (usable(detected.usb_port)) {
-      match = dbScanners.find((s: any) => s.usb_port === detected.usb_port);
+    if (isUsablePort(detected.usb_port)) {
+      matches = dbScanners.filter((s) => s.usb_port === detected.usb_port);
     } else {
-      match = dbScanners.find(
-        (s: any) =>
-          !usable(s.usb_port) &&
+      matches = dbScanners.filter(
+        (s) =>
+          !isUsablePort(s.usb_port) &&
           s.usb_bus === detected.usb_bus &&
           s.usb_device === detected.usb_device
       );
     }
 
+    if (matches.length > 1) {
+      scanLog(
+        `[GraviScan:DETECT] ambiguous match for detected scanner ` +
+          `port=${detected.usb_port || 'none'} bus=${detected.usb_bus ?? 'null'} device=${detected.usb_device ?? 'null'} ` +
+          `candidates=${matches.map((m) => m.id).join(',')} — left unbound`
+      );
+      continue;
+    }
+
+    const match = matches[0];
     if (match) {
       detected.scanner_id = match.id;
       detected.name = match.name;
