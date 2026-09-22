@@ -704,13 +704,97 @@ re-enumerate.
 - Trap: `usb_port` is `'1-8'` and `usb_device` is `8` while the live device number is `9`. The two
   8s are unrelated; confusing them makes a stale-address test look like a passing one.
 
-- [ ] 4.1 Re-confirm the pre-flight at execution time (device numbers move). Do **not** run
+### Hardware-validation results — executed 2026-09-22 on `pbiob-gh-04`, commit `8ddd453`
+
+**4.1 PASSED.** Rig reachable, kernel `7.0.0-28-generic`. V600 live at `Bus 001 Device 009`,
+sysfs `1-8`, **`serial=NONE`** (live re-confirmation of the no-usable-iSerial premise). `usb_port`
+notation matched byte-exactly (`lsusb -t` "Port 008" on bus 1 → `1-8` → sysfs path `1-8`); still
+only the single-level case, so #243's multi-level question is still open. **The row was already
+stale with no inducement**: stored `usb_device: 8` against live devnum `9`, exactly as on
+2026-09-17. `python-sane` present; PyInstaller bundle rebuilt (the existing one predated PR #365)
+and verified to have resolved `sane`. A bogus-device probe reproduced #182's exact signature,
+`Failed to open device after 3 attempts`.
+
+**4.2 PASSED — all three assertions.** Induced `usb_device=3` mid-session against an interval
+session, then retried over IPC:
+
+| Assertion | Evidence |
+| --------- | -------- |
+| call succeeds | `{"success":true}` |
+| row corrected | `(1,3,'1-8')` → `(1,9,'1-8')`; `usb_port` untouched, so "writes only those two columns" holds on real Prisma |
+| worker got the refreshed name | pid 215881 `--device epkowa:interpreter:001:009`, `SANE_USB_FILTER=001:009` — **not** `:003` |
+
+Retry wall-clock **38.5 s**, because `retryScanner` awaits the queued `addScanner`, which settles
+only at the next `cycle-complete` (45 s interval). That is Decision 8's #366 concern measured:
+"appears to do nothing for up to an interval" is real and quantified.
+
+The durable before/after is in `~/.bloom/logs/graviscan-2026-09-22.log`, same rig, same scanner:
+
+```
+2026-09-16  [WedgeResponse] retry failed … Failed to open device after 3 attempts   (old code, ×2)
+2026-09-22  [WedgeResponse] retry succeeded … usb_port=1-8 address=1:3->1:9 changed=true
+```
+
+**Caveat, stated rather than glossed:** 4.2 alone does **not** isolate spawn-time resolution from
+click-time resolution — the click-time refresh had already produced `:009`, so a queued spawn
+using the captured name would have looked identical. **4.5 closes that gap.**
+
+**4.3 PASSED — all assertions.** Row repointed to empty port `1-14`: refused, message named the
+port, no "Detect Scanners" instruction, **no DB write**, and the **original worker stayed alive**
+(`:009` still running) — real-hardware confirmation that refresh runs before `stopScanner`, so an
+unrecoverable scanner is left running rather than stopped. Refusal took **39 ms**, confirming
+`not-detected` is treated as a conclusion and not retried.
+
+**This run found a real defect** (fixed in `8ddd453`): the message read "the scanner on USB port
+1-14 is not connected **at USB port 1-14**" — the port twice, sentence-initial lowercase. That is
+the rig's **default** phrasing, since its real row has `display_name: null`. The unit test could
+not catch it because it asserted the message *contains* the port, which naming it twice satisfies.
+Re-verified after the fix: "The scanner on USB port 1-14 is not connected. Check that it is
+powered on and its USB cable is connected, then try again."
+
+**4.5 PASSED on its stated assertion**, with a real physical power-cycle (device `9` → `10`):
+
+| | |
+| --- | --- |
+| page-mount snapshot, captured **before** the cycle | `epkowa:interpreter:001:009` |
+| worker actually spawned **after** the cycle | **`epkowa:interpreter:001:010`** |
+| stale snapshot name used? | **no** |
+
+This is the decisive isolation 4.2 could not provide: the name was captured before a physical
+re-enumeration and only live resolution could produce `:010`. Row also updated `8` → `10`.
+
+**Caveat:** the session then failed to come online — but **not** because of addressing. The log
+shows the correct name and the correct libusb filter, with `sane.open()` returning **`Device
+busy`** (not `Invalid argument`, which is what a genuinely stale address returns — confirmed by a
+`:999` probe). Independently falsified: the **identical** name opened in **0.0 s** once the
+scanner had been powered on a few minutes. Cause was the harness allowing only 5 s of settle time;
+the worker's own `sane.open()` retries span just ~18 s (3/6/9 s), which is not enough for a V600
+after power-on. Settle raised to 30 s. **Operationally relevant beyond the test:** an operator who
+starts a session immediately after a power-cycle can hit this.
+
+**4.4 NOT EXECUTED — blocked, external cause.** The rig's Electron GUI froze before the attended
+run could start. Diagnosed as a **GPU-process crash loop**, not an app hang: three
+`GPU process exited unexpectedly` entries in ~11 min (`exit_code=139` = SIGSEGV, twice), while
+every Electron process sat `Sl+` at ~0% CPU, no `D` state, load 0.01, ~16 GB RAM free. Host is an
+**NVIDIA RTX A5000 on Wayland/XWayland**, and the codebase carries **no** GPU mitigation
+(`disableHardwareAcceleration`, `--disable-gpu`, `--in-process-gpu`, `--use-gl` — zero hits).
+Handed off as a separate problem; **this is not a `LIBUSB_ENDPOINT_RECOVERY` block**, so the
+task's `LIBUSB_ENDPOINT_RECOVERY=false` re-run clause was never reached and 4.4 must still be run.
+
+**Rig state left behind:** `GraviScanner.usb_device = 10`, the **correct live value** — chosen
+deliberately over restoring the as-found stale `8`, which would have re-armed #182's precondition
+for the next user. All other mutations restored. `~/.bloom/.env` md5 unchanged throughout
+(`08105388f6fe3b1d399874b4676d0847`), backup at `~/.bloom/.env.bak-20260922-claude`. Seeded
+`GraviConfig` row `hw44-config` (4grid/800dpi) remains — the rig had none. Scratch scripts in
+`~/claude-hw-validation/`.
+
+- [x] 4.1 Re-confirm the pre-flight at execution time (device numbers move). Do **not** run
       `npm run dev` or `npm run build:python` — they uninstall `python-sane` (#361). Use
       `uv sync --extra graviscan-linux --extra dev`, then
       `uv run pyinstaller python/main.spec --clean --noconfirm`, then `npm start`. Run `npm ci` first.
       Leave `~/.bloom/.env` in place (#367). Verify `dist/bloom-hardware` is newer than
       `python/graviscan/scan_worker.py`.
-- [ ] 4.2 **Deterministic induced-staleness proof (unattended).** Record the exact DB path and
+- [x] 4.2 **Deterministic induced-staleness proof (unattended).** Record the exact DB path and
       commands, and restore the row afterwards. Write a deliberately wrong `usb_device`, start an
       **interval** session (not `scanOnce`), and call `graviscan:retry-scanner`. Drive it through the
       same `_electron.launch` + `xvfb-run` harness as 4.4, since a session started purely over IPC
@@ -719,7 +803,7 @@ re-enumerate.
       `--device`/`SANE_USB_FILTER`). The third is load-bearing — without it this passes even if the
       queued spawn used a stale captured name. Record the retry's wall-clock duration, so the async
       detection change has a measured basis.
-- [ ] 4.3 Negative control: point the row at a `usb_port` with no device attached; confirm the
+- [x] 4.3 Negative control: point the row at a `usb_port` with no device attached; confirm the
       `not-detected` message reaches the operator-visible error naming the port, and does **not**
       tell the operator to run Detect Scanners. Restore the row.
 - [ ] 4.4 **Attended physical run (pre-merge; needs a human at the rig).** Induce a wedge by
@@ -732,7 +816,7 @@ re-enumerate.
       active, re-run with it set to `false`** (honored by `buildSubprocessEnv`, and already a key in
       the rig's `~/.bloom/.env`) before recording the item as blocked — otherwise "blocked" is a
       self-inflicted, removable cause and this gate becomes ceremonial.
-- [ ] 4.5 Also exercise the session-start path (§2, task 2.5): with the page mounted, power-cycle,
+- [x] 4.5 Also exercise the session-start path (§2, task 2.5): with the page mounted, power-cycle,
       then start a fresh session without reloading, and confirm it spawns on the live address. This is
       the operator's actual workaround and it is untested by anything else.
 - [ ] 4.6 Re-run #279 item 5 (retry **without** power-cycling): its previous PASS evidence is
