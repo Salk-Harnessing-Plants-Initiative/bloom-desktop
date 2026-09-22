@@ -35,6 +35,33 @@ code.** These tests are the only automated protection. (`pr-checks.yml:220` comm
 
 Commands: `npm run lint`, `npx tsc --noEmit`, `npm run test:unit`.
 
+### TDD audit — verified against `git log -p`, not against this file (2026-09-21)
+
+Change #1's task file claimed uniform red-green and a review found three pieces were test-after,
+two of them admitted in their own commit messages. So this was checked by reading the diffs:
+
+- **Red commit `2afdb79`** touches exactly one file under `src/`:
+  `scanner-usb-refresh.ts`, containing the declared signature-only stub. Grepped for logic — it
+  holds two `throw new Error('not implemented')` lines and **no** `return`, `if` or `for`. No
+  implementation rode along.
+- **42 tests failed in that commit**, every one on an assertion or a missing export, none on a
+  collection error. Measured table under task 1.8.
+- **Green commit `4227016`** carries the implementation. Its test-file changes were audited for
+  weakened assertions: **none**. The only assertion changes are in `scan-coordinator.test.ts`,
+  and all four went from a fuzzy `stringMatching(/resolv/i)` — which **cannot match**
+  "resolution", so it would have passed against anything — to two substantive
+  `stringContaining` assertions each. Strictly stronger. Every other test change in that commit
+  is harness-only (mock exports, `mockReset`, env cleanup, replacing `any` casts with a declared
+  type).
+- **One genuine test-after, stated rather than hidden:** the two detection-sharing tests in
+  `scanner-usb-refresh.test.ts` ("shares one detection pass between concurrent refreshes" and
+  "does not reuse a settled detection for a later refresh") landed in the **green** commit,
+  alongside the mechanism they cover. The mechanism was written first, then the tests. They are
+  real tests of real behaviour in both directions, but they did not go red before going green,
+  and should not be cited as red-green evidence.
+- **Eight tests passed vacuously in the red commit** and are listed by name in task 1.8b. They
+  became meaningful only at 2.9.
+
 ---
 
 ## 0. Prerequisites
