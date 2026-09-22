@@ -2,8 +2,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Complete-replacement factory: every export `scanner-handlers.ts` reaches
+// through this module must appear here or the file fails at import.
+// `buildSaneName` moves into `lsusb-detection.ts` (it was duplicated with an
+// identical body), and gets a REAL implementation rather than a `vi.fn()`
+// because this file asserts its output below.
 vi.mock('../../../src/main/lsusb-detection', () => ({
   detectEpsonScanners: vi.fn(),
+  detectEpsonScannersAsync: vi.fn(),
+  buildSaneName: (bus: number, device: number) =>
+    `epkowa:interpreter:${String(bus).padStart(3, '0')}:${String(device).padStart(3, '0')}`,
 }));
 
 import { detectEpsonScanners } from '../../../src/main/lsusb-detection';
