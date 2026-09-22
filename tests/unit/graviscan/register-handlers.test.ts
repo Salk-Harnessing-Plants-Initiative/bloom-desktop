@@ -28,12 +28,21 @@ vi.mock('../../../src/main/graviscan/scanner-upsert', () => ({
   stopWorkersForDisabledScanners: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Wholesale mock: `register-handlers` sees none of the real module, which
+// is exactly why the "supplies startScan a saneName resolver factory" test
+// below asserts the wiring directly — a signature change here is otherwise
+// invisible to every test in this file.
 vi.mock('../../../src/main/graviscan/session-handlers', () => ({
   startScan: vi.fn().mockResolvedValue({ success: true }),
   getScanStatus: vi.fn().mockReturnValue(null),
   markJobRecorded: vi.fn(),
   cancelScan: vi.fn().mockResolvedValue({ success: true }),
   retryScanner: vi.fn().mockResolvedValue({ success: true }),
+  makeSaneNameResolver: vi
+    .fn()
+    .mockImplementation(
+      () => async () => 'epkowa:interpreter:001:008'
+    ),
 }));
 
 vi.mock('../../../src/main/graviscan/image-handlers', () => ({

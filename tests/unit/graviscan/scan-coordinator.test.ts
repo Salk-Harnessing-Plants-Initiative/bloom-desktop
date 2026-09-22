@@ -3,10 +3,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import path from 'path';
 
-// Mock ScannerSubprocess
+// Mock ScannerSubprocess.
+//
+// Complete-replacement factory: every export the coordinator imports from
+// this module must appear here. `isValidSaneName` gets a REAL
+// implementation, not a `vi.fn()` — the coordinator uses it to decide
+// whether to keep a resolved device name, so a stub returning `undefined`
+// would silently make every resolved name look invalid and mask the very
+// behaviour these tests pin.
 vi.mock('../../../src/main/graviscan/scanner-subprocess', () => {
   return {
     ScannerSubprocess: vi.fn(),
+    isValidSaneName: (name: string) => {
+      if (typeof name !== 'string' || name.length === 0) return false;
+      const parts = name.split(':');
+      if (parts.length < 4) return false;
+      return /^\d{3}$/.test(parts[2]) && /^\d{3}$/.test(parts[3]);
+    },
   };
 });
 
@@ -3364,9 +3377,15 @@ describe('ScanCoordinator', () => {
       expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
       // An absent resolver is ordinary, not a failure — logging it as one
       // would bury the genuine failure-caused fallbacks in noise.
+      //
+      // Matched on the literal phrase the production code emits, not a
+      // loose pattern: a fuzzy regex that happens never to match would make
+      // this negative assertion vacuously pass no matter what was logged.
       const resolverLogs = vi
         .mocked(scanLog)
-        .mock.calls.filter((c) => /resolv/i.test(String(c[0])));
+        .mock.calls.filter((c) =>
+          String(c[0]).includes('spawn-time saneName resolution')
+        );
       expect(resolverLogs).toEqual([]);
     });
 
@@ -3405,7 +3424,12 @@ describe('ScanCoordinator', () => {
       });
 
       expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
-      expect(scanLog).toHaveBeenCalledWith(expect.stringMatching(/resolv/i));
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining('returned no name')
+      );
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining('scanner-9')
+      );
     });
 
     it('a resolved name that fails device-name validation is discarded', async () => {
@@ -3422,7 +3446,13 @@ describe('ScanCoordinator', () => {
       });
 
       expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
-      expect(scanLog).toHaveBeenCalledWith(expect.stringMatching(/resolv/i));
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining('invalid name')
+      );
+      // The rejected name is named, so the fallback is diagnosable.
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining('epkowa:interpreter:null:null')
+      );
     });
 
     it('does not resolve when an already-ready worker is reused', async () => {

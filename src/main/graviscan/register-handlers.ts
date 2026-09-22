@@ -352,16 +352,39 @@ export function registerGraviScanHandlers(
       }
     }
     return wrapHandler(() =>
-      sessionHandlers.startScan(coordinator, params, sessionFns, (error) => {
-        const win = getMainWindow();
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('graviscan:scan-error', {
-            scannerId: null,
-            plateIndex: null,
-            error,
-          });
-        }
-      })
+      sessionHandlers.startScan(
+        coordinator,
+        params,
+        sessionFns,
+        (error) => {
+          const win = getMainWindow();
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('graviscan:scan-error', {
+              scannerId: null,
+              plateIndex: null,
+              error,
+            });
+          }
+        },
+        // Supplied here, not built inside `startScan`, because this layer
+        // is the one holding `db` — `session-handlers.ts` deliberately
+        // carries almost no DB dependency, and threading a handle into the
+        // main session entry point to fix an address would be a much larger
+        // intrusion than the retry path's.
+        //
+        // Without this, a session started after a power-cycle spawns on the
+        // `saneNames` map `GraviScan.tsx` fetched once at page mount, and
+        // fails with the same "Failed to open device" #182 produces on the
+        // retry button (design.md Decision 3, path 2 of 3).
+        (scannerId: string) =>
+          sessionHandlers.makeSaneNameResolver(
+            db,
+            scannerId,
+            params.scanners.find(
+              (s: { scannerId: string }) => s.scannerId === scannerId
+            )?.saneName ?? ''
+          )
+      )
     )();
   });
 

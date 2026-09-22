@@ -17,11 +17,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // This is a COMPLETE-REPLACEMENT factory: anything `lsusb-detection.ts`
 // imports from `child_process` must be exported here or the module fails at
-// import. `execFile` is mocked in Node **callback form** specifically so
-// `promisify()` can wrap it — the async detection shell does
-// `promisify(execFile)` at module scope, and against a bare `vi.fn()`
-// `promisify` throws at import time, which would kill every test in this
-// file rather than failing one assertion.
+// import. `execFile` is driven in Node **callback form**, which is the
+// contract the async detection shell depends on.
+//
+// The shell deliberately does NOT use `util.promisify` here: Node's real
+// `execFile` carries a `util.promisify.custom` implementation resolving to
+// `{ stdout, stderr }`, while a plain mock does not and resolves to the bare
+// first callback value instead. Depending on that difference would make the
+// async shell behave one way in production and another under test.
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
   execFile: vi.fn(),
@@ -37,22 +40,33 @@ const mockExecFileSync = vi.mocked(execFileSync);
 const mockExecFile = vi.mocked(execFile);
 
 /**
+ * The one shape of `execFile` the async shell actually uses:
+ * `(cmd, args, opts, callback)`.
+ *
+ * Declared rather than cast through `any` so that a change to how the shell
+ * invokes `execFile` surfaces here instead of being silently absorbed.
+ */
+type ExecFileCallbackForm = (
+  cmd: string,
+  args: string[],
+  opts: unknown,
+  cb: (error: Error | null, stdout: string, stderr: string) => void
+) => void;
+
+/** Install a callback-form `execFile` implementation on the mock. */
+function setExecFileImpl(impl: ExecFileCallbackForm) {
+  mockExecFile.mockImplementation(impl as unknown as typeof execFile);
+}
+
+/**
  * Drive the callback-form `execFile` mock from the same
  * "what would lsusb print" function the sync tests use, so both shells are
  * exercised against identical input.
  */
 function wireAsyncExecFile(outputFor: (args: string[]) => string) {
-  mockExecFile.mockImplementation(((
-    _cmd: string,
-    args: string[],
-    _opts: unknown,
-    cb: (e: Error | null, stdout: string, stderr: string) => void
-  ) => {
-    // promisify's callback contract: (err, stdout, stderr). The promisified
-    // form resolves to { stdout, stderr }.
+  setExecFileImpl((_cmd, args, _opts, cb) => {
     cb(null, outputFor(args ?? []), '');
-    return undefined;
-  }) as any);
+  });
 }
 
 // A single Epson V600 (vendor 04b8, product 013a) on bus 1, device 7.
@@ -245,15 +259,9 @@ describe('detectEpsonScannersAsync', () => {
   });
 
   it('reports lsusb being unavailable without throwing', async () => {
-    mockExecFile.mockImplementation(((
-      _cmd: string,
-      _args: string[],
-      _opts: unknown,
-      cb: (e: Error | null, stdout: string, stderr: string) => void
-    ) => {
+    setExecFileImpl((_cmd, _args, _opts, cb) => {
       cb(new Error('spawn lsusb ENOENT'), '', '');
-      return undefined;
-    }) as any);
+    });
 
     const result = await detectEpsonScannersAsync();
 
@@ -264,18 +272,12 @@ describe('detectEpsonScannersAsync', () => {
 
   it('does not block the event loop while detection is outstanding', async () => {
     let detectionSettled = false;
-    mockExecFile.mockImplementation(((
-      _cmd: string,
-      args: string[],
-      _opts: unknown,
-      cb: (e: Error | null, stdout: string, stderr: string) => void
-    ) => {
+    setExecFileImpl((_cmd, args, _opts, cb) => {
       setTimeout(() => {
         detectionSettled = true;
         cb(null, outputFor(args ?? []), '');
       }, 5);
-      return undefined;
-    }) as any);
+    });
 
     let ranWhileOutstanding = false;
     const pending = detectEpsonScannersAsync();

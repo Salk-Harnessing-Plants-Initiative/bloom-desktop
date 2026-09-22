@@ -217,7 +217,11 @@ jobs:
         run: npm run test:unit:coverage
         env:
           BLOOM_DATABASE_URL: 'file:./dev.db'
-        # Enforces 50% minimum coverage (configured in vitest.config.ts)
+        # NOTE: this does NOT enforce a coverage minimum. `vitest.config.ts`
+        # sets every threshold (lines/functions/branches/statements) to 0 and
+        # excludes `src/main/**` from coverage entirely, so the report is
+        # informational only. The previous comment here claimed "Enforces 50%
+        # minimum coverage", which was never true.
 
   # Python tests with coverage
   test-python:

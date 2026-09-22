@@ -12,7 +12,12 @@ import type {
   ScannerConfig,
   ScanSessionJob,
 } from '../../types/graviscan';
-import { buildSaneName } from './scanner-handlers';
+import { buildSaneName } from '../lsusb-detection';
+import {
+  refreshScannerUsbAddress,
+  type ScannerUsbRefreshDb,
+  type ScannerUsbRefreshOutcome,
+} from './scanner-usb-refresh';
 import { scanLog } from './scan-logger';
 
 // ---------------------------------------------------------------------------
@@ -26,14 +31,18 @@ import { scanLog } from './scan-logger';
  * dependency, matching `wiring.ts`'s `ScannerLookupDb` convention for the
  * same kind of "read one scanner row for a spawn-related decision" case.
  */
-export interface ScannerRetryLookupDb {
-  graviScanner: {
-    findUnique: (args: { where: { id: string } }) => Promise<{
-      usb_bus: number | null;
-      usb_device: number | null;
-      enabled: boolean;
-    } | null>;
-  };
+/**
+ * Retry needs to *write* a corrected address, not only read one, so it
+ * extends the refresh module's read+write interface.
+ *
+ * The extension is in this direction (retry extends refresh, not the
+ * reverse) because TypeScript will not let a derived interface *narrow*
+ * `graviScanner`'s shape — so the base row type declared in
+ * `scanner-usb-refresh.ts` carries the union of the fields both need,
+ * rather than each declaring a conflicting subset.
+ */
+export interface ScannerRetryLookupDb extends ScannerUsbRefreshDb {
+  graviScanner: ScannerUsbRefreshDb['graviScanner'];
 }
 
 export interface ScanCoordinatorLike {
@@ -99,7 +108,27 @@ export async function startScan(
   coordinator: ScanCoordinatorLike | null,
   params: StartScanParams,
   sessionFns: SessionFns,
-  onError?: (error: string) => void
+  onError?: (error: string) => void,
+  /**
+   * Builds a spawn-time address resolver for one scanner.
+   *
+   * A **factory**, not a `db` handle, deliberately: `startScan` is the main
+   * session entry point and this module carries almost no DB dependency by
+   * design. `register-handlers.ts` already holds `db`, so it supplies the
+   * factory and `startScan` never sees the database.
+   *
+   * Optional because an absent resolver is ordinary — `resetUsb` and the
+   * save-scanners spawn-on-discovery path perform their own detection in the
+   * same operation and must not resolve twice.
+   *
+   * Why session start needs this at all (`design.md` Decision 3, path 2 of
+   * 3): `GraviScan.tsx` fetches the `saneNames` map once per page mount, so
+   * cancel → power-cycle → start a new session without leaving the page —
+   * the most plausible operator recovery — otherwise spawns on an address
+   * captured before the power-cycle and fails with the identical error the
+   * retry button used to.
+   */
+  makeSaneNameResolver?: (scannerId: string) => () => Promise<string>
 ): Promise<{ success: boolean; error?: string }> {
   let sessionSet = false;
   try {
@@ -159,6 +188,9 @@ export async function startScan(
       scannerId: s.scannerId,
       saneName: s.saneName,
       plates: s.plates,
+      ...(makeSaneNameResolver
+        ? { resolveSaneName: makeSaneNameResolver(s.scannerId) }
+        : {}),
     }));
 
     await coordinator.initialize(scannerConfigs);
@@ -334,6 +366,83 @@ export async function cancelScan(
 // pair has resolved — without this guard, a second concurrent retry for
 // the same scannerId could race the first (addScanner() only dedupes
 // concurrent calls while a cycle is in flight; it does not when idle).
+/**
+ * Identify a scanner in an operator-facing message.
+ *
+ * Preference order: `display_name`, then `usb_port`, then the identifier.
+ *
+ * `name` is **deliberately excluded**. On the real rig it is
+ * `'Perfection V600 Photo'` — the model string, identical across all five
+ * production scanners — so including it would look informative while
+ * distinguishing nothing. The rig's actual row has `display_name: null`,
+ * which is why the `usb_port` tier exists: without it the message degrades
+ * to a UUID on exactly the hardware this feature runs on.
+ */
+function describeScanner(
+  row: { display_name?: string | null; usb_port?: string | null },
+  scannerId: string
+): string {
+  if (row.display_name) return row.display_name;
+  if (row.usb_port) return `the scanner on USB port ${row.usb_port}`;
+  return `scanner ${scannerId}`;
+}
+
+/**
+ * Turn a non-`refreshed` outcome into an actionable operator message.
+ *
+ * **None of these may tell the operator to run Detect Scanners.** That path
+ * is not gated on an active scan (unlike Reset USB), and `saveScannersToDB`
+ * calls `disableStaleScannerRows`, which disables every enabled row whose
+ * `usb_port` is absent from the current detection set — i.e. a powered-off
+ * wedged scanner, which is the *likeliest* reason a retry fails. So the
+ * prohibition covers `not-detected` as much as `no-stable-port`.
+ */
+function describeRefreshFailure(
+  outcome: Exclude<ScannerUsbRefreshOutcome, { status: 'refreshed' }>,
+  row: { display_name?: string | null; usb_port?: string | null },
+  scannerId: string
+): string {
+  const who = describeScanner(row, scannerId);
+  switch (outcome.status) {
+    case 'not-detected':
+      return `${who} is not connected at USB port ${outcome.usbPort}. Check that it is powered on and its USB cable is connected, then try again.`;
+    case 'no-stable-port':
+      return `${who} has no recorded USB port, so its current address cannot be determined. Reset All USB Connections from the Configure Scanner page while no scan is running.`;
+    case 'unusable-address':
+      return `${who} has no usable USB address recorded. If a USB reset is in progress, wait for it to finish and try again.`;
+    case 'row-missing':
+      return `Scanner ${scannerId} no longer exists in the database.`;
+    case 'detection-failed':
+      return `Could not read the USB bus to locate ${who} after ${outcome.attempts} attempts (${outcome.error}). Try again in a moment.`;
+  }
+}
+
+/**
+ * Build a spawn-time resolver for one scanner.
+ *
+ * Returns the freshly-resolved name, or the click-time `fallback` when
+ * resolution does not produce one. It never throws and never returns a
+ * failure: resolution must not be able to fail a spawn
+ * (`design.md` Decision 3a). The coordinator logs every failure-caused
+ * fallback with its cause.
+ */
+export function makeSaneNameResolver(
+  db: ScannerUsbRefreshDb,
+  scannerId: string,
+  fallback: string
+): () => Promise<string> {
+  return async () => {
+    const outcome = await refreshScannerUsbAddress(db, scannerId);
+    if (outcome.status !== 'refreshed') {
+      throw new Error(
+        `USB address re-resolution for ${scannerId} returned ${outcome.status}`
+      );
+    }
+    const resolved = buildSaneName(outcome.usbBus, outcome.usbDevice);
+    return resolved || fallback;
+  };
+}
+
 const retriesInFlight = new Set<string>();
 
 export async function retryScanner(
@@ -363,19 +472,43 @@ export async function retryScanner(
     if (!row) {
       return { success: false, error: `Scanner ${scannerId} not found` };
     }
-    if (row.usb_bus == null || row.usb_device == null) {
-      return {
-        success: false,
-        error: `Scanner ${scannerId} is missing usb_bus/usb_device (likely mid reset-usb)`,
-      };
-    }
+    // The row and `enabled` guards stay strictly BEFORE refresh, so neither
+    // a deleted nor a disabled scanner costs a USB detection. The old
+    // null-address guard that sat between them is gone: with refresh in
+    // place those columns are recoverable from `usb_port`, so the condition
+    // moves from "null ⇒ fail" to "no usable port ⇒ fail"
+    // (design.md Decision 6).
     if (!row.enabled) {
       return { success: false, error: `Scanner ${scannerId} is disabled` };
     }
 
-    const saneName = buildSaneName(row.usb_bus, row.usb_device);
+    // Re-resolve BEFORE stopping the scanner. A scanner that cannot be
+    // re-resolved is then left running rather than stopped and
+    // unrecoverable — the whole point of #182's fix is that the operator's
+    // only recovery path must not make things worse when it fails.
+    const refresh = await refreshScannerUsbAddress(db, scannerId);
+    if (refresh.status !== 'refreshed') {
+      const error = describeRefreshFailure(refresh, row, scannerId);
+      scanLog(
+        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} usb_port=${row.usb_port ?? 'none'} outcome=${refresh.status} error=${error}`
+      );
+      return { success: false, error };
+    }
+
+    const saneName = buildSaneName(refresh.usbBus, refresh.usbDevice);
     await coordinator.stopScanner(scannerId);
-    await coordinator.addScanner({ scannerId, saneName, plates: [] });
+    await coordinator.addScanner({
+      scannerId,
+      saneName,
+      plates: [],
+      // Resolve again at spawn time. `retryScanner` requires an active
+      // session and `isScanning` is true for 'waiting' too, so this
+      // addScanner takes the queued branch and runs on the next
+      // cycle-complete — "potentially hours for a continuous session" in
+      // register-handlers.ts's own words. Fixing the address here only
+      // fixes it at click time, not at use time (design.md Decision 3).
+      resolveSaneName: makeSaneNameResolver(db, scannerId, saneName),
+    });
 
     // addScanner() never throws on spawn failure (see scan-coordinator.ts) —
     // a resolved promise alone doesn't mean the worker actually came online.
@@ -391,14 +524,21 @@ export async function retryScanner(
       return { success: false, error: message };
     }
 
+    // New fields are appended AFTER `session=<id>`: three existing tests
+    // assert `stringContaining('scanner=… session=…')`, a contiguous
+    // substring, so inserting between the two would break them for a reason
+    // unrelated to any new behaviour.
     scanLog(
-      `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId}`
+      `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId} usb_port=${row.usb_port ?? 'none'} address=${refresh.previousUsbBus ?? 'none'}:${refresh.previousUsbDevice ?? 'none'}->${refresh.usbBus}:${refresh.usbDevice} changed=${refresh.changed}`
     );
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Retry failed';
+    // `session?.sessionId` printed the literal 'undefined' when
+    // `getScanSession()` itself threw — #279 item 8 recorded this line
+    // emitting `session=null`. Normalised while rewriting it.
     scanLog(
-      `[WedgeResponse] retry failed scanner=${scannerId} session=${session?.sessionId} error=${message}`
+      `[WedgeResponse] retry failed scanner=${scannerId} session=${session?.sessionId ?? 'none'} error=${message}`
     );
     return { success: false, error: message };
   } finally {

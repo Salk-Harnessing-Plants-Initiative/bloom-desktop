@@ -216,6 +216,30 @@ export interface ScannerConfig {
   scannerId: string;
   saneName: string;
   plates: PlateConfig[];
+  /**
+   * Re-resolve the SANE device name at spawn time.
+   *
+   * **Main-process only, and never serialisable.** A `ScannerConfig` is
+   * always constructed inside the main process and never crosses the preload
+   * boundary — the renderer's payload is the separate hand-synced
+   * `GraviStartScanParams` in `electron.d.ts`. Nothing but that convention
+   * protects this field: `preload.ts` types `startScan`'s params loosely
+   * enough that TypeScript would not catch a mistake, so putting a
+   * `ScannerConfig` on an IPC channel would surface as a runtime structured
+   * clone error rather than a compile failure.
+   *
+   * Why it exists: `usb_bus`/`usb_device` are a cache of a volatile kernel
+   * value, and a physical power-cycle — the only way to clear a V600 wedge —
+   * always re-enumerates the device at a new number (#182). A queued
+   * `addScanner` can capture a name up to a full scan interval before it is
+   * used, so the name must be resolved when the worker is actually spawned,
+   * not when the spawn was requested.
+   *
+   * Resolution can never *fail* a spawn: a rejection, an empty result or a
+   * name that fails device-name validation all fall back to `saneName`, with
+   * the cause logged (`design.md` Decision 3a).
+   */
+  resolveSaneName?: () => string | Promise<string>;
 }
 
 /**

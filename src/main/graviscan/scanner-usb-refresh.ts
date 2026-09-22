@@ -17,7 +17,8 @@
  * formats it.
  */
 
-import type { DetectedScanner } from '../types/graviscan';
+import { detectEpsonScannersAsync } from '../lsusb-detection';
+import type { DetectedScanner } from '../../types/graviscan';
 
 /**
  * The subset of Prisma's `GraviScanner` delegate this module needs.
@@ -105,10 +106,63 @@ export interface RefreshScannerUsbAddressOptions {
  * (`design.md` Decision 2).
  */
 export function matchDetectedByPort(
-  _usbPort: string | null | undefined,
-  _detected: DetectedScanner[]
+  usbPort: string | null | undefined,
+  detected: DetectedScanner[]
 ): DetectedScanner | undefined {
-  throw new Error('not implemented');
+  // An absent or empty port matches nothing. `buildUsbPort` yields '' for
+  // every device when `lsusb -t` fails, so two unrelated scanners can both
+  // carry '' — treating that as a match would bind an address to the wrong
+  // physical device.
+  if (!isUsableUsbPort(usbPort)) return undefined;
+
+  // Linear scan, not a Map: first-in-list-order is the specified tie-break.
+  return detected.find((d) => d.usb_port === usbPort);
+}
+
+/** A port is usable only if it is a non-empty string. */
+function isUsableUsbPort(port: string | null | undefined): port is string {
+  return typeof port === 'string' && port.length > 0;
+}
+
+/** Backoff between detection attempts. */
+const DETECTION_ATTEMPTS = 3;
+const DETECTION_BACKOFF_MS = [250, 750];
+
+/**
+ * Detection currently in flight, shared by concurrent callers.
+ *
+ * Several scanners retried in sequence each register their own
+ * `cycle-complete` listener and are not serialized, so N resolvers can run
+ * at one cycle boundary — up to 2N `lsusb` invocations on a bus that already
+ * has a wedged device on it. Sharing collapses that burst into one pass.
+ *
+ * **In-flight deduplication, not a time-based cache.** `design.md`'s Risks
+ * table describes this as "cached for a short TTL"; the intent is the same
+ * but a TTL is the wrong mechanism *here* specifically. This module exists
+ * because a cached USB address goes stale the instant a device
+ * re-enumerates, so retaining a **completed** detection — even for a
+ * second — reintroduces exactly the defect being fixed: a resolver could be
+ * handed a result captured before the power-cycle it is recovering from.
+ * Sharing only work that has not yet settled collapses the same burst with
+ * no staleness window at all, and needs no reset hook in the production
+ * module for tests to work around.
+ */
+let detectionInFlight: Promise<
+  Awaited<ReturnType<DetectScannersAsync>>
+> | null = null;
+
+function detectShared(detect: DetectScannersAsync) {
+  if (detectionInFlight) return detectionInFlight;
+
+  const promise = detect();
+  detectionInFlight = promise;
+  // Cleared on settle, success or failure, so the next caller always starts
+  // a genuinely fresh pass.
+  const clear = () => {
+    if (detectionInFlight === promise) detectionInFlight = null;
+  };
+  promise.then(clear, clear);
+  return promise;
 }
 
 /**
@@ -119,9 +173,126 @@ export function matchDetectedByPort(
  * own tests without a caller fabricating a row (`tasks.md` 2.3a).
  */
 export async function refreshScannerUsbAddress(
-  _db: ScannerUsbRefreshDb,
-  _scannerId: string,
-  _opts?: RefreshScannerUsbAddressOptions
+  db: ScannerUsbRefreshDb,
+  scannerId: string,
+  opts: RefreshScannerUsbAddressOptions = {}
 ): Promise<ScannerUsbRefreshOutcome> {
-  throw new Error('not implemented');
+  const detect = opts.detect ?? detectEpsonScannersAsync;
+  const sleep =
+    opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+
+  const row = await db.graviScanner.findUnique({ where: { id: scannerId } });
+  // Distinct from `not-detected`: the scanner is not merely absent from the
+  // bus, it is absent from the database. Reported before any detection is
+  // attempted, so a deleted row costs no USB probe.
+  if (!row) return { status: 'row-missing' };
+
+  const previousUsbBus = row.usb_bus;
+  const previousUsbDevice = row.usb_device;
+
+  // Mock mode has no bus to re-resolve against: mock scanners are
+  // deterministically addressed and never re-enumerate. Short-circuit to
+  // the stored values rather than spawning a real `lsusb`.
+  if (process.env.GRAVISCAN_MOCK?.toLowerCase() === 'true') {
+    // Guarded at runtime with Number.isInteger rather than by the type:
+    // this repo's tsconfig sets only `noImplicitAny`, so `null` stays
+    // assignable to every member of the union and the type alone proves
+    // nothing here.
+    if (
+      !Number.isInteger(previousUsbBus) ||
+      !Number.isInteger(previousUsbDevice)
+    ) {
+      // Reported separately from `no-stable-port` because the port may be
+      // perfectly good — `resetUsb` nulls these columns for 5s between
+      // clearing and repopulating them. Saying "no stable port" there would
+      // make the operator message a false statement about the row.
+      return { status: 'unusable-address', usbPort: row.usb_port };
+    }
+    return {
+      status: 'refreshed',
+      changed: false,
+      usbBus: previousUsbBus as number,
+      usbDevice: previousUsbDevice as number,
+      usbPort: row.usb_port,
+      previousUsbBus,
+      previousUsbDevice,
+    };
+  }
+
+  // `usb_port` is the only stable identifier the V600 offers, so without one
+  // there is nothing to re-resolve against and no safe fallback: after a
+  // power-cycle the stored address is always wrong.
+  if (!isUsableUsbPort(row.usb_port)) return { status: 'no-stable-port' };
+
+  let lastError = 'USB detection failed';
+  for (let attempt = 1; attempt <= DETECTION_ATTEMPTS; attempt++) {
+    let result: Awaited<ReturnType<DetectScannersAsync>>;
+    try {
+      result = await detectShared(detect);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      if (attempt < DETECTION_ATTEMPTS) {
+        await sleep(DETECTION_BACKOFF_MS[attempt - 1]);
+      }
+      continue;
+    }
+
+    if (!result.success) {
+      // Only the *diagnostic* is retried. `execFile` with a 5s timeout can
+      // fail transiently under exactly the bus contention a wedge creates,
+      // and refusing on one failure would cost a run's remaining timepoints
+      // for a reason unrelated to the scanner.
+      lastError = result.error ?? 'USB detection failed';
+      if (attempt < DETECTION_ATTEMPTS) {
+        await sleep(DETECTION_BACKOFF_MS[attempt - 1]);
+      }
+      continue;
+    }
+
+    const match = matchDetectedByPort(row.usb_port, result.scanners);
+    if (!match) {
+      // A *successful* detection that found nothing is a conclusion, not a
+      // flake — retrying it would spend ~15s confirming an absent scanner is
+      // still absent.
+      return { status: 'not-detected', usbPort: row.usb_port };
+    }
+
+    if (
+      !Number.isInteger(match.usb_bus) ||
+      !Number.isInteger(match.usb_device)
+    ) {
+      return { status: 'unusable-address', usbPort: row.usb_port };
+    }
+
+    const changed =
+      match.usb_bus !== previousUsbBus || match.usb_device !== previousUsbDevice;
+
+    if (changed) {
+      // Exactly these two columns. `usb_port` is never written here — this
+      // module re-resolves a volatile address for a row whose identity is
+      // already established, and rewriting the identity key from a
+      // detection result is what `fix-graviscan-scanner-identity-precedence`
+      // exists to control.
+      await db.graviScanner.update({
+        where: { id: scannerId },
+        data: { usb_bus: match.usb_bus, usb_device: match.usb_device },
+      });
+    }
+
+    return {
+      status: 'refreshed',
+      changed,
+      usbBus: match.usb_bus,
+      usbDevice: match.usb_device,
+      usbPort: row.usb_port,
+      previousUsbBus,
+      previousUsbDevice,
+    };
+  }
+
+  return {
+    status: 'detection-failed',
+    attempts: DETECTION_ATTEMPTS,
+    error: lastError,
+  };
 }

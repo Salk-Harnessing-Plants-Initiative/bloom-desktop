@@ -1,6 +1,6 @@
 // @vitest-environment node
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../../../src/main/graviscan/scan-logger', () => ({
   scanLog: vi.fn(),
@@ -590,11 +590,29 @@ describe('session-handlers', () => {
         isActive: true,
         sessionId: 'session-42',
       } as any);
+      // `vitest.config.ts` sets neither `clearMocks` nor `restoreMocks`, so
+      // call counts accumulate across tests unless cleared explicitly —
+      // which silently turns every `not.toHaveBeenCalled()` below into a
+      // failure inherited from an earlier test.
+      mockDetectAsync.mockReset();
       // Default: the scanner is found at the port and address its row
       // already holds, so the refresh is a no-op and the pre-existing tests
       // keep their original meaning. Tests that exercise a *moved* address
       // override this.
       mockDetectAsync.mockResolvedValue(detectionReporting(3, 7) as any);
+    });
+
+    // Restored here rather than at the end of each test that sets it: a
+    // failing assertion would otherwise skip the cleanup and leak
+    // GRAVISCAN_MOCK into every subsequent test, turning one real failure
+    // into a cascade of misleading ones — which is exactly what happened
+    // while writing these.
+    //
+    // Set and restored directly on `process.env`, which is what the
+    // production code reads.
+    afterEach(() => {
+      delete process.env.GRAVISCAN_MOCK;
+      vi.unstubAllEnvs();
     });
 
     // Title corrected by this change: the saneName no longer comes from a
@@ -838,7 +856,7 @@ describe('session-handlers', () => {
     it('in mock mode, retries without invoking USB detection', async () => {
       // The one retry scenario CI can exercise end to end, since CI has no
       // real scanner and mock scanners never re-enumerate.
-      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      process.env.GRAVISCAN_MOCK = 'true';
       const db = createMockRetryDb({
         usb_bus: 1,
         usb_device: 2,
@@ -858,7 +876,6 @@ describe('session-handlers', () => {
       expect(coordinator.addScanner).toHaveBeenCalledWith(
         expect.objectContaining({ saneName: 'epkowa:interpreter:001:002' })
       );
-      vi.unstubAllEnvs();
     });
 
     it('refreshes the address strictly before stopping the scanner', async () => {
@@ -1010,7 +1027,7 @@ describe('session-handlers', () => {
       // NOT validate — `buildSubprocessEnv`'s /^\d{3}$/ check sits inside a
       // `platform === 'linux' && !mock` branch — so without this a mock
       // retry would report success on a nonsense device.
-      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      process.env.GRAVISCAN_MOCK = 'true';
       const db = createMockRetryDb({
         usb_bus: null,
         usb_device: null,
@@ -1032,7 +1049,6 @@ describe('session-handlers', () => {
       expect(coordinator.addScanner).not.toHaveBeenCalledWith(
         expect.objectContaining({ saneName: expect.stringContaining('null') })
       );
-      vi.unstubAllEnvs();
     });
 
     it('identifies a scanner with no display_name by its port, not its identifier', async () => {

@@ -381,6 +381,67 @@ describe('refreshScannerUsbAddress', () => {
     expect(db.graviScanner.update).not.toHaveBeenCalled();
   });
 
+  it('shares one detection pass between concurrent refreshes', async () => {
+    // N scanners retried at one cycle boundary each register their own
+    // cycle-complete listener and are not serialized, so without sharing
+    // this is 2N `lsusb` invocations on a bus that already has a wedged
+    // device on it.
+    const dbA = createDb(row({ id: 'sc-1', usb_port: '1-2.3' }));
+    const dbB = createDb(row({ id: 'sc-2', usb_port: '1-4' }));
+    let resolveDetection: (v: unknown) => void = () => {};
+    const detect = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDetection = resolve;
+        })
+    );
+
+    const a = refreshScannerUsbAddress(dbA as any, 'sc-1', {
+      detect,
+      sleep: noSleep,
+    });
+    const b = refreshScannerUsbAddress(dbB as any, 'sc-2', {
+      detect,
+      sleep: noSleep,
+    });
+    await new Promise((r) => setImmediate(r));
+
+    resolveDetection({
+      success: true,
+      count: 2,
+      scanners: [
+        detected({ usb_port: '1-2.3', usb_device: 8 }),
+        detected({ usb_port: '1-4', usb_device: 9 }),
+      ],
+    });
+    const [outcomeA, outcomeB] = await Promise.all([a, b]);
+
+    expect(detect).toHaveBeenCalledTimes(1);
+    expect(outcomeA).toMatchObject({ status: 'refreshed', usbDevice: 8 });
+    expect(outcomeB).toMatchObject({ status: 'refreshed', usbDevice: 9 });
+  });
+
+  it('does not reuse a settled detection for a later refresh', async () => {
+    // The inverse of the test above, and the reason sharing is scoped to
+    // work still in flight rather than to a time window: a *completed*
+    // detection goes stale the instant the device re-enumerates, which is
+    // the very defect this module exists to fix. A resolver must never be
+    // handed a result captured before the power-cycle it is recovering from.
+    const db = createDb(row({ usb_port: '1-2.3' }));
+    const detect = detectOk([detected({ usb_device: 8 })]);
+
+    await refreshScannerUsbAddress(db as any, 'sc-1', {
+      detect,
+      sleep: noSleep,
+    });
+    await refreshScannerUsbAddress(db as any, 'sc-1', {
+      detect,
+      sleep: noSleep,
+    });
+
+    expect(detect).toHaveBeenCalledTimes(2);
+  });
+
   it('performs detection through a non-blocking interface', async () => {
     // Decision 4: the synchronous `detectEpsonScanners()` blocks the main
     // process for up to ~10s, which during an active session delays
