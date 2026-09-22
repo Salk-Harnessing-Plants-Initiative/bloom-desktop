@@ -3297,6 +3297,247 @@ describe('ScanCoordinator', () => {
     });
   });
 
+  // design.md Decision 3 — resolving the device name at SPAWN time, not
+  // click time. A retry during any interval session takes addScanner()'s
+  // queued branch and spawns on the next cycle-complete, which
+  // register-handlers.ts describes in the repo's own words as "potentially
+  // hours for a continuous session". Refreshing only at click time fixes the
+  // address at click time, not at use time.
+  //
+  // These are the tests that would have caught the double-spawn window the
+  // new `await` opens. Do not thin them.
+  describe('resolveSaneName — spawn-time address resolution', () => {
+    /** The saneName the Nth constructed subprocess was built with. */
+    function constructedNameAt(index: number): string {
+      return vi.mocked(ScannerSubprocess).mock.calls[index][3] as string;
+    }
+
+    it('a queued spawn resolves the name at cycle-complete, not at enqueue time', async () => {
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+      await coordinator.stopScanner('scanner-1');
+
+      const sub2 = createdSubprocesses[1];
+      sub2.scan.mockImplementation(() => {
+        setTimeout(() => emitCycleDone(sub2), 50);
+      });
+      const scanPromise = coordinator.scanOnce(makePlatesMap(['scanner-2']));
+      await new Promise((r) => setTimeout(r, 10));
+      expect(coordinator.isScanning).toBe(true);
+
+      let resolverCalls = 0;
+      const retryPromise = coordinator.addScanner({
+        scannerId: 'scanner-1',
+        // The enqueue-time name, already stale by the time it is used.
+        saneName: 'epkowa:interpreter:001:007',
+        plates: [],
+        resolveSaneName: async () => {
+          resolverCalls += 1;
+          return 'epkowa:interpreter:001:008';
+        },
+      });
+
+      // Queued: nothing constructed, and crucially nothing resolved yet —
+      // resolving here would reintroduce the click-time half-fix.
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      expect(resolverCalls).toBe(0);
+
+      await scanPromise;
+      await retryPromise;
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(3);
+      expect(resolverCalls).toBe(1);
+      expect(constructedNameAt(2)).toBe('epkowa:interpreter:001:008');
+      expect(constructedNameAt(2)).not.toBe('epkowa:interpreter:001:007');
+    });
+
+    it('an absent resolver spawns on the config name and logs no failure', async () => {
+      const coordinator = await createCoordinator();
+      vi.mocked(scanLog).mockClear();
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-9',
+        saneName: 'epkowa:interpreter:001:005',
+        plates: [],
+      });
+
+      expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
+      // An absent resolver is ordinary, not a failure — logging it as one
+      // would bury the genuine failure-caused fallbacks in noise.
+      const resolverLogs = vi
+        .mocked(scanLog)
+        .mock.calls.filter((c) => /resolv/i.test(String(c[0])));
+      expect(resolverLogs).toEqual([]);
+    });
+
+    it('a rejecting resolver falls back to the config name and logs the cause', async () => {
+      const coordinator = await createCoordinator();
+      vi.mocked(scanLog).mockClear();
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-9',
+        saneName: 'epkowa:interpreter:001:005',
+        plates: [],
+        resolveSaneName: async () => {
+          throw new Error('lsusb exploded');
+        },
+      });
+
+      // Resolution can never fail a spawn (design.md Decision 3a).
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
+      // But the operator was told the retry succeeded, so the fallback must
+      // be diagnosable after the fact — with its cause.
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining('lsusb exploded')
+      );
+    });
+
+    it('a resolver returning no name falls back and logs', async () => {
+      const coordinator = await createCoordinator();
+      vi.mocked(scanLog).mockClear();
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-9',
+        saneName: 'epkowa:interpreter:001:005',
+        plates: [],
+        resolveSaneName: async () => '',
+      });
+
+      expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
+      expect(scanLog).toHaveBeenCalledWith(expect.stringMatching(/resolv/i));
+    });
+
+    it('a resolved name that fails device-name validation is discarded', async () => {
+      // Otherwise a malformed resolved name would fail a spawn that would
+      // have succeeded — the opposite of what resolution is for.
+      const coordinator = await createCoordinator();
+      vi.mocked(scanLog).mockClear();
+
+      await coordinator.addScanner({
+        scannerId: 'scanner-9',
+        saneName: 'epkowa:interpreter:001:005',
+        plates: [],
+        resolveSaneName: async () => 'epkowa:interpreter:null:null',
+      });
+
+      expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
+      expect(scanLog).toHaveBeenCalledWith(expect.stringMatching(/resolv/i));
+    });
+
+    it('does not resolve when an already-ready worker is reused', async () => {
+      // Resolution sits at the ScannerSubprocess constructor site, not at
+      // the top of doSpawnSingleScanner, so the reuse-if-ready no-op pays no
+      // detection. This matters because initialize() runs per scanner.
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      expect(coordinator.hasWorker('scanner-1')).toBe(true);
+
+      let resolverCalls = 0;
+      await coordinator.addScanner({
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+        resolveSaneName: async () => {
+          resolverCalls += 1;
+          return 'epkowa:interpreter:001:009';
+        },
+      });
+
+      expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+      expect(resolverCalls).toBe(0);
+    });
+
+    it('a stopScanner during resolution constructs no subprocess and leaves no map entry', async () => {
+      // The generation-token hazard. spawnSingleScanner installs its
+      // in-flight guard only AFTER the body's first synchronous segment, and
+      // stopScanner deletes that guard first then early-returns when the map
+      // has no entry — so an attempt suspended in resolution is in neither
+      // structure: uncancellable and un-awaited. Without the token this
+      // spawns a worker against a scanner the operator just stopped.
+      const coordinator = await createCoordinator();
+
+      let releaseResolver: (name: string) => void = () => {};
+      const addPromise = coordinator.addScanner({
+        scannerId: 'scanner-9',
+        saneName: 'epkowa:interpreter:001:005',
+        plates: [],
+        resolveSaneName: () =>
+          new Promise<string>((resolve) => {
+            releaseResolver = resolve;
+          }),
+      });
+
+      await new Promise((r) => setImmediate(r));
+      await coordinator.stopScanner('scanner-9');
+      releaseResolver('epkowa:interpreter:001:008');
+      await addPromise;
+
+      expect(ScannerSubprocess).not.toHaveBeenCalled();
+      expect(coordinator.hasWorker('scanner-9')).toBe(false);
+    });
+
+    it('a shutdown during resolution constructs no subprocess', async () => {
+      const coordinator = await createCoordinator();
+
+      let releaseResolver: (name: string) => void = () => {};
+      const addPromise = coordinator.addScanner({
+        scannerId: 'scanner-9',
+        saneName: 'epkowa:interpreter:001:005',
+        plates: [],
+        resolveSaneName: () =>
+          new Promise<string>((resolve) => {
+            releaseResolver = resolve;
+          }),
+      });
+
+      await new Promise((r) => setImmediate(r));
+      await coordinator.shutdown();
+      releaseResolver('epkowa:interpreter:001:008');
+      await addPromise;
+
+      // A worker spawned against an already-shut-down coordinator is a
+      // leaked subprocess holding the USB device for the rest of the run.
+      expect(ScannerSubprocess).not.toHaveBeenCalled();
+    });
+
+    it('a never-settling resolver is abandoned at its timeout without stranding the scanner', async () => {
+      // SPAWN_READY_TIMEOUT_MS wraps sub.spawn() only. An unbounded resolver
+      // would leave the in-flight guard set forever, making this scannerId
+      // un-spawnable for the rest of the session while retriesInFlight holds
+      // the operator's button dead.
+      vi.useFakeTimers();
+      try {
+        const coordinator = await createCoordinator();
+
+        const addPromise = coordinator.addScanner({
+          scannerId: 'scanner-9',
+          saneName: 'epkowa:interpreter:001:005',
+          plates: [],
+          resolveSaneName: () => new Promise<string>(() => {}),
+        });
+
+        await vi.advanceTimersByTimeAsync(SPAWN_READY_TIMEOUT_MS);
+        await addPromise;
+
+        // The spawn proceeded on the config name rather than hanging.
+        expect(ScannerSubprocess).toHaveBeenCalledTimes(1);
+        expect(constructedNameAt(0)).toBe('epkowa:interpreter:001:005');
+
+        // And the guard was cleared, so a later spawn is not blocked.
+        await coordinator.stopScanner('scanner-9');
+        await coordinator.addScanner({
+          scannerId: 'scanner-9',
+          saneName: 'epkowa:interpreter:001:006',
+          plates: [],
+        });
+        expect(ScannerSubprocess).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe('implements ScanCoordinatorLike', () => {
     it('exposes all interface methods at runtime', async () => {
       // The `implements ScanCoordinatorLike` on the class is enforced by

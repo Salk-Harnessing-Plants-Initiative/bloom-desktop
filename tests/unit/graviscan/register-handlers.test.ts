@@ -226,6 +226,26 @@ describe('registerGraviScanHandlers', () => {
       expect(sessionHandlers.startScan).toHaveBeenCalled();
     });
 
+    it('graviscan:start-scan supplies startScan a saneName resolver factory', async () => {
+      // This file mocks `session-handlers` wholesale, so a change to
+      // `startScan`'s signature is invisible here — which is exactly why
+      // this assertion has to exist. `register-handlers` is the layer that
+      // holds `db`, so it is the layer that can build a resolver; if it
+      // silently stops passing one, session-start goes back to spawning on
+      // a page-mount-old address (#182) with every other test still green.
+      const params = { scanners: [], metadata: {} };
+      await mockIpcMain._invoke('graviscan:start-scan', params);
+
+      const call = vi.mocked(sessionHandlers.startScan).mock.calls[0];
+      expect(typeof call[4]).toBe('function');
+
+      // And the factory it supplies produces a working resolver.
+      const resolver = (call[4] as (id: string) => () => Promise<string>)(
+        'sc-1'
+      );
+      expect(typeof resolver).toBe('function');
+    });
+
     it('graviscan:get-scan-status delegates to getScanStatus', async () => {
       await mockIpcMain._invoke('graviscan:get-scan-status');
       expect(sessionHandlers.getScanStatus).toHaveBeenCalledWith(

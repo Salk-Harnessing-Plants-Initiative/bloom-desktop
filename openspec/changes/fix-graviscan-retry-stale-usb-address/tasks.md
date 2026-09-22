@@ -230,7 +230,7 @@ here rather than deleted so a reviewer can check the application against the fin
 
 ## 1. Red phase — commit failing tests first
 
-- [ ] 1.0 Create `src/main/graviscan/scanner-usb-refresh.ts` as a **signature-only stub**: the
+- [x] 1.0 Create `src/main/graviscan/scanner-usb-refresh.ts` as a **signature-only stub**: the
       real outcome union and the real exported signatures (binding signature in 2.3a), each body
       `throw new Error('not implemented')`. Without it, tasks 1.1/1.2 produce a single Vitest
       **collection error** so no assertion executes, and task 1.8's "fails for the intended reason"
@@ -240,14 +240,14 @@ here rather than deleted so a reviewer can check the application against the fin
       `tsconfig.json:20` is `"include": ["src/**/*"]`, so nothing under `tests/` is typechecked and
       no compile gate validates any widened mock in this section. The two real reasons are the
       Vitest collection error and ESLint's `import/no-unresolved`.
-- [ ] 1.0a `tests/unit/graviscan/session-handlers.test.ts` — add the detection module mock this
+- [x] 1.0a `tests/unit/graviscan/session-handlers.test.ts` — add the detection module mock this
       file lacks (it mocks only `scan-logger`, `:5-9`), matching the factories in
       `scanner-handlers.test.ts:5-7` and `reset-usb-handler.test.ts:5-7`. Default it in `beforeEach`
       to report `sc-1` at its stored port and address, so the 13 pre-existing `retryScanner` tests
       keep their meaning. Do **not** add a `detect` parameter to `retryScanner()` — that would change
       the call site at `register-handlers.ts:392` (**was `:391`; re-resolved 0.4**), which
       `register-handlers.test.ts:31-37` cannot see because it mocks `session-handlers` wholesale.
-- [ ] 1.0b Extend **all three** `vi.mock('.../lsusb-detection', …)` factories — in
+- [x] 1.0b Extend **all three** `vi.mock('.../lsusb-detection', …)` factories — in
       `scanner-handlers.test.ts:5-7`, `reset-usb-handler.test.ts:5-7`, and the new one 1.0a adds to
       `session-handlers.test.ts` — to export **both** the new async detection function **and**
       `buildSaneName`, the latter with a **real** implementation (not `vi.fn()`), because
@@ -257,40 +257,40 @@ here rather than deleted so a reviewer can check the application against the fin
       import time with "No '<name>' export is defined on the mock".
       **Must land in the same commit as 1.9** or those files go red for a reason unrelated to any
       new test. _(round-4 finding 3 — the original task named 2 files and 1 export; it is 3 and 2.)_
-- [ ] 1.0c `tests/unit/lsusb-detection.test.ts` — widen its `child_process` mock. It is a
+- [x] 1.0c `tests/unit/lsusb-detection.test.ts` — widen its `child_process` mock. It is a
       complete-replacement factory exporting **only** `execFileSync` (`:18-20`, re-confirmed
       2026-09-21). The moment `lsusb-detection.ts` does `promisify(execFile)` at module scope,
       `execFile` is `undefined` and `promisify` **throws at import**, killing all 3 existing tests
       plus every new one. Mock `execFile` in Node callback form so `promisify` can wrap it, **or**
       import it lazily inside the async shell — pick one and record which in task 2.1.
       Must land in the red commit. _(round-4 finding 2.)_
-- [ ] 1.1 New `tests/unit/graviscan/scanner-usb-refresh.test.ts`, opening with
+- [x] 1.1 New `tests/unit/graviscan/scanner-usb-refresh.test.ts`, opening with
       `// @vitest-environment node` (config default is `happy-dom`, `vitest.config.ts:11`; every
       sibling main-process test file sets this). The pure matcher: exact port match; `null` and `''`
       match nothing; a detected `''` does not match a row's `''`; two detected entries on one port
       resolve to the **first in list order**; the input list and its elements are not mutated.
-- [ ] 1.2 Same file — one test per outcome, detection injected. _(Numbered per round-4 finding 8
+- [x] 1.2 Same file — one test per outcome, detection injected. _(Numbered per round-4 finding 8
       so these are not checked off as a single box.)_
-  - [ ] 1.2a `refreshed`/`changed: true` on 7→8, asserting the update payload's **exact** shape
+  - [x] 1.2a `refreshed`/`changed: true` on 7→8, asserting the update payload's **exact** shape
         (`{ where: { id }, data: { usb_bus, usb_device } }`) so "writes only those two columns" is
         genuinely pinned;
-  - [ ] 1.2b `refreshed`/`changed: false` with **no** update call;
-  - [ ] 1.2c `refreshed` from `usb_bus: null` with a usable port;
-  - [ ] 1.2d `not-detected` **carrying `usbPort: '1-2.3'`** (the operator message is built from it);
-  - [ ] 1.2e `no-stable-port` for `null` and for `''`;
-  - [ ] 1.2f `row-missing`, with detection **not** attempted;
-  - [ ] 1.2g `unusable-address` for mock mode with `usb_bus: null` — and assert no address is
+  - [x] 1.2b `refreshed`/`changed: false` with **no** update call;
+  - [x] 1.2c `refreshed` from `usb_bus: null` with a usable port;
+  - [x] 1.2d `not-detected` **carrying `usbPort: '1-2.3'`** (the operator message is built from it);
+  - [x] 1.2e `no-stable-port` for `null` and for `''`;
+  - [x] 1.2f `row-missing`, with detection **not** attempted;
+  - [x] 1.2g `unusable-address` for mock mode with `usb_bus: null` — and assert no address is
         returned that a caller could format into a name containing `null`;
-  - [ ] 1.2h `detection-failed` only after **3** attempts;
-  - [ ] 1.2i transient failure then success → `refreshed`, detection attempted exactly **2** times;
-  - [ ] 1.2j `GRAVISCAN_MOCK=true` → `refreshed`/`changed: false`, detection **not** attempted;
-  - [ ] 1.2k non-blocking: a `setImmediate` scheduled before the call runs while detection is
+  - [x] 1.2h `detection-failed` only after **3** attempts;
+  - [x] 1.2i transient failure then success → `refreshed`, detection attempted exactly **2** times;
+  - [x] 1.2j `GRAVISCAN_MOCK=true` → `refreshed`/`changed: false`, detection **not** attempted;
+  - [x] 1.2k non-blocking: a `setImmediate` scheduled before the call runs while detection is
         outstanding.
-- [ ] 1.3 `session-handlers.test.ts` — the #182 regression test: row at `usb_device: 7`,
+- [x] 1.3 `session-handlers.test.ts` — the #182 regression test: row at `usb_device: 7`,
       `usb_port: '1-2.3'`, detection reporting that port at `usb_device: 8`; assert `addScanner`
       called with `'epkowa:interpreter:001:008'` **and explicitly assert it was not called with
       `'epkowa:interpreter:001:007'`**. This is the 2026-09-16 hardware reproduction as a unit test.
-- [ ] 1.4 Same file — retry's failure paths. `not-detected`, `no-stable-port`, `detection-failed`
+- [x] 1.4 Same file — retry's failure paths. `not-detected`, `no-stable-port`, `detection-failed`
       and `unusable-address` each resolve `{ success: false }`, call **neither** `stopScanner` nor
       `addScanner`, and write a `scanLog` entry. Assert the `not-detected` message contains both
       `'1-2.3'` and the row's `display_name`. Assert **both** the `not-detected` and `no-stable-port`
@@ -299,22 +299,22 @@ here rather than deleted so a reviewer can check the application against the fin
       `disableStaleScannerRows` would disable. Assert refresh runs **before** `stopScanner` (call
       ordering, not just counts). Update — do not duplicate — the existing `:581` test, whose
       assertion Decision 6 deliberately inverts: null columns plus a usable port now **succeed**.
-- [ ] 1.4a Same file — `'retries without a DB write when the address has not moved'`: row
+- [x] 1.4a Same file — `'retries without a DB write when the address has not moved'`: row
       `usb_bus: 3, usb_device: 7, usb_port: '3-1'`; assert `addScanner` with
       `'epkowa:interpreter:003:007'`, no update call, `{ success: true }`.
-- [ ] 1.4b Same file — `'in mock mode, retries without invoking USB detection'`: `GRAVISCAN_MOCK`
+- [x] 1.4b Same file — `'in mock mode, retries without invoking USB detection'`: `GRAVISCAN_MOCK`
       stubbed true, row `usb_bus: 1, usb_device: 2`; assert detection **not** called and `addScanner`
       called with `'epkowa:interpreter:001:002'`. The one retry scenario CI can exercise end to end.
-- [ ] 1.4c Same file — the real-installation identifier case: row with `display_name: null`,
+- [x] 1.4c Same file — the real-installation identifier case: row with `display_name: null`,
       `name: 'Perfection V600 Photo'`, `usb_port: '1-8'`; assert the message contains `'1-8'`, is not
       solely the `scanner_id`, and does not lean on `name`. This is the rig's actual row state
       (pre-flighted 2026-09-17), so a `display_name`-first message degrades to a UUID on exactly the
       hardware this feature runs on.
-- [ ] 1.4d Same file — add `expect(detectMock).not.toHaveBeenCalled()` to the four existing tests
+- [x] 1.4d Same file — add `expect(detectMock).not.toHaveBeenCalled()` to the four existing tests
       whose spec clauses now require it: `:600` (disabled), `:619`/`:639` (no/inactive session),
       `:658` (null coordinator). All four currently assert only `success === false` plus a defined
       error, so they would pass whether or not detection ran.
-- [ ] 1.5 Same file — widen the retry DB interface and `createMockRetryDb` (`:79-91`), which
+- [x] 1.5 Same file — widen the retry DB interface and `createMockRetryDb` (`:79-91`), which
       returns a 3-field row with no `id`, no `usb_port` and no `update`, so `graviScanner.update` is
       `undefined` and throws as soon as a moved address is mocked. Audit the widened row against the
       real model wholesale (`prisma/schema.prisma:231`).
@@ -325,35 +325,35 @@ here rather than deleted so a reviewer can check the application against the fin
       `Partial<Row>` and merge defaults for `id`, `usb_port`, `display_name`, `name`, and a
       `graviScanner.update` mock. Re-confirmed live 2026-09-21: the helper still takes exactly
       `{ usb_bus, usb_device, enabled } | null` and returns only `{ graviScanner: { findUnique } }`.
-- [ ] 1.6 `tests/unit/graviscan/scan-coordinator.test.ts` (there is already a
+- [x] 1.6 `tests/unit/graviscan/scan-coordinator.test.ts` (there is already a
       `describe('stopScanner() + addScanner() — retry-scanner integration')` at `:3230`) — the
       resolver. _(Numbered per round-4 finding 8.)_
-  - [ ] 1.6a a queued spawn calls `resolveSaneName` at `cycle-complete` and constructs the
+  - [x] 1.6a a queued spawn calls `resolveSaneName` at `cycle-complete` and constructs the
         subprocess with the resolved name, **not** the enqueue-time name;
-  - [ ] 1.6b an absent resolver falls back and writes **no** failure log entry;
-  - [ ] 1.6c a rejecting resolver, one returning no name, and one returning a name that fails
+  - [x] 1.6b an absent resolver falls back and writes **no** failure log entry;
+  - [x] 1.6c a rejecting resolver, one returning no name, and one returning a name that fails
         device-name validation each fall back to `config.saneName`, the spawn still proceeds, and
         the fallback is logged **with its cause**;
-  - [ ] 1.6d resolution is **not** called when an already-ready worker is reused;
-  - [ ] 1.6e a `stopScanner()` during the resolver await constructs **no** subprocess and leaves
+  - [x] 1.6d resolution is **not** called when an already-ready worker is reused;
+  - [x] 1.6e a `stopScanner()` during the resolver await constructs **no** subprocess and leaves
         no map entry;
-  - [ ] 1.6f a `shutdown()` during the resolver await constructs **no** subprocess;
-  - [ ] 1.6g a never-settling resolver is abandoned at its timeout, the spawn proceeds on
+  - [x] 1.6f a `shutdown()` during the resolver await constructs **no** subprocess;
+  - [x] 1.6g a never-settling resolver is abandoned at its timeout, the spawn proceeds on
         `config.saneName`, and the in-flight guard is cleared so a later spawn is not blocked.
 
   _Verifies:_ Decision 3, including the three hazards the `await` introduces. These are the tests
   that would have caught the double-spawn window, so do not thin them.
-- [ ] 1.7 `session-handlers.test.ts` — session start attaches a resolver: a session started from a
+- [x] 1.7 `session-handlers.test.ts` — session start attaches a resolver: a session started from a
       snapshot naming `usb_device: 7` spawns on `…:008` when detection reports 8. Also assert the
       factory wiring itself (task 2.5): that `startScan` calls `makeSaneNameResolver` once per
       scanner and puts the result on each `ScannerConfig` — `register-handlers.test.ts:31-37` mocks
       `session-handlers` wholesale, so nothing else can see that the handler actually supplies the
       factory. Add a direct assertion in `register-handlers.test.ts` that the `startScan` invocation
       receives a factory argument, since that is the seam the wholesale mock hides.
-- [ ] 1.7a **`reset-usb-handler.test.ts`** — assert `resetUsb`'s re-initialise path attaches **no**
+- [x] 1.7a **`reset-usb-handler.test.ts`** — assert `resetUsb`'s re-initialise path attaches **no**
       resolver to the `ScannerConfig[]` it builds. _(Round-4 finding 10: this was "same file (or
       …)" under 1.7; it belongs in the file that actually covers `resetUsb`.)_
-- [ ] 1.7b `tests/unit/lsusb-detection.test.ts` — cover the two genuinely uncovered branches of
+- [x] 1.7b `tests/unit/lsusb-detection.test.ts` — cover the two genuinely uncovered branches of
       the dedupe block (`:193-211`): the `!s.usb_port` early-push (`:199-202`) and the
       `s.usb_device > existing.usb_device` comparison (`:205`). The block already executes in all
       three existing tests, so "zero coverage" would be wrong. Pin the **surviving entry and the
@@ -361,11 +361,11 @@ here rather than deleted so a reviewer can check the application against the fin
       `byPort.values()`, so it reorders results and the matcher uses a linear scan. Add tests for the
       async variant, and one asserting both variants return identical results for identical input, so
       the shared core is actually shared. Depends on 1.0c's widened `child_process` mock.
-- [ ] 1.7c **`reset-usb-handler.test.ts`** — pin `resetUsb`'s **changed** duplicate-port tie-break
+- [x] 1.7c **`reset-usb-handler.test.ts`** — pin `resetUsb`'s **changed** duplicate-port tie-break
       (task 2.8): two mock-branch entries synthesised onto one `usb_port`, asserting the **first in
       list order** wins, not `Map.set`'s last-wins. _(Round-4 finding 11 — `design.md` Decision 2
       mandates this change and no task previously stated it.)_
-- [ ] 1.7d `tests/e2e/graviscan-ipc.e2e.ts` — `'retry-scanner round-trips through real IPC in mock
+- [x] 1.7d `tests/e2e/graviscan-ipc.e2e.ts` — `'retry-scanner round-trips through real IPC in mock
 mode'`: seed a `GraviScanner` row, start a mock session, invoke
       `window.electron.gravi.retryScanner(id)`, and assert a `{ success: boolean }`-shaped resolution
       with no unhandled main-process error. This is `design.md` Decision 7's layer 2 and it had no
@@ -378,17 +378,55 @@ mode'`: seed a `GraviScanner` row, start a mock session, invoke
       an unhandled main-process error. **Verify it on the rig with a `-g 'retry-scanner'` filter
       before pushing** — the full E2E suite is CI-only, and targeted specs run on the rig per
       `docs/E2E_TESTING.md`, never on the user's workstation.
-- [ ] 1.8 Run `BLOOM_DATABASE_URL='file:./dev.db' npm run test:unit`; confirm every new test fails
+- [x] 1.8 Run `BLOOM_DATABASE_URL='file:./dev.db' npm run test:unit`; confirm every new test fails
       **on an assertion**, not a collection error. Record the count.
-- [ ] 1.8a **Derive the pre-existing-breakage inventory from this run, not from reading**
-      (round-4 finding 1). Record the actual failing-test list and diff it against the measured
-      baseline in section 0. Only after that, update the inventory table below to match what
-      actually happened. The previous table was predictive and is retained only as a hypothesis to
-      be falsified — the sibling change's equivalent table was wrong twice, in opposite directions.
-- [ ] 1.9 **Commit the failing tests plus the stub (1.0) and mock-factory updates (1.0a, 1.0b,
+      **Measured 2026-09-21 — 42 failing, zero collection errors:**
+
+| File                        | Total (was)  | Failing | Failure reason                                    |
+| --------------------------- | ------------ | ------- | ------------------------------------------------- |
+| `scanner-usb-refresh.test`  | 20 (new)     | **20**  | stub `not implemented` — traceable, per task 1.0  |
+| `lsusb-detection.test`      | 9 (3)        | **4**   | `detectEpsonScannersAsync is not a function`      |
+| `session-handlers.test`     | 45 (33)      | **10**  | assertions on refresh/resolver behaviour          |
+| `scan-coordinator.test`     | 83 (74)      | **6**   | assertions on the resolver                        |
+| `reset-usb-handler.test`    | 6 (4)        | **1**   | duplicate-port tie-break                          |
+| `register-handlers.test`    | 82 (81)      | **1**   | factory argument not supplied                     |
+| `graviscan-types.test`      | 25 (23)      | 0       | see below                                         |
+| `scanner-handlers.test`     | 38 (38)      | 0       | see below                                         |
+
+- [x] 1.8a **Derive the pre-existing-breakage inventory from this run** — done, and it
+      **falsifies the prediction table in three places**:
+  1. **`scanner-handlers.test.ts` did not break at import.** The table predicted the mock
+     factories "break at import (task 1.0b)". Widening the factory in the same commit prevented
+     it entirely — all 38 still pass. Same for `reset-usb-handler.test.ts`'s pre-existing 4.
+  2. **No pre-existing `session-handlers` test HARD FAILed for the predicted reason.** The
+     defaulted detection mock (task 1.0a) preserved all 13 retry tests' meaning, exactly as
+     round-4 finding 1 warned the table had never been re-derived against. `:487`, `:519`,
+     `:541`, `:676`, `:700` and `:739` all still pass; the table marked four of those HARD FAIL.
+     The only pre-existing test whose assertion changed is `:581`, deliberately inverted.
+  3. `register-handlers.test.ts` is **82** now (81 measured baseline + 1 new), not the table's 71.
+- [x] 1.8b **Eight new tests pass _vacuously_ before implementation. They are characterization,
+      not red-green, and must not be counted as evidence of anything until 2.9.** Recorded here
+      rather than quietly left in the pass column, because a test that passed immediately proves
+      only that it does not contradict today's code:
+  - `scan-coordinator`: "an absent resolver spawns on the config name and logs no failure",
+    "does not resolve when an already-ready worker is reused", "a never-settling resolver is
+    abandoned at its timeout…" — all three pass only because `resolveSaneName` is ignored
+    entirely today, so the fallback is trivial. They become meaningful once 2.7 lands.
+  - `session-handlers`: "retries without a DB write when the address has not moved", "in mock
+    mode, retries without invoking USB detection", "fails without respawning on an unusable
+    resolved address in mock mode", "starts a session without a factory, attaching no resolver" —
+    pass because retry currently never writes, never detects, and rejects null addresses via the
+    old guard 2.4 removes.
+  - `lsusb-detection`: the two new dedupe-branch tests pass because that block already behaves
+    this way — they are coverage of existing branches (which the task said), not new behaviour.
+  - `graviscan-types`: both new `resolveSaneName` tests pass immediately because `tsconfig.json`
+    excludes `tests/`, so nothing typechecks them. **The real gate for the type is
+    `npx tsc --noEmit` over `src/`**, which only goes red once 2.7 references the field. Verify
+    the type there, not here.
+- [x] 1.9 **Commit the failing tests plus the stub (1.0) and mock-factory updates (1.0a, 1.0b,
       1.0c) alone.** The message SHALL list failing test names in three groups: (i) new, intended;
       (ii) pre-existing tests whose assertions this change deliberately inverts — `:581`;
-      (iii) anything else, **which must be empty**.
+      (iii) anything else, **which must be empty**. Group (iii) was empty.
 
 ### Pre-existing tests this change breaks — PREDICTION, to be replaced by task 1.8a
 

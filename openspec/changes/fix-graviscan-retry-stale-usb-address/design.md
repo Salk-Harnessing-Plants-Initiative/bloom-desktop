@@ -88,6 +88,41 @@ A resolved name must also pass the same device-name validation the spawn applies
 — otherwise a malformed resolved name would fail a spawn that would have succeeded, which
 contradicts the requirement that resolution cannot fail a spawn.
 
+#### Decision 3a — a spawn-time resolver failure falls back; it does not fail the spawn
+
+Decided 2026-09-21, because Decisions 3 and 5 appear to contradict each other here and the
+implementation has to pick one. Decision 5 says a non-`refreshed` refresh outcome must **fail
+hard**, since a fallback after a power-cycle is a guaranteed false positive. Decision 3 says a
+failing **resolver** must **fall back and log**. On the retry path the resolver wraps exactly the
+refresh Decision 5 governs, so the two rules meet on one code path.
+
+**Decision 3 wins: fall back to `config.saneName` and log with the cause.** The two rules apply
+at different points and to different populations:
+
+- Decision 5 governs the **click-time** refresh inside `retryScanner()`. That call happens
+  **before** `stopScanner`/`addScanner`, and every non-`refreshed` outcome returns
+  `{ success: false }` there, so the operator is told the retry failed and no worker is spawned.
+  The guaranteed-false-positive case is therefore already refused, and refused at the point where
+  a human is reading the result.
+- Decision 3a governs the **spawn-time** resolver, which only runs for a config that *already*
+  passed the click-time refresh. A failure here is a narrower and later event: the diagnostic
+  flaked, or the resolution timed out, in the window between a successful click-time refresh and
+  the next `cycle-complete`.
+
+Failing the spawn there would strand the scanner for the rest of the session — it would take the
+`initErrors` path with no operator prompt and no further retry, because `retriesInFlight` has
+already been released and the wedge entry already dismissed on the reported success. That trades
+a *possible* stale address for a *certain* dead scanner, on hardware where a lost scanner costs
+the remaining timepoints of a gravitropism series.
+
+The honest cost, stated rather than hidden: the operator was told the retry succeeded, and a
+spawn-time fallback can still put a worker on a stale address, which will fail at
+`sane.open()` and surface as the ordinary spawn-failure path. That is why **every**
+failure-caused fallback is logged with its cause and distinctly from the absent-resolver case
+(`design.md` Risks; task 2.7e) — the scan log is what makes this diagnosable after the fact.
+`#363` is the issue that would make it *visible* rather than only diagnosable, and Decision 8
+already records it as becoming more load-bearing because of this change.
+
 ### Decision 4 — detection on this path must be asynchronous
 
 `detectEpsonScanners()` is `execFileSync` twice (`lsusb-detection.ts:148`, `:161`, each

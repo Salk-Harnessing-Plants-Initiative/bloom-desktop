@@ -8,6 +8,23 @@ vi.mock('../../../src/main/graviscan/scan-logger', () => ({
   closeScanLog: vi.fn(),
 }));
 
+// `retryScanner` now re-resolves the USB address before respawning (#182),
+// via `scanner-usb-refresh`, which reaches USB detection. This file
+// previously mocked only `scan-logger`, so without this factory the retry
+// tests would spawn a real `lsusb` subprocess — and the outcome differs by
+// platform (ENOENT on Windows/macOS, "no Epson found" on ubuntu-latest), so
+// such a test would pass locally and fail in CI or vice versa.
+//
+// Mirrors the complete-replacement factories in `scanner-handlers.test.ts:5-7`
+// and `reset-usb-handler.test.ts:5-7`. `buildSaneName` gets a REAL
+// implementation, not a `vi.fn()`, because assertions below check its output.
+vi.mock('../../../src/main/lsusb-detection', () => ({
+  detectEpsonScanners: vi.fn(),
+  detectEpsonScannersAsync: vi.fn(),
+  buildSaneName: (bus: number, device: number) =>
+    `epkowa:interpreter:${String(bus).padStart(3, '0')}:${String(device).padStart(3, '0')}`,
+}));
+
 // Types matching Ben's ScanCoordinator + PlateConfig
 interface ScanCoordinatorLike {
   readonly isScanning: boolean;
@@ -75,18 +92,77 @@ import {
   retryScanner,
 } from '../../../src/main/graviscan/session-handlers';
 import { scanLog } from '../../../src/main/graviscan/scan-logger';
+import { detectEpsonScannersAsync } from '../../../src/main/lsusb-detection';
 
+const mockDetectAsync = vi.mocked(detectEpsonScannersAsync);
+
+/**
+ * Retry's DB double.
+ *
+ * Takes a `Partial` row and merges defaults. The widening must supply
+ * *defaults*, not merely a wider type: the 13 pre-existing call sites pass
+ * literal `{usb_bus, usb_device, enabled}` rows, and a type-only widening
+ * would leave every one of them at `usb_port: undefined` → `no-stable-port`
+ * → all 13 failing for a reason unrelated to any new assertion.
+ *
+ * Row shape audited wholesale against `prisma/schema.prisma`'s `GraviScanner`
+ * model, not field-by-field as a test happens to need.
+ */
 function createMockRetryDb(
   row: {
+    id?: string;
     usb_bus: number | null;
     usb_device: number | null;
+    usb_port?: string | null;
+    display_name?: string | null;
+    name?: string | null;
     enabled: boolean;
   } | null
 ) {
+  const merged =
+    row === null
+      ? null
+      : {
+          id: 'sc-1',
+          usb_port: '1-2.3',
+          display_name: 'Scanner A',
+          name: 'Perfection V600 Photo',
+          ...row,
+        };
   return {
     graviScanner: {
-      findUnique: vi.fn().mockResolvedValue(row),
+      findUnique: vi.fn().mockResolvedValue(merged),
+      update: vi.fn().mockResolvedValue({}),
     },
+  };
+}
+
+/**
+ * Default detection for the retry tests: reports `sc-1` at the address its
+ * stored row already holds, so a refresh is a no-op and the pre-existing
+ * tests keep their original meaning.
+ */
+function detectionReporting(
+  usbBus: number | null,
+  usbDevice: number | null,
+  usbPort = '1-2.3'
+) {
+  return {
+    success: true,
+    count: 1,
+    scanners: [
+      {
+        name: 'Perfection V600 Photo',
+        scanner_id: 'detected-1',
+        usb_bus: usbBus,
+        usb_device: usbDevice,
+        usb_port: usbPort,
+        is_available: true,
+        vendor_id: '04b8',
+        product_id: '013a',
+        sane_name: `epkowa:interpreter:${String(usbBus).padStart(3, '0')}:${String(usbDevice).padStart(3, '0')}`,
+      },
+    ],
   };
 }
 
@@ -134,6 +210,65 @@ describe('session-handlers', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not initialized');
+    });
+
+    // design.md Decision 3, path 2 of 3. `GraviScan.tsx` fetches the
+    // saneNames map once per page mount, so the most plausible operator
+    // recovery — cancel, power-cycle, start a new session without leaving
+    // the page — spawns on an address captured before the power-cycle and
+    // fails with the identical error the retry button used to. Fixing the
+    // button without this would fix the feature and leave the workaround
+    // broken.
+    describe('spawn-time address resolution at session start', () => {
+      it('attaches a resolver built by the injected factory to every scanner config', async () => {
+        // `startScan` must NOT gain a `db` parameter — session-handlers
+        // deliberately carries almost no DB dependency. It receives a
+        // factory instead, and never sees the database.
+        const made: string[] = [];
+        const makeSaneNameResolver = vi.fn((scannerId: string) => {
+          made.push(scannerId);
+          return async () => 'epkowa:interpreter:001:008';
+        });
+
+        await startScan(
+          coordinator,
+          baseParams,
+          sessionFns,
+          onError,
+          makeSaneNameResolver
+        );
+
+        expect(makeSaneNameResolver).toHaveBeenCalledTimes(1);
+        expect(made).toEqual(['s1']);
+
+        const configs = coordinator.initialize.mock.calls[0][0];
+        expect(configs).toHaveLength(1);
+        expect(configs[0]).toMatchObject({
+          scannerId: 's1',
+          saneName: 'epkowa:interpreter:001:002',
+          resolveSaneName: expect.any(Function),
+        });
+        // The config still carries the snapshot name as the fallback; the
+        // resolver is what makes it live.
+        await expect(configs[0].resolveSaneName()).resolves.toBe(
+          'epkowa:interpreter:001:008'
+        );
+      });
+
+      it('starts a session without a factory, attaching no resolver', async () => {
+        // The factory is optional so existing callers and tests keep
+        // working; an absent resolver is ordinary, not a failure.
+        const result = await startScan(
+          coordinator,
+          baseParams,
+          sessionFns,
+          onError
+        );
+
+        expect(result.success).toBe(true);
+        const configs = coordinator.initialize.mock.calls[0][0];
+        expect(configs[0]).not.toHaveProperty('resolveSaneName');
+      });
     });
 
     it('should reject when scan already in progress', async () => {
@@ -455,14 +590,25 @@ describe('session-handlers', () => {
         isActive: true,
         sessionId: 'session-42',
       } as any);
+      // Default: the scanner is found at the port and address its row
+      // already holds, so the refresh is a no-op and the pre-existing tests
+      // keep their original meaning. Tests that exercise a *moved* address
+      // override this.
+      mockDetectAsync.mockResolvedValue(detectionReporting(3, 7) as any);
     });
 
-    it('stops then respawns the scanner using a fresh saneName from the db, and logs success', async () => {
+    // Title corrected by this change: the saneName no longer comes from a
+    // "fresh database read" (which a power-cycle makes stale) but from live
+    // USB re-resolution keyed on the stable usb_port. The standing spec
+    // prescribed the old mechanism by name; see the MODIFIED delta.
+    it('stops then respawns the scanner using a live re-resolved saneName, and logs success', async () => {
       const db = createMockRetryDb({
         usb_bus: 3,
         usb_device: 7,
+        usb_port: '3-1',
         enabled: true,
       });
+      mockDetectAsync.mockResolvedValue(detectionReporting(3, 7, '3-1') as any);
 
       const result = await retryScanner(
         coordinator,
@@ -476,6 +622,10 @@ describe('session-handlers', () => {
         scannerId: 'sc-1',
         saneName: 'epkowa:interpreter:003:007',
         plates: [],
+        // Spawn-time re-resolution: a queued addScanner can sit for up to a
+        // full scan interval, so fixing the address at click time is only
+        // half a fix (design.md Decision 3).
+        resolveSaneName: expect.any(Function),
       });
       expect(result).toEqual({ success: true });
       expect(coordinator.getScannerStatuses).toHaveBeenCalled();
@@ -576,12 +726,241 @@ describe('session-handlers', () => {
       expect(result.error).toBeDefined();
       expect(coordinator.stopScanner).not.toHaveBeenCalled();
       expect(coordinator.addScanner).not.toHaveBeenCalled();
+      // The row guard stays strictly BEFORE refresh, so row-missing is
+      // reached without spending a detection.
+      expect(mockDetectAsync).not.toHaveBeenCalled();
     });
 
-    it('fails without respawning when usb_bus/usb_device is null (mid reset-usb)', async () => {
+    // DELIBERATELY INVERTED by this change (design.md Decision 6). The old
+    // assertion was "null usb_bus/usb_device fails without respawning". With
+    // refresh in place those columns are recoverable from `usb_port`, so the
+    // guard moves from "null ⇒ fail" to "no usable port ⇒ fail" and this
+    // case now SUCCEEDS. Updated in place rather than duplicated, so the
+    // inverted expectation is visible in one test rather than contradicted
+    // across two.
+    //
+    // What this gives up is stated in Decision 6: that guard was also the
+    // only main-process detection of a retry racing a `reset-usb`, which
+    // nulls both columns and then sleeps 5s. `graviscan:reset-usb` has no
+    // `isScanning` guard, so the interleaving stays reachable over IPC. The
+    // replacement (a handler-level guard) is filed separately.
+    it('recovers and respawns when usb_bus/usb_device are null but the port is known', async () => {
       const db = createMockRetryDb({
         usb_bus: null,
         usb_device: null,
+        usb_port: '1-2.3',
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue(detectionReporting(1, 8) as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result).toEqual({ success: true });
+      expect(coordinator.addScanner).toHaveBeenCalledWith({
+        scannerId: 'sc-1',
+        saneName: 'epkowa:interpreter:001:008',
+        plates: [],
+        resolveSaneName: expect.any(Function),
+      });
+      expect(db.graviScanner.update).toHaveBeenCalledWith({
+        where: { id: 'sc-1' },
+        data: { usb_bus: 1, usb_device: 8 },
+      });
+    });
+
+    // The 2026-09-16 hardware reproduction, as a unit test: the row was
+    // synced to usb_device 7, the device came back at 8 after a physical
+    // power-cycle, a session started fine on the live name, and retry failed
+    // on the stale one. This is the whole point of the change.
+    it('respawns on the live address after a power-cycle moved the device number (#182)', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: '1-2.3',
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue(detectionReporting(1, 8) as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result).toEqual({ success: true });
+      expect(coordinator.addScanner).toHaveBeenCalledWith(
+        expect.objectContaining({ saneName: 'epkowa:interpreter:001:008' })
+      );
+      // Explicit: the stale name must not be used. Without this the test
+      // would still pass if the implementation called addScanner twice, or
+      // if a later refactor reintroduced the stale read alongside the fresh
+      // one.
+      expect(coordinator.addScanner).not.toHaveBeenCalledWith(
+        expect.objectContaining({ saneName: 'epkowa:interpreter:001:007' })
+      );
+      // The corrected address is persisted, so the Configure Scanner page
+      // and the scan log's before/after stay honest.
+      expect(db.graviScanner.update).toHaveBeenCalledWith({
+        where: { id: 'sc-1' },
+        data: { usb_bus: 1, usb_device: 8 },
+      });
+    });
+
+    it('retries without a DB write when the address has not moved', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 3,
+        usb_device: 7,
+        usb_port: '3-1',
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue(detectionReporting(3, 7, '3-1') as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result).toEqual({ success: true });
+      expect(coordinator.addScanner).toHaveBeenCalledWith(
+        expect.objectContaining({ saneName: 'epkowa:interpreter:003:007' })
+      );
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+    });
+
+    it('in mock mode, retries without invoking USB detection', async () => {
+      // The one retry scenario CI can exercise end to end, since CI has no
+      // real scanner and mock scanners never re-enumerate.
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 2,
+        usb_port: '1-1',
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result).toEqual({ success: true });
+      expect(mockDetectAsync).not.toHaveBeenCalled();
+      expect(coordinator.addScanner).toHaveBeenCalledWith(
+        expect.objectContaining({ saneName: 'epkowa:interpreter:001:002' })
+      );
+      vi.unstubAllEnvs();
+    });
+
+    it('refreshes the address strictly before stopping the scanner', async () => {
+      // Ordering, not just counts: refresh must run BEFORE stopScanner, so a
+      // scanner that cannot be re-resolved is left running rather than
+      // stopped and unrecoverable.
+      const calls: string[] = [];
+      mockDetectAsync.mockImplementation(async () => {
+        calls.push('detect');
+        return detectionReporting(1, 8) as any;
+      });
+      coordinator = createMockCoordinator({
+        stopScanner: vi.fn(async () => {
+          calls.push('stopScanner');
+        }),
+        addScanner: vi.fn(async () => {
+          calls.push('addScanner');
+        }),
+      } as any);
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: '1-2.3',
+        enabled: true,
+      });
+
+      await retryScanner(coordinator, db as any, sessionFns, 'sc-1');
+
+      expect(calls).toEqual(['detect', 'stopScanner', 'addScanner']);
+    });
+
+    it('fails without respawning when the scanner is not detected at its port', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: '1-2.3',
+        display_name: 'Scanner A',
+        enabled: true,
+      });
+      // Detection succeeds but nothing occupies the saved port — the
+      // scanner is powered off, which after a power-cycle is the likeliest
+      // reason a retry fails.
+      mockDetectAsync.mockResolvedValue({
+        success: true,
+        count: 0,
+        scanners: [],
+      } as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      // Identifies the scanner usefully: the port and the display name, so
+      // the message is actionable at 2am.
+      expect(result.error).toContain('1-2.3');
+      expect(result.error).toContain('Scanner A');
+      // A fallback here would be a guaranteed false positive: after a
+      // power-cycle the stored address is ALWAYS wrong.
+      expect(coordinator.stopScanner).not.toHaveBeenCalled();
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+      expect(scanLog).toHaveBeenCalledWith(
+        expect.stringContaining('scanner=sc-1 session=session-42')
+      );
+    });
+
+    it('does not tell the operator to run Detect Scanners when the scanner is not detected', async () => {
+      // `saveScannersToDB` calls `disableStaleScannerRows`, which disables
+      // every enabled row whose `usb_port` is absent from the current
+      // detection set — i.e. exactly this powered-off scanner. And unlike
+      // Reset USB, that path is not gated on an active scan. So the
+      // prohibition covers `not-detected`, not just `no-stable-port`.
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: '1-2.3',
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue({
+        success: true,
+        count: 0,
+        scanners: [],
+      } as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.error).not.toMatch(/detect scanners/i);
+    });
+
+    it('fails without respawning when the row has no usable usb_port', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: null,
         enabled: true,
       });
 
@@ -594,7 +973,98 @@ describe('session-handlers', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
+      expect(result.error).not.toMatch(/detect scanners/i);
+      expect(coordinator.stopScanner).not.toHaveBeenCalled();
       expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('fails without respawning when USB detection itself fails', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: '1-2.3',
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue({
+        success: false,
+        count: 0,
+        scanners: [],
+        error: 'lsusb not available',
+      } as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(coordinator.stopScanner).not.toHaveBeenCalled();
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+    });
+
+    it('fails without respawning on an unusable resolved address in mock mode', async () => {
+      // Guards `epkowa:interpreter:null:null`, which mock-mode spawning does
+      // NOT validate — `buildSubprocessEnv`'s /^\d{3}$/ check sits inside a
+      // `platform === 'linux' && !mock` branch — so without this a mock
+      // retry would report success on a nonsense device.
+      vi.stubEnv('GRAVISCAN_MOCK', 'true');
+      const db = createMockRetryDb({
+        usb_bus: null,
+        usb_device: null,
+        usb_port: '1-2.3',
+        enabled: true,
+      });
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(coordinator.addScanner).not.toHaveBeenCalled();
+      // Nothing that could be formatted into a name containing 'null'
+      // reached the coordinator.
+      expect(coordinator.addScanner).not.toHaveBeenCalledWith(
+        expect.objectContaining({ saneName: expect.stringContaining('null') })
+      );
+      vi.unstubAllEnvs();
+    });
+
+    it('identifies a scanner with no display_name by its port, not its identifier', async () => {
+      // The rig's real row: `display_name` null and `name` the model string,
+      // which is identical across all five production scanners. A
+      // display_name-first message degrades to a UUID on exactly the
+      // hardware this feature runs on.
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 8,
+        usb_port: '1-8',
+        display_name: null,
+        name: 'Perfection V600 Photo',
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue({
+        success: true,
+        count: 0,
+        scanners: [],
+      } as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('1-8');
+      // `name` is the model string — useless for distinguishing scanners.
+      expect(result.error).not.toContain('Perfection V600 Photo');
     });
 
     it('fails without respawning a disabled scanner', async () => {
@@ -614,6 +1084,10 @@ describe('session-handlers', () => {
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
       expect(coordinator.addScanner).not.toHaveBeenCalled();
+      // The enabled guard stays strictly BEFORE refresh, so a disabled
+      // scanner costs no USB detection. Without this assertion the test
+      // would pass whether or not detection ran.
+      expect(mockDetectAsync).not.toHaveBeenCalled();
     });
 
     it('fails cleanly with no active session, without querying the db', async () => {
@@ -634,6 +1108,7 @@ describe('session-handlers', () => {
       expect(result.success).toBe(false);
       expect(db.graviScanner.findUnique).not.toHaveBeenCalled();
       expect(coordinator.addScanner).not.toHaveBeenCalled();
+      expect(mockDetectAsync).not.toHaveBeenCalled();
     });
 
     it('fails cleanly with an inactive session', async () => {
@@ -653,6 +1128,7 @@ describe('session-handlers', () => {
 
       expect(result.success).toBe(false);
       expect(coordinator.addScanner).not.toHaveBeenCalled();
+      expect(mockDetectAsync).not.toHaveBeenCalled();
     });
 
     it('fails cleanly when coordinator is null, without throwing', async () => {
@@ -671,6 +1147,7 @@ describe('session-handlers', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
+      expect(mockDetectAsync).not.toHaveBeenCalled();
     });
 
     it('catches a rejected addScanner and surfaces it, logging the failed retry', async () => {
