@@ -461,7 +461,7 @@ this change touches no Python.
 
 ## 2. Green phase
 
-- [ ] 2.1 `src/main/lsusb-detection.ts` — extract the pure parse-and-dedupe core
+- [x] 2.1 `src/main/lsusb-detection.ts` — extract the pure parse-and-dedupe core
       (`parseLsusb` + `parseLsusbTree` + the `DetectedScanner` build + the dedupe block) into one
       function, and add an async shell over promisified `execFile` alongside the existing synchronous
       one. Both shells call the same core; task-level "same parsing, same shape" is not a guarantee,
@@ -471,7 +471,7 @@ this change touches no Python.
       **Record here which approach 1.0c's mock requires**: `promisify(execFile)` at module scope
       (needs a callback-form `execFile` in every `child_process` mock) or a lazy import inside the
       async shell. They are not interchangeable from the tests' point of view.
-- [ ] 2.2 Deduplicate `buildSaneName`. It exists twice with identical bodies —
+- [x] 2.2 Deduplicate `buildSaneName`. It exists twice with identical bodies —
       `scanner-handlers.ts:45` (**was `:39`**; whose doc comment already falsely claims single-sourcing) and
       `lsusb-detection.ts:116`, re-exported at `:235` and imported from there by nothing. This change
       moves name construction into two callers, so collapse to one definition and make that doc
@@ -493,7 +493,7 @@ this change touches no Python.
 > **Task 2.3 is split into 2.3a–2.3e per round-4 finding 8** — it was at least five pieces under
 > one checkbox, covering the whole new module.
 
-- [ ] 2.3a `src/main/graviscan/scanner-usb-refresh.ts` — the **types and the pure matcher**:
+- [x] 2.3a `src/main/graviscan/scanner-usb-refresh.ts` — the **types and the pure matcher**:
       `ScannerUsbRefreshDb` (read + write), the 6-status outcome union with a **string**
       discriminant (a boolean-literal one does not narrow under this repo's `tsconfig`, which sets
       only `noImplicitAny` — `design.md`'s "what was checked and found safe"), and the pure port
@@ -503,25 +503,29 @@ this change touches no Python.
       `findUnique`. This keeps `row-missing` reachable from the module's own tests without a
       caller fabricating a row, and it fixes the signature that 1.0's stub and every 1.2
       assertion depend on. Cost, accepted: retry performs two `findUnique` calls for one scanner.
-- [ ] 2.3b The **happy path and the write**: detect → match on `usb_port` → persist changed
+- [x] 2.3b The **happy path and the write**: detect → match on `usb_port` → persist changed
       `usb_bus`/`usb_device`. Writes are confined to exactly those two columns
       (`{ where: { id }, data: { usb_bus, usb_device } }`) and are skipped entirely when the
       address has not moved (`changed: false`). No `usb_port` write. No name construction — the
       module returns an address, never a SANE name.
-- [ ] 2.3c **Retry and backoff**: `detection-failed` only after **3** attempts with backoff; a
+- [x] 2.3c **Retry and backoff**: `detection-failed` only after **3** attempts with backoff; a
       transient failure followed by success returns `refreshed`. Every other non-`refreshed`
       outcome returns immediately without retrying (Decision 5 — only the diagnostic is retried,
       never the conclusion that the scanner is absent).
-- [ ] 2.3d **The short-TTL shared detection cache**, so N concurrent resolvers at one
-      `cycle-complete` boundary share a single `lsusb` pass rather than each spawning two
-      (`design.md` Risks). State the TTL and justify it against the resolver timeout.
-- [ ] 2.3e **The mock-mode short-circuit and the `unusable-address` guard**: `GRAVISCAN_MOCK=true`
+- [x] 2.3d **Shared detection for concurrent resolvers**, so N resolvers at one `cycle-complete`
+      boundary share a single `lsusb` pass rather than each spawning two (`design.md` Risks).
+      **Implemented as in-flight deduplication, not a TTL cache** — see the new `design.md`
+      Decision 4a for why the design's own earlier wording was changed rather than followed: a
+      TTL retains a *completed* detection, which in this module can hand a resolver a result
+      captured before the power-cycle it is recovering from. Pinned in both directions (two
+      concurrent refreshes → one detection; two sequential refreshes → two).
+- [x] 2.3e **The mock-mode short-circuit and the `unusable-address` guard**: `GRAVISCAN_MOCK=true`
       returns `refreshed`/`changed: false` without invoking detection; a runtime
       `Number.isInteger` check (not a type-level one) rejects null/non-integer addresses as
       `unusable-address`, so no caller can format `epkowa:interpreter:null:null` — which
       mock-mode spawning does **not** validate, since `buildSubprocessEnv`'s `/^\d{3}$/` sits
       inside the `platform === 'linux' && !args.mock` branch (`scanner-subprocess.ts:83`).
-- [ ] 2.4 `session-handlers.ts` — retry DB interface extends `ScannerUsbRefreshDb`; keep the
+- [x] 2.4 `session-handlers.ts` — retry DB interface extends `ScannerUsbRefreshDb`; keep the
       row-not-found and `enabled` guards **strictly before** refresh so the "detection SHALL NOT be
       invoked" clauses hold. **The `findUnique`-vs-pass-the-row choice is settled in 2.3a: the
       refresh module does its own `findUnique`, and retry keeps its existing one for the guards.**
@@ -540,7 +544,7 @@ this change touches no Python.
       Fix the `session=${session?.sessionId}` that #279 item 8 recorded (the catch-block line at
       `:401`) while rewriting them. Keep `retriesInFlight` and the post-`addScanner` status check
       as they are — **#366 is explicitly not in scope** (Decision 8).
-- [ ] 2.5 Wire a resolver into the session-start path **without giving `startScan` a database
+- [x] 2.5 Wire a resolver into the session-start path **without giving `startScan` a database
       handle**. `startScan(coordinator, params, sessionFns, onError?)` (`session-handlers.ts:98`) has
       no `db` parameter and its call site (`register-handlers.ts:355`) passes none, so "attach a
       resolver inside `startScan`" would mean adding a DB dependency to the main session entry point
@@ -554,11 +558,11 @@ string) => () => Promise<string>`, and have `register-handlers.ts` — which alr
       `session-handlers` wholesale (including `startScan`), so that change is invisible there** —
       exactly the hazard task 1.0a refuses for `retryScanner`. Task 1.7 must therefore assert the
       wiring directly rather than relying on the handler tests.
-- [ ] 2.6 `src/types/graviscan.ts` — optional `ScannerConfig.resolveSaneName`, typed to return a
+- [x] 2.6 `src/types/graviscan.ts` — optional `ScannerConfig.resolveSaneName`, typed to return a
       name or a promise of one, with a doc comment stating main-process-only and never serialisable
       (nothing but convention protects it, since `preload.ts` types `startScan`'s params loosely).
       Assert the invariant in `tests/unit/graviscan-types.test.ts`'s existing `ScannerConfig` block.
-- [ ] 2.6a **Extract `isValidSaneName` first — 2.7d depends on it** (round-4 finding 6). Task 2.7's
+- [x] 2.6a **Extract `isValidSaneName` first — 2.7d depends on it** (round-4 finding 6). Task 2.7's
       "validate with the same check the spawn applies" is **not executable as written**: the
       spawn's validation lives inside `buildSubprocessEnv`, **throws** rather than returning a
       boolean, and is gated on `platform === 'linux' && !args.mock` (`scanner-subprocess.ts:83`),
@@ -571,29 +575,29 @@ string) => () => Promise<string>`, and have `register-handlers.ts` — which alr
 > **Task 2.7 is split into 2.7a–2.7e per round-4 finding 8** — one per `design.md` Decision 3
 > bullet, because each is an independently-testable hazard rather than a step.
 
-- [ ] 2.7a `scan-coordinator.ts` — call the resolver at the **single** `ScannerSubprocess`
+- [x] 2.7a `scan-coordinator.ts` — call the resolver at the **single** `ScannerSubprocess`
       constructor site inside `doSpawnSingleScanner` (immediately before `subprocesses.set` at
       `:610`), **not** at the top of the function, so the reuse-if-ready no-op does not pay a
       detection on every `initialize()`.
-- [ ] 2.7b **The generation token.** Per-`scannerId`, captured before resolution and re-checked
+- [x] 2.7b **The generation token.** Per-`scannerId`, captured before resolution and re-checked
       after; invalidated by `stopScanner` and `shutdown`. This is the fix for the window the new
       `await` opens: `spawnSingleScanner` installs its in-flight guard only **after** the body's
       first synchronous segment (`:480-490`) and `stopScanner` deletes that guard **first** then
       early-returns when the map has no entry (`:423-433`), so an attempt suspended in resolution
       is in neither structure — uncancellable and un-awaited. Without this, two live workers for
       one scanner, or a worker spawned against a shut-down coordinator, are both reachable.
-- [ ] 2.7c **The resolver timeout**, separate from `SPAWN_READY_TIMEOUT_MS` — which wraps
+- [x] 2.7c **The resolver timeout**, separate from `SPAWN_READY_TIMEOUT_MS` — which wraps
       `sub.spawn()` only (`:622`). An unbounded resolver would strand the in-flight guard, making
       that `scannerId` un-spawnable for the rest of the session while `retriesInFlight` holds the
       operator's button dead.
-- [ ] 2.7d **Validate the resolved name with `isValidSaneName` (2.6a)** and discard it in favour of
+- [x] 2.7d **Validate the resolved name with `isValidSaneName` (2.6a)** and discard it in favour of
       `config.saneName` when it fails — otherwise a malformed resolved name would fail a spawn that
       would otherwise have succeeded, contradicting "resolution cannot fail a spawn".
-- [ ] 2.7e **Log every failure-caused fallback with its cause** — a rejection, a missing name, a
+- [x] 2.7e **Log every failure-caused fallback with its cause** — a rejection, a missing name, a
       validation failure or a timeout — and **not** the absent-resolver case, which is ordinary.
       A silent failure here is exactly the guaranteed-false-positive Decision 5 rejects at click
       time, arriving after the operator has been told the retry succeeded.
-- [ ] 2.8 `scanner-handlers.ts` — `resetUsb()` step 5 uses the shared matcher while keeping its
+- [x] 2.8 `scanner-handlers.ts` — `resetUsb()` step 5 uses the shared matcher while keeping its
       **single** detection pass. **Re-resolved citations (0.4): `resetUsb` is now `:739`, its port
       Map `:792-796`, its mock-branch `usb_port` synthesis `:773`.** ⚠️ `validateConfig()` (`:589`)
       contains a **textually identical** Map at `:649` and mock synthesis at `:620` — a grep lands
@@ -605,21 +609,21 @@ string) => () => Promise<string>`, and have `register-handlers.ts` — which alr
       synthesise a collision. Task 1.7c pins the new order.
       Verify `reset-usb-handler.test.ts`'s thin coordinator mock (`:25-31`) is still sufficient;
       if not, widen the mock rather than weakening the assertion.
-- [ ] 2.9 `BLOOM_DATABASE_URL='file:./dev.db' npm run test:unit` fully green, including all 13
+- [x] 2.9 `BLOOM_DATABASE_URL='file:./dev.db' npm run test:unit` fully green, including all 13
       pre-existing `retryScanner` tests, the 4 in `reset-usb-handler.test.ts` and the 3 in
       `lsusb-detection.test.ts`. Confirm 1.8's recorded count is now zero. Compare the total
       against section 0's measured baseline (2192 passed / 1 load-flaky), not against a
       remembered number.
-- [ ] 2.10 `npm run lint` and `npx tsc --noEmit` clean. The widened DB interface must typecheck
+- [x] 2.10 `npm run lint` and `npx tsc --noEmit` clean. The widened DB interface must typecheck
       against the real `PrismaClient` passed at `register-handlers.ts:392-394` (**was `:391-393`**).
       Note `tsc --noEmit` covers `src/**` only (`tsconfig.json:20`), so it does **not** validate
       any widened test mock — that is what 1.8/2.9 are for.
-- [ ] 2.11 Correct `pr-checks.yml:220`'s false coverage comment.
-- [ ] 2.12 **Commit the implementation** separately from 1.9.
+- [x] 2.11 Correct `pr-checks.yml:220`'s false coverage comment.
+- [x] 2.12 **Commit the implementation** separately from 1.9.
 
 ## 3. Documentation
 
-- [ ] 3.1 Re-read `proposal.md`, `design.md` and this file against the final diff; re-verify every
+- [x] 3.1 Re-read `proposal.md`, `design.md` and this file against the final diff; re-verify every
       line citation. Review rounds found citation drift in both earlier drafts, and
       `openspec validate --strict` checks delta structure, not whether prose matches code.
       **Start from section 0's "Citation re-resolution record"** — the 2026-09-21 pass already
@@ -627,9 +631,9 @@ string) => () => Promise<string>`, and have `register-handlers.ts` — which alr
       `proposal.md` and `design.md`, which still carry the pre-#376 numbers in their prose
       (`scanner-handlers.ts:39`, `:646`, `:669`, `:688-704`, `:712-718`, `:166`/`:262`/`:523`/`:676`,
       `:87-109`). Those must be updated here, once the diff is final and they stop moving.
-- [ ] 3.2 Confirm no scenario still implies a bare "fresh database read" is sufficient.
-- [ ] 3.3 `npx openspec validate fix-graviscan-retry-stale-usb-address --strict` clean.
-- [ ] 3.4 **Dry-run the archive scenario-drop check before opening the PR.**
+- [x] 3.2 Confirm no scenario still implies a bare "fresh database read" is sufficient.
+- [x] 3.3 `npx openspec validate fix-graviscan-retry-stale-usb-address --strict` clean.
+- [x] 3.4 **Dry-run the archive scenario-drop check before opening the PR.**
       `validate --strict` does **not** cross-check a delta against the standing spec, and
       `@fission-ai/openspec`'s archive path (`findMissingCurrentScenarios`, cited by function name since its file path moves between releases) throws at archive time — _after_ merge — on any scenario **name**
       present in the standing spec but absent from a MODIFIED block. Both MODIFIED requirements here
@@ -640,10 +644,10 @@ string) => () => Promise<string>`, and have `register-handlers.ts` — which alr
       present in the delta's 15. `Coordinator Single-Scanner Spawn API` (`spec.md:2813`) has
       **10**, all 10 present in the delta's 17. PR #376 did not drop or rename a scenario in
       either requirement.
-- [ ] 3.5 Update #182's Tier 1/Tier 2 entries in the cutover roadmap. Do not overstate: this
+- [x] 3.5 Update #182's Tier 1/Tier 2 entries in the cutover roadmap. Do not overstate: this
       partially addresses #182, #279 does not close (item 2's Slack half is unverified, item 7 unrun),
       #364 does not clear when #279 does, and item 4 should not be marked passed until #366 lands.
-- [ ] 3.6 File the deferred items: #182's worker half with the `libusb-filter.c` finding and its
+- [x] 3.6 File the deferred items: #182's worker half with the `libusb-filter.c` finding and its
       one-grep falsification; `graviscan:reset-usb` having no main-process active-scan guard;
       `usb_port` and the device name absent from the TIFF `ImageDescription`.
       **Add one found during 0.4:** `src/renderer/hooks/useTestScan.ts:119` is a **fourth**

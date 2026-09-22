@@ -190,6 +190,25 @@ The system SHALL NOT perform a device-level USB reset as part of refresh.
 - **WHEN** a task scheduled on the event loop before the refresh began becomes runnable
 - **THEN** that task SHALL run while detection is still outstanding
 
+#### Scenario: Concurrent refreshes share one detection pass
+
+- **GIVEN** a refresh for one scanner whose detection has not yet settled
+- **WHEN** a refresh for a different scanner begins before it settles
+- **THEN** both SHALL be served by that single detection invocation
+- **AND** each SHALL resolve the address of its own scanner's port from it
+
+#### Scenario: A settled detection is never reused by a later refresh
+
+- **GIVEN** a refresh whose detection has already settled
+- **WHEN** a further refresh begins afterwards
+- **THEN** it SHALL perform its own detection
+- **AND** SHALL NOT reuse the earlier result
+
+Sharing is scoped to work still **in flight**, never to a time window. A completed detection
+goes stale the instant a device re-enumerates, so reusing one could resolve an address captured
+before the very power-cycle the refresh is recovering from — the defect this capability exists
+to remove.
+
 ### Requirement: Scanner Address Resolution at Spawn Time
 
 The system SHALL resolve a scanner's SANE device name at the moment a worker is spawned, for

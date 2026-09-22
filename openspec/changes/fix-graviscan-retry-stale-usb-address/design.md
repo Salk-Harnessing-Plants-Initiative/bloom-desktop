@@ -41,11 +41,11 @@ need; the alternative is a confusing "incorrectly extends" error at implementati
 scanners; calling the IO wrapper in its loop would spawn detection per scanner and give each row
 a different view of the bus. So the extracted, shared unit is the pure matcher.
 
-`resetUsb()` currently builds a `Map<usb_port, DetectedScanner>` (`scanner-handlers.ts:688-704`);
+`resetUsb()` currently builds a `Map<usb_port, DetectedScanner>` (`scanner-handlers.ts:792-796`);
 the matcher is a linear scan. For a duplicate port, `Map.set` keeps the **last** entry and a
 linear scan finds the **first**. Real detection dedupes by port (`lsusb-detection.ts:193-211`) so
 this cannot arise there — but it _can_ in mock mode, where `resetUsb`'s mock branch synthesises
-`usb_port: s.usb_port || \`1-${i + 1}\`` (`:669`). The matcher's tie-break is therefore specified
+`usb_port: s.usb_port || \`1-${i + 1}\`` (`:773`). The matcher's tie-break is therefore specified
 as first-in-list-order and tested, rather than left to a map's iteration order.
 
 `resetUsb()` is not reusable from the retry path: it would `coordinator.shutdown()` the whole
@@ -140,6 +140,26 @@ the dedupe block is the one carrying an unfixed device-number-wrap hazard. Only 
 including `resetUsb()`'s, which is reachable mid-session, and which is left synchronous
 deliberately as out of scope.
 
+#### Decision 4a — concurrent resolvers share in-flight work, not a time-based cache
+
+Decided at implementation time, 2026-09-21, replacing this design's own earlier wording ("detection
+results are cached for a short TTL", Risks table).
+
+The **goal** is unchanged: N scanners retried at one cycle boundary must not each spawn two `lsusb`
+invocations on a bus that already has a wedged device on it. The **mechanism** is: share the
+detection promise only while it is still in flight, and clear it the moment it settles.
+
+A TTL was rejected because it retains a **completed** detection. In the one module whose entire
+premise is that a cached USB address goes stale the instant a device re-enumerates, holding a
+finished result for even a second reintroduces the defect being fixed — a resolver could be handed
+a detection captured *before* the power-cycle it is recovering from. That failure would be rare,
+silent, and indistinguishable from #182 itself.
+
+In-flight sharing collapses exactly the same burst, has no staleness window at all, and needs no
+test-only reset hook exported from production code (a TTL's module-level timestamp leaked between
+tests, which is how this was noticed). Pinned in both directions: one test asserts two concurrent
+refreshes cause one detection, another asserts two sequential refreshes cause two.
+
 ### Decision 5 — which outcomes fail hard, and how the message is phrased
 
 `usb_port` is fragile: nullable, never backfilled, no uniqueness constraint, and returned as `''`
@@ -183,7 +203,7 @@ With refresh in place, null columns are recoverable from `usb_port`, so the guar
 "null ⇒ fail" to "no usable port ⇒ fail".
 
 That guard was also doing a second, undocumented job: it was the only main-process detection of a
-retry racing a `reset-usb`, which nulls both columns (`scanner-handlers.ts:646-649`) and then
+retry racing a `reset-usb`, which nulls both columns (`scanner-handlers.ts:750-753`) and then
 sleeps 5s before rewriting them. `graviscan:reset-usb` has **no** `isScanning` guard — the only
 such guard in `register-handlers.ts` is on `graviscan:upload-all-scans` (`:433`) — so the
 interleaving is reachable over IPC even though the renderer gates the button.
@@ -199,7 +219,7 @@ and ships before its replacement; that is a real, accepted gap rather than a neu
 ### Decision 7 — verification is designed around a fault CI cannot reach
 
 CI has only mock mode, and mock scanners are deterministically `usb_bus: 1, usb_device: i + 1`
-(`scanner-handlers.ts:51-81`) and never re-enumerate. So CI structurally cannot exercise #182.
+(`scanner-handlers.ts:57-108`) and never re-enumerate. So CI structurally cannot exercise #182.
 
 The insight: **a power-cycle is only one _cause_; the fault is a stale address.** That can be
 induced deterministically by writing a wrong `usb_device` while the scanner sits healthy — the
@@ -277,7 +297,7 @@ Recorded so the next reviewer does not re-derive it.
 | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Resolution's new `await` makes double-spawn and spawn-past-shutdown reachable                                      | Generation token, specified as a requirement and tested with `stopScanner`-during-resolution and `shutdown`-during-resolution cases.                                                                                                                                                                                    |
 | An unbounded or hung resolver strands a scanner for the session                                                    | Explicit resolver timeout, separate from `SPAWN_READY_TIMEOUT_MS`, with a never-settling-resolver test.                                                                                                                                                                                                                 |
-| Several scanners retried in sequence resolve concurrently at one cycle boundary                                    | Each queued add registers its own `cycle-complete` listener and they are not serialized, so N resolvers can run at once — up to 2N `lsusb` invocations on a bus that already has a wedged device. Bounded by the resolver timeout; detection results are cached for a short TTL so concurrent resolvers share one pass. |
+| Several scanners retried in sequence resolve concurrently at one cycle boundary                                    | Each queued add registers its own `cycle-complete` listener and they are not serialized, so N resolvers can run at once — up to 2N `lsusb` invocations on a bus that already has a wedged device. Bounded by the resolver timeout, and concurrent resolvers share a single detection pass via **in-flight deduplication** (see Decision 4a — an earlier draft of this row said "cached for a short TTL", which was implemented differently and deliberately). |
 | A failing resolver silently spawns on a stale address                                                              | Failure-caused fallbacks are logged with their cause, distinctly from the absent-resolver case.                                                                                                                                                                                                                         |
 | Retry inside `reset-usb`'s 5s null window now proceeds where it used to refuse                                     | Stated in Decision 6 as an accepted gap; the handler-level guard is filed. Unreachable from the UI, reachable over IPC.                                                                                                                                                                                                 |
 | `usb_port` notation may differ from live detection (#243's open hypothesis), and a mismatch now hard-fails a retry | The prerequisite change's startup audit reports mismatches before they matter. Rig pre-flight compares byte-exactly; only the single-level case (`1-8`) is verified so far — the production rig's hub-attached multi-level paths need the same check.                                                                   |
