@@ -1081,6 +1081,74 @@ describe('session-handlers', () => {
       expect(result.error).toContain('1-8');
       // `name` is the model string — useless for distinguishing scanners.
       expect(result.error).not.toContain('Perfection V600 Photo');
+
+      // Pin the EXACT wording. Hardware validation (task 4.3) produced
+      // "the scanner on USB port 1-14 is not connected at USB port 1-14" —
+      // the port twice, and a sentence opening in lowercase. The earlier
+      // assertions above all passed on that string, because "contains the
+      // port" is satisfied by naming it twice. This is the rig's default
+      // phrasing, not an edge case: its real row has display_name null.
+      expect(result.error).toBe(
+        'The scanner on USB port 1-8 is not connected. Check that it is ' +
+          'powered on and its USB cable is connected, then try again.'
+      );
+    });
+
+    it('names the port alongside a display_name without repeating it', async () => {
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: '1-2.3',
+        display_name: 'Scanner A',
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue({
+        success: true,
+        count: 0,
+        scanners: [],
+      } as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      // With a display_name the port is still needed, and appears once.
+      expect(result.error).toBe(
+        'Scanner A is not connected at USB port 1-2.3. Check that it is ' +
+          'powered on and its USB cable is connected, then try again.'
+      );
+      expect(result.error!.match(/1-2\.3/g)).toHaveLength(1);
+    });
+
+    it('embeds the port-based identifier mid-sentence in lowercase', async () => {
+      // `describeScanner` returns sentence-initial text ("The scanner on…"),
+      // which reads wrong when a message embeds it mid-sentence.
+      const db = createMockRetryDb({
+        usb_bus: 1,
+        usb_device: 7,
+        usb_port: '1-8',
+        display_name: null,
+        enabled: true,
+      });
+      mockDetectAsync.mockResolvedValue({
+        success: false,
+        count: 0,
+        scanners: [],
+        error: 'lsusb not available',
+      } as any);
+
+      const result = await retryScanner(
+        coordinator,
+        db as any,
+        sessionFns,
+        'sc-1'
+      );
+
+      expect(result.error).toContain('locate the scanner on USB port 1-8');
+      expect(result.error).not.toContain('locate The scanner');
     });
 
     it('fails without respawning a disabled scanner', async () => {

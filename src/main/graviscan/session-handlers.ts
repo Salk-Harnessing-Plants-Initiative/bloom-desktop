@@ -383,8 +383,25 @@ function describeScanner(
   scannerId: string
 ): string {
   if (row.display_name) return row.display_name;
-  if (row.usb_port) return `the scanner on USB port ${row.usb_port}`;
-  return `scanner ${scannerId}`;
+  if (row.usb_port) return `The scanner on USB port ${row.usb_port}`;
+  return `Scanner ${scannerId}`;
+}
+
+/**
+ * True when `describeScanner` already identified the scanner *by its port*.
+ *
+ * Callers use this to avoid naming the same port twice in one sentence. The
+ * rig's real row has `display_name: null`, so that redundancy is the
+ * **default** phrasing in production, not an edge case — it read
+ * "the scanner on USB port 1-14 is not connected at USB port 1-14" during
+ * hardware validation (task 4.3), which is also why the unit tests could not
+ * catch it: they assert the message *contains* the port, and it did. Twice.
+ */
+function describedByPort(row: {
+  display_name?: string | null;
+  usb_port?: string | null;
+}): boolean {
+  return !row.display_name && !!row.usb_port;
 }
 
 /**
@@ -403,18 +420,37 @@ function describeRefreshFailure(
   scannerId: string
 ): string {
   const who = describeScanner(row, scannerId);
+  // Avoid "The scanner on USB port 1-8 is not connected at USB port 1-8".
+  const byPort = describedByPort(row);
   switch (outcome.status) {
     case 'not-detected':
-      return `${who} is not connected at USB port ${outcome.usbPort}. Check that it is powered on and its USB cable is connected, then try again.`;
+      return byPort
+        ? `${who} is not connected. Check that it is powered on and its USB cable is connected, then try again.`
+        : `${who} is not connected at USB port ${outcome.usbPort}. Check that it is powered on and its USB cable is connected, then try again.`;
     case 'no-stable-port':
+      // Cannot be described by port here — this outcome *is* "no usable port".
       return `${who} has no recorded USB port, so its current address cannot be determined. Reset All USB Connections from the Configure Scanner page while no scan is running.`;
     case 'unusable-address':
       return `${who} has no usable USB address recorded. If a USB reset is in progress, wait for it to finish and try again.`;
     case 'row-missing':
       return `Scanner ${scannerId} no longer exists in the database.`;
     case 'detection-failed':
-      return `Could not read the USB bus to locate ${who} after ${outcome.attempts} attempts (${outcome.error}). Try again in a moment.`;
+      // `who` is mid-sentence here, so the leading capital would be wrong.
+      return `Could not read the USB bus to locate ${lowerFirst(who)} after ${outcome.attempts} attempts (${outcome.error}). Try again in a moment.`;
   }
+}
+
+/**
+ * Lowercase the first character, for embedding `describeScanner`'s
+ * sentence-initial output mid-sentence. Left alone when the identifier is a
+ * `display_name`, which may legitimately be capitalised (e.g. "Scanner A").
+ */
+function lowerFirst(s: string): string {
+  if (!s) return s;
+  if (s.startsWith('The scanner ') || s.startsWith('Scanner ')) {
+    return s.charAt(0).toLowerCase() + s.slice(1);
+  }
+  return s;
 }
 
 /**
@@ -490,7 +526,7 @@ export async function retryScanner(
     if (refresh.status !== 'refreshed') {
       const error = describeRefreshFailure(refresh, row, scannerId);
       scanLog(
-        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} usb_port=${row.usb_port ?? 'none'} outcome=${refresh.status} error=${error}`
+        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId ?? 'none'} usb_port=${row.usb_port ?? 'none'} outcome=${refresh.status} error=${error}`
       );
       return { success: false, error };
     }
@@ -519,7 +555,7 @@ export async function retryScanner(
       const message =
         status?.error ?? `Scanner ${scannerId} did not come online after retry`;
       scanLog(
-        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId} error=${message}`
+        `[WedgeResponse] retry failed scanner=${scannerId} session=${session.sessionId ?? 'none'} error=${message}`
       );
       return { success: false, error: message };
     }
@@ -529,7 +565,7 @@ export async function retryScanner(
     // substring, so inserting between the two would break them for a reason
     // unrelated to any new behaviour.
     scanLog(
-      `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId} usb_port=${row.usb_port ?? 'none'} address=${refresh.previousUsbBus ?? 'none'}:${refresh.previousUsbDevice ?? 'none'}->${refresh.usbBus}:${refresh.usbDevice} changed=${refresh.changed}`
+      `[WedgeResponse] retry succeeded scanner=${scannerId} session=${session.sessionId ?? 'none'} usb_port=${row.usb_port ?? 'none'} address=${refresh.previousUsbBus ?? 'none'}:${refresh.previousUsbDevice ?? 'none'}->${refresh.usbBus}:${refresh.usbDevice} changed=${refresh.changed}`
     );
     return { success: true };
   } catch (error) {
