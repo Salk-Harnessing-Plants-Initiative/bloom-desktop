@@ -32,7 +32,7 @@ Deliberately excluded to keep this change reviewable and collision-free. This li
 "Zero behaviour change" would be overstated, so precisely: there is **no change to IPC contracts, return values, rejection identity, or timing semantics**, and no change to hardware, rendering, or scanning behaviour. Four real deviations are accepted and specified:
 
 1. `crashReporter.start()` installs process-level crash handling and spawns a persistent crash-handler child process, so the production rig's process tree gains one entry.
-2. Breadcrumbs cost a measured ~1 ms per synchronous write, ~1.7 ms per risk-listed call, on the thread being diagnosed — bounded by a circuit breaker that disables the path on a degraded disk.
+2. Breadcrumbs add two synchronous writes per risk-listed call, on the thread being diagnosed. The per-write cost on rig hardware is **not yet measured** (task 7.9) and is unbounded on a degraded drive — bounded in practice by a circuit breaker that disables the path when writes become slow or fail.
 3. An async wrapper adds frames to `error.stack`; messages are preserved, stacks are not byte-identical.
 4. CylinderScan mode previously wrote nothing to `~/.bloom/logs/` and now creates a file on every launch.
 

@@ -41,7 +41,7 @@ _Caveat:_ an externally delivered `SIGSEGV` is not identical to a fault _inside_
 
 - `ipcMain.handle` is an **own** property: `{writable: true, enumerable: true, configurable: true}`, absent from the prototype; `ipcMain` is neither frozen nor sealed. Assigning a delegating wrapper succeeded and intercepted a registration. Electron's duplicate-channel error still raised through the wrapper.
 - `perf_hooks.monitorEventLoopDelay` works in the Electron main process and reports **nanoseconds**.
-- Measured `appendFileSync` cost for one ~78-byte line, 200 samples after warm-up, on a Windows workstation: median **0.833 ms**, p95 1.057 ms, p99 1.165 ms, max 1.229 ms. So roughly **1 ms per breadcrumb, ~1.7 ms per risk-listed call** — not "microsecond-scale".
+- `appendFileSync` cost: **NOT YET MEASURED ON RELEVANT HARDWARE.** An indicative figure taken on a Windows developer workstation was ~0.8 ms median for a ~78-byte line, which is enough to establish that the cost is **not** "microsecond-scale" — but it says nothing about a Linux rig writing to a volume concurrently absorbing multi-GB TIFFs, and nothing at all about a degraded drive. This project has an incident where a failing drive blocked I/O badly enough to prevent POST. The real figure must come from task 7.9 on `pbiob-gh-04` under concurrent scan I/O, and no design decision should rest on the workstation number until it does.
 
 ### The working hypothesis this change tests
 
@@ -111,7 +111,7 @@ Every breadcrumb carries a **per-invocation identifier**. Without one the mechan
 
 Breadcrumbing all 107 channels was rejected on volume: renderer polling generates a few calls per second, which would be tens of MB per day. The risk list holds only operator-initiated or known-blocking channels: `graviscan:detect-scanners`, `:validate-scanners`, `:validate-config`, `:reset-usb`, `:retry-scanner`, `:start-scan`, `:verify-plates`, `:upload-all-scans`, `:download-images`, `:parse-excel-file`, `:list-scan-files`, `:read-scan-image`, `db:scans:export`, `db:scans:upload`, `db:scans:uploadBatch`, `config:fetch-scanners`, `config:test-camera`, `scanner:scan`. The list lives in the watchdog module, which the requirement points at, so the archived spec has no dangling reference.
 
-Writes are synchronous so evidence survives a kill. Two honest limits: `appendFileSync` does **not** `fsync`, so breadcrumbs survive `SIGKILL` (the page cache outlives the process) but **not** a power cycle or kernel panic — and holding the power button is a likely operator response to a frozen window, so the troubleshooting doc must say "use `kill -9`, not the power button". And the measured ~1 ms per write is real cost on the thread being diagnosed, which is why Decision 6 adds a circuit breaker.
+Writes are synchronous so evidence survives a kill. Two honest limits: `appendFileSync` does **not** `fsync`, so breadcrumbs survive `SIGKILL` (the page cache outlives the process) but **not** a power cycle or kernel panic — and holding the power button is a likely operator response to a frozen window, so the troubleshooting doc must say "use `kill -9`, not the power button". And the per-write cost — indicatively sub-millisecond on a workstation, unmeasured on the rig and unbounded on a degraded drive — is real cost on the thread being diagnosed, which is why Decision 6 adds a circuit breaker.
 
 ### Decision 4: A new log sink, written synchronously throughout
 
@@ -170,7 +170,7 @@ Each run writes `RUN-START`/`RUN-END` carrying pid, run id, app version, Electro
 ## Risks / Trade-offs
 
 - **Log volume** → risk-listed breadcrumbs only, threshold-gated slow logging, daily rotation, 180-day retention, per-day byte cap, and rate-limiting of repeated identical entries.
-- **~1 ms `appendFileSync` per breadcrumb on the main thread** → bounded to operator-initiated channels, with a circuit breaker for degraded disks. Measured, not assumed.
+- **`appendFileSync` per breadcrumb on the main thread** → bounded to operator-initiated channels, with a circuit breaker for degraded disks. Cost on the rig is **unmeasured** (task 7.9); treat it as a known unknown, not as quantified.
 - **Decorator alters IPC semantics** → tests for verbatim resolution across all three real envelope shapes, unchanged rejections, synchronous throws, non-promise returns, forwarded arguments, and the preserved duplicate-registration error.
 - **False-positive noise erodes trust** → allow-list plus per-channel thresholds; every entry carries channel, invocation id, and duration.
 - **Monkey-patching an Electron singleton** → one install function, idempotent, with an uninstall; `handleOnce` is documented as an uninstrumented trip-wire.
