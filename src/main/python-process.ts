@@ -22,6 +22,26 @@ import { EventEmitter } from 'events';
 const STARTUP_TIMEOUT_MS = process.platform === 'win32' ? 60000 : 15000; // Time to wait for initial "ready" signal from Python process (startup only, not for command responses)
 const COMMAND_TIMEOUT_MS = 180000; // 3 minutes - scanner scans can take longer on slow CI machines
 
+// Prefixes that are legitimate, pre-existing Python-side diagnostic output
+// but not part of the formal protocol (STATUS:/ERROR:/DATA:/IMAGE:, or a
+// subclass's own prefixes) — e.g. daq.py's cleanup warnings, or
+// detect_cameras()'s hardware-enumeration diagnostics. Matched via exact,
+// case-sensitive prefix so a line resembling but not matching one of these
+// (e.g. "WARNINGLY:") is still treated as unrecognized. New benign,
+// unprefixed Python stdout lines must be added to
+// UNRECOGNIZED_LINE_WARNING_ALLOWLIST below, not here — a prefix allowlist
+// can't match a prefix-less line (#318).
+const UNRECOGNIZED_PREFIX_ALLOWLIST = ['WARNING:', 'INFO:'];
+
+// Exact-match allowlist for known-benign, prefix-less Python stdout lines
+// (#318) — e.g. camera_mock.py's fallback-pattern message when no test
+// image fixtures are present, which is common on CI/dev machines.
+const UNRECOGNIZED_LINE_WARNING_ALLOWLIST = [
+  'Generating synthetic test patterns instead',
+];
+
+const UNRECOGNIZED_LINE_WARNING_PREVIEW_LENGTH = 200;
+
 /**
  * Events emitted by PythonProcess:
  *   - 'status': (message: string) => void - Status update from Python
@@ -76,6 +96,38 @@ export class PythonProcess extends EventEmitter {
     this.pythonPath = pythonPath;
     this.scriptArgs = scriptArgs;
     this.registerCorrelationListeners();
+    this.registerUnrecognizedLineWarning();
+  }
+
+  /**
+   * Logs a warning for any stdout line that doesn't match a recognized
+   * protocol prefix (#318) — a safety net for the general failure class
+   * behind #316, where a corrupted/dropped protocol line was invisible
+   * until it silently manifested as an opaque 180s command timeout. Does
+   * not change the existing `'raw'` event, which still fires unconditionally
+   * for any explicit listener; this only adds a default console.warn.
+   *
+   * Excludes lines matching UNRECOGNIZED_PREFIX_ALLOWLIST/
+   * UNRECOGNIZED_LINE_WARNING_ALLOWLIST — already-legitimate, pre-existing
+   * informal Python output that isn't part of the formal protocol but also
+   * isn't evidence of corruption.
+   */
+  private registerUnrecognizedLineWarning(): void {
+    this.on('raw', (line: string) => {
+      const isAllowlisted =
+        UNRECOGNIZED_PREFIX_ALLOWLIST.some((prefix) =>
+          line.startsWith(prefix)
+        ) || UNRECOGNIZED_LINE_WARNING_ALLOWLIST.includes(line);
+      if (isAllowlisted) return;
+
+      // Code-point-safe truncation: line.slice() operates on UTF-16 code
+      // units and could split a surrogate pair (e.g. an emoji) in half,
+      // producing a mojibake/replacement-char preview.
+      const preview = Array.from(line)
+        .slice(0, UNRECOGNIZED_LINE_WARNING_PREVIEW_LENGTH)
+        .join('');
+      console.warn(`[PythonProcess] Unrecognized protocol line: ${preview}`);
+    });
   }
 
   /**
