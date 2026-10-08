@@ -27,6 +27,11 @@ import { ScannerProcess } from './cylinderscan/scanner-process';
 import type { ScannerSettings } from '../types/scanner';
 import { markMetadataDeleted } from './cylinderscan/scan-metadata-json';
 import {
+  readConfiguredCameraIp,
+  applyCameraIp,
+  applyScannerCameraIp,
+} from './cylinderscan/camera-ip';
+import {
   getPythonExecutablePath,
   validatePythonExecutable,
 } from './python-paths';
@@ -388,12 +393,22 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
 }
 
 /**
+ * Camera IP saved in Machine Configuration. Read on every call so a saved
+ * change applies without restarting the app (#390).
+ */
+function getConfiguredCameraIp(): string | null {
+  return readConfiguredCameraIp(() => loadEnvConfig(ENV_PATH));
+}
+
+/**
  * Handle camera:connect - Connect to camera
  */
 ipcMain.handle('camera:connect', async (_event, settings: CameraSettings) => {
   try {
     const camera = await ensureCameraProcess();
-    const success = await camera.connect(settings);
+    const success = await camera.connect(
+      applyCameraIp(settings, getConfiguredCameraIp())
+    );
     return { success };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
@@ -424,8 +439,9 @@ ipcMain.handle('camera:disconnect', async () => {
  */
 ipcMain.handle(
   'camera:configure',
-  async (_event, settings: Partial<CameraSettings>) => {
+  async (_event, requested: Partial<CameraSettings>) => {
     try {
+      const settings = applyCameraIp(requested, getConfiguredCameraIp());
       console.log('[camera:configure] Configuring with settings:', settings);
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
@@ -461,7 +477,9 @@ ipcMain.handle(
   async (_event, settings?: Partial<CameraSettings>) => {
     try {
       const camera = await ensureCameraProcess();
-      const response = await camera.capture(settings);
+      const response = await camera.capture(
+        applyCameraIp(settings, getConfiguredCameraIp())
+      );
 
       if (response.success && response.image) {
         return {
@@ -517,7 +535,9 @@ ipcMain.handle(
   async (_event, settings?: Partial<CameraSettings>) => {
     try {
       const camera = await ensureCameraProcess();
-      const success = await camera.startStream(settings);
+      const success = await camera.startStream(
+        applyCameraIp(settings, getConfiguredCameraIp())
+      );
       return { success };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -783,7 +803,9 @@ ipcMain.handle(
     try {
       if (idleTimer) idleTimer.resetTimer();
       const scanner = await ensureScannerProcess();
-      const response = await scanner.initialize(settings);
+      const response = await scanner.initialize(
+        applyScannerCameraIp(settings, getConfiguredCameraIp())
+      );
       return response;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
