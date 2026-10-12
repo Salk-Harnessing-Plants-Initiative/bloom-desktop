@@ -21,6 +21,7 @@ import {
   MachineConfig,
   MachineCredentials,
 } from '../../src/main/config-store';
+import { toRendererConfig } from '../../src/main/config-password';
 
 // Test directory setup
 const TEST_DIR = path.join(os.tmpdir(), 'bloom-config-ipc-test');
@@ -78,7 +79,7 @@ describe('Config IPC Handler Logic', () => {
         config: loadedConfig,
         credentials: {
           bloom_scanner_username: loadedCredentials.bloom_scanner_username,
-          bloom_scanner_password: hasCredentials ? '********' : '',
+          bloom_scanner_password: '',
           bloom_anon_key: loadedCredentials.bloom_anon_key,
         },
         hasCredentials,
@@ -88,7 +89,7 @@ describe('Config IPC Handler Logic', () => {
       expect(result.config.scanner_name).toBe('TestScanner');
       expect(result.config.camera_ip_address).toBe('10.0.0.50');
       expect(result.credentials.bloom_scanner_username).toBe('test@salk.edu');
-      expect(result.credentials.bloom_scanner_password).toBe('********'); // Masked
+      expect(result.credentials.bloom_scanner_password).toBe(''); // Never sent
       expect(result.credentials.bloom_anon_key).toBe(
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9'
       );
@@ -105,7 +106,7 @@ describe('Config IPC Handler Logic', () => {
         config: loadedConfig,
         credentials: {
           bloom_scanner_username: loadedCredentials.bloom_scanner_username,
-          bloom_scanner_password: hasCredentials ? '********' : '',
+          bloom_scanner_password: '',
           bloom_anon_key: loadedCredentials.bloom_anon_key,
         },
         hasCredentials,
@@ -448,34 +449,9 @@ describe('Config IPC Handler Logic', () => {
       ].join('\n');
       fs.writeFileSync(ENV_PATH, envContent);
 
-      // Simulate the config:get handler using loadEnvConfig (unified)
-      const config = loadEnvConfig(ENV_PATH);
-      const hasCredentials = config.bloom_scanner_password !== '';
-
-      // The handler should return ALL config fields including scan params
-      // and scanner_mode (a real bug — main.ts's actual config:get handler
-      // omitted scanner_mode from this field list entirely, silently
-      // dropping it on every load; caught via manual E2E smoke testing of
-      // fix-cylinderscan-config-ux-quickfixes, not by this simulated test,
-      // since this object independently duplicates the handler's field
-      // list rather than calling it — fixed in main.ts, and scanner_mode
-      // is now derived here too instead of hardcoded, to keep this
-      // simulation from drifting out of sync with the real handler again).
-      const result = {
-        config: {
-          scanner_mode: config.scanner_mode,
-          scanner_name: config.scanner_name,
-          camera_ip_address: config.camera_ip_address,
-          scans_dir: config.scans_dir,
-          bloom_api_url: config.bloom_api_url,
-          bloom_scanner_username: config.bloom_scanner_username,
-          bloom_scanner_password: hasCredentials ? '********' : '',
-          bloom_anon_key: config.bloom_anon_key,
-          num_frames: config.num_frames,
-          seconds_per_rot: config.seconds_per_rot,
-        },
-        hasCredentials,
-      };
+      // Call the real config:get response builder (it previously duplicated
+      // the handler's field list here, which let scanner_mode drift)
+      const result = toRendererConfig(loadEnvConfig(ENV_PATH));
 
       expect(result.config.scanner_mode).toBe('cylinderscan');
       expect(result.config.num_frames).toBe(36);

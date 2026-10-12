@@ -1,9 +1,10 @@
 /**
  * Unit tests for config-password module (#391)
  *
- * Saving Machine Configuration or fetching scanners with the masked password
- * that config:get returned (or with a blank field) must use the stored Bloom
- * password, never write or send the mask.
+ * config:get never sends the stored Bloom password to the renderer, so the
+ * form's password field is blank. Saving Machine Configuration or fetching
+ * scanners with that blank field must keep using the stored password, and
+ * only a newly typed password may replace it.
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
@@ -15,15 +16,17 @@ import {
   getDefaultConfig,
   loadEnvConfig,
   saveEnvConfig,
+  validateConfig,
 } from '../../src/main/config-store';
 import type { MachineConfig } from '../../src/main/config-store';
 import {
-  MASKED_PASSWORD,
-  maskPassword,
   keepsStoredPassword,
   resolveBloomPassword,
+  saveSubmittedConfig,
+  toRendererConfig,
   withResolvedPassword,
 } from '../../src/main/config-password';
+import type { ConfigStoreLike } from '../../src/main/config-password';
 
 const STORED_PASSWORD = 'stored-S3cret!';
 const NEW_PASSWORD = 'new-S3cret!';
@@ -36,121 +39,81 @@ function failingLoad(): never {
   throw new Error('EACCES: permission denied');
 }
 
-describe('MASKED_PASSWORD', () => {
-  it('is non-empty so a masked field is distinguishable from a blank one', () => {
-    expect(MASKED_PASSWORD).not.toBe('');
-    expect(MASKED_PASSWORD.trim()).toBe(MASKED_PASSWORD);
-  });
-});
-
-describe('maskPassword', () => {
-  it('returns the mask when a password is stored', () => {
-    expect(maskPassword(STORED_PASSWORD)).toBe(MASKED_PASSWORD);
-  });
-
-  it('returns empty when no password is stored', () => {
-    expect(maskPassword('')).toBe('');
-  });
-
-  it('returns empty when the password is undefined', () => {
-    expect(maskPassword(undefined)).toBe('');
-  });
-
-  it('never returns the stored password', () => {
-    expect(maskPassword(STORED_PASSWORD)).not.toContain(STORED_PASSWORD);
-  });
-});
-
 describe('keepsStoredPassword', () => {
-  it('is true for the mask', () => {
-    expect(keepsStoredPassword(MASKED_PASSWORD)).toBe(true);
-  });
-
   it('is true for a blank field', () => {
     expect(keepsStoredPassword('')).toBe(true);
   });
 
   it('is true for a whitespace-only field', () => {
-    expect(keepsStoredPassword('   \t')).toBe(true);
+    expect(keepsStoredPassword('   ')).toBe(true);
   });
 
-  it('is true for undefined and null', () => {
+  it('is true for a missing value', () => {
     expect(keepsStoredPassword(undefined)).toBe(true);
     expect(keepsStoredPassword(null)).toBe(true);
   });
 
-  it('is false for a real password', () => {
+  it('is false for a typed password', () => {
     expect(keepsStoredPassword(NEW_PASSWORD)).toBe(false);
   });
 
-  it('is false for a password that only contains the mask', () => {
-    expect(keepsStoredPassword(`${MASKED_PASSWORD}x`)).toBe(false);
-    expect(keepsStoredPassword('*******')).toBe(false);
+  it('is false for a typed password made of asterisks', () => {
+    expect(keepsStoredPassword('********')).toBe(false);
   });
 });
 
 describe('resolveBloomPassword', () => {
-  it('returns the stored password for the mask', () => {
-    expect(resolveBloomPassword(MASKED_PASSWORD, storedConfig())).toBe(
-      STORED_PASSWORD
-    );
-  });
-
   it('returns the stored password for a blank field', () => {
     expect(resolveBloomPassword('', storedConfig())).toBe(STORED_PASSWORD);
   });
 
-  it('returns a real new password unchanged', () => {
+  it('returns a typed password unchanged', () => {
     expect(resolveBloomPassword(NEW_PASSWORD, storedConfig())).toBe(
       NEW_PASSWORD
     );
   });
 
-  it('does not read the stored config for a real new password', () => {
+  it('does not read the stored config for a typed password', () => {
     const load = vi.fn(storedConfig());
     resolveBloomPassword(NEW_PASSWORD, load);
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('returns empty, not the mask, when no password is stored yet', () => {
-    expect(resolveBloomPassword(MASKED_PASSWORD, storedConfig(''))).toBe('');
+  it('returns empty when no password is stored yet', () => {
     expect(resolveBloomPassword('', storedConfig(''))).toBe('');
   });
 
   it('returns empty when the stored config has no password field', () => {
-    expect(resolveBloomPassword(MASKED_PASSWORD, () => ({}))).toBe('');
+    expect(resolveBloomPassword('', () => ({}))).toBe('');
   });
 
   it('propagates a stored-config read error instead of guessing', () => {
-    expect(() => resolveBloomPassword(MASKED_PASSWORD, failingLoad)).toThrow(
-      'EACCES'
-    );
+    expect(() => resolveBloomPassword('', failingLoad)).toThrow('EACCES');
   });
 });
 
 describe('withResolvedPassword', () => {
   const credentials = {
     bloom_scanner_username: 'scanner@salk.edu',
-    bloom_scanner_password: MASKED_PASSWORD,
+    bloom_scanner_password: '',
     bloom_anon_key: 'anon-key',
   };
 
-  it('replaces the mask with the stored password', () => {
+  it('fills a blank password from the stored config', () => {
     expect(withResolvedPassword(credentials, storedConfig())).toEqual({
       ...credentials,
       bloom_scanner_password: STORED_PASSWORD,
     });
   });
 
-  it('keeps a real new password (Fetch scanners before saving)', () => {
+  it('keeps a typed password (Fetch scanners before saving)', () => {
     const typed = { ...credentials, bloom_scanner_password: NEW_PASSWORD };
-    expect(withResolvedPassword(typed, storedConfig())).toEqual(typed);
+    expect(withResolvedPassword(typed, failingLoad)).toEqual(typed);
   });
 
   it('does not mutate the submitted object', () => {
-    const submitted = { ...credentials };
-    withResolvedPassword(submitted, storedConfig());
-    expect(submitted.bloom_scanner_password).toBe(MASKED_PASSWORD);
+    withResolvedPassword(credentials, storedConfig());
+    expect(credentials.bloom_scanner_password).toBe('');
   });
 
   it('propagates a stored-config read error', () => {
@@ -160,9 +123,52 @@ describe('withResolvedPassword', () => {
   });
 });
 
-describe('.env round-trip through saveEnvConfig/loadEnvConfig', () => {
+describe('toRendererConfig (config:get)', () => {
+  const stored: MachineConfig = {
+    ...getDefaultConfig(),
+    scanner_mode: 'cylinderscan',
+    scanner_name: 'FastScanner',
+    camera_ip_address: '10.0.0.45',
+    bloom_scanner_username: 'scanner@salk.edu',
+    bloom_scanner_password: STORED_PASSWORD,
+    bloom_anon_key: 'anon-key',
+    slack_webhook_url: 'https://hooks.slack.example/secret',
+  };
+
+  it('never sends the stored password', () => {
+    const response = toRendererConfig(stored);
+    expect(response.config.bloom_scanner_password).toBe('');
+    expect(JSON.stringify(response)).not.toContain(STORED_PASSWORD);
+  });
+
+  it('reports a saved password through hasCredentials', () => {
+    expect(toRendererConfig(stored).hasCredentials).toBe(true);
+  });
+
+  it('reports no saved password on first run', () => {
+    const fresh = { ...stored, bloom_scanner_password: '' };
+    expect(toRendererConfig(fresh).hasCredentials).toBe(false);
+  });
+
+  it('does not send env-only settings such as the Slack webhook', () => {
+    const response = toRendererConfig(stored);
+    expect(response.config).not.toHaveProperty('slack_webhook_url');
+    expect(JSON.stringify(response)).not.toContain('hooks.slack.example');
+  });
+
+  it('sends the form fields unchanged', () => {
+    const { config } = toRendererConfig(stored);
+    expect(config.scanner_name).toBe('FastScanner');
+    expect(config.camera_ip_address).toBe('10.0.0.45');
+    expect(config.bloom_scanner_username).toBe('scanner@salk.edu');
+    expect(config.bloom_anon_key).toBe('anon-key');
+  });
+});
+
+describe('config:get / config:set against a real .env', () => {
   let tempDir: string;
   let envPath: string;
+  let store: ConfigStoreLike;
 
   function formConfig(password: string): MachineConfig {
     return {
@@ -177,17 +183,19 @@ describe('.env round-trip through saveEnvConfig/loadEnvConfig', () => {
     };
   }
 
-  /** What config:set does: resolve against the stored config, then save. */
-  function saveFromForm(config: MachineConfig): void {
-    saveEnvConfig(
-      withResolvedPassword(config, () => loadEnvConfig(envPath)),
-      envPath
-    );
+  /** What the form sends back after loading: config:get's response. */
+  function formFromStored(): MachineConfig {
+    return toRendererConfig(loadEnvConfig(envPath)).config;
   }
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-config-password-'));
     envPath = path.join(tempDir, '.env');
+    store = {
+      load: () => loadEnvConfig(envPath),
+      save: (config) => saveEnvConfig(config, envPath),
+      validate: validateConfig,
+    };
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
@@ -196,59 +204,84 @@ describe('.env round-trip through saveEnvConfig/loadEnvConfig', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('saving the masked value leaves the stored password unchanged', () => {
-    saveEnvConfig(formConfig(STORED_PASSWORD), envPath);
+  it('saving the form unchanged keeps the stored password', () => {
+    store.save(formConfig(STORED_PASSWORD));
 
-    saveFromForm({
-      ...formConfig(MASKED_PASSWORD),
-      camera_ip_address: '10.0.0.99',
-    });
+    const result = saveSubmittedConfig(formFromStored(), store);
 
-    const loaded = loadEnvConfig(envPath);
-    expect(loaded.bloom_scanner_password).toBe(STORED_PASSWORD);
-    expect(loaded.camera_ip_address).toBe('10.0.0.99');
-    expect(fs.readFileSync(envPath, 'utf-8')).not.toContain(MASKED_PASSWORD);
+    expect(result.success).toBe(true);
+    expect(loadEnvConfig(envPath).bloom_scanner_password).toBe(STORED_PASSWORD);
   });
 
-  it('saving a blank password leaves the stored password unchanged', () => {
-    saveEnvConfig(formConfig(STORED_PASSWORD), envPath);
+  it('changing only the camera IP keeps the stored password', () => {
+    store.save(formConfig(STORED_PASSWORD));
 
-    saveFromForm(formConfig(''));
+    saveSubmittedConfig(
+      { ...formFromStored(), camera_ip_address: '10.0.0.99' },
+      store
+    );
+
+    const saved = loadEnvConfig(envPath);
+    expect(saved.camera_ip_address).toBe('10.0.0.99');
+    expect(saved.bloom_scanner_password).toBe(STORED_PASSWORD);
+  });
+
+  it('repeated saves keep the stored password', () => {
+    store.save(formConfig(STORED_PASSWORD));
+
+    saveSubmittedConfig(formFromStored(), store);
+    saveSubmittedConfig(formFromStored(), store);
 
     expect(loadEnvConfig(envPath).bloom_scanner_password).toBe(STORED_PASSWORD);
   });
 
-  it('saving a new password replaces the stored one', () => {
-    saveEnvConfig(formConfig(STORED_PASSWORD), envPath);
+  it('a typed password replaces the stored one', () => {
+    store.save(formConfig(STORED_PASSWORD));
 
-    saveFromForm(formConfig(NEW_PASSWORD));
+    saveSubmittedConfig(
+      { ...formFromStored(), bloom_scanner_password: NEW_PASSWORD },
+      store
+    );
 
     expect(loadEnvConfig(envPath).bloom_scanner_password).toBe(NEW_PASSWORD);
   });
 
-  it('repeated masked saves keep the stored password', () => {
-    saveEnvConfig(formConfig(STORED_PASSWORD), envPath);
-
-    saveFromForm(formConfig(MASKED_PASSWORD));
-    saveFromForm(formConfig(MASKED_PASSWORD));
-
-    expect(loadEnvConfig(envPath).bloom_scanner_password).toBe(STORED_PASSWORD);
-  });
-
-  it('first run with no .env saves an empty password, not the mask', () => {
-    saveFromForm(formConfig(MASKED_PASSWORD));
+  it('first run with a blank password saves an empty password', () => {
+    saveSubmittedConfig(formConfig(''), store);
 
     expect(loadEnvConfig(envPath).bloom_scanner_password).toBe('');
-    expect(fs.readFileSync(envPath, 'utf-8')).not.toContain(MASKED_PASSWORD);
   });
 
-  it('config:get masking round-trips back to the stored password', () => {
-    saveEnvConfig(formConfig(STORED_PASSWORD), envPath);
-    const shown = maskPassword(loadEnvConfig(envPath).bloom_scanner_password);
+  it('returns the saved config so the caller can sync scanner identity', () => {
+    store.save(formConfig(STORED_PASSWORD));
 
-    saveFromForm(formConfig(shown));
+    const result = saveSubmittedConfig(formFromStored(), store);
 
-    expect(shown).toBe(MASKED_PASSWORD);
-    expect(loadEnvConfig(envPath).bloom_scanner_password).toBe(STORED_PASSWORD);
+    expect(result.saved?.scanner_name).toBe('TestScanner');
+    expect(result.saved?.bloom_scanner_password).toBe(STORED_PASSWORD);
+  });
+
+  it('does not save, or read the stored config, when validation fails', () => {
+    store.save(formConfig(STORED_PASSWORD));
+    const load = vi.spyOn(store, 'load');
+    const save = vi.spyOn(store, 'save');
+
+    const result = saveSubmittedConfig(
+      { ...formFromStored(), scanner_name: '' },
+      store
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toBeDefined();
+    expect(load).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('does not save when the stored config cannot be read', () => {
+    const save = vi.spyOn(store, 'save');
+    const broken = { ...store, load: failingLoad };
+
+    expect(() => saveSubmittedConfig(formConfig(''), broken)).toThrow('EACCES');
+    expect(save).not.toHaveBeenCalled();
   });
 });

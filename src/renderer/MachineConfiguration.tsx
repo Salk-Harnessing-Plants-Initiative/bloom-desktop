@@ -44,6 +44,10 @@ export function MachineConfiguration() {
   const [originalConfig, setOriginalConfig] = useState<MachineConfig | null>(
     null
   );
+  // A password is saved in .env; it is never sent here, so the field stays
+  // blank and a blank field means "keep the saved one" (#391)
+  const [hasSavedPassword, setHasSavedPassword] = useState(false);
+  const hasPassword = config.bloom_scanner_password !== '' || hasSavedPassword;
 
   // Form state
   const [errors, setErrors] = useState<FormErrors>({});
@@ -119,6 +123,7 @@ export function MachineConfiguration() {
         // Set unified config (includes credentials)
         setConfig(configData.config);
         setOriginalConfig(configData.config);
+        setHasSavedPassword(configData.hasCredentials);
 
         // Always show config form (no login screen)
         setFormState('config');
@@ -278,10 +283,12 @@ export function MachineConfiguration() {
           setTimeout(() => setSaveSuccess(false), 3000);
         }
 
+        if (config.bloom_scanner_password) setHasSavedPassword(true);
+
         // UX improvement: If credentials are complete, automatically fetch scanners
         if (
           config.bloom_scanner_username &&
-          config.bloom_scanner_password &&
+          hasPassword &&
           config.bloom_anon_key &&
           config.bloom_api_url
         ) {
@@ -521,7 +528,11 @@ export function MachineConfiguration() {
                   }))
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
-                placeholder="Leave blank to keep existing"
+                placeholder={
+                  hasSavedPassword
+                    ? 'Saved. Leave blank to keep existing'
+                    : 'Enter password'
+                }
               />
             </div>
 
@@ -553,7 +564,7 @@ export function MachineConfiguration() {
                 onClick={fetchScanners}
                 disabled={
                   !config.bloom_scanner_username ||
-                  !config.bloom_scanner_password ||
+                  !hasPassword ||
                   !config.bloom_anon_key ||
                   !config.bloom_api_url ||
                   scannerListLoading

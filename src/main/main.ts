@@ -31,7 +31,11 @@ import {
   applyCameraIp,
   applyScannerCameraIp,
 } from './cylinderscan/camera-ip';
-import { maskPassword, withResolvedPassword } from './config-password';
+import {
+  saveSubmittedConfig,
+  toRendererConfig,
+  withResolvedPassword,
+} from './config-password';
 import {
   getPythonExecutablePath,
   validatePythonExecutable,
@@ -913,30 +917,11 @@ ipcMain.handle('scanner:get-scanner-id', (): string => {
 
 /**
  * Handle config:get - Get current configuration and credentials
- * Returns config values with password masked for security
+ * The stored password is never sent; hasCredentials says one is saved (#391)
  */
 ipcMain.handle('config:get', async () => {
   try {
-    // Load unified config from .env
-    const config = loadEnvConfig(ENV_PATH);
-    const hasCredentials = config.bloom_scanner_password !== '';
-
-    // Return unified config with masked password
-    return {
-      config: {
-        scanner_mode: config.scanner_mode,
-        scanner_name: config.scanner_name,
-        camera_ip_address: config.camera_ip_address,
-        scans_dir: config.scans_dir,
-        bloom_api_url: config.bloom_api_url,
-        bloom_scanner_username: config.bloom_scanner_username,
-        bloom_scanner_password: maskPassword(config.bloom_scanner_password),
-        bloom_anon_key: config.bloom_anon_key,
-        num_frames: config.num_frames,
-        seconds_per_rot: config.seconds_per_rot,
-      },
-      hasCredentials,
-    };
+    return toRendererConfig(loadEnvConfig(ENV_PATH));
   } catch (error) {
     console.error('config:get error:', error);
     throw error;
@@ -949,22 +934,18 @@ ipcMain.handle('config:get', async () => {
  */
 ipcMain.handle('config:set', async (_event, submitted: MachineConfig) => {
   try {
-    // Validate config (validateConfig needs to be updated to handle credential fields)
-    const validation = validateConfig(submitted);
-    if (!validation.valid) {
-      return { success: false, errors: validation.errors };
+    // Blank password keeps the stored one (#391)
+    const result = saveSubmittedConfig(submitted, {
+      load: () => loadEnvConfig(ENV_PATH),
+      save: (config) => saveEnvConfig(config, ENV_PATH),
+      validate: validateConfig,
+    });
+    if (!result.saved) {
+      return { success: false, errors: result.errors };
     }
 
-    // Masked or blank password keeps the stored one (#391)
-    const config = withResolvedPassword(submitted, () =>
-      loadEnvConfig(ENV_PATH)
-    );
-
-    // Save unified config to .env
-    saveEnvConfig(config, ENV_PATH);
-
     // Sync scanner identity from saved config
-    scannerIdentity.name = config.scanner_name || '';
+    scannerIdentity.name = result.saved.scanner_name || '';
     console.log('[Scanner Identity] Updated:', scannerIdentity.name);
 
     return { success: true };
@@ -1100,7 +1081,7 @@ ipcMain.handle(
     }
   ) => {
     try {
-      // Masked or blank password uses the stored one (#391)
+      // Blank password uses the stored one (#391)
       const credentials = withResolvedPassword(submitted, () =>
         loadEnvConfig(ENV_PATH)
       );

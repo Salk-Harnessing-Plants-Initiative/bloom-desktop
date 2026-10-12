@@ -145,7 +145,7 @@ describe('MachineConfiguration Page', () => {
           scans_dir: '/data/scans',
           bloom_api_url: 'https://api.bloom.salk.edu/proxy',
           bloom_scanner_username: 'test@salk.edu',
-          bloom_scanner_password: '********',
+          bloom_scanner_password: '',
           bloom_anon_key: 'testkey123',
         },
         hasCredentials: true,
@@ -185,11 +185,42 @@ describe('MachineConfiguration Page', () => {
 
       expect(screen.getByDisplayValue('/data/scans')).toBeInTheDocument();
       expect(screen.getByDisplayValue('test@salk.edu')).toBeInTheDocument();
-      expect(screen.getByDisplayValue('********')).toBeInTheDocument();
       expect(screen.getByDisplayValue('testkey123')).toBeInTheDocument();
       expect(
         screen.getByDisplayValue('https://api.bloom.salk.edu/proxy')
       ).toBeInTheDocument();
+    });
+
+    it('shows the saved password as a blank field with a keep-existing hint (#391)', async () => {
+      render(<MachineConfiguration />);
+
+      const password = await screen.findByLabelText(/Password/i);
+      expect(password).toHaveValue('');
+      expect(password).toHaveAttribute(
+        'placeholder',
+        'Saved. Leave blank to keep existing'
+      );
+    });
+
+    it('enables Fetch scanners with a saved password and a blank field (#391)', async () => {
+      mockConfigAPI.fetchScanners.mockResolvedValue({
+        success: true,
+        scanners: [{ name: 'TestScanner' }],
+      });
+      render(<MachineConfiguration />);
+
+      const button = await screen.findByRole('button', {
+        name: /Fetch Scanners from Bloom/i,
+      });
+      expect(button).toBeEnabled();
+
+      fireEvent.click(button);
+      await waitFor(() => {
+        expect(mockConfigAPI.fetchScanners).toHaveBeenCalledWith(
+          'https://api.bloom.salk.edu/proxy',
+          expect.objectContaining({ bloom_scanner_password: '' })
+        );
+      });
     });
   });
 
@@ -209,6 +240,27 @@ describe('MachineConfiguration Page', () => {
         },
         hasCredentials: false,
       });
+    });
+
+    it('asks for a password and keeps Fetch scanners disabled until one is typed (#391)', async () => {
+      render(<MachineConfiguration />);
+
+      const password = await screen.findByLabelText(/Password/i);
+      expect(password).toHaveAttribute('placeholder', 'Enter password');
+
+      fireEvent.change(screen.getByLabelText(/Username/i), {
+        target: { value: 'scanner@salk.edu' },
+      });
+      fireEvent.change(screen.getByLabelText(/Anon Key/i), {
+        target: { value: 'anon-key' },
+      });
+      const button = screen.getByRole('button', {
+        name: /Fetch Scanners from Bloom/i,
+      });
+      expect(button).toBeDisabled();
+
+      fireEvent.change(password, { target: { value: 'typed-password' } });
+      expect(button).toBeEnabled();
     });
 
     it('should display all configuration fields', async () => {
@@ -242,7 +294,7 @@ describe('MachineConfiguration Page', () => {
           scans_dir: '/custom/path',
           bloom_api_url: 'https://custom.api.url',
           bloom_scanner_username: 'existing@salk.edu',
-          bloom_scanner_password: '********',
+          bloom_scanner_password: '',
           bloom_anon_key: 'existingkey',
         },
         hasCredentials: true,
@@ -981,7 +1033,7 @@ describe('MachineConfiguration color palette', () => {
         scans_dir: '/data/scans',
         bloom_api_url: 'https://api.bloom.salk.edu/proxy',
         bloom_scanner_username: 'test@salk.edu',
-        bloom_scanner_password: '********',
+        bloom_scanner_password: '',
         bloom_anon_key: 'testkey123',
       },
       hasCredentials: true,

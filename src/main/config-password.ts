@@ -1,20 +1,19 @@
 /**
- * Bloom scanner password masking (Machine Configuration)
+ * Bloom scanner password handling for Machine Configuration
  *
- * `config:get` never sends the stored password to the renderer; it sends
- * MASKED_PASSWORD instead. The form shows that value and sends it straight
- * back on Save and Fetch scanners, so the main process must treat the mask
- * (or a blank field, "Leave blank to keep existing") as "keep the stored
- * password" rather than writing it to ~/.bloom/.env or sending it to the
- * Bloom API (#391).
+ * The stored password never leaves the main process: `config:get` sends an
+ * empty password plus `hasCredentials`, and the form shows the field blank
+ * with a "Leave blank to keep existing" placeholder. A blank password coming
+ * back from Save or Fetch scanners therefore means "keep the stored one"
+ * (#391); only a newly typed password replaces it.
  *
- * Pure and Electron-free so it can be unit-tested without main.ts.
+ * Pure and Electron-free so the config:get / config:set / config:fetch-scanners
+ * handler logic can be unit-tested without main.ts.
  */
 
-/** Placeholder `config:get` returns in place of a stored password. */
-export const MASKED_PASSWORD = '********';
+import type { MachineConfig, ValidationResult } from './config-store';
 
-/** Minimal shape of the machine config this module reads. */
+/** Minimal shape of the stored config this module reads. */
 export interface StoredPasswordConfigLike {
   bloom_scanner_password?: string;
 }
@@ -24,36 +23,44 @@ export interface SubmittedPasswordLike {
   bloom_scanner_password: string;
 }
 
-/**
- * Value `config:get` returns for the password field: the mask when a
- * password is stored, otherwise empty so the form shows the placeholder.
- */
-export function maskPassword(stored: string | undefined): string {
-  return stored ? MASKED_PASSWORD : '';
+/** What `config:get` returns to the renderer. */
+export interface RendererConfigResponse {
+  config: MachineConfig;
+  hasCredentials: boolean;
+}
+
+/** Result of `config:set`. */
+export interface SaveConfigResult {
+  success: boolean;
+  errors?: ValidationResult['errors'];
+}
+
+/** Injected config-store functions, bound to the .env path by the caller. */
+export interface ConfigStoreLike {
+  load: () => MachineConfig;
+  save: (config: MachineConfig) => void;
+  validate: (config: MachineConfig) => ValidationResult;
 }
 
 /**
- * Whether a submitted password means "keep the stored one": the unchanged
- * mask, or a blank field. Whitespace-only counts as blank because .env
- * values are trimmed on load, so it could never be stored as typed.
+ * Whether a submitted password means "keep the stored one": a blank field.
+ * Whitespace-only counts as blank because .env values are trimmed on load,
+ * so it could never be stored as typed.
  */
 export function keepsStoredPassword(
   submitted: string | null | undefined
 ): boolean {
   return (
-    submitted === undefined ||
-    submitted === null ||
-    submitted === MASKED_PASSWORD ||
-    submitted.trim() === ''
+    submitted === undefined || submitted === null || submitted.trim() === ''
   );
 }
 
 /**
  * Resolve the password to save or send.
  *
- * A real new password is returned as-is without reading the stored config.
- * Otherwise the stored password is returned, or `''` when none is stored
- * yet (first run), so the mask itself is never saved or sent.
+ * A newly typed password is returned as-is without reading the stored
+ * config. Otherwise the stored password is returned, or `''` when none is
+ * stored yet (first run).
  *
  * Errors from `loadStored` propagate: callers fail the save/fetch rather
  * than overwriting the stored password with a guess.
@@ -80,4 +87,49 @@ export function withResolvedPassword<T extends SubmittedPasswordLike>(
       loadStored
     ),
   };
+}
+
+/**
+ * Build the `config:get` response: the form fields with the password
+ * blanked, and `hasCredentials` telling the form a password is saved.
+ * Fields are listed explicitly so env-only settings (e.g. the Slack
+ * webhook URL) never reach the renderer.
+ */
+export function toRendererConfig(
+  stored: MachineConfig
+): RendererConfigResponse {
+  return {
+    config: {
+      scanner_mode: stored.scanner_mode,
+      scanner_name: stored.scanner_name,
+      camera_ip_address: stored.camera_ip_address,
+      scans_dir: stored.scans_dir,
+      bloom_api_url: stored.bloom_api_url,
+      bloom_scanner_username: stored.bloom_scanner_username,
+      bloom_scanner_password: '',
+      bloom_anon_key: stored.bloom_anon_key,
+      num_frames: stored.num_frames,
+      seconds_per_rot: stored.seconds_per_rot,
+    },
+    hasCredentials: stored.bloom_scanner_password !== '',
+  };
+}
+
+/**
+ * `config:set`: validate the submitted form, resolve its password against
+ * the stored config, and save. Returns the saved config on success so the
+ * caller can sync derived state (scanner identity).
+ */
+export function saveSubmittedConfig(
+  submitted: MachineConfig,
+  store: ConfigStoreLike
+): SaveConfigResult & { saved?: MachineConfig } {
+  const validation = store.validate(submitted);
+  if (!validation.valid) {
+    return { success: false, errors: validation.errors };
+  }
+
+  const saved = withResolvedPassword(submitted, store.load);
+  store.save(saved);
+  return { success: true, saved };
 }
