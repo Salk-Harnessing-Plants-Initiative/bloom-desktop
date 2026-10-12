@@ -15,9 +15,14 @@ import {
   ScanSummary,
   Streamer,
   CameraSettingsForm,
+  ScanNotSavedWarning,
 } from '../components';
+import type { UnsavedScan } from '../components';
 import type { CameraSettings } from '../types/camera';
-import type { ScanProgress as ScanProgressData } from '../types/scanner';
+import type {
+  ScanProgress as ScanProgressData,
+  ScanResult,
+} from '../types/scanner';
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
@@ -71,6 +76,8 @@ export function CaptureScan() {
 
   // UI state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  // Set when images were captured but the DB save failed (#392)
+  const [unsavedScan, setUnsavedScan] = useState<UnsavedScan | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showIdleResetBanner, setShowIdleResetBanner] = useState(false);
 
@@ -373,12 +380,7 @@ export function CaptureScan() {
       setScanProgress(progress);
     };
 
-    const handleComplete = (result: {
-      success: boolean;
-      frames_captured: number;
-      output_path: string;
-      error?: string;
-    }) => {
+    const handleComplete = (result: ScanResult) => {
       // Reset ref synchronously before setIsScanning(false) schedules a React update,
       // closing the window where the useEffect([isScanning]) mirror hasn't fired yet.
       isScanningRef.current = false;
@@ -386,20 +388,33 @@ export function CaptureScan() {
       setScanProgress(null);
 
       if (result.success) {
+        // Images captured but not recorded: list as failed (it is not in the
+        // DB) and show a persistent warning instead of the success message.
+        // Barcode is kept and the DB-backed duplicate check will not block a
+        // rescan, since no Scan row exists for this plant.
+        const dbSaveFailed = result.db_saved === false;
+
         // Add to recent scans
         const newScan: ScanSummary = {
           id: `scan-${Date.now()}`,
           plantQrCode: metadata.plantQrCode,
           timestamp: new Date(),
           framesCaptured: result.frames_captured,
-          success: true,
+          success: !dbSaveFailed,
           outputPath: toRelativeScanPath(result.output_path, scansDir),
         };
         setRecentScans((prev) => [newScan, ...prev].slice(0, 10)); // Keep last 10
 
-        // Show success message
-        setShowSuccessMessage(true);
-        setTimeout(() => setShowSuccessMessage(false), 5000);
+        if (dbSaveFailed) {
+          setUnsavedScan({
+            outputPath: result.output_path,
+            error: result.db_save_error,
+          });
+        } else {
+          // Show success message
+          setShowSuccessMessage(true);
+          setTimeout(() => setShowSuccessMessage(false), 5000);
+        }
 
         // Reset metadata for next scan (optional)
         // For now, keep the same experiment/phenotyper but increment plant
@@ -489,6 +504,7 @@ export function CaptureScan() {
     try {
       setIsScanning(true);
       setErrorMessage(null);
+      setUnsavedScan(null);
       setShowIdleResetBanner(false);
 
       // Initialize scanner
@@ -570,6 +586,14 @@ export function CaptureScan() {
               </span>
             </div>
           </div>
+        )}
+
+        {/* Scan captured but not saved to the database */}
+        {unsavedScan && (
+          <ScanNotSavedWarning
+            scan={unsavedScan}
+            onDismiss={() => setUnsavedScan(null)}
+          />
         )}
 
         {/* Idle Reset Notification */}

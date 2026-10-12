@@ -124,11 +124,16 @@ export class ScannerProcess extends EventEmitter {
         try {
           const scanId = await this.saveScanToDatabase(result);
           result.scan_id = scanId;
+          result.db_saved = true;
           console.log('[Scanner] Scan saved to database:', scanId);
         } catch (error) {
-          console.error('[Scanner] Failed to save scan to database:', error);
-          // Don't fail the scan itself if database save fails
-          // The images were captured successfully
+          // Images were captured, so the scan itself still succeeded, but
+          // report the failed save so the UI does not claim success (#392)
+          const message =
+            error instanceof Error ? error.message : 'Unknown error';
+          result.db_saved = false;
+          result.db_save_error = message;
+          console.error('[Scanner] Failed to save scan to database:', message);
         }
       }
 

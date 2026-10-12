@@ -99,6 +99,16 @@ export interface ScanResult {
   /** Database scan ID if metadata was provided and save was successful */
   scan_id?: string;
 
+  /**
+   * Whether the Scan/Image rows were written to the database.
+   * Undefined when no metadata was provided (no save attempted). When false,
+   * the images are on disk at output_path but the scan is not recorded.
+   */
+  db_saved?: boolean;
+
+  /** Database error message when db_saved is false */
+  db_save_error?: string;
+
   /** Error message if scan failed (undefined if successful) */
   error?: string;
 }
