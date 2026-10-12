@@ -108,6 +108,11 @@ beforeEach(() => {
   };
 });
 
+// Start Scan only enables after session, experiment, barcode-list, duplicate
+// and camera-status loads all resolve; 1s (the waitFor default) is too short
+// on slow CI runners
+const START_ENABLED_TIMEOUT_MS = 5000;
+
 /** Fill the barcode, start a scan, and return the registered onComplete listener. */
 async function startScan(): Promise<(result: ScanResult) => void> {
   render(
@@ -117,10 +122,20 @@ async function startScan(): Promise<(result: ScanResult) => void> {
   );
 
   const barcodeInput = await screen.findByTestId('plant-barcode-input');
+  // Type the barcode once the experiment's barcode list has loaded
+  await waitFor(
+    () =>
+      expect(
+        window.electron.database.accessions.getPlantBarcodes
+      ).toHaveBeenCalled(),
+    { timeout: START_ENABLED_TIMEOUT_MS }
+  );
   fireEvent.change(barcodeInput, { target: { value: PLANT_BARCODE } });
 
   const startButton = screen.getByRole('button', { name: 'Start Scan' });
-  await waitFor(() => expect(startButton).toBeEnabled());
+  await waitFor(() => expect(startButton).toBeEnabled(), {
+    timeout: START_ENABLED_TIMEOUT_MS,
+  });
   fireEvent.click(startButton);
 
   await waitFor(() => expect(mockScannerOnComplete).toHaveBeenCalled());
@@ -167,7 +182,9 @@ describe('CaptureScan scan outcome (#392)', () => {
 
     // Barcode is kept and the scan can be retried
     const startButton = screen.getByRole('button', { name: 'Start Scan' });
-    await waitFor(() => expect(startButton).toBeEnabled());
+    await waitFor(() => expect(startButton).toBeEnabled(), {
+      timeout: START_ENABLED_TIMEOUT_MS,
+    });
     fireEvent.click(startButton);
 
     await waitFor(() =>
