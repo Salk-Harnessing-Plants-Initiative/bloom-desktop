@@ -31,6 +31,7 @@ import {
   applyCameraIp,
   applyScannerCameraIp,
 } from './cylinderscan/camera-ip';
+import { maskPassword, withResolvedPassword } from './config-password';
 import {
   getPythonExecutablePath,
   validatePythonExecutable,
@@ -929,7 +930,7 @@ ipcMain.handle('config:get', async () => {
         scans_dir: config.scans_dir,
         bloom_api_url: config.bloom_api_url,
         bloom_scanner_username: config.bloom_scanner_username,
-        bloom_scanner_password: hasCredentials ? '********' : '',
+        bloom_scanner_password: maskPassword(config.bloom_scanner_password),
         bloom_anon_key: config.bloom_anon_key,
         num_frames: config.num_frames,
         seconds_per_rot: config.seconds_per_rot,
@@ -946,13 +947,18 @@ ipcMain.handle('config:get', async () => {
  * Handle config:set - Save unified configuration
  * Validates config before saving
  */
-ipcMain.handle('config:set', async (_event, config: MachineConfig) => {
+ipcMain.handle('config:set', async (_event, submitted: MachineConfig) => {
   try {
     // Validate config (validateConfig needs to be updated to handle credential fields)
-    const validation = validateConfig(config);
+    const validation = validateConfig(submitted);
     if (!validation.valid) {
       return { success: false, errors: validation.errors };
     }
+
+    // Masked or blank password keeps the stored one (#391)
+    const config = withResolvedPassword(submitted, () =>
+      loadEnvConfig(ENV_PATH)
+    );
 
     // Save unified config to .env
     saveEnvConfig(config, ENV_PATH);
@@ -1087,13 +1093,18 @@ ipcMain.handle(
   async (
     _event,
     apiUrl: string,
-    credentials: {
+    submitted: {
       bloom_scanner_username: string;
       bloom_scanner_password: string;
       bloom_anon_key: string;
     }
   ) => {
     try {
+      // Masked or blank password uses the stored one (#391)
+      const credentials = withResolvedPassword(submitted, () =>
+        loadEnvConfig(ENV_PATH)
+      );
+
       // Validate parameters
       if (
         !apiUrl ||
