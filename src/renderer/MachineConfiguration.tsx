@@ -19,6 +19,7 @@ interface FormErrors {
   camera_ip_address?: string;
   scans_dir?: string;
   bloom_api_url?: string;
+  bloom_scanner_password?: string;
   num_frames?: string;
   seconds_per_rot?: string;
   general?: string;
@@ -45,9 +46,17 @@ export function MachineConfiguration() {
     null
   );
   // A password is saved in .env; it is never sent here, so the field stays
-  // blank and a blank field means "keep the saved one" (#391)
+  // blank and a blank field means "keep the saved one" (#391). That only
+  // applies while the Bloom server and username match the saved ones.
   const [hasSavedPassword, setHasSavedPassword] = useState(false);
-  const hasPassword = config.bloom_scanner_password !== '' || hasSavedPassword;
+  const isSavedAccount =
+    originalConfig !== null &&
+    config.bloom_api_url.trim() === originalConfig.bloom_api_url.trim() &&
+    config.bloom_scanner_username.trim() ===
+      originalConfig.bloom_scanner_username.trim();
+  const canKeepSavedPassword = hasSavedPassword && isSavedAccount;
+  const hasPassword =
+    config.bloom_scanner_password.trim() !== '' || canKeepSavedPassword;
 
   // Form state
   const [errors, setErrors] = useState<FormErrors>({});
@@ -265,7 +274,10 @@ export function MachineConfiguration() {
       const result = await window.electron.config.set(config);
 
       if (result.success) {
-        setOriginalConfig(config);
+        // Don't keep the typed password in renderer state once it's saved
+        const savedConfig = { ...config, bloom_scanner_password: '' };
+        setConfig(savedConfig);
+        setOriginalConfig(savedConfig);
 
         if (scannerModeChanged) {
           // Scanner mode gates the entire app shell (see useAppMode/App.tsx)
@@ -283,7 +295,9 @@ export function MachineConfiguration() {
           setTimeout(() => setSaveSuccess(false), 3000);
         }
 
-        if (config.bloom_scanner_password) setHasSavedPassword(true);
+        if (config.bloom_scanner_password.trim() !== '') {
+          setHasSavedPassword(true);
+        }
 
         // UX improvement: If credentials are complete, automatically fetch scanners
         if (
@@ -527,13 +541,20 @@ export function MachineConfiguration() {
                     bloom_scanner_password: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
+                className={`w-full px-3 py-2 border ${errors.bloom_scanner_password ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500`}
                 placeholder={
-                  hasSavedPassword
+                  canKeepSavedPassword
                     ? 'Saved. Leave blank to keep existing'
-                    : 'Enter password'
+                    : hasSavedPassword
+                      ? 'Required for this server/account'
+                      : 'Enter password'
                 }
               />
+              {errors.bloom_scanner_password && (
+                <p className="text-red-600 text-sm mt-1">
+                  {errors.bloom_scanner_password}
+                </p>
+              )}
             </div>
 
             <div>

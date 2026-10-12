@@ -32,6 +32,7 @@ import {
   applyScannerCameraIp,
 } from './cylinderscan/camera-ip';
 import {
+  CREDENTIALS_REQUIRED_MESSAGE,
   saveSubmittedConfig,
   toRendererConfig,
   withResolvedPassword,
@@ -1081,10 +1082,23 @@ ipcMain.handle(
     }
   ) => {
     try {
-      // Blank password uses the stored one (#391)
-      const credentials = withResolvedPassword(submitted, () =>
-        loadEnvConfig(ENV_PATH)
+      if (!submitted) {
+        return {
+          success: false,
+          error: CREDENTIALS_REQUIRED_MESSAGE,
+        };
+      }
+
+      // Blank password uses the stored one, for the same server and
+      // username only (#391)
+      const resolution = withResolvedPassword(
+        { ...submitted, bloom_api_url: apiUrl ?? '' },
+        () => loadEnvConfig(ENV_PATH)
       );
+      if ('error' in resolution) {
+        return { success: false, error: resolution.error };
+      }
+      const credentials = resolution.values;
 
       // Validate parameters
       if (
@@ -1095,7 +1109,7 @@ ipcMain.handle(
       ) {
         return {
           success: false,
-          error: 'Bloom API URL and credentials are required',
+          error: CREDENTIALS_REQUIRED_MESSAGE,
         };
       }
 

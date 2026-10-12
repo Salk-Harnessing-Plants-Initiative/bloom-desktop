@@ -5,7 +5,8 @@
  * empty password plus `hasCredentials`, and the form shows the field blank
  * with a "Leave blank to keep existing" placeholder. A blank password coming
  * back from Save or Fetch scanners therefore means "keep the stored one"
- * (#391); only a newly typed password replaces it.
+ * (#391), but only for the same Bloom server and username; only a newly
+ * typed password replaces it.
  *
  * Pure and Electron-free so the config:get / config:set / config:fetch-scanners
  * handler logic can be unit-tested without main.ts.
@@ -13,15 +14,39 @@
 
 import type { MachineConfig, ValidationResult } from './config-store';
 
+/**
+ * The placeholder `config:get` used to send in place of the password. #391
+ * saved it to .env as the real password on some stations, so a stored value
+ * equal to it is treated as "no password saved" and the form asks for one.
+ */
+export const LEGACY_MASKED_PASSWORD = '********';
+
+/** Error when the URL, username, password or anon key is missing. */
+export const CREDENTIALS_REQUIRED_MESSAGE =
+  'Bloom API URL and credentials are required';
+
+/** Error when a blank password is submitted for a different server/account. */
+export const PASSWORD_REQUIRED_MESSAGE =
+  'Enter the password for this Bloom server and account';
+
 /** Minimal shape of the stored config this module reads. */
-export interface StoredPasswordConfigLike {
+export interface StoredCredentialsLike {
+  bloom_api_url?: string;
+  bloom_scanner_username?: string;
   bloom_scanner_password?: string;
 }
 
-/** Anything carrying a submitted Bloom password (form config, credentials). */
-export interface SubmittedPasswordLike {
+/** Anything carrying submitted Bloom credentials (form config, fetch args). */
+export interface SubmittedCredentialsLike {
+  bloom_api_url: string;
+  bloom_scanner_username: string;
   bloom_scanner_password: string;
 }
+
+/** Outcome of resolving a submitted password against the stored config. */
+export type PasswordResolution =
+  | { ok: true; password: string }
+  | { ok: false; error: string };
 
 /** What `config:get` returns to the renderer. */
 export interface RendererConfigResponse {
@@ -55,37 +80,68 @@ export function keepsStoredPassword(
   );
 }
 
+/** The usable stored password: `''` when none is saved or it is the #391 placeholder. */
+export function storedPassword(stored: StoredCredentialsLike): string {
+  const password = stored.bloom_scanner_password ?? '';
+  return password === LEGACY_MASKED_PASSWORD ? '' : password;
+}
+
+/** Whether the submitted Bloom server and username match the stored ones. */
+export function isSameBloomAccount(
+  submitted: SubmittedCredentialsLike,
+  stored: StoredCredentialsLike
+): boolean {
+  return (
+    submitted.bloom_api_url.trim() === (stored.bloom_api_url ?? '').trim() &&
+    submitted.bloom_scanner_username.trim() ===
+      (stored.bloom_scanner_username ?? '').trim()
+  );
+}
+
 /**
  * Resolve the password to save or send.
  *
- * A newly typed password is returned as-is without reading the stored
- * config. Otherwise the stored password is returned, or `''` when none is
- * stored yet (first run).
+ * - A newly typed password is used as-is, without reading the stored config.
+ * - A blank field takes the stored password, but only for the same Bloom
+ *   server and username it was saved with. For a different server or
+ *   account it is an error, so the stored password is never sent to, or
+ *   saved for, an account it doesn't belong to.
+ * - With no stored password (first run), a blank field resolves to `''`.
  *
  * Errors from `loadStored` propagate: callers fail the save/fetch rather
  * than overwriting the stored password with a guess.
  */
 export function resolveBloomPassword(
-  submitted: string | null | undefined,
-  loadStored: () => StoredPasswordConfigLike
-): string {
-  if (typeof submitted === 'string' && !keepsStoredPassword(submitted)) {
-    return submitted;
+  submitted: SubmittedCredentialsLike,
+  loadStored: () => StoredCredentialsLike
+): PasswordResolution {
+  if (!keepsStoredPassword(submitted.bloom_scanner_password)) {
+    return { ok: true, password: submitted.bloom_scanner_password };
   }
-  return loadStored().bloom_scanner_password ?? '';
+
+  const stored = loadStored();
+  const password = storedPassword(stored);
+  if (password === '') {
+    return { ok: true, password: '' };
+  }
+  if (!isSameBloomAccount(submitted, stored)) {
+    return { ok: false, error: PASSWORD_REQUIRED_MESSAGE };
+  }
+  return { ok: true, password };
 }
 
-/** Return a copy of `values` with its password resolved. */
-export function withResolvedPassword<T extends SubmittedPasswordLike>(
+/** Return a copy of `values` with its password resolved, or the error. */
+export function withResolvedPassword<T extends SubmittedCredentialsLike>(
   values: T,
-  loadStored: () => StoredPasswordConfigLike
-): T {
+  loadStored: () => StoredCredentialsLike
+): { ok: true; values: T } | { ok: false; error: string } {
+  const resolution = resolveBloomPassword(values, loadStored);
+  if ('error' in resolution) {
+    return { ok: false, error: resolution.error };
+  }
   return {
-    ...values,
-    bloom_scanner_password: resolveBloomPassword(
-      values.bloom_scanner_password,
-      loadStored
-    ),
+    ok: true,
+    values: { ...values, bloom_scanner_password: resolution.password },
   };
 }
 
@@ -111,7 +167,7 @@ export function toRendererConfig(
       num_frames: stored.num_frames,
       seconds_per_rot: stored.seconds_per_rot,
     },
-    hasCredentials: stored.bloom_scanner_password !== '',
+    hasCredentials: storedPassword(stored) !== '',
   };
 }
 
@@ -129,7 +185,14 @@ export function saveSubmittedConfig(
     return { success: false, errors: validation.errors };
   }
 
-  const saved = withResolvedPassword(submitted, store.load);
-  store.save(saved);
-  return { success: true, saved };
+  const resolution = withResolvedPassword(submitted, store.load);
+  if ('error' in resolution) {
+    return {
+      success: false,
+      errors: { bloom_scanner_password: resolution.error },
+    };
+  }
+
+  store.save(resolution.values);
+  return { success: true, saved: resolution.values };
 }

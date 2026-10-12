@@ -20,9 +20,13 @@ import {
 } from '../../src/main/config-store';
 import type { MachineConfig } from '../../src/main/config-store';
 import {
+  LEGACY_MASKED_PASSWORD,
+  PASSWORD_REQUIRED_MESSAGE,
+  isSameBloomAccount,
   keepsStoredPassword,
   resolveBloomPassword,
   saveSubmittedConfig,
+  storedPassword,
   toRendererConfig,
   withResolvedPassword,
 } from '../../src/main/config-password';
@@ -30,9 +34,35 @@ import type { ConfigStoreLike } from '../../src/main/config-password';
 
 const STORED_PASSWORD = 'stored-S3cret!';
 const NEW_PASSWORD = 'new-S3cret!';
+const API_URL = 'https://api.bloom.salk.edu/proxy';
+const OTHER_API_URL = 'https://bloom.example.org/api';
+const USERNAME = 'scanner@salk.edu';
+
+function stored(password: string = STORED_PASSWORD) {
+  return {
+    bloom_api_url: API_URL,
+    bloom_scanner_username: USERNAME,
+    bloom_scanner_password: password,
+  };
+}
 
 function storedConfig(password: string = STORED_PASSWORD) {
-  return () => ({ bloom_scanner_password: password });
+  return () => stored(password);
+}
+
+function submitted(
+  password: string,
+  overrides: Partial<{
+    bloom_api_url: string;
+    bloom_scanner_username: string;
+  }> = {}
+) {
+  return {
+    bloom_api_url: API_URL,
+    bloom_scanner_username: USERNAME,
+    bloom_scanner_password: password,
+    ...overrides,
+  };
 }
 
 function failingLoad(): never {
@@ -56,59 +86,127 @@ describe('keepsStoredPassword', () => {
   it('is false for a typed password', () => {
     expect(keepsStoredPassword(NEW_PASSWORD)).toBe(false);
   });
+});
 
-  it('is false for a typed password made of asterisks', () => {
-    expect(keepsStoredPassword('********')).toBe(false);
+describe('storedPassword', () => {
+  it('returns the stored password', () => {
+    expect(storedPassword(stored())).toBe(STORED_PASSWORD);
+  });
+
+  it('treats the #391 placeholder saved as the password as no password', () => {
+    expect(storedPassword(stored(LEGACY_MASKED_PASSWORD))).toBe('');
+  });
+
+  it('returns empty when the stored config has no password field', () => {
+    expect(storedPassword({})).toBe('');
+  });
+});
+
+describe('isSameBloomAccount', () => {
+  it('is true for the same server and username', () => {
+    expect(isSameBloomAccount(submitted(''), stored())).toBe(true);
+  });
+
+  it('ignores surrounding whitespace', () => {
+    const padded = submitted('', {
+      bloom_api_url: ` ${API_URL} `,
+      bloom_scanner_username: ` ${USERNAME}`,
+    });
+    expect(isSameBloomAccount(padded, stored())).toBe(true);
+  });
+
+  it('is false for a different server', () => {
+    const other = submitted('', { bloom_api_url: OTHER_API_URL });
+    expect(isSameBloomAccount(other, stored())).toBe(false);
+  });
+
+  it('is false for a different username', () => {
+    const other = submitted('', { bloom_scanner_username: 'other@salk.edu' });
+    expect(isSameBloomAccount(other, stored())).toBe(false);
   });
 });
 
 describe('resolveBloomPassword', () => {
-  it('returns the stored password for a blank field', () => {
-    expect(resolveBloomPassword('', storedConfig())).toBe(STORED_PASSWORD);
+  it('returns the stored password for a blank field on the same account', () => {
+    expect(resolveBloomPassword(submitted(''), storedConfig())).toEqual({
+      ok: true,
+      password: STORED_PASSWORD,
+    });
   });
 
-  it('returns a typed password unchanged', () => {
-    expect(resolveBloomPassword(NEW_PASSWORD, storedConfig())).toBe(
-      NEW_PASSWORD
-    );
+  it('returns a typed password unchanged, even for a new server', () => {
+    const typed = submitted(NEW_PASSWORD, { bloom_api_url: OTHER_API_URL });
+    expect(resolveBloomPassword(typed, storedConfig())).toEqual({
+      ok: true,
+      password: NEW_PASSWORD,
+    });
   });
 
   it('does not read the stored config for a typed password', () => {
     const load = vi.fn(storedConfig());
-    resolveBloomPassword(NEW_PASSWORD, load);
+    resolveBloomPassword(submitted(NEW_PASSWORD), load);
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('returns empty when no password is stored yet', () => {
-    expect(resolveBloomPassword('', storedConfig(''))).toBe('');
+  it('refuses a blank field when the server changed', () => {
+    const other = submitted('', { bloom_api_url: OTHER_API_URL });
+    expect(resolveBloomPassword(other, storedConfig())).toEqual({
+      ok: false,
+      error: PASSWORD_REQUIRED_MESSAGE,
+    });
   });
 
-  it('returns empty when the stored config has no password field', () => {
-    expect(resolveBloomPassword('', () => ({}))).toBe('');
+  it('refuses a blank field when the username changed', () => {
+    const other = submitted('', { bloom_scanner_username: 'other@salk.edu' });
+    expect(resolveBloomPassword(other, storedConfig())).toEqual({
+      ok: false,
+      error: PASSWORD_REQUIRED_MESSAGE,
+    });
+  });
+
+  it('returns empty when no password is stored yet', () => {
+    expect(resolveBloomPassword(submitted(''), storedConfig(''))).toEqual({
+      ok: true,
+      password: '',
+    });
+  });
+
+  it('never returns the #391 placeholder as the password', () => {
+    expect(
+      resolveBloomPassword(submitted(''), storedConfig(LEGACY_MASKED_PASSWORD))
+    ).toEqual({ ok: true, password: '' });
   });
 
   it('propagates a stored-config read error instead of guessing', () => {
-    expect(() => resolveBloomPassword('', failingLoad)).toThrow('EACCES');
+    expect(() => resolveBloomPassword(submitted(''), failingLoad)).toThrow(
+      'EACCES'
+    );
   });
 });
 
 describe('withResolvedPassword', () => {
-  const credentials = {
-    bloom_scanner_username: 'scanner@salk.edu',
-    bloom_scanner_password: '',
-    bloom_anon_key: 'anon-key',
-  };
+  const credentials = { ...submitted(''), bloom_anon_key: 'anon-key' };
 
   it('fills a blank password from the stored config', () => {
     expect(withResolvedPassword(credentials, storedConfig())).toEqual({
-      ...credentials,
-      bloom_scanner_password: STORED_PASSWORD,
+      ok: true,
+      values: { ...credentials, bloom_scanner_password: STORED_PASSWORD },
     });
   });
 
   it('keeps a typed password (Fetch scanners before saving)', () => {
     const typed = { ...credentials, bloom_scanner_password: NEW_PASSWORD };
-    expect(withResolvedPassword(typed, failingLoad)).toEqual(typed);
+    expect(withResolvedPassword(typed, failingLoad)).toEqual({
+      ok: true,
+      values: typed,
+    });
+  });
+
+  it('returns the error, not the stored password, for a new server', () => {
+    const other = { ...credentials, bloom_api_url: OTHER_API_URL };
+    const result = withResolvedPassword(other, storedConfig());
+    expect(result).toEqual({ ok: false, error: PASSWORD_REQUIRED_MESSAGE });
+    expect(JSON.stringify(result)).not.toContain(STORED_PASSWORD);
   });
 
   it('does not mutate the submitted object', () => {
@@ -148,6 +246,11 @@ describe('toRendererConfig (config:get)', () => {
   it('reports no saved password on first run', () => {
     const fresh = { ...stored, bloom_scanner_password: '' };
     expect(toRendererConfig(fresh).hasCredentials).toBe(false);
+  });
+
+  it('reports no saved password when the #391 placeholder is stored', () => {
+    const corrupted = { ...stored, bloom_scanner_password: '********' };
+    expect(toRendererConfig(corrupted).hasCredentials).toBe(false);
   });
 
   it('does not send env-only settings such as the Slack webhook', () => {
@@ -275,6 +378,65 @@ describe('config:get / config:set against a real .env', () => {
     expect(result.errors).toBeDefined();
     expect(load).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('rejects a blank password when the server changed, and saves nothing', () => {
+    store.save(formConfig(STORED_PASSWORD));
+    const before = fs.readFileSync(envPath, 'utf-8');
+
+    const result = saveSubmittedConfig(
+      { ...formFromStored(), bloom_api_url: 'https://bloom.example.org/api' },
+      store
+    );
+
+    expect(result).toEqual({
+      success: false,
+      errors: { bloom_scanner_password: PASSWORD_REQUIRED_MESSAGE },
+    });
+    expect(fs.readFileSync(envPath, 'utf-8')).toBe(before);
+  });
+
+  it('rejects a blank password when the username changed', () => {
+    store.save(formConfig(STORED_PASSWORD));
+
+    const result = saveSubmittedConfig(
+      { ...formFromStored(), bloom_scanner_username: 'other@salk.edu' },
+      store
+    );
+
+    expect(result.success).toBe(false);
+    expect(loadEnvConfig(envPath).bloom_scanner_username).toBe(
+      'scanner@salk.edu'
+    );
+  });
+
+  it('saves a new server with a typed password', () => {
+    store.save(formConfig(STORED_PASSWORD));
+
+    saveSubmittedConfig(
+      {
+        ...formFromStored(),
+        bloom_api_url: 'https://bloom.example.org/api',
+        bloom_scanner_password: NEW_PASSWORD,
+      },
+      store
+    );
+
+    const saved = loadEnvConfig(envPath);
+    expect(saved.bloom_api_url).toBe('https://bloom.example.org/api');
+    expect(saved.bloom_scanner_password).toBe(NEW_PASSWORD);
+  });
+
+  it('a station hit by #391 asks for the password and never keeps the placeholder', () => {
+    store.save(formConfig(LEGACY_MASKED_PASSWORD));
+    expect(toRendererConfig(loadEnvConfig(envPath)).hasCredentials).toBe(false);
+
+    saveSubmittedConfig(
+      { ...formFromStored(), bloom_scanner_password: NEW_PASSWORD },
+      store
+    );
+
+    expect(loadEnvConfig(envPath).bloom_scanner_password).toBe(NEW_PASSWORD);
   });
 
   it('does not save when the stored config cannot be read', () => {

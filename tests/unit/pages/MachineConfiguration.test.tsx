@@ -202,6 +202,86 @@ describe('MachineConfiguration Page', () => {
       );
     });
 
+    it('requires the password again when the Bloom server is changed (#391)', async () => {
+      render(<MachineConfiguration />);
+
+      const url = await screen.findByDisplayValue(
+        'https://api.bloom.salk.edu/proxy'
+      );
+      fireEvent.change(url, {
+        target: { value: 'https://bloom.example.org/api' },
+      });
+
+      expect(screen.getByLabelText(/Password/i)).toHaveAttribute(
+        'placeholder',
+        'Required for this server/account'
+      );
+      expect(
+        screen.getByRole('button', { name: /Fetch Scanners from Bloom/i })
+      ).toBeDisabled();
+    });
+
+    it('requires the password again when the username is changed (#391)', async () => {
+      render(<MachineConfiguration />);
+
+      fireEvent.change(await screen.findByLabelText(/Username/i), {
+        target: { value: 'other@salk.edu' },
+      });
+
+      expect(screen.getByLabelText(/Password/i)).toHaveAttribute(
+        'placeholder',
+        'Required for this server/account'
+      );
+    });
+
+    it('shows the password error returned by Save (#391)', async () => {
+      mockConfigAPI.set.mockResolvedValue({
+        success: false,
+        errors: {
+          bloom_scanner_password:
+            'Enter the password for this Bloom server and account',
+        },
+      });
+      render(<MachineConfiguration />);
+      await screen.findByLabelText(/Password/i);
+
+      fireEvent.click(
+        screen.getByRole('button', { name: /Save Configuration/i })
+      );
+
+      expect(
+        await screen.findByText(
+          'Enter the password for this Bloom server and account'
+        )
+      ).toBeInTheDocument();
+    });
+
+    it('clears a typed password from the form after a successful save (#391)', async () => {
+      mockConfigAPI.set.mockResolvedValue({ success: true });
+      mockConfigAPI.fetchScanners.mockResolvedValue({
+        success: true,
+        scanners: [{ name: 'TestScanner' }],
+      });
+      render(<MachineConfiguration />);
+
+      const password = await screen.findByLabelText(/Password/i);
+      fireEvent.change(password, { target: { value: 'typed-password' } });
+      fireEvent.click(
+        screen.getByRole('button', { name: /Save Configuration/i })
+      );
+
+      await waitFor(() => {
+        expect(mockConfigAPI.set).toHaveBeenCalledWith(
+          expect.objectContaining({ bloom_scanner_password: 'typed-password' })
+        );
+      });
+      await waitFor(() => expect(password).toHaveValue(''));
+      expect(password).toHaveAttribute(
+        'placeholder',
+        'Saved. Leave blank to keep existing'
+      );
+    });
+
     it('enables Fetch scanners with a saved password and a blank field (#391)', async () => {
       mockConfigAPI.fetchScanners.mockResolvedValue({
         success: true,
@@ -257,6 +337,9 @@ describe('MachineConfiguration Page', () => {
       const button = screen.getByRole('button', {
         name: /Fetch Scanners from Bloom/i,
       });
+      expect(button).toBeDisabled();
+
+      fireEvent.change(password, { target: { value: '   ' } });
       expect(button).toBeDisabled();
 
       fireEvent.change(password, { target: { value: 'typed-password' } });
