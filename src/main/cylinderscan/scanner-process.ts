@@ -133,7 +133,9 @@ export class ScannerProcess extends EventEmitter {
             error instanceof Error ? error.message : 'Unknown error';
           result.db_saved = false;
           result.db_save_error = message;
-          console.error('[Scanner] Failed to save scan to database:', message);
+          // Log the full error: Prisma's code/meta and the stack are what
+          // diagnose a failed save on a station
+          console.error('[Scanner] Failed to save scan to database:', error);
         }
       }
 

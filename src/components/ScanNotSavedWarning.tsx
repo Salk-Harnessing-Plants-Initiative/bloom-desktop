@@ -13,6 +13,15 @@ export interface UnsavedScan {
   error?: string;
 }
 
+/**
+ * First line of the database error. Prisma messages run over several lines
+ * (an invocation frame plus absolute paths); the banner shows the first
+ * line, truncated with an ellipsis, and the full text on hover.
+ */
+function firstLine(message: string): string {
+  return message.split('\n').find((line) => line.trim() !== '') ?? message;
+}
+
 export interface ScanNotSavedWarningProps {
   scan: UnsavedScan;
   onDismiss: () => void;
@@ -29,7 +38,7 @@ export function ScanNotSavedWarning({
       data-testid="scan-not-saved-warning"
     >
       <div className="flex items-start justify-between">
-        <div className="flex items-start">
+        <div className="flex items-start min-w-0">
           <svg
             className="h-5 w-5 text-red-600 mr-2 mt-0.5 flex-shrink-0"
             fill="currentColor"
@@ -41,7 +50,7 @@ export function ScanNotSavedWarning({
               clipRule="evenodd"
             />
           </svg>
-          <div className="text-red-800">
+          <div className="text-red-800 min-w-0">
             <p className="font-medium">
               Scan images were captured but NOT saved to the database.
             </p>
@@ -60,7 +69,13 @@ export function ScanNotSavedWarning({
               </span>
             </p>
             {scan.error && (
-              <p className="text-sm mt-1">Database error: {scan.error}</p>
+              <p
+                className="text-sm mt-1 truncate"
+                title={scan.error}
+                data-testid="scan-not-saved-error"
+              >
+                Database error: {firstLine(scan.error)}
+              </p>
             )}
           </div>
         </div>

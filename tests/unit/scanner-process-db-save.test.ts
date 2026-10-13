@@ -106,6 +106,19 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     expect(errorEvents).toEqual([]);
   });
 
+  it('logs the full error object, not just the message', async () => {
+    const error = new Error('database is locked');
+    mockScanCreate.mockRejectedValue(error);
+    await scanner.initialize(buildSettings(outputDir, true));
+
+    await scanner.scan();
+
+    expect(console.error).toHaveBeenCalledWith(
+      '[Scanner] Failed to save scan to database:',
+      error
+    );
+  });
+
   it('carries the failed save on the complete event the renderer receives', async () => {
     mockScanCreate.mockRejectedValue(new Error('no such table: Scan'));
     await scanner.initialize(buildSettings(outputDir, true));
