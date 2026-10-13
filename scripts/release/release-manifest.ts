@@ -59,9 +59,17 @@ const REQUIRED_FILES: Record<ReleaseTarget, RequiredFile[]> = {
 export const MANIFEST_FILE_NAME = 'manifest.json';
 export const SHA256SUMS_FILE_NAME = 'SHA256SUMS';
 
-/** Asset name as published: spaces replaced so it matches GitHub's upload. */
+/**
+ * Asset name as published. GitHub rewrites characters outside
+ * [A-Za-z0-9._-] when uploading (spaces in the Squirrel Setup.exe, the `~`
+ * electron-installer-debian puts in pre-release versions), so we replace them
+ * first and the manifest names exactly what's published.
+ *
+ * Only the file name changes. A pre-release .deb keeps `Version: X.Y.Z~rc.N`
+ * inside the package, which dpkg/apt use to order upgrades; don't "fix" that.
+ */
 export function releaseAssetName(fileName: string): string {
-  return fileName.replace(/\s+/g, '-');
+  return fileName.replace(/[^A-Za-z0-9._-]+/g, '-');
 }
 
 function walkFiles(dir: string): string[] {

@@ -63,6 +63,23 @@ describe('releaseAssetName', () => {
       'bloom-desktop_0.2.0_amd64.deb'
     );
   });
+
+  it("replaces the Debian pre-release '~' so GitHub doesn't rename the asset", () => {
+    expect(releaseAssetName('bloom-desktop_0.2.0~rc.1_amd64.deb')).toBe(
+      'bloom-desktop_0.2.0-rc.1_amd64.deb'
+    );
+  });
+
+  it.each(['+', '(', ')', '#', '@', ',', '!'])(
+    'replaces %j with a dash',
+    (char) => {
+      expect(releaseAssetName(`a${char}b.exe`)).toBe('a-b.exe');
+    }
+  );
+
+  it('keeps letters, digits, dots, underscores and dashes', () => {
+    expect(releaseAssetName('Az09._-.nupkg')).toBe('Az09._-.nupkg');
+  });
 });
 
 describe('collectReleaseFiles', () => {
@@ -140,6 +157,33 @@ describe('collectReleaseFiles', () => {
     expect(() =>
       collectReleaseFiles(path.join(tmp, 'missing'), 'linux')
     ).toThrow(/does not exist/);
+  });
+});
+
+describe('pre-release .deb', () => {
+  it('publishes and checksums the file under its safe name', () => {
+    makeWindowsOutput();
+    writeFile('linux/deb/x64/bloom-desktop_0.2.0~rc.1_amd64.deb', 'deb');
+    const out = path.join(tmp, 'bundle');
+
+    const manifest = writeReleaseBundle({
+      version: '0.2.0-rc.1',
+      tag: 'v0.2.0-rc.1',
+      commit: 'abc1234',
+      builtAt: '2026-10-13T20:00:00.000Z',
+      windowsDir: path.join(tmp, 'win'),
+      linuxDir: path.join(tmp, 'linux'),
+      outDir: out,
+    });
+
+    const deb = manifest.files.find((f) => f.target === 'linux');
+    expect(deb?.name).toBe('bloom-desktop_0.2.0-rc.1_amd64.deb');
+    expect(
+      fs.existsSync(path.join(out, 'bloom-desktop_0.2.0-rc.1_amd64.deb'))
+    ).toBe(true);
+    expect(fs.readFileSync(path.join(out, 'SHA256SUMS'), 'utf8')).toContain(
+      `${sha256('deb')}  bloom-desktop_0.2.0-rc.1_amd64.deb`
+    );
   });
 });
 
