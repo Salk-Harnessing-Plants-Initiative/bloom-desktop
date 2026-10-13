@@ -14,12 +14,18 @@ export interface UnsavedScan {
 }
 
 /**
- * First line of the database error. Prisma messages run over several lines
- * (an invocation frame plus absolute paths); the banner shows the first
- * line, truncated with an ellipsis, and the full text on hover.
+ * Last non-empty line of the database error, or null if it has none.
+ * Prisma messages start with an "Invalid `prisma.scan.create()` invocation"
+ * header, then a file path and code frame, and end with the cause (e.g.
+ * "Foreign key constraint failed…"). The banner shows that cause, truncated
+ * with an ellipsis, and the full text on hover.
  */
-function firstLine(message: string): string {
-  return message.split('\n').find((line) => line.trim() !== '') ?? message;
+function errorCause(message: string): string | null {
+  const lines = message
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  return lines.length > 0 ? lines[lines.length - 1] : null;
 }
 
 export interface ScanNotSavedWarningProps {
@@ -68,13 +74,13 @@ export function ScanNotSavedWarning({
                 {scan.outputPath}
               </span>
             </p>
-            {scan.error && (
+            {scan.error && errorCause(scan.error) && (
               <p
                 className="text-sm mt-1 truncate"
                 title={scan.error}
                 data-testid="scan-not-saved-error"
               >
-                Database error: {firstLine(scan.error)}
+                Database error: {errorCause(scan.error)}
               </p>
             )}
           </div>

@@ -1,9 +1,9 @@
 /**
  * Unit tests for ScanNotSavedWarning (#392)
  *
- * The database error is shown as one truncated line, with the full message
- * available on hover, so long multi-line Prisma errors can't overflow the
- * warning.
+ * The database error is shown as one truncated line (its cause, the last
+ * line of a Prisma message), with the full message available on hover, so
+ * long multi-line Prisma errors can't overflow the warning.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -34,7 +34,7 @@ describe('ScanNotSavedWarning', () => {
     );
   });
 
-  it('shows only the first non-empty line of a multi-line error', () => {
+  it('shows the cause (last line) of a multi-line Prisma error, not its header', () => {
     render(
       <ScanNotSavedWarning
         scan={{ outputPath: OUTPUT_PATH, error: PRISMA_ERROR }}
@@ -44,12 +44,39 @@ describe('ScanNotSavedWarning', () => {
 
     const error = screen.getByTestId('scan-not-saved-error');
     expect(error).toHaveTextContent(
-      'Database error: Invalid `prisma.scan.create()` invocation in'
+      'Database error: Foreign key constraint failed on the field: `experiment_id`'
     );
-    expect(error).not.toHaveTextContent('Foreign key constraint failed');
+    expect(error).not.toHaveTextContent('Invalid `prisma.scan.create()`');
   });
 
-  it('truncates the error line with an ellipsis and keeps the full text on hover', () => {
+  it('ignores trailing blank lines when picking the cause', () => {
+    render(
+      <ScanNotSavedWarning
+        scan={{ outputPath: OUTPUT_PATH, error: 'database is locked\n\n  ' }}
+        onDismiss={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId('scan-not-saved-error')).toHaveTextContent(
+      'Database error: database is locked'
+    );
+  });
+
+  it('omits the error line when the message is only whitespace', () => {
+    render(
+      <ScanNotSavedWarning
+        scan={{ outputPath: OUTPUT_PATH, error: ' \n\n ' }}
+        onDismiss={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.queryByTestId('scan-not-saved-error')
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('scan-not-saved-warning')).toBeInTheDocument();
+  });
+
+  it('applies the truncate class and keeps the full error text on hover', () => {
     render(
       <ScanNotSavedWarning
         scan={{ outputPath: OUTPUT_PATH, error: PRISMA_ERROR }}
