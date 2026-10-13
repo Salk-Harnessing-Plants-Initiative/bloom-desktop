@@ -1,13 +1,18 @@
 name: PR Checks
 
-# Runs on every PR and push to main
+# Runs on every PR, every merge-queue group, and every push to main/development
 # Checks: linting, formatting, compilation, tests (TypeScript + Python + integration)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # Required for the merge queue on development: the queue only merges a group
+  # once this workflow has run on it and "All Checks Passed" succeeded.
+  merge_group:
+    types: [checks_requested]
   push:
     branches:
       - main
+      - development
 
 permissions:
   contents: read # Read repository contents
@@ -16,7 +21,8 @@ permissions:
 # Redundant runs for the same ref are grouped so they don't run in parallel.
 # - pull_request pushes: cancel-in-progress=true — only the latest commit's
 #   result matters before merge, so a new push cancels the stale run.
-# - push-to-main: cancel-in-progress=false — pushes queue sequentially instead,
+# - push (main/development) and merge_group: cancel-in-progress=false —
+#   merge-queue groups each get their own ref, and pushes queue sequentially instead,
 #   so a commit's run isn't cancelled once it starts running or is next in
 #   queue. NOTE: GitHub Actions only holds one pending run per group by
 #   default, so a 3rd+ overlapping push can still silently evict an earlier
@@ -42,7 +48,7 @@ jobs:
   # 8. test-e2e-dev: Playwright E2E tests with webpack dev build
   #    across Linux, macOS, Windows
   # 9. test-package-database: Packaged app database initialization (macOS only)
-  # 10. all-checks-passed: Summary job (only runs if all pass)
+  # 10. all-checks-passed: Summary job (always runs; fails unless all pass)
   #
   # All integration tests use mock hardware for CI environment
   # ==============================================================================
@@ -879,6 +885,10 @@ jobs:
   all-checks-passed:
     name: All Checks Passed
     runs-on: ubuntu-latest
+    # Always run, and fail unless every needed job succeeded. Without this, a
+    # failed dependency makes this job "skipped", and GitHub treats a skipped
+    # required check as passing — so a broken PR could merge.
+    if: always()
     needs:
       - lint-node
       - lint-python
@@ -896,5 +906,14 @@ jobs:
       - test-make-linux
 
     steps:
-      - name: All checks passed
-        run: echo "All PR checks passed successfully!"
+      - name: Verify all needed jobs succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          failed=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"')
+          if [ -n "$failed" ]; then
+            echo "These jobs did not succeed:"
+            echo "$failed"
+            exit 1
+          fi
+          echo "All PR checks passed successfully!"

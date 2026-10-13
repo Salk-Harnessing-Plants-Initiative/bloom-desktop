@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { load } from 'js-yaml';
 
 const WORKFLOW_PATH = path.join(
@@ -13,6 +14,7 @@ const WORKFLOW_PATH = path.join(
 );
 
 interface WorkflowJob {
+  if?: string;
   needs?: string | string[];
   'runs-on'?: string;
   'timeout-minutes'?: number;
@@ -28,6 +30,11 @@ interface WorkflowJob {
 }
 
 interface WorkflowFile {
+  on: {
+    pull_request?: { types?: string[] };
+    merge_group?: { types?: string[] };
+    push?: { branches?: string[] };
+  };
   concurrency: {
     group: string;
     'cancel-in-progress': string;
@@ -165,7 +172,93 @@ describe('pr-checks.yml all-checks-passed', () => {
     expect(job).toBeDefined();
     expect(job?.needs).toContain('test-make-linux');
   });
+
+  it('always runs, so a failed dependency fails it instead of skipping it', () => {
+    const job = loadWorkflow().jobs['all-checks-passed'];
+
+    expect(job?.if).toBe('always()');
+  });
+
+  it('passes the needs context to the verification step', () => {
+    const step = verificationStep();
+
+    expect(step.env).toEqual({ NEEDS_JSON: '${{ toJSON(needs) }}' });
+  });
+
+  it('succeeds when every needed job succeeded', () => {
+    const result = runVerification({
+      'lint-node': { result: 'success' },
+      'test-unit': { result: 'success' },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('All PR checks passed successfully!');
+  });
+
+  it.each(['failure', 'cancelled', 'skipped'])(
+    'fails and names the job when a needed job is %s',
+    (outcome) => {
+      const result = runVerification({
+        'lint-node': { result: 'success' },
+        'test-e2e-dev': { result: outcome },
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(`test-e2e-dev: ${outcome}`);
+      expect(result.stdout).not.toContain('lint-node');
+    }
+  );
 });
+
+describe('pr-checks.yml triggers', () => {
+  it('runs on merge_group checks_requested for the development merge queue', () => {
+    expect(loadWorkflow().on.merge_group?.types).toEqual(['checks_requested']);
+  });
+
+  it('runs on pushes to main and development', () => {
+    expect(loadWorkflow().on.push?.branches).toEqual(['main', 'development']);
+  });
+
+  it('still runs on pull_request opened, synchronize and reopened', () => {
+    expect(loadWorkflow().on.pull_request?.types).toEqual([
+      'opened',
+      'synchronize',
+      'reopened',
+    ]);
+  });
+
+  it('does not cancel in-progress merge_group runs', () => {
+    // cancel-in-progress is true only for pull_request, so merge-queue groups
+    // are never cancelled by the concurrency block.
+    expect(loadWorkflow().concurrency['cancel-in-progress']).not.toContain(
+      'merge_group'
+    );
+  });
+});
+
+function verificationStep(): {
+  run: string;
+  env?: Record<string, string>;
+} {
+  const steps = loadWorkflow().jobs['all-checks-passed']?.steps ?? [];
+  const step = steps.find((s) => s.name === 'Verify all needed jobs succeeded');
+  if (!step?.run) {
+    throw new Error('verification step not found in all-checks-passed');
+  }
+  return step as { run: string; env?: Record<string, string> };
+}
+
+/** Runs the verification step's shell script against a fake needs context. */
+function runVerification(needs: Record<string, { result: string }>): {
+  status: number | null;
+  stdout: string;
+} {
+  const result = spawnSync('bash', ['-e', '-c', verificationStep().run], {
+    env: { ...process.env, NEEDS_JSON: JSON.stringify(needs) },
+    encoding: 'utf8',
+  });
+  return { status: result.status, stdout: result.stdout };
+}
 
 describe('pr-checks.yml test-e2e-dev sharding', () => {
   it('declares a 4-way shard matrix dimension', () => {

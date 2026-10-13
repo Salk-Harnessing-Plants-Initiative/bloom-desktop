@@ -22,3 +22,9 @@ export type {
 
 export { PlantBarcodeInput, sanitizePlantBarcode } from './PlantBarcodeInput';
 export type { PlantBarcodeInputProps } from './PlantBarcodeInput';
+
+export { ScanNotSavedWarning } from './ScanNotSavedWarning';
+export type {
+  ScanNotSavedWarningProps,
+  UnsavedScan,
+} from './ScanNotSavedWarning';

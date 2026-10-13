@@ -27,6 +27,17 @@ import { ScannerProcess } from './cylinderscan/scanner-process';
 import type { ScannerSettings } from '../types/scanner';
 import { markMetadataDeleted } from './cylinderscan/scan-metadata-json';
 import {
+  readConfiguredCameraIp,
+  applyCameraIp,
+  applyScannerCameraIp,
+} from './cylinderscan/camera-ip';
+import {
+  CREDENTIALS_REQUIRED_MESSAGE,
+  saveSubmittedConfig,
+  toRendererConfig,
+  withResolvedPassword,
+} from './config-password';
+import {
   getPythonExecutablePath,
   validatePythonExecutable,
 } from './python-paths';
@@ -388,12 +399,22 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
 }
 
 /**
+ * Camera IP saved in Machine Configuration. Read on every call so a saved
+ * change applies without restarting the app (#390).
+ */
+function getConfiguredCameraIp(): string | null {
+  return readConfiguredCameraIp(() => loadEnvConfig(ENV_PATH));
+}
+
+/**
  * Handle camera:connect - Connect to camera
  */
 ipcMain.handle('camera:connect', async (_event, settings: CameraSettings) => {
   try {
     const camera = await ensureCameraProcess();
-    const success = await camera.connect(settings);
+    const success = await camera.connect(
+      applyCameraIp(settings, getConfiguredCameraIp())
+    );
     return { success };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
@@ -424,8 +445,9 @@ ipcMain.handle('camera:disconnect', async () => {
  */
 ipcMain.handle(
   'camera:configure',
-  async (_event, settings: Partial<CameraSettings>) => {
+  async (_event, requested: Partial<CameraSettings>) => {
     try {
+      const settings = applyCameraIp(requested, getConfiguredCameraIp());
       console.log('[camera:configure] Configuring with settings:', settings);
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
@@ -461,7 +483,9 @@ ipcMain.handle(
   async (_event, settings?: Partial<CameraSettings>) => {
     try {
       const camera = await ensureCameraProcess();
-      const response = await camera.capture(settings);
+      const response = await camera.capture(
+        applyCameraIp(settings, getConfiguredCameraIp())
+      );
 
       if (response.success && response.image) {
         return {
@@ -517,7 +541,9 @@ ipcMain.handle(
   async (_event, settings?: Partial<CameraSettings>) => {
     try {
       const camera = await ensureCameraProcess();
-      const success = await camera.startStream(settings);
+      const success = await camera.startStream(
+        applyCameraIp(settings, getConfiguredCameraIp())
+      );
       return { success };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -783,7 +809,9 @@ ipcMain.handle(
     try {
       if (idleTimer) idleTimer.resetTimer();
       const scanner = await ensureScannerProcess();
-      const response = await scanner.initialize(settings);
+      const response = await scanner.initialize(
+        applyScannerCameraIp(settings, getConfiguredCameraIp())
+      );
       return response;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -890,30 +918,11 @@ ipcMain.handle('scanner:get-scanner-id', (): string => {
 
 /**
  * Handle config:get - Get current configuration and credentials
- * Returns config values with password masked for security
+ * The stored password is never sent; hasCredentials says one is saved (#391)
  */
 ipcMain.handle('config:get', async () => {
   try {
-    // Load unified config from .env
-    const config = loadEnvConfig(ENV_PATH);
-    const hasCredentials = config.bloom_scanner_password !== '';
-
-    // Return unified config with masked password
-    return {
-      config: {
-        scanner_mode: config.scanner_mode,
-        scanner_name: config.scanner_name,
-        camera_ip_address: config.camera_ip_address,
-        scans_dir: config.scans_dir,
-        bloom_api_url: config.bloom_api_url,
-        bloom_scanner_username: config.bloom_scanner_username,
-        bloom_scanner_password: hasCredentials ? '********' : '',
-        bloom_anon_key: config.bloom_anon_key,
-        num_frames: config.num_frames,
-        seconds_per_rot: config.seconds_per_rot,
-      },
-      hasCredentials,
-    };
+    return toRendererConfig(loadEnvConfig(ENV_PATH));
   } catch (error) {
     console.error('config:get error:', error);
     throw error;
@@ -924,19 +933,20 @@ ipcMain.handle('config:get', async () => {
  * Handle config:set - Save unified configuration
  * Validates config before saving
  */
-ipcMain.handle('config:set', async (_event, config: MachineConfig) => {
+ipcMain.handle('config:set', async (_event, submitted: MachineConfig) => {
   try {
-    // Validate config (validateConfig needs to be updated to handle credential fields)
-    const validation = validateConfig(config);
-    if (!validation.valid) {
-      return { success: false, errors: validation.errors };
+    // Blank password keeps the stored one (#391)
+    const result = saveSubmittedConfig(submitted, {
+      load: () => loadEnvConfig(ENV_PATH),
+      save: (config) => saveEnvConfig(config, ENV_PATH),
+      validate: validateConfig,
+    });
+    if (!result.saved) {
+      return { success: false, errors: result.errors };
     }
 
-    // Save unified config to .env
-    saveEnvConfig(config, ENV_PATH);
-
     // Sync scanner identity from saved config
-    scannerIdentity.name = config.scanner_name || '';
+    scannerIdentity.name = result.saved.scanner_name || '';
     console.log('[Scanner Identity] Updated:', scannerIdentity.name);
 
     return { success: true };
@@ -1065,13 +1075,31 @@ ipcMain.handle(
   async (
     _event,
     apiUrl: string,
-    credentials: {
+    submitted: {
       bloom_scanner_username: string;
       bloom_scanner_password: string;
       bloom_anon_key: string;
     }
   ) => {
     try {
+      if (!submitted) {
+        return {
+          success: false,
+          error: CREDENTIALS_REQUIRED_MESSAGE,
+        };
+      }
+
+      // Blank password uses the stored one, for the same server and
+      // username only (#391)
+      const resolution = withResolvedPassword(
+        { ...submitted, bloom_api_url: apiUrl ?? '' },
+        () => loadEnvConfig(ENV_PATH)
+      );
+      if ('error' in resolution) {
+        return { success: false, error: resolution.error };
+      }
+      const credentials = resolution.values;
+
       // Validate parameters
       if (
         !apiUrl ||
@@ -1081,7 +1109,7 @@ ipcMain.handle(
       ) {
         return {
           success: false,
-          error: 'Bloom API URL and credentials are required',
+          error: CREDENTIALS_REQUIRED_MESSAGE,
         };
       }
 

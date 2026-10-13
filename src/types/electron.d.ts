@@ -638,7 +638,8 @@ export interface SessionAPI {
 export interface ConfigAPI {
   /**
    * Get current machine configuration (unified - includes credentials)
-   * @returns Promise resolving to unified config (password masked)
+   * @returns Promise resolving to unified config. The password is always
+   * blank; hasCredentials is true when one is saved in .env
    */
   get: () => Promise<{
     config: MachineConfig; // Now includes credential fields
