@@ -85,6 +85,9 @@ jobs:
       - name: Check Prettier formatting
         run: npm run format:check
 
+      - name: Validate deploy/stations.yaml
+        run: npm run stations:validate
+
   # Lint and format check for Python
   lint-python:
     name: Lint - Python

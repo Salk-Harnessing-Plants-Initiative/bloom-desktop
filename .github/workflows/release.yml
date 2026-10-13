@@ -1,0 +1,312 @@
+name: Release
+
+# Publishes a GitHub Release when a vX.Y.Z tag is pushed for a main commit.
+#   verify → build-python → build-windows / build-linux → manifest → publish
+# Only `publish` can write to the repository, and it runs no build code: it
+# checks the bundle's checksums and uploads it. See docs/RELEASING.md.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions: {}
+
+# One release run per tag; never cancel a release part-way through.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Check tag matches package.json
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(npx ts-node scripts/release/release-version.ts "$TAG")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check tagged commit is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main"
+            exit 1
+          fi
+
+      - name: Check "All Checks Passed" succeeded on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusions=$(gh api \
+            "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=All%20Checks%20Passed&per_page=100" \
+            --jq '[.check_runs[].conclusion] | join(" ")')
+          if [[ " $conclusions " != *" success "* ]]; then
+            echo "::error::\"All Checks Passed\" has not succeeded on $GITHUB_SHA (found: ${conclusions:-none})"
+            exit 1
+          fi
+
+      - name: Check no release exists for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::A release for $GITHUB_REF_NAME already exists; it will not be overwritten"
+            exit 1
+          fi
+
+  build-python:
+    needs: verify
+    name: Build - Python Executable
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.12'
+
+      - name: Build Python executable
+        run: |
+          uv sync --extra dev --frozen
+          uv run pyinstaller python/main.spec
+
+      - name: Upload Python executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+          retention-days: 1
+
+  # Release builds deliberately skip dependency caches so every release is
+  # built from a clean `npm ci`.
+  build-windows:
+    needs: build-python
+    name: Build - Windows installer (CylinderScan)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.12'
+
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: 'file:./dev.db'
+
+      - name: Make application (maker stage)
+        run: npm run make
+
+      - name: Verify maker artifacts were produced
+        run: npm run test:make:artifacts
+
+      - name: Upload Windows build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: out/make/**
+          retention-days: 3
+
+  build-linux:
+    needs: build-python
+    name: Build - Linux package (GraviScan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.12'
+
+      - name: Download Python executable
+        uses: actions/download-artifact@v4
+        with:
+          name: python-executable-${{ runner.os }}
+          path: dist/
+
+      - name: Make executable
+        run: chmod +x dist/bloom-hardware
+
+      - name: Install system dependencies for native build + deb maker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libusb-1.0-0-dev pkg-config fakeroot dpkg
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          BLOOM_DATABASE_URL: 'file:./dev.db'
+
+      - name: Make application (maker stage, deb only)
+        run: npm run make:linux
+
+      - name: Verify maker artifacts were produced
+        run: npm run test:make:artifacts
+
+      - name: Upload Linux build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: out/make/**
+          retention-days: 3
+
+  manifest:
+    needs: [verify, build-windows, build-linux]
+    name: Build release manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Download Windows build output
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+          path: build/windows
+
+      - name: Download Linux build output
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+          path: build/linux
+
+      - name: Write manifest.json and SHA256SUMS
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          npx ts-node scripts/release/release-manifest.ts \
+            --tag "$TAG" --version "$VERSION" --commit "$GITHUB_SHA" \
+            --windows-dir build/windows --linux-dir build/linux \
+            --out-dir release-bundle
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: release-bundle/
+          retention-days: 3
+
+  publish:
+    needs: [verify, manifest]
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bundle
+          path: release-bundle
+
+      - name: Verify checksums
+        working-directory: release-bundle
+        run: sha256sum -c SHA256SUMS
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          flags=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" release-bundle/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Bloom Desktop $TAG" \
+            --generate-notes \
+            "${flags[@]}"

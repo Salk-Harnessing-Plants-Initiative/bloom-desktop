@@ -164,6 +164,13 @@ describe('pr-checks.yml test-make-linux job', () => {
   });
 });
 
+describe('pr-checks.yml lint-node', () => {
+  it('validates deploy/stations.yaml', () => {
+    const steps = loadWorkflow().jobs['lint-node']?.steps ?? [];
+    expect(steps.map((s) => s.run)).toContain('npm run stations:validate');
+  });
+});
+
 describe('pr-checks.yml all-checks-passed', () => {
   it('requires test-make-linux to pass', () => {
     const workflow = loadWorkflow();
