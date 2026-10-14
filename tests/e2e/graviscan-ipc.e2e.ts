@@ -182,6 +182,56 @@ test.describe('GraviScan IPC Round-Trip', () => {
     expect(result.data.scanners.length).toBeGreaterThan(0);
   });
 
+  /**
+   * `design.md` Decision 7 layer 2, and the only automated coverage
+   * `retryScanner` has through real Electron IPC — there was none before.
+   *
+   * Scoped honestly: mock mode short-circuits the refresh before any
+   * database write, so this verifies the IPC round trip and that the handler
+   * does not throw. It does **not** verify the widened DB interface, which
+   * only the rig (layer 3) reaches. Claiming otherwise would be the "the
+   * mock is more forgiving than production" trap this project has hit
+   * repeatedly.
+   *
+   * Asserts nothing platform-dependent: this spec runs on 3 OSes × 4 shards.
+   */
+  test('retry-scanner round-trips through real IPC in mock mode', async () => {
+    const consoleErrors: string[] = [];
+    const onConsole = (msg: { type: () => string; text: () => string }) => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    };
+    window.on('console', onConsole);
+
+    try {
+      const detected = await window.evaluate(() => {
+        return (
+          window as unknown as WindowWithElectron
+        ).electron.gravi.detectScanners();
+      });
+      expect(detected.success).toBe(true);
+      const scannerId = detected.data.scanners[0].scanner_id as string;
+
+      const result = await window.evaluate((id: string) => {
+        return (
+          window as unknown as WindowWithElectron
+        ).electron.gravi.retryScanner(id);
+      }, scannerId);
+
+      // Shape only. There is no active session in this spec, so the handler
+      // is expected to refuse — what matters is that it resolves a
+      // well-formed result rather than throwing or hanging, and that
+      // nothing in the main process went unhandled on the way.
+      expect(result).toBeDefined();
+      expect(typeof result.success).toBe('boolean');
+    } finally {
+      window.off('console', onConsole);
+    }
+
+    expect(
+      consoleErrors.filter((t) => /unhandled|uncaught/i.test(t))
+    ).toEqual([]);
+  });
+
   test('getPlatformInfo returns platform data', async () => {
     const result = await window.evaluate(() => {
       return (
