@@ -1,0 +1,169 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > manifest: Write manifest.json and SHA256SUMS 1`] = `
+{
+  "env": {
+    "TAG": "\${{ needs.verify.outputs.tag }}",
+    "VERSION": "\${{ needs.verify.outputs.version }}",
+  },
+  "run": "npx ts-node scripts/release/release-manifest.ts \\
+  --tag "$TAG" --version "$VERSION" --commit "$GITHUB_SHA" \\
+  --windows-dir build/windows --linux-dir build/linux \\
+  --out-dir release-bundle
+",
+  "uses": undefined,
+  "with": undefined,
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > publish: Check no draft exists for this version 1`] = `
+{
+  "env": {
+    "GH_TOKEN": "\${{ github.token }}",
+    "TAG": "\${{ needs.verify.outputs.tag }}",
+  },
+  "run": "existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \\
+  --jq ".[] | select(.tag_name == \\"$TAG\\") | .html_url")
+if [[ -n "$existing" ]]; then
+  echo "::error::A release or draft for $TAG already exists: $existing. If it's a draft, publish it only if it has all the files listed in its SHA256SUMS plus manifest.json; otherwise delete it and run this workflow again."
+  exit 1
+fi
+",
+  "uses": undefined,
+  "with": undefined,
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > publish: Create draft GitHub Release 1`] = `
+{
+  "env": {
+    "GH_TOKEN": "\${{ github.token }}",
+    "PRERELEASE": "\${{ needs.verify.outputs.prerelease }}",
+    "TAG": "\${{ needs.verify.outputs.tag }}",
+  },
+  "run": "failed=""
+gh release create "$TAG" release-bundle/* \\
+  --repo "$GITHUB_REPOSITORY" \\
+  --draft \\
+  --target "$GITHUB_SHA" \\
+  --title "Bloom Desktop $TAG" \\
+  --generate-notes \\
+  --prerelease="$PRERELEASE" || failed="the upload failed"
+release_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \\
+  --jq ".[] | select(.tag_name == \\"$TAG\\" and .draft) | .id" || true)
+if [[ -z "$failed" && -z "$release_id" ]]; then
+  failed="the draft wasn't found after creating it"
+fi
+if [[ -z "$failed" ]]; then
+  if ! attached=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --jq '.[].name'); then
+    failed="the draft's files couldn't be listed"
+  elif [[ "$(sort <<< "$attached")" != "$(ls release-bundle | sort)" ]]; then
+    failed="the draft doesn't have exactly the bundle's files (attached: $(echo $attached))"
+  fi
+fi
+if [[ -z "$failed" ]]; then
+  echo "Draft $TAG created with every file. Review it on the Releases page, then publish."
+  exit 0
+fi
+echo "::error::Creating the draft for $TAG failed: $failed. The incomplete draft is being deleted; use \\"Re-run failed jobs\\" to try again."
+if [[ -n "$release_id" ]]; then
+  gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id" \\
+    || echo "::error::Couldn't delete the incomplete draft $TAG. Delete it on the Releases page before re-running."
+fi
+exit 1
+",
+  "uses": undefined,
+  "with": undefined,
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > publish: Download release bundle 1`] = `
+{
+  "env": undefined,
+  "run": undefined,
+  "uses": "actions/download-artifact@v4",
+  "with": {
+    "name": "release-bundle",
+    "path": "release-bundle",
+  },
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > publish: Verify checksums 1`] = `
+{
+  "env": undefined,
+  "run": "sha256sum -c SHA256SUMS",
+  "uses": undefined,
+  "with": undefined,
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > verify: Check "All Checks Passed" succeeded on this commit 1`] = `
+{
+  "env": {
+    "GH_TOKEN": "\${{ github.token }}",
+  },
+  "run": "latest=$(gh api \\
+  "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=All%20Checks%20Passed&app_id=15368&per_page=100" \\
+  --jq '.check_runs | sort_by(.id) | last | if . == null then "none" else "\\(.status) \\(.conclusion)" end')
+if [[ "$latest" == "none" ]]; then
+  echo "::error::No \\"All Checks Passed\\" run found on $GITHUB_SHA. Wait for CI on main, then run this workflow again."
+  exit 1
+fi
+if [[ "$latest" != completed* ]]; then
+  echo "::error::CI is still running on $GITHUB_SHA ($latest). Re-run this workflow once \\"All Checks Passed\\" finishes."
+  exit 1
+fi
+if [[ "$latest" != "completed success" ]]; then
+  echo "::error::\\"All Checks Passed\\" did not succeed on $GITHUB_SHA ($latest)"
+  exit 1
+fi
+",
+  "uses": undefined,
+  "with": undefined,
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > verify: Check the workflow was started from main 1`] = `
+{
+  "env": undefined,
+  "run": "if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+  echo "::error::Releases are only made from main (this run was started from $GITHUB_REF). Choose main in \\"Run workflow\\"."
+  exit 1
+fi
+",
+  "uses": undefined,
+  "with": undefined,
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > verify: Check this version isn't released or tagged yet 1`] = `
+{
+  "env": {
+    "GH_TOKEN": "\${{ github.token }}",
+    "TAG": "\${{ steps.version.outputs.tag }}",
+  },
+  "run": "if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+  echo "::error::$TAG is already released; releases are never overwritten. Bump package.json for a new version."
+  exit 1
+fi
+if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+  echo "::error::Tag $TAG already exists. Bump package.json for a new version."
+  exit 1
+fi
+",
+  "uses": undefined,
+  "with": undefined,
+}
+`;
+
+exports[`release.yml safety-critical steps match the reviewed snapshot > verify: Check version matches package.json 1`] = `
+{
+  "env": {
+    "VERSION": "\${{ inputs.version }}",
+  },
+  "run": "npx ts-node scripts/release/release-version.ts "$VERSION" --github-output",
+  "uses": undefined,
+  "with": undefined,
+}
+`;

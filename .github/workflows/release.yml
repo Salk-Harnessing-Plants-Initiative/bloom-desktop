@@ -67,13 +67,13 @@ jobs:
       - name: Check "All Checks Passed" succeeded on this commit
         env:
           GH_TOKEN: ${{ github.token }}
-        # Uses the newest "All Checks Passed" run from GitHub Actions
-        # (app_id 15368), so a later failed re-run isn't masked by an older
+        # Uses the newest "All Checks Passed" run (highest id) from GitHub
+        # Actions (app_id 15368), so a later failed re-run isn't masked by an older
         # success and other apps can't post a run with the same name.
         run: |
           latest=$(gh api \
             "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=All%20Checks%20Passed&app_id=15368&per_page=100" \
-            --jq '.check_runs | sort_by(.started_at) | last | if . == null then "none" else "\(.status) \(.conclusion)" end')
+            --jq '.check_runs | sort_by(.id) | last | if . == null then "none" else "\(.status) \(.conclusion)" end')
           if [[ "$latest" == "none" ]]; then
             echo "::error::No \"All Checks Passed\" run found on $GITHUB_SHA. Wait for CI on main, then run this workflow again."
             exit 1
@@ -328,26 +328,49 @@ jobs:
           existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
             --jq ".[] | select(.tag_name == \"$TAG\") | .html_url")
           if [[ -n "$existing" ]]; then
-            echo "::error::A release or draft for $TAG already exists: $existing. Publish or delete it, then run this workflow again."
+            echo "::error::A release or draft for $TAG already exists: $existing. If it's a draft, publish it only if it has all the files listed in its SHA256SUMS plus manifest.json; otherwise delete it and run this workflow again."
             exit 1
           fi
 
       # --draft creates no tag. Publishing the draft (a maintainer, on the
       # Releases page) creates the tag at --target, the commit that was built.
+      # gh doesn't remove an explicit --draft when an upload fails, so this
+      # step checks the draft holds exactly the bundle's files and deletes it
+      # otherwise: a draft only ever exists complete, and "Re-run failed jobs"
+      # can try again with the same bundle.
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.verify.outputs.tag }}
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
-          flags=()
-          if [[ "$PRERELEASE" == "true" ]]; then
-            flags+=(--prerelease)
-          fi
+          failed=""
           gh release create "$TAG" release-bundle/* \
             --repo "$GITHUB_REPOSITORY" \
             --draft \
             --target "$GITHUB_SHA" \
             --title "Bloom Desktop $TAG" \
             --generate-notes \
-            "${flags[@]}"
+            --prerelease="$PRERELEASE" || failed="the upload failed"
+          release_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$TAG\" and .draft) | .id" || true)
+          if [[ -z "$failed" && -z "$release_id" ]]; then
+            failed="the draft wasn't found after creating it"
+          fi
+          if [[ -z "$failed" ]]; then
+            if ! attached=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" --jq '.[].name'); then
+              failed="the draft's files couldn't be listed"
+            elif [[ "$(sort <<< "$attached")" != "$(ls release-bundle | sort)" ]]; then
+              failed="the draft doesn't have exactly the bundle's files (attached: $(echo $attached))"
+            fi
+          fi
+          if [[ -z "$failed" ]]; then
+            echo "Draft $TAG created with every file. Review it on the Releases page, then publish."
+            exit 0
+          fi
+          echo "::error::Creating the draft for $TAG failed: $failed. The incomplete draft is being deleted; use \"Re-run failed jobs\" to try again."
+          if [[ -n "$release_id" ]]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+              || echo "::error::Couldn't delete the incomplete draft $TAG. Delete it on the Releases page before re-running."
+          fi
+          exit 1

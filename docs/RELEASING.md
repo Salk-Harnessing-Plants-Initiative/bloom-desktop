@@ -25,8 +25,10 @@ Both installers contain the whole app; each station runs one scanner mode, chose
 1. **Bump the version** in a PR into `development`: set `version` in `package.json` (Semantic Versioning, higher than the last release; Squirrel only upgrades to a higher version), run `npm install --package-lock-only` so `package-lock.json` matches, and move the `CHANGELOG.md` `[Unreleased]` entries under the new version.
 2. **Promote** `development` to `main` with a PR (merge commit), and wait for `All Checks Passed` on the `main` merge commit.
 3. **Start the release:** Actions → **Release** → **Run workflow** → branch `main` → type the version (e.g. `0.2.0`).
-4. **Review the draft:** when the run finishes, a draft `v0.2.0` with the installers, `manifest.json` and `SHA256SUMS` appears on the **Releases** page. Drafts are visible to maintainers only.
-5. **Publish it:** edit the notes if needed, then click **Publish release** (maintainers only). This creates the `v0.2.0` tag at the built commit and makes the release public.
+4. **Review the draft:** when the run finishes, a draft `v0.2.0` appears on the **Releases** page with the installers, `manifest.json` and `SHA256SUMS`. A draft only exists if every file was uploaded. Drafts are visible to everyone with write access to the repository, not the public.
+5. **Publish it:** @blm3886 or @eberrigan (the only accounts allowed to create tags) clicks **Publish release**. This creates the `v0.2.0` tag at the built commit and makes the release public and permanent: with immutable releases on, its files and tag can't be changed afterwards.
+   - Editing the notes first is fine. Don't change the draft's **Tag** or **Target**; the Target is the commit in `manifest.json`.
+   - To publish without opening the edit page: `gh release edit v0.2.0 --draft=false`.
 
 The workflow stops, before building, if:
 
@@ -35,19 +37,19 @@ The workflow stops, before building, if:
 - `All Checks Passed` hasn't succeeded on the `main` commit;
 - that version is already released or tagged (releases are never overwritten).
 
-No tag exists until a maintainer publishes the draft. Release tags can't be deleted or moved by anyone, and only maintainers can create them (repository rulesets).
+No tag exists until the draft is published. Release tags (`v*`) can't be deleted or moved by anyone, and only @blm3886 and @eberrigan can create any tag (repository rulesets).
 
 ### When a release run fails
 
-A failed run leaves no tag, no release and no draft, so the same version can be run again. What to do depends on the cause:
+A failed run leaves no tag, no release and no draft (if uploading the draft fails, the workflow deletes it), so the same version can be run again. What to do depends on the cause:
 
-| Cause                                                                          | What to do                                                                                                                                    |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| "CI is still running…"                                                         | Wait for `All Checks Passed` on `main` to finish, then **Re-run failed jobs**.                                                                |
-| Runner or network problem (job not picked up, lost connection, download error) | **Re-run failed jobs**. Within 3 days, the build outputs from the first attempt are reused.                                                   |
-| A problem in the code or build                                                 | A re-run rebuilds the same commit, so it will fail again. Fix it on `development`, promote, and run the workflow again with the same version. |
-| "… is already released" / "Tag … already exists"                               | That version is published; bump the version for a new one.                                                                                    |
-| "A release or draft for … already exists"                                      | An earlier run's draft is still there. Publish it, or delete the draft (no tag exists yet) and run again.                                     |
+| Cause                                                                                    | What to do                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "CI is still running…"                                                                   | Wait for `All Checks Passed` on `main` to finish, then **Re-run failed jobs**.                                                                                  |
+| Runner or network problem (job not picked up, lost connection, download or upload error) | **Re-run failed jobs**. Within 3 days, the build outputs from the first attempt are reused. After 3 days, use **Re-run all jobs**.                              |
+| A problem in the code or build                                                           | A re-run rebuilds the same commit, so it will fail again. Fix it on `development`, promote, and run the workflow again with the same version.                   |
+| "… is already released" / "Tag … already exists"                                         | That version is published; bump the version for a new one.                                                                                                      |
+| "A release or draft for … already exists"                                                | A draft from an earlier run that nobody published. Publish it if it's the build you want (check the commit in its `manifest.json`), or delete it and run again. |
 
 **Pre-releases:** releasing a version like `0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1` on `main`) publishes a GitHub pre-release tagged `v0.2.0-rc.1`, useful for trying a build on one station first. Notes:
 
