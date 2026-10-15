@@ -31,6 +31,7 @@
     "test:scanner-database": "bash scripts/ensure-python-executable.sh && npm run prisma:generate && ts-node tests/integration/test-scanner-database.ts",
     "test:package": "ts-node tests/integration/test-package.ts",
     "test:package:database": "bash scripts/test-package-database-full.sh",
+    "stations:validate": "ts-node scripts/release/stations.ts",
     "test:make:artifacts": "ts-node tests/integration/test-make-artifacts.ts",
     "test:package:launch": "ts-node tests/integration/test-packaged-app-launch.ts",
     "test:dev:database": "bash scripts/test-dev-database.sh",
