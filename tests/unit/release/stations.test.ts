@@ -165,6 +165,81 @@ describe('validateStations', () => {
   });
 });
 
+describe('validateStations: nothing private can be published', () => {
+  it.each([
+    ['IPv6 address', 'fe80::1ff:fe23:4567:890a', 'contains an IP address'],
+    [
+      'full IPv6 address',
+      '2001:0db8:85a3:0000:0000:8a2e:0370:7334',
+      'contains an IP address',
+    ],
+    [
+      'URL with a password',
+      'https://admin:hunter2@scanner.local',
+      'contains a URL with credentials',
+    ],
+  ])('rejects a station value holding a %s', (_label, value, message) => {
+    expect(
+      validateStations({
+        stations: [station({ bloom_scanner_name: value })],
+      })
+    ).toContain(`pc1: "bloom_scanner_name" ${message}`);
+  });
+
+  it.each([
+    'Greenhouse 2, bench 3.1',
+    'Room 10:30 slot',
+    'PBIOBScanner',
+    'https://bloom.salk.edu/api',
+  ])('does not flag the ordinary value %j', (value) => {
+    expect(
+      validateStations({ stations: [station({ location: value })] })
+    ).toEqual([]);
+  });
+
+  it('rejects a credential-like top-level key', () => {
+    expect(validateStations({ password: 'hunter2', stations: [] })).toContain(
+      'top-level "password" looks like a credential or address'
+    );
+  });
+
+  it('rejects an IP stored under a top-level key', () => {
+    expect(validateStations({ camera_ip: '10.0.0.5', stations: [] })).toEqual([
+      'top-level "camera_ip" looks like a credential or address',
+      'top-level "camera_ip" contains an IP address',
+    ]);
+  });
+
+  it('rejects any other top-level key', () => {
+    expect(validateStations({ notes: 'hi', stations: [] })).toEqual([
+      'unknown top-level key "notes"',
+    ]);
+  });
+
+  it('finds an IP nested deep inside a top-level value', () => {
+    expect(
+      validateStations({
+        defaults: { network: ['ok', { camera: '192.168.1.50' }] },
+        stations: [],
+      })
+    ).toContain('top-level "defaults" contains an IP address');
+  });
+
+  it('finds an IP nested inside an unknown station field', () => {
+    expect(
+      validateStations({
+        stations: [station({ extra: { host: '10.0.0.9' } })],
+      })
+    ).toContain('pc1: "extra" contains an IP address');
+  });
+
+  it('still requires the stations list when other keys are present', () => {
+    expect(validateStations({ password: 'x' })).toEqual([
+      'stations.yaml must contain a top-level "stations" list',
+    ]);
+  });
+});
+
 describe('validateStationsYaml', () => {
   it('parses and validates YAML text', () => {
     const text = [
@@ -179,6 +254,15 @@ describe('validateStationsYaml', () => {
       '    active: true',
     ].join('\n');
     expect(validateStationsYaml(text)).toEqual([]);
+  });
+
+  it('rejects the reviewed example: IP and password beside stations', () => {
+    const text = 'camera_ip: 10.0.0.5\npassword: hunter2\nstations: []\n';
+    const errors = validateStationsYaml(text);
+    expect(errors).toContain('top-level "camera_ip" contains an IP address');
+    expect(errors).toContain(
+      'top-level "password" looks like a credential or address'
+    );
   });
 
   it('reports invalid YAML instead of throwing', () => {

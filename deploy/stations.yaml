@@ -1,8 +1,11 @@
 # Deployment stations for Bloom Desktop.
 #
-# This file is PUBLIC. Never add IP addresses, hostnames beyond the station
-# name, or credentials; CI rejects them. Station-specific settings (camera IP,
-# Bloom credentials, mock-mode variables) live on the station, not here.
+# This file is PUBLIC. Never add IP addresses, hostnames, or credentials.
+# CI rejects unknown keys, credential-like field names, and any value with an
+# IPv4/IPv6 address or a URL containing a password, but it can't catch
+# everything (hostnames, YAML comments), so keep private details out entirely.
+# Station-specific settings (camera IP, Bloom credentials, mock-mode
+# variables) live on the station, not here.
 #
 # Fields (all required):
 #   name                unique id, lowercase letters/digits/dashes

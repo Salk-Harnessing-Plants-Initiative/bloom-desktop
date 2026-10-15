@@ -2,7 +2,8 @@
  * Validation for deploy/stations.yaml, the registry of deployment stations.
  *
  * The file is in a public repository, so validation also rejects unknown
- * fields, credential-like field names, and values containing IP addresses.
+ * fields and top-level keys, credential-like field names, and any value
+ * (at any depth) containing an IPv4/IPv6 address or a URL with credentials.
  *
  * CLI: `ts-node scripts/release/stations.ts [path]` (default
  * deploy/stations.yaml) prints each problem and exits non-zero if any.
@@ -38,6 +39,13 @@ const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const SENSITIVE_FIELD_PATTERN =
   /(^ip$|_ip$|^ip_|address|password|token|key|secret)/i;
 const IPV4_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+// Compressed (`fe80::1`) or full (8 groups) IPv6. Requires `::` or 5+ groups
+// so ordinary text like "10:30" isn't flagged.
+const IPV6_PATTERN =
+  /(?:^|[^0-9a-f:])[0-9a-f]{0,4}(?::[0-9a-f]{0,4})*::[0-9a-f]{0,4}|\b(?:[0-9a-f]{1,4}:){4,7}[0-9a-f]{1,4}\b/i;
+// scheme://user:password@host
+const URL_CREDENTIALS_PATTERN = /[a-z][a-z0-9+.-]*:\/\/[^\s/@]+@/i;
+const TOP_LEVEL_KEYS = new Set(['stations']);
 
 const DEFAULT_STATIONS_PATH = path.join(
   __dirname,
@@ -49,6 +57,45 @@ const DEFAULT_STATIONS_PATH = path.join(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Describe the first private value found anywhere inside `value`, or null. */
+function findPrivateValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    if (IPV4_PATTERN.test(value) || IPV6_PATTERN.test(value)) {
+      return 'contains an IP address';
+    }
+    if (URL_CREDENTIALS_PATTERN.test(value)) {
+      return 'contains a URL with credentials';
+    }
+    return null;
+  }
+  const children = Array.isArray(value)
+    ? value
+    : isRecord(value)
+      ? Object.values(value)
+      : [];
+  for (const child of children) {
+    const found = findPrivateValue(child);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Reject top-level keys other than `stations`, and private values in them. */
+function validateTopLevel(doc: Record<string, unknown>): string[] {
+  const errors: string[] = [];
+  for (const [key, value] of Object.entries(doc)) {
+    if (TOP_LEVEL_KEYS.has(key)) continue;
+    errors.push(
+      SENSITIVE_FIELD_PATTERN.test(key)
+        ? `top-level "${key}" looks like a credential or address`
+        : `unknown top-level key "${key}"`
+    );
+    const found = findPrivateValue(value);
+    if (found) errors.push(`top-level "${key}" ${found}`);
+  }
+  return errors;
 }
 
 function validateStation(
@@ -69,8 +116,9 @@ function validateStation(
           : `${label}: unknown field "${field}"`
       );
     }
-    if (typeof value === 'string' && IPV4_PATTERN.test(value)) {
-      errors.push(`${label}: "${field}" contains an IP address`);
+    const found = findPrivateValue(value);
+    if (found) {
+      errors.push(`${label}: "${field}" ${found}`);
     }
   }
 
@@ -129,7 +177,7 @@ export function validateStations(doc: unknown): string[] {
     return ['stations.yaml must contain a top-level "stations" list'];
   }
 
-  const errors: string[] = [];
+  const errors: string[] = validateTopLevel(doc);
   const seen = new Map<string, Set<unknown>>(
     UNIQUE_FIELDS.map((f) => [f, new Set<unknown>()])
   );
