@@ -49,8 +49,15 @@ gh release create "$TAG" release-bundle/* \\
   --title "Bloom Desktop $TAG" \\
   --generate-notes \\
   --prerelease="$PRERELEASE" || failed="the upload failed"
-release_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \\
-  --jq ".[] | select(.tag_name == \\"$TAG\\" and .draft) | .id" || true)
+# A just-created draft can take a moment to appear in the list, and
+# the call itself can fail, so look it up a few times.
+release_id=""
+for attempt in 1 2 3; do
+  release_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \\
+    --jq ".[] | select(.tag_name == \\"$TAG\\" and .draft) | .id" || true)
+  [[ -n "$release_id" ]] && break
+  [[ "$attempt" -lt 3 ]] && sleep 5
+done
 if [[ -z "$failed" && -z "$release_id" ]]; then
   failed="the draft wasn't found after creating it"
 fi
@@ -65,10 +72,13 @@ if [[ -z "$failed" ]]; then
   echo "Draft $TAG created with every file. Review it on the Releases page, then publish."
   exit 0
 fi
-echo "::error::Creating the draft for $TAG failed: $failed. The incomplete draft is being deleted; use \\"Re-run failed jobs\\" to try again."
-if [[ -n "$release_id" ]]; then
-  gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id" \\
-    || echo "::error::Couldn't delete the incomplete draft $TAG. Delete it on the Releases page before re-running."
+echo "::error::Creating the draft for $TAG failed: $failed."
+if [[ -z "$release_id" ]]; then
+  echo "::error::Couldn't find the draft for $TAG to delete it. If a draft for $TAG is on the Releases page, delete it, then use \\"Re-run failed jobs\\"."
+elif gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"; then
+  echo "::error::Deleted the incomplete draft for $TAG. Use \\"Re-run failed jobs\\" to try again."
+else
+  echo "::error::Couldn't delete the incomplete draft for $TAG. Delete it on the Releases page, then use \\"Re-run failed jobs\\"."
 fi
 exit 1
 ",
