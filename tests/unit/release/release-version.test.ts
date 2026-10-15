@@ -1,66 +1,82 @@
 /**
- * Unit tests for the release tag / package.json version check used by the
- * release workflow's verify job.
+ * Unit tests for the requested-version check used by the release workflow's
+ * verify job (the maintainer types the version when starting a release).
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-  parseReleaseTag,
-  checkTagMatchesVersion,
+  parseRequestedVersion,
+  checkRequestedVersion,
+  releaseTag,
   isPrerelease,
   formatGithubOutput,
 } from '../../../scripts/release/release-version';
 
-describe('parseReleaseTag', () => {
+describe('parseRequestedVersion', () => {
   it.each([
+    ['0.2.0', '0.2.0'],
     ['v0.2.0', '0.2.0'],
-    ['v1.10.3', '1.10.3'],
+    ['1.10.3', '1.10.3'],
+    ['0.2.0-rc.1', '0.2.0-rc.1'],
     ['v0.2.0-rc.1', '0.2.0-rc.1'],
-  ])('accepts %s', (tag, version) => {
-    expect(parseReleaseTag(tag)).toBe(version);
+  ])('accepts %s', (input, version) => {
+    expect(parseRequestedVersion(input)).toBe(version);
   });
 
   it.each([
-    '0.2.0',
-    'v0.2',
-    'v0.2.0.1',
-    'v01.2.0',
+    '0.2',
+    '0.2.0.1',
+    '01.2.0',
+    'vv0.2.0',
+    'xv0.2.0',
     'release-0.2.0',
-    'v0.2.0-',
-    'v0.2.0 ',
+    '0.2.0-',
+    '0.2.0 ',
+    ' 0.2.0',
     '',
-  ])('rejects %j', (tag) => {
-    expect(() => parseReleaseTag(tag)).toThrow(/not a release tag/);
+  ])('rejects %j', (input) => {
+    expect(() => parseRequestedVersion(input)).toThrow(/not a release version/);
   });
 });
 
-describe('checkTagMatchesVersion', () => {
-  it('passes when the tag matches package.json', () => {
-    expect(checkTagMatchesVersion('v0.2.0', '0.2.0')).toBe('0.2.0');
+describe('checkRequestedVersion', () => {
+  it('passes when the version matches package.json', () => {
+    expect(checkRequestedVersion('0.2.0', '0.2.0')).toBe('0.2.0');
+  });
+
+  it('accepts a leading v', () => {
+    expect(checkRequestedVersion('v0.2.0', '0.2.0')).toBe('0.2.0');
   });
 
   it('passes for a matching pre-release', () => {
-    expect(checkTagMatchesVersion('v0.2.0-rc.1', '0.2.0-rc.1')).toBe(
+    expect(checkRequestedVersion('0.2.0-rc.1', '0.2.0-rc.1')).toBe(
       '0.2.0-rc.1'
     );
   });
 
-  it('fails and names both versions when they differ', () => {
-    expect(() => checkTagMatchesVersion('v0.2.1', '0.2.0')).toThrow(
-      'Tag v0.2.1 is version 0.2.1, but package.json is 0.2.0'
+  it('fails with both versions and what to do when they differ', () => {
+    expect(() => checkRequestedVersion('0.2.1', '0.2.0')).toThrow(
+      "Requested version 0.2.1 doesn't match package.json (0.2.0). Bump package.json on main first, or type 0.2.0."
     );
   });
 
   it('fails when only the pre-release part differs', () => {
-    expect(() => checkTagMatchesVersion('v0.2.0-rc.1', '0.2.0')).toThrow(
-      /package\.json is 0\.2\.0/
+    expect(() => checkRequestedVersion('0.2.0-rc.1', '0.2.0')).toThrow(
+      /package\.json \(0\.2\.0\)/
     );
   });
 
-  it('fails for a malformed tag before comparing', () => {
-    expect(() => checkTagMatchesVersion('0.2.0', '0.2.0')).toThrow(
-      /not a release tag/
+  it('fails for a malformed version before comparing', () => {
+    expect(() => checkRequestedVersion('0.2', '0.2')).toThrow(
+      /not a release version/
     );
+  });
+});
+
+describe('releaseTag', () => {
+  it('prefixes the version with v', () => {
+    expect(releaseTag('0.2.0')).toBe('v0.2.0');
+    expect(releaseTag('0.2.0-rc.1')).toBe('v0.2.0-rc.1');
   });
 });
 
@@ -75,15 +91,15 @@ describe('isPrerelease', () => {
 });
 
 describe('formatGithubOutput', () => {
-  it('writes version and prerelease=false for a release', () => {
+  it('writes version, tag and prerelease=false for a release', () => {
     expect(formatGithubOutput('0.2.0')).toBe(
-      'version=0.2.0\nprerelease=false\n'
+      'version=0.2.0\ntag=v0.2.0\nprerelease=false\n'
     );
   });
 
   it('writes prerelease=true for a pre-release', () => {
     expect(formatGithubOutput('0.2.0-rc.1')).toBe(
-      'version=0.2.0-rc.1\nprerelease=true\n'
+      'version=0.2.0-rc.1\ntag=v0.2.0-rc.1\nprerelease=true\n'
     );
   });
 });

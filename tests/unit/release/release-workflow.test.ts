@@ -1,6 +1,7 @@
 /**
- * Structure tests for .github/workflows/release.yml: trigger, job order, and
- * least-privilege permissions (only `publish` can write, and it runs no build).
+ * Structure tests for .github/workflows/release.yml: on-demand trigger, job
+ * order, least-privilege permissions (only `publish` can write, and it runs no
+ * build), the approval gate, and that every safety check stays in place.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -30,6 +31,7 @@ interface Step {
 
 interface Job {
   if?: string;
+  environment?: string | { name: string };
   'continue-on-error'?: boolean | string;
   needs?: string | string[];
   permissions?: Record<string, string>;
@@ -38,7 +40,12 @@ interface Job {
 }
 
 interface Workflow {
-  on: { push?: { tags?: string[]; branches?: string[] } };
+  on: {
+    push?: unknown;
+    workflow_dispatch?: {
+      inputs?: Record<string, { required?: boolean; type?: string }>;
+    };
+  };
   permissions: Record<string, string>;
   concurrency: { group: string; 'cancel-in-progress': boolean };
   jobs: Record<string, Job>;
@@ -58,8 +65,19 @@ function stepNames(job: string): string[] {
 }
 
 describe('release.yml trigger and concurrency', () => {
-  it('runs only on vX.Y.Z tag pushes', () => {
-    expect(loadWorkflow().on).toEqual({ push: { tags: ['v*.*.*'] } });
+  it('runs only on demand (Run workflow), not on pushes', () => {
+    expect(Object.keys(loadWorkflow().on)).toEqual(['workflow_dispatch']);
+  });
+
+  it('asks for the version to release, as required text', () => {
+    expect(loadWorkflow().on.workflow_dispatch?.inputs?.version).toMatchObject({
+      required: true,
+      type: 'string',
+    });
+  });
+
+  it('runs one release at a time', () => {
+    expect(loadWorkflow().concurrency.group).toBe('release');
   });
 
   it('grants no permissions at the workflow level', () => {
@@ -145,17 +163,17 @@ describe('release.yml permissions', () => {
 
 describe('release.yml verify job', () => {
   it.each([
-    'Check tag matches package.json',
-    'Check tagged commit is on main',
+    'Check the workflow was started from main',
+    'Check version matches package.json',
     'Check "All Checks Passed" succeeded on this commit',
-    'Check no release exists for this tag',
+    "Check this version isn't released or tagged yet",
   ])('includes "%s"', (step) => {
     expect(stepNames('verify')).toContain(step);
   });
 
   it('uses the tested release-version helper', () => {
     const step = loadWorkflow().jobs.verify.steps?.find(
-      (s) => s.name === 'Check tag matches package.json'
+      (s) => s.name === 'Check version matches package.json'
     );
     expect(step?.run).toContain('scripts/release/release-version.ts');
   });
@@ -243,6 +261,7 @@ describe('release.yml safety checks cannot be silently weakened', () => {
     expect(steps.map((s) => s.name)).toEqual([
       'Download release bundle',
       'Verify checksums',
+      'Create release tag at the built commit',
       'Create GitHub Release',
     ]);
   });
@@ -253,30 +272,69 @@ describe('release.yml safety checks cannot be silently weakened', () => {
     );
   });
 
-  it('publish creates the release from the existing tag only', () => {
+  it('publish creates the tag at the built commit with a create-only call', () => {
+    const create = step('publish', 'Create release tag at the built commit');
+    expect(create.run).toBe(
+      'gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"'
+    );
+    expect(create.env?.TAG).toBe('${{ needs.verify.outputs.tag }}');
+  });
+
+  it('publish creates the release only from that tag', () => {
     expect(step('publish', 'Create GitHub Release').run).toContain(
       '--verify-tag'
     );
   });
 
-  it('the tag check writes outputs with the tested helper', () => {
-    expect(step('verify', 'Check tag matches package.json').run).toBe(
-      'npx ts-node scripts/release/release-version.ts "$TAG" --github-output'
+  it('publish waits for approval in the release environment', () => {
+    expect(loadWorkflow().jobs.publish.environment).toBe('release');
+  });
+
+  it('no other job uses an environment', () => {
+    for (const [name, job] of Object.entries(loadWorkflow().jobs)) {
+      if (name === 'publish') continue;
+      expect(job.environment, name).toBeUndefined();
+    }
+  });
+
+  it('every checkout pins the commit the run started on', () => {
+    const checkouts = allSteps().filter(([, s]) =>
+      (s.uses ?? '').startsWith('actions/checkout')
     );
+    expect(checkouts.length).toBeGreaterThan(0);
+    for (const [job, s] of checkouts) {
+      expect(s.with?.ref, job).toBe('${{ github.sha }}');
+    }
+  });
+
+  it('the version check writes outputs with the tested helper', () => {
+    const check = step('verify', 'Check version matches package.json');
+    expect(check.run).toBe(
+      'npx ts-node scripts/release/release-version.ts "$VERSION" --github-output'
+    );
+    expect(check.env?.VERSION).toBe('${{ inputs.version }}');
   });
 
   it.each([
-    'Check tagged commit is on main',
+    'Check the workflow was started from main',
     'Check "All Checks Passed" succeeded on this commit',
-    'Check no release exists for this tag',
+    "Check this version isn't released or tagged yet",
   ])('"%s" fails the job when the check fails', (name) => {
     expect(step('verify', name).run).toContain('exit 1');
   });
 
-  it('requires the tag to be a first-parent commit on main', () => {
-    expect(step('verify', 'Check tagged commit is on main').run).toContain(
-      'git rev-list --first-parent origin/main'
-    );
+  it('only releases runs started from main', () => {
+    expect(
+      step('verify', 'Check the workflow was started from main').run
+    ).toContain('"$GITHUB_REF" != "refs/heads/main"');
+  });
+
+  it('checks both the release and the tag are free', () => {
+    const run =
+      step('verify', "Check this version isn't released or tagged yet").run ??
+      '';
+    expect(run).toContain('gh release view "$TAG"');
+    expect(run).toContain('git/ref/tags/$TAG');
   });
 
   it('trusts only the newest GitHub Actions "All Checks Passed" run', () => {
@@ -289,9 +347,9 @@ describe('release.yml safety checks cannot be silently weakened', () => {
     expect(run).toContain('"completed success"');
   });
 
-  it('manifest takes the version from verify, not from the tag', () => {
+  it('manifest takes the version and tag from verify', () => {
     expect(step('manifest', 'Write manifest.json and SHA256SUMS').env).toEqual({
-      TAG: '${{ github.ref_name }}',
+      TAG: '${{ needs.verify.outputs.tag }}',
       VERSION: '${{ needs.verify.outputs.version }}',
     });
   });

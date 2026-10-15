@@ -1,24 +1,30 @@
 name: Release
 
-# Publishes a GitHub Release when a vX.Y.Z tag is pushed for a main commit.
+# Publishes a GitHub Release on demand: Actions → Release → Run workflow,
+# from main, with the version to release (must equal package.json).
 #   verify → build-python → build-windows / build-linux → manifest → publish
-# Only `publish` can write to the repository, and it runs no build code: it
-# checks the bundle's checksums and uploads it. See docs/RELEASING.md.
+# `publish` waits for approval in the `release` environment, then creates the
+# vX.Y.Z tag at the exact commit that was verified and built, and the release.
+# It is the only job that can write, and it runs no build code.
+# See docs/RELEASING.md.
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release; must equal package.json on main (e.g. 0.2.0)'
+        required: true
+        type: string
 
 permissions: {}
 
-# One release run per tag; never cancel a release part-way through.
+# One release at a time; never cancel a release part-way through.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
   verify:
-    name: Verify release tag
+    name: Verify release request
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -26,13 +32,21 @@ jobs:
       checks: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
       prerelease: ${{ steps.version.outputs.prerelease }}
 
     steps:
+      - name: Check the workflow was started from main
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Releases are only made from main (this run was started from $GITHUB_REF). Choose main in \"Run workflow\"."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -43,21 +57,11 @@ jobs:
       - name: Install dependencies (no install scripts)
         run: npm ci --ignore-scripts
 
-      - name: Check tag matches package.json
+      - name: Check version matches package.json
         id: version
         env:
-          TAG: ${{ github.ref_name }}
-        run: npx ts-node scripts/release/release-version.ts "$TAG" --github-output
-
-      # First-parent history only: a development or PR commit that was merged
-      # into main is reachable from main but isn't a main commit itself.
-      - name: Check tagged commit is on main
-        run: |
-          git fetch --no-tags origin main
-          if ! git rev-list --first-parent origin/main | grep -qx "$GITHUB_SHA"; then
-            echo "::error::$GITHUB_REF_NAME points to $GITHUB_SHA, which is not a commit on main. Tag the main merge commit."
-            exit 1
-          fi
+          VERSION: ${{ inputs.version }}
+        run: npx ts-node scripts/release/release-version.ts "$VERSION" --github-output
 
       - name: Check "All Checks Passed" succeeded on this commit
         env:
@@ -70,7 +74,7 @@ jobs:
             "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=All%20Checks%20Passed&app_id=15368&per_page=100" \
             --jq '.check_runs | sort_by(.started_at) | last | if . == null then "none" else "\(.status) \(.conclusion)" end')
           if [[ "$latest" == "none" ]]; then
-            echo "::error::No \"All Checks Passed\" run found on $GITHUB_SHA. Tag a main commit whose CI has run."
+            echo "::error::No \"All Checks Passed\" run found on $GITHUB_SHA. Wait for CI on main, then run this workflow again."
             exit 1
           fi
           if [[ "$latest" != completed* ]]; then
@@ -82,12 +86,17 @@ jobs:
             exit 1
           fi
 
-      - name: Check no release exists for this tag
+      - name: Check this version isn't released or tagged yet
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::A release for $GITHUB_REF_NAME already exists; it will not be overwritten"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::$TAG is already released; releases are never overwritten. Bump package.json for a new version."
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Bump package.json for a new version."
             exit 1
           fi
 
@@ -105,6 +114,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
@@ -136,6 +147,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -185,6 +198,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -242,6 +257,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -266,7 +283,7 @@ jobs:
 
       - name: Write manifest.json and SHA256SUMS
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.verify.outputs.tag }}
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
           npx ts-node scripts/release/release-manifest.ts \
@@ -286,6 +303,8 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Waits for a required reviewer to approve before anything is published.
+    environment: release
     permissions:
       contents: write
 
@@ -300,10 +319,18 @@ jobs:
         working-directory: release-bundle
         run: sha256sum -c SHA256SUMS
 
+      # Creating the ref fails if the tag already exists, so the tag always
+      # points at the commit that was verified and built.
+      - name: Create release tag at the built commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.verify.outputs.tag }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.verify.outputs.tag }}
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
           flags=()

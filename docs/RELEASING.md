@@ -1,6 +1,6 @@
 # Releasing Bloom Desktop
 
-A release is a `vX.Y.Z` git tag on `main`. Pushing the tag runs `.github/workflows/release.yml`, which builds the installers once on GitHub-hosted runners and publishes them as a GitHub Release. Every station installs those same files; station-specific settings are configuration, not build inputs (see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md)).
+Releases are made on demand from **Actions → Release → Run workflow**. The workflow (`.github/workflows/release.yml`) builds the installers once on GitHub-hosted runners, waits for a maintainer to approve, then tags the built commit `vX.Y.Z` and publishes a GitHub Release. Every station installs those same files; station-specific settings are configuration, not build inputs (see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md)).
 
 ## What a release contains
 
@@ -23,41 +23,37 @@ Both installers contain the whole app; each station runs one scanner mode, chose
 ## Cutting a release
 
 1. **Bump the version** in a PR into `development`: set `version` in `package.json` (Semantic Versioning, higher than the last release; Squirrel only upgrades to a higher version), run `npm install --package-lock-only` so `package-lock.json` matches, and move the `CHANGELOG.md` `[Unreleased]` entries under the new version.
-2. **Promote** `development` to `main` with a PR (merge commit).
-3. **Wait** for `All Checks Passed` on the `main` merge commit.
-4. **Tag** that commit and push the tag:
-   ```bash
-   git fetch origin main
-   git tag v0.2.0 origin/main
-   git push origin v0.2.0
-   ```
-5. **Watch** the Release workflow in the Actions tab. When it finishes, the release appears on the Releases page.
+2. **Promote** `development` to `main` with a PR (merge commit), and wait for `All Checks Passed` on the `main` merge commit.
+3. **Start the release:** Actions → **Release** → **Run workflow** → branch `main` → type the version (e.g. `0.2.0`).
+4. **Approve:** when the builds finish, the run pauses at **Publish GitHub Release**. Click **Review deployments** → **Approve** (maintainers only).
+5. The workflow creates the tag `v0.2.0` at the commit it built and publishes the release on the **Releases** page.
 
-The workflow refuses to publish, without building, if:
+The workflow stops, before building, if:
 
-- the tag doesn't match `package.json` (`v0.2.1` vs `0.2.0`);
-- the tagged commit isn't on `main`;
-- `All Checks Passed` hasn't succeeded on that commit;
-- a release for the tag already exists (releases are never overwritten).
+- it wasn't started from `main`;
+- the version typed doesn't match `package.json` (`0.2.1` vs `0.2.0`);
+- `All Checks Passed` hasn't succeeded on the `main` commit;
+- that version is already released or tagged (releases are never overwritten).
 
-Release tags can't be deleted or moved, and only maintainers can create them (repository rulesets).
+Release tags can't be deleted or moved by anyone, and only the release workflow and maintainers can create them (repository rulesets).
 
 ### When a release run fails
 
-Nothing is published unless every job succeeds. What to do depends on the cause:
+Nothing is published or tagged unless every job succeeds and the publish step is approved. What to do depends on the cause:
 
-| Cause                                                                          | What to do                                                                                                                                                                             |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CI on the tagged commit was still running ("CI is still running…")             | Wait for `All Checks Passed` to finish, then **Re-run failed jobs**.                                                                                                                   |
-| Runner or network problem (job not picked up, lost connection, download error) | **Re-run failed jobs**. Within 3 days, the build outputs from the first attempt are reused.                                                                                            |
-| A problem in the code or build                                                 | A re-run rebuilds the same commit, so it will fail again. Fix it on `development`, bump the patch version (`0.2.0` → `0.2.1`), promote, and tag `v0.2.1`. The failed tag stays unused. |
-| "A release for … already exists"                                               | That version is already published; bump the version for a new one.                                                                                                                     |
+| Cause                                                                          | What to do                                                                                                                                                                 |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "CI is still running…"                                                         | Wait for `All Checks Passed` on `main` to finish, then **Re-run failed jobs**.                                                                                             |
+| Runner or network problem (job not picked up, lost connection, download error) | **Re-run failed jobs**. Within 3 days, the build outputs from the first attempt are reused.                                                                                |
+| A problem in the code or build                                                 | A re-run rebuilds the same commit, so it will fail again. Fix it on `development`, bump the patch version (`0.2.0` → `0.2.1`), promote, and run the workflow with `0.2.1`. |
+| "… is already released" / "Tag … already exists"                               | That version is taken; bump the version for a new one.                                                                                                                     |
+| The approval was rejected or timed out                                         | Nothing was published; run the workflow again when ready.                                                                                                                  |
 
-**Pre-releases:** a tag like `v0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1` on `main`) is published as a GitHub pre-release, useful for trying a build on one station first. Notes:
+**Pre-releases:** releasing a version like `0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1` on `main`) publishes a GitHub pre-release tagged `v0.2.0-rc.1`, useful for trying a build on one station first. Notes:
 
 - Keep the number below 10 (`rc.1`…`rc.9`). The Windows installer drops the dot (`rc.10` → `rc10`) and compares the label as text, so `rc10` would sort below `rc2`.
 - The Linux file is published as `bloom-desktop_X.Y.Z-rc.N_amd64.deb`; the package version inside it is `X.Y.Z~rc.N`, which Debian sorts before `X.Y.Z`.
-- Bump `package.json` to the final `X.Y.Z` before the next promotion, so a final release isn't tagged while it still says `-rc`.
+- Bump `package.json` to the final `X.Y.Z` before the next promotion, so a final release isn't attempted while it still says `-rc`.
 
 ## Adding a station
 

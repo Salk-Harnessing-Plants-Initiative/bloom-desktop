@@ -1,14 +1,16 @@
 /**
- * Release tag / package.json version check for the release workflow.
+ * Requested-version check for the release workflow.
  *
- * A release is a `vX.Y.Z` (optionally `vX.Y.Z-prerelease`) tag whose version
- * equals package.json's `version`. Squirrel only upgrades to a higher version,
- * so package.json is the single source of truth.
+ * A maintainer starts a release by typing a version (`0.2.0`, or `v0.2.0`).
+ * It must be Semantic Versioning and equal package.json's `version`, so a
+ * typo can't publish the wrong release. Squirrel only upgrades to a higher
+ * version, so package.json is the single source of truth. The release tag is
+ * always `v<version>`.
  *
- * CLI: `ts-node scripts/release/release-version.ts <tag> [--github-output]`
- * prints the version and exits non-zero if the tag doesn't match package.json.
- * With --github-output it also appends `version=` / `prerelease=` lines to
- * $GITHUB_OUTPUT.
+ * CLI: `ts-node scripts/release/release-version.ts <version> [--github-output]`
+ * prints the version and exits non-zero if it doesn't match package.json.
+ * With --github-output it also appends `version=` / `tag=` / `prerelease=`
+ * lines to $GITHUB_OUTPUT.
  */
 
 import * as fs from 'fs';
@@ -16,32 +18,37 @@ import * as fs from 'fs';
 import packageJson from '../../package.json';
 
 // Semantic Versioning core (no leading zeros) with an optional pre-release.
-const RELEASE_TAG_PATTERN =
-  /^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?)$/;
+const VERSION_PATTERN =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$/;
 
-/** Return the version in a `vX.Y.Z` tag, or throw if it isn't a release tag. */
-export function parseReleaseTag(tag: string): string {
-  const match = RELEASE_TAG_PATTERN.exec(tag);
-  if (!match) {
+/** Return the version in `0.2.0` or `v0.2.0`, or throw if it isn't one. */
+export function parseRequestedVersion(input: string): string {
+  const version = input.startsWith('v') ? input.slice(1) : input;
+  if (!VERSION_PATTERN.test(version)) {
     throw new Error(
-      `"${tag}" is not a release tag (expected vX.Y.Z or vX.Y.Z-prerelease)`
-    );
-  }
-  return match[1];
-}
-
-/** Throw unless `tag` is a release tag for exactly `packageVersion`. */
-export function checkTagMatchesVersion(
-  tag: string,
-  packageVersion: string
-): string {
-  const version = parseReleaseTag(tag);
-  if (version !== packageVersion) {
-    throw new Error(
-      `Tag ${tag} is version ${version}, but package.json is ${packageVersion}`
+      `"${input}" is not a release version (expected X.Y.Z or X.Y.Z-prerelease)`
     );
   }
   return version;
+}
+
+/** Throw unless `input` is exactly `packageVersion`. */
+export function checkRequestedVersion(
+  input: string,
+  packageVersion: string
+): string {
+  const version = parseRequestedVersion(input);
+  if (version !== packageVersion) {
+    throw new Error(
+      `Requested version ${version} doesn't match package.json (${packageVersion}). Bump package.json on main first, or type ${packageVersion}.`
+    );
+  }
+  return version;
+}
+
+/** The git tag a release of `version` is published under. */
+export function releaseTag(version: string): string {
+  return `v${version}`;
 }
 
 /** Pre-releases (`X.Y.Z-rc.1`) are published as GitHub pre-releases. */
@@ -49,15 +56,15 @@ export function isPrerelease(version: string): boolean {
   return version.includes('-');
 }
 
-/** `version` / `prerelease` lines for the workflow's `$GITHUB_OUTPUT`. */
+/** `version` / `tag` / `prerelease` lines for the workflow's `$GITHUB_OUTPUT`. */
 export function formatGithubOutput(version: string): string {
-  return `version=${version}\nprerelease=${isPrerelease(version)}\n`;
+  return `version=${version}\ntag=${releaseTag(version)}\nprerelease=${isPrerelease(version)}\n`;
 }
 
 if (require.main === module) {
   try {
-    const tag = process.argv[2] ?? '';
-    const version = checkTagMatchesVersion(tag, packageJson.version);
+    const input = process.argv[2] ?? '';
+    const version = checkRequestedVersion(input, packageJson.version);
     if (process.argv.includes('--github-output')) {
       const outputFile = process.env.GITHUB_OUTPUT;
       if (!outputFile) {
