@@ -25,7 +25,7 @@ exports[`release.yml safety-critical steps match the reviewed snapshot > publish
   "run": "existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \\
   --jq ".[] | select(.tag_name == \\"$TAG\\") | .html_url")
 if [[ -n "$existing" ]]; then
-  echo "::error::A release or draft for $TAG already exists: $existing. If it's a draft, publish it only if it has all the files listed in its SHA256SUMS plus manifest.json; otherwise delete it and run this workflow again."
+  echo "::error::A release or draft for $TAG already exists: $existing. If it's a draft marked INCOMPLETE, or it's missing any file listed in its SHA256SUMS or manifest.json, delete it and run this workflow again. Publish it only if it's complete and built from the commit you want (see its manifest.json)."
   exit 1
 fi
 ",
@@ -42,13 +42,23 @@ exports[`release.yml safety-critical steps match the reviewed snapshot > publish
     "TAG": "\${{ needs.verify.outputs.tag }}",
   },
   "run": "failed=""
-gh release create "$TAG" release-bundle/* \\
+stalled=""
+upload_status=0
+# A normal upload takes 1-3 minutes; give up after 10 so a stall
+# is reported here instead of by the job's own timeout.
+timeout 10m gh release create "$TAG" release-bundle/* \\
   --repo "$GITHUB_REPOSITORY" \\
   --draft \\
   --target "$GITHUB_SHA" \\
   --title "Bloom Desktop $TAG" \\
   --generate-notes \\
-  --prerelease="$PRERELEASE" || failed="the upload failed"
+  --prerelease="$PRERELEASE" || upload_status=$?
+if [[ "$upload_status" == 124 ]]; then
+  failed="the upload timed out after 10 minutes"
+  stalled=1
+elif [[ "$upload_status" != 0 ]]; then
+  failed="the upload failed"
+fi
 # A just-created draft can take a moment to appear in the list, and
 # the call itself can fail, so look it up a few times.
 release_id=""
@@ -75,6 +85,15 @@ fi
 echo "::error::Creating the draft for $TAG failed: $failed."
 if [[ -z "$release_id" ]]; then
   echo "::error::Couldn't find the draft for $TAG to delete it. If a draft for $TAG is on the Releases page, delete it, then use \\"Re-run failed jobs\\"."
+elif [[ -n "$stalled" ]]; then
+  # Keep a stalled upload's draft so a maintainer can see what was
+  # uploaded, renamed so it can't be mistaken for a real release.
+  if gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \\
+    -f "name=INCOMPLETE — do not publish: Bloom Desktop $TAG"; then
+    echo "::error::The upload timed out after 10 minutes. The partial draft for $TAG was kept and renamed \\"INCOMPLETE — do not publish\\" so you can see what was uploaded. Don't publish it: delete it on the Releases page, then use \\"Re-run failed jobs\\"."
+  else
+    echo "::error::The upload timed out after 10 minutes and the partial draft for $TAG was kept. Couldn't mark the draft for $TAG as INCOMPLETE. Don't publish it: delete it on the Releases page, then use \\"Re-run failed jobs\\"."
+  fi
 elif gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id"; then
   echo "::error::Deleted the incomplete draft for $TAG. Use \\"Re-run failed jobs\\" to try again."
 else

@@ -52,6 +52,7 @@ case "$1 $2" in
   "release create") exit "\${FAKE_CREATE_EXIT:-0}" ;;
 esac
 if [[ "$*" == *"-X DELETE"* ]]; then exit "\${FAKE_DELETE_EXIT:-0}"; fi
+if [[ "$*" == *"-X PATCH"* ]]; then exit "\${FAKE_PATCH_EXIT:-0}"; fi
 if [[ "$*" == *"/assets"* ]]; then
   [[ "\${FAKE_ASSETS_EXIT:-0}" != 0 ]] && exit "$FAKE_ASSETS_EXIT"
   reply "$FAKE_ASSETS_JSON"
@@ -77,6 +78,18 @@ const DECOY_RELEASES = [
   { id: 7, tag_name: 'v0.2.0', draft: false },
   { id: 9, tag_name: 'v0.1.9', draft: true },
 ];
+
+// Fake timeout: records the limit, then runs the command, or simulates a
+// stalled command with timeout's exit code 124 when FAKE_STALL=1.
+const FAKE_TIMEOUT = `#!/usr/bin/env bash
+echo "timeout $1" >> "$FAKE_LOG"
+shift
+if [[ "\${FAKE_STALL:-0}" == 1 ]]; then
+  echo "$*" >> "$FAKE_LOG"
+  exit 124
+fi
+exec "$@"
+`;
 
 // Fake sleep: records the delay instead of waiting.
 const FAKE_SLEEP = `#!/usr/bin/env bash
@@ -106,6 +119,9 @@ beforeEach(() => {
   fs.mkdirSync(path.join(dir, 'bin'));
   fs.writeFileSync(path.join(dir, 'bin', 'gh'), FAKE_GH, { mode: 0o755 });
   fs.writeFileSync(path.join(dir, 'bin', 'sleep'), FAKE_SLEEP, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, 'bin', 'timeout'), FAKE_TIMEOUT, {
+    mode: 0o755,
+  });
   fs.mkdirSync(path.join(dir, 'release-bundle'));
   for (const name of BUNDLE) {
     fs.writeFileSync(path.join(dir, 'release-bundle', name), 'x');
@@ -168,6 +184,9 @@ function runStep({ draftId = '', assets = [], ...vars }: FakeOptions) {
 
 const deleted = (calls: string[]) =>
   calls.some((c) => c.includes('-X DELETE repos/org/repo/releases/42'));
+
+const renamed = (calls: string[]) =>
+  calls.find((c) => c.includes('-X PATCH repos/org/repo/releases/42'));
 
 const touchedDecoy = (calls: string[]) =>
   calls.some((c) => /releases\/(7|9)(\/|$)/.test(c));
@@ -338,5 +357,53 @@ describe('Create draft GitHub Release step', () => {
     expect(status).toBe(1);
     expect(out).toContain("Couldn't delete the incomplete draft for v0.2.0");
     expect(out).not.toContain('Deleted the incomplete draft');
+  });
+
+  it('gives the upload 10 minutes', () => {
+    const { calls } = runStep({ draftId: '42', assets: BUNDLE });
+    const i = calls.indexOf('timeout 10m');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(calls[i + 1]).toMatch(/^release create v0\.2\.0 /);
+  });
+
+  it('keeps a stalled draft for inspection, marks it INCOMPLETE, and fails', () => {
+    const { status, out, calls } = runStep({
+      FAKE_STALL: '1',
+      draftId: '42',
+      assets: BUNDLE.slice(0, 2),
+    });
+    expect(status).toBe(1);
+    expect(deleted(calls)).toBe(false);
+    expect(renamed(calls)).toContain(
+      'name=INCOMPLETE — do not publish: Bloom Desktop v0.2.0'
+    );
+    expect(out).toContain('The upload timed out after 10 minutes');
+    expect(out).toContain("Don't publish it");
+    expect(out).not.toContain('Deleted the incomplete draft');
+  });
+
+  it('still says not to publish a stalled draft when marking it fails', () => {
+    const { status, out, calls } = runStep({
+      FAKE_STALL: '1',
+      FAKE_PATCH_EXIT: '1',
+      draftId: '42',
+    });
+    expect(status).toBe(1);
+    expect(deleted(calls)).toBe(false);
+    expect(out).toContain("Couldn't mark the draft for v0.2.0 as INCOMPLETE");
+    expect(out).toContain("Don't publish it");
+  });
+
+  it("says the draft can't be found when a stalled upload left none", () => {
+    const { status, out, calls } = runStep({ FAKE_STALL: '1', draftId: '' });
+    expect(status).toBe(1);
+    expect(renamed(calls)).toBeUndefined();
+    expect(out).toContain("Couldn't find the draft for v0.2.0");
+  });
+
+  it('still deletes the draft when the upload fails without stalling', () => {
+    const { calls } = runStep({ FAKE_CREATE_EXIT: '1', draftId: '42' });
+    expect(deleted(calls)).toBe(true);
+    expect(renamed(calls)).toBeUndefined();
   });
 });
