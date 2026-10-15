@@ -178,6 +178,27 @@ describe('validateStations: nothing private can be published', () => {
       'https://admin:hunter2@scanner.local',
       'contains a URL with credentials',
     ],
+    [
+      'URL with only a token as the user',
+      'https://ghp_abc123@github.com/org/repo',
+      'contains a URL with credentials',
+    ],
+    [
+      'database URL with a password',
+      'postgresql://bloom:secret@db.internal:5432/bloom',
+      'contains a URL with credentials',
+    ],
+    [
+      'uppercase URL with a password',
+      'HTTPS://ADMIN:PW@HOST',
+      'contains a URL with credentials',
+    ],
+    [
+      'IPv6 address with 6 groups',
+      'fe80:0:0:0:1ff:fe23',
+      'contains an IP address',
+    ],
+    ['uppercase IPv6 address', 'FE80::1FF:FE23', 'contains an IP address'],
   ])('rejects a station value holding a %s', (_label, value, message) => {
     expect(
       validateStations({

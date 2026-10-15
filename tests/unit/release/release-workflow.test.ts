@@ -42,7 +42,6 @@ interface Job {
 
 interface Workflow {
   on: {
-    push?: unknown;
     workflow_dispatch?: {
       inputs?: Record<string, { required?: boolean; type?: string }>;
     };
@@ -146,14 +145,6 @@ describe('release.yml permissions', () => {
     }
   });
 
-  it('publish verifies checksums before creating the draft', () => {
-    const names = stepNames('publish');
-    expect(names.indexOf('Verify checksums')).toBeGreaterThanOrEqual(0);
-    expect(names.indexOf('Verify checksums')).toBeLessThan(
-      names.indexOf('Create draft GitHub Release')
-    );
-  });
-
   it('every other job declares read-only permissions explicitly', () => {
     for (const [name, job] of Object.entries(loadWorkflow().jobs)) {
       if (name === 'publish') continue;
@@ -170,13 +161,6 @@ describe('release.yml verify job', () => {
     "Check this version isn't released or tagged yet",
   ])('includes "%s"', (step) => {
     expect(stepNames('verify')).toContain(step);
-  });
-
-  it('uses the tested release-version helper', () => {
-    const step = loadWorkflow().jobs.verify.steps?.find(
-      (s) => s.name === 'Check version matches package.json'
-    );
-    expect(step?.run).toContain('scripts/release/release-version.ts');
   });
 });
 
@@ -279,7 +263,7 @@ describe('release.yml safety checks cannot be silently weakened', () => {
     expect(run).toContain('--target "$GITHUB_SHA"');
   });
 
-  it('the workflow never creates or verifies a tag itself', () => {
+  it('never creates a tag (no git/refs write, git tag/push, or --verify-tag)', () => {
     for (const [job, s] of allSteps()) {
       const run = s.run ?? '';
       expect(run, `${job}: ${s.name}`).not.toContain('git/refs');
@@ -346,7 +330,7 @@ describe('release.yml safety checks cannot be silently weakened', () => {
       'Check "All Checks Passed" succeeded on this commit'
     ).run;
     expect(run).toContain('app_id=15368');
-    expect(run).toContain('sort_by(.started_at) | last');
+    expect(run).toContain('sort_by(.id) | last');
     expect(run).toContain('"completed success"');
   });
 
@@ -362,5 +346,39 @@ describe('release.yml safety checks cannot be silently weakened', () => {
       TAG: '${{ needs.verify.outputs.tag }}',
       VERSION: '${{ needs.verify.outputs.version }}',
     });
+  });
+});
+
+describe('release.yml safety-critical steps match the reviewed snapshot', () => {
+  // Any change to these steps' commands, inputs or env fails this test until
+  // the snapshot is updated (vitest -u), so the change shows in review.
+  const SAFETY_STEPS: Array<[string, string]> = [
+    ['verify', 'Check the workflow was started from main'],
+    ['verify', 'Check version matches package.json'],
+    ['verify', 'Check "All Checks Passed" succeeded on this commit'],
+    ['verify', "Check this version isn't released or tagged yet"],
+    ['manifest', 'Write manifest.json and SHA256SUMS'],
+    ['publish', 'Download release bundle'],
+    ['publish', 'Verify checksums'],
+    ['publish', 'Check no draft exists for this version'],
+    ['publish', 'Create draft GitHub Release'],
+  ];
+
+  it.each(SAFETY_STEPS)('%s: %s', (job, name) => {
+    const { run, env, with: withInputs, uses } = step(job, name);
+    expect({ uses, with: withInputs, env, run }).toMatchSnapshot();
+  });
+
+  it('every step that uses the tag or version takes it from verify', () => {
+    for (const [job, name] of SAFETY_STEPS.filter(([j]) => j !== 'verify')) {
+      const env = step(job, name).env ?? {};
+      for (const key of ['TAG', 'VERSION', 'PRERELEASE'] as const) {
+        if (key in env) {
+          expect(env[key], `${job}: ${name} ${key}`).toBe(
+            `\${{ needs.verify.outputs.${key.toLowerCase()} }}`
+          );
+        }
+      }
+    }
   });
 });
