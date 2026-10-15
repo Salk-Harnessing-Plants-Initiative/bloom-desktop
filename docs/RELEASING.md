@@ -1,6 +1,6 @@
 # Releasing Bloom Desktop
 
-A release is a `vX.Y.Z` git tag on `main`. Pushing the tag runs `.github/workflows/release.yml`, which builds the installers once on GitHub-hosted runners and publishes them as a GitHub Release. Every station installs those same files; station-specific settings are configuration, not build inputs (see [Hardware Mode](PILOT_COMPATIBILITY.md#hardware-mode-mock-vs-real)).
+A release is a `vX.Y.Z` git tag on `main`. Pushing the tag runs `.github/workflows/release.yml`, which builds the installers once on GitHub-hosted runners and publishes them as a GitHub Release. Every station installs those same files; station-specific settings are configuration, not build inputs (see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md)).
 
 ## What a release contains
 
@@ -8,11 +8,17 @@ A release is a `vX.Y.Z` git tag on `main`. Pushing the tag runs `.github/workflo
 | -------------------------------------------- | --------------------------------------------------------------------- |
 | `Bloom-Desktop-X.Y.Z-Setup.exe`              | CylinderScan stations (Windows)                                       |
 | `bloom_desktop-X.Y.Z-full.nupkg`, `RELEASES` | Squirrel (Windows installer internals)                                |
-| `bloom-desktop_X.Y.Z_amd64.deb`              | GraviScan rigs (Linux)                                                |
+| `bloom-desktop_X.Y.Z_amd64.deb`              | GraviScan rigs (Linux), see note below                                |
 | `manifest.json`                              | Version, commit, build time, and each file's size, SHA-256 and target |
-| `SHA256SUMS`                                 | `sha256sum -c SHA256SUMS` before installing                           |
+| `SHA256SUMS`                                 | `sha256sum -c SHA256SUMS` to check a download is complete             |
 
 Releases don't expire: every published version stays downloadable from the repository's **Releases** page, so any version can be reinstalled.
+
+Both installers contain the whole app; each station runs one scanner mode, chosen in Machine Configuration.
+
+> **Linux `.deb`:** it contains GraviScan as it currently is on `main`. Production GraviScan rigs still run the separate `feature/graviscan-prod` build, so don't install the `.deb` on a production rig until GraviScan on `main` is ready for them.
+
+`SHA256SUMS` proves a download arrived intact. It does not prove the build itself is trustworthy: the checksums are computed from what CI built.
 
 ## Cutting a release
 
@@ -34,9 +40,24 @@ The workflow refuses to publish, without building, if:
 - `All Checks Passed` hasn't succeeded on that commit;
 - a release for the tag already exists (releases are never overwritten).
 
-If a build fails, nothing is published; fix the cause and re-run the workflow for the same tag.
+Release tags can't be deleted or moved, and only maintainers can create them (repository rulesets).
 
-**Pre-releases:** a tag like `v0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1`) is published as a GitHub pre-release, useful for trying a build on one station first.
+### When a release run fails
+
+Nothing is published unless every job succeeds. What to do depends on the cause:
+
+| Cause                                                                          | What to do                                                                                                                                                                             |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI on the tagged commit was still running ("CI is still running…")             | Wait for `All Checks Passed` to finish, then **Re-run failed jobs**.                                                                                                                   |
+| Runner or network problem (job not picked up, lost connection, download error) | **Re-run failed jobs**. Within 3 days, the build outputs from the first attempt are reused.                                                                                            |
+| A problem in the code or build                                                 | A re-run rebuilds the same commit, so it will fail again. Fix it on `development`, bump the patch version (`0.2.0` → `0.2.1`), promote, and tag `v0.2.1`. The failed tag stays unused. |
+| "A release for … already exists"                                               | That version is already published; bump the version for a new one.                                                                                                                     |
+
+**Pre-releases:** a tag like `v0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1` on `main`) is published as a GitHub pre-release, useful for trying a build on one station first. Notes:
+
+- Keep the number below 10 (`rc.1`…`rc.9`). The Windows installer drops the dot (`rc.10` → `rc10`) and compares the label as text, so `rc10` would sort below `rc2`.
+- The Linux file is published as `bloom-desktop_X.Y.Z-rc.N_amd64.deb`; the package version inside it is `X.Y.Z~rc.N`, which Debian sorts before `X.Y.Z`.
+- Bump `package.json` to the final `X.Y.Z` before the next promotion, so a final release isn't tagged while it still says `-rc`.
 
 ## Adding a station
 
@@ -54,4 +75,4 @@ stations:
     active: true
 ```
 
-The file is public. CI (`npm run stations:validate`) rejects unknown fields, credential-like fields, and any value containing an IP address. Keep camera IPs, credentials and mock-mode settings on the station itself.
+The file is public. CI (`npm run stations:validate`) rejects unknown fields and top-level keys, credential-like field names, and any value containing an IPv4/IPv6 address or a URL with a password. It can't catch hostnames or YAML comments, so keep camera IPs, credentials and mock-mode settings on the station itself.

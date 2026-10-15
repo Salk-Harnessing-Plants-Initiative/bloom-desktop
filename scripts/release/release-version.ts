@@ -5,9 +5,13 @@
  * equals package.json's `version`. Squirrel only upgrades to a higher version,
  * so package.json is the single source of truth.
  *
- * CLI: `ts-node scripts/release/release-version.ts <tag>` prints the version
- * and exits non-zero if the tag doesn't match package.json.
+ * CLI: `ts-node scripts/release/release-version.ts <tag> [--github-output]`
+ * prints the version and exits non-zero if the tag doesn't match package.json.
+ * With --github-output it also appends `version=` / `prerelease=` lines to
+ * $GITHUB_OUTPUT.
  */
+
+import * as fs from 'fs';
 
 import packageJson from '../../package.json';
 
@@ -45,10 +49,23 @@ export function isPrerelease(version: string): boolean {
   return version.includes('-');
 }
 
+/** `version` / `prerelease` lines for the workflow's `$GITHUB_OUTPUT`. */
+export function formatGithubOutput(version: string): string {
+  return `version=${version}\nprerelease=${isPrerelease(version)}\n`;
+}
+
 if (require.main === module) {
   try {
     const tag = process.argv[2] ?? '';
-    console.log(checkTagMatchesVersion(tag, packageJson.version));
+    const version = checkTagMatchesVersion(tag, packageJson.version);
+    if (process.argv.includes('--github-output')) {
+      const outputFile = process.env.GITHUB_OUTPUT;
+      if (!outputFile) {
+        throw new Error('--github-output needs $GITHUB_OUTPUT to be set');
+      }
+      fs.appendFileSync(outputFile, formatGithubOutput(version));
+    }
+    console.log(version);
   } catch (error) {
     console.error(
       `[Release] ${error instanceof Error ? error.message : 'Unknown error'}`

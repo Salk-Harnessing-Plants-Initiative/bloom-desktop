@@ -8,6 +8,7 @@ import {
   parseReleaseTag,
   checkTagMatchesVersion,
   isPrerelease,
+  formatGithubOutput,
 } from '../../../scripts/release/release-version';
 
 describe('parseReleaseTag', () => {
@@ -70,5 +71,19 @@ describe('isPrerelease', () => {
 
   it('is true for X.Y.Z-suffix', () => {
     expect(isPrerelease('0.2.0-rc.1')).toBe(true);
+  });
+});
+
+describe('formatGithubOutput', () => {
+  it('writes version and prerelease=false for a release', () => {
+    expect(formatGithubOutput('0.2.0')).toBe(
+      'version=0.2.0\nprerelease=false\n'
+    );
+  });
+
+  it('writes prerelease=true for a pre-release', () => {
+    expect(formatGithubOutput('0.2.0-rc.1')).toBe(
+      'version=0.2.0-rc.1\nprerelease=true\n'
+    );
   });
 });

@@ -47,32 +47,38 @@ jobs:
         id: version
         env:
           TAG: ${{ github.ref_name }}
-        run: |
-          version=$(npx ts-node scripts/release/release-version.ts "$TAG")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [[ "$version" == *-* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: npx ts-node scripts/release/release-version.ts "$TAG" --github-output
 
+      # First-parent history only: a development or PR commit that was merged
+      # into main is reachable from main but isn't a main commit itself.
       - name: Check tagged commit is on main
         run: |
           git fetch --no-tags origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::$GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main"
+          if ! git rev-list --first-parent origin/main | grep -qx "$GITHUB_SHA"; then
+            echo "::error::$GITHUB_REF_NAME points to $GITHUB_SHA, which is not a commit on main. Tag the main merge commit."
             exit 1
           fi
 
       - name: Check "All Checks Passed" succeeded on this commit
         env:
           GH_TOKEN: ${{ github.token }}
+        # Uses the newest "All Checks Passed" run from GitHub Actions
+        # (app_id 15368), so a later failed re-run isn't masked by an older
+        # success and other apps can't post a run with the same name.
         run: |
-          conclusions=$(gh api \
-            "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=All%20Checks%20Passed&per_page=100" \
-            --jq '[.check_runs[].conclusion] | join(" ")')
-          if [[ " $conclusions " != *" success "* ]]; then
-            echo "::error::\"All Checks Passed\" has not succeeded on $GITHUB_SHA (found: ${conclusions:-none})"
+          latest=$(gh api \
+            "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=All%20Checks%20Passed&app_id=15368&per_page=100" \
+            --jq '.check_runs | sort_by(.started_at) | last | if . == null then "none" else "\(.status) \(.conclusion)" end')
+          if [[ "$latest" == "none" ]]; then
+            echo "::error::No \"All Checks Passed\" run found on $GITHUB_SHA. Tag a main commit whose CI has run."
+            exit 1
+          fi
+          if [[ "$latest" != completed* ]]; then
+            echo "::error::CI is still running on $GITHUB_SHA ($latest). Re-run this workflow once \"All Checks Passed\" finishes."
+            exit 1
+          fi
+          if [[ "$latest" != "completed success" ]]; then
+            echo "::error::\"All Checks Passed\" did not succeed on $GITHUB_SHA ($latest)"
             exit 1
           fi
 
@@ -115,7 +121,7 @@ jobs:
         with:
           name: python-executable-${{ runner.os }}
           path: dist/
-          retention-days: 1
+          retention-days: 3
 
   # Release builds deliberately skip dependency caches so every release is
   # built from a clean `npm ci`.

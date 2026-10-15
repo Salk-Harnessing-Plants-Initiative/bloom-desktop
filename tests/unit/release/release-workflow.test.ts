@@ -22,9 +22,15 @@ interface Step {
   name?: string;
   uses?: string;
   run?: string;
+  if?: string;
+  env?: Record<string, string>;
+  with?: Record<string, unknown>;
+  'continue-on-error'?: boolean | string;
 }
 
 interface Job {
+  if?: string;
+  'continue-on-error'?: boolean | string;
   needs?: string | string[];
   permissions?: Record<string, string>;
   'timeout-minutes'?: number;
@@ -177,5 +183,116 @@ describe('release.yml build jobs', () => {
       .map((s) => s.run ?? '')
       .join('\n');
     expect(runs).toContain('scripts/release/release-manifest.ts');
+  });
+});
+
+function step(job: string, name: string): Step {
+  const found = loadWorkflow().jobs[job]?.steps?.find((s) => s.name === name);
+  if (!found) {
+    throw new Error(`step "${name}" not found in ${job}`);
+  }
+  return found;
+}
+
+function allSteps(): Array<[string, Step]> {
+  return Object.entries(loadWorkflow().jobs).flatMap(([job, j]) =>
+    (j.steps ?? []).map((s): [string, Step] => [job, s])
+  );
+}
+
+describe('release.yml safety checks cannot be silently weakened', () => {
+  it('no job or step is allowed to fail without failing the release', () => {
+    for (const [name, job] of Object.entries(loadWorkflow().jobs)) {
+      expect(job['continue-on-error'], name).toBeUndefined();
+    }
+    for (const [job, s] of allSteps()) {
+      expect(s['continue-on-error'], `${job}: ${s.name}`).toBeUndefined();
+    }
+  });
+
+  it('no job or step is conditional, so no check can be skipped', () => {
+    for (const [name, job] of Object.entries(loadWorkflow().jobs)) {
+      expect(job.if, name).toBeUndefined();
+    }
+    for (const [job, s] of allSteps()) {
+      expect(s.if, `${job}: ${s.name}`).toBeUndefined();
+    }
+  });
+
+  it('never interpolates ${{ }} expressions into run scripts', () => {
+    for (const [job, s] of allSteps()) {
+      expect(s.run ?? '', `${job}: ${s.name}`).not.toContain('${{');
+    }
+  });
+
+  it('only verify and publish get a token, and no job uses secrets', () => {
+    for (const [job, s] of allSteps()) {
+      const text = JSON.stringify(s);
+      expect(text, `${job}: ${s.name}`).not.toMatch(/secrets\./);
+      if (!['verify', 'publish'].includes(job)) {
+        expect(text, `${job}: ${s.name}`).not.toContain('github.token');
+      }
+    }
+  });
+
+  it('publish only downloads the bundle, checks it, and creates the release', () => {
+    const steps = loadWorkflow().jobs.publish.steps ?? [];
+    expect(steps.map((s) => s.uses).filter(Boolean)).toEqual([
+      'actions/download-artifact@v4',
+    ]);
+    expect(steps.map((s) => s.name)).toEqual([
+      'Download release bundle',
+      'Verify checksums',
+      'Create GitHub Release',
+    ]);
+  });
+
+  it('publish verifies the bundle against SHA256SUMS', () => {
+    expect(step('publish', 'Verify checksums').run).toBe(
+      'sha256sum -c SHA256SUMS'
+    );
+  });
+
+  it('publish creates the release from the existing tag only', () => {
+    expect(step('publish', 'Create GitHub Release').run).toContain(
+      '--verify-tag'
+    );
+  });
+
+  it('the tag check writes outputs with the tested helper', () => {
+    expect(step('verify', 'Check tag matches package.json').run).toBe(
+      'npx ts-node scripts/release/release-version.ts "$TAG" --github-output'
+    );
+  });
+
+  it.each([
+    'Check tagged commit is on main',
+    'Check "All Checks Passed" succeeded on this commit',
+    'Check no release exists for this tag',
+  ])('"%s" fails the job when the check fails', (name) => {
+    expect(step('verify', name).run).toContain('exit 1');
+  });
+
+  it('requires the tag to be a first-parent commit on main', () => {
+    expect(step('verify', 'Check tagged commit is on main').run).toContain(
+      'git rev-list --first-parent origin/main'
+    );
+  });
+
+  it('trusts only the newest GitHub Actions "All Checks Passed" run', () => {
+    const run = step(
+      'verify',
+      'Check "All Checks Passed" succeeded on this commit'
+    ).run;
+    expect(run).toContain('app_id=15368');
+    expect(run).toContain('sort_by(.started_at) | last');
+    expect(run).toContain('"completed success"');
+  });
+
+  it('manifest takes the version from verify, not from the tag', () => {
+    expect(step('manifest', 'Write manifest.json and SHA256SUMS').env).toEqual({
+      TAG: '${{ github.ref_name }}',
+      VERSION: '${{ needs.verify.outputs.version }}',
+    });
   });
 });
