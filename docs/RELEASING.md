@@ -1,6 +1,6 @@
 # Releasing Bloom Desktop
 
-Releases are made on demand from **Actions → Release → Run workflow**. The workflow (`.github/workflows/release.yml`) builds the installers once on GitHub-hosted runners, waits for a maintainer to approve, then tags the built commit `vX.Y.Z` and publishes a GitHub Release. Every station installs those same files; station-specific settings are configuration, not build inputs (see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md)).
+Releases are made on demand from **Actions → Release → Run workflow**. The workflow (`.github/workflows/release.yml`) builds the installers once on GitHub-hosted runners and, only if every build passes, creates a **draft** GitHub Release with them. A maintainer publishes the draft, which creates the `vX.Y.Z` tag at the commit that was built. Every station installs those same files; station-specific settings are configuration, not build inputs (see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md)).
 
 ## What a release contains
 
@@ -25,8 +25,8 @@ Both installers contain the whole app; each station runs one scanner mode, chose
 1. **Bump the version** in a PR into `development`: set `version` in `package.json` (Semantic Versioning, higher than the last release; Squirrel only upgrades to a higher version), run `npm install --package-lock-only` so `package-lock.json` matches, and move the `CHANGELOG.md` `[Unreleased]` entries under the new version.
 2. **Promote** `development` to `main` with a PR (merge commit), and wait for `All Checks Passed` on the `main` merge commit.
 3. **Start the release:** Actions → **Release** → **Run workflow** → branch `main` → type the version (e.g. `0.2.0`).
-4. **Approve:** when the builds finish, the run pauses at **Publish GitHub Release**. Click **Review deployments** → **Approve** (maintainers only).
-5. The workflow creates the tag `v0.2.0` at the commit it built and publishes the release on the **Releases** page.
+4. **Review the draft:** when the run finishes, a draft `v0.2.0` with the installers, `manifest.json` and `SHA256SUMS` appears on the **Releases** page. Drafts are visible to maintainers only.
+5. **Publish it:** edit the notes if needed, then click **Publish release** (maintainers only). This creates the `v0.2.0` tag at the built commit and makes the release public.
 
 The workflow stops, before building, if:
 
@@ -35,19 +35,19 @@ The workflow stops, before building, if:
 - `All Checks Passed` hasn't succeeded on the `main` commit;
 - that version is already released or tagged (releases are never overwritten).
 
-Release tags can't be deleted or moved by anyone, and only the release workflow and maintainers can create them (repository rulesets).
+No tag exists until a maintainer publishes the draft. Release tags can't be deleted or moved by anyone, and only maintainers can create them (repository rulesets).
 
 ### When a release run fails
 
-Nothing is published or tagged unless every job succeeds and the publish step is approved. What to do depends on the cause:
+A failed run leaves no tag, no release and no draft, so the same version can be run again. What to do depends on the cause:
 
-| Cause                                                                          | What to do                                                                                                                                                                 |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "CI is still running…"                                                         | Wait for `All Checks Passed` on `main` to finish, then **Re-run failed jobs**.                                                                                             |
-| Runner or network problem (job not picked up, lost connection, download error) | **Re-run failed jobs**. Within 3 days, the build outputs from the first attempt are reused.                                                                                |
-| A problem in the code or build                                                 | A re-run rebuilds the same commit, so it will fail again. Fix it on `development`, bump the patch version (`0.2.0` → `0.2.1`), promote, and run the workflow with `0.2.1`. |
-| "… is already released" / "Tag … already exists"                               | That version is taken; bump the version for a new one.                                                                                                                     |
-| The approval was rejected or timed out                                         | Nothing was published; run the workflow again when ready.                                                                                                                  |
+| Cause                                                                          | What to do                                                                                                                                    |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| "CI is still running…"                                                         | Wait for `All Checks Passed` on `main` to finish, then **Re-run failed jobs**.                                                                |
+| Runner or network problem (job not picked up, lost connection, download error) | **Re-run failed jobs**. Within 3 days, the build outputs from the first attempt are reused.                                                   |
+| A problem in the code or build                                                 | A re-run rebuilds the same commit, so it will fail again. Fix it on `development`, promote, and run the workflow again with the same version. |
+| "… is already released" / "Tag … already exists"                               | That version is published; bump the version for a new one.                                                                                    |
+| "A release or draft for … already exists"                                      | An earlier run's draft is still there. Publish it, or delete the draft (no tag exists yet) and run again.                                     |
 
 **Pre-releases:** releasing a version like `0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1` on `main`) publishes a GitHub pre-release tagged `v0.2.0-rc.1`, useful for trying a build on one station first. Notes:
 

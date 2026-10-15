@@ -1,12 +1,13 @@
 name: Release
 
-# Publishes a GitHub Release on demand: Actions → Release → Run workflow,
-# from main, with the version to release (must equal package.json).
+# Builds a release on demand: Actions → Release → Run workflow, from main,
+# with the version to release (must equal package.json).
 #   verify → build-python → build-windows / build-linux → manifest → publish
-# `publish` waits for approval in the `release` environment, then creates the
-# vX.Y.Z tag at the exact commit that was verified and built, and the release.
-# It is the only job that can write, and it runs no build code.
-# See docs/RELEASING.md.
+# Only after every build passes, `publish` creates a DRAFT GitHub Release
+# with the installers, pinned to the commit that was built. No tag exists
+# yet: a maintainer reviews the draft and clicks Publish, and GitHub then
+# creates the vX.Y.Z tag at that commit. `publish` is the only job that can
+# write, and it runs no build code. See docs/RELEASING.md.
 on:
   workflow_dispatch:
     inputs:
@@ -300,11 +301,9 @@ jobs:
 
   publish:
     needs: [verify, manifest]
-    name: Publish GitHub Release
+    name: Create draft GitHub Release
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Waits for a required reviewer to approve before anything is published.
-    environment: release
     permissions:
       contents: write
 
@@ -319,15 +318,23 @@ jobs:
         working-directory: release-bundle
         run: sha256sum -c SHA256SUMS
 
-      # Creating the ref fails if the tag already exists, so the tag always
-      # points at the commit that was verified and built.
-      - name: Create release tag at the built commit
+      # Drafts are only visible with write access, so verify can't see them;
+      # check here so a re-run doesn't leave two drafts for one version.
+      - name: Check no draft exists for this version
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.verify.outputs.tag }}
-        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"
+        run: |
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .html_url")
+          if [[ -n "$existing" ]]; then
+            echo "::error::A release or draft for $TAG already exists: $existing. Publish or delete it, then run this workflow again."
+            exit 1
+          fi
 
-      - name: Create GitHub Release
+      # --draft creates no tag. Publishing the draft (a maintainer, on the
+      # Releases page) creates the tag at --target, the commit that was built.
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.verify.outputs.tag }}
@@ -339,7 +346,8 @@ jobs:
           fi
           gh release create "$TAG" release-bundle/* \
             --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
+            --draft \
+            --target "$GITHUB_SHA" \
             --title "Bloom Desktop $TAG" \
             --generate-notes \
             "${flags[@]}"

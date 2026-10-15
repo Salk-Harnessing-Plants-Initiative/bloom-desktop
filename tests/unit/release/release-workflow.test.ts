@@ -1,7 +1,8 @@
 /**
  * Structure tests for .github/workflows/release.yml: on-demand trigger, job
  * order, least-privilege permissions (only `publish` can write, and it runs no
- * build), the approval gate, and that every safety check stays in place.
+ * build), that it only ever creates a draft (no tag), and that every safety
+ * check stays in place.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -145,11 +146,11 @@ describe('release.yml permissions', () => {
     }
   });
 
-  it('publish verifies checksums before creating the release', () => {
+  it('publish verifies checksums before creating the draft', () => {
     const names = stepNames('publish');
     expect(names.indexOf('Verify checksums')).toBeGreaterThanOrEqual(0);
     expect(names.indexOf('Verify checksums')).toBeLessThan(
-      names.indexOf('Create GitHub Release')
+      names.indexOf('Create draft GitHub Release')
     );
   });
 
@@ -261,8 +262,8 @@ describe('release.yml safety checks cannot be silently weakened', () => {
     expect(steps.map((s) => s.name)).toEqual([
       'Download release bundle',
       'Verify checksums',
-      'Create release tag at the built commit',
-      'Create GitHub Release',
+      'Check no draft exists for this version',
+      'Create draft GitHub Release',
     ]);
   });
 
@@ -272,27 +273,29 @@ describe('release.yml safety checks cannot be silently weakened', () => {
     );
   });
 
-  it('publish creates the tag at the built commit with a create-only call', () => {
-    const create = step('publish', 'Create release tag at the built commit');
-    expect(create.run).toBe(
-      'gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"'
-    );
-    expect(create.env?.TAG).toBe('${{ needs.verify.outputs.tag }}');
+  it('publish creates only a draft, pinned to the built commit', () => {
+    const run = step('publish', 'Create draft GitHub Release').run ?? '';
+    expect(run).toContain('--draft');
+    expect(run).toContain('--target "$GITHUB_SHA"');
   });
 
-  it('publish creates the release only from that tag', () => {
-    expect(step('publish', 'Create GitHub Release').run).toContain(
-      '--verify-tag'
-    );
+  it('the workflow never creates or verifies a tag itself', () => {
+    for (const [job, s] of allSteps()) {
+      const run = s.run ?? '';
+      expect(run, `${job}: ${s.name}`).not.toContain('git/refs');
+      expect(run, `${job}: ${s.name}`).not.toContain('--verify-tag');
+      expect(run, `${job}: ${s.name}`).not.toMatch(/git (tag|push)/);
+    }
   });
 
-  it('publish waits for approval in the release environment', () => {
-    expect(loadWorkflow().jobs.publish.environment).toBe('release');
+  it('publish refuses to add a second draft for the same version', () => {
+    const run = step('publish', 'Check no draft exists for this version').run;
+    expect(run).toContain('select(.tag_name ==');
+    expect(run).toContain('exit 1');
   });
 
-  it('no other job uses an environment', () => {
+  it('uses no environment: publishing the draft is the approval', () => {
     for (const [name, job] of Object.entries(loadWorkflow().jobs)) {
-      if (name === 'publish') continue;
       expect(job.environment, name).toBeUndefined();
     }
   });
@@ -345,6 +348,13 @@ describe('release.yml safety checks cannot be silently weakened', () => {
     expect(run).toContain('app_id=15368');
     expect(run).toContain('sort_by(.started_at) | last');
     expect(run).toContain('"completed success"');
+  });
+
+  it("fails the run in each of the CI check's three failure cases", () => {
+    const run =
+      step('verify', 'Check "All Checks Passed" succeeded on this commit')
+        .run ?? '';
+    expect(run.match(/exit 1/g)).toHaveLength(3);
   });
 
   it('manifest takes the version and tag from verify', () => {
