@@ -75,9 +75,18 @@ def test_import_graviscan_scan_worker():
     assert python.graviscan.scan_worker is not None
 
 
+def _package_json_version() -> str:
+    """The app version in package.json, which the Python package must match."""
+    import json
+    from pathlib import Path
+
+    package_json = Path(__file__).resolve().parents[2] / "package.json"
+    return json.loads(package_json.read_text())["version"]
+
+
 def test_package_version():
     """Test that package __init__ defines version."""
     import python
 
     assert hasattr(python, "__version__")
-    assert python.__version__ == "0.1.0"
+    assert python.__version__ == _package_json_version()
