@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-15
+
+First versioned release.
+
 ### Added
 
+- Versioned releases: Actions → Release → Run workflow builds the Windows installer (CylinderScan) and Linux `.deb` (GraviScan) once in CI and creates a draft GitHub Release with `manifest.json` and `SHA256SUMS`; a maintainer publishes it, which creates the `vX.Y.Z` tag. Station registry in `deploy/stations.yaml`. See `docs/RELEASING.md` ([#399](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/399), [#400](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/400))
+- `development` merge queue support in CI, and a `Main PR Source` check requiring PRs into `main` to come from `development` ([#395](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/395))
 - GraviScan Browse / Experiment Detail / Metadata UI (roadmap Tier 5, #133, #207, #164)
   - `BrowseGraviScans`: filterable, paginated list of graviscan experiments with a wave/accession mismatch warning, a "Backup to Box" action (rclone-unavailable and partial-failure messaging), and a link through to Experiment Detail
   - `ExperimentDetail`: per-experiment scan/file listing with scanner/wave filter chips, resizable columns, file preview, and inline linking/unlinking of wave-scoped metadata (with a durable audit log line on both actions)
@@ -105,6 +111,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The camera IP saved in Machine Configuration is now used for the camera and scans; it was always sent as `mock` ([#394](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/394), fixes [#390](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/390))
+- Saving Machine Configuration no longer overwrites the stored Bloom password with `********` ([#397](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/397), fixes [#391](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/391))
+- A failed database save is reported instead of "Scan completed successfully!" ([#398](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/398), fixes [#392](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/392))
 - GraviScan Metadata page UX/data-integrity gaps from Tier 5's PR #290 walkthrough ([PR #356](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/356), closes [#352](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/352), [#353](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/353))
   - `GraviMetadataList.tsx` now has loading/error/empty states on its file-list fetch (previously a failed fetch failed silently, indistinguishable from "no files exist") and on the per-file expand fetch, which had the identical gap
   - Added the missing `<thead>` column-header row to the expanded plate/section detail table
