@@ -42,7 +42,7 @@ from .scan_regions import get_scan_region
 try:
     from python import __version__ as _BLOOM_VERSION
 except Exception:
-    _BLOOM_VERSION = "0.1.0"
+    _BLOOM_VERSION = "unknown"
 
 # Filename prefix marking an in-progress atomic write (see
 # _atomic_image_save). CROSS-LANGUAGE CONTRACT: this must stay byte-for-byte

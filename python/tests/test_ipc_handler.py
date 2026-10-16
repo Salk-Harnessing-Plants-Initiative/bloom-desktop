@@ -142,7 +142,9 @@ def test_handle_command_get_version(capsys):
     json_str = captured.out[5:].strip()
     data = json.loads(json_str)
     assert "version" in data
-    assert data["version"] == "0.1.0"
+    import python
+
+    assert data["version"] == python.__version__
 
 
 def test_handle_command_check_hardware(capsys):
