@@ -24,7 +24,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
-vi.mock('@salk-hpi/bloom-js', () => ({
+vi.mock('@salk-harnessing-plants-initiative/bloom-js', () => ({
   SupabaseStore: vi.fn(),
   SupabaseUploader: vi.fn(),
 }));
@@ -49,7 +49,10 @@ vi.mock('fs', async () => {
 });
 
 import { createClient } from '@supabase/supabase-js';
-import { SupabaseStore, SupabaseUploader } from '@salk-hpi/bloom-js';
+import {
+  SupabaseStore,
+  SupabaseUploader,
+} from '@salk-harnessing-plants-initiative/bloom-js';
 import { loadEnvConfig } from '../../src/main/config-store';
 import { resolveGraviScanPath } from '../../src/main/graviscan-path-utils';
 
@@ -311,6 +314,20 @@ describe('graviscan-upload', () => {
         where: { id: 'img-3' },
         data: { status: 'uploaded' },
       });
+    });
+  });
+
+  describe('uploadAllPendingScans — plate barcode', () => {
+    it('sends the scan plate barcode as plate_barcode, the field bloom-js 0.4.0 reads', async () => {
+      db.graviScan.findMany.mockResolvedValue([
+        makeScan({ plate_barcode: 'PLATE-042' }),
+      ]);
+
+      await uploadAllPendingScans(db);
+
+      const metadata = mockStore.insertGraviImageMetadata.mock.calls[0][0];
+      expect(metadata.plate_barcode).toBe('PLATE-042');
+      expect(metadata).not.toHaveProperty('plant_barcode');
     });
   });
 

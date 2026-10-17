@@ -1,7 +1,7 @@
 /**
  * Type definitions for GraviScan external store interfaces.
  *
- * These types cover methods on @salk-hpi/bloom-js's SupabaseStore that are
+ * These types cover methods on @salk-harnessing-plants-initiative/bloom-js's SupabaseStore that are
  * GraviScan-specific and not yet exported from the package's own type
  * definitions. Once the package adds proper exports, this file can be
  * trimmed further (or removed).
@@ -9,7 +9,7 @@
  * NOTE (verified against installed @salk-hpi/bloom-js@0.2.1, 2026-07-28):
  * `insertGraviImageMetadata` and `updateGraviImageMetadata` are ALREADY
  * natively typed (and implemented) on `SupabaseStore` — see
- * node_modules/@salk-hpi/bloom-js/dist/{types,core/supabase}/data-store.d.ts.
+ * node_modules/@salk-harnessing-plants-initiative/bloom-js/dist/{types,core/supabase}/data-store.d.ts.
  * They are intentionally NOT redeclared here to avoid conflicting with the
  * package's own types. `insertGraviScanSession` and `insertGraviScanMetadata`
  * remain genuinely missing (no method, and no corresponding Supabase RPC/table
@@ -21,7 +21,7 @@
  * needs to supply the types for when the package catches up.
  */
 
-import type { SupabaseStore } from '@salk-hpi/bloom-js';
+import type { SupabaseStore } from '@salk-harnessing-plants-initiative/bloom-js';
 import type { PostgrestError } from '@supabase/postgrest-js';
 
 // ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ export interface StoreResult<T = number> {
 
 /**
  * GraviScan-specific methods on SupabaseStore that are not yet part of the
- * installed @salk-hpi/bloom-js package's own types/implementation.
+ * installed @salk-harnessing-plants-initiative/bloom-js package's own types/implementation.
  *
  * Usage: cast `store` to this interface instead of `any`, and feature-detect
  * before calling since the package may not implement these yet:
