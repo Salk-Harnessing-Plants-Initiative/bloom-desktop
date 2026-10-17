@@ -10,6 +10,9 @@ import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
 import type { CameraSettings } from '../types/camera';
 
+// How long the "Camera settings applied" confirmation stays on screen.
+const APPLIED_MESSAGE_MS = 4000;
+
 export function CameraSettings() {
   const [currentSettings, setCurrentSettings] = useState<
     Partial<CameraSettings>
@@ -24,6 +27,15 @@ export function CameraSettings() {
   const [streamKey, setStreamKey] = useState(0);
   const [lastApplied, setLastApplied] = useState<Date | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [applied, setApplied] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  // Hide the "applied" confirmation after a few seconds.
+  useEffect(() => {
+    if (!applied) return;
+    const timer = setTimeout(() => setApplied(false), APPLIED_MESSAGE_MS);
+    return () => clearTimeout(timer);
+  }, [applied]);
 
   // Load existing settings on mount
   useEffect(() => {
@@ -36,7 +48,6 @@ export function CameraSettings() {
         setCurrentSettings(settings);
         setEditedSettings(settings);
         setShowPreview(true); // Show preview if settings exist
-        setLastApplied(new Date()); // Settings were applied previously
       } else {
         console.log('[CameraSettings] No settings found, using defaults');
       }
@@ -63,9 +74,16 @@ export function CameraSettings() {
   }, [showPreview]);
 
   const handleApply = async () => {
+    setApplied(false);
+    setApplyError(null);
     try {
-      // Save to backend
-      await window.electron.camera.configure(editedSettings);
+      const result = await window.electron.camera.configure(editedSettings);
+      if (!result?.success) {
+        setApplyError(
+          result?.error || 'The camera did not accept the settings'
+        );
+        return;
+      }
 
       // Update current settings
       setCurrentSettings(editedSettings);
@@ -76,25 +94,16 @@ export function CameraSettings() {
 
       setIsDirty(false);
       setLastApplied(new Date());
+      setApplied(true);
     } catch (error) {
       console.error('Failed to apply settings:', error);
-      alert('Failed to apply settings: ' + error);
+      setApplyError(error instanceof Error ? error.message : 'Unknown error');
     }
   };
 
   const handleReset = () => {
     setEditedSettings(currentSettings);
     setIsDirty(false);
-  };
-
-  const formatTimeAgo = (date: Date | null) => {
-    if (!date) return 'Never';
-    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    return `${hours}h ago`;
   };
 
   return (
@@ -134,8 +143,20 @@ export function CameraSettings() {
                 {isDirty ? 'Unsaved changes' : 'Settings saved'}
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Last applied: {formatTimeAgo(lastApplied)}
+                {lastApplied
+                  ? `Last applied: ${lastApplied.toLocaleString()}`
+                  : 'Not applied yet'}
               </p>
+              {applied && (
+                <p role="status" className="mt-2 text-sm text-green-700">
+                  ✓ Camera settings applied
+                </p>
+              )}
+              {applyError && (
+                <p role="alert" className="mt-2 text-sm text-red-700">
+                  Couldn't apply the settings: {applyError}
+                </p>
+              )}
             </div>
           </div>
 

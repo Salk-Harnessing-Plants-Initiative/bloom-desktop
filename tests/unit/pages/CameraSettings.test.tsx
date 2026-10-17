@@ -8,9 +8,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { CameraSettings } from '../../../src/renderer/CameraSettings';
+
+// The live preview streams frames over IPC; it isn't under test here.
+vi.mock('../../../src/components/Streamer', () => ({
+  Streamer: () => <div data-testid="streamer" />,
+}));
 
 const mockGetSettings = vi.fn().mockResolvedValue(null);
 const mockStopStream = vi.fn().mockResolvedValue(undefined);
@@ -83,5 +88,49 @@ describe('CameraSettings page layout', () => {
     expect(
       screen.queryByText(/How to find camera IP address/i)
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('CameraSettings Apply feedback', () => {
+  it('shows "Not applied yet" before anything is applied', async () => {
+    render(<CameraSettings />);
+
+    expect(await screen.findByText(/Not applied yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ago/)).not.toBeInTheDocument();
+  });
+
+  it('confirms a successful Apply and shows when it was applied', async () => {
+    mockConfigure.mockResolvedValue({ success: true });
+    render(<CameraSettings />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Camera settings applied'
+    );
+    const expected = new Date().toLocaleDateString();
+    expect(screen.getByText(/Last applied:/)).toHaveTextContent(expected);
+    expect(screen.getByText('Settings saved')).toBeInTheDocument();
+  });
+
+  it('shows the error and keeps "Unsaved changes" when the camera rejects the settings', async () => {
+    mockConfigure.mockResolvedValue({
+      success: false,
+      error: 'Camera not connected',
+    });
+    render(<CameraSettings />);
+    // Exposure, gain, gamma: the third number box is gamma.
+    fireEvent.change(screen.getAllByRole('spinbutton')[2], {
+      target: { value: '1.2' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Camera not connected'
+    );
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(screen.getByText(/Not applied yet/i)).toBeInTheDocument();
   });
 });
