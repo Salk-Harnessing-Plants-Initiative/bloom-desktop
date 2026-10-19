@@ -25,5 +25,8 @@ export const mainConfig: Configuration = {
     // Prisma Client needs to be external since it loads native binary engines
     '.prisma/client': 'commonjs .prisma/client',
     '@prisma/client': 'commonjs @prisma/client',
+    // sharp loads a platform binary at runtime, so it can't be bundled; it is
+    // copied into the packaged app by scripts/package-sharp.ts
+    sharp: 'commonjs sharp',
   },
 };
