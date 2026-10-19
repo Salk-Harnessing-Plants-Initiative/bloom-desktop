@@ -284,16 +284,16 @@ test.describe('UI: Wave Number Zero Validation', () => {
     ).not.toBeVisible({ timeout: 2000 });
   });
 
-  test('should show validation error for negative Wave Number', async () => {
+  test('should reject a negative Wave Number and keep the previous value', async () => {
     const waveNumberInput = window.locator('#waveNumber');
 
-    // Enter negative value
+    await waveNumberInput.fill('3');
+    // The box only takes digits: "-1" is rejected whole.
     await waveNumberInput.fill('-1');
-    await waveNumberInput.blur();
 
-    // Should show error
+    await expect(waveNumberInput).toHaveValue('3');
     await expect(
-      window.locator('text=Wave number must be 0 or greater')
+      window.locator('text=Whole numbers only (0 or more)')
     ).toBeVisible({ timeout: 5000 });
   });
 });
@@ -340,29 +340,27 @@ test.describe('UI: Integer Validation', () => {
     await window.selectOption('.phenotyper-chooser', { index: 1 });
   });
 
-  test('should show validation error for decimal Wave Number', async () => {
+  test('should reject a decimal Wave Number and keep the previous value', async () => {
     const waveNumberInput = window.locator('#waveNumber');
 
-    // Enter decimal value
+    await waveNumberInput.fill('1');
     await waveNumberInput.fill('1.5');
-    await waveNumberInput.blur();
 
-    // Should show error
+    await expect(waveNumberInput).toHaveValue('1');
     await expect(
-      window.locator('text=Wave number must be a whole number')
+      window.locator('text=Whole numbers only (0 or more)')
     ).toBeVisible({ timeout: 5000 });
   });
 
-  test('should show validation error for decimal Plant Age', async () => {
+  test('should reject a decimal Plant Age without turning it into 145', async () => {
     const plantAgeInput = window.locator('#plantAgeDays');
 
-    // Enter decimal value
+    await plantAgeInput.fill('14');
     await plantAgeInput.fill('14.5');
-    await plantAgeInput.blur();
 
-    // Should show error
+    await expect(plantAgeInput).toHaveValue('14');
     await expect(
-      window.locator('text=Plant age must be a whole number')
+      window.locator('text=Whole numbers only (0 or more)')
     ).toBeVisible({ timeout: 5000 });
   });
 
@@ -381,23 +379,5 @@ test.describe('UI: Integer Validation', () => {
     await expect(window.locator('text=must be a whole number')).not.toBeVisible(
       { timeout: 2000 }
     );
-  });
-
-  test('should clear decimal error when valid integer is entered', async () => {
-    const waveNumberInput = window.locator('#waveNumber');
-
-    // Enter decimal (should show error)
-    await waveNumberInput.fill('1.5');
-    await waveNumberInput.blur();
-    await expect(
-      window.locator('text=Wave number must be a whole number')
-    ).toBeVisible({ timeout: 5000 });
-
-    // Enter valid integer (should clear error)
-    await waveNumberInput.fill('2');
-    await waveNumberInput.blur();
-    await expect(
-      window.locator('text=Wave number must be a whole number')
-    ).not.toBeVisible({ timeout: 3000 });
   });
 });

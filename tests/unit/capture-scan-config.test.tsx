@@ -833,7 +833,7 @@ describe('CaptureScan duplicate-scan check', () => {
     });
   });
 
-  it('does not call checkDuplicate when wave number is invalid/unparsed', async () => {
+  it('does not call checkDuplicate when wave number is empty', async () => {
     renderCaptureScan();
     await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
 
@@ -841,14 +841,15 @@ describe('CaptureScan duplicate-scan check', () => {
     // Wait for the session-restored default ('1', from mockSessionGet's
     // resolved value) to actually land in the DOM before overwriting it.
     // Without this, restoring the session is a race with the fireEvent
-    // below: if it resolves after the input is set to 'not-a-number', it
+    // below: if it resolves after the input is cleared, it
     // silently reverts the field back to a valid '1', producing a fully
     // valid metadata combination that DOES call checkDuplicate —
     // intermittently failing this test for reasons unrelated to the
     // invalid-wave-number behavior actually under test.
     await waitFor(() => expect(waveInput).toHaveValue('1'));
+    // The box only accepts digits, so an empty box is the remaining invalid state.
     await act(async () => {
-      fireEvent.change(waveInput, { target: { value: 'not-a-number' } });
+      fireEvent.change(waveInput, { target: { value: '' } });
     });
 
     const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');

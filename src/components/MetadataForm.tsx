@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ExperimentChooser } from '../renderer/components/ExperimentChooser';
 import { PhenotyperChooser } from '../renderer/components/PhenotyperChooser';
 import { PlantBarcodeInput } from './PlantBarcodeInput';
+import { WholeNumberInput } from './WholeNumberInput';
 
 export interface ScanMetadata {
   phenotyper: string;
@@ -179,13 +180,10 @@ export function MetadataForm({
         <label htmlFor="waveNumber" className={labelClassName}>
           Wave Number <span className="text-red-500">*</span>
         </label>
-        <input
+        <WholeNumberInput
           id="waveNumber"
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
           value={values.waveNumber}
-          onChange={(e) => handleFieldChange('waveNumber', e.target.value)}
+          onChange={(value) => handleFieldChange('waveNumber', value)}
           disabled={disabled}
           className={inputClassName}
           placeholder="e.g., 1"
@@ -200,13 +198,10 @@ export function MetadataForm({
         <label htmlFor="plantAgeDays" className={labelClassName}>
           Plant Age (Days) <span className="text-red-500">*</span>
         </label>
-        <input
+        <WholeNumberInput
           id="plantAgeDays"
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
           value={values.plantAgeDays}
-          onChange={(e) => handleFieldChange('plantAgeDays', e.target.value)}
+          onChange={(value) => handleFieldChange('plantAgeDays', value)}
           disabled={disabled}
           className={inputClassName}
           placeholder="e.g., 14"
