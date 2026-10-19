@@ -11,11 +11,11 @@
  *
  * Required packages:
  * - @supabase/supabase-js
- * - @salk-hpi/bloom-js
+ * - @salk-harnessing-plants-initiative/bloom-js
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { SupabaseStore } from '@salk-hpi/bloom-js';
+import { SupabaseStore } from '@salk-harnessing-plants-initiative/bloom-js';
 
 // TODO: Replace with your actual credentials from .env
 const config = {

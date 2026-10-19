@@ -16,7 +16,11 @@ on:
 
 permissions:
   contents: read # Read repository contents
+  packages: read # Install the private Bloom npm packages from GitHub Packages
   pull-requests: write # Write PR comments (for future coverage reports)
+
+env:
+  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 # Redundant runs for the same ref are grouped so they don't run in parallel.
 # - pull_request pushes: cancel-in-progress=true — only the latest commit's
@@ -66,6 +70,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -133,6 +139,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -165,6 +173,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -199,6 +209,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -272,6 +284,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -355,6 +369,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -430,6 +446,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -508,6 +526,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -606,6 +626,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -668,6 +690,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -743,6 +767,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -824,6 +850,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules

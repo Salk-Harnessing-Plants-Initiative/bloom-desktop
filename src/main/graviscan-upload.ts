@@ -8,17 +8,15 @@
  * 4. Updates local SQLite status to "uploaded"
  *
  * IMPORTANT: Uses dynamic imports for @supabase/supabase-js and
- * @salk-hpi/bloom-js to avoid loading these modules at app startup. This
+ * @salk-harnessing-plants-initiative/bloom-js to avoid loading these modules at app startup. This
  * prevents startup issues in the packaged app, matching the pattern used in
  * image-uploader.ts and config-store.ts.
  *
  * Ported from stranded branch commit 84b54e6 (src/main/graviscan-upload.ts),
  * which never made it into the modular src/main/graviscan/ refactor. Adapted
- * to current conventions (loadEnvConfig(), dynamic imports) and to the
- * currently-installed @salk-hpi/bloom-js@0.2.1, whose SupabaseStore/
- * SupabaseUploader surface has drifted from what the reference file assumed
- * — see inline comments below and task-6-report.md for the full list of
- * deviations.
+ * to current conventions (loadEnvConfig(), dynamic imports). It was written
+ * against @salk-hpi/bloom-js@0.2.1; bloom-js 0.4.0 now has the session and
+ * plate-metadata methods and its own uploadRawFile — see the comments below.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -26,7 +24,7 @@ import type {
   SupabaseStore,
   SupabaseUploader,
   GraviImageMetadata,
-} from '@salk-hpi/bloom-js';
+} from '@salk-harnessing-plants-initiative/bloom-js';
 import { resolveGraviScanPath } from './graviscan-path-utils';
 import { loadEnvConfig } from './config-store';
 import type {
@@ -53,9 +51,9 @@ export interface UploadResult {
   failed: number;
   errors: string[];
   /**
-   * Whether the installed @salk-hpi/bloom-js supports session/plate-metadata
-   * linking (both `insertGraviScanSession` and `insertGraviScanMetadata`
-   * present on SupabaseStore). `false` means the image upload still ran
+   * Whether the store supports session/plate-metadata linking (both
+   * `insertGraviScanSession` and `insertGraviScanMetadata` present on
+   * SupabaseStore; bloom-js 0.4.0 has both). `false` means the image upload still ran
    * normally, but session/wave/transplant/note metadata was NOT linked —
    * see uploadSessions()/uploadMetadata() below. This is surfaced on the
    * result (rather than only logged) so a future renderer can show
@@ -109,7 +107,7 @@ async function authenticateBloomClients(
   // Dynamic imports to avoid loading Supabase at app startup
   const { createClient } = await import('@supabase/supabase-js');
   const { SupabaseStore, SupabaseUploader } = await import(
-    '@salk-hpi/bloom-js'
+    '@salk-harnessing-plants-initiative/bloom-js'
   );
 
   const supabase = createClient(config.bloom_api_url, config.bloom_anon_key);
@@ -150,15 +148,13 @@ function rawContentType(ext: string): string {
 /**
  * Upload a file's raw bytes to Supabase Storage, without re-encoding.
  *
- * The installed @salk-hpi/bloom-js's SupabaseUploader only exposes
- * uploadImage() (re-encodes to PNG via sharp) and uploadJpegImage()
- * (re-encodes to JPEG) — both lossy and inappropriate for GraviScan's raw
- * TIFF captures, and neither matches the reference file's `uploadRawFile()`
- * call (which does not exist in the installed package at all — verified via
- * `grep -r uploadRawFile node_modules/@salk-hpi/bloom-js`). SupabaseUploader
- * exposes its underlying Supabase client as a public `supabase` property, so
- * we call `.storage.from(bucket).upload(...)` directly the same way
- * uploadImage()/uploadJpegImage() do internally, minus the sharp re-encode.
+ * Written when bloom-js 0.2.1 only had uploadImage()/uploadJpegImage(), which
+ * re-encode with sharp and are unsuitable for GraviScan's raw TIFFs. It calls
+ * `.storage.from(bucket).upload(...)` on SupabaseUploader's public `supabase`
+ * client directly. bloom-js 0.4.0 has its own SupabaseUploader.uploadRawFile
+ * (which also returns a SHA-256 and size, and refuses files over 500 MB); this
+ * local version is kept so switching packages doesn't change how GraviScan
+ * files are uploaded.
  */
 async function uploadRawFile(
   uploader: SupabaseUploader,
@@ -284,14 +280,9 @@ async function processImageJobs(
         scientist_name: scan.experiment.scientist?.name || scan.phenotyper.name,
         scientist_email:
           scan.experiment.scientist?.email || scan.phenotyper.email,
-        // NOTE: @salk-hpi/bloom-js's installed GraviImageMetadata type (and
-        // its insertGraviImageMetadata RPC wrapper) names this field
-        // `plant_barcode`, not `plate_barcode` — verified against
-        // node_modules/@salk-hpi/bloom-js/dist/core/supabase/data-store.js,
-        // which maps `metadata.plant_barcode` to the `plant_barcode_` RPC
-        // param. GraviScan's own Prisma schema calls it `plate_barcode`;
-        // this is purely an external API naming difference.
-        plant_barcode: scan.plate_barcode,
+        // bloom-js 0.4.0 sends this as the insert_gravi_image RPC's
+        // `plate_barcode_` param (an empty string when null).
+        plate_barcode: scan.plate_barcode,
         capture_date: scan.capture_date.toISOString(),
         grid_mode: scan.grid_mode,
         plate_index: scan.plate_index,
@@ -300,11 +291,6 @@ async function processImageJobs(
         accession_name:
           matchedPlate?.accession ||
           scan.experiment.accession?.graviPlateAccessions[0]?.accession,
-        // The fields below (cycle_number..custom_note) are not yet forwarded
-        // by the installed package's insertGraviImageMetadata RPC call (it
-        // only relays a fixed field list — see data-store.js). They're kept
-        // here for forward-compatibility: harmless extra properties today,
-        // automatically wired up once bloom-js's RPC wrapper catches up.
         cycle_number: scan.cycle_number ?? undefined,
         wave_number: scan.wave_number ?? 0,
         session_id: scan.session_id
@@ -441,12 +427,9 @@ async function processImageJobs(
  * Upload sessions to Supabase and return a map of local session IDs to
  * Supabase session IDs.
  *
- * `SupabaseStore.insertGraviScanSession` does not exist in the installed
- * @salk-hpi/bloom-js@0.2.1 (no method, no backing RPC/table wrapper) —
- * verified via `grep -r insertGraviScanSession node_modules/@salk-hpi/bloom-js`
- * returning nothing. Feature-detect and skip gracefully rather than fail the
- * whole Bloom upload on a feature the installed package doesn't support yet;
- * this activates automatically once bloom-js adds it.
+ * bloom-js 0.4.0 has `SupabaseStore.insertGraviScanSession` (0.2.1 didn't).
+ * The check below stays as a guard: a store without the method skips session
+ * linking rather than failing the whole Bloom upload.
  */
 async function uploadSessions(
   store: SupabaseStore,
@@ -484,7 +467,7 @@ async function uploadSessions(
   const available = typeof extendedStore.insertGraviScanSession === 'function';
   if (!available) {
     console.log(
-      '[GraviScan:UPLOAD] SupabaseStore.insertGraviScanSession not available in installed @salk-hpi/bloom-js — skipping session upload'
+      '[GraviScan:UPLOAD] SupabaseStore.insertGraviScanSession not available in installed @salk-harnessing-plants-initiative/bloom-js — skipping session upload'
     );
     return { sessionIdMap, errors, available };
   }
@@ -552,9 +535,8 @@ async function uploadSessions(
  * Upload plate metadata (GraviPlateAccession + sections) to Supabase.
  * Returns a map of local GraviPlateAccession IDs to Supabase metadata IDs.
  *
- * `SupabaseStore.insertGraviScanMetadata` does not exist in the installed
- * @salk-hpi/bloom-js@0.2.1 either — same feature-detection rationale as
- * uploadSessions() above.
+ * bloom-js 0.4.0 has `SupabaseStore.insertGraviScanMetadata` (0.2.1 didn't);
+ * the check below is the same guard as in uploadSessions().
  */
 async function uploadMetadata(
   store: SupabaseStore,
@@ -589,7 +571,7 @@ async function uploadMetadata(
   const available = typeof extendedStore.insertGraviScanMetadata === 'function';
   if (!available) {
     console.log(
-      '[GraviScan:UPLOAD] SupabaseStore.insertGraviScanMetadata not available in installed @salk-hpi/bloom-js — skipping metadata upload'
+      '[GraviScan:UPLOAD] SupabaseStore.insertGraviScanMetadata not available in installed @salk-harnessing-plants-initiative/bloom-js — skipping metadata upload'
     );
     return { metadataIdMap, errors, available };
   }

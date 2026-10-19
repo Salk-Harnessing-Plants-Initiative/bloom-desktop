@@ -24,7 +24,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
-vi.mock('@salk-hpi/bloom-js', () => ({
+vi.mock('@salk-harnessing-plants-initiative/bloom-js', () => ({
   SupabaseStore: vi.fn(),
   SupabaseUploader: vi.fn(),
 }));
@@ -49,7 +49,10 @@ vi.mock('fs', async () => {
 });
 
 import { createClient } from '@supabase/supabase-js';
-import { SupabaseStore, SupabaseUploader } from '@salk-hpi/bloom-js';
+import {
+  SupabaseStore,
+  SupabaseUploader,
+} from '@salk-harnessing-plants-initiative/bloom-js';
 import { loadEnvConfig } from '../../src/main/config-store';
 import { resolveGraviScanPath } from '../../src/main/graviscan-path-utils';
 
@@ -314,12 +317,26 @@ describe('graviscan-upload', () => {
     });
   });
 
+  describe('uploadAllPendingScans — plate barcode', () => {
+    it('sends the scan plate barcode as plate_barcode, the field bloom-js 0.4.0 reads', async () => {
+      db.graviScan.findMany.mockResolvedValue([
+        makeScan({ plate_barcode: 'PLATE-042' }),
+      ]);
+
+      await uploadAllPendingScans(db);
+
+      const metadata = mockStore.insertGraviImageMetadata.mock.calls[0][0];
+      expect(metadata.plate_barcode).toBe('PLATE-042');
+      expect(metadata).not.toHaveProperty('plant_barcode');
+    });
+  });
+
   describe('uploadAllPendingScans — session/metadata upload capability detection', () => {
     it('does not fail the image upload when the installed bloom-js lacks insertGraviScanSession/insertGraviScanMetadata', async () => {
       // mockStore intentionally has no insertGraviScanSession/insertGraviScanMetadata
-      // methods, matching the installed @salk-hpi/bloom-js@0.2.1 — this test
-      // pins that the image upload still succeeds rather than being marked
-      // failed just because these optional, not-yet-implemented RPCs are absent.
+      // methods (a store without them, like bloom-js 0.2.1) — this test pins that
+      // the image upload still succeeds rather than being marked failed when
+      // these RPCs are absent.
       const scan = makeScan({
         session_id: 'session-1',
         session: {

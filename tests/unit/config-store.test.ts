@@ -1326,7 +1326,7 @@ OTHER_VAR=ignored`;
         createClient: mockCreateClient,
       }));
 
-      vi.doMock('@salk-hpi/bloom-js', () => ({
+      vi.doMock('@salk-harnessing-plants-initiative/bloom-js', () => ({
         SupabaseStore: mockSupabaseStoreConstructor,
       }));
     });

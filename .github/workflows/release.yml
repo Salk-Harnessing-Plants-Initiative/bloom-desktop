@@ -18,6 +18,10 @@ on:
 
 permissions: {}
 
+# npm reads this through the .npmrc that actions/setup-node writes.
+env:
+  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 # One release at a time; never cancel a release part-way through.
 concurrency:
   group: release
@@ -30,6 +34,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      packages: read
       checks: read
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -53,6 +58,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Install dependencies (no install scripts)
@@ -144,6 +151,7 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
+      packages: read
 
     steps:
       - name: Checkout code
@@ -155,6 +163,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
@@ -195,6 +205,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      packages: read
 
     steps:
       - name: Checkout code
@@ -206,6 +217,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
@@ -254,6 +267,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      packages: read
 
     steps:
       - name: Checkout code
@@ -265,6 +279,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Install dependencies (no install scripts)
