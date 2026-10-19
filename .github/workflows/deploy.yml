@@ -1,0 +1,114 @@
+name: Deploy
+
+# Installs a published release on a station: Actions → Deploy → Run workflow, from main,
+# with the version and the station name from deploy/stations.yaml.
+#   plan   (GitHub-hosted): the station is active Windows CylinderScan; the release is
+#          published with its installer, manifest.json and SHA256SUMS.
+#   deploy (the station's self-hosted runner, in the station's environment, which needs
+#          approval): deploy/windows/deploy-station.ps1 stages and checks the files, stops
+#          if Bloom Desktop is running, backs up the database and .env, installs, checks
+#          the result, and rolls back to the previous version if anything fails.
+# GitHub keeps each station's deployment history in its environment.
+# See docs/STATION_SETUP.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published release to install (e.g. 0.2.0)'
+        required: true
+        type: string
+      station:
+        description: 'Station name from deploy/stations.yaml (e.g. pc1)'
+        required: true
+        type: string
+
+permissions: {}
+
+# One deploy per station at a time; never cancel one part-way through.
+concurrency:
+  group: deploy-${{ inputs.station }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      runner_label: ${{ steps.plan.outputs.runner_label }}
+      environment: ${{ steps.plan.outputs.environment }}
+      scanner_name: ${{ steps.plan.outputs.scanner_name }}
+      version: ${{ steps.plan.outputs.version }}
+      release_base_url: ${{ steps.plan.outputs.release_base_url }}
+    steps:
+      - name: Only deploy from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploys run only from main (this run is on $GITHUB_REF)."
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
+          cache: 'npm'
+
+      - name: Install dependencies (no install scripts)
+        run: npm ci --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Look up the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release view "v${VERSION#v}" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,assets > "$RUNNER_TEMP/release.json"
+
+      - name: Plan
+        id: plan
+        env:
+          VERSION: ${{ inputs.version }}
+          STATION: ${{ inputs.station }}
+        run: |
+          npx ts-node scripts/release/deploy-plan.ts \
+            --station "$STATION" --version "$VERSION" \
+            --release-json "$RUNNER_TEMP/release.json" \
+            --repo "$GITHUB_REPOSITORY" --github-output
+
+  deploy:
+    name: Deploy to ${{ inputs.station }}
+    needs: plan
+    runs-on: [self-hosted, windows, '${{ needs.plan.outputs.runner_label }}']
+    environment: ${{ needs.plan.outputs.environment }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the deploy scripts
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/windows
+
+      - name: Install the release
+        shell: powershell
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          SCANNER_NAME: ${{ needs.plan.outputs.scanner_name }}
+          RELEASE_BASE_URL: ${{ needs.plan.outputs.release_base_url }}
+        run: |
+          & .\deploy\windows\deploy-station.ps1 -Version $env:VERSION `
+            -ScannerName $env:SCANNER_NAME -ReleaseBaseUrl $env:RELEASE_BASE_URL
+          exit $LASTEXITCODE

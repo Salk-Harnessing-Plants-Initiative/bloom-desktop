@@ -885,6 +885,33 @@ jobs:
           path: out/make/**
           retention-days: 7
 
+  test-deploy-scripts:
+    name: Test - Deploy Scripts (${{ matrix.shell }})
+    runs-on: windows-latest
+    # The station runs Windows PowerShell 5.1; test there and on PowerShell 7.
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install Pester 5
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+
+      - name: Run the deploy script tests
+        run: |
+          Import-Module Pester -MinimumVersion 5.5.0
+          Invoke-Pester -Path tests/deploy -CI -Output Detailed
+
   all-checks-passed:
     name: All Checks Passed
     runs-on: ubuntu-latest
@@ -907,6 +934,7 @@ jobs:
       - test-make
       - test-make-windows
       - test-make-linux
+      - test-deploy-scripts
 
     steps:
       - name: Verify all needed jobs succeeded

@@ -77,3 +77,5 @@ stations:
 ```
 
 The file is public. CI (`npm run stations:validate`) rejects unknown fields and top-level keys, credential-like field names, and any value containing an IPv4/IPv6 address or a URL with a password. It can't catch hostnames or YAML comments, so keep camera IPs, credentials and mock-mode settings on the station itself.
+
+To install a release on a station, see [STATION_SETUP.md](STATION_SETUP.md).

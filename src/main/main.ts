@@ -12,6 +12,7 @@ if (process.platform === 'linux') {
   process.env.GDK_BACKEND = process.env.GDK_BACKEND || 'x11';
 }
 
+import { isDeployFirstRun } from './deploy-first-run';
 import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -87,6 +88,13 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 if (require('electron-squirrel-startup')) {
   app.quit();
+}
+
+// A station deploy installs from the runner service: don't start the app in that
+// hidden session (see deploy-first-run.ts).
+// app.exit, not app.quit: stop now, before any startup code touches the database.
+if (isDeployFirstRun(process.argv, process.env)) {
+  app.exit(0);
 }
 
 // Single-instance lock (#249): two instances running concurrently against
