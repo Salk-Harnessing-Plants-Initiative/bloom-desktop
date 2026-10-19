@@ -2,11 +2,11 @@
  * Image Upload Service
  *
  * Handles uploading scan images to Bloom remote storage via Supabase.
- * Uses @salk-hpi/bloom-fs for coordinated storage and database operations,
+ * Uses @salk-harnessing-plants-initiative/bloom-fs for coordinated storage and database operations,
  * matching the pilot implementation for feature parity.
  *
- * IMPORTANT: Uses dynamic imports for @supabase/supabase-js, @salk-hpi/bloom-js,
- * and @salk-hpi/bloom-fs to avoid loading these modules at app startup.
+ * IMPORTANT: Uses dynamic imports for @supabase/supabase-js, @salk-harnessing-plants-initiative/bloom-js,
+ * and @salk-harnessing-plants-initiative/bloom-fs to avoid loading these modules at app startup.
  * This prevents startup issues in the packaged app, matching the pattern
  * used in config-store.ts.
  *
@@ -26,8 +26,11 @@ import type {
   TypedSupabaseClient,
   SupabaseUploader,
   SupabaseStore,
-} from '@salk-hpi/bloom-js';
-import type { uploadImages, concurrentMap } from '@salk-hpi/bloom-fs';
+} from '@salk-harnessing-plants-initiative/bloom-js';
+import type {
+  uploadImages,
+  concurrentMap,
+} from '@salk-harnessing-plants-initiative/bloom-fs';
 
 /** Verification-call attempt count and delay — design.md Decision 7. */
 const VERIFICATION_MAX_ATTEMPTS = 3;
@@ -105,7 +108,7 @@ type ScanWithRelations = Prisma.ScanGetPayload<{
 /**
  * Image uploader service for uploading scan images to Bloom storage
  *
- * Uses @salk-hpi/bloom-fs uploadImages function to coordinate both
+ * Uses @salk-harnessing-plants-initiative/bloom-fs uploadImages function to coordinate both
  * storage upload and database registration, matching pilot behavior.
  *
  * Uses dynamic imports to load Supabase modules only when upload is initiated,
@@ -155,9 +158,11 @@ export class ImageUploader {
     // Dynamic imports to avoid loading at app startup
     const { createClient } = await import('@supabase/supabase-js');
     const { SupabaseUploader, SupabaseStore } = await import(
-      '@salk-hpi/bloom-js'
+      '@salk-harnessing-plants-initiative/bloom-js'
     );
-    const { uploadImages, concurrentMap } = await import('@salk-hpi/bloom-fs');
+    const { uploadImages, concurrentMap } = await import(
+      '@salk-harnessing-plants-initiative/bloom-fs'
+    );
 
     // Create Supabase client
     this.supabase = createClient(config.bloom_api_url, config.bloom_anon_key);
@@ -183,7 +188,7 @@ export class ImageUploader {
   /**
    * Build CylImageMetadata for a single image
    *
-   * Constructs the metadata object required by @salk-hpi/bloom-fs uploadImages,
+   * Constructs the metadata object required by @salk-harnessing-plants-initiative/bloom-fs uploadImages,
    * matching the pilot implementation structure.
    */
   private buildCylImageMetadata(
@@ -286,7 +291,7 @@ export class ImageUploader {
   /**
    * Upload all images for a single scan
    *
-   * Uses @salk-hpi/bloom-fs uploadImages to coordinate both storage upload
+   * Uses @salk-harnessing-plants-initiative/bloom-fs uploadImages to coordinate both storage upload
    * and database registration, ensuring images are visible in Bloom web interface.
    *
    * @param scanId - The scan ID to upload

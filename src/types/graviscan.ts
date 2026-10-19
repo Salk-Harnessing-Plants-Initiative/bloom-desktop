@@ -330,7 +330,7 @@ export interface UploadAllScansResult {
   failed: number;
   errors: string[];
   /**
-   * Whether the installed @salk-hpi/bloom-js supports Bloom session/plate-
+   * Whether the installed @salk-harnessing-plants-initiative/bloom-js supports Bloom session/plate-
    * metadata linking (see graviscan-upload.ts's UploadResult). Surfaced here
    * so a future renderer can show operators when metadata linking isn't
    * active, rather than that only being visible in main-process logs.

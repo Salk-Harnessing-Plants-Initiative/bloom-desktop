@@ -8,6 +8,10 @@ This directory contains utility scripts for development and testing.
 scripts/
 ├── examples/           # Template scripts (safe to commit)
 │   └── test-bloom-api.example.js
+├── release/            # Helpers for the Release workflow (see docs/RELEASING.md)
+│   ├── release-version.ts   # checks the requested version against package.json
+│   ├── release-manifest.ts  # builds manifest.json and SHA256SUMS
+│   └── stations.ts          # validates deploy/stations.yaml (npm run stations:validate)
 └── *.js               # Actual scripts with credentials (git-ignored)
 ```
 

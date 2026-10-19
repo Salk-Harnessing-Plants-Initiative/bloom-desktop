@@ -1,27 +1,15 @@
 /**
  * Type definitions for GraviScan external store interfaces.
  *
- * These types cover methods on @salk-hpi/bloom-js's SupabaseStore that are
- * GraviScan-specific and not yet exported from the package's own type
- * definitions. Once the package adds proper exports, this file can be
- * trimmed further (or removed).
- *
- * NOTE (verified against installed @salk-hpi/bloom-js@0.2.1, 2026-07-28):
- * `insertGraviImageMetadata` and `updateGraviImageMetadata` are ALREADY
- * natively typed (and implemented) on `SupabaseStore` — see
- * node_modules/@salk-hpi/bloom-js/dist/{types,core/supabase}/data-store.d.ts.
- * They are intentionally NOT redeclared here to avoid conflicting with the
- * package's own types. `insertGraviScanSession` and `insertGraviScanMetadata`
- * remain genuinely missing (no method, and no corresponding Supabase RPC/table
- * in the installed package's generated `database.types.d.ts` — the
- * `gravi_scan_sessions` table exists but nothing wraps it, and there is no
- * plate/accession-metadata table or RPC at all yet). Callers in
- * `src/main/graviscan-upload.ts` feature-detect these methods at runtime and
- * skip session/metadata upload gracefully when absent, so this file only
- * needs to supply the types for when the package catches up.
+ * Desktop's own types for the GraviScan session and plate-metadata methods on
+ * bloom-js's SupabaseStore. They were written when @salk-hpi/bloom-js@0.2.1
+ * lacked `insertGraviScanSession` and `insertGraviScanMetadata`. bloom-js 0.4.0
+ * has both and exports its own `GraviScanSessionParams` /
+ * `GraviScanMetadataParams`; switching to those is a follow-up.
+ * `src/main/graviscan-upload.ts` still checks the methods exist before calling them.
  */
 
-import type { SupabaseStore } from '@salk-hpi/bloom-js';
+import type { SupabaseStore } from '@salk-harnessing-plants-initiative/bloom-js';
 import type { PostgrestError } from '@supabase/postgrest-js';
 
 // ---------------------------------------------------------------------------
@@ -74,11 +62,11 @@ export interface StoreResult<T = number> {
 }
 
 /**
- * GraviScan-specific methods on SupabaseStore that are not yet part of the
- * installed @salk-hpi/bloom-js package's own types/implementation.
+ * The GraviScan session and plate-metadata methods on SupabaseStore, typed
+ * with Desktop's own params (bloom-js 0.4.0 declares them too).
  *
- * Usage: cast `store` to this interface instead of `any`, and feature-detect
- * before calling since the package may not implement these yet:
+ * Usage: cast `store` to this interface instead of `any`, and check the
+ * method exists before calling:
  *   const ext = store as GraviScanStoreExtensions;
  *   if (typeof ext.insertGraviScanSession === 'function') { ... }
  */

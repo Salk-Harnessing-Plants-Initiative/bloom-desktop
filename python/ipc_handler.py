@@ -29,7 +29,7 @@ from PIL import Image
 try:
     from python import __version__
 except ImportError:
-    __version__ = "0.1.0"
+    __version__ = "unknown"
 
 # Import the shared, lock-protected stdout writer (#316) — every write
 # reachable while the camera-streaming background thread may be active must
