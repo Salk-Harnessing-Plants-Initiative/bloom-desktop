@@ -78,7 +78,8 @@ export async function copySharpIntoApp(
     await fs.promises.cp(
       path.join(nodeModulesDir, name),
       path.join(buildPath, 'node_modules', name),
-      // libvips links its versioned libraries with symlinks on Linux and macOS
+      // Defensive: sharp's packages ship no symlinks today, but if one does,
+      // copy the link itself rather than following it out of the package
       { recursive: true, verbatimSymlinks: true }
     );
   }

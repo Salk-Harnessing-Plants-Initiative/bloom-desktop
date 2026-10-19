@@ -1,7 +1,8 @@
 /**
  * Tests for scripts/package-sharp.ts: which packages the packaged app needs
  * for sharp on each platform, failing loudly when one is missing, and copying
- * them (symlinks included) into the app.
+ * them into the app. Also checks webpack leaves sharp external, which the
+ * copy depends on.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
@@ -12,6 +13,7 @@ import {
   sharpPackages,
   copySharpIntoApp,
 } from '../../scripts/package-sharp';
+import { mainConfig } from '../../webpack.main.config';
 
 let tmp: string;
 let nodeModules: string;
@@ -44,6 +46,15 @@ beforeEach(() => {
 
 afterEach(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+describe('webpack main config', () => {
+  // If sharp were bundled again, its binary lookup would run from the bundle
+  // and fail at upload time, while the packaged-app check still passed by
+  // loading the copied node_modules/sharp.
+  it('keeps sharp external, so the copied package is the one loaded', () => {
+    expect(mainConfig.externals).toMatchObject({ sharp: 'commonjs sharp' });
+  });
 });
 
 describe('sharpNativePackages', () => {
@@ -160,7 +171,7 @@ describe('copySharpIntoApp', () => {
   });
 
   it.skipIf(process.platform === 'win32')(
-    'keeps libvips’ relative symlinks as symlinks',
+    'copies a symlink as a link, without following it',
     async () => {
       addSharp();
       addPackage('@img/sharp-linux-x64');
