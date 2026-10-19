@@ -334,9 +334,9 @@ describe('graviscan-upload', () => {
   describe('uploadAllPendingScans — session/metadata upload capability detection', () => {
     it('does not fail the image upload when the installed bloom-js lacks insertGraviScanSession/insertGraviScanMetadata', async () => {
       // mockStore intentionally has no insertGraviScanSession/insertGraviScanMetadata
-      // methods, matching the installed @salk-hpi/bloom-js@0.2.1 — this test
-      // pins that the image upload still succeeds rather than being marked
-      // failed just because these optional, not-yet-implemented RPCs are absent.
+      // methods (a store without them, like bloom-js 0.2.1) — this test pins that
+      // the image upload still succeeds rather than being marked failed when
+      // these RPCs are absent.
       const scan = makeScan({
         session_id: 'session-1',
         session: {
