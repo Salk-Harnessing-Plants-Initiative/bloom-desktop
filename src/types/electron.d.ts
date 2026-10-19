@@ -216,9 +216,11 @@ export interface CameraAPI {
   /**
    * Configure camera settings
    * @param settings - Camera settings to apply
-   * @returns Promise resolving to configuration success
+   * @returns Whether the camera accepted the settings, and why not if it didn't
    */
-  configure: (settings: Partial<CameraSettings>) => Promise<boolean>;
+  configure: (
+    settings: Partial<CameraSettings>
+  ) => Promise<{ success: boolean; error?: string }>;
 
   /**
    * Capture a single frame
