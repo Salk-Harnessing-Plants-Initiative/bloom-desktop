@@ -1,3 +1,4 @@
+import path from 'path';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
@@ -17,6 +18,7 @@ import {
   LINUX_ICON,
   windowsMetadata,
 } from './scripts/app-icon';
+import { copySharpIntoApp } from './scripts/package-sharp';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -26,7 +28,8 @@ const config: ForgeConfig = {
     // Shown by Windows in Task Manager and hover tooltips
     win32metadata: windowsMetadata(PRODUCT_NAME),
     asar: {
-      unpack: '*.{node,dll,dylib,so,prisma,db,db-*}',
+      // so.* covers libvips' versioned Linux library (libvips-cpp.so.8.17.3)
+      unpack: '*.{node,dll,dylib,so,so.*,prisma,db,db-*}',
     },
     extraResource: [
       // Python executable for hardware control (DAQ, camera)
@@ -52,6 +55,25 @@ const config: ForgeConfig = {
     ],
   },
   rebuildConfig: {},
+  hooks: {
+    // sharp is a webpack external, so the app needs it in its node_modules;
+    // see scripts/package-sharp.ts
+    packageAfterCopy: async (
+      _config,
+      buildPath,
+      _electronVersion,
+      platform,
+      arch
+    ) => {
+      const copied = await copySharpIntoApp(
+        path.join(__dirname, 'node_modules'),
+        buildPath,
+        platform,
+        arch
+      );
+      console.log(`[package-sharp] Copied ${copied.join(', ')}`);
+    },
+  },
   makers: [
     // Windows installer (Squirrel)
     new MakerSquirrel({

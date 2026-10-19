@@ -2,8 +2,8 @@
  * Launches the staged packaged app binary via Playwright's Electron driver
  * and verifies: a real window renders, the app's own database connection
  * and IPC handlers actually work (not just that a pre-seeded file exists —
- * see the note on verifyDatabaseIpcWorks() below), and the expected database
- * tables exist.
+ * see the note on verifyDatabaseIpcWorks() below), the expected database
+ * tables exist, and sharp loads (see verifySharpLoads()).
  *
  * Run with: npm run test:package:launch
  * Prerequisites: npm run make (or npm run package) must have been run.
@@ -19,7 +19,11 @@
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 // eslint-disable-next-line import/order
-import { _electron as electron, Page } from '@playwright/test';
+import {
+  _electron as electron,
+  ElectronApplication,
+  Page,
+} from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -107,6 +111,40 @@ async function verifyDatabaseIpcWorks(page: Page): Promise<void> {
   }
 }
 
+/**
+ * Proves sharp loads in the packaged app and can encode an image. Bloom
+ * uploads compress every image with sharp (bloom-js loads it when an upload
+ * starts), and sharp needs its platform binary, which only
+ * scripts/package-sharp.ts puts in the package. Without this check the app
+ * launches fine and the first upload fails.
+ *
+ * Runs in the main process and resolves sharp from the app's own entry point,
+ * the same way the bundled code does.
+ */
+async function verifySharpLoads(
+  electronApp: ElectronApplication
+): Promise<void> {
+  const result = await electronApp.evaluate(async () => {
+    const appRequire = process.mainModule?.require.bind(process.mainModule);
+    if (!appRequire) {
+      throw new Error('process.mainModule is not set in the packaged app');
+    }
+    const sharp = appRequire('sharp') as typeof import('sharp');
+    const png = await sharp({
+      create: { width: 1, height: 1, channels: 3, background: '#000000' },
+    })
+      .png()
+      .toBuffer();
+    return { bytes: png.length, vips: sharp.versions.vips };
+  });
+  if (!(result.bytes > 0)) {
+    throw new Error(`sharp produced an empty image: ${JSON.stringify(result)}`);
+  }
+  console.log(
+    `[PASS] sharp loaded (libvips ${result.vips}) and encoded an image`
+  );
+}
+
 async function main(): Promise<void> {
   const dbPath = resolveDbPath();
   applySchemaExternally(dbPath);
@@ -155,6 +193,9 @@ async function main(): Promise<void> {
       );
     });
     console.log('[PASS] Database intact with all expected tables');
+
+    console.log('[INFO] Verifying sharp loads in the packaged app...');
+    await verifySharpLoads(electronApp);
   } finally {
     await electronApp.close();
   }
