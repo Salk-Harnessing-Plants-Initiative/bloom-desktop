@@ -1,7 +1,9 @@
 /**
  * Runs the packaged app's deploy self-test (`--deploy-self-test`) the way the
- * station deploy does, with a temporary home folder and fake Bloom credentials
- * pointing at a closed local port, so nothing reaches Bloom. Verifies that the
+ * station deploy does, with fake Bloom credentials pointing at a closed local port,
+ * so nothing reaches Bloom. The fake `.env` goes in a temporary home folder on
+ * macOS and Linux; on Windows (CI only) in the runner's real home, with any
+ * existing `.env` and `bloom.db` set aside and put back afterwards. Verifies that the
  * installed build gets as far as logging in: it opens the database copy it is
  * given, writes the synthetic scan with its frames, reports the login failure in
  * the result file and exits 1. Also checks it refuses the station's own database
@@ -25,6 +27,10 @@ import { resolveStagedAppPath } from './lib/resolve-staged-app-path';
 
 const SELF_TEST_TIMEOUT_MS = 240_000;
 const OUTPUT_TAIL_CHARS = 4000;
+const SET_ASIDE_SUFFIX = '.self-test-set-aside';
+// Chromium on Windows won't start (exit 0x80000003) when USERPROFILE is moved,
+// so there the check uses the runner's real home; a station never moves it either.
+const OVERRIDE_HOME = process.platform !== 'win32';
 const SCANNER_NAME = 'CIScanner';
 // Port 9 (discard) is closed on CI runners, so login fails fast and locally.
 const FAKE_ENV = [
@@ -53,8 +59,7 @@ function runSelfTest(
 ) {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    HOME: home,
-    USERPROFILE: home,
+    ...(OVERRIDE_HOME ? { HOME: home, USERPROFILE: home } : {}),
     // Chromium's own log, so a native startup failure says why.
     ELECTRON_ENABLE_LOGGING: '1',
   };
@@ -103,6 +108,19 @@ function probeWithoutHomeOverride(appPath: string, resultFile: string): string {
   );
 }
 
+/**
+ * Moves aside the files the check replaces in a real home, and returns a function
+ * that puts them back. Used on Windows, where the home folder can't be faked.
+ */
+function setAsideRealFiles(files: string[]): () => void {
+  const moved = files.filter((f) => fs.existsSync(f));
+  for (const f of moved) fs.renameSync(f, `${f}${SET_ASIDE_SUFFIX}`);
+  return () => {
+    for (const f of files) fs.rmSync(f, { force: true });
+    for (const f of moved) fs.renameSync(`${f}${SET_ASIDE_SUFFIX}`, f);
+  };
+}
+
 function sha256(file: string): string {
   return crypto
     .createHash('sha256')
@@ -117,11 +135,21 @@ function check(condition: boolean, message: string, detail = ''): void {
 
 function main(): void {
   const appPath = resolveStagedAppPath(process.platform, process.arch);
+  if (!OVERRIDE_HOME && process.env.CI !== 'true') {
+    throw new Error(
+      'On Windows this check writes to the real %USERPROFILE%\\.bloom, so it only runs in CI (CI=true)'
+    );
+  }
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-self-test-ci-'));
+  const home = OVERRIDE_HOME ? path.join(work, 'home') : os.homedir();
+  const envFile = path.join(home, '.bloom', '.env');
+  const stationFile = path.join(home, '.bloom', 'data', 'bloom.db');
+  const restoreRealFiles = OVERRIDE_HOME
+    ? (): void => undefined
+    : setAsideRealFiles([envFile, stationFile]);
   try {
-    const home = path.join(work, 'home');
-    fs.mkdirSync(path.join(home, '.bloom', 'data'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.bloom', '.env'), FAKE_ENV);
+    fs.mkdirSync(path.dirname(stationFile), { recursive: true });
+    fs.writeFileSync(envFile, FAKE_ENV);
 
     const copy = path.join(work, 'copy.db');
     console.log('[INFO] Creating a migrated database copy...');
@@ -131,7 +159,7 @@ function main(): void {
     });
 
     // A real station database next to the copy, which the self-test must never touch.
-    const station = path.join(home, '.bloom', 'data', 'bloom.db');
+    const station = stationFile;
     fs.copyFileSync(copy, station);
     const stationHash = sha256(station);
 
@@ -188,6 +216,7 @@ function main(): void {
       JSON.stringify(badArgs.result)
     );
   } finally {
+    restoreRealFiles();
     // Don't let a locked temp file on Windows hide the real error.
     try {
       fs.rmSync(work, { recursive: true, force: true });
