@@ -27,6 +27,10 @@ describe('versionFromReleaseUrl', () => {
     expect(versionFromReleaseUrl(releaseUrl('0.2.1'))).toBe('0.2.1');
   });
 
+  it('reads pre-releases too', () => {
+    expect(versionFromReleaseUrl(releaseUrl('0.2.1-rc.1'))).toBe('0.2.1-rc.1');
+  });
+
   it('is null for anything else', () => {
     expect(versionFromReleaseUrl(undefined)).toBeNull();
     expect(versionFromReleaseUrl('https://example.com/v0.2.1')).toBeNull();

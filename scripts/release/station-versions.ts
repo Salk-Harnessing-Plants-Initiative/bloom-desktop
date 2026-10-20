@@ -38,9 +38,11 @@ export interface StationVersion {
   deployedAt: string | null;
 }
 
-/** `https://github.com/o/r/releases/tag/v0.2.1` → `0.2.1`. */
+/** `https://github.com/o/r/releases/tag/v0.2.1` → `0.2.1` (pre-releases like `0.2.1-rc.1` too). */
 export function versionFromReleaseUrl(url: string | undefined): string | null {
-  const match = url?.match(/\/releases\/tag\/v(\d+\.\d+\.\d+)$/);
+  const match = url?.match(
+    /\/releases\/tag\/v(\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?)$/
+  );
   return match ? match[1] : null;
 }
 

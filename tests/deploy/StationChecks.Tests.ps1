@@ -16,6 +16,20 @@ BeforeAll {
     }
 }
 
+Describe 'Release and Squirrel versions' {
+    It 'maps a pre-release to the installer folder name and back' {
+        ConvertTo-SquirrelVersion -Version '0.2.1-rc.1' | Should -Be '0.2.1-rc1'
+        ConvertFrom-SquirrelVersion -Version '0.2.1-rc1' | Should -Be '0.2.1-rc.1'
+        ConvertTo-SquirrelVersion -Version '0.2.1' | Should -Be '0.2.1'
+        ConvertFrom-SquirrelVersion -Version '0.2.1' | Should -Be '0.2.1'
+    }
+
+    It 'sorts pre-releases before their release' {
+        Sort-ReleaseVersions -Versions @('0.2.1', '0.2.1-rc.2', '0.10.0', '0.2.1-rc.1', '0.2.0') |
+            Should -Be @('0.2.0', '0.2.1-rc.1', '0.2.1-rc.2', '0.2.1', '0.10.0')
+    }
+}
+
 Describe 'Read-StationEnv' {
     It 'reads KEY=value lines and strips quotes' {
         $userProfile = New-StationProfile -EnvLines @('SCANNER_NAME="FastScanner"', 'CAMERA_IP_ADDRESS = 10.0.0.45', '# comment')
@@ -144,6 +158,14 @@ Describe 'Invoke-DeploySelfTest' {
             ($ArgumentList -join ' ') -match '--deploy-self-test' -and ($ArgumentList -join ' ') -match 'self-test-copy\.db'
         }
         Test-Path (Join-Path $work 'self-test-copy.db') | Should -BeFalse
+    }
+
+    It 'runs a pre-release from its installer folder name' {
+        $script:writeResult = '{"ok": true, "uploaded": 3, "plantId": "DEPLOY-0.2.1-rc.1-1"}'
+        (Invoke-DeploySelfTest -Version '0.2.1-rc.1' @common).Status | Should -Be 'passed'
+        Should -Invoke -ModuleName StationChecks Start-Process -ParameterFilter {
+            $FilePath -eq 'C:\lad\bloom_desktop\app-0.2.1-rc1\Bloom Desktop.exe'
+        }
     }
 
     It 'fails with the upload errors' {

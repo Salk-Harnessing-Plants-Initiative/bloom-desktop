@@ -37,6 +37,14 @@ Describe 'Get-InstalledVersion' {
         Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'empty') | Should -BeNullOrEmpty
     }
 
+    It 'returns the newest version, mapping pre-release folders to release versions' {
+        $root = Join-Path $TestDrive 'lad-rc\bloom_desktop'
+        foreach ($v in '0.2.0', '0.2.1-rc1', '0.2.1-rc2') { New-Item -ItemType Directory -Force -Path (Join-Path $root "app-$v") | Out-Null }
+        Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'lad-rc') | Should -Be '0.2.1-rc.2'
+        New-Item -ItemType Directory -Force -Path (Join-Path $root 'app-0.2.1') | Out-Null
+        Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'lad-rc') | Should -Be '0.2.1'
+    }
+
     It 'returns the highest app-<version> folder' {
         $root = Join-Path $TestDrive 'lad\bloom_desktop'
         foreach ($v in '0.1.9', '0.2.0', '0.10.0') { New-Item -ItemType Directory -Force -Path (Join-Path $root "app-$v") | Out-Null }

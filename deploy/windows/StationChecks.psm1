@@ -43,6 +43,36 @@ function Invoke-Node {
     finally { $ErrorActionPreference = $previous }
 }
 
+# --- Versions: release form (tag) 0.2.1-rc.1, Squirrel folder form 0.2.1-rc1 -------------
+
+function ConvertTo-SquirrelVersion {
+    <# 0.2.1-rc.1 -> 0.2.1-rc1 (the Windows installer drops the dot); 0.2.1 is unchanged. #>
+    param([Parameter(Mandatory)][string]$Version)
+    $Version -replace '-([A-Za-z]+)\.(\d+)$', '-$1$2'
+}
+
+function ConvertFrom-SquirrelVersion {
+    <# 0.2.1-rc1 -> 0.2.1-rc.1; 0.2.1 is unchanged. #>
+    param([Parameter(Mandatory)][string]$Version)
+    $Version -replace '-([A-Za-z]+)(\d+)$', '-$1.$2'
+}
+
+function Get-ReleaseBaseVersion {
+    <# The X.Y.Z part of a release version, as [version]. #>
+    param([Parameter(Mandatory)][string]$Version)
+    [version](($Version -split '-', 2)[0])
+}
+
+function Sort-ReleaseVersions {
+    <# Oldest first: 0.2.1-rc.1 < 0.2.1-rc.2 < 0.2.1 < 0.2.2. #>
+    param([string[]]$Versions)
+    $Versions | Sort-Object -Property `
+        @{ Expression = { Get-ReleaseBaseVersion -Version $_ } },
+        @{ Expression = { if ($_ -match '-') { 0 } else { 1 } } },
+        @{ Expression = { if ($_ -match '-([A-Za-z]+)') { $Matches[1] } else { '' } } },
+        @{ Expression = { if ($_ -match '-[A-Za-z]+\.(\d+)$') { [int]$Matches[1] } else { 0 } } }
+}
+
 function Read-StationEnv {
     <# ~/.bloom/.env as a hashtable; empty when the file is missing. #>
     param([Parameter(Mandatory)][string]$ProfileDir)
@@ -171,11 +201,11 @@ function Invoke-DeploySelfTest {
         [Parameter(Mandatory)][string]$Species,
         [Parameter(Mandatory)][string]$WorkDir
     )
-    if ([version]$Version -lt $script:SelfTestMinVersion) {
+    if ((Get-ReleaseBaseVersion -Version $Version) -lt $script:SelfTestMinVersion) {
         return [pscustomobject]@{ Status = 'not-supported'; Detail = "v$Version has no self-test (added in $($script:SelfTestMinVersion))"; Problems = @() }
     }
     # The versioned exe, not the Squirrel launcher in the folder above, which exits at once.
-    $exe = Join-Path $LocalAppData "bloom_desktop\app-$Version\Bloom Desktop.exe"
+    $exe = Join-Path $LocalAppData "bloom_desktop\app-$(ConvertTo-SquirrelVersion -Version $Version)\Bloom Desktop.exe"
     New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
     $copy = Join-Path $WorkDir 'self-test-copy.db'
     $resultFile = Join-Path $WorkDir 'self-test-result.json'
@@ -205,5 +235,6 @@ function Invoke-DeploySelfTest {
     }
 }
 
-Export-ModuleMember -Function Set-DeployLogFile, Write-DeployLog, Read-StationEnv, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
+Export-ModuleMember -Function Set-DeployLogFile, Write-DeployLog, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
+    Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
     Compare-RowCounts, Update-StationDatabase, Restore-StationData, Invoke-DeploySelfTest

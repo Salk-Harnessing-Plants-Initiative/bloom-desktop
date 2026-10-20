@@ -19,6 +19,12 @@ import { validateStationsYaml } from './stations';
 import { parseRequestedVersion, releaseTag } from './release-version';
 import { MANIFEST_FILE_NAME, SHA256SUMS_FILE_NAME } from './release-manifest';
 
+/**
+ * Versions a station can install: X.Y.Z, or X.Y.Z-<label>.<1-9>. The Windows installer
+ * names its folder without the dot (app-0.2.1-rc1), which the station script maps back.
+ */
+const DEPLOYABLE_VERSION = /^\d+\.\d+\.\d+(?:-[A-Za-z]+\.[1-9])?$/;
+
 export interface ReleaseInfo {
   tagName: string;
   isDraft: boolean;
@@ -67,6 +73,11 @@ export function planDeploy(input: {
 }): DeployPlan {
   const version = parseRequestedVersion(input.version);
   const tag = releaseTag(version);
+  if (!DEPLOYABLE_VERSION.test(version)) {
+    throw new Error(
+      `${version} can't be deployed: stations take X.Y.Z or a pre-release like X.Y.Z-rc.1 (one label, number 1-9), which the Windows installer can name.`
+    );
+  }
 
   const problems = validateStationsYaml(input.stationsYaml);
   if (problems.length > 0) {

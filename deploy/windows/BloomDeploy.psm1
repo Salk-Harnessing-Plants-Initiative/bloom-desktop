@@ -102,16 +102,19 @@ function Assert-Checksums {
 # --- Installed state -----------------------------------------------------------------
 
 function Get-InstalledVersion {
-    <# Highest app-<version> folder under %LOCALAPPDATA%\bloom_desktop, or $null. #>
+    <#
+      Newest app-<version> folder under %LOCALAPPDATA%\bloom_desktop, in release form
+      (app-0.2.1-rc1 is 0.2.1-rc.1), or $null.
+    #>
     param([Parameter(Mandatory)][string]$LocalAppData)
     $root = Join-Path $LocalAppData $script:SquirrelAppFolder
     if (-not (Test-Path -LiteralPath $root)) { return $null }
-    $versions = Get-ChildItem -LiteralPath $root -Directory -Filter 'app-*' |
+    $versions = @(Get-ChildItem -LiteralPath $root -Directory -Filter 'app-*' |
         ForEach-Object { $_.Name.Substring(4) } |
-        Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
-        Sort-Object { [version]$_ }
-    if (-not $versions) { return $null }
-    @($versions)[-1]
+        Where-Object { $_ -match '^\d+\.\d+\.\d+(-[A-Za-z]+\d+)?$' } |
+        ForEach-Object { ConvertFrom-SquirrelVersion -Version $_ })
+    if ($versions.Count -eq 0) { return $null }
+    @(Sort-ReleaseVersions -Versions $versions)[-1]
 }
 
 # --- Backup ----------------------------------------------------------------------------

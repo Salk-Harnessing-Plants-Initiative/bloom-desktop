@@ -36,6 +36,35 @@ const release = (overrides: Partial<ReleaseInfo> = {}): ReleaseInfo => ({
 });
 
 describe('planDeploy', () => {
+  it('plans a pre-release the Windows installer can name', () => {
+    const plan = planDeploy({
+      stationsYaml: stationsYaml(),
+      station: 'pc1',
+      version: '0.2.1-rc.1',
+      release: release({ tagName: 'v0.2.1-rc.1' }),
+      repo: REPO,
+    });
+    expect(plan.tag).toBe('v0.2.1-rc.1');
+    expect(plan.releaseBaseUrl).toBe(
+      `https://github.com/${REPO}/releases/download/v0.2.1-rc.1`
+    );
+  });
+
+  it.each(['0.2.1-rc.10', '0.2.1-rc', '0.2.1-beta.1.2', '0.2.1-rc.0'])(
+    'refuses %s, which a station could not map back from its install folder',
+    (version) => {
+      expect(() =>
+        planDeploy({
+          stationsYaml: stationsYaml(),
+          station: 'pc1',
+          version,
+          release: release({ tagName: `v${version}` }),
+          repo: REPO,
+        })
+      ).toThrow(/can't be deployed/);
+    }
+  );
+
   it('plans a deploy of a published release to an active Windows station', () => {
     expect(
       planDeploy({
