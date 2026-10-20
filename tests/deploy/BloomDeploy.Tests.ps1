@@ -221,7 +221,9 @@ Describe 'Invoke-StationDeploy' {
 
     It 'changes nothing when the installed version''s download address cannot be worked out' {
         Remove-Item -LiteralPath (Join-Path $root 'releases\v0.1.0') -Recurse -Force
-        $result = Invoke-StationDeploy @common -ReleaseBaseUrl 'https://example.invalid/somewhere-else'
+        $elsewhere = $common.Clone()
+        $elsewhere['ReleaseBaseUrl'] = 'https://example.invalid/somewhere-else'
+        $result = Invoke-StationDeploy @elsewhere
         $result.Status | Should -Be 'rollback-unavailable'
         Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
     }
