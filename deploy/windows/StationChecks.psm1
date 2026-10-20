@@ -15,11 +15,13 @@ $script:BloomRequestTimeoutSeconds = 30
 $script:SelfTestTimeoutSeconds = 240
 # The first release whose app has --deploy-self-test.
 $script:SelfTestMinVersion = [version]'0.2.1'
-$script:LogFile = $null
+# The log file path is kept in the process environment, not module state, so every module
+# that imports this one (BloomDeploy, StationData) writes to the same file.
+$script:LogFileVariable = 'BLOOM_DEPLOY_LOG_FILE'
 
 function Set-DeployLogFile {
     param([string]$Path)
-    $script:LogFile = $Path
+    [Environment]::SetEnvironmentVariable($script:LogFileVariable, $Path, 'Process')
 }
 
 function Write-DeployLog {
@@ -27,7 +29,8 @@ function Write-DeployLog {
     $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
     # Write-Host, not Write-Output, so log lines never mix into a function's return value.
     Write-Host $line
-    if ($script:LogFile) { Add-Content -Path $script:LogFile -Value $line }
+    $logFile = [Environment]::GetEnvironmentVariable($script:LogFileVariable, 'Process')
+    if ($logFile) { Add-Content -Path $logFile -Value $line }
 }
 
 function Invoke-Node {
@@ -175,19 +178,6 @@ function Update-StationDatabase {
     }
 }
 
-function Restore-StationData {
-    <# Put back bloom.db and .env from a backup folder made by Backup-StationData. #>
-    param([Parameter(Mandatory)][string]$BackupDir, [Parameter(Mandatory)][string]$ProfileDir)
-    $targets = @{ 'bloom.db' = (Join-Path $ProfileDir '.bloom\data\bloom.db'); '.env' = (Join-Path $ProfileDir '.bloom\.env') }
-    foreach ($name in $targets.Keys) {
-        $saved = Join-Path $BackupDir $name
-        if (Test-Path -LiteralPath $saved) {
-            Copy-Item -LiteralPath $saved -Destination $targets[$name] -Force
-            Write-DeployLog "Restored $($targets[$name]) from the backup."
-        }
-    }
-}
-
 function Invoke-DeploySelfTest {
     <#
       Run the installed app's --deploy-self-test on a copy of bloom.db: it uploads a
@@ -237,4 +227,4 @@ function Invoke-DeploySelfTest {
 
 Export-ModuleMember -Function Set-DeployLogFile, Write-DeployLog, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
     Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
-    Compare-RowCounts, Update-StationDatabase, Restore-StationData, Invoke-DeploySelfTest
+    Compare-RowCounts, Update-StationDatabase, Invoke-DeploySelfTest

@@ -52,38 +52,6 @@ Describe 'Get-InstalledVersion' {
     }
 }
 
-Describe 'Backup-StationData' {
-    BeforeEach {
-        $userProfile = Join-Path $TestDrive 'profile'
-        New-Item -ItemType Directory -Force -Path (Join-Path $userProfile '.bloom\data') | Out-Null
-        Set-Content -LiteralPath (Join-Path $userProfile '.bloom\data\bloom.db') -Value 'db-bytes'
-        Set-Content -LiteralPath (Join-Path $userProfile '.bloom\.env') -Value 'SCANNER_MODE=cylinderscan'
-    }
-
-    It 'copies bloom.db and .env into a folder named for the old version' {
-        $backup = Backup-StationData -ProfileDir $userProfile -BackupRoot (Join-Path $TestDrive 'backups') -OldVersion '0.1.0'
-        $backup | Should -Match '_v0\.1\.0$'
-        Get-Content (Join-Path $backup 'bloom.db') | Should -Be 'db-bytes'
-        Get-Content (Join-Path $backup '.env') | Should -Be 'SCANNER_MODE=cylinderscan'
-    }
-
-    It 'works on a first install with no database yet' {
-        Remove-Item -LiteralPath (Join-Path $userProfile '.bloom\data\bloom.db')
-        { Backup-StationData -ProfileDir $userProfile -BackupRoot (Join-Path $TestDrive 'backups') } | Should -Not -Throw
-    }
-}
-
-Describe 'Remove-OldBackups' {
-    It 'keeps the newest N and never the protected one' {
-        $root = Join-Path $TestDrive 'backups'
-        $names = '20260101-000000_v0.1.0', '20260102-000000_v0.1.1', '20260103-000000_v0.1.2', '20260104-000000_v0.1.3'
-        foreach ($n in $names) { New-Item -ItemType Directory -Force -Path (Join-Path $root $n) | Out-Null }
-        $protected = Join-Path $root $names[0]
-        Remove-OldBackups -BackupRoot $root -Keep 2 -Protect $protected
-        (Get-ChildItem $root -Directory).Name | Sort-Object | Should -Be @($names[0], $names[2], $names[3])
-    }
-}
-
 Describe 'Test-Installation' {
     BeforeEach {
         $lad = Join-Path $TestDrive 'lad'
@@ -176,6 +144,7 @@ Describe 'Invoke-StationDeploy' {
         Mock -ModuleName BloomDeploy Invoke-DeploySelfTest { [pscustomobject]@{ Status = 'passed'; Detail = 'plant P'; Problems = @() } }
         Mock -ModuleName BloomDeploy Invoke-Rollback { }
         Mock -ModuleName BloomDeploy Restore-StationData { }
+        Mock -ModuleName BloomDeploy Save-FailedDatabase { }
         Mock -ModuleName BloomDeploy Get-InstalledVersion { '0.1.0' }
     }
 
@@ -295,6 +264,69 @@ Describe 'Invoke-StationDeploy' {
         Mock -ModuleName BloomDeploy Test-Installation { 'Installed version is '''', expected ''0.2.0''.' }
         (Invoke-StationDeploy @common).Status | Should -Be 'failed-no-rollback'
         Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 0
+    }
+
+    It 'keeps the failed database, restores the data, then reinstalls, in that order' {
+        $script:calls = [System.Collections.Generic.List[string]]::new()
+        Mock -ModuleName BloomDeploy Update-StationDatabase { throw 'Database upgrade failed.' }
+        Mock -ModuleName BloomDeploy Save-FailedDatabase { $script:calls.Add('keep-failed') }
+        Mock -ModuleName BloomDeploy Restore-StationData { $script:calls.Add('restore') }
+        Mock -ModuleName BloomDeploy Invoke-Rollback { $script:calls.Add('reinstall') }
+        (Invoke-StationDeploy @common).Status | Should -Be 'rolled-back'
+        $script:calls | Should -Be @('keep-failed', 'restore', 'reinstall')
+        Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1 -Exactly -ParameterFilter { $BackupDir -like "$root\backups\*_v0.1.0" }
+    }
+
+    It 'reports rollback-failed, with the backup, when reinstalling fails after the data is restored' {
+        Mock -ModuleName BloomDeploy Update-StationDatabase { throw 'Database upgrade failed.' }
+        Mock -ModuleName BloomDeploy Invoke-Rollback { throw 'Setup.exe exited with code 1.' }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'rollback-failed'
+        ($result.Problems -join "`n") | Should -Match 'data was restored, but reinstalling v0.1.0 failed'
+        ($result.Problems -join "`n") | Should -Match ([regex]::Escape("$root\backups\"))
+        Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1 -Exactly
+    }
+
+    It 'reports rollback-failed when the previous version is not what is installed afterwards' {
+        $script:versionCalls = 0
+        Mock -ModuleName BloomDeploy Get-InstalledVersion { $script:versionCalls++; if ($script:versionCalls -eq 1) { '0.1.0' } else { '0.2.0' } }
+        Mock -ModuleName BloomDeploy Update-StationDatabase { throw 'Database upgrade failed.' }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'rollback-failed'
+        ($result.Problems -join "`n") | Should -Match "installed version is '0.2.0', not v0.1.0"
+    }
+
+    It 'does not reinstall when restoring the data fails' {
+        Mock -ModuleName BloomDeploy Update-StationDatabase { throw 'Database upgrade failed.' }
+        Mock -ModuleName BloomDeploy Restore-StationData { throw 'The copy does not match the original.' }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'rollback-failed'
+        Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 0 -Exactly
+    }
+
+    It 'leaves the data alone when Bloom Desktop was opened during the deploy' {
+        $script:runningCalls = 0
+        # Running only at the third check: after the start and just-before-install checks.
+        Mock -ModuleName BloomDeploy Test-BloomRunning { $script:runningCalls++; $script:runningCalls -gt 2 }
+        Mock -ModuleName BloomDeploy Update-StationDatabase { throw 'Database upgrade failed.' }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'needs-attention'
+        Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 0 -Exactly
+        Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 0 -Exactly
+    }
+
+    It 'restores the data on a first deploy with nothing to reinstall' {
+        Mock -ModuleName BloomDeploy Get-InstalledVersion { $null }
+        Mock -ModuleName BloomDeploy Test-Installation { 'SCANNER_MODE in .env must be cylinderscan.' }
+        (Invoke-StationDeploy @common).Status | Should -Be 'failed-no-rollback'
+        Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1 -Exactly
+    }
+
+    It 'changes nothing when Bloom Desktop is opened before the install' {
+        $script:runningCalls = 0
+        Mock -ModuleName BloomDeploy Test-BloomRunning { $script:runningCalls++; $script:runningCalls -gt 1 }
+        (Invoke-StationDeploy @common).Status | Should -Be 'skipped-app-running'
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
     }
 
     It 'writes a log file' {

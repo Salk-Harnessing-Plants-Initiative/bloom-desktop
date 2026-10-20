@@ -17,10 +17,23 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 on a stock station may not offer TLS 1.2 (GitHub and Bloom need it),
+# and its download progress bar slows large downloads many times over.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+$ProgressPreference = 'SilentlyContinue'
 Import-Module (Join-Path $PSScriptRoot 'BloomDeploy.psm1') -Force
 
-$result = Invoke-StationDeploy -Version $Version -ScannerName $ScannerName -ReleaseBaseUrl $ReleaseBaseUrl `
-    -TestSpecies $TestSpecies -SchemaPath $SchemaPath -ToolsDir $ToolsDir -RequireCamera:$RequireCamera
+try {
+    $result = Invoke-StationDeploy -Version $Version -ScannerName $ScannerName -ReleaseBaseUrl $ReleaseBaseUrl `
+        -TestSpecies $TestSpecies -SchemaPath $SchemaPath -ToolsDir $ToolsDir -RequireCamera:$RequireCamera
+}
+catch {
+    # Download, checksum and backup failures stop the deploy before anything changes.
+    $result = [pscustomobject]@{
+        Status = 'error'; Version = $Version; Previous = $null; Checks = @{}
+        Problems = @("The deploy stopped: $($_.Exception.Message) See the attached station log.")
+    }
+}
 
 if ($env:GITHUB_STEP_SUMMARY) {
     $previous = if ($result.Previous) { "v$($result.Previous)" } else { 'none' }
@@ -38,3 +51,4 @@ if ($env:GITHUB_STEP_SUMMARY) {
 }
 
 if ($result.Status -ne 'deployed') { exit 1 }
+exit 0

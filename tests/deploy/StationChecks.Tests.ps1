@@ -115,19 +115,6 @@ Describe 'Compare-RowCounts' {
     }
 }
 
-Describe 'Restore-StationData' {
-    It 'copies bloom.db and .env back from the backup' {
-        $userProfile = New-StationProfile -EnvLines @('SCANNER_NAME=New')
-        $backup = Join-Path $TestDrive 'backup'
-        New-Item -ItemType Directory -Force -Path $backup | Out-Null
-        Set-Content -LiteralPath (Join-Path $backup 'bloom.db') -Value 'old-db'
-        Set-Content -LiteralPath (Join-Path $backup '.env') -Value 'SCANNER_NAME=Old'
-        Restore-StationData -BackupDir $backup -ProfileDir $userProfile
-        Get-Content (Join-Path $userProfile '.bloom\data\bloom.db') | Should -Be 'old-db'
-        Get-Content (Join-Path $userProfile '.bloom\.env') | Should -Be 'SCANNER_NAME=Old'
-    }
-}
-
 Describe 'Invoke-DeploySelfTest' {
     BeforeEach {
         $userProfile = New-StationProfile

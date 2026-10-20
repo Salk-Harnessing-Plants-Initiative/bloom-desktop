@@ -17,8 +17,8 @@ How a Windows CylinderScan station is set up to receive releases from **Actions 
    - **upgrades the database** with the release's migrations (`prisma migrate deploy`), and checks that no table lost rows. The app doesn't upgrade its own database;
    - checks the installed version, that `BLOOM_USE_MOCK_HARDWARE`, `BLOOM_USE_MOCK_CAMERA` and `BLOOM_USE_MOCK_DAQ` are `false`, that `.env` has CylinderScan mode, the station's scanner name and a real camera IP, and that there's enough free disk space;
    - **test upload:** runs the installed app's `--deploy-self-test` on a copy of the database. It uploads a 3-frame synthetic scan to Bloom (see [Test data in Bloom](#test-data-in-bloom)) with the app's own upload code, without the camera and without changing the station's database;
-   - if the install, the database upgrade, a check or the test upload fails: reinstalls the previous version and restores `bloom.db` and `.env` from the backup;
-   - keeps the newest 5 backups and writes a log to `C:\BloomDeploy\logs\`, which is also attached to the run.
+   - if the install, the database upgrade, a check or the test upload fails: keeps the database it left behind in `C:\BloomDeploy\failed\<time>_v<new>\`, restores `bloom.db` and `.env` from the backup and checks them, then reinstalls the previous version and checks it is installed;
+   - keeps the newest 5 backups and 5 failed copies, and writes a log to `C:\BloomDeploy\logs\`, which is also attached to the run.
 4. **After a deploy,** when the camera is on, the operator checks the preview and a scan.
 
 ## Which station has which version
@@ -85,18 +85,24 @@ Adding more stations needs no code change: steps 1–5 and 7 for each.
 
 **Actions → Deploy → Run workflow**, branch `main`, with the version (e.g. `0.2.1`) and the station (e.g. `pc1`). Tick **require camera** only when the camera is switched on and should be checked too. Approve the run when asked. Choose a time when nobody is scanning: the deploy refuses to run while Bloom Desktop is open.
 
-| Result in the job summary | Meaning                                                                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `deployed`                | Installed, database upgraded, checks and test upload passed.                                                                       |
-| `skipped-app-running`     | Bloom Desktop was open; nothing changed. Close it and run the deploy again.                                                        |
-| `camera-unreachable`      | **require camera** was ticked and the camera didn't answer; nothing changed.                                                       |
-| `bloom-check-failed`      | Bloom refused the station's login or doesn't know its scanner; nothing changed.                                                    |
-| `rollback-unavailable`    | The installed version couldn't be downloaded for a rollback; nothing changed.                                                      |
-| `rolled-back`             | The install, database upgrade, a check or the test upload failed; the previous version and data are back. The problems are listed. |
-| `failed-no-rollback`      | First deploy to this station and it failed; the data was restored, but there was no earlier version to reinstall.                  |
+| Result in the job summary | Meaning                                                                                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deployed`                | Installed, database upgraded, checks and test upload passed.                                                                                                               |
+| `skipped-app-running`     | Bloom Desktop was open; nothing changed. Close it and run the deploy again.                                                                                                |
+| `camera-unreachable`      | **require camera** was ticked and the camera didn't answer; nothing changed.                                                                                               |
+| `bloom-check-failed`      | Bloom refused the station's login or doesn't know its scanner; nothing changed.                                                                                            |
+| `rollback-unavailable`    | The installed version couldn't be downloaded for a rollback; nothing changed.                                                                                              |
+| `rolled-back`             | The install, database upgrade, a check or the test upload failed. The data was restored and checked, and the previous version is installed again. The problems are listed. |
+| `failed-same-version`     | Redeploying the installed version failed; the data was restored.                                                                                                           |
+| `failed-no-rollback`      | First deploy to this station and it failed; the data was restored, but there was no earlier version to reinstall.                                                          |
+| `rollback-failed`         | The deploy failed and so did part of putting things back. The summary says which, and where the backup is: restore by hand (below).                                        |
+| `needs-attention`         | The deploy failed after Bloom Desktop was opened on the station, so the data was left as is. Restore by hand (below) once nobody is scanning.                              |
+| `error`                   | The deploy stopped before changing anything (e.g. a download or checksum failure); see the attached log.                                                                   |
 
 If the test upload reports that it wrote no result while the runner runs as a service, the app may not be able to start in the service's session on that station. Run the runner from the lab account's desktop instead (`run.cmd` at sign-in) and tell the maintainers.
 
 ## Restoring a backup by hand
 
-Close Bloom Desktop, then copy `bloom.db` and `.env` from the backup folder in `C:\BloomDeploy\backups\` back to `%USERPROFILE%\.bloom\data\` and `%USERPROFILE%\.bloom\`.
+Close Bloom Desktop, delete any `bloom.db-journal` next to the database, then copy `bloom.db` and `.env` from the backup folder in `C:\BloomDeploy\backups\` back to `%USERPROFILE%\.bloom\data\` and `%USERPROFILE%\.bloom\`. If the app is missing, run the previous version's `Setup.exe` from `C:\BloomDeploy\releases\v<version>\`.
+
+The database a failed deploy left behind is kept in `C:\BloomDeploy\failed\<time>_v<version>\`, for working out what went wrong; it isn't used again.

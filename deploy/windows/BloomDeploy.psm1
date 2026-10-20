@@ -15,10 +15,10 @@
 Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'StationChecks.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'StationData.psm1') -Force
 
 # --- Constants -------------------------------------------------------------------------
 
-$script:BackupsKept = 5
 $script:MinFreeDiskGB = 20
 $script:InstallTimeoutSeconds = 600
 $script:DownloadTimeoutSeconds = 600
@@ -115,58 +115,6 @@ function Get-InstalledVersion {
         ForEach-Object { ConvertFrom-SquirrelVersion -Version $_ })
     if ($versions.Count -eq 0) { return $null }
     @(Sort-ReleaseVersions -Versions $versions)[-1]
-}
-
-# --- Backup ----------------------------------------------------------------------------
-
-function Backup-StationData {
-    <#
-      Copy ~/.bloom/data/bloom.db and ~/.bloom/.env into a new timestamped folder and check
-      each copy's hash. Returns the backup folder. Missing files (a first install) are
-      noted, not an error.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$ProfileDir,
-        [Parameter(Mandatory)][string]$BackupRoot,
-        [string]$OldVersion
-    )
-    $label = if ($OldVersion) { "v$OldVersion" } else { 'none' }
-    $dest = Join-Path $BackupRoot ('{0}_{1}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $label)
-    New-Item -ItemType Directory -Force -Path $dest | Out-Null
-
-    $sources = @(
-        (Join-Path $ProfileDir '.bloom\data\bloom.db'),
-        (Join-Path $ProfileDir '.bloom\.env')
-    )
-    foreach ($source in $sources) {
-        if (-not (Test-Path -LiteralPath $source)) {
-            Write-DeployLog "Backup: $source not found, nothing to copy."
-            continue
-        }
-        $target = Join-Path $dest (Split-Path -Leaf $source)
-        Copy-Item -LiteralPath $source -Destination $target
-        if ((Get-FileSha256 -Path $source) -ne (Get-FileSha256 -Path $target)) {
-            throw "Backup copy of $source does not match the original."
-        }
-        Write-DeployLog "Backup: copied $source"
-    }
-    $dest
-}
-
-function Remove-OldBackups {
-    <# Keep the newest $Keep backup folders; never removes $Protect. #>
-    param(
-        [Parameter(Mandatory)][string]$BackupRoot,
-        [int]$Keep = $script:BackupsKept,
-        [string]$Protect
-    )
-    $old = Get-ChildItem -LiteralPath $BackupRoot -Directory | Sort-Object Name -Descending |
-        Select-Object -Skip $Keep
-    foreach ($dir in $old) {
-        if ($Protect -and ($dir.FullName -eq $Protect)) { continue }
-        Remove-Item -LiteralPath $dir.FullName -Recurse -Force
-        Write-DeployLog "Removed old backup $($dir.Name)"
-    }
 }
 
 # --- Install, verify, roll back ---------------------------------------------------------
@@ -325,6 +273,11 @@ function Invoke-StationDeploy {
     # 5. Back up before installing.
     $backup = Backup-StationData -ProfileDir $ProfileDir -BackupRoot $backupRoot -OldVersion $previous
     Write-DeployLog "Backup saved to $backup."
+    # Staging and the backup take minutes; make sure nobody opened the app meanwhile.
+    if (Test-BloomRunning) {
+        Write-DeployLog 'Bloom Desktop was opened during the deploy; nothing was changed. Run the deploy again when it is closed.'
+        return New-DeployResult 'skipped-app-running' $Version $previous @() $checks
+    }
 
     # 6. Install, upgrade the database, check, self-test; any failure rolls back.
     $databasePath = Join-Path $ProfileDir '.bloom\data\bloom.db'
@@ -354,22 +307,70 @@ function Invoke-StationDeploy {
     }
 
     foreach ($problem in $problems) { Write-DeployLog "Problem: $problem" }
-    if (-not $previous) {
-        Restore-StationData -BackupDir $backup -ProfileDir $ProfileDir
-        Write-DeployLog 'Nothing to roll back to: this was the first deploy to this station.'
-        return New-DeployResult 'failed-no-rollback' $Version $null $problems $checks
+    $recovery = Invoke-StationRecovery -Version $Version -Previous $previous -BackupDir $backup `
+        -DeployRoot $DeployRoot -ReleasesRoot $releasesRoot -LocalAppData $LocalAppData -ProfileDir $ProfileDir
+    New-DeployResult $recovery.Status $Version $previous (@($problems) + @($recovery.Problems)) $checks
+}
+
+function New-RecoveryResult {
+    param([string]$Status, [string[]]$Problems = @())
+    [pscustomobject]@{ Status = $Status; Problems = @($Problems) }
+}
+
+function Invoke-StationRecovery {
+    <#
+      After a failed deploy: keep the database it left behind, restore bloom.db and .env
+      from this deploy's backup (first, since the data matters most and needs no app),
+      then reinstall the previous version. Each step is checked. Returns Status
+      (rolled-back, failed-same-version, failed-no-rollback, rollback-failed or
+      needs-attention) and Problems.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Version,
+        [string]$Previous,
+        [Parameter(Mandatory)][string]$BackupDir,
+        [Parameter(Mandatory)][string]$DeployRoot,
+        [Parameter(Mandatory)][string]$ReleasesRoot,
+        [Parameter(Mandatory)][string]$LocalAppData,
+        [Parameter(Mandatory)][string]$ProfileDir
+    )
+    $byHand = "The station's data from before the deploy is in $BackupDir; see 'Restoring a backup by hand' in docs/STATION_SETUP.md."
+    if (Test-BloomRunning) {
+        Write-DeployLog 'Bloom Desktop was opened during the deploy; its data was left as is.'
+        return New-RecoveryResult 'needs-attention' @('Bloom Desktop was opened during the deploy, so the data was not restored automatically.', $byHand)
     }
-    if ($previous -eq $Version) {
-        Restore-StationData -BackupDir $backup -ProfileDir $ProfileDir
-        Write-DeployLog "v$Version was already installed; left as is, data restored from the backup."
-        return New-DeployResult 'failed-same-version' $Version $previous $problems $checks
+    try {
+        Save-FailedDatabase -ProfileDir $ProfileDir -FailedRoot (Join-Path $DeployRoot 'failed') -Version $Version | Out-Null
+        Restore-StationData -BackupDir $BackupDir -ProfileDir $ProfileDir
     }
-    Write-DeployLog "Rolling back to v$previous."
-    Invoke-Rollback -PreviousVersion $previous -ReleasesRoot $releasesRoot -LocalAppData $LocalAppData
-    Restore-StationData -BackupDir $backup -ProfileDir $ProfileDir
-    Write-DeployLog "Rolled back to v$previous and restored the database and .env."
-    New-DeployResult 'rolled-back' $Version $previous $problems $checks
+    catch {
+        Write-DeployLog "Restoring the data failed: $($_.Exception.Message)"
+        return New-RecoveryResult 'rollback-failed' @("Restoring the data failed: $($_.Exception.Message)", $byHand)
+    }
+
+    if (-not $Previous) {
+        Write-DeployLog 'Data restored. Nothing to reinstall: this was the first deploy to this station.'
+        return New-RecoveryResult 'failed-no-rollback'
+    }
+    if ($Previous -eq $Version) {
+        Write-DeployLog "Data restored. v$Version was already installed."
+        return New-RecoveryResult 'failed-same-version'
+    }
+    try {
+        Write-DeployLog "Data restored. Reinstalling v$Previous."
+        Invoke-Rollback -PreviousVersion $Previous -ReleasesRoot $ReleasesRoot -LocalAppData $LocalAppData
+    }
+    catch {
+        Write-DeployLog "Reinstalling v$Previous failed: $($_.Exception.Message)"
+        return New-RecoveryResult 'rollback-failed' @("The data was restored, but reinstalling v$Previous failed: $($_.Exception.Message)", $byHand)
+    }
+    $installed = Get-InstalledVersion -LocalAppData $LocalAppData
+    if ($installed -ne $Previous) {
+        return New-RecoveryResult 'rollback-failed' @("The data was restored, but the installed version is '$installed', not v$Previous.", $byHand)
+    }
+    Write-DeployLog "Rolled back to v$Previous with the data restored."
+    New-RecoveryResult 'rolled-back'
 }
 
 Export-ModuleMember -Function Invoke-StationDeploy, Save-ReleaseFiles, Assert-Checksums, Get-InstalledVersion,
-    Backup-StationData, Remove-OldBackups, Install-Release, Test-Installation, Invoke-Rollback
+    Install-Release, Test-Installation, Invoke-Rollback
