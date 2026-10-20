@@ -105,6 +105,8 @@ jobs:
   deploy:
     name: Deploy to ${{ inputs.station }}
     needs: plan
+    # The station's runner hook (deploy/windows/runner-job-started.ps1) enforces the same.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, windows, '${{ needs.plan.outputs.runner_label }}']
     environment:
       name: ${{ needs.plan.outputs.environment }}

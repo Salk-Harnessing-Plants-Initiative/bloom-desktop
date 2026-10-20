@@ -49,16 +49,37 @@ Do this on the station, signed in as its shared lab account: Squirrel installs p
 
 1. **Database.** A station that has data from bloom-desktop-pilot needs it converted first; see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md). The converted database goes in `%USERPROFILE%\.bloom\data\bloom.db`.
 2. **Machine settings.** Install Bloom Desktop once by hand and complete Machine Configuration (CylinderScan, scanner name, camera IP, scans folder, Bloom account). Set the user environment variables `BLOOM_USE_MOCK_HARDWARE`, `BLOOM_USE_MOCK_CAMERA` and `BLOOM_USE_MOCK_DAQ` to `false` (System Properties → Environment Variables → User variables).
-3. **Register the runner.** In the organization's settings, **Actions → Runners → New self-hosted runner** (Windows, x64), and follow GitHub's commands in PowerShell, in a folder such as `C:\actions-runner`. When `config.cmd` asks:
-   - runner group: `bloom-stations`;
+3. **Register the runner on this repository.** In the repository's **Settings → Actions → Runners → New self-hosted runner** (Windows, x64), follow GitHub's commands in PowerShell, in `C:\actions-runner`. When `config.cmd` asks:
    - labels: `windows` and the station's `runner_label` (e.g. `station-pc1`);
    - run as a service: **yes**, with the lab account (it asks for the account's Windows password; the password stays on the station).
-4. **GitHub environment.** A repository admin creates the environment named in the station's `environment` field (e.g. `station-pc1`), with required reviewers and **Deployment branches: `main` only**.
-5. **Add the station** to `deploy/stations.yaml` and to the README's Stations table (see [RELEASING.md](RELEASING.md#adding-a-station)).
 
-The runner group `bloom-stations` is limited to this repository and to `.github/workflows/deploy.yml` on `main`, so no pull request or other workflow can run on a station.
+   Register it on the repository, not the organization, so no other repository can use it.
 
-Adding more stations needs no code change: steps 1–5 for each.
+4. **Install the job hook**, which lets only the Deploy workflow from `main` run on the station. The repository is public and the organization's plan can't limit a runner to one workflow, so without it a workflow from a fork pull request or a pushed branch that names the station's labels would run as the lab account. In PowerShell as an administrator:
+
+   ```powershell
+   $labAccount = 'PBIOB-GH'   # the station's lab account, which the runner runs as
+   $raw = 'https://raw.githubusercontent.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/main/deploy/windows'
+   New-Item -ItemType Directory -Force C:\actions-runner\hooks | Out-Null
+   foreach ($file in 'runner-job-started.ps1', 'RunnerJobCheck.psm1') {
+       Invoke-WebRequest "$raw/$file" -OutFile "C:\actions-runner\hooks\$file" -UseBasicParsing
+   }
+   Add-Content C:\actions-runner\.env 'ACTIONS_RUNNER_HOOK_JOB_STARTED=C:\actions-runner\hooks\runner-job-started.ps1'
+   # Only the lab account, Administrators and SYSTEM may change the runner or read the deploy backups:
+   foreach ($dir in 'C:\actions-runner', 'C:\BloomDeploy') {
+       New-Item -ItemType Directory -Force $dir | Out-Null
+       icacls $dir /inheritance:r /grant:r "${labAccount}:(OI)(CI)F" 'Administrators:(OI)(CI)F' 'SYSTEM:(OI)(CI)F' | Out-Null
+   }
+   Restart-Service 'actions.runner.*'
+   ```
+
+   Every job then logs `Station job hook: Deploy workflow from main, allowed.`, and anything else fails with `Refused by the station's job hook`. When `runner-job-started.ps1` or `RunnerJobCheck.psm1` changes in the repository, download them again. If even a Deploy run from `main` is refused with an empty workflow name, the runner isn't passing the job's details to the hook: tell the maintainers rather than removing the hook.
+
+5. **GitHub environment.** A repository admin creates the environment named in the station's `environment` field (e.g. `station-pc1`), with required reviewers and **Deployment branches: `main` only**.
+6. **Repository setting (once, for all stations):** **Settings → Actions → General → Approval for running fork pull request workflows → Require approval for all external contributors.**
+7. **Add the station** to `deploy/stations.yaml` and to the README's Stations table (see [RELEASING.md](RELEASING.md#adding-a-station)).
+
+Adding more stations needs no code change: steps 1–5 and 7 for each.
 
 ## Deploying
 

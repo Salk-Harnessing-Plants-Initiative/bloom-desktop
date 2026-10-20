@@ -30,6 +30,7 @@ interface Step {
 }
 interface Job {
   needs?: string | string[];
+  if?: string;
   'runs-on': string | string[];
   environment?: string | { name: string; url?: string };
   permissions?: Record<string, string>;
@@ -78,6 +79,12 @@ describe('deploy.yml', () => {
     const guard = plan.steps[0];
     expect(guard.if).toBe("github.ref != 'refs/heads/main'");
     expect(guard.run).toContain('exit 1');
+  });
+
+  it('only runs the station job for a manual run on main', () => {
+    expect(deploy.if).toBe(
+      "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'"
+    );
   });
 
   it('runs the station job on the planned runner, in the planned environment', () => {
