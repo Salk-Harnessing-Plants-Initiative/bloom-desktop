@@ -55,6 +55,8 @@ function runSelfTest(
     ...process.env,
     HOME: home,
     USERPROFILE: home,
+    // Chromium's own log, so a native startup failure says why.
+    ELECTRON_ENABLE_LOGGING: '1',
   };
   delete env.BLOOM_DATABASE_URL;
   const run = spawnSync(
@@ -67,13 +69,38 @@ function runSelfTest(
   if (!fs.existsSync(resultFile)) {
     throw new Error(
       `No result file. Exit status ${run.status}, signal ${run.signal}.\n` +
-        `App output (last ${OUTPUT_TAIL_CHARS} chars):\n${output.slice(-OUTPUT_TAIL_CHARS)}`
+        `App output (last ${OUTPUT_TAIL_CHARS} chars):\n${output.slice(-OUTPUT_TAIL_CHARS)}\n` +
+        probeWithoutHomeOverride(appPath, resultFile)
     );
   }
   const result = JSON.parse(
     fs.readFileSync(resultFile, 'utf8')
   ) as SelfTestJson;
   return { status: run.status, result, output };
+}
+
+/**
+ * Diagnostic for a missing result file: the same binary with the runner's own
+ * environment and no database (so it should exit 2 and write a result). Tells a
+ * crash caused by the HOME/USERPROFILE override apart from one at any start.
+ */
+function probeWithoutHomeOverride(appPath: string, resultFile: string): string {
+  const probeFile = `${resultFile}.probe.json`;
+  const probe = spawnSync(
+    appPath,
+    ['--deploy-self-test', `--result-file=${probeFile}`],
+    {
+      env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' },
+      encoding: 'utf8',
+      timeout: SELF_TEST_TIMEOUT_MS,
+    }
+  );
+  const output = `${probe.stdout ?? ''}${probe.stderr ?? ''}`;
+  return (
+    `Probe without the home override: exit status ${probe.status}, ` +
+    `result file ${fs.existsSync(probeFile) ? 'written' : 'missing'}.\n` +
+    `Probe output (last ${OUTPUT_TAIL_CHARS} chars):\n${output.slice(-OUTPUT_TAIL_CHARS)}`
+  );
 }
 
 function sha256(file: string): string {
