@@ -32,6 +32,43 @@ Describe 'Assert-Checksums' {
     }
 }
 
+Describe 'Test-StagedRelease' {
+    BeforeEach {
+        $stage = Join-Path $TestDrive ('staged-' + [guid]::NewGuid())
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        Set-Content -LiteralPath (Join-Path $stage 'Setup.exe') -Value 'installer' -NoNewline
+        $hash = (Get-FileHash -LiteralPath (Join-Path $stage 'Setup.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+        Set-Content -LiteralPath (Join-Path $stage 'SHA256SUMS') -Value "$hash  Setup.exe"
+        Set-Content -LiteralPath (Join-Path $stage 'manifest.json') -Value '{"files": [{"name": "Setup.exe", "target": "windows"}]}'
+    }
+
+    It 'is true for a complete, matching release' {
+        Test-StagedRelease -StageDir $stage | Should -BeTrue
+    }
+
+    It 'is false when a file was changed after staging' {
+        Set-Content -LiteralPath (Join-Path $stage 'Setup.exe') -Value 'swapped' -NoNewline
+        Test-StagedRelease -StageDir $stage | Should -BeFalse
+    }
+
+    It 'is false without the manifest' {
+        Remove-Item -LiteralPath (Join-Path $stage 'manifest.json')
+        Test-StagedRelease -StageDir $stage | Should -BeFalse
+    }
+}
+
+Describe 'Invoke-Rollback' {
+    It 'refuses to run a staged installer that does not match SHA256SUMS' {
+        $releases = Join-Path $TestDrive ('releases-' + [guid]::NewGuid())
+        New-Item -ItemType Directory -Force -Path (Join-Path $releases 'v0.1.0') | Out-Null
+        Set-Content -LiteralPath (Join-Path $releases 'v0.1.0\Setup.exe') -Value 'unverified'
+        Mock -ModuleName BloomDeploy Install-Release { }
+        { Invoke-Rollback -PreviousVersion '0.1.0' -ReleasesRoot $releases -LocalAppData (Join-Path $TestDrive 'lad-none') } |
+            Should -Throw "*don't match SHA256SUMS*"
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
+    }
+}
+
 Describe 'Get-InstalledVersion' {
     It 'returns $null when the app is not installed' {
         Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'empty') | Should -BeNullOrEmpty
@@ -54,42 +91,16 @@ Describe 'Get-InstalledVersion' {
 
 Describe 'Test-Installation' {
     BeforeEach {
-        $lad = Join-Path $TestDrive 'lad'
+        $lad = Join-Path $TestDrive ('lad-' + [guid]::NewGuid())
         New-Item -ItemType Directory -Force -Path (Join-Path $lad 'bloom_desktop\app-0.2.0') | Out-Null
-        $userProfile = Join-Path $TestDrive 'profile'
-        New-Item -ItemType Directory -Force -Path (Join-Path $userProfile '.bloom') | Out-Null
-        Set-Content -LiteralPath (Join-Path $userProfile '.bloom\.env') -Value @(
-            'SCANNER_MODE=cylinderscan', 'SCANNER_NAME=PC1Scanner', 'CAMERA_IP_ADDRESS=10.0.0.5'
-        )
-        Mock -ModuleName BloomDeploy Get-UserEnvironmentVariable { 'false' }
-        Mock -ModuleName BloomDeploy Get-FreeDiskGB { 100 }
     }
 
-    It 'reports no problems for a ready station' {
-        @(Test-Installation -Version '0.2.0' -ScannerName 'PC1Scanner' -LocalAppData $lad -ProfileDir $userProfile) |
-            Should -HaveCount 0
+    It 'reports no problems when the requested version is installed' {
+        @(Test-Installation -Version '0.2.0' -LocalAppData $lad) | Should -HaveCount 0
     }
 
     It 'reports the wrong installed version' {
-        @(Test-Installation -Version '0.3.0' -ScannerName 'PC1Scanner' -LocalAppData $lad -ProfileDir $userProfile) |
-            Should -Contain "Installed version is '0.2.0', expected '0.3.0'."
-    }
-
-    It 'reports mock mode left on' {
-        Mock -ModuleName BloomDeploy Get-UserEnvironmentVariable { 'true' } -ParameterFilter { $Name -eq 'BLOOM_USE_MOCK_CAMERA' }
-        (@(Test-Installation -Version '0.2.0' -ScannerName 'PC1Scanner' -LocalAppData $lad -ProfileDir $userProfile) -join "`n") |
-            Should -Match 'BLOOM_USE_MOCK_CAMERA'
-    }
-
-    It 'reports a mock camera, the wrong scanner and low disk space' {
-        Set-Content -LiteralPath (Join-Path $userProfile '.bloom\.env') -Value @(
-            'SCANNER_MODE=cylinderscan', 'SCANNER_NAME=Other', 'CAMERA_IP_ADDRESS=mock'
-        )
-        Mock -ModuleName BloomDeploy Get-FreeDiskGB { 3 }
-        $text = @(Test-Installation -Version '0.2.0' -ScannerName 'PC1Scanner' -LocalAppData $lad -ProfileDir $userProfile) -join "`n"
-        $text | Should -Match 'CAMERA_IP_ADDRESS'
-        $text | Should -Match "SCANNER_NAME in .env is 'Other'"
-        $text | Should -Match 'Only 3 GB free'
+        @(Test-Installation -Version '0.3.0' -LocalAppData $lad) | Should -Contain "Installed version is '0.2.0', expected '0.3.0'."
     }
 }
 
@@ -137,6 +148,7 @@ Describe 'Invoke-StationDeploy' {
         Mock -ModuleName BloomDeploy Test-BloomRunning { $false }
         Mock -ModuleName BloomDeploy Test-CameraReachable { $true }
         Mock -ModuleName BloomDeploy Test-BloomAccess { $null }
+        Mock -ModuleName BloomDeploy Test-StationReady { }
         Mock -ModuleName BloomDeploy Get-DatabaseRowCounts { @{ Scan = 5 } }
         Mock -ModuleName BloomDeploy Update-StationDatabase { }
         Mock -ModuleName BloomDeploy Install-Release { }
@@ -186,6 +198,23 @@ Describe 'Invoke-StationDeploy' {
         Should -Invoke -ModuleName BloomDeploy Save-ReleaseFiles -Times 1 -ParameterFilter {
             $BaseUrl -eq 'https://example.invalid/download/v0.1.0' -and $StageDir -like '*releases\v0.1.0'
         }
+    }
+
+    It 'changes nothing when the station settings are not ready' {
+        Mock -ModuleName BloomDeploy Test-StationReady { 'SCANNER_MODE in .env must be cylinderscan.' }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'station-not-ready'
+        $result.Problems | Should -Contain 'SCANNER_MODE in .env must be cylinderscan.'
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
+        Test-Path (Join-Path $root 'backups\*') | Should -BeFalse
+    }
+
+    It 'changes nothing when the database cannot be read' {
+        Mock -ModuleName BloomDeploy Get-DatabaseRowCounts { throw 'database is locked' }
+        (Invoke-StationDeploy @common).Status | Should -Be 'database-unreadable'
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
+        Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 0 -Exactly
+        Test-Path (Join-Path $root 'backups\*') | Should -BeFalse
     }
 
     It 'changes nothing when the installed version cannot be staged' {
@@ -245,10 +274,10 @@ Describe 'Invoke-StationDeploy' {
     }
 
     It 'rolls back to the previous version when verification fails' {
-        Mock -ModuleName BloomDeploy Test-Installation { 'SCANNER_MODE in .env must be cylinderscan.' }
+        Mock -ModuleName BloomDeploy Test-Installation { "Installed version is '0.1.0', expected '0.2.0'." }
         $result = Invoke-StationDeploy @common
         $result.Status | Should -Be 'rolled-back'
-        $result.Problems | Should -Contain 'SCANNER_MODE in .env must be cylinderscan.'
+        $result.Problems | Should -Contain "Installed version is '0.1.0', expected '0.2.0'."
         Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 1 -ParameterFilter { $PreviousVersion -eq '0.1.0' }
         Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1
     }
@@ -317,7 +346,7 @@ Describe 'Invoke-StationDeploy' {
 
     It 'restores the data on a first deploy with nothing to reinstall' {
         Mock -ModuleName BloomDeploy Get-InstalledVersion { $null }
-        Mock -ModuleName BloomDeploy Test-Installation { 'SCANNER_MODE in .env must be cylinderscan.' }
+        Mock -ModuleName BloomDeploy Test-Installation { "Installed version is '', expected '0.2.0'." }
         (Invoke-StationDeploy @common).Status | Should -Be 'failed-no-rollback'
         Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1 -Exactly
     }

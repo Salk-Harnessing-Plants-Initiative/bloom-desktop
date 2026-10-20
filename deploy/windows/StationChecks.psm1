@@ -15,6 +15,12 @@ $script:BloomRequestTimeoutSeconds = 30
 $script:SelfTestTimeoutSeconds = 240
 # The first release whose app has --deploy-self-test.
 $script:SelfTestMinVersion = [version]'0.2.1'
+# 0x80000003 (STATUS_BREAKPOINT) as a signed or unsigned exit code: Chromium couldn't start.
+$script:ChromiumStartupCrashCodes = @(-2147483645, 2147483651)
+$script:MinFreeDiskGB = 20
+# Room for two releases' installers (about 0.7 GB each) and a backup of bloom.db.
+$script:MinDeployDiskGB = 5
+$script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'BLOOM_USE_MOCK_DAQ')
 # The log file path is kept in the process environment, not module state, so every module
 # that imports this one (BloomDeploy, StationData) writes to the same file.
 $script:LogFileVariable = 'BLOOM_DEPLOY_LOG_FILE'
@@ -89,6 +95,67 @@ function Read-StationEnv {
     $settings
 }
 
+function Get-UserEnvironmentVariable {
+    param([Parameter(Mandatory)][string]$Name)
+    [Environment]::GetEnvironmentVariable($Name, 'User')
+}
+
+function Get-FreeDiskGB {
+    param([Parameter(Mandatory)][string]$Path)
+    $drive = (Get-Item -LiteralPath $Path).PSDrive
+    [math]::Floor((Get-PSDrive -Name $drive.Name).Free / 1GB)
+}
+
+function Test-StationReady {
+    <#
+      Station settings that don't depend on the release, checked before anything changes.
+      Returns a list of problems; empty means the station is ready for a deploy.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$ScannerName,
+        [Parameter(Mandatory)][string]$ProfileDir,
+        [Parameter(Mandatory)][string]$DeployRoot
+    )
+    $problems = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($name in $script:MockVariables) {
+        if ((Get-UserEnvironmentVariable -Name $name) -ne 'false') {
+            $problems.Add("User environment variable $name must be 'false' so real hardware is used.")
+        }
+    }
+
+    $settings = Read-StationEnv -ProfileDir $ProfileDir
+    if ($settings.Count -eq 0) {
+        $problems.Add('%USERPROFILE%\.bloom\.env is missing: set up Machine Configuration on the station.')
+        return $problems.ToArray()
+    }
+    if ($settings['SCANNER_MODE'] -ne 'cylinderscan') { $problems.Add('SCANNER_MODE in .env must be cylinderscan.') }
+    if ($settings['SCANNER_NAME'] -ne $ScannerName) {
+        $problems.Add("SCANNER_NAME in .env is '$($settings['SCANNER_NAME'])', expected '$ScannerName'.")
+    }
+    $cameraIp = $settings['CAMERA_IP_ADDRESS']
+    if (-not $cameraIp -or $cameraIp -eq 'mock') { $problems.Add('CAMERA_IP_ADDRESS in .env must be the real camera, not mock or empty.') }
+
+    # Scans go to SCANS_DIR (e.g. E:\bloom-scans); installers and backups to the deploy folder.
+    $scansDir = $settings['SCANS_DIR']
+    if (-not $scansDir -or -not (Test-Path -LiteralPath $scansDir)) {
+        $problems.Add('SCANS_DIR in .env must be an existing folder.')
+    }
+    else {
+        $scansFree = Get-FreeDiskGB -Path $scansDir
+        if ($scansFree -lt $script:MinFreeDiskGB) {
+            $problems.Add("Only $scansFree GB free on the scans drive; at least $($script:MinFreeDiskGB) GB is needed.")
+        }
+    }
+    $deployFree = Get-FreeDiskGB -Path $DeployRoot
+    if ($deployFree -lt $script:MinDeployDiskGB) {
+        $problems.Add("Only $deployFree GB free for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
+    }
+
+    # Plain values, so callers' @(...) gives an empty array when there are no problems.
+    $problems.ToArray()
+}
+
 function Test-CameraReachable {
     param([string]$Address)
     if (-not $Address -or $Address -eq 'mock') { return $false }
@@ -115,7 +182,7 @@ function Test-BloomAccess {
             -Body $body -ContentType 'application/json' -TimeoutSec $script:BloomRequestTimeoutSeconds
     }
     catch {
-        return "Bloom login failed for $($Settings['BLOOM_SCANNER_USERNAME']): $($_.Exception.Message)"
+        return "Bloom login with the station's saved account failed: $($_.Exception.Message)"
     }
     try {
         $headers['Authorization'] = "Bearer $($session.access_token)"
@@ -140,11 +207,16 @@ function Get-DatabaseRowCounts {
     )
     if (-not (Test-Path -LiteralPath $DatabasePath)) { return @{} }
     $tool = Join-Path $PSScriptRoot 'db-tool.js'
+    $previousNodePath = $env:NODE_PATH
     $env:NODE_PATH = Join-Path $ToolsDir 'node_modules'
-    $output = @(Invoke-Node -Arguments @($tool, 'counts', $DatabasePath))
-    if ($LASTEXITCODE -ne 0) { throw "Counting rows in $DatabasePath failed: $($output -join ' ')" }
+    try { $output = @(Invoke-Node -Arguments @($tool, 'counts', $DatabasePath)) }
+    finally { $env:NODE_PATH = $previousNodePath }
+    if ($LASTEXITCODE -ne 0) { throw "Counting rows in bloom.db failed: $($output -join ' ')" }
+    # The JSON line; Node may also print warnings.
+    $json = @($output | Where-Object { $_ -match '^\{' })
+    if ($json.Count -eq 0) { throw 'Counting rows in bloom.db printed no result.' }
     $counts = @{}
-    ($output[-1] | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $counts[$_.Name] = [long]$_.Value }
+    ($json[-1] | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $counts[$_.Name] = [long]$_.Value }
     $counts
 }
 
@@ -171,7 +243,12 @@ function Update-StationDatabase {
     $env:BLOOM_DATABASE_URL = 'file:' + ($DatabasePath -replace '\\', '/')
     try {
         $output = @(Invoke-Node -Arguments @($prisma, 'migrate', 'deploy', '--schema', $SchemaPath))
-        $output | ForEach-Object { Write-DeployLog "  prisma: $_" }
+        # The public job log gets 'bloom.db', not the station's profile path.
+        $paths = @($DatabasePath, ($DatabasePath -replace '\\', '/'))
+        foreach ($line in $output) {
+            foreach ($path in $paths) { $line = $line.Replace($path, 'bloom.db') }
+            Write-DeployLog "  prisma: $line"
+        }
         if ($LASTEXITCODE -ne 0) { throw "Database upgrade failed (prisma migrate deploy exited $LASTEXITCODE)." }
     }
     finally {
@@ -212,7 +289,11 @@ function Invoke-DeploySelfTest {
             return [pscustomobject]@{ Status = 'failed'; Detail = 'timed out'; Problems = @("Self-test did not finish within $($script:SelfTestTimeoutSeconds) seconds.") }
         }
         if (-not (Test-Path -LiteralPath $resultFile)) {
-            return [pscustomobject]@{ Status = 'failed'; Detail = "exit code $($process.ExitCode)"; Problems = @("Self-test wrote no result (exit code $($process.ExitCode)).") }
+            $problem = "Self-test wrote no result (exit code $($process.ExitCode))."
+            if ($process.ExitCode -in $script:ChromiumStartupCrashCodes) {
+                $problem += " The app couldn't start in the runner's session; see 'If the test upload reports that it wrote no result' in docs/STATION_SETUP.md."
+            }
+            return [pscustomobject]@{ Status = 'failed'; Detail = "exit code $($process.ExitCode)"; Problems = @($problem) }
         }
         $result = Get-Content -Raw -LiteralPath $resultFile | ConvertFrom-Json
         if ($result.ok) {
@@ -227,5 +308,5 @@ function Invoke-DeploySelfTest {
 }
 
 Export-ModuleMember -Function Set-DeployLogFile, Write-DeployLog, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
-    Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
+    Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Get-UserEnvironmentVariable, Get-FreeDiskGB, Test-StationReady, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
     Compare-RowCounts, Update-StationDatabase, Invoke-DeploySelfTest

@@ -124,20 +124,41 @@ jobs:
       - name: Checkout the release's database migrations
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.plan.outputs.tag }}
+          # A tag, never a branch that happens to have the same name.
+          ref: refs/tags/${{ needs.plan.outputs.tag }}
           path: release-src
           persist-credentials: false
           sparse-checkout: prisma
+
+      - name: Check the migrations are from the released commit
+        shell: powershell
+        env:
+          RELEASE_BASE_URL: ${{ needs.plan.outputs.release_base_url }}
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+          $released = (Invoke-RestMethod "$env:RELEASE_BASE_URL/manifest.json").commit
+          $checkedOut = (git -C release-src rev-parse HEAD).Trim()
+          if ($checkedOut -ne $released) {
+            Write-Output "::error::release-src is at $checkedOut, but the release was built from $released."
+            exit 1
+          }
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: '20'
 
-      - name: Install the database tools
+      - name: Install and check the database tools
         shell: powershell
         run: |
-          npm install --no-save --no-audit --no-fund --prefix "$env:RUNNER_TEMP\bloom-deploy-tools" prisma@6.18.0 better-sqlite3@12.6.2
+          $tools = "$env:RUNNER_TEMP\bloom-deploy-tools"
+          npm install --no-save --no-audit --no-fund --prefix $tools prisma@6.18.0 better-sqlite3@12.6.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Fail here, before anything on the station changes, if either tool can't run.
+          node "$tools\node_modules\prisma\build\index.js" --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:NODE_PATH = "$tools\node_modules"
+          node -e "new (require('better-sqlite3'))(':memory:').close()"
           exit $LASTEXITCODE
 
       - name: Install the release

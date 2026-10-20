@@ -122,9 +122,21 @@ describe('deploy.yml', () => {
         s.uses?.startsWith('actions/checkout') && s.with?.path === 'release-src'
     );
     expect(migrations?.with).toMatchObject({
-      ref: '${{ needs.plan.outputs.tag }}',
+      ref: 'refs/tags/${{ needs.plan.outputs.tag }}',
       'sparse-checkout': 'prisma',
     });
+    const commitCheck = deploy.steps.find((s) =>
+      s.run?.includes('rev-parse HEAD')
+    );
+    expect(commitCheck?.run).toContain('manifest.json');
+    const toolsIndex = deploy.steps.findIndex((s) =>
+      s.run?.includes('better-sqlite3')
+    );
+    const deployIndex = deploy.steps.findIndex((s) =>
+      s.run?.includes('deploy-station.ps1')
+    );
+    expect(deploy.steps[toolsIndex].run).toContain("require('better-sqlite3')");
+    expect(toolsIndex).toBeLessThan(deployIndex);
     const install = deploy.steps.find((s) =>
       s.run?.includes('deploy-station.ps1')
     );

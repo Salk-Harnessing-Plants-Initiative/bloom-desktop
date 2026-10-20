@@ -51,6 +51,51 @@ Describe 'Read-StationEnv' {
     }
 }
 
+Describe 'Test-StationReady' {
+    BeforeEach {
+        $scans = Join-Path $TestDrive ('scans-' + [guid]::NewGuid())
+        New-Item -ItemType Directory -Force -Path $scans | Out-Null
+        $userProfile = New-StationProfile -EnvLines @(
+            'SCANNER_MODE=cylinderscan', 'SCANNER_NAME=PC1Scanner', 'CAMERA_IP_ADDRESS=10.0.0.5', "SCANS_DIR=$scans"
+        )
+        $ready = @{ ScannerName = 'PC1Scanner'; ProfileDir = $userProfile; DeployRoot = $TestDrive }
+        Mock -ModuleName StationChecks Get-UserEnvironmentVariable { 'false' }
+        Mock -ModuleName StationChecks Get-FreeDiskGB { 100 }
+    }
+
+    It 'reports no problems for a ready station' {
+        @(Test-StationReady @ready) | Should -HaveCount 0
+    }
+
+    It 'reports mock mode left on' {
+        Mock -ModuleName StationChecks Get-UserEnvironmentVariable { 'true' } -ParameterFilter { $Name -eq 'BLOOM_USE_MOCK_CAMERA' }
+        (@(Test-StationReady @ready) -join "`n") | Should -Match 'BLOOM_USE_MOCK_CAMERA'
+    }
+
+    It 'reports a mock camera, the wrong scanner and a missing scans folder' {
+        Set-Content -LiteralPath (Join-Path $userProfile '.bloom\.env') -Value @(
+            'SCANNER_MODE=cylinderscan', 'SCANNER_NAME=Other', 'CAMERA_IP_ADDRESS=mock', 'SCANS_DIR=Z:\missing'
+        )
+        $text = @(Test-StationReady @ready) -join "`n"
+        $text | Should -Match 'CAMERA_IP_ADDRESS'
+        $text | Should -Match "SCANNER_NAME in .env is 'Other'"
+        $text | Should -Match 'SCANS_DIR'
+    }
+
+    It 'checks free space on the scans drive and the deploy drive' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { 3 } -ParameterFilter { $Path -eq $scans }
+        Mock -ModuleName StationChecks Get-FreeDiskGB { 1 } -ParameterFilter { $Path -eq $TestDrive }
+        $text = @(Test-StationReady @ready) -join "`n"
+        $text | Should -Match 'Only 3 GB free on the scans drive'
+        $text | Should -Match 'Only 1 GB free for installers and backups'
+    }
+
+    It 'reports a missing .env' {
+        Remove-Item -LiteralPath (Join-Path $userProfile '.bloom\.env')
+        (@(Test-StationReady @ready) -join "`n") | Should -Match '.env is missing'
+    }
+}
+
 Describe 'Test-CameraReachable' {
     It 'is false for a missing or mock camera without pinging' {
         Mock -ModuleName StationChecks Test-Connection { $true }
@@ -92,8 +137,9 @@ Describe 'Test-BloomAccess' {
     It 'reports a failed login without the password' {
         Mock -ModuleName StationChecks Invoke-RestMethod { throw 'Invalid login credentials' } -ParameterFilter { $Method -eq 'Post' }
         $problem = Test-BloomAccess -Settings $settings -ScannerName 'FastScanner'
-        $problem | Should -Match 'Bloom login failed for scanner@salk.edu'
+        $problem | Should -Match "Bloom login with the station's saved account failed"
         $problem | Should -Not -Match 's3cret-password'
+        $problem | Should -Not -Match 'scanner@salk.edu'
     }
 
     It 'reports a scanner that Bloom does not know, however the empty reply is wrapped' {
@@ -174,6 +220,15 @@ Describe 'Invoke-DeploySelfTest' {
         $result = Invoke-DeploySelfTest -Version '0.2.1' @common
         $result.Status | Should -Be 'failed'
         $result.Problems[0] | Should -Match 'wrote no result'
+    }
+
+    It 'points to the runner-session fallback when the app crashes at start' {
+        Mock -ModuleName StationChecks Start-Process {
+            [pscustomobject]@{ Id = 42; Handle = 1; ExitCode = -2147483645 } |
+                Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($ms) $true } -PassThru
+        }
+        $result = Invoke-DeploySelfTest -Version '0.2.1' @common
+        $result.Problems[0] | Should -Match "couldn't start in the runner's session"
     }
 
     It 'stops the app and fails when it runs too long' {

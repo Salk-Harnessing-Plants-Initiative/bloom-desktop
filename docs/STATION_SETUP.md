@@ -11,11 +11,13 @@ How a Windows CylinderScan station is set up to receive releases from **Actions 
    - stops if Bloom Desktop is running (_nothing changed_);
    - pings the camera at the IP in `.env`. Cameras are usually off between sessions, so this is only reported, unless the run's **require camera** box is ticked (_nothing changed_ if it doesn't answer);
    - logs in to Bloom with the station's saved credentials and checks its scanner is registered, without writing anything (_nothing changed_ if it fails);
-   - downloads the currently installed version too if it isn't in `C:\BloomDeploy\releases\` yet (after a manual install), so it can be reinstalled (_nothing changed_ if it can't);
+   - checks the station's settings: `BLOOM_USE_MOCK_HARDWARE`, `BLOOM_USE_MOCK_CAMERA` and `BLOOM_USE_MOCK_DAQ` are `false`, `.env` has CylinderScan mode, the station's scanner name, a real camera IP and an existing scans folder, and there's at least 20 GB free on the scans drive and 5 GB for installers and backups (_nothing changed_ if not);
+   - downloads the currently installed version too if it isn't in `C:\BloomDeploy\releases\` yet (after a manual install), so it can be reinstalled or its staged files no longer match `SHA256SUMS` (_nothing changed_ if it can't);
+   - reads the database, to compare row counts after the upgrade (_nothing changed_ if it can't);
    - backs up `%USERPROFILE%\.bloom\data\bloom.db` and `%USERPROFILE%\.bloom\.env` into `C:\BloomDeploy\backups\<time>_v<old>\` and checks the copies;
    - installs with `Setup.exe --silent`, without starting the app;
    - **upgrades the database** with the release's migrations (`prisma migrate deploy`), and checks that no table lost rows. The app doesn't upgrade its own database;
-   - checks the installed version, that `BLOOM_USE_MOCK_HARDWARE`, `BLOOM_USE_MOCK_CAMERA` and `BLOOM_USE_MOCK_DAQ` are `false`, that `.env` has CylinderScan mode, the station's scanner name and a real camera IP, and that there's enough free disk space;
+   - checks the new version is the one installed;
    - **test upload:** runs the installed app's `--deploy-self-test` on a copy of the database. It uploads a 3-frame synthetic scan to Bloom (see [Test data in Bloom](#test-data-in-bloom)) with the app's own upload code, without the camera and without changing the station's database;
    - if the install, the database upgrade, a check or the test upload fails: keeps the database it left behind in `C:\BloomDeploy\failed\<time>_v<new>\`, restores `bloom.db` and `.env` from the backup and checks them, then reinstalls the previous version and checks it is installed;
    - keeps the newest 5 backups and 5 failed copies, and writes a log to `C:\BloomDeploy\logs\`, which is also attached to the run.
@@ -49,13 +51,14 @@ Do this on the station, signed in as its shared lab account: Squirrel installs p
 
 1. **Database.** A station that has data from bloom-desktop-pilot needs it converted first; see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md). The converted database goes in `%USERPROFILE%\.bloom\data\bloom.db`.
 2. **Machine settings.** Install Bloom Desktop once by hand and complete Machine Configuration (CylinderScan, scanner name, camera IP, scans folder, Bloom account). Set the user environment variables `BLOOM_USE_MOCK_HARDWARE`, `BLOOM_USE_MOCK_CAMERA` and `BLOOM_USE_MOCK_DAQ` to `false` (System Properties → Environment Variables → User variables).
-3. **Register the runner on this repository.** In the repository's **Settings → Actions → Runners → New self-hosted runner** (Windows, x64), follow GitHub's commands in PowerShell, in `C:\actions-runner`. When `config.cmd` asks:
+3. **Install Git for Windows** (https://git-scm.com/download/win, default options). The deploy checks out the release's database migrations with it and checks they are the released commit.
+4. **Register the runner on this repository.** In the repository's **Settings → Actions → Runners → New self-hosted runner** (Windows, x64), follow GitHub's commands in PowerShell, in `C:\actions-runner`. When `config.cmd` asks:
    - labels: `windows` and the station's `runner_label` (e.g. `station-pc1`);
    - run as a service: **yes**, with the lab account (it asks for the account's Windows password; the password stays on the station).
 
    Register it on the repository, not the organization, so no other repository can use it.
 
-4. **Install the job hook**, which lets only the Deploy workflow from `main` run on the station. The repository is public and the organization's plan can't limit a runner to one workflow, so without it a workflow from a fork pull request or a pushed branch that names the station's labels would run as the lab account. In PowerShell as an administrator:
+5. **Install the job hook**, which lets only the Deploy workflow from `main` run on the station. The repository is public and the organization's plan can't limit a runner to one workflow, so without it a workflow from a fork pull request or a pushed branch that names the station's labels would run as the lab account. In PowerShell as an administrator:
 
    ```powershell
    $labAccount = 'PBIOB-GH'   # the station's lab account, which the runner runs as
@@ -75,11 +78,11 @@ Do this on the station, signed in as its shared lab account: Squirrel installs p
 
    Every job then logs `Station job hook: Deploy workflow from main, allowed.`, and anything else fails with `Refused by the station's job hook`. When `runner-job-started.ps1` or `RunnerJobCheck.psm1` changes in the repository, download them again. If even a Deploy run from `main` is refused with an empty workflow name, the runner isn't passing the job's details to the hook: tell the maintainers rather than removing the hook.
 
-5. **GitHub environment.** A repository admin creates the environment named in the station's `environment` field (e.g. `station-pc1`), with required reviewers and **Deployment branches: `main` only**.
-6. **Repository setting (once, for all stations):** **Settings → Actions → General → Approval for running fork pull request workflows → Require approval for all external contributors.**
-7. **Add the station** to `deploy/stations.yaml` and to the README's Stations table (see [RELEASING.md](RELEASING.md#adding-a-station)).
+6. **GitHub environment.** A repository admin creates the environment named in the station's `environment` field (e.g. `station-pc1`), with required reviewers and **Deployment branches: `main` only**.
+7. **Repository setting (once, for all stations):** **Settings → Actions → General → Approval for running fork pull request workflows → Require approval for all external contributors.**
+8. **Add the station** to `deploy/stations.yaml` and to the README's Stations table (see [RELEASING.md](RELEASING.md#adding-a-station)).
 
-Adding more stations needs no code change: steps 1–5 and 7 for each.
+Adding more stations needs no code change: steps 1–6 and 8 for each.
 
 ## Deploying
 
@@ -92,6 +95,8 @@ Adding more stations needs no code change: steps 1–5 and 7 for each.
 | `camera-unreachable`      | **require camera** was ticked and the camera didn't answer; nothing changed.                                                                                               |
 | `bloom-check-failed`      | Bloom refused the station's login or doesn't know its scanner; nothing changed.                                                                                            |
 | `rollback-unavailable`    | The installed version couldn't be downloaded for a rollback; nothing changed.                                                                                              |
+| `station-not-ready`       | A station setting is wrong (mock mode on, `.env` scanner or camera, scans folder, free space); nothing changed. The problems are listed.                                   |
+| `database-unreadable`     | The station's `bloom.db` couldn't be read before the upgrade; nothing changed.                                                                                             |
 | `rolled-back`             | The install, database upgrade, a check or the test upload failed. The data was restored and checked, and the previous version is installed again. The problems are listed. |
 | `failed-same-version`     | Redeploying the installed version failed; the data was restored.                                                                                                           |
 | `failed-no-rollback`      | First deploy to this station and it failed; the data was restored, but there was no earlier version to reinstall.                                                          |

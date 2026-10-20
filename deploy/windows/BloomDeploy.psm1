@@ -19,28 +19,15 @@ Import-Module (Join-Path $PSScriptRoot 'StationData.psm1') -Force
 
 # --- Constants -------------------------------------------------------------------------
 
-$script:MinFreeDiskGB = 20
 $script:InstallTimeoutSeconds = 600
 $script:DownloadTimeoutSeconds = 600
 $script:ProcessName = 'Bloom Desktop'
 $script:SquirrelAppFolder = 'bloom_desktop'
-$script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'BLOOM_USE_MOCK_DAQ')
 # The app quits on Squirrel's --squirrel-firstrun when this is set, so an install from
 # the runner service doesn't start the app (and open the database) in a hidden session.
 $script:SkipFirstRunVariable = 'BLOOM_DEPLOY_SKIP_FIRSTRUN'
 
 # --- Small helpers (mocked in tests) ----------------------------------------------------
-
-function Get-UserEnvironmentVariable {
-    param([Parameter(Mandatory)][string]$Name)
-    [Environment]::GetEnvironmentVariable($Name, 'User')
-}
-
-function Get-FreeDiskGB {
-    param([Parameter(Mandatory)][string]$Path)
-    $drive = (Get-Item -LiteralPath $Path).PSDrive
-    [math]::Floor((Get-PSDrive -Name $drive.Name).Free / 1GB)
-}
 
 function Test-BloomRunning {
     [bool](Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue)
@@ -81,6 +68,17 @@ function Save-ReleaseFiles {
     $setup = @($windowsFiles | Where-Object { $_.name -like '*.exe' })
     if ($setup.Count -ne 1) { throw "Expected one Setup.exe in the release, found $($setup.Count)." }
     Join-Path $StageDir $setup[0].name
+}
+
+function Test-StagedRelease {
+    <# True when $StageDir holds a release's manifest, SHA256SUMS and Windows files, all matching. #>
+    param([Parameter(Mandatory)][string]$StageDir)
+    $manifestPath = Join-Path $StageDir 'manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath) -or -not (Test-Path -LiteralPath (Join-Path $StageDir 'SHA256SUMS'))) { return $false }
+    $names = @((Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json).files |
+        Where-Object { $_.target -eq 'windows' } | ForEach-Object { $_.name })
+    if ($names.Count -eq 0) { return $false }
+    try { Assert-Checksums -StageDir $StageDir -FileNames $names; $true } catch { $false }
 }
 
 function Assert-Checksums {
@@ -138,43 +136,14 @@ function Install-Release {
 }
 
 function Test-Installation {
-    <# Returns a list of problems; empty means the station is ready. #>
+    <# After installing: a list of problems; empty when $Version is the installed version. #>
     param(
         [Parameter(Mandatory)][string]$Version,
-        [Parameter(Mandatory)][string]$ScannerName,
-        [Parameter(Mandatory)][string]$LocalAppData,
-        [Parameter(Mandatory)][string]$ProfileDir
+        [Parameter(Mandatory)][string]$LocalAppData
     )
-    $problems = [System.Collections.Generic.List[string]]::new()
-
     $installed = Get-InstalledVersion -LocalAppData $LocalAppData
-    if ($installed -ne $Version) { $problems.Add("Installed version is '$installed', expected '$Version'.") }
-
-    foreach ($name in $script:MockVariables) {
-        if ((Get-UserEnvironmentVariable -Name $name) -ne 'false') {
-            $problems.Add("User environment variable $name must be 'false' so real hardware is used.")
-        }
-    }
-
-    $envFile = Join-Path $ProfileDir '.bloom\.env'
-    if (-not (Test-Path -LiteralPath $envFile)) {
-        $problems.Add("$envFile is missing: set up Machine Configuration on the station.")
-    }
-    else {
-        $settings = Read-StationEnv -ProfileDir $ProfileDir
-        if ($settings['SCANNER_MODE'] -ne 'cylinderscan') { $problems.Add('SCANNER_MODE in .env must be cylinderscan.') }
-        if ($settings['SCANNER_NAME'] -ne $ScannerName) {
-            $problems.Add("SCANNER_NAME in .env is '$($settings['SCANNER_NAME'])', expected '$ScannerName'.")
-        }
-        $cameraIp = $settings['CAMERA_IP_ADDRESS']
-        if (-not $cameraIp -or $cameraIp -eq 'mock') { $problems.Add('CAMERA_IP_ADDRESS in .env must be the real camera, not mock or empty.') }
-    }
-
-    $freeGB = Get-FreeDiskGB -Path $ProfileDir
-    if ($freeGB -lt $script:MinFreeDiskGB) { $problems.Add("Only $freeGB GB free; at least $($script:MinFreeDiskGB) GB is needed for scans.") }
-
-    # Plain values, so callers' @(...) gives an empty array when there are no problems.
-    $problems.ToArray()
+    if ($installed -ne $Version) { return @("Installed version is '$installed', expected '$Version'.") }
+    @()
 }
 
 function Invoke-Rollback {
@@ -185,6 +154,9 @@ function Invoke-Rollback {
         [Parameter(Mandatory)][string]$LocalAppData
     )
     $stage = Join-Path $ReleasesRoot "v$PreviousVersion"
+    if (-not (Test-StagedRelease -StageDir $stage)) {
+        throw "Can't roll back: the staged files for v$PreviousVersion in $stage are missing or don't match SHA256SUMS."
+    }
     $setup = @(Get-ChildItem -LiteralPath $stage -Filter '*.exe' -ErrorAction SilentlyContinue)
     if ($setup.Count -ne 1) { throw "Can't roll back: no staged Setup.exe for v$PreviousVersion in $stage." }
 
@@ -247,7 +219,7 @@ function Invoke-StationDeploy {
     $checks['Camera'] = if ($cameraOk) { 'reachable' } elseif ($RequireCamera) { 'not reachable' } else { 'not reachable (not required)' }
     Write-DeployLog "Camera: $($checks['Camera'])."
     if (-not $cameraOk -and $RequireCamera) {
-        return New-DeployResult 'camera-unreachable' $Version $previous @("Camera at $($settings['CAMERA_IP_ADDRESS']) did not answer; nothing was changed.") $checks
+        return New-DeployResult 'camera-unreachable' $Version $previous @('The camera (CAMERA_IP_ADDRESS in .env) did not answer; nothing was changed.') $checks
     }
     $bloomProblem = Test-BloomAccess -Settings $settings -ScannerName $ScannerName
     $checks['Bloom login'] = if ($bloomProblem) { 'failed' } else { 'ok' }
@@ -256,9 +228,19 @@ function Invoke-StationDeploy {
         return New-DeployResult 'bloom-check-failed' $Version $previous @($bloomProblem) $checks
     }
 
+    $notReady = @(Test-StationReady -ScannerName $ScannerName -ProfileDir $ProfileDir -DeployRoot $DeployRoot)
+    $checks['Station settings'] = if ($notReady.Count -eq 0) { 'ok' } else { 'not ready' }
+    if ($notReady.Count -gt 0) {
+        foreach ($problem in $notReady) { Write-DeployLog "Not ready: $problem" }
+        return New-DeployResult 'station-not-ready' $Version $previous $notReady $checks
+    }
+
     # 4. Make sure the installed version can be reinstalled (e.g. after a manual install).
-    if ($previous -and $previous -ne $Version -and -not (Test-Path (Join-Path $releasesRoot "v$previous\*.exe"))) {
+    if ($previous -and $previous -ne $Version -and -not (Test-StagedRelease -StageDir (Join-Path $releasesRoot "v$previous"))) {
         $previousUrl = $ReleaseBaseUrl -replace "/v$([regex]::Escape($Version))$", "/v$previous"
+        if ($previousUrl -eq $ReleaseBaseUrl) {
+            return New-DeployResult 'rollback-unavailable' $Version $previous @("Can't work out the download address of v$previous; nothing was changed.") $checks
+        }
         try {
             Save-ReleaseFiles -BaseUrl $previousUrl -StageDir (Join-Path $releasesRoot "v$previous") | Out-Null
             Write-DeployLog "Staged v$previous for a rollback."
@@ -268,6 +250,17 @@ function Invoke-StationDeploy {
             Write-DeployLog $message
             return New-DeployResult 'rollback-unavailable' $Version $previous @($message) $checks
         }
+    }
+
+    # The database must be readable before it's backed up and upgraded.
+    $databasePath = Join-Path $ProfileDir '.bloom\data\bloom.db'
+    try {
+        $rowsBefore = Get-DatabaseRowCounts -DatabasePath $databasePath -ToolsDir $ToolsDir
+    }
+    catch {
+        $message = "Can't read the station's database before the upgrade: $($_.Exception.Message) Nothing was changed."
+        Write-DeployLog $message
+        return New-DeployResult 'database-unreadable' $Version $previous @($message) $checks
     }
 
     # 5. Back up before installing.
@@ -280,15 +273,13 @@ function Invoke-StationDeploy {
     }
 
     # 6. Install, upgrade the database, check, self-test; any failure rolls back.
-    $databasePath = Join-Path $ProfileDir '.bloom\data\bloom.db'
     $problems = @()
     try {
-        $rowsBefore = Get-DatabaseRowCounts -DatabasePath $databasePath -ToolsDir $ToolsDir
         Install-Release -SetupExe $setup
         Update-StationDatabase -DatabasePath $databasePath -SchemaPath $SchemaPath -ToolsDir $ToolsDir
         $problems = @(Compare-RowCounts -Before $rowsBefore -After (Get-DatabaseRowCounts -DatabasePath $databasePath -ToolsDir $ToolsDir))
         $checks['Database'] = if ($problems.Count -eq 0) { 'upgraded, no rows lost' } else { 'rows lost' }
-        $problems += @(Test-Installation -Version $Version -ScannerName $ScannerName -LocalAppData $LocalAppData -ProfileDir $ProfileDir)
+        $problems += @(Test-Installation -Version $Version -LocalAppData $LocalAppData)
         if ($problems.Count -eq 0) {
             $selfTest = Invoke-DeploySelfTest -Version $Version -LocalAppData $LocalAppData -ProfileDir $ProfileDir `
                 -Species $TestSpecies -WorkDir (Join-Path $DeployRoot 'self-test')
@@ -372,5 +363,5 @@ function Invoke-StationRecovery {
     New-RecoveryResult 'rolled-back'
 }
 
-Export-ModuleMember -Function Invoke-StationDeploy, Save-ReleaseFiles, Assert-Checksums, Get-InstalledVersion,
+Export-ModuleMember -Function Invoke-StationDeploy, Save-ReleaseFiles, Test-StagedRelease, Assert-Checksums, Get-InstalledVersion,
     Install-Release, Test-Installation, Invoke-Rollback
