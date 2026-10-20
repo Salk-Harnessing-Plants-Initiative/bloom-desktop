@@ -107,6 +107,9 @@ async function writeFailure(
 export async function startDeploySelfTest(
   request: DeploySelfTestRequest
 ): Promise<void> {
+  // Called before 'ready'. The self-test draws nothing, and a station's runner service
+  // may have no desktop for a GPU process; without one, Chromium exits at start.
+  app.disableHardwareAcceleration();
   await app.whenReady();
   if (request.kind === 'invalid') {
     await writeFailure(request.resultFile, request.error);

@@ -54,9 +54,9 @@ A failed run leaves no tag and no release. If uploading the draft fails, the wor
 | "Couldn't delete the incomplete draft" / "Couldn't find the draft"                       | Delete any draft for that version on the Releases page, then **Re-run failed jobs**.                                                                                                                                                                 |
 | You cancelled the run while it was creating the draft                                    | Delete any draft for that version on the Releases page before running again.                                                                                                                                                                         |
 
-**Pre-releases:** releasing a version like `0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1` on `main`) publishes a GitHub pre-release tagged `v0.2.0-rc.1`, useful for trying a build on one station first. Notes:
+**Pre-releases:** releasing a version like `0.2.0-rc.1` (with `package.json` at `0.2.0-rc.1` on `main`) publishes a GitHub pre-release tagged `v0.2.0-rc.1`, useful for trying a build on one station first: Actions → Deploy accepts it like any release. Notes:
 
-- Keep the number below 10 (`rc.1`…`rc.9`). The Windows installer drops the dot (`rc.10` → `rc10`) and compares the label as text, so `rc10` would sort below `rc2`.
+- Use one label and a number below 10 (`rc.1`…`rc.9`, `beta.1`…). The Windows installer drops the dot (`rc.1` → `app-0.2.1-rc1`) and compares the label as text, so `rc10` would sort below `rc2`; Deploy refuses other pre-release forms.
 - The Linux file is published as `bloom-desktop_X.Y.Z-rc.N_amd64.deb`; the package version inside it is `X.Y.Z~rc.N`, which Debian sorts before `X.Y.Z`.
 - Bump `package.json` to the final `X.Y.Z` before the next promotion, so a final release isn't attempted while it still says `-rc`.
 
@@ -77,3 +77,5 @@ stations:
 ```
 
 The file is public. CI (`npm run stations:validate`) rejects unknown fields and top-level keys, credential-like field names, and any value containing an IPv4/IPv6 address or a URL with a password. It can't catch hostnames or YAML comments, so keep camera IPs, credentials and mock-mode settings on the station itself.
+
+Also add a row for the station to the README's **Stations** table. To install a release on a station, see [STATION_SETUP.md](STATION_SETUP.md).
