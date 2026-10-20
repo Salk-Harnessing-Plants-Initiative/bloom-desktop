@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f8f4e"/><stop offset="1" stop-color="#1b5a30"/></linearGradient>
+    <marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.6" markerHeight="3.6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ffffff"/></marker>
+  </defs>
+  <!-- tile fills the whole canvas, so the icon is as large as the space allows -->
+  <rect x="0" y="0" width="1024" height="1024" rx="200" fill="url(#bg)"/>
+  <!-- glyph, scaled up around the centre -->
+  <g transform="translate(512 512) scale(1.08) translate(-512 -520)">
+    <path d="M 300 380 L 300 820 A 212 64 0 0 0 724 820 L 724 380" fill="#ffffff" fill-opacity="0.10" stroke="#ffffff" stroke-width="44" stroke-linejoin="round"/>
+    <ellipse cx="512" cy="380" rx="212" ry="64" fill="#ffffff" fill-opacity="0.18" stroke="#ffffff" stroke-width="44"/>
+    <g fill="none" stroke="#f6e7c1" stroke-linecap="round">
+      <path d="M512 560 L512 800" stroke-width="40"/>
+      <path d="M512 630 C 460 670, 430 720, 418 780" stroke-width="30"/>
+      <path d="M512 630 C 564 670, 594 720, 606 780" stroke-width="30"/>
+    </g>
+    <path d="M512 560 L512 230" stroke="#c8ef9f" stroke-width="40" stroke-linecap="round"/>
+    <path d="M512 285 C 440 283, 384 235, 370 165 C 442 165, 498 207, 512 285 z" fill="#c8ef9f"/>
+    <path d="M512 245 C 584 243, 640 195, 656 127 C 584 125, 528 165, 512 245 z" fill="#e3f7c6"/>
+    <path d="M 180 640 A 332 104 0 0 0 830 700" fill="none" stroke="#ffffff" stroke-width="46" stroke-linecap="round" marker-end="url(#a)"/>
+  </g>
+</svg>

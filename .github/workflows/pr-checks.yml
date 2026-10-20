@@ -16,7 +16,11 @@ on:
 
 permissions:
   contents: read # Read repository contents
+  packages: read # Install the private Bloom npm packages from GitHub Packages
   pull-requests: write # Write PR comments (for future coverage reports)
+
+env:
+  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 # Redundant runs for the same ref are grouped so they don't run in parallel.
 # - pull_request pushes: cancel-in-progress=true — only the latest commit's
@@ -66,6 +70,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -133,6 +139,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -165,6 +173,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -199,6 +209,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -272,6 +284,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -355,6 +369,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -430,6 +446,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -508,6 +526,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -606,6 +626,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -668,6 +690,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -714,6 +738,9 @@ jobs:
 
       - name: Verify packaged app window renders and database initializes
         run: npm run test:package:launch
+
+      - name: Verify the packaged deploy self-test
+        run: npm run test:package:self-test
 
       - name: Upload verified maker artifacts
         uses: actions/upload-artifact@v4
@@ -743,6 +770,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -789,6 +818,9 @@ jobs:
 
       - name: Verify packaged app window renders and database initializes
         run: npm run test:package:launch
+
+      - name: Verify the packaged deploy self-test
+        run: npm run test:package:self-test
 
       - name: Upload verified maker artifacts
         uses: actions/upload-artifact@v4
@@ -824,6 +856,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
           cache: 'npm'
 
       - name: Cache node_modules
@@ -875,6 +909,11 @@ jobs:
 
       - name: Verify packaged app window renders and database initializes
         run: xvfb-run --auto-servernum npm run test:package:launch
+        env:
+          ELECTRON_DISABLE_SANDBOX: 1
+
+      - name: Verify the packaged deploy self-test
+        run: xvfb-run --auto-servernum npm run test:package:self-test
         env:
           ELECTRON_DISABLE_SANDBOX: 1
 

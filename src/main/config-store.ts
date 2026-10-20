@@ -793,7 +793,9 @@ export async function fetchScannersFromBloom(
   try {
     // Import Supabase client and SupabaseStore
     const { createClient } = await import('@supabase/supabase-js');
-    const { SupabaseStore } = await import('@salk-hpi/bloom-js');
+    const { SupabaseStore } = await import(
+      '@salk-harnessing-plants-initiative/bloom-js'
+    );
 
     // Create Supabase client
     const supabase = createClient(apiUrl, credentials.bloom_anon_key);

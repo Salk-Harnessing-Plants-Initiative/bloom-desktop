@@ -7,12 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--deploy-self-test` mode: with no window and without touching the station's database, uploads a short synthetic scan to Bloom (experiment `DEPLOY-TEST <scanner name>`) using the station's saved credentials, writes a JSON result and exits 0 (uploaded), 1 (failed) or 2 (bad arguments). For the station deploy to check uploads after installing. CI runs it on each packaged build.
+
 ## [0.2.0] - 2026-10-15
 
 First versioned release.
 
 ### Added
 
+- Bloom Desktop app icon (Windows installer, taskbar and Start menu; macOS; Linux packages), and the name "Bloom Desktop" on Windows ([#406](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/406))
 - Versioned releases: Actions → Release → Run workflow builds the Windows installer (CylinderScan) and Linux `.deb` (GraviScan) once in CI and creates a draft GitHub Release with `manifest.json` and `SHA256SUMS`; a maintainer publishes it, which creates the `vX.Y.Z` tag. Station registry in `deploy/stations.yaml`. See `docs/RELEASING.md` ([#399](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/399), [#400](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/400))
 - `development` merge queue support in CI, and a `Main PR Source` check requiring PRs into `main` to come from `development` ([#395](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/395))
 - GraviScan Browse / Experiment Detail / Metadata UI (roadmap Tier 5, #133, #207, #164)
@@ -24,7 +29,6 @@ First versioned release.
   - Global upload-progress indicator in `Layout` that persists across navigation
   - `docs/graviscan-metadata-spreadsheet-schema.md` documents the expected spreadsheet columns
   - Fixes #286: new experiments now get an explicit `experiment_type` (`'graviscan'` or `'cylinderscan'`) instead of relying on an implicit default
-  - See `openspec/changes/add-graviscan-tier5-browse-metadata/` for full design rationale
 
 - CylinderScan style/UX parity pass ([PR #329](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/329), closes [#104](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/104), [#175](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/175), [#106](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/106), [#107](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/107), roadmap Tier 4)
   - Blue/indigo accents replaced with a lime/stone/amber convention (adapted from `bloom-desktop-pilot`'s real usage) across CylinderScan-only pages and shared scan-management/entity-form pages. `WorkflowSteps.tsx` itself is untouched apart from removing its now-unused `cylinderScanSteps` export — GraviScan's own step data, routes, and the shared component's blue badge/hover colors are unchanged; there is no cross-mode color change in this PR
@@ -33,14 +37,12 @@ First versioned release.
   - Home page "Today's Activity" dashboard: recent scans, upload-status breakdown, and a failed-upload banner (CylinderScan-only); new `db:scans:getFailedUploadCount` handler
   - `BrowseScans.tsx` gains a lazy-loaded thumbnail-preview column and a compact camera-settings-summary column (exposure time labeled in the microseconds it's actually stored in, not milliseconds; brightness/contrast omitted as hardcoded, hardware-unsupported identity defaults with no informational value)
   - `Layout.tsx`'s shell/sidebar recolor and the equivalent GraviScan workflow-guide restructure were deferred rather than built against PR #289/#290, which were both still open and actively rewriting those files as of this PR; tracked in follow-up [#328](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/328), blocked until both merge
-  - See `openspec/changes/add-cylinderscan-style-ux-parity/` for full design rationale
 
 - Layout sidebar/nav parity (closes [#328](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/328), [#337](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/337)) — picks up the cross-mode work Tier 4 deferred above, now that #289/#290 have merged
   - `Layout.tsx`'s shell background (`bg-gray-50` → `bg-stone-100`), sidebar panel (`bg-white shadow-lg` → `bg-stone-100 border-r border-stone-200`, unified into the shell rather than a separate white panel), and sidebar nav-link colors (base `text-gray-700` → `text-stone-700`; hover → `hover:bg-stone-50/70 hover:text-stone-900`, no longer lime; active → `bg-stone-50 text-lime-700 font-medium`, no border accent) now match `salk-bloom`'s (the production web app bloom-desktop uploads scans to) real convention, verified directly against its source rather than extrapolated. `lime-700` is contrast-safe against the lighter `bg-stone-50` background (≈4.79:1, clears WCAG AA's 4.5:1 minimum)
   - New `GraviScanWorkflowGuide` component gives GraviScan's Home screen the same "Daily Workflow" (Configure Scanner, Capture Scan, Browse GraviScans) / "Setup" (Scientists, Phenotypers, Metadata, Experiments) restructure CylinderScan got in Tier 4 via `CylinderScanWorkflowGuide`. Capture Scan's and Experiments' descriptions are generalized rather than carried over verbatim from the retired `graviScanSteps` data, which described both in gravitropism-only terms — GraviScan scanners run other kinds of studies too. `WorkflowSteps.tsx` and its `graviScanSteps` data are retired entirely (no remaining consumers)
   - Both scan modes' sidebars are reordered to match their Home page's Daily-Workflow-first structure: CylinderScan — Home, Camera Settings, Capture Scan, Browse Scans, Export Scans, then Setup; GraviScan — Home, Configure Scanner, Capture Scan, Browse GraviScans, then Setup. The default/no-mode order is unchanged
   - Filed as a follow-up, not fixed here: [#354](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/354) — `ConfigureScanner.tsx`'s "Reset USB"/"Remove Scanner" actions have no confirmation guard, worth addressing now that Daily Workflow placement increases how often operators visit that page
-  - See `openspec/changes/fix-layout-sidebar-nav-parity/` for full design rationale
 
 - GraviScan wave-scoped metadata linking (`database.experiments.{linkGraviMetadata,unlinkGraviMetadata,listGraviMetadata}`), unblocking the Browse/Experiment Detail/Metadata UI proposal (roadmap Tier 5)
   - `GraviExperimentWaveMetadata` model: one metadata-file link per `(experiment, wave)`, FK to `Experiment` (cascades) and `Accessions` (restricted)
@@ -55,7 +57,6 @@ First versioned release.
   - Two operator actions per entry: **Dismiss** (acknowledge, no backend effect) and **Power-Cycled & Retry** (confirmation-gated respawn, only after the operator confirms the physical power-cycle is done)
   - Session-scoped counter shows both total auto-pause events and distinct scanners affected, so a single chronically-re-wedging scanner isn't misread as a fleet-wide problem
   - New `graviscan:wedge-detected` push event and `graviscan:retry-scanner` IPC handler; durable `scanLog()` entries record every auto-pause and retry attempt
-  - See `openspec/changes/add-graviscan-wedge-response-ui/` for full design rationale
 
 - Idle session timer to prevent scan misattribution in shared lab environments (#102, #116)
   - Main process `IdleTimer` class resets session state after 10 minutes of inactivity
@@ -101,16 +102,16 @@ First versioned release.
   - `concurrency` group keyed by workflow + ref; `cancel-in-progress` differentiated by trigger — cancels stale `pull_request` runs, but queues (rather than cancels) `push`-to-`main` runs to preserve each commit's completed CI record where possible
   - Known limitation, documented in-repo: GitHub Actions' default one-pending-run queue depth means a 3rd+ overlapping push to `main` can still silently evict an earlier queued run before it starts; runner contention is still avoided either way
   - `timeout-minutes` added to `test-integration`, `test-e2e-dev`, `test-make`, and `test-make-windows` (evidence-based values from observed run durations), since queuing means a hung job can now block the next queued `main` push's CI, not just its own
-  - See `openspec/changes/add-pr-checks-concurrency-control/` for full design rationale
 - GitHub Copilot review command for fetching PR comments via GraphQL
 - CylinderScan batch scan export page ([PR #300](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/300), closes [#77](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/77), roadmap Tier 3)
   - Export/experiment/date grouped scan selection (checkbox tree), target-directory picker, whole-scan-folder copy preserving `metadata.json` and all images verbatim
   - Rebuilt on current IPC/data conventions rather than ported file-for-file; carries forward the pilot's soft-deleted-scan filtering
   - Metadata-first copy ordering with fail-fast on error, so a failed `metadata.json` copy can't silently leave orphaned image frames
-  - See `openspec/changes/archive/2026-08-06-add-cylinderscan-export-page/` for full design rationale; [#302](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/302) filed for a deferred progress-visibility gap (navigating away mid-export)
+  - [#302](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/302) filed for a deferred progress-visibility gap (navigating away mid-export)
 
 ### Fixed
 
+- Camera Settings shows whether Apply Settings worked ([#404](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/404))
 - The camera IP saved in Machine Configuration is now used for the camera and scans; it was always sent as `mock` ([#394](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/394), fixes [#390](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/390))
 - Saving Machine Configuration no longer overwrites the stored Bloom password with `********` ([#397](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/397), fixes [#391](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/391))
 - A failed database save is reported instead of "Scan completed successfully!" ([#398](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/398), fixes [#392](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/392))
@@ -118,14 +119,13 @@ First versioned release.
   - `GraviMetadataList.tsx` now has loading/error/empty states on its file-list fetch (previously a failed fetch failed silently, indistinguishable from "no files exist") and on the per-file expand fetch, which had the identical gap
   - Added the missing `<thead>` column-header row to the expanded plate/section detail table
   - `GraviMetadataUpload.tsx` now blocks submission when two or more column-mapping fields point at the same spreadsheet column, naming every colliding field and the shared column by position — previously nothing stopped e.g. Medium and Custom Note from silently sharing a column and corrupting per-row data with no error surfaced
-  - See `openspec/changes/fix-gravi-metadata-ux-gaps/` for full design rationale
 - GraviScan scanner-init re-entrancy race + sequential startup ([PR #357](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/357), closes [#350](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/350), [#144](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/144))
   - Two-layer spawn guard in `ScanCoordinator`: a serialization queue on `initialize()` itself, plus a per-`scannerId` in-flight-spawn map at the shared `spawnSingleScanner()` choke point used by both `initialize()` and `addScanner()` — a second caller for the same scanner now awaits the in-flight attempt instead of misdiagnosing a still-connecting worker as dead and respawning it (the original #350 bug: duplicate scan-worker processes and a hung Capture Scan after a failed-run restart)
   - `ScannerSubprocess.shutdown()` now returns `Promise<boolean>` (confirmed vs. unconfirmed process exit via a two-phase graceful-quit → force-kill → confirm-window sequence) instead of blindly resolving after a timeout, applied at every real call site
   - A bounded spawn-ready timeout (45s) means a worker that never signals ready or dies can no longer hang the coordinator forever; the resulting failure message explicitly names the timeout so it's distinguishable in `~/.bloom/logs/graviscan-*.log` from an immediate spawn failure
   - `initialize()`'s per-scanner spawn loop is now `Promise.allSettled`-based instead of sequential — closes #144, ~30s total for N scanners instead of the sum of each one's connect time
-  - Two BLOCKING concurrency bugs were found and fixed by adversarial review of the implementation itself (not just the proposal) before merge: an orphaned reclaim could silently evict and falsely fail-report a healthy replacement installed by a concurrent retry, and a stale `isReady` during the multi-second shutdown grace window could let a concurrent `addScanner()` silently drop a scanner with zero error surfaced — see `openspec/changes/fix-graviscan-scanner-init-race/design.md` for full detail on both
-  - See `openspec/changes/fix-graviscan-scanner-init-race/` for the full proposal, design rationale, and review history; substantially resolves previously-unreferenced [#281](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/281) (items 2-3) and [#243](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/243) (Part A)
+  - Two BLOCKING concurrency bugs were found and fixed by adversarial review of the implementation itself (not just the proposal) before merge: an orphaned reclaim could silently evict and falsely fail-report a healthy replacement installed by a concurrent retry, and a stale `isReady` during the multi-second shutdown grace window could let a concurrent `addScanner()` silently drop a scanner with zero error surfaced
+  - Substantially resolves previously-unreferenced [#281](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/281) (items 2-3) and [#243](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/243) (Part A)
 - CylinderScan config/UX quick fixes from Tier 4 walkthrough ([PR #344](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/344), closes [#333](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/333), [#334](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/334), [#336](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/336), [#338](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/338), [#339](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/339))
   - Fixed stale default `bloom_api_url` (`api.bloom.salk.edu/proxy` → `bloom.salk.edu/api`) in both `config-store.ts` and a second, independent hardcoded copy in `MachineConfiguration.tsx`
   - Machine Configuration now shows a persistent, dismissible "restart required" notice when Scanner Mode changes, instead of the generic auto-dismissing save toast — confirmed `scanner_mode` is the only Machine Config field with this bug
@@ -133,7 +133,7 @@ First versioned release.
   - Camera auto-detection relocated from the Camera Settings page into Machine Configuration's Hardware section, replacing its plain text input — Machine Configuration is now the sole place to set `camera_ip_address`
   - "Check Hardware"/"Restart Python" relocated from Home's status panel into Machine Configuration's Hardware section, with a confirm dialog before restart; Home now shows only a simple Connected/Checking/Error indicator
   - Found and fixed via manual E2E smoke-testing: `config:get`'s real IPC handler (`main.ts`) silently omitted `scanner_mode` from its response, making the entire CylinderScan-only Hardware section fail to render in the real app despite passing unit tests that mock the IPC boundary directly; added a permanent E2E regression test since this bug class is invisible to mocked unit tests
-  - See `openspec/changes/fix-cylinderscan-config-ux-quickfixes/` for full design rationale; [#337](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/337) (sidebar nav ordering) deferred pending PRs #289/#290; follow-up [#343](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/343) filed for Machine Config UI on 3 manual-`.env`-only fields
+  - [#337](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/337) (sidebar nav ordering) deferred pending PRs #289/#290; follow-up [#343](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/343) filed for Machine Config UI on 3 manual-`.env`-only fields
 - CylinderScan correctness & security hardening ([PR #280](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/280), roadmap Tier 1)
   - Replaced `webSecurity: false` with a custom protocol handler + path-traversal validation for local scan-image access (#93)
   - Added cleanup functions to all 8 preload listeners that were missing them (#96)
@@ -142,12 +142,12 @@ First versioned release.
   - Added thread-safety guards around `Scanner.is_scanning` check-then-set points in `python/hardware/scanner.py` (#40)
   - `PythonStatus.tsx` and `python/ipc_handler.py`'s `check_hardware()` are now mode-aware, suppressing Camera/DAQ warnings in GraviScan mode (#198)
   - Added `app.requestSingleInstanceLock()` to prevent multiple concurrent app instances corrupting shared SQLite/hardware state (#249)
-  - See `openspec/changes/archive/2026-08-05-harden-cylinderscan-tier1/` for full design rationale; [#282](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/282) and [#287](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/287) filed for out-of-scope gaps found during review
+  - [#282](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/282) and [#287](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/287) filed for out-of-scope gaps found during review
 - CylinderScan packaging CI + hardware-doc currency ([PR #305](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/305), roadmap Tier 5a)
   - New CI jobs exercise `npm run make` end-to-end on both macOS and Windows, asserting installer artifacts are produced and the packaged app actually renders and initializes its database (#251, #57) — CylinderScan's first Windows packaged-app verification
   - Fixed a real Windows packaging bug found while adding this coverage: unprivileged symlink creation is restricted on Windows, breaking Prisma client resolution on every packaged install; `database.ts` now falls back to a real copy via a new `ensureSymlinkOrCopy()` helper
   - Corrected drifted hardware-validation docs (`CAMERA_TESTING.md`, `DAQ_TESTING.md`, `SCANNER_TESTING.md`, `CONFIGURATION.md`) against already-accepted specs, and added a consolidated `docs/TROUBLESHOOTING.md` (#180)
-  - See `openspec/changes/archive/2026-08-06-add-cylinderscan-packaging-ci/` for full design rationale; [#293](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/293)–[#296](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/296) and [#303](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/303) filed for out-of-scope follow-ups
+  - [#293](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/293)–[#296](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/296) and [#303](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/303) filed for out-of-scope follow-ups
 - CylinderScan delete/upload data-integrity hardening (#79, #105, #120)
   - `db:scans:delete` now also marks the scan's on-disk `metadata.json` as `deleted: true`, keeping it in sync with the (still soft-delete-only) database row
   - Delete affordance added to `ScanPreview.tsx`; both it and `BrowseScans.tsx` now share a real `DeleteConfirmModal` (Plant ID + capture date) instead of `BrowseScans`' previous generic `window.confirm()`
@@ -155,7 +155,7 @@ First versioned release.
   - `image-uploader.ts`: `uploadScan`/`uploadBatch` now skip soft-deleted scans; retry now skips images already marked `'uploaded'` instead of resending them (closing a duplicate-remote-row risk), with a regression test guarding the filtered-array index-safety this depends on
   - `image-uploader.ts`: freshly-uploaded images are now independently verified against Supabase storage (not just trusted from bloom-fs's callback) before being marked `'uploaded'` locally, with a bounded 3-attempt retry distinguishing confirmed-missing from a transient lookup failure — closes a real incident where a failed-then-retried upload was marked succeeded without the bytes actually landing in storage
   - `db:scans:checkDuplicate` replaces the old same-day/(plant_id + experiment_id) duplicate warning in `CaptureScan.tsx` with the correct `(plant_id, experiment_id, wave_number, plant_age_days)` key; `db:scans:getMostRecentScanDate` removed as dead code
-  - See `openspec/changes/add-cylinderscan-delete-upload-integrity/` for full design rationale and follow-up issues filed for out-of-scope items (local↔cloud UUID traceability, a widened upload-audit/reconciliation tool, Basler acquisition-metadata readback)
+  - Follow-up issues filed for out-of-scope items (local↔cloud UUID traceability, a widened upload-audit/reconciliation tool, Basler acquisition-metadata readback)
 - GraviScan `retry-scanner` reporting success when a respawned worker silently fails to come online (#283)
   - `retryScanner()` now checks `coordinator.getScannerStatuses()` immediately after `addScanner()` resolves and returns `{ success: false, error }` if the scanner isn't reported `'ready'` — `addScanner()`/`spawnSingleScanner()` never throw on spawn failure, so a resolved promise alone didn't mean the worker actually came online
   - Retry outcome log lines (`scanLog()`) now also include `session_id`, for cross-session log correlation
@@ -176,4 +176,5 @@ First versioned release.
 
 ### Changed
 
+- Uses the Bloom npm packages from GitHub Packages, `@salk-harnessing-plants-initiative/bloom-js` and `bloom-fs` 0.4.0, instead of GitLab `@salk-hpi`; installing now needs a GitHub token with `read:packages` (see `.npmrc.example`) ([#403](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/403))
 - AccessionList component now includes error handling for getMappings, edit, and delete operations

@@ -63,12 +63,12 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(),
 }));
 
-vi.mock('@salk-hpi/bloom-js', () => ({
+vi.mock('@salk-harnessing-plants-initiative/bloom-js', () => ({
   SupabaseUploader: vi.fn(),
   SupabaseStore: vi.fn(),
 }));
 
-vi.mock('@salk-hpi/bloom-fs', () => ({
+vi.mock('@salk-harnessing-plants-initiative/bloom-fs', () => ({
   uploadImages: vi.fn(),
   concurrentMap: vi.fn(),
 }));
@@ -81,8 +81,14 @@ vi.mock('../../src/main/config-store', () => ({
 
 // Import after mocking
 import { createClient } from '@supabase/supabase-js';
-import { SupabaseUploader, SupabaseStore } from '@salk-hpi/bloom-js';
-import { uploadImages, concurrentMap } from '@salk-hpi/bloom-fs';
+import {
+  SupabaseUploader,
+  SupabaseStore,
+} from '@salk-harnessing-plants-initiative/bloom-js';
+import {
+  uploadImages,
+  concurrentMap,
+} from '@salk-harnessing-plants-initiative/bloom-fs';
 import { loadEnvConfig, getScansDir } from '../../src/main/config-store';
 
 // Import the module under test (will fail until implemented)
@@ -910,7 +916,7 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
      * Database Registration Tests (fix-upload-database-registration)
      *
      * These tests verify that uploads create records in the Supabase database
-     * using @salk-hpi/bloom-fs uploadImages function, matching pilot behavior.
+     * using @salk-harnessing-plants-initiative/bloom-fs uploadImages function, matching pilot behavior.
      */
     describe('database registration (bloom-fs integration)', () => {
       it('should create SupabaseStore during authentication', async () => {
