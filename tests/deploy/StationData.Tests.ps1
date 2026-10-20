@@ -49,6 +49,15 @@ Describe 'Remove-OldBackups' {
         Remove-OldBackups -BackupRoot $root -Keep 2 -Protect $protected
         (Get-ChildItem $root -Directory).Name | Sort-Object | Should -Be @($names[0], $names[2], $names[3])
     }
+
+    It 'logs and carries on when an old copy cannot be removed' {
+        $root = Join-Path $TestDrive ('locked-backups-' + [guid]::NewGuid())
+        $names = '20260101-000000_v0.1.0', '20260102-000000_v0.1.1', '20260103-000000_v0.1.2'
+        foreach ($n in $names) { New-Item -ItemType Directory -Force -Path (Join-Path $root $n) | Out-Null }
+        Mock -ModuleName StationData Remove-Item { throw 'The process cannot access the file.' }
+        { Remove-OldBackups -BackupRoot $root -Keep 1 -ErrorAction Stop } | Should -Not -Throw
+        Should -Invoke -ModuleName StationData Remove-Item -Times 2 -Exactly
+    }
 }
 
 Describe 'Save-FailedDatabase' {
@@ -92,6 +101,28 @@ Describe 'Restore-StationData' {
         Restore-StationData -BackupDir $backup -ProfileDir $userProfile
         Get-Content (Join-Path $userProfile '.bloom\data\bloom.db') | Should -Be 'old-db'
         Get-Content (Join-Path $userProfile '.bloom\.env') | Should -Be 'SCANNER_NAME=Old'
+        Test-Path (Join-Path $userProfile '.bloom\data\bloom.db-journal') | Should -BeFalse
+    }
+
+    It 'puts a journal saved in the backup back after bloom.db' {
+        $userProfile = New-StationProfile
+        $backup = Join-Path $TestDrive ('backup-' + [guid]::NewGuid())
+        New-Item -ItemType Directory -Force -Path $backup | Out-Null
+        Set-Content -LiteralPath (Join-Path $backup 'bloom.db') -Value 'old-db'
+        Set-Content -LiteralPath (Join-Path $backup 'bloom.db-journal') -Value 'old-journal'
+        Restore-StationData -BackupDir $backup -ProfileDir $userProfile
+        Get-Content (Join-Path $userProfile '.bloom\data\bloom.db-journal') | Should -Be 'old-journal'
+    }
+
+    It 'leaves no old journal next to the upgraded database when bloom.db cannot be restored' {
+        $userProfile = New-StationProfile
+        Set-Content -LiteralPath (Join-Path $userProfile '.bloom\data\bloom.db') -Value 'upgraded-db'
+        $backup = Join-Path $TestDrive ('backup-' + [guid]::NewGuid())
+        New-Item -ItemType Directory -Force -Path $backup | Out-Null
+        Set-Content -LiteralPath (Join-Path $backup 'bloom.db') -Value 'old-db'
+        Set-Content -LiteralPath (Join-Path $backup 'bloom.db-journal') -Value 'old-journal'
+        Mock -ModuleName StationData Copy-Item { throw 'The disk is full.' } -ParameterFilter { $LiteralPath -like '*bloom.db' }
+        { Restore-StationData -BackupDir $backup -ProfileDir $userProfile } | Should -Throw '*disk is full*'
         Test-Path (Join-Path $userProfile '.bloom\data\bloom.db-journal') | Should -BeFalse
     }
 }

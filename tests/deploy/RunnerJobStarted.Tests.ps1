@@ -49,3 +49,64 @@ Describe 'Get-DeployJobRefusal' {
         Get-DeployJobRefusal -JobEnv @{} | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'Get-DeployJobRefusal compares case-sensitively' {
+    It 'refuses a branch, workflow file or repository that differs only in case' {
+        $prefix = 'Salk-Harnessing-Plants-Initiative/bloom-desktop/.github/workflows'
+        foreach ($ref in "$prefix/deploy.yml@refs/heads/Main", "$prefix/deploy.yml@refs/heads/MAIN", "$prefix/Deploy.yml@refs/heads/main") {
+            Get-DeployJobRefusal -JobEnv (New-JobEnv @{ GITHUB_WORKFLOW_REF = $ref }) | Should -Not -BeNullOrEmpty
+        }
+        Get-DeployJobRefusal -JobEnv (New-JobEnv @{ GITHUB_REPOSITORY = 'salk-harnessing-plants-initiative/bloom-desktop' }) |
+            Should -Not -BeNullOrEmpty
+        Get-DeployJobRefusal -JobEnv (New-JobEnv @{ GITHUB_EVENT_NAME = 'Workflow_Dispatch' }) | Should -Not -BeNullOrEmpty
+    }
+
+    It 'refuses the Deploy workflow from a tag named main' {
+        Get-DeployJobRefusal -JobEnv (New-JobEnv @{
+                GITHUB_WORKFLOW_REF = 'Salk-Harnessing-Plants-Initiative/bloom-desktop/.github/workflows/deploy.yml@refs/tags/main'
+            }) | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'runner-job-started.ps1' {
+    BeforeAll {
+        # Run the hook as the runner does: a separate PowerShell with the job's variables set.
+        $shell = (Get-Process -Id $PID).Path
+        function Invoke-Hook {
+            param([string]$HookDir, [hashtable]$JobEnv)
+            $saved = @{}
+            foreach ($key in $JobEnv.Keys) { $saved[$key] = [Environment]::GetEnvironmentVariable($key); [Environment]::SetEnvironmentVariable($key, $JobEnv[$key]) }
+            # Windows PowerShell 5.1 would turn anything on the child's stderr into an error.
+            $ErrorActionPreference = 'Continue'
+            try {
+                $output = & $shell -NoProfile -NonInteractive -Command ". '$(Join-Path $HookDir 'runner-job-started.ps1')'" 2>&1
+                [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
+            }
+            finally {
+                foreach ($key in $saved.Keys) { [Environment]::SetEnvironmentVariable($key, $saved[$key]) }
+            }
+        }
+        $source = Join-Path $PSScriptRoot '..\..\deploy\windows'
+    }
+
+    It 'exits 0 for the Deploy workflow from main' {
+        $result = Invoke-Hook -HookDir $source -JobEnv (New-JobEnv)
+        $result.ExitCode | Should -Be 0
+        $result.Output | Should -Match 'allowed'
+    }
+
+    It 'exits 1 for anything else' {
+        $result = Invoke-Hook -HookDir $source -JobEnv (New-JobEnv @{ GITHUB_EVENT_NAME = 'push' })
+        $result.ExitCode | Should -Be 1
+        $result.Output | Should -Match 'Refused'
+    }
+
+    It 'refuses the job when RunnerJobCheck.psm1 is missing' {
+        $hookDir = Join-Path $TestDrive ('hook-' + [guid]::NewGuid())
+        New-Item -ItemType Directory -Force -Path $hookDir | Out-Null
+        Copy-Item -LiteralPath (Join-Path $source 'runner-job-started.ps1') -Destination $hookDir
+        $result = Invoke-Hook -HookDir $hookDir -JobEnv (New-JobEnv)
+        $result.ExitCode | Should -Be 1
+        $result.Output | Should -Match 'Refused'
+    }
+}

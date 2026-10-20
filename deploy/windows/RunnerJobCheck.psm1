@@ -8,15 +8,18 @@ $script:AllowedWorkflowRef = "$script:AllowedRepository/.github/workflows/deploy
 $script:AllowedEvent = 'workflow_dispatch'
 
 function Get-DeployJobRefusal {
-    <# Why this job may not run on the station, or $null if it may. #>
+    <#
+      Why this job may not run on the station, or $null if it may. The comparisons are
+      case-sensitive (-cne), as Git refs and paths are: refs/heads/Main is not main.
+    #>
     param([Parameter(Mandatory)][hashtable]$JobEnv)
-    if ($JobEnv['GITHUB_REPOSITORY'] -ne $script:AllowedRepository) {
+    if ($JobEnv['GITHUB_REPOSITORY'] -cne $script:AllowedRepository) {
         return "repository '$($JobEnv['GITHUB_REPOSITORY'])' is not $script:AllowedRepository"
     }
-    if ($JobEnv['GITHUB_WORKFLOW_REF'] -ne $script:AllowedWorkflowRef) {
+    if ($JobEnv['GITHUB_WORKFLOW_REF'] -cne $script:AllowedWorkflowRef) {
         return "workflow '$($JobEnv['GITHUB_WORKFLOW_REF'])' is not $script:AllowedWorkflowRef"
     }
-    if ($JobEnv['GITHUB_EVENT_NAME'] -ne $script:AllowedEvent) {
+    if ($JobEnv['GITHUB_EVENT_NAME'] -cne $script:AllowedEvent) {
         return "event '$($JobEnv['GITHUB_EVENT_NAME'])' is not $script:AllowedEvent"
     }
     $null
