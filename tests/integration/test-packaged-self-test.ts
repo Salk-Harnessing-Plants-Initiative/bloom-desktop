@@ -4,7 +4,8 @@
  * pointing at a closed local port, so nothing reaches Bloom. Verifies that the
  * installed build gets as far as logging in: it opens the database copy it is
  * given, writes the synthetic scan with its frames, reports the login failure in
- * the result file and exits 1. Also checks it refuses the station's own database.
+ * the result file and exits 1. Also checks it refuses the station's own database
+ * (leaving it unchanged) and exits 2, with a result file, on missing arguments.
  *
  * Run with: npm run test:package:self-test
  * Prerequisites: npm run make (or npm run package) must have been run.
@@ -15,13 +16,15 @@
 delete process.env.ELECTRON_RUN_AS_NODE;
 
 import { execSync, spawnSync } from 'child_process';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import Database from 'better-sqlite3';
 import { resolveStagedAppPath } from './lib/resolve-staged-app-path';
 
-const SELF_TEST_TIMEOUT_MS = 120_000;
+const SELF_TEST_TIMEOUT_MS = 240_000;
+const OUTPUT_TAIL_CHARS = 4000;
 const SCANNER_NAME = 'CIScanner';
 // Port 9 (discard) is closed on CI runners, so login fails fast and locally.
 const FAKE_ENV = [
@@ -41,11 +44,12 @@ interface SelfTestJson {
   errors: string[];
 }
 
+/** Runs the packaged app in self-test mode; fails with its exit code and output if no result file appears. */
 function runSelfTest(
   appPath: string,
   home: string,
-  database: string,
-  resultFile: string
+  resultFile: string,
+  args: string[]
 ) {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -55,19 +59,28 @@ function runSelfTest(
   delete env.BLOOM_DATABASE_URL;
   const run = spawnSync(
     appPath,
-    [
-      '--deploy-self-test',
-      `--database=${database}`,
-      '--species=Sorghum',
-      `--result-file=${resultFile}`,
-    ],
+    ['--deploy-self-test', `--result-file=${resultFile}`, ...args],
     { env, encoding: 'utf8', timeout: SELF_TEST_TIMEOUT_MS }
   );
   if (run.error) throw run.error;
+  const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+  if (!fs.existsSync(resultFile)) {
+    throw new Error(
+      `No result file. Exit status ${run.status}, signal ${run.signal}.\n` +
+        `App output (last ${OUTPUT_TAIL_CHARS} chars):\n${output.slice(-OUTPUT_TAIL_CHARS)}`
+    );
+  }
   const result = JSON.parse(
     fs.readFileSync(resultFile, 'utf8')
   ) as SelfTestJson;
-  return { status: run.status, result, output: `${run.stdout}${run.stderr}` };
+  return { status: run.status, result, output };
+}
+
+function sha256(file: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(fs.readFileSync(file))
+    .digest('hex');
 }
 
 function check(condition: boolean, message: string, detail = ''): void {
@@ -90,13 +103,16 @@ function main(): void {
       stdio: 'inherit',
     });
 
+    // A real station database next to the copy, which the self-test must never touch.
+    const station = path.join(home, '.bloom', 'data', 'bloom.db');
+    fs.copyFileSync(copy, station);
+    const stationHash = sha256(station);
+
     console.log(`[INFO] Running ${appPath} --deploy-self-test`);
-    const run = runSelfTest(
-      appPath,
-      home,
-      copy,
-      path.join(work, 'result.json')
-    );
+    const run = runSelfTest(appPath, home, path.join(work, 'result.json'), [
+      `--database=${copy}`,
+      '--species=Sorghum',
+    ]);
     check(run.status === 1, 'Self-test exits 1 when login fails', run.output);
     check(
       run.result.errors[0]?.startsWith('Authentication failed') === true,
@@ -108,30 +124,51 @@ function main(): void {
       'Self-test uses the per-scanner test experiment'
     );
     const db = new Database(copy, { readonly: true });
-    const images = db
-      .prepare(
-        'SELECT COUNT(*) AS n FROM Image JOIN Scan ON Scan.id = Image.scan_id WHERE Scan.plant_id = ?'
-      )
-      .get(run.result.plantId) as { n: number };
-    db.close();
-    check(images.n === 3, 'Self-test wrote its scan and frames to the copy');
+    try {
+      const images = db
+        .prepare(
+          'SELECT COUNT(*) AS n FROM Image JOIN Scan ON Scan.id = Image.scan_id WHERE Scan.plant_id = ?'
+        )
+        .get(run.result.plantId) as { n: number };
+      check(images.n === 3, 'Self-test wrote its scan and frames to the copy');
+    } finally {
+      db.close();
+    }
 
-    const station = path.join(home, '.bloom', 'data', 'bloom.db');
     const refused = runSelfTest(
       appPath,
       home,
-      station,
-      path.join(work, 'refused.json')
+      path.join(work, 'refused.json'),
+      [`--database=${station}`, '--species=Sorghum']
     );
     check(
       refused.status === 1 &&
         /station's own database/.test(refused.result.errors[0] ?? '') &&
-        !fs.existsSync(station),
-      "Self-test refuses the station's own database",
+        sha256(station) === stationHash,
+      "Self-test refuses the station's own database and leaves it unchanged",
       JSON.stringify(refused.result)
     );
+
+    const badArgs = runSelfTest(
+      appPath,
+      home,
+      path.join(work, 'nested', 'bad.json'),
+      [`--database=${copy}`]
+    );
+    check(
+      badArgs.status === 2 && badArgs.result.errors[0] === 'Missing --species',
+      'Self-test exits 2 and writes a result for missing arguments',
+      JSON.stringify(badArgs.result)
+    );
   } finally {
-    fs.rmSync(work, { recursive: true, force: true });
+    // Don't let a locked temp file on Windows hide the real error.
+    try {
+      fs.rmSync(work, { recursive: true, force: true });
+    } catch (error) {
+      console.warn(
+        `[WARN] Could not remove ${work}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 }
 

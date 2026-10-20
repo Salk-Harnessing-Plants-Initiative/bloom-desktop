@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `--deploy-self-test` mode: with no window and without touching the station's database, uploads a short synthetic scan to Bloom (experiment `DEPLOY-TEST <scanner name>`) using the station's saved credentials, writes a JSON result and exits 0 or 1. For the station deploy to check uploads after installing. CI runs it on each packaged build.
+- `--deploy-self-test` mode: with no window and without touching the station's database, uploads a short synthetic scan to Bloom (experiment `DEPLOY-TEST <scanner name>`) using the station's saved credentials, writes a JSON result and exits 0 (uploaded), 1 (failed) or 2 (bad arguments). For the station deploy to check uploads after installing. CI runs it on each packaged build.
 
 ## [0.2.0] - 2026-10-15
 

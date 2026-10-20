@@ -68,8 +68,8 @@ import { IdleTimer } from './idle-timer';
 import { createFrameForwarder } from './frame-forwarder';
 // GraviScan wiring is in a side-effect-free module for testability.
 import { initGraviScan, shutdownGraviScan } from './graviscan/wiring';
-import { EXIT_FAILED, parseDeploySelfTestArgs } from './deploy-self-test';
-import { runDeploySelfTestCli } from './deploy-self-test-cli';
+import { parseDeploySelfTestArgs } from './deploy-self-test';
+import { startDeploySelfTest } from './deploy-self-test-cli';
 import {
   shouldQuitAsSecondInstance,
   focusExistingWindow,
@@ -95,25 +95,12 @@ if (require('electron-squirrel-startup')) {
 // synthetic scan to Bloom and exits, with no window, hardware or single-instance
 // lock. It writes only to the database copy it is given. See deploy-self-test.ts.
 const deploySelfTest = parseDeploySelfTestArgs(process.argv);
-if (deploySelfTest) {
-  app
-    .whenReady()
-    .then(() => runDeploySelfTestCli(deploySelfTest))
-    .catch((error) => {
-      console.error(
-        '[DeploySelfTest]',
-        error instanceof Error ? error.message : 'Unknown error'
-      );
-      return EXIT_FAILED;
-    })
-    .then((code) => app.exit(code));
-}
 
 // Single-instance lock (#249): two instances running concurrently against
 // the same SQLite database and hardware is a real data-corruption risk on
 // lab machines. Must run before any app.on('ready', ...) registration.
 if (deploySelfTest) {
-  // Handled above.
+  void startDeploySelfTest(deploySelfTest);
 } else if (shouldQuitAsSecondInstance(app.requestSingleInstanceLock())) {
   app.quit();
 } else {
@@ -1342,6 +1329,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  if (deploySelfTest) return;
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
