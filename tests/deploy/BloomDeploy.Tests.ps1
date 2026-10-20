@@ -141,7 +141,9 @@ Describe 'Install-Release' {
 
 Describe 'Invoke-StationDeploy' {
     BeforeEach {
-        $root = Join-Path $TestDrive 'deploy'
+        # A fresh folder per test: TestDrive is only cleared per Describe, so files from
+        # one test (backups, logs) would otherwise show up in the next.
+        $root = Join-Path $TestDrive ('deploy-' + [guid]::NewGuid())
         $lad = Join-Path $TestDrive 'lad'
         $userProfile = Join-Path $TestDrive 'profile'
         New-Item -ItemType Directory -Force -Path (Join-Path $userProfile '.bloom\data') | Out-Null

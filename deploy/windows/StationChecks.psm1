@@ -86,13 +86,15 @@ function Test-BloomAccess {
     try {
         $headers['Authorization'] = "Bearer $($session.access_token)"
         $name = [uri]::EscapeDataString($ScannerName)
-        $rows = @(Invoke-RestMethod -Uri "$api/rest/v1/cyl_scanners?select=id&name=eq.$name" -Headers $headers `
-                -TimeoutSec $script:BloomRequestTimeoutSeconds)
+        $response = Invoke-RestMethod -Uri "$api/rest/v1/cyl_scanners?select=id&name=eq.$name" -Headers $headers `
+            -TimeoutSec $script:BloomRequestTimeoutSeconds
     }
     catch {
         return "Bloom scanner lookup failed: $($_.Exception.Message)"
     }
-    if ($rows.Count -eq 0) { return "Scanner '$ScannerName' is not registered in Bloom." }
+    # PowerShell may return the JSON array wrapped or unrolled; count rows that have an id.
+    $found = @($response | ForEach-Object { $_ } | Where-Object { $null -ne $_ -and $null -ne $_.id })
+    if ($found.Count -eq 0) { return "Scanner '$ScannerName' is not registered in Bloom." }
     $null
 }
 

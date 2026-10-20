@@ -74,9 +74,18 @@ Describe 'Test-BloomAccess' {
         $problem | Should -Not -Match 's3cret-password'
     }
 
-    It 'reports a scanner that Bloom does not know' {
-        Mock -ModuleName StationChecks Invoke-RestMethod { , @() } -ParameterFilter { $Method -ne 'Post' }
-        Test-BloomAccess -Settings $settings -ScannerName 'FastScanner' | Should -Match "Scanner 'FastScanner' is not registered"
+    It 'reports a scanner that Bloom does not know, however the empty reply is wrapped' {
+        foreach ($empty in @({ , @() }, { @() }, { $null })) {
+            Mock -ModuleName StationChecks Invoke-RestMethod $empty -ParameterFilter { $Method -ne 'Post' }
+            Test-BloomAccess -Settings $settings -ScannerName 'FastScanner' | Should -Match "Scanner 'FastScanner' is not registered"
+        }
+    }
+
+    It 'finds the scanner whether the reply is wrapped or unrolled' {
+        foreach ($rows in @({ , @([pscustomobject]@{ id = 7 }) }, { [pscustomobject]@{ id = 7 } })) {
+            Mock -ModuleName StationChecks Invoke-RestMethod $rows -ParameterFilter { $Method -ne 'Post' }
+            Test-BloomAccess -Settings $settings -ScannerName 'FastScanner' | Should -BeNullOrEmpty
+        }
     }
 }
 
