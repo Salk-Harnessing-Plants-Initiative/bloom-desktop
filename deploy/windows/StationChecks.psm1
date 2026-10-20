@@ -30,7 +30,8 @@ function Write-DeployLog {
     # Write-Host, not Write-Output, so log lines never mix into a function's return value.
     Write-Host $line
     $logFile = [Environment]::GetEnvironmentVariable($script:LogFileVariable, 'Process')
-    if ($logFile) { Add-Content -Path $logFile -Value $line }
+    # A log file that can't be written must never fail the deploy; the job log has the line.
+    if ($logFile) { Add-Content -Path $logFile -Value $line -ErrorAction SilentlyContinue }
 }
 
 function Invoke-Node {

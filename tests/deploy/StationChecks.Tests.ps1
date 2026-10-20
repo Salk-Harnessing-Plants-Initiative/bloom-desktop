@@ -30,6 +30,14 @@ Describe 'Release and Squirrel versions' {
     }
 }
 
+Describe 'Write-DeployLog' {
+    It 'never fails because the log file cannot be written' {
+        Set-DeployLogFile -Path (Join-Path $TestDrive 'missing-folder\deploy.log')
+        try { { Write-DeployLog -Message 'hello' } | Should -Not -Throw }
+        finally { Set-DeployLogFile -Path '' }
+    }
+}
+
 Describe 'Read-StationEnv' {
     It 'reads KEY=value lines and strips quotes' {
         $userProfile = New-StationProfile -EnvLines @('SCANNER_NAME="FastScanner"', 'CAMERA_IP_ADDRESS = 10.0.0.45', '# comment')

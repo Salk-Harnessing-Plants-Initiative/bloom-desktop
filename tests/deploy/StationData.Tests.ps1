@@ -3,6 +3,8 @@
 
 BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '..\..\deploy\windows\StationData.psm1') -Force
+    # Earlier test files leave the deploy's log path pointing into their (deleted) TestDrive.
+    Remove-Item Env:BLOOM_DEPLOY_LOG_FILE -ErrorAction SilentlyContinue
 
     function New-StationProfile {
         $userProfile = Join-Path $TestDrive ('profile-' + [guid]::NewGuid())
