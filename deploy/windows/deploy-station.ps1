@@ -1,26 +1,39 @@
 # Deploy a Bloom Desktop release on this station. Run by the Deploy workflow on the
 # station's self-hosted runner; see docs/STATION_SETUP.md.
 #
-#   deploy-station.ps1 -Version 0.2.0 -ScannerName <name> -ReleaseBaseUrl <url>
+#   deploy-station.ps1 -Version 0.2.1 -ScannerName <name> -ReleaseBaseUrl <url> `
+#     -TestSpecies Sorghum -SchemaPath <release>\prisma\schema.prisma -ToolsDir <dir> [-RequireCamera]
 #
 # Exit codes: 0 deployed; 1 not deployed (the reason is in the log and the job summary).
 
 param(
     [Parameter(Mandatory)][string]$Version,
     [Parameter(Mandatory)][string]$ScannerName,
-    [Parameter(Mandatory)][string]$ReleaseBaseUrl
+    [Parameter(Mandatory)][string]$ReleaseBaseUrl,
+    [Parameter(Mandatory)][string]$TestSpecies,
+    [Parameter(Mandatory)][string]$SchemaPath,
+    [Parameter(Mandatory)][string]$ToolsDir,
+    [switch]$RequireCamera
 )
 
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'BloomDeploy.psm1') -Force
 
-$result = Invoke-StationDeploy -Version $Version -ScannerName $ScannerName -ReleaseBaseUrl $ReleaseBaseUrl
+$result = Invoke-StationDeploy -Version $Version -ScannerName $ScannerName -ReleaseBaseUrl $ReleaseBaseUrl `
+    -TestSpecies $TestSpecies -SchemaPath $SchemaPath -ToolsDir $ToolsDir -RequireCamera:$RequireCamera
 
 if ($env:GITHUB_STEP_SUMMARY) {
     $previous = if ($result.Previous) { "v$($result.Previous)" } else { 'none' }
     $summary = @("## Deploy v$Version", '', "- Result: **$($result.Status)**", "- Previously installed: $previous")
+    if ($result.Checks.Count -gt 0) {
+        $summary += '', '| Check | Result |', '|---|---|'
+        foreach ($name in $result.Checks.Keys) { $summary += "| $name | $($result.Checks[$name]) |" }
+    }
+    if ($result.Problems.Count -gt 0) { $summary += '' }
     foreach ($problem in $result.Problems) { $summary += "- Problem: $problem" }
-    if ($result.Status -eq 'deployed') { $summary += '', 'Next: the operator opens Bloom Desktop and checks preview, a scan and the Bloom upload.' }
+    if ($result.Status -eq 'deployed') {
+        $summary += '', 'Next: when the camera is on, check the preview and a scan on the station.'
+    }
     Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
 }
 

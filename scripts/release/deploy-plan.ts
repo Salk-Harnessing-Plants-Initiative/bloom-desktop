@@ -33,6 +33,8 @@ export interface DeployPlan {
   environment: string;
   scannerName: string;
   releaseBaseUrl: string;
+  /** The release page, linked from the station's deployment record. */
+  releaseUrl: string;
 }
 
 interface StationEntry {
@@ -115,6 +117,7 @@ export function planDeploy(input: {
     environment: station.environment,
     scannerName: station.bloom_scanner_name,
     releaseBaseUrl: `https://github.com/${input.repo}/releases/download/${tag}`,
+    releaseUrl: `https://github.com/${input.repo}/releases/tag/${tag}`,
   };
 }
 
@@ -127,6 +130,7 @@ export function formatPlanOutput(plan: DeployPlan): string {
     `environment=${plan.environment}`,
     `scanner_name=${plan.scannerName}`,
     `release_base_url=${plan.releaseBaseUrl}`,
+    `release_url=${plan.releaseUrl}`,
     '',
   ].join('\n');
 }

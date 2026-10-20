@@ -5,12 +5,16 @@
 # small function so it can be tested with Pester on windows-latest using fakes.
 #
 # Order matters: nothing on the station changes until the release files verify, the app
-# is confirmed not running, and the backup is verified. A failed install or verification
-# rolls back to the previously deployed version.
+# is confirmed not running, Bloom accepts the station's login, the installed version's
+# files are staged for a rollback, and the backup is verified. A failed install, database
+# upgrade, check or upload self-test reinstalls the previous version and restores the
+# database and .env from the backup. The checks themselves are in StationChecks.psm1.
 #
 # Works on Windows PowerShell 5.1 (built into the stations) and PowerShell 7.
 
 Set-StrictMode -Version Latest
+
+Import-Module (Join-Path $PSScriptRoot 'StationChecks.psm1') -Force
 
 # --- Constants -------------------------------------------------------------------------
 
@@ -26,13 +30,6 @@ $script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'B
 $script:SkipFirstRunVariable = 'BLOOM_DEPLOY_SKIP_FIRSTRUN'
 
 # --- Small helpers (mocked in tests) ----------------------------------------------------
-
-function Write-DeployLog {
-    param([Parameter(Mandatory)][string]$Message)
-    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
-    Write-Output $line
-    if ($script:LogFile) { Add-Content -Path $script:LogFile -Value $line }
-}
 
 function Get-UserEnvironmentVariable {
     param([Parameter(Mandatory)][string]$Name)
@@ -213,10 +210,7 @@ function Test-Installation {
         $problems.Add("$envFile is missing: set up Machine Configuration on the station.")
     }
     else {
-        $settings = @{}
-        foreach ($line in Get-Content -LiteralPath $envFile) {
-            if ($line -match '^\s*([A-Z_]+)\s*=\s*(.*?)\s*$') { $settings[$Matches[1]] = $Matches[2].Trim('"') }
-        }
+        $settings = Read-StationEnv -ProfileDir $ProfileDir
         if ($settings['SCANNER_MODE'] -ne 'cylinderscan') { $problems.Add('SCANNER_MODE in .env must be cylinderscan.') }
         if ($settings['SCANNER_NAME'] -ne $ScannerName) {
             $problems.Add("SCANNER_NAME in .env is '$($settings['SCANNER_NAME'])', expected '$ScannerName'.")
@@ -254,15 +248,24 @@ function Invoke-Rollback {
 
 # --- Orchestration ---------------------------------------------------------------------
 
+function New-DeployResult {
+    param([string]$Status, [string]$Version, [string]$Previous, [string[]]$Problems = @(), [System.Collections.IDictionary]$Checks = @{})
+    [pscustomobject]@{ Status = $Status; Version = $Version; Previous = $Previous; Problems = @($Problems); Checks = $Checks }
+}
+
 function Invoke-StationDeploy {
     <#
-      Deploy $Version to this station. Returns a result object; throws only when the
-      station may be left in an unexpected state (rollback failed).
+      Deploy $Version to this station. Returns a result object whose Checks say what was
+      checked; throws only when the station may be left in an unexpected state.
     #>
     param(
         [Parameter(Mandatory)][string]$Version,
         [Parameter(Mandatory)][string]$ScannerName,
         [Parameter(Mandatory)][string]$ReleaseBaseUrl,
+        [Parameter(Mandatory)][string]$TestSpecies,
+        [Parameter(Mandatory)][string]$SchemaPath,
+        [Parameter(Mandatory)][string]$ToolsDir,
+        [switch]$RequireCamera,
         [string]$DeployRoot = 'C:\BloomDeploy',
         [string]$LocalAppData = $env:LOCALAPPDATA,
         [string]$ProfileDir = $env:USERPROFILE
@@ -271,7 +274,8 @@ function Invoke-StationDeploy {
     $backupRoot = Join-Path $DeployRoot 'backups'
     $logRoot = Join-Path $DeployRoot 'logs'
     foreach ($dir in $releasesRoot, $backupRoot, $logRoot) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    $script:LogFile = Join-Path $logRoot ('{0}_v{1}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $Version)
+    Set-DeployLogFile -Path (Join-Path $logRoot ('{0}_v{1}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $Version))
+    $checks = [ordered]@{}
 
     $previous = Get-InstalledVersion -LocalAppData $LocalAppData
     Write-DeployLog "Deploying v$Version (installed: $(if ($previous) { "v$previous" } else { 'none' }))."
@@ -283,42 +287,85 @@ function Invoke-StationDeploy {
     # 2. The app must not be in use.
     if (Test-BloomRunning) {
         Write-DeployLog 'Bloom Desktop is running; nothing was changed. Close it and run the deploy again.'
-        return [pscustomobject]@{ Status = 'skipped-app-running'; Version = $Version; Previous = $previous; Problems = @() }
+        return New-DeployResult 'skipped-app-running' $Version $previous
     }
 
-    # 3. Back up before installing.
+    # 3. Camera (reported; required only when asked) and Bloom access.
+    $settings = Read-StationEnv -ProfileDir $ProfileDir
+    $cameraOk = Test-CameraReachable -Address $settings['CAMERA_IP_ADDRESS']
+    $checks['Camera'] = if ($cameraOk) { 'reachable' } elseif ($RequireCamera) { 'not reachable' } else { 'not reachable (not required)' }
+    Write-DeployLog "Camera: $($checks['Camera'])."
+    if (-not $cameraOk -and $RequireCamera) {
+        return New-DeployResult 'camera-unreachable' $Version $previous @("Camera at $($settings['CAMERA_IP_ADDRESS']) did not answer; nothing was changed.") $checks
+    }
+    $bloomProblem = Test-BloomAccess -Settings $settings -ScannerName $ScannerName
+    $checks['Bloom login'] = if ($bloomProblem) { 'failed' } else { 'ok' }
+    if ($bloomProblem) {
+        Write-DeployLog "Bloom: $bloomProblem Nothing was changed."
+        return New-DeployResult 'bloom-check-failed' $Version $previous @($bloomProblem) $checks
+    }
+
+    # 4. Make sure the installed version can be reinstalled (e.g. after a manual install).
+    if ($previous -and $previous -ne $Version -and -not (Test-Path (Join-Path $releasesRoot "v$previous\*.exe"))) {
+        $previousUrl = $ReleaseBaseUrl -replace "/v$([regex]::Escape($Version))$", "/v$previous"
+        try {
+            Save-ReleaseFiles -BaseUrl $previousUrl -StageDir (Join-Path $releasesRoot "v$previous") | Out-Null
+            Write-DeployLog "Staged v$previous for a rollback."
+        }
+        catch {
+            $message = "Can't stage the installed v$previous for a rollback: $($_.Exception.Message) Nothing was changed."
+            Write-DeployLog $message
+            return New-DeployResult 'rollback-unavailable' $Version $previous @($message) $checks
+        }
+    }
+
+    # 5. Back up before installing.
     $backup = Backup-StationData -ProfileDir $ProfileDir -BackupRoot $backupRoot -OldVersion $previous
     Write-DeployLog "Backup saved to $backup."
 
-    # 4. Install and verify; roll back on failure.
+    # 6. Install, upgrade the database, check, self-test; any failure rolls back.
+    $databasePath = Join-Path $ProfileDir '.bloom\data\bloom.db'
     $problems = @()
     try {
+        $rowsBefore = Get-DatabaseRowCounts -DatabasePath $databasePath -ToolsDir $ToolsDir
         Install-Release -SetupExe $setup
-        $problems = @(Test-Installation -Version $Version -ScannerName $ScannerName -LocalAppData $LocalAppData -ProfileDir $ProfileDir)
+        Update-StationDatabase -DatabasePath $databasePath -SchemaPath $SchemaPath -ToolsDir $ToolsDir
+        $problems = @(Compare-RowCounts -Before $rowsBefore -After (Get-DatabaseRowCounts -DatabasePath $databasePath -ToolsDir $ToolsDir))
+        $checks['Database'] = if ($problems.Count -eq 0) { 'upgraded, no rows lost' } else { 'rows lost' }
+        $problems += @(Test-Installation -Version $Version -ScannerName $ScannerName -LocalAppData $LocalAppData -ProfileDir $ProfileDir)
+        if ($problems.Count -eq 0) {
+            $selfTest = Invoke-DeploySelfTest -Version $Version -LocalAppData $LocalAppData -ProfileDir $ProfileDir `
+                -Species $TestSpecies -WorkDir (Join-Path $DeployRoot 'self-test')
+            $checks['Upload self-test'] = "$($selfTest.Status): $($selfTest.Detail)"
+            $problems += @($selfTest.Problems)
+        }
     }
     catch {
-        $problems = @("Install failed: $($_.Exception.Message)")
+        $problems += @("Deploy step failed: $($_.Exception.Message)")
     }
 
     if ($problems.Count -eq 0) {
         Remove-OldBackups -BackupRoot $backupRoot -Protect $backup
         Write-DeployLog "Deployed v$Version."
-        return [pscustomobject]@{ Status = 'deployed'; Version = $Version; Previous = $previous; Problems = @() }
+        return New-DeployResult 'deployed' $Version $previous @() $checks
     }
 
     foreach ($problem in $problems) { Write-DeployLog "Problem: $problem" }
     if (-not $previous) {
+        Restore-StationData -BackupDir $backup -ProfileDir $ProfileDir
         Write-DeployLog 'Nothing to roll back to: this was the first deploy to this station.'
-        return [pscustomobject]@{ Status = 'failed-no-rollback'; Version = $Version; Previous = $null; Problems = $problems }
+        return New-DeployResult 'failed-no-rollback' $Version $null $problems $checks
     }
     if ($previous -eq $Version) {
-        Write-DeployLog "v$Version was already installed; left as is."
-        return [pscustomobject]@{ Status = 'failed-same-version'; Version = $Version; Previous = $previous; Problems = $problems }
+        Restore-StationData -BackupDir $backup -ProfileDir $ProfileDir
+        Write-DeployLog "v$Version was already installed; left as is, data restored from the backup."
+        return New-DeployResult 'failed-same-version' $Version $previous $problems $checks
     }
     Write-DeployLog "Rolling back to v$previous."
     Invoke-Rollback -PreviousVersion $previous -ReleasesRoot $releasesRoot -LocalAppData $LocalAppData
-    Write-DeployLog "Rolled back to v$previous."
-    [pscustomobject]@{ Status = 'rolled-back'; Version = $Version; Previous = $previous; Problems = $problems }
+    Restore-StationData -BackupDir $backup -ProfileDir $ProfileDir
+    Write-DeployLog "Rolled back to v$previous and restored the database and .env."
+    New-DeployResult 'rolled-back' $Version $previous $problems $checks
 }
 
 Export-ModuleMember -Function Invoke-StationDeploy, Save-ReleaseFiles, Assert-Checksums, Get-InstalledVersion,

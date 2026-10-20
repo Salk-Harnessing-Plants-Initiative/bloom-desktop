@@ -146,24 +146,103 @@ Describe 'Invoke-StationDeploy' {
         $userProfile = Join-Path $TestDrive 'profile'
         New-Item -ItemType Directory -Force -Path (Join-Path $userProfile '.bloom\data') | Out-Null
         Set-Content -LiteralPath (Join-Path $userProfile '.bloom\data\bloom.db') -Value 'db'
+        Set-Content -LiteralPath (Join-Path $userProfile '.bloom\.env') -Value 'CAMERA_IP_ADDRESS=10.0.0.45'
         $common = @{
-            Version = '0.2.0'; ScannerName = 'PC1Scanner'; ReleaseBaseUrl = 'https://example.invalid/v0.2.0'
+            Version = '0.2.0'; ScannerName = 'PC1Scanner'; ReleaseBaseUrl = 'https://example.invalid/download/v0.2.0'
+            TestSpecies = 'Sorghum'; SchemaPath = 'C:\release\prisma\schema.prisma'; ToolsDir = 'C:\tools'
             DeployRoot = $root; LocalAppData = $lad; ProfileDir = $userProfile
         }
+        # The installed v0.1.0 is already staged, so no rollback download is needed.
+        New-Item -ItemType Directory -Force -Path (Join-Path $root 'releases\v0.1.0') | Out-Null
+        Set-Content -LiteralPath (Join-Path $root 'releases\v0.1.0\Setup.exe') -Value 'old'
         Mock -ModuleName BloomDeploy Save-ReleaseFiles { 'C:\stage\Setup.exe' }
         Mock -ModuleName BloomDeploy Test-BloomRunning { $false }
+        Mock -ModuleName BloomDeploy Test-CameraReachable { $true }
+        Mock -ModuleName BloomDeploy Test-BloomAccess { $null }
+        Mock -ModuleName BloomDeploy Get-DatabaseRowCounts { @{ Scan = 5 } }
+        Mock -ModuleName BloomDeploy Update-StationDatabase { }
         Mock -ModuleName BloomDeploy Install-Release { }
         Mock -ModuleName BloomDeploy Test-Installation { }
+        Mock -ModuleName BloomDeploy Invoke-DeploySelfTest { [pscustomobject]@{ Status = 'passed'; Detail = 'plant P'; Problems = @() } }
         Mock -ModuleName BloomDeploy Invoke-Rollback { }
+        Mock -ModuleName BloomDeploy Restore-StationData { }
         Mock -ModuleName BloomDeploy Get-InstalledVersion { '0.1.0' }
     }
 
-    It 'deploys, verifies and keeps the backup' {
+    It 'deploys, upgrades the database, self-tests and keeps the backup' {
         $result = Invoke-StationDeploy @common
         $result.Status | Should -Be 'deployed'
         Should -Invoke -ModuleName BloomDeploy Install-Release -Times 1
+        Should -Invoke -ModuleName BloomDeploy Update-StationDatabase -Times 1 -ParameterFilter { $SchemaPath -eq 'C:\release\prisma\schema.prisma' }
+        Should -Invoke -ModuleName BloomDeploy Invoke-DeploySelfTest -Times 1 -ParameterFilter { $Species -eq 'Sorghum' }
         (Get-ChildItem (Join-Path $root 'backups') -Directory) | Should -HaveCount 1
         Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 0
+        $result.Checks['Upload self-test'] | Should -Be 'passed: plant P'
+        $result.Checks['Database'] | Should -Be 'upgraded, no rows lost'
+    }
+
+    It 'only reports a camera that is off, unless the camera is required' {
+        Mock -ModuleName BloomDeploy Test-CameraReachable { $false }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'deployed'
+        $result.Checks['Camera'] | Should -Be 'not reachable (not required)'
+
+        $required = Invoke-StationDeploy @common -RequireCamera
+        $required.Status | Should -Be 'camera-unreachable'
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 1
+    }
+
+    It 'changes nothing when Bloom refuses the login' {
+        Mock -ModuleName BloomDeploy Test-BloomAccess { 'Bloom login failed for x: Invalid login credentials' }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'bloom-check-failed'
+        $result.Problems | Should -Contain 'Bloom login failed for x: Invalid login credentials'
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0
+        Test-Path (Join-Path $root 'backups\*') | Should -BeFalse
+    }
+
+    It 'stages the installed version for a rollback when it is not staged yet' {
+        Remove-Item -LiteralPath (Join-Path $root 'releases\v0.1.0') -Recurse -Force
+        (Invoke-StationDeploy @common).Status | Should -Be 'deployed'
+        Should -Invoke -ModuleName BloomDeploy Save-ReleaseFiles -Times 1 -ParameterFilter {
+            $BaseUrl -eq 'https://example.invalid/download/v0.1.0' -and $StageDir -like '*releases\v0.1.0'
+        }
+    }
+
+    It 'changes nothing when the installed version cannot be staged' {
+        Remove-Item -LiteralPath (Join-Path $root 'releases\v0.1.0') -Recurse -Force
+        Mock -ModuleName BloomDeploy Save-ReleaseFiles { throw 'not found' } -ParameterFilter { $BaseUrl -like '*v0.1.0' }
+        (Invoke-StationDeploy @common).Status | Should -Be 'rollback-unavailable'
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0
+    }
+
+    It 'rolls back and restores the data when the database upgrade fails' {
+        Mock -ModuleName BloomDeploy Update-StationDatabase { throw 'Database upgrade failed (prisma migrate deploy exited 1).' }
+        (Invoke-StationDeploy @common).Status | Should -Be 'rolled-back'
+        Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 1
+        Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1
+    }
+
+    It 'rolls back when the upgrade loses rows' {
+        $script:countCall = 0
+        Mock -ModuleName BloomDeploy Get-DatabaseRowCounts {
+            $script:countCall++
+            if ($script:countCall -eq 1) { @{ Scan = 5 } } else { @{ Scan = 4 } }
+        }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'rolled-back'
+        $result.Problems | Should -Contain 'Table Scan had 5 rows before the upgrade and 4 after.'
+        Should -Invoke -ModuleName BloomDeploy Invoke-DeploySelfTest -Times 0
+    }
+
+    It 'rolls back and restores the data when the upload self-test fails' {
+        Mock -ModuleName BloomDeploy Invoke-DeploySelfTest {
+            [pscustomobject]@{ Status = 'failed'; Detail = 'plant P'; Problems = @('Self-test upload failed: timeout') }
+        }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'rolled-back'
+        $result.Problems | Should -Contain 'Self-test upload failed: timeout'
+        Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1
     }
 
     It 'stops before any change if the release files do not verify' {
@@ -192,6 +271,7 @@ Describe 'Invoke-StationDeploy' {
         $result.Status | Should -Be 'rolled-back'
         $result.Problems | Should -Contain 'SCANNER_MODE in .env must be cylinderscan.'
         Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 1 -ParameterFilter { $PreviousVersion -eq '0.1.0' }
+        Should -Invoke -ModuleName BloomDeploy Restore-StationData -Times 1
     }
 
     It 'rolls back when the installer itself fails' {

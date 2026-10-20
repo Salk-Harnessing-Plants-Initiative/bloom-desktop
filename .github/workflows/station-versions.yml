@@ -1,0 +1,48 @@
+name: Station versions
+
+# Which station has which version: Actions → Station versions → Run workflow. Prints a
+# table of every active station in deploy/stations.yaml with its newest successful
+# deploy (from the station's GitHub environment) in the job summary.
+# See docs/STATION_SETUP.md.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  versions:
+    name: Station versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
+          cache: 'npm'
+
+      - name: Install dependencies (no install scripts)
+        run: npm ci --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List station versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Station versions'
+            echo
+            npx ts-node scripts/release/station-versions.ts --repo "$GITHUB_REPOSITORY"
+          } >> "$GITHUB_STEP_SUMMARY"

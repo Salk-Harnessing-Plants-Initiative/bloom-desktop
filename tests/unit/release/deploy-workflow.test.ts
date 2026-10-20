@@ -20,6 +20,7 @@ const WORKFLOW_PATH = path.join(
 
 interface Step {
   name?: string;
+  id?: string;
   uses?: string;
   run?: string;
   if?: string;
@@ -30,12 +31,21 @@ interface Step {
 interface Job {
   needs?: string | string[];
   'runs-on': string | string[];
-  environment?: string;
+  environment?: string | { name: string; url?: string };
   permissions?: Record<string, string>;
   steps: Step[];
 }
 interface Workflow {
-  on: Record<string, { inputs?: Record<string, { required?: boolean }> }>;
+  on: Record<
+    string,
+    {
+      inputs?: Record<
+        string,
+        { required?: boolean; type?: string; default?: unknown }
+      >;
+    }
+  >;
+  env: Record<string, string>;
   permissions: Record<string, string>;
   concurrency: { group: string; 'cancel-in-progress': boolean };
   jobs: Record<string, Job>;
@@ -76,7 +86,49 @@ describe('deploy.yml', () => {
       'windows',
       '${{ needs.plan.outputs.runner_label }}',
     ]);
-    expect(deploy.environment).toBe('${{ needs.plan.outputs.environment }}');
+    expect(deploy.environment).toEqual({
+      name: '${{ needs.plan.outputs.environment }}',
+      url: '${{ needs.plan.outputs.release_url }}',
+    });
+  });
+
+  it('only stops for the camera when asked, since cameras are usually off', () => {
+    const input = workflow.on.workflow_dispatch.inputs?.require_camera;
+    expect(input).toMatchObject({ type: 'boolean', default: false });
+    const install = deploy.steps.find((s) =>
+      s.run?.includes('deploy-station.ps1')
+    );
+    expect(install?.env?.REQUIRE_CAMERA).toBe('${{ inputs.require_camera }}');
+  });
+
+  it('files every self-test upload under one species', () => {
+    expect(workflow.env.TEST_SPECIES).toBe('Sorghum');
+    const install = deploy.steps.find((s) =>
+      s.run?.includes('deploy-station.ps1')
+    );
+    expect(install?.run).toContain('-TestSpecies $env:TEST_SPECIES');
+  });
+
+  it("upgrades the database with the release tag's migrations", () => {
+    const migrations = deploy.steps.find(
+      (s) =>
+        s.uses?.startsWith('actions/checkout') && s.with?.path === 'release-src'
+    );
+    expect(migrations?.with).toMatchObject({
+      ref: '${{ needs.plan.outputs.tag }}',
+      'sparse-checkout': 'prisma',
+    });
+    const install = deploy.steps.find((s) =>
+      s.run?.includes('deploy-station.ps1')
+    );
+    expect(install?.run).toContain('release-src\\prisma\\schema.prisma');
+  });
+
+  it("always attaches the station's deploy logs", () => {
+    const logs = deploy.steps.find((s) =>
+      s.uses?.startsWith('actions/upload-artifact')
+    );
+    expect(logs?.if).toBe('always()');
   });
 
   it('gives the station job read-only access', () => {

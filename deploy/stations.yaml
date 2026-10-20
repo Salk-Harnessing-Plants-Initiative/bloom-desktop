@@ -19,4 +19,12 @@
 #
 # See docs/RELEASING.md for how to add a station.
 
-stations: []
+stations:
+  - name: pc1
+    type: cylinderscan
+    os: windows
+    location: WIF room 104/105
+    bloom_scanner_name: FastScanner
+    environment: station-pc1
+    runner_label: station-pc1
+    active: true

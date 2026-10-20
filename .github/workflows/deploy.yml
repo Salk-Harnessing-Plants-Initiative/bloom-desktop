@@ -6,9 +6,13 @@ name: Deploy
 #          published with its installer, manifest.json and SHA256SUMS.
 #   deploy (the station's self-hosted runner, in the station's environment, which needs
 #          approval): deploy/windows/deploy-station.ps1 stages and checks the files, stops
-#          if Bloom Desktop is running, backs up the database and .env, installs, checks
-#          the result, and rolls back to the previous version if anything fails.
-# GitHub keeps each station's deployment history in its environment.
+#          if Bloom Desktop is running, reports the camera (required only with
+#          require_camera), checks the Bloom login, stages the installed version for a
+#          rollback, backs up the database and .env, installs, upgrades the database with
+#          the release's migrations, checks the settings, runs the installed app's upload
+#          self-test (a synthetic scan in DEPLOY-TEST <scanner>), and on any failure
+#          reinstalls the previous version and restores the backup.
+# GitHub keeps each station's deployment history in its environment, linked to the release.
 # See docs/STATION_SETUP.md.
 on:
   workflow_dispatch:
@@ -21,8 +25,17 @@ on:
         description: 'Station name from deploy/stations.yaml (e.g. pc1)'
         required: true
         type: string
+      require_camera:
+        description: 'Stop if the camera does not answer (cameras are usually off between sessions)'
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
+
+env:
+  # Bloom species the upload self-test files its synthetic scans under; must exist in Bloom.
+  TEST_SPECIES: Sorghum
 
 # One deploy per station at a time; never cancel one part-way through.
 concurrency:
@@ -42,7 +55,9 @@ jobs:
       environment: ${{ steps.plan.outputs.environment }}
       scanner_name: ${{ steps.plan.outputs.scanner_name }}
       version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
       release_base_url: ${{ steps.plan.outputs.release_base_url }}
+      release_url: ${{ steps.plan.outputs.release_url }}
     steps:
       - name: Only deploy from main
         if: github.ref != 'refs/heads/main'
@@ -91,7 +106,9 @@ jobs:
     name: Deploy to ${{ inputs.station }}
     needs: plan
     runs-on: [self-hosted, windows, '${{ needs.plan.outputs.runner_label }}']
-    environment: ${{ needs.plan.outputs.environment }}
+    environment:
+      name: ${{ needs.plan.outputs.environment }}
+      url: ${{ needs.plan.outputs.release_url }}
     timeout-minutes: 45
     permissions:
       contents: read
@@ -102,13 +119,43 @@ jobs:
           persist-credentials: false
           sparse-checkout: deploy/windows
 
+      - name: Checkout the release's database migrations
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
+          path: release-src
+          persist-credentials: false
+          sparse-checkout: prisma
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install the database tools
+        shell: powershell
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix "$env:RUNNER_TEMP\bloom-deploy-tools" prisma@6.18.0 better-sqlite3@12.6.2
+          exit $LASTEXITCODE
+
       - name: Install the release
         shell: powershell
         env:
           VERSION: ${{ needs.plan.outputs.version }}
           SCANNER_NAME: ${{ needs.plan.outputs.scanner_name }}
           RELEASE_BASE_URL: ${{ needs.plan.outputs.release_base_url }}
+          REQUIRE_CAMERA: ${{ inputs.require_camera }}
         run: |
           & .\deploy\windows\deploy-station.ps1 -Version $env:VERSION `
-            -ScannerName $env:SCANNER_NAME -ReleaseBaseUrl $env:RELEASE_BASE_URL
+            -ScannerName $env:SCANNER_NAME -ReleaseBaseUrl $env:RELEASE_BASE_URL `
+            -TestSpecies $env:TEST_SPECIES -SchemaPath (Join-Path $PWD 'release-src\prisma\schema.prisma') `
+            -ToolsDir "$env:RUNNER_TEMP\bloom-deploy-tools" -RequireCamera:($env:REQUIRE_CAMERA -eq 'true')
           exit $LASTEXITCODE
+
+      - name: Attach the station's deploy logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-logs-${{ inputs.station }}
+          path: C:/BloomDeploy/logs/*.log
+          retention-days: 30

@@ -53,6 +53,7 @@ describe('planDeploy', () => {
       environment: 'station-pc1',
       scannerName: 'PC1Scanner',
       releaseBaseUrl: `https://github.com/${REPO}/releases/download/v0.2.0`,
+      releaseUrl: `https://github.com/${REPO}/releases/tag/v0.2.0`,
     });
   });
 
@@ -187,6 +188,7 @@ describe('formatPlanOutput', () => {
       'environment=station-pc1',
       'scanner_name=PC1Scanner',
       `release_base_url=https://github.com/${REPO}/releases/download/v0.2.0`,
+      `release_url=https://github.com/${REPO}/releases/tag/v0.2.0`,
       '',
     ]);
   });
