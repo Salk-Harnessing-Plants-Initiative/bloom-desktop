@@ -599,6 +599,18 @@ jobs:
         if: always()
         run: node scripts/stop-electron-forge.js
 
+      # The Windows runners have run out of disk mid-shard; show what is using it.
+      - name: Report disk use (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free / 1GB, 1)}}, @{n='UsedGB';e={[math]::Round($_.Used / 1GB, 1)}}
+          $mei = @(Get-ChildItem $env:TEMP -Directory -Filter '_MEI*' -ErrorAction SilentlyContinue)
+          "PyInstaller temp folders left in TEMP: $($mei.Count)"
+          Get-ChildItem $env:TEMP -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            [pscustomobject]@{ Folder = $_.Name; MB = [math]::Round(((Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB) }
+          } | Sort-Object MB -Descending | Select-Object -First 10 | Format-Table
+
       - name: Upload Playwright test results
         uses: actions/upload-artifact@v4
         if: failure()
