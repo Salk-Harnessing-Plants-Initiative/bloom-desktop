@@ -28,12 +28,21 @@ vi.mock('../../../src/main/graviscan/scanner-upsert', () => ({
   stopWorkersForDisabledScanners: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Wholesale mock: `register-handlers` sees none of the real module, which
+// is exactly why the "supplies startScan a saneName resolver factory" test
+// below asserts the wiring directly — a signature change here is otherwise
+// invisible to every test in this file.
 vi.mock('../../../src/main/graviscan/session-handlers', () => ({
   startScan: vi.fn().mockResolvedValue({ success: true }),
   getScanStatus: vi.fn().mockReturnValue(null),
   markJobRecorded: vi.fn(),
   cancelScan: vi.fn().mockResolvedValue({ success: true }),
   retryScanner: vi.fn().mockResolvedValue({ success: true }),
+  makeSaneNameResolver: vi
+    .fn()
+    .mockImplementation(
+      () => async () => 'epkowa:interpreter:001:008'
+    ),
 }));
 
 vi.mock('../../../src/main/graviscan/image-handlers', () => ({
@@ -224,6 +233,26 @@ describe('registerGraviScanHandlers', () => {
       const params = { scanners: [], metadata: {} };
       await mockIpcMain._invoke('graviscan:start-scan', params);
       expect(sessionHandlers.startScan).toHaveBeenCalled();
+    });
+
+    it('graviscan:start-scan supplies startScan a saneName resolver factory', async () => {
+      // This file mocks `session-handlers` wholesale, so a change to
+      // `startScan`'s signature is invisible here — which is exactly why
+      // this assertion has to exist. `register-handlers` is the layer that
+      // holds `db`, so it is the layer that can build a resolver; if it
+      // silently stops passing one, session-start goes back to spawning on
+      // a page-mount-old address (#182) with every other test still green.
+      const params = { scanners: [], metadata: {} };
+      await mockIpcMain._invoke('graviscan:start-scan', params);
+
+      const call = vi.mocked(sessionHandlers.startScan).mock.calls[0];
+      expect(typeof call[4]).toBe('function');
+
+      // And the factory it supplies produces a working resolver.
+      const resolver = (call[4] as (id: string) => () => Promise<string>)(
+        'sc-1'
+      );
+      expect(typeof resolver).toBe('function');
     });
 
     it('graviscan:get-scan-status delegates to getScanStatus', async () => {

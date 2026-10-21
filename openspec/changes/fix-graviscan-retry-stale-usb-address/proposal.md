@@ -14,7 +14,7 @@ for the wedge-response feature — and that feature already hard-blocks the prod
 
 `retryScanner()` builds its SANE device name with `buildSaneName(row.usb_bus, row.usb_device)`
 (`src/main/graviscan/session-handlers.ts:376`). Those columns are written in exactly two
-places, **neither on the retry path**: `resetUsb()` (`scanner-handlers.ts:646` clears,
+places, **neither on the retry path**: `resetUsb()` (`scanner-handlers.ts:750` clears,
 `:712-718` writes) and `upsertScannerRow()` (reachable only from the Configure Scanner page's
 "Detect Scanners" button). `WedgeBanner.tsx:37` calls retry directly, so nothing re-detects.
 Every physical power-cycle re-enumerates the device at a new USB device number, so retry always
@@ -78,7 +78,7 @@ Electron main-process event loop for up to ~10s _during an active session_ — d
 other scanners' in-flight rows toward `SCAN_ROW_TIMEOUT_MS`, the entry condition for #371's
 permanent false `MISSING` on an unrelated healthy scanner. An async variant is added, sharing one
 pure parse-and-dedupe core with the existing synchronous function so the two cannot drift. The
-**four** existing synchronous call sites (`scanner-handlers.ts:166`, `:262`, `:523`, `:676`) keep
+**four** existing synchronous call sites (`scanner-handlers.ts:216`, `:312`, `:627`, `:780`) keep
 using the synchronous shell.
 
 ### 2. Resolve the address at spawn time, for the retry and session-start paths
@@ -120,7 +120,7 @@ Three constraints make this safe, and each is a defect the design would otherwis
   - `src/main/graviscan/scan-coordinator.ts` — resolver call, generation token, resolver timeout
   - `src/types/graviscan.ts` — `ScannerConfig.resolveSaneName`
 - **`buildSaneName` is deduplicated.** It exists twice with identical bodies —
-  `scanner-handlers.ts:39` (whose own doc comment falsely claims "the format lives in exactly one
+  `scanner-handlers.ts:45` (whose own doc comment falsely claimed "the format lives in exactly one
   place") and `lsusb-detection.ts:116`, re-exported at `:235` and imported by nothing. This change
   moves name construction from one place into two callers, which makes the duplication
   load-bearing, so it is collapsed to a single definition rather than left to drift.

@@ -8,7 +8,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { PrismaClient } from '@prisma/client';
-import { detectEpsonScanners } from '../lsusb-detection';
+import { detectEpsonScanners, buildSaneName } from '../lsusb-detection';
+import { matchDetectedByPort } from './scanner-usb-refresh';
 import type { ScanCoordinatorLike } from './session-handlers';
 import {
   upsertScannerRow,
@@ -38,13 +39,27 @@ const USB_RELEASE_WAIT_MS = 5000;
 
 /**
  * Build a SANE device name from a scanner's USB bus/device numbers,
- * zero-padded to 3 digits each. Shared by the save-scanners-db spawn-on-
- * discovery path and the wedge-response `retry-scanner` handler, so the
- * format lives in exactly one place.
+ * zero-padded to 3 digits each.
+ *
+ * Re-exported from `lsusb-detection`, which now owns the single definition.
+ * Until this change the format existed in two places with identical bodies —
+ * here and in `lsusb-detection.ts` — while this comment claimed it "lives in
+ * exactly one place". It now does, and this re-export exists so the existing
+ * importers (`session-handlers.ts`, `register-handlers.ts` via
+ * `scannerHandlers.buildSaneName`, and the tests) keep working.
+ *
+ * **Do not reintroduce a local definition here.** `lsusb-detection.ts` uses
+ * it internally and `scanner-handlers.ts` imports from `lsusb-detection.ts`,
+ * so a definition in this direction creates a runtime circular import.
+ *
+ * ⚠️ A name built from stored `usb_bus`/`usb_device` is only valid if those
+ * columns were re-resolved from the device's live position on the bus — see
+ * `scanner-usb-refresh.ts`. A physical power-cycle always re-enumerates the
+ * device at a new number (#182), and a stale-but-well-formed name passes
+ * every validation and reaches libusb as a filter for a device that is no
+ * longer there.
  */
-export function buildSaneName(usbBus: number, usbDevice: number): string {
-  return `epkowa:interpreter:${String(usbBus).padStart(3, '0')}:${String(usbDevice).padStart(3, '0')}`;
-}
+export { buildSaneName };
 
 // ---------------------------------------------------------------------------
 // Helpers — mock-scanner construction & DB matching
@@ -788,14 +803,21 @@ export async function resetUsb(
       detectedScanners = lsusbResult.scanners;
     }
 
-    // 5. Match detected → saved by usb_port, update usb_bus/usb_device
-    const detectedByPort = new Map<string, DetectedScanner>();
-    for (const detected of detectedScanners) {
-      if (detected.usb_port) {
-        detectedByPort.set(detected.usb_port, detected);
-      }
-    }
-
+    // 5. Match detected → saved by usb_port, update usb_bus/usb_device.
+    //
+    // Uses the shared matcher from `scanner-usb-refresh` so the two paths
+    // that resolve a scanner by port cannot drift — but keeps the SINGLE
+    // detection pass above. Calling the refresh module's IO wrapper in this
+    // loop would spawn a detection per scanner and give each row a
+    // different view of the bus.
+    //
+    // NOTE: this deliberately CHANGES the duplicate-port tie-break. The old
+    // `Map<usb_port, DetectedScanner>` kept the LAST entry for a duplicate
+    // key; the shared matcher scans linearly and finds the FIRST. Real
+    // detection dedupes by port so this cannot arise there, but the mock
+    // branch above synthesises `usb_port: s.usb_port || \`1-${i + 1}\``,
+    // which can collide — so the order is specified and tested rather than
+    // left to a Map's iteration order (design.md Decision 2).
     const scannerConfigs: ScannerConfig[] = [];
     const scannerStatuses: Array<{
       id: string;
@@ -803,9 +825,7 @@ export async function resetUsb(
     }> = [];
 
     for (const saved of savedScanners) {
-      const detected = saved.usb_port
-        ? detectedByPort.get(saved.usb_port)
-        : undefined;
+      const detected = matchDetectedByPort(saved.usb_port, detectedScanners);
 
       if (!detected) {
         scannerStatuses.push({ id: saved.id, status: 'disconnected' });
