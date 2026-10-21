@@ -78,7 +78,6 @@ import {
 import { PrismaClient } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
 import { waitForAppReady } from './helpers/app-ready';
 import {
@@ -91,6 +90,7 @@ import {
   unsortedAccessions,
   sortedAccessions,
 } from '../fixtures/accessions';
+import { resetTestDatabase } from './helpers/test-database';
 
 // Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -149,6 +149,8 @@ test.beforeEach(async () => {
     fs.unlinkSync(TEST_DB_PATH);
   }
 
+  resetTestDatabase(TEST_DB_PATH, 'migrations');
+
   // Create Prisma client for direct database access
   prisma = new PrismaClient({
     datasources: {
@@ -156,15 +158,6 @@ test.beforeEach(async () => {
         url: TEST_DB_URL,
       },
     },
-  });
-
-  // Run migrations to create schema
-  execSync('npx prisma migrate deploy', {
-    env: {
-      ...process.env,
-      BLOOM_DATABASE_URL: TEST_DB_URL,
-    },
-    stdio: 'pipe',
   });
 
   // Launch Electron app

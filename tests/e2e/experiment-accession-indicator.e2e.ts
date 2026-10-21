@@ -28,6 +28,7 @@ import {
   createTestBloomConfig,
   cleanupTestBloomConfig,
 } from './helpers/bloom-config';
+import { resetTestDatabase } from './helpers/test-database';
 
 // Import electron path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -89,22 +90,14 @@ test.beforeEach(async () => {
     fs.unlinkSync(TEST_DB_PATH);
   }
 
+  resetTestDatabase(TEST_DB_PATH, 'migrations');
+
   // Create Prisma client for direct database access
   prisma = new PrismaClient({
     datasources: {
       db: {
         url: TEST_DB_URL,
       },
-    },
-  });
-
-  // Run migrations to create schema
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { execSync } = require('child_process');
-  execSync('npx prisma migrate deploy', {
-    env: {
-      ...process.env,
-      BLOOM_DATABASE_URL: TEST_DB_URL,
     },
   });
 

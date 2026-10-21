@@ -20,11 +20,11 @@ import {
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { execSync } from 'child_process';
 import { PrismaClient } from '@prisma/client';
 import { closeElectronApp } from './helpers/electron-cleanup';
 import { waitForAppReady } from './helpers/app-ready';
 import type { ElectronAPI } from '../../src/types/electron';
+import { resetTestDatabase } from './helpers/test-database';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath: string = require('electron');
@@ -122,16 +122,7 @@ test.beforeEach(async () => {
     fs.unlinkSync(TEST_DB_PATH);
   }
 
-  // Push schema to test database
-  const appRoot = path.join(__dirname, '../..');
-  execSync('npx prisma db push --skip-generate', {
-    cwd: appRoot,
-    env: {
-      ...process.env,
-      BLOOM_DATABASE_URL: TEST_DB_URL,
-    },
-    stdio: 'pipe',
-  });
+  resetTestDatabase(TEST_DB_PATH);
 
   prisma = new PrismaClient({ datasources: { db: { url: TEST_DB_URL } } });
   await prisma.$connect();
