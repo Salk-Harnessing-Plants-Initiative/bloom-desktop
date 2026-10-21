@@ -498,7 +498,12 @@ jobs:
     strategy:
       fail-fast: false # Continue running on other platforms even if one fails
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows pinned to windows-2022: on GitHub's windows-2025-vs2026 build
+        # 20261018.275 (what windows-latest rolls out to from 2026-10-18), Chromium's
+        # GPU process crashes (0xC0000005) when the app starts, so Electron never
+        # opens a window and every E2E test fails; build 20261007.264 was fine.
+        # Move back to windows-latest once a newer build (or Electron) fixes it.
+        os: [ubuntu-latest, macos-latest, windows-2022]
         # Splits the 264-test E2E suite into 4 shards per OS so no single
         # Playwright worker (workers: 1, unchanged) accumulates more than
         # ~1/4 of the suite's sequential Electron launches. Defensive bound
@@ -770,7 +775,10 @@ jobs:
   test-make-windows:
     needs: build-python
     name: Test - Make (Windows)
-    runs-on: windows-latest
+    # windows-2022, not windows-latest: this job launches the packaged app, which
+    # hits the same GPU-process crash on windows-2025-vs2026 build 20261018.275
+    # as the E2E jobs (see test-e2e-dev's matrix).
+    runs-on: windows-2022
     # Bounds a hung job so it can't indefinitely block a subsequently-queued
     # push-to-main run (see the concurrency block above). Evidence-based value
     # in openspec/changes/add-pr-checks-concurrency-control/design.md
