@@ -589,6 +589,14 @@ jobs:
         env:
           CI: true
 
+      # Some Windows shards fill C: and the runner dies with no log; the watchdog
+      # stops the tests first and records what is using the space.
+      - name: Start disk watchdog (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile', '-File', 'scripts/ci-disk-watchdog.ps1', '-LogFile', "$env:RUNNER_TEMP\disk-watchdog.log"
+
       - name: Run Playwright E2E tests (macOS/Windows)
         if: runner.os != 'Linux'
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
@@ -605,6 +613,7 @@ jobs:
         shell: pwsh
         run: |
           Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free / 1GB, 1)}}, @{n='UsedGB';e={[math]::Round($_.Used / 1GB, 1)}}
+          Get-Content "$env:RUNNER_TEMP\disk-watchdog.log" -ErrorAction SilentlyContinue
           $mei = @(Get-ChildItem $env:TEMP -Directory -Filter '_MEI*' -ErrorAction SilentlyContinue)
           "PyInstaller temp folders left in TEMP: $($mei.Count)"
           Get-ChildItem $env:TEMP -Directory -ErrorAction SilentlyContinue | ForEach-Object {
