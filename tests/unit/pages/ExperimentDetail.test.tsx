@@ -369,7 +369,10 @@ describe('ExperimentDetail', () => {
       const linkButton = screen.getByRole('button', { name: /^link$/i });
       await user.click(linkButton);
 
-      expect(screen.getByRole('button', { name: /linking/i })).toBeDisabled();
+      // findBy: the button's label changes after a re-render, not in the click itself.
+      expect(
+        await screen.findByRole('button', { name: /linking/i })
+      ).toBeDisabled();
       await user.click(screen.getByRole('button', { name: /linking/i }));
 
       resolveLink!({ success: true });

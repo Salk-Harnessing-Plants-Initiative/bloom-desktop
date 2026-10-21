@@ -146,6 +146,10 @@ if (process.env.E2E_TEST === 'true') {
   // Use app.commandLine.appendSwitch() to set debugging flags via Electron's internal API
   app.commandLine.appendSwitch('remote-debugging-port', '0'); // 0 = any free port
   console.log('[E2E] Remote debugging enabled for E2E test environment');
+  // CI runners have no real GPU, and on Windows runners Chromium's GPU process
+  // crashes until it gives up ("GPU process isn't usable. Goodbye."), taking the
+  // app down with it. The UI under test doesn't need hardware acceleration.
+  app.disableHardwareAcceleration();
 }
 
 // Configuration constants

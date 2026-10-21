@@ -39,8 +39,9 @@ const privateDbPath =
   'dev.db';
 fs.copyFileSync(sourceDbPath, privateDbPath);
 
+// One connection, so the PRAGMA in emptyEveryTable() applies to the deletes after it.
 const prisma = new PrismaClient({
-  datasources: { db: { url: `file:${privateDbPath}` } },
+  datasources: { db: { url: `file:${privateDbPath}?connection_limit=1` } },
 });
 
 async function cleanDatabase() {
@@ -53,8 +54,27 @@ async function cleanDatabase() {
   await prisma.scientist.deleteMany();
 }
 
+// The copy above can be taken while another test file is writing to dev.db, so it
+// may hold that file's rows (e.g. GraviScan rows that reference an Experiment),
+// which would make cleanDatabase()'s deletes fail on foreign keys. Start from an
+// empty copy: every table emptied, with foreign key checks off for the wipe.
+async function emptyEveryTable() {
+  const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> '_prisma_migrations'"
+  );
+  await prisma.$executeRawUnsafe('PRAGMA foreign_keys = OFF');
+  try {
+    for (const { name } of tables) {
+      await prisma.$executeRawUnsafe(`DELETE FROM "${name}"`);
+    }
+  } finally {
+    await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
+  }
+}
+
 beforeAll(async () => {
   await prisma.$connect();
+  await emptyEveryTable();
 });
 
 afterAll(async () => {
