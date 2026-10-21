@@ -409,7 +409,9 @@ describe('ExperimentDetail', () => {
       const unlinkButton = screen.getByRole('button', { name: /^unlink$/i });
       await user.click(unlinkButton);
 
-      expect(screen.getByRole('button', { name: /unlinking/i })).toBeDisabled();
+      expect(
+        await screen.findByRole('button', { name: /unlinking/i })
+      ).toBeDisabled();
       await user.click(screen.getByRole('button', { name: /unlinking/i }));
 
       resolveUnlink!({ success: true });

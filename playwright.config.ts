@@ -39,8 +39,9 @@ export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.e2e.ts', // Only run .e2e.ts files
   testIgnore: ['**/*.test.ts', '**/*.spec.ts'], // Exclude unit/integration test patterns
-  // Creates the empty template database each test copies (helpers/test-database.ts)
+  // The run's temp folder and the empty template databases each test copies
   globalSetup: './tests/e2e/global-setup.ts',
+  globalTeardown: './tests/e2e/global-teardown.ts',
 
   // Execution configuration
   timeout: 60000, // 60 seconds per test (Electron app startup can be slow)

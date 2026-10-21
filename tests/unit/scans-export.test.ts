@@ -6,8 +6,8 @@
  * Uses a real SQLite database via Prisma (not a mocked Prisma client),
  * matching the convention established in `tests/integration/database.test.ts`
  * and `tests/unit/graviscan/database-handlers.test.ts`. Requires a migrated
- * `prisma/dev.db` to exist (this file copies it to a private temp file
- * rather than connecting to it directly — see below) — see this repo's CI
+ * template database built by tests/unit/global-setup.ts (this file copies it to
+ * a private temp file — see below) — see this repo's CI
  * config, or locally:
  *   BLOOM_DATABASE_URL="file:./dev.db" npx prisma generate
  *   BLOOM_DATABASE_URL="file:./dev.db" npx prisma migrate deploy
@@ -23,25 +23,22 @@ import * as os from 'os';
 import * as path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { scansExport } from '../../src/main/database-handlers';
+import { TEMPLATE_DB_ABSOLUTE_PATH } from './global-setup';
 
-// `tests/unit/graviscan/database-handlers.test.ts` also runs real-SQLite
-// tests against the migrated `prisma/dev.db`. Vitest runs test FILES in
-// parallel workers by default, and this file's destructive
-// `cleanDatabase()` would otherwise race that file's fixtures on the same
-// SQLite file (observed as spurious foreign-key-constraint errors). Copying
-// the already-migrated db to a private temp file and pointing this file's
-// own `PrismaClient` at it avoids that cross-file contention entirely,
-// without touching global test config or the other file.
-const sourceDbPath = path.join(__dirname, '..', '..', 'prisma', 'dev.db');
+// Copies the pristine, migrated template that tests/unit/global-setup.ts builds
+// before any test file runs, not the live `prisma/dev.db`: dev.db is shared scratch
+// space for other real-SQLite test files (e.g.
+// tests/unit/graviscan/database-handlers.test.ts), so a copy taken mid-run could
+// hold their rows (GraviScan rows that reference an Experiment) and make
+// cleanDatabase() fail on foreign keys. See scans-delete.test.ts for the same setup.
 const privateDbPath =
   fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-scans-export-db-')) +
   path.sep +
   'dev.db';
-fs.copyFileSync(sourceDbPath, privateDbPath);
+fs.copyFileSync(TEMPLATE_DB_ABSOLUTE_PATH, privateDbPath);
 
-// One connection, so the PRAGMA in emptyEveryTable() applies to the deletes after it.
 const prisma = new PrismaClient({
-  datasources: { db: { url: `file:${privateDbPath}?connection_limit=1` } },
+  datasources: { db: { url: `file:${privateDbPath}` } },
 });
 
 async function cleanDatabase() {
@@ -54,27 +51,8 @@ async function cleanDatabase() {
   await prisma.scientist.deleteMany();
 }
 
-// The copy above can be taken while another test file is writing to dev.db, so it
-// may hold that file's rows (e.g. GraviScan rows that reference an Experiment),
-// which would make cleanDatabase()'s deletes fail on foreign keys. Start from an
-// empty copy: every table emptied, with foreign key checks off for the wipe.
-async function emptyEveryTable() {
-  const tables = await prisma.$queryRawUnsafe<{ name: string }[]>(
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> '_prisma_migrations'"
-  );
-  await prisma.$executeRawUnsafe('PRAGMA foreign_keys = OFF');
-  try {
-    for (const { name } of tables) {
-      await prisma.$executeRawUnsafe(`DELETE FROM "${name}"`);
-    }
-  } finally {
-    await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON');
-  }
-}
-
 beforeAll(async () => {
   await prisma.$connect();
-  await emptyEveryTable();
 });
 
 afterAll(async () => {
