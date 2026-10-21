@@ -37,6 +37,7 @@
 import { ElectronApplication } from '@playwright/test';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { removeLeakedPyInstallerDirs } from './pyinstaller-temp';
 
 const execFileAsync = promisify(execFile);
 
@@ -174,6 +175,9 @@ export async function closeElectronApp(
   // resource contention (port conflicts, file locks, IPC channel issues).
   // 500ms is sufficient for both local and slower CI runners.
   await sleep(500);
+
+  // The killed bloom-hardware leaves its unpacked temp folder behind.
+  removeLeakedPyInstallerDirs();
 }
 
 interface ProcessTableRow {

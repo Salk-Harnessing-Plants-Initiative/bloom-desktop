@@ -301,3 +301,17 @@ describe('pr-checks.yml test-e2e-dev sharding', () => {
     expect(artifactName).toContain('${{ matrix.shard }}');
   });
 });
+
+describe('pr-checks.yml Playwright browsers', () => {
+  // The E2E and packaged-app tests drive the Electron app (which has its own
+  // Chromium) through Playwright's _electron API, so Playwright's browsers are never
+  // used; downloading them took about 2.5 minutes per job on Windows.
+  it('does not install Playwright browsers in any job', () => {
+    const workflow = loadWorkflow();
+    for (const [name, job] of Object.entries(workflow.jobs)) {
+      for (const step of job.steps ?? []) {
+        expect(step.run ?? '', `job ${name}`).not.toMatch(/playwright install/);
+      }
+    }
+  });
+});

@@ -28,13 +28,13 @@ import {
 } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
 import { waitForAppReady } from './helpers/app-ready';
 import {
   createTestBloomConfig,
   cleanupTestBloomConfig,
 } from './helpers/bloom-config';
+import { resetTestDatabase } from './helpers/test-database';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath: string = require('electron');
@@ -59,11 +59,7 @@ test.describe('Machine Configuration — scanner_mode round-trip', () => {
     if (!fs.existsSync(testDbDir)) fs.mkdirSync(testDbDir, { recursive: true });
 
     const appRoot = path.join(__dirname, '../..');
-    execSync('npx prisma db push --skip-generate', {
-      cwd: appRoot,
-      env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL },
-      stdio: 'pipe',
-    });
+    resetTestDatabase(TEST_DB_PATH);
 
     const args = [path.join(appRoot, '.webpack/main/index.js')];
     if (process.platform === 'linux' && process.env.CI === 'true') {
