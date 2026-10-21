@@ -548,6 +548,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: 'pyproject.toml'
+          # This job installs nothing with uv, so there may be no cache to save;
+          # without this the post step fails the job (seen on windows-2022).
+          ignore-nothing-to-cache: true
           python-version: '3.12'
 
       - name: Download Python executable
