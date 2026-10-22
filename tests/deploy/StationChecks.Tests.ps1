@@ -83,17 +83,75 @@ Describe 'Test-StationReady' {
         $text | Should -Match 'SCANS_DIR'
     }
 
-    It 'checks free space on the scans drive and the deploy drive' {
+    It 'stops for low free disk space on the deploy drive, not on the scans drive' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { 3 } -ParameterFilter { $Path -eq $scans }
         Mock -ModuleName StationChecks Get-FreeDiskGB { 1 } -ParameterFilter { $Path -eq $TestDrive }
-        $text = @(Test-StationReady @ready) -join "`n"
-        $text | Should -Match 'Only 3 GB free on the scans drive'
-        $text | Should -Match 'Only 1 GB free for installers and backups'
+        $problems = @(Test-StationReady @ready)
+        $problems | Should -HaveCount 1
+        $problems[0] | Should -Match 'Only 1 GB of free disk space for installers and backups'
+    }
+
+    It 'reports a deploy drive it can''t measure as a problem, not an error' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'The drive cannot be found.' } -ParameterFilter { $Path -eq $TestDrive }
+        (@(Test-StationReady @ready) -join "`n") | Should -Match 'Could not read free disk space for installers and backups'
+    }
+
+    It 'doesn''t stop for a scans drive it can''t measure' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'Could not find item.' } -ParameterFilter { $Path -eq $scans }
+        @(Test-StationReady @ready) | Should -HaveCount 0
+        # The settings check never measures the scans drive; that's the health line's job.
+        Should -Invoke -ModuleName StationChecks Get-FreeDiskGB -Times 0 -Exactly -ParameterFilter { $Path -eq $scans }
     }
 
     It 'reports a missing .env' {
         Remove-Item -LiteralPath (Join-Path $userProfile '.bloom\.env')
         (@(Test-StationReady @ready) -join "`n") | Should -Match '.env is missing'
+    }
+}
+
+Describe 'Get-ScansDriveHealth' {
+    BeforeEach {
+        $userProfile = New-StationProfile -EnvLines @('SCANS_DIR=E:\bloom-scans')
+    }
+
+    It 'says it didn''t check when .env has no SCANS_DIR' {
+        Get-ScansDriveHealth -ProfileDir (New-StationProfile -EnvLines @('SCANNER_MODE=cylinderscan')) |
+            Should -Be 'not checked (no SCANS_DIR in .env)'
+    }
+
+    It 'reports the free disk space' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { 250 }
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Be '250 GB of free disk space'
+    }
+
+    It 'warns when the drive is nearly full' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { 3 }
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match '^only 3 GB of free disk space; scans may fail'
+    }
+
+    It 'says so when it can''t measure, without throwing' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'Could not find item E:\bloom-scans.' }
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match '^could not read'
+    }
+}
+
+Describe 'Get-FreeDiskGB' {
+    It 'throws for a drive that doesn''t exist, instead of reading 0 GB' -Skip:($env:OS -ne 'Windows_NT') {
+        # Not mocked: PowerShell turns DriveInfo's exception into $null, which read as 0 GB before.
+        $unused = [char[]](68..90) | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+        { Get-FreeDiskGB -Path "${unused}:\scans" } | Should -Throw "*doesn't exist or isn't ready*"
+    }
+
+    It 'gives a could-not-read health line for a drive that doesn''t exist' -Skip:($env:OS -ne 'Windows_NT') {
+        $unused = [char[]](68..90) | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+        $userProfile = New-StationProfile -EnvLines @("SCANS_DIR=${unused}:\bloom-scans")
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match "^could not read: Drive ${unused}:\\ doesn't exist or isn't ready"
+    }
+
+    It 'measures a hidden folder''s drive (Get-Item can''t see hidden folders)' {
+        $hidden = Join-Path $TestDrive ('hidden-' + [guid]::NewGuid())
+        (New-Item -ItemType Directory -Force -Path $hidden).Attributes = 'Hidden, Directory'
+        Get-FreeDiskGB -Path $hidden | Should -BeGreaterOrEqual 0
     }
 }
 
