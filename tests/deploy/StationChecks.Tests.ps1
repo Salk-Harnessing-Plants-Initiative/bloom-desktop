@@ -93,7 +93,7 @@ Describe 'Test-StationReady' {
 
     It 'reports a deploy drive it can''t measure as a problem, not an error' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'The drive cannot be found.' } -ParameterFilter { $Path -eq $TestDrive }
-        (@(Test-StationReady @ready) -join "`n") | Should -Match "Can't measure free disk space for installers and backups"
+        (@(Test-StationReady @ready) -join "`n") | Should -Match 'Could not read free disk space for installers and backups'
     }
 
     It 'doesn''t stop for a scans drive it can''t measure' {
@@ -124,11 +124,23 @@ Describe 'Get-ScansDriveHealth' {
 
     It 'says so when it can''t measure, without throwing' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'Could not find item E:\bloom-scans.' }
-        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match "^couldn't measure"
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match '^could not read'
     }
 }
 
 Describe 'Get-FreeDiskGB' {
+    It 'throws for a drive that doesn''t exist, instead of reading 0 GB' -Skip:($env:OS -ne 'Windows_NT') {
+        # Not mocked: PowerShell turns DriveInfo's exception into $null, which read as 0 GB before.
+        $unused = [char[]](68..90) | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+        { Get-FreeDiskGB -Path "${unused}:\scans" } | Should -Throw "*doesn't exist or isn't ready*"
+    }
+
+    It 'gives a could-not-read health line for a drive that doesn''t exist' -Skip:($env:OS -ne 'Windows_NT') {
+        $unused = [char[]](68..90) | Where-Object { -not (Test-Path "${_}:\") } | Select-Object -First 1
+        $userProfile = New-StationProfile -EnvLines @("SCANS_DIR=${unused}:\bloom-scans")
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match "^could not read: Drive ${unused}:\\ doesn't exist or isn't ready"
+    }
+
     It 'measures a hidden folder''s drive (Get-Item can''t see hidden folders)' {
         $hidden = Join-Path $TestDrive ('hidden-' + [guid]::NewGuid())
         (New-Item -ItemType Directory -Force -Path $hidden).Attributes = 'Hidden, Directory'

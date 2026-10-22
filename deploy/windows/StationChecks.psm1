@@ -151,10 +151,12 @@ function Get-UserEnvironmentVariable {
 }
 
 function Get-FreeDiskGB {
-    <# Free GB on $Path's drive, from its root (Get-Item can't see hidden or system folders). Throws if unmeasurable. #>
+    <# Free GB on $Path's drive root (Get-Item without -Force can't see hidden folders). Throws if it can't be read. #>
     param([Parameter(Mandatory)][string]$Path)
-    $root = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path))
-    [math]::Floor((New-Object IO.DriveInfo $root).AvailableFreeSpace / 1GB)
+    $drive = New-Object IO.DriveInfo ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path)))
+    # Checked first: PowerShell turns a property's exception into $null, which would read as 0 GB.
+    if (-not $drive.IsReady) { throw "Drive $($drive.Name) doesn't exist or isn't ready." }
+    [math]::Floor($drive.AvailableFreeSpace / 1GB)
 }
 
 function Get-ScansDriveHealth {
@@ -163,7 +165,7 @@ function Get-ScansDriveHealth {
     $scansDir = (Read-StationEnv -ProfileDir $ProfileDir)['SCANS_DIR']
     if (-not $scansDir) { return 'not checked (no SCANS_DIR in .env)' }
     try { $free = Get-FreeDiskGB -Path $scansDir }
-    catch { return "couldn't measure: $($_.Exception.Message)" }
+    catch { return "could not read: $($_.Exception.Message)" }
     if ($free -lt $script:MinFreeDiskGB) { return "only $free GB of free disk space; scans may fail (at least $($script:MinFreeDiskGB) GB recommended)" }
     "$free GB of free disk space"
 }
@@ -210,7 +212,7 @@ function Test-StationReady {
             $problems.Add("Only $deployFree GB of free disk space for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
         }
     }
-    catch { $problems.Add("Can't measure free disk space for installers and backups ($DeployRoot): $($_.Exception.Message)") }
+    catch { $problems.Add("Could not read free disk space for installers and backups ($DeployRoot): $($_.Exception.Message)") }
 
     # Plain values, so callers' @(...) gives an empty array when there are no problems.
     $problems.ToArray()
