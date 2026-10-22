@@ -498,7 +498,12 @@ jobs:
     strategy:
       fail-fast: false # Continue running on other platforms even if one fails
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows pinned to windows-2022: on GitHub's windows-2025-vs2026 build
+        # 20261018.275 (what windows-latest rolls out to from 2026-10-18), Chromium's
+        # GPU process crashes (0xC0000005) when the app starts, so Electron never
+        # opens a window and every E2E test fails; build 20261007.264 was fine.
+        # Move back to windows-latest once a newer build (or Electron) fixes it.
+        os: [ubuntu-latest, macos-latest, windows-2022]
         # Splits the 264-test E2E suite into 4 shards per OS so no single
         # Playwright worker (workers: 1, unchanged) accumulates more than
         # ~1/4 of the suite's sequential Electron launches. Defensive bound
@@ -543,6 +548,9 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: 'pyproject.toml'
+          # This job installs nothing with uv, so there may be no cache to save;
+          # without this the post step fails the job (seen on windows-2022).
+          ignore-nothing-to-cache: true
           python-version: '3.12'
 
       - name: Download Python executable
@@ -557,9 +565,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
 
       - name: Generate Prisma Client
         run: npx prisma generate
@@ -592,6 +597,14 @@ jobs:
         env:
           CI: true
 
+      # Some Windows shards fill C: and the runner dies with no log; the watchdog
+      # stops the tests first and records what is using the space.
+      - name: Start disk watchdog (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile', '-File', 'scripts/ci-disk-watchdog.ps1', '-LogFile', "$env:RUNNER_TEMP\disk-watchdog.log"
+
       - name: Run Playwright E2E tests (macOS/Windows)
         if: runner.os != 'Linux'
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
@@ -601,6 +614,19 @@ jobs:
       - name: Stop Electron Forge dev server
         if: always()
         run: node scripts/stop-electron-forge.js
+
+      # The Windows runners have run out of disk mid-shard; show what is using it.
+      - name: Report disk use (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n='FreeGB';e={[math]::Round($_.Free / 1GB, 1)}}, @{n='UsedGB';e={[math]::Round($_.Used / 1GB, 1)}}
+          Get-Content "$env:RUNNER_TEMP\disk-watchdog.log" -ErrorAction SilentlyContinue
+          $mei = @(Get-ChildItem $env:TEMP -Directory -Filter '_MEI*' -ErrorAction SilentlyContinue)
+          "PyInstaller temp folders left in TEMP: $($mei.Count)"
+          Get-ChildItem $env:TEMP -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            [pscustomobject]@{ Folder = $_.Name; MB = [math]::Round(((Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum) / 1MB) }
+          } | Sort-Object MB -Descending | Select-Object -First 10 | Format-Table
 
       - name: Upload Playwright test results
         uses: actions/upload-artifact@v4
@@ -722,9 +748,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
@@ -739,6 +762,9 @@ jobs:
       - name: Verify packaged app window renders and database initializes
         run: npm run test:package:launch
 
+      - name: Verify the packaged deploy self-test
+        run: npm run test:package:self-test
+
       - name: Upload verified maker artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -752,7 +778,10 @@ jobs:
   test-make-windows:
     needs: build-python
     name: Test - Make (Windows)
-    runs-on: windows-latest
+    # windows-2022, not windows-latest: this job launches the packaged app, which
+    # hits the same GPU-process crash on windows-2025-vs2026 build 20261018.275
+    # as the E2E jobs (see test-e2e-dev's matrix).
+    runs-on: windows-2022
     # Bounds a hung job so it can't indefinitely block a subsequently-queued
     # push-to-main run (see the concurrency block above). Evidence-based value
     # in openspec/changes/add-pr-checks-concurrency-control/design.md
@@ -799,9 +828,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
@@ -815,6 +841,9 @@ jobs:
 
       - name: Verify packaged app window renders and database initializes
         run: npm run test:package:launch
+
+      - name: Verify the packaged deploy self-test
+        run: npm run test:package:self-test
 
       - name: Upload verified maker artifacts
         uses: actions/upload-artifact@v4
@@ -887,9 +916,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
-
       - name: Generate Prisma Client
         run: npx prisma generate
         env:
@@ -906,12 +932,44 @@ jobs:
         env:
           ELECTRON_DISABLE_SANDBOX: 1
 
+      - name: Verify the packaged deploy self-test
+        run: xvfb-run --auto-servernum npm run test:package:self-test
+        env:
+          ELECTRON_DISABLE_SANDBOX: 1
+
       - name: Upload verified maker artifacts
         uses: actions/upload-artifact@v4
         with:
           name: packaged-app-${{ runner.os }}
           path: out/make/**
           retention-days: 7
+
+  test-deploy-scripts:
+    name: Test - Deploy Scripts (${{ matrix.shell }})
+    runs-on: windows-latest
+    # The station runs Windows PowerShell 5.1; test there and on PowerShell 7.
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install Pester 5
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -SkipPublisherCheck -Scope CurrentUser
+
+      - name: Run the deploy script tests
+        run: |
+          Import-Module Pester -MinimumVersion 5.5.0
+          Invoke-Pester -Path tests/deploy -CI -Output Detailed
 
   all-checks-passed:
     name: All Checks Passed
@@ -935,6 +993,7 @@ jobs:
       - test-make
       - test-make-windows
       - test-make-linux
+      - test-deploy-scripts
 
     steps:
       - name: Verify all needed jobs succeeded

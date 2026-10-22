@@ -8,6 +8,16 @@ Electron-react application for cylinder scanning and upload to bloom.
 
 See [Issue #1](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/1) for the full migration plan.
 
+## Stations
+
+Releases are installed on the scanning stations with **Actions → Deploy** (see [docs/STATION_SETUP.md](docs/STATION_SETUP.md)). Each deploy is recorded in the station's GitHub environment, linked to the release it installed; **Actions → Station versions** prints which version every station has.
+
+| Station | Location         | Scanner     | Last deploy                                                                                                             | History                                                                                               |
+| ------- | ---------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| pc1     | WIF room 104/105 | FastScanner | ![pc1](https://img.shields.io/github/deployments/Salk-Harnessing-Plants-Initiative/bloom-desktop/station-pc1?label=pc1) | [deploys](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/deployments/station-pc1) |
+
+The badge shows whether the station's last deploy succeeded; the history lists every version deployed, when, and who approved it. Installs done by hand aren't recorded.
+
 ## Architecture
 
 - **Frontend**: Electron + React + TypeScript

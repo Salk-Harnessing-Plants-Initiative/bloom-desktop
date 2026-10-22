@@ -1,0 +1,216 @@
+name: Deploy
+
+# Installs a published release on a station: Actions → Deploy → Run workflow, from main,
+# with the version and the station name from deploy/stations.yaml.
+#   plan   (GitHub-hosted): the station is active Windows CylinderScan; the release is
+#          published with its installer, manifest.json and SHA256SUMS.
+#   deploy (the station's self-hosted runner, in the station's environment, which needs
+#          approval): deploy/windows/deploy-station.ps1 stages and checks the files, stops
+#          if Bloom Desktop is running, reports the camera (required only with
+#          require_camera), checks the Bloom login and the station's settings, stages the
+#          installed version for a rollback, backs up the database and .env, installs,
+#          upgrades the database with the release's migrations, runs the installed app's
+#          upload self-test (a synthetic scan in DEPLOY-TEST <scanner>), and on any failure
+#          restores the backup and then reinstalls the previous version.
+# GitHub keeps each station's deployment history in its environment, linked to the release.
+# See docs/STATION_SETUP.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published release to install (e.g. 0.2.0)'
+        required: true
+        type: string
+      station:
+        description: 'Station name from deploy/stations.yaml (e.g. pc1)'
+        required: true
+        type: string
+      require_camera:
+        description: 'Stop if the camera does not answer (cameras are usually off between sessions)'
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+env:
+  # Bloom species the upload self-test files its synthetic scans under; must exist in Bloom.
+  TEST_SPECIES: Sorghum
+
+# One deploy per station at a time; never cancel one part-way through.
+concurrency:
+  group: deploy-${{ inputs.station }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      runner_label: ${{ steps.plan.outputs.runner_label }}
+      environment: ${{ steps.plan.outputs.environment }}
+      scanner_name: ${{ steps.plan.outputs.scanner_name }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      release_base_url: ${{ steps.plan.outputs.release_base_url }}
+      release_url: ${{ steps.plan.outputs.release_url }}
+    steps:
+      - name: Only deploy from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploys run only from main (this run is on $GITHUB_REF)."
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@salk-harnessing-plants-initiative'
+          cache: 'npm'
+
+      - name: Install dependencies (no install scripts)
+        run: npm ci --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Look up the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release view "v${VERSION#v}" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,assets > "$RUNNER_TEMP/release.json"
+
+      - name: Plan
+        id: plan
+        env:
+          VERSION: ${{ inputs.version }}
+          STATION: ${{ inputs.station }}
+        run: |
+          npx ts-node scripts/release/deploy-plan.ts \
+            --station "$STATION" --version "$VERSION" \
+            --release-json "$RUNNER_TEMP/release.json" \
+            --repo "$GITHUB_REPOSITORY" --github-output
+
+  deploy:
+    name: Deploy to ${{ inputs.station }}
+    needs: plan
+    # The station's runner hook (deploy/windows/runner-job-started.ps1) enforces the same.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, windows, '${{ needs.plan.outputs.runner_label }}']
+    environment:
+      name: ${{ needs.plan.outputs.environment }}
+      url: ${{ needs.plan.outputs.release_url }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the deploy scripts
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/windows
+
+      - name: Checkout the release's database migrations
+        uses: actions/checkout@v5
+        with:
+          # A tag, never a branch that happens to have the same name.
+          ref: refs/tags/${{ needs.plan.outputs.tag }}
+          path: release-src
+          persist-credentials: false
+          sparse-checkout: prisma
+
+      - name: Check the migrations are from the released commit
+        shell: powershell
+        env:
+          RELEASE_BASE_URL: ${{ needs.plan.outputs.release_base_url }}
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+          $released = (Invoke-RestMethod "$env:RELEASE_BASE_URL/manifest.json").commit
+          $checkedOut = (git -C release-src rev-parse HEAD).Trim()
+          if ($checkedOut -ne $released) {
+            Write-Output "::error::release-src is at $checkedOut, but the release was built from $released."
+            exit 1
+          }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Install and check the database tools
+        shell: powershell
+        run: |
+          # npm and prisma print deprecation warnings on stderr, which Windows PowerShell
+          # 5.1 would turn into a failure under the runner's 'stop'. Only exit codes stop
+          # the deploy here; warnings are kept in the log and shown on the run page.
+          $ErrorActionPreference = 'Continue'
+          # Runs a tool and returns its exit code; a non-zero code fails the step, and the
+          # tool's own code is shown on the run as an error annotation.
+          function Invoke-Tool {
+            param([string]$Label, [scriptblock]$Command)
+            # A command that isn't found sets no exit code: treat that as a failure, not as
+            # the previous tool's code.
+            $global:LASTEXITCODE = $null
+            $output = & $Command 2>&1
+            $code = if ($null -eq $LASTEXITCODE) { 1 } else { $LASTEXITCODE }
+            foreach ($line in $output) {
+              $text = "$line"
+              Write-Host $text
+              if ($line -is [System.Management.Automation.ErrorRecord] -and $text.Trim()) {
+                # Workflow commands need % escaped in the message; titles avoid : and ,.
+                Write-Host "::warning title=${Label}::$($text.Replace('%', '%25'))"
+              }
+            }
+            if ($code -ne 0) { Write-Host "::error title=${Label}::exited with code $code" }
+            $code
+          }
+          # Exact versions and integrity hashes from the committed lockfile.
+          $tools = "$env:RUNNER_TEMP\bloom-deploy-tools"
+          New-Item -ItemType Directory -Force $tools | Out-Null
+          Copy-Item deploy\windows\tools\package.json, deploy\windows\tools\package-lock.json $tools
+          $code = Invoke-Tool 'Database tools - npm ci' { npm ci --no-audit --no-fund --prefix $tools }
+          if ($code -ne 0) { exit $code }
+          # Fail here, before anything on the station changes, if either tool can't run.
+          # From the tools folder, so prisma doesn't read the repository's package.json.
+          Push-Location $tools
+          $code = Invoke-Tool 'Database tools - prisma' { node "$tools\node_modules\prisma\build\index.js" --version }
+          Pop-Location
+          if ($code -ne 0) { exit $code }
+          $env:NODE_PATH = "$tools\node_modules"
+          $code = Invoke-Tool 'Database tools - better-sqlite3' { node -e "new (require('better-sqlite3'))(':memory:').close()" }
+          exit $code
+
+      - name: Install the release
+        shell: powershell
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          SCANNER_NAME: ${{ needs.plan.outputs.scanner_name }}
+          RELEASE_BASE_URL: ${{ needs.plan.outputs.release_base_url }}
+          REQUIRE_CAMERA: ${{ inputs.require_camera }}
+          DEPLOY_LOG_DIR: ${{ runner.temp }}\deploy-log
+        run: |
+          & .\deploy\windows\deploy-station.ps1 -Version $env:VERSION `
+            -ScannerName $env:SCANNER_NAME -ReleaseBaseUrl $env:RELEASE_BASE_URL `
+            -TestSpecies $env:TEST_SPECIES -SchemaPath (Join-Path $PWD 'release-src\prisma\schema.prisma') `
+            -ToolsDir "$env:RUNNER_TEMP\bloom-deploy-tools" -RequireCamera:($env:REQUIRE_CAMERA -eq 'true')
+          exit $LASTEXITCODE
+
+      - name: Attach the station's deploy logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-logs-${{ inputs.station }}
+          # Only this run's log, which deploy-station.ps1 copies here.
+          path: ${{ runner.temp }}/deploy-log/*.log
+          retention-days: 30

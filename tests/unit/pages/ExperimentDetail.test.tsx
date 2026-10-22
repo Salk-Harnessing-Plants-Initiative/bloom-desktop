@@ -369,7 +369,10 @@ describe('ExperimentDetail', () => {
       const linkButton = screen.getByRole('button', { name: /^link$/i });
       await user.click(linkButton);
 
-      expect(screen.getByRole('button', { name: /linking/i })).toBeDisabled();
+      // findBy: the button's label changes after a re-render, not in the click itself.
+      expect(
+        await screen.findByRole('button', { name: /linking/i })
+      ).toBeDisabled();
       await user.click(screen.getByRole('button', { name: /linking/i }));
 
       resolveLink!({ success: true });
@@ -406,7 +409,9 @@ describe('ExperimentDetail', () => {
       const unlinkButton = screen.getByRole('button', { name: /^unlink$/i });
       await user.click(unlinkButton);
 
-      expect(screen.getByRole('button', { name: /unlinking/i })).toBeDisabled();
+      expect(
+        await screen.findByRole('button', { name: /unlinking/i })
+      ).toBeDisabled();
       await user.click(screen.getByRole('button', { name: /unlinking/i }));
 
       resolveUnlink!({ success: true });

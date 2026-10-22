@@ -12,6 +12,7 @@ if (process.platform === 'linux') {
   process.env.GDK_BACKEND = process.env.GDK_BACKEND || 'x11';
 }
 
+import { isDeployFirstRun } from './deploy-first-run';
 import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -68,6 +69,8 @@ import { IdleTimer } from './idle-timer';
 import { createFrameForwarder } from './frame-forwarder';
 // GraviScan wiring is in a side-effect-free module for testability.
 import { initGraviScan, shutdownGraviScan } from './graviscan/wiring';
+import { parseDeploySelfTestArgs } from './deploy-self-test';
+import { startDeploySelfTest } from './deploy-self-test-cli';
 import {
   shouldQuitAsSecondInstance,
   focusExistingWindow,
@@ -89,10 +92,24 @@ if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+// A station deploy installs from the runner service: don't start the app in that
+// hidden session (see deploy-first-run.ts).
+// app.exit, not app.quit: stop now, before any startup code touches the database.
+if (isDeployFirstRun(process.argv, process.env)) {
+  app.exit(0);
+}
+
+// Deploy self-test (run by the station deploy after installing): uploads a
+// synthetic scan to Bloom and exits, with no window, hardware or single-instance
+// lock. It writes only to the database copy it is given. See deploy-self-test.ts.
+const deploySelfTest = parseDeploySelfTestArgs(process.argv);
+
 // Single-instance lock (#249): two instances running concurrently against
 // the same SQLite database and hardware is a real data-corruption risk on
 // lab machines. Must run before any app.on('ready', ...) registration.
-if (shouldQuitAsSecondInstance(app.requestSingleInstanceLock())) {
+if (deploySelfTest) {
+  void startDeploySelfTest(deploySelfTest);
+} else if (shouldQuitAsSecondInstance(app.requestSingleInstanceLock())) {
   app.quit();
 } else {
   app.on('second-instance', () => focusExistingWindow(mainWindow));
@@ -1186,6 +1203,8 @@ ipcMain.handle('session:reset', async (): Promise<void> => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', async () => {
+  if (deploySelfTest) return;
+
   // Register the bloom-scan:// protocol handler BEFORE createWindow()'s
   // loadURL() call, closing the narrow race where the renderer could
   // request a bloom-scan:// resource before the handler exists (#93).
@@ -1318,6 +1337,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
+  if (deploySelfTest) return;
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {

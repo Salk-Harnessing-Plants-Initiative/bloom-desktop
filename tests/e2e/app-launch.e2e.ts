@@ -36,13 +36,13 @@ import {
 } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
 import { closeElectronApp } from './helpers/electron-cleanup';
 import { waitForAppReady } from './helpers/app-ready';
 import {
   createTestBloomConfig,
   cleanupTestBloomConfig,
 } from './helpers/bloom-config';
+import { resetTestDatabase } from './helpers/test-database';
 
 // Import electron path using require() since the module exports a string path
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -86,15 +86,8 @@ test.describe('Electron App Launch', () => {
       fs.mkdirSync(testDbDir, { recursive: true });
     }
 
-    // Create the test database file and apply schema
-    // prisma db push creates the database file and applies the schema without migrations
-    // We override BLOOM_DATABASE_URL with absolute path to ensure correct database location
     const appRoot = path.join(__dirname, '../..');
-    execSync('npx prisma db push --skip-generate', {
-      cwd: appRoot,
-      env: { ...process.env, BLOOM_DATABASE_URL: TEST_DB_URL },
-      stdio: 'pipe', // Suppress output
-    });
+    resetTestDatabase(TEST_DB_PATH);
 
     // Launch Electron app using webpack dev build
     // Point directly to the built main process file
