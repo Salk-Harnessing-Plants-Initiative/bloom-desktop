@@ -7,11 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-22
+
 ### Added
 
-- `--deploy-self-test` mode: with no window and without touching the station's database, uploads a short synthetic scan to Bloom (experiment `DEPLOY-TEST <scanner name>`) using the station's saved credentials, writes a JSON result and exits 0 (uploaded), 1 (failed) or 2 (bad arguments). For the station deploy to check uploads after installing. CI runs it on each packaged build.
-- Station deploys: Actions → Deploy installs a published release on a Windows CylinderScan station through its self-hosted runner, after approval in the station's environment. It checks the Bloom login, the station's settings (and the camera, if required) before changing anything, stages the installed version for a rollback, backs up `bloom.db` and `.env`, installs, upgrades the database with the release's migrations, and runs the installed app's upload self-test; any failure restores the backup and then reinstalls the previous version. Actions → Station versions lists each station's version, and the README links each station's deploy history. PC1 is the first station in `deploy/stations.yaml`. A job-started hook on each station's runner (`deploy/windows/runner-job-started.ps1`) lets only the Deploy workflow from `main` run there. See `docs/STATION_SETUP.md`.
-- The app quits on Squirrel's first-run start when `BLOOM_DEPLOY_SKIP_FIRSTRUN` is set, so a deploy's silent install doesn't open the app in the runner's session.
+- `--deploy-self-test` mode: with no window and without touching the station's database, uploads a short synthetic scan to Bloom (experiment `DEPLOY-TEST <scanner name>`) using the station's saved credentials, writes a JSON result and exits 0 (uploaded), 1 (failed) or 2 (bad arguments). For the station deploy to check uploads after installing. CI runs it on each packaged build ([#413](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/413)).
+- Station deploys: Actions → Deploy installs a published release on a Windows CylinderScan station through its self-hosted runner, after approval in the station's environment. It checks the Bloom login, the station's settings (and the camera, if required) before changing anything, stages the installed version for a rollback, backs up `bloom.db` and `.env`, installs, upgrades the database with the release's migrations, and runs the installed app's upload self-test; any failure restores the backup and then reinstalls the previous version. Actions → Station versions lists each station's version, and the README links each station's deploy history. PC1 is the first station in `deploy/stations.yaml`. A job-started hook on each station's runner (`deploy/windows/runner-job-started.ps1`) lets only the Deploy workflow from `main` run there; it refuses a job if it can't run its check. Database tools are installed from a lockfile, and station paths, account and `.env` details are kept out of the public log and summary. See `docs/STATION_SETUP.md` ([#414](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/414), [#415](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/415), [#417](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/417)).
+- The app quits on Squirrel's first-run start when `BLOOM_DEPLOY_SKIP_FIRSTRUN` is set, so a deploy's silent install doesn't open the app in the runner's session ([#414](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/414)).
+
+### Changed
+
+- CI: E2E tests copy a template database built once per run instead of running Prisma before every test, run in their own temp folder, and no longer download Playwright browsers; Windows E2E and Make run on `windows-2022` while GitHub's newest Windows Server 2025 build crashes Electron's GPU process. A full run takes about 18 min instead of about 55 ([#416](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/416)).
 
 ## [0.2.0] - 2026-10-15
 
