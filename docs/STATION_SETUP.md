@@ -51,29 +51,33 @@ Do this on the station, signed in as its shared lab account: Squirrel installs p
 
 1. **Database.** A station that has data from bloom-desktop-pilot needs it converted first; see [PILOT_COMPATIBILITY.md](PILOT_COMPATIBILITY.md). The converted database goes in `%USERPROFILE%\.bloom\data\bloom.db`.
 2. **Machine settings.** Install Bloom Desktop once by hand and complete Machine Configuration (CylinderScan, scanner name, camera IP, scans folder, Bloom account). Set the user environment variables `BLOOM_USE_MOCK_HARDWARE`, `BLOOM_USE_MOCK_CAMERA` and `BLOOM_USE_MOCK_DAQ` to `false` (System Properties → Environment Variables → User variables).
-3. **Install Git for Windows** (https://git-scm.com/download/win, default options). The deploy checks out the release's database migrations with it and checks they are the released commit.
-4. **Register the runner on this repository.** In the repository's **Settings → Actions → Runners → New self-hosted runner** (Windows, x64), follow GitHub's commands in PowerShell, in `C:\actions-runner`. When `config.cmd` asks:
-   - runner name: the station's `runner_label` (e.g. `station-pc1`), not the default (the computer's name), which would appear in every public job log;
-   - labels: `windows` and the station's `runner_label` (e.g. `station-pc1`);
+3. **Install Git for Windows** (https://git-scm.com/download/win, default options). The deploy checks out the release's database migrations with it and checks they are the released commit. Open a new PowerShell afterwards: the runner keeps the PATH of the shell it's set up in, so Git must already be on it.
+4. **Register the runner on this repository.** In the repository's **Settings → Actions → Runners → New self-hosted runner** (Windows, x64), follow GitHub's commands in **PowerShell as an administrator**, after `cd C:\`. Its commands create `actions-runner` in the current folder, which must end up as `C:\actions-runner` (an administrator PowerShell starts in `C:\Windows\system32`), and only an administrator can install the service. When `config.cmd` asks:
+   - runner name: the station's `runner_label` (e.g. `station-pc1`) rather than the computer's name;
+   - labels: the station's `runner_label` (e.g. `station-pc1`); `self-hosted` and `Windows` are added anyway;
    - run as a service: **yes**, with the lab account (it asks for the account's Windows password; the password stays on the station).
 
    Register it on the repository, not the organization, so no other repository can use it.
 
-5. **Install the job hook**, which lets only the Deploy workflow from `main` run on the station. The repository is public and the organization's plan can't limit a runner to one workflow, so without it a workflow from a fork pull request or a pushed branch that names the station's labels would run as the lab account. The hook refuses the job if it can't run its check. In PowerShell as an administrator, after step 4 (it takes the lab account from the runner service and stops with an error if anything doesn't work):
+5. **Install the job hook**, which lets only the Deploy workflow from `main` run on the station. The repository is public and the organization's plan can't limit a runner to one workflow, so without it a workflow from a fork pull request or a pushed branch that names the station's labels would run as the lab account. The hook refuses the job if it can't run its check. In PowerShell as an administrator, after step 4 (it checks the runner service from step 4, takes the lab account from it, and stops with an error if anything doesn't work):
 
    ```powershell
    $ErrorActionPreference = 'Stop'
    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-   # The hook and the deploy are PowerShell scripts, which Windows blocks by default.
-   Set-ExecutionPolicy -Scope LocalMachine RemoteSigned -Force
+   # The hook and the deploy are PowerShell scripts, which Windows blocks by default. Setting
+   # the policy warns (rather than stops) when another scope wins; the check below decides.
+   try { Set-ExecutionPolicy -Scope LocalMachine RemoteSigned -Force } catch { Write-Warning $_ }
    $policy = Get-ExecutionPolicy
    if ($policy -notin 'RemoteSigned', 'Unrestricted', 'Bypass') { throw "Scripts are still blocked ($policy), probably by Group Policy: ask IT." }
 
-   # The account the runner service runs as (step 4).
+   # The runner service from step 4: where it is, and the account it runs as.
    $service = @(Get-CimInstance Win32_Service -Filter "Name LIKE 'actions.runner.%'")
    if ($service.Count -ne 1) { throw "Expected one runner service, found $($service.Count): do step 4 first." }
+   $runnerRoot = Split-Path (Split-Path $service[0].PathName.Trim('"'))
+   if ($runnerRoot -ne 'C:\actions-runner') { throw "The runner is in $runnerRoot, not C:\actions-runner: remove it (config.cmd remove) and redo step 4 from C:\." }
    $labAccount = $service[0].StartName -replace '^\.\\', "$env:COMPUTERNAME\"
+   if ($labAccount -match '^(LocalSystem|NT AUTHORITY\\)') { throw "The runner service runs as $labAccount, not the lab account: redo step 4." }
    $lab = '*' + ([Security.Principal.NTAccount]$labAccount).Translate([Security.Principal.SecurityIdentifier]).Value
    "Runner service account: $labAccount"
 
@@ -85,18 +89,12 @@ Do this on the station, signed in as its shared lab account: Squirrel installs p
    # On a line of its own, even if .env doesn't end with a newline:
    Add-Content C:\actions-runner\.env "`r`nACTIONS_RUNNER_HOOK_JOB_STARTED=C:\actions-runner\hooks\runner-job-started.ps1"
 
-   # Permissions by SID, so any Windows language works. Administrators and SYSTEM keep full control.
-   function Set-Access([string]$Path, [string]$LabRights) {
-       icacls $Path /inheritance:r /grant:r "${lab}:$LabRights" '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
-       if ($LASTEXITCODE) { throw "icacls failed on $Path" }
+   # Only the lab account, Administrators and SYSTEM (by SID, so any Windows language works)
+   # may use the runner and the deploy folder (backups hold .env):
+   foreach ($dir in 'C:\actions-runner', 'C:\BloomDeploy') {
+       icacls $dir /inheritance:r /grant:r "${lab}:(OI)(CI)F" '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' | Out-Null
+       if ($LASTEXITCODE) { throw "icacls failed on $dir" }
    }
-   # Only the lab account may use the runner and the deploy folder (backups hold .env).
-   Set-Access C:\actions-runner '(OI)(CI)F'
-   Set-Access C:\BloomDeploy '(OI)(CI)F'
-   # The hook and the runner's settings: read-only for the lab account, so a job can't switch the hook off.
-   Set-Access C:\actions-runner\hooks '(OI)(CI)RX'
-   icacls C:\actions-runner\.env /inheritance:r /grant:r "${lab}:R" '*S-1-5-32-544:F' '*S-1-5-18:F' | Out-Null
-   if ($LASTEXITCODE) { throw 'icacls failed on C:\actions-runner\.env' }
 
    Restart-Service 'actions.runner.*'
    Get-Service 'actions.runner.*'   # Status should be Running
@@ -104,7 +102,7 @@ Do this on the station, signed in as its shared lab account: Squirrel installs p
 
    Every job then logs `Station job hook: Deploy workflow from main, allowed.`, and anything else fails with `Refused by the station's job hook`. When `runner-job-started.ps1` or `RunnerJobCheck.psm1` changes in the repository, download them again. If even a Deploy run from `main` is refused with an empty workflow name, the runner isn't passing the job's details to the hook: tell the maintainers rather than removing the hook.
 
-   The hook keeps other workflows from starting on the station, and the lab account can't change the hook or the runner's settings. Code already running as the lab account could still change other runner files, which is why only the Deploy workflow from `main`, after approval, may run there. If a job fails with "running scripts is disabled on this system", the execution policy step above didn't take effect.
+   The hook keeps other workflows from starting on the station. It can't protect against code already running as the lab account (someone signed in at the station, or a program it runs), which could change the runner's files, including the hook; a changed hook shows up as a failed or refused deploy. That's why only the Deploy workflow from `main`, after approval, may run there. If a job fails with "running scripts is disabled on this system", the execution policy step above didn't take effect.
 
 6. **GitHub environment.** A repository admin creates the environment named in the station's `environment` field (e.g. `station-pc1`), with required reviewers and **Deployment branches: `main` only**.
 7. **Repository setting (once, for all stations):** **Settings → Actions → General → Approval for running fork pull request workflows → Require approval for all external contributors.**
@@ -136,12 +134,12 @@ If the test upload reports that it wrote no result while the runner runs as a se
 
 ## Restoring a backup by hand
 
-Use the backup folder named in the job summary (in `C:\BloomDeploy\backups\`). Scans saved on the station after that backup was made aren't in it, so stop scanning first.
+Signed in as the station's lab account, use the backup folder named in the job summary (in `C:\BloomDeploy\backups\`). Scans saved on the station after that backup was made aren't in it, so stop scanning first.
 
 1. Close Bloom Desktop.
-2. Copy the whole `%USERPROFILE%\.bloom\data\` folder somewhere safe, e.g. `C:\BloomDeploy\failed\manual-<date>\`. After `needs-attention` nothing else has kept it, and it may hold scans saved since the deploy: if it does, tell the maintainers before going on.
+2. Copy the whole `%USERPROFILE%\.bloom\data\` folder to `C:\BloomDeploy\manual\<date>\` (not `backups\` or `failed\`, which deploys prune). After `needs-attention` nothing else has kept it: if anyone scanned after the deploy started, tell the maintainers before going on.
 3. Delete any `bloom.db-journal`, `bloom.db-wal` and `bloom.db-shm` next to the database in `%USERPROFILE%\.bloom\data\`.
 4. Copy `bloom.db` (and any other `bloom.db-*` files in the backup) to `%USERPROFILE%\.bloom\data\`, and `.env` to `%USERPROFILE%\.bloom\`.
-5. Unless the job summary says the previous version was reinstalled, uninstall Bloom Desktop (Settings → Apps), then run the previous version's `Setup.exe` from `C:\BloomDeploy\releases\v<version>\`. The installer won't replace a newer version, and the newer app doesn't work with the older database.
+5. Uninstall Bloom Desktop (Settings → Apps), then run `Setup.exe` from `C:\BloomDeploy\releases\v<version>\`, where `<version>` is the one in the backup folder's name (`<time>_v<version>`). The installer won't replace a newer version, and the newer app doesn't work with the older database. If the backup folder ends in `_none` (the first deploy to this station), skip this and tell the maintainers.
 
 The database a failed deploy left behind is kept in `C:\BloomDeploy\failed\<time>_v<version>\`, for working out what went wrong; it isn't used again.

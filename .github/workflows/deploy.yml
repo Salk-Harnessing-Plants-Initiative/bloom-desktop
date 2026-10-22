@@ -159,8 +159,11 @@ jobs:
           # tool's own code is shown on the run as an error annotation.
           function Invoke-Tool {
             param([string]$Label, [scriptblock]$Command)
+            # A command that isn't found sets no exit code: treat that as a failure, not as
+            # the previous tool's code.
+            $global:LASTEXITCODE = $null
             $output = & $Command 2>&1
-            $code = $LASTEXITCODE
+            $code = if ($null -eq $LASTEXITCODE) { 1 } else { $LASTEXITCODE }
             foreach ($line in $output) {
               $text = "$line"
               Write-Host $text

@@ -303,8 +303,8 @@ Describe 'Protect-DeployText' {
         $savedUser = $env:USERNAME
         try {
             $env:USERNAME = 'bloom'
-            $safe = Protect-DeployText -Text 'Restored bloom.db from C:\BloomDeploy\backups\20261022_v0.2.0 (run by bloom)'
-            $safe | Should -Be 'Restored bloom.db from C:\BloomDeploy\backups\20261022_v0.2.0 (run by <lab account>)'
+            $safe = Protect-DeployText -Text 'Restored bloom.db from C:\BloomDeploy\backups\20261022_v0.2.0 (run by bloom); data in .bloom\data, my-bloom-app. Done by bloom.'
+            $safe | Should -Be 'Restored bloom.db from C:\BloomDeploy\backups\20261022_v0.2.0 (run by <lab account>); data in .bloom\data, my-bloom-app. Done by <lab account>.'
         }
         finally { $env:USERNAME = $savedUser }
     }

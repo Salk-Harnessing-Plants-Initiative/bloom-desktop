@@ -11,7 +11,9 @@ BeforeAll {
     # The step's script: from its error-preference line to the next step.
     $match = [regex]::Match($workflow, "(?s)( {10}\`$ErrorActionPreference = 'Continue'.*?)\r?\n\r?\n {6}- name: Install the release")
     $stepScript = ($match.Groups[1].Value -split "\r?\n" | ForEach-Object { $_ -replace '^ {10}', '' }) -join "`n"
-    $shell = (Get-Process -Id $PID).Path
+    # The workflow runs the step with Windows PowerShell 5.1 (`shell: powershell`), so both
+    # CI legs (powershell and pwsh) run it with that, not with the shell running Pester.
+    $shell = (Get-Command powershell.exe).Source
 
     function Invoke-Step {
         <# Run the step with fake npm/node (functions win over programs); returns exit code and output. #>
@@ -46,7 +48,7 @@ function node { cmd /c "echo warn prisma config is deprecated 1>&2 & echo node-r
         $result.ExitCode | Should -Be 0 -Because $result.Output
         $result.Output | Should -Match '::warning title=Database tools - npm ci::npm warn deprecated prebuild-install'
         $result.Output | Should -Match '::warning title=Database tools - prisma::warn prisma config is deprecated'
-        # All three checks ran.
+        # Both node checks ran (after npm ci).
         ([regex]::Matches($result.Output, 'node-ran')).Count | Should -Be 2
     }
 
@@ -61,5 +63,24 @@ function node { cmd /c "echo node-ran & exit 3" }
         $result.ExitCode | Should -Not -Be 0 -Because $result.Output
         $result.Output | Should -Match '::error title=Database tools - prisma::exited with code 3'
         ([regex]::Matches($result.Output, 'node-ran')).Count | Should -Be 1
+    }
+
+    It 'stops before the other checks when npm ci fails' {
+        $result = Invoke-Step -Fakes @'
+function npm { cmd /c "exit 2" }
+function node { cmd /c "echo node-ran & exit 0" }
+'@
+        $result.ExitCode | Should -Not -Be 0 -Because $result.Output
+        $result.Output | Should -Match '::error title=Database tools - npm ci::exited with code 2'
+        ([regex]::Matches($result.Output, 'node-ran')).Count | Should -Be 0
+    }
+
+    It 'treats a command that is not found as a failure' {
+        $result = Invoke-Step -Fakes @'
+function npm { cmd /c "exit 0" }
+function node { Invoke-NoSuchToolForTheTest }
+'@
+        $result.ExitCode | Should -Not -Be 0 -Because $result.Output
+        $result.Output | Should -Match '::error title=Database tools - prisma::exited with code 1'
     }
 }

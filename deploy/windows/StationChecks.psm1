@@ -72,7 +72,8 @@ function Protect-DeployText {
     # The account name only as a whole word or path part, so a name like "bloom" can't
     # mangle C:\BloomDeploy\... (the backup path an operator needs) or other words.
     if ($env:USERNAME -and $env:USERNAME.Length -ge $script:MinRedactedLength) {
-        $pattern = '(?<![\w.-])' + [regex]::Escape($env:USERNAME) + '(?![\w.-])'
+        # Not followed by a word character, "-" or ".x" (so bloom.db is kept, "bloom." is not).
+        $pattern = '(?<![\w.-])' + [regex]::Escape($env:USERNAME) + '(?![\w-]|\.\w)'
         $Text = [regex]::Replace($Text, $pattern, '<lab account>', 'IgnoreCase')
     }
     $Text
