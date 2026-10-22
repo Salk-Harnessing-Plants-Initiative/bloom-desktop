@@ -99,6 +99,8 @@ Describe 'Test-StationReady' {
     It 'doesn''t stop for a scans drive it can''t measure' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'Could not find item.' } -ParameterFilter { $Path -eq $scans }
         @(Test-StationReady @ready) | Should -HaveCount 0
+        # The settings check never measures the scans drive; that's the health line's job.
+        Should -Invoke -ModuleName StationChecks Get-FreeDiskGB -Times 0 -Exactly -ParameterFilter { $Path -eq $scans }
     }
 
     It 'reports a missing .env' {
@@ -110,6 +112,11 @@ Describe 'Test-StationReady' {
 Describe 'Get-ScansDriveHealth' {
     BeforeEach {
         $userProfile = New-StationProfile -EnvLines @('SCANS_DIR=E:\bloom-scans')
+    }
+
+    It 'says it didn''t check when .env has no SCANS_DIR' {
+        Get-ScansDriveHealth -ProfileDir (New-StationProfile -EnvLines @('SCANNER_MODE=cylinderscan')) |
+            Should -Be 'not checked (no SCANS_DIR in .env)'
     }
 
     It 'reports the free disk space' {

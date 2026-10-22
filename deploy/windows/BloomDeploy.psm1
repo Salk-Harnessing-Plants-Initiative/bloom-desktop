@@ -238,6 +238,10 @@ function Invoke-StationDeploy {
     $checks['Station settings'] = if ($notReady.Count -eq 0) { 'ok' } else { 'not ready' }
     $checks['Scans drive (health only)'] = Get-ScansDriveHealth -ProfileDir $ProfileDir
     Write-DeployLog "Scans drive: $($checks['Scans drive (health only)'])."
+    # A low or unreadable scans drive is easy to miss in a successful run: show it on the run page.
+    if ($checks['Scans drive (health only)'] -match '^(only|could not read)') {
+        Write-Host "::warning title=Scans drive::$((Protect-DeployText -Text $checks['Scans drive (health only)']).Replace('%', '%25'))"
+    }
     if ($notReady.Count -gt 0) {
         foreach ($problem in $notReady) { Write-DeployLog "Not ready: $problem" }
         return New-DeployResult 'station-not-ready' $Version $previous $notReady $checks

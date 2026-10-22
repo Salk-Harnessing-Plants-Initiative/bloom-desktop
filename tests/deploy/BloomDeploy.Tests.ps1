@@ -274,6 +274,16 @@ Describe 'Invoke-StationDeploy' {
         $result.Problems | Should -Contain 'SCANNER_MODE in .env must be cylinderscan.'
         Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
         Test-Path (Join-Path $root 'backups\*') | Should -BeFalse
+        # The health line is there when the operator most needs it.
+        $result.Checks['Scans drive (health only)'] | Should -Be '250 GB of free disk space'
+    }
+
+    It 'shows a low scans drive as a warning on the run, without stopping the deploy' {
+        Mock -ModuleName BloomDeploy Get-ScansDriveHealth { 'only 3 GB of free disk space; scans may fail (at least 20 GB recommended)' }
+        $output = Invoke-StationDeploy @common 6>&1 | ForEach-Object { "$_" }
+        ($output | Where-Object { $_ -like 'Deployed*' -or $_ -like '::warning*' }) -join "`n" |
+            Should -Match '::warning title=Scans drive::only 3 GB of free disk space'
+        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 1 -Exactly
     }
 
     It 'changes nothing when the database cannot be read' {

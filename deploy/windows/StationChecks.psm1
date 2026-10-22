@@ -203,7 +203,7 @@ function Test-StationReady {
     # Scans go to SCANS_DIR (e.g. E:\bloom-scans); installers and backups to the deploy folder.
     $scansDir = $settings['SCANS_DIR']
     if (-not $scansDir -or -not (Test-Path -LiteralPath $scansDir)) {
-        $problems.Add('SCANS_DIR in .env must be an existing folder.')
+        $problems.Add("SCANS_DIR in .env must be a folder the deploy can see. It runs as the runner's service, so a drive mapped only in the signed-in session isn't visible to it.")
     }
     # Free disk space on the scans drive is a health check (Get-ScansDriveHealth), not a blocker.
     try {
