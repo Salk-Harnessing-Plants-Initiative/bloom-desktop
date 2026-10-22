@@ -22,22 +22,35 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'
 Import-Module (Join-Path $PSScriptRoot 'BloomDeploy.psm1') -Force
+# Already loaded by BloomDeploy; imported here too for Protect-DeployText.
+Import-Module (Join-Path $PSScriptRoot 'StationChecks.psm1')
 
 try {
     $result = Invoke-StationDeploy -Version $Version -ScannerName $ScannerName -ReleaseBaseUrl $ReleaseBaseUrl `
         -TestSpecies $TestSpecies -SchemaPath $SchemaPath -ToolsDir $ToolsDir -RequireCamera:$RequireCamera
 }
 catch {
-    # Download, checksum and backup failures stop the deploy before anything changes.
+    # An unexpected error, most often a download, checksum or backup failure before
+    # anything changed. The log says how far the deploy got.
+    $installed = $null
+    try { $installed = Get-InstalledVersion -LocalAppData $env:LOCALAPPDATA } catch { }
     $result = [pscustomobject]@{
-        Status = 'error'; Version = $Version; Previous = $null; Checks = @{}
-        Problems = @("The deploy stopped: $($_.Exception.Message) See the attached station log.")
+        Status = 'error'; Version = $Version; Previous = $installed; Checks = @{}
+        Problems = @(Protect-DeployText -Text "The deploy stopped: $($_.Exception.Message) See the attached station log for how far it got.")
     }
+}
+
+# Hand this run's log (only this one) to the workflow, which attaches it to the run.
+$logFile = $env:BLOOM_DEPLOY_LOG_FILE
+if ($logFile -and $env:DEPLOY_LOG_DIR -and (Test-Path -LiteralPath $logFile)) {
+    New-Item -ItemType Directory -Force -Path $env:DEPLOY_LOG_DIR | Out-Null
+    Copy-Item -LiteralPath $logFile -Destination $env:DEPLOY_LOG_DIR -ErrorAction SilentlyContinue
 }
 
 if ($env:GITHUB_STEP_SUMMARY) {
     $previous = if ($result.Previous) { "v$($result.Previous)" } else { 'none' }
-    $summary = @("## Deploy v$Version", '', "- Result: **$($result.Status)**", "- Previously installed: $previous")
+    $label = if ($result.Status -eq 'error') { 'Installed now' } else { 'Previously installed' }
+    $summary = @("## Deploy v$Version", '', "- Result: **$($result.Status)**", "- ${label}: $previous")
     if ($result.Checks.Count -gt 0) {
         $summary += '', '| Check | Result |', '|---|---|'
         foreach ($name in $result.Checks.Keys) { $summary += "| $name | $($result.Checks[$name]) |" }

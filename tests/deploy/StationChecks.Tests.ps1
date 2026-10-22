@@ -33,7 +33,8 @@ Describe 'Release and Squirrel versions' {
 Describe 'Write-DeployLog' {
     It 'never fails because the log file cannot be written' {
         Set-DeployLogFile -Path (Join-Path $TestDrive 'missing-folder\deploy.log')
-        try { { Write-DeployLog -Message 'hello' } | Should -Not -Throw }
+        # -ErrorAction Stop, so this fails on a revert whatever the shell's error preference.
+        try { { Write-DeployLog -Message 'hello' -ErrorAction Stop } | Should -Not -Throw }
         finally { Set-DeployLogFile -Path '' }
     }
 }
@@ -231,6 +232,13 @@ Describe 'Invoke-DeploySelfTest' {
         $result.Problems[0] | Should -Match "couldn't start in the runner's session"
     }
 
+    It 'waits for the self-test''s helper processes before returning' {
+        Mock -ModuleName StationChecks Wait-SelfTestProcessesExit { }
+        $script:writeResult = '{"ok": true, "uploaded": 3, "plantId": "DEPLOY-0.2.1-3"}'
+        Invoke-DeploySelfTest -Version '0.2.1' @common | Out-Null
+        Should -Invoke -ModuleName StationChecks Wait-SelfTestProcessesExit -Times 1 -Exactly -ParameterFilter { $ParentId -eq 42 }
+    }
+
     It 'stops the app and fails when it runs too long' {
         Mock -ModuleName StationChecks Start-Process {
             [pscustomobject]@{ Id = 42; Handle = 1; ExitCode = 0 } |
@@ -239,5 +247,105 @@ Describe 'Invoke-DeploySelfTest' {
         $result = Invoke-DeploySelfTest -Version '0.2.1' @common
         $result.Detail | Should -Be 'timed out'
         Should -Invoke -ModuleName StationChecks Stop-Process -Times 1
+    }
+}
+
+Describe 'Wait-SelfTestProcessesExit' {
+    BeforeEach {
+        Mock -ModuleName StationChecks Start-Sleep { }
+        Mock -ModuleName StationChecks Stop-Process { }
+        Mock -ModuleName StationChecks Wait-Process { }
+    }
+
+    It 'returns once the helper processes have exited, without stopping anything' {
+        $script:polls = 0
+        Mock -ModuleName StationChecks Get-CimInstance {
+            $script:polls++
+            if ($script:polls -le 2) { [pscustomobject]@{ ProcessId = 7 } }
+        }
+        Wait-SelfTestProcessesExit -ParentId 42 -TimeoutSeconds 5
+        $script:polls | Should -Be 3
+        Should -Invoke -ModuleName StationChecks Stop-Process -Times 0 -Exactly
+    }
+
+    It 'stops helper processes still running at the time limit' {
+        Mock -ModuleName StationChecks Get-CimInstance { [pscustomobject]@{ ProcessId = 7 } }
+        Wait-SelfTestProcessesExit -ParentId 42 -TimeoutSeconds 0
+        Should -Invoke -ModuleName StationChecks Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 7 }
+    }
+
+    It 'only looks at the self-test''s own children' {
+        Mock -ModuleName StationChecks Get-CimInstance { }
+        Wait-SelfTestProcessesExit -ParentId 42 -TimeoutSeconds 0
+        Should -Invoke -ModuleName StationChecks Get-CimInstance -ParameterFilter { $Filter -match 'ParentProcessId = 42' -and $Filter -match 'Bloom Desktop\.exe' }
+    }
+}
+
+Describe 'Protect-DeployText' {
+    AfterEach { Set-DeployRedactions -Settings @{} }
+
+    It 'replaces the station''s paths, account and .env details' {
+        Set-DeployRedactions -Settings @{
+            CAMERA_IP_ADDRESS = '10.0.0.45'; BLOOM_SCANNER_USERNAME = 'station@example.org'
+            BLOOM_SCANNER_PASSWORD = 'hunter22'; BLOOM_API_URL = 'https://bloom.example.org/api'
+        }
+        $text = "Copy of $env:USERPROFILE\.bloom\data\bloom.db and $($env:LOCALAPPDATA -replace '\\', '/') failed; " +
+            "camera 10.0.0.45, account station@example.org (hunter22), host bloom.example.org, user $env:USERNAME"
+        $safe = Protect-DeployText -Text $text
+        foreach ($secret in $env:USERPROFILE, $env:USERNAME, '10.0.0.45', 'station@example.org', 'hunter22', 'bloom.example.org') {
+            $safe | Should -Not -Match ([regex]::Escape($secret))
+        }
+        $safe | Should -Match '%USERPROFILE%\\.bloom\\data\\bloom.db'
+        $safe | Should -Match '%LOCALAPPDATA%'
+    }
+
+    It 'is applied to every log line' {
+        Set-DeployRedactions -Settings @{ CAMERA_IP_ADDRESS = '10.0.0.45' }
+        $log = Join-Path $TestDrive ('log-' + [guid]::NewGuid() + '.log')
+        Set-DeployLogFile -Path $log
+        try { Write-DeployLog -Message 'camera 10.0.0.45 did not answer' }
+        finally { Set-DeployLogFile -Path '' }
+        Get-Content -Raw $log | Should -Not -Match '10\.0\.0\.45'
+    }
+}
+
+Describe 'Update-StationDatabase' {
+    BeforeEach {
+        $log = Join-Path $TestDrive ('log-' + [guid]::NewGuid() + '.log')
+        Set-DeployLogFile -Path $log
+        $db = Join-Path $TestDrive 'profile\.bloom\data\bloom.db'
+        $common = @{ DatabasePath = $db; SchemaPath = 'C:\release\prisma\schema.prisma'; ToolsDir = 'C:\tools' }
+    }
+    AfterEach { Set-DeployLogFile -Path '' }
+
+    It 'logs prisma''s output with the database path replaced' {
+        Mock -ModuleName StationChecks Invoke-Node { $global:LASTEXITCODE = 0; "Datasource at $($db -replace '\\', '/')"; "Applied to $db" }
+        Update-StationDatabase @common
+        $text = Get-Content -Raw $log
+        $text | Should -Match 'prisma: Datasource at bloom.db'
+        $text | Should -Not -Match ([regex]::Escape($db))
+    }
+
+    It 'throws when prisma fails, so the deploy rolls back' {
+        Mock -ModuleName StationChecks Invoke-Node { $global:LASTEXITCODE = 1; 'Error: P3009' }
+        { Update-StationDatabase @common } | Should -Throw '*prisma migrate deploy exited 1*'
+    }
+}
+
+Describe 'Get-DatabaseRowCounts' {
+    It 'reads the JSON line and ignores warnings before it' {
+        $db = Join-Path $TestDrive 'counts.db'
+        Set-Content -LiteralPath $db -Value 'db'
+        Mock -ModuleName StationChecks Invoke-Node { $global:LASTEXITCODE = 0; '(node:1) ExperimentalWarning: x'; '{"Scan": 6538, "Image": 470736}' }
+        $counts = Get-DatabaseRowCounts -DatabasePath $db -ToolsDir 'C:\tools'
+        $counts['Scan'] | Should -Be 6538
+        $counts['Image'] | Should -Be 470736
+    }
+
+    It 'throws when counting fails' {
+        $db = Join-Path $TestDrive 'locked.db'
+        Set-Content -LiteralPath $db -Value 'db'
+        Mock -ModuleName StationChecks Invoke-Node { $global:LASTEXITCODE = 1; 'SQLITE_BUSY: database is locked' }
+        { Get-DatabaseRowCounts -DatabasePath $db -ToolsDir 'C:\tools' } | Should -Throw '*database is locked*'
     }
 }

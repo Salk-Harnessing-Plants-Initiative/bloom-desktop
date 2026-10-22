@@ -1,0 +1,9 @@
+{
+  "name": "bloom-deploy-tools",
+  "private": true,
+  "description": "Database tools the Deploy workflow installs on a station (npm ci, from package-lock.json): prisma for the release's migrations, better-sqlite3 for deploy/windows/db-tool.js.",
+  "dependencies": {
+    "better-sqlite3": "12.6.2",
+    "prisma": "6.18.0"
+  }
+}

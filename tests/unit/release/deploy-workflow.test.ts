@@ -143,11 +143,49 @@ describe('deploy.yml', () => {
     expect(install?.run).toContain('release-src\\prisma\\schema.prisma');
   });
 
-  it("always attaches the station's deploy logs", () => {
+  it("always attaches this run's deploy log, and only that one", () => {
     const logs = deploy.steps.find((s) =>
       s.uses?.startsWith('actions/upload-artifact')
     );
     expect(logs?.if).toBe('always()');
+    expect(logs?.with?.path).toBe('${{ runner.temp }}/deploy-log/*.log');
+    const install = deploy.steps.find((s) =>
+      s.run?.includes('deploy-station.ps1')
+    );
+    expect(install?.env?.DEPLOY_LOG_DIR).toBe('${{ runner.temp }}\\deploy-log');
+  });
+
+  it('installs the database tools from the committed lockfile', () => {
+    const tools = deploy.steps.find((s) => s.run?.includes('better-sqlite3'));
+    expect(tools?.run).toContain('npm ci');
+    expect(tools?.run).not.toMatch(/npm install/);
+    expect(tools?.run).toContain('deploy\\windows\\tools\\package-lock.json');
+
+    const toolsDir = path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'deploy',
+      'windows',
+      'tools'
+    );
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(toolsDir, 'package.json'), 'utf8')
+    ) as { dependencies: Record<string, string> };
+    const lock = JSON.parse(
+      fs.readFileSync(path.join(toolsDir, 'package-lock.json'), 'utf8')
+    ) as {
+      packages: Record<string, { version?: string; integrity?: string }>;
+    };
+    for (const [name, version] of Object.entries(manifest.dependencies)) {
+      // Exact versions only, matching the lockfile.
+      expect(version).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(lock.packages[`node_modules/${name}`]?.version).toBe(version);
+    }
+    for (const [key, entry] of Object.entries(lock.packages)) {
+      if (key !== '') expect(entry.integrity).toMatch(/^sha512-/);
+    }
   });
 
   it('gives the station job read-only access', () => {

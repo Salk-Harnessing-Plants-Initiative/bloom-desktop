@@ -74,19 +74,26 @@ function Backup-StationData {
 }
 
 function Remove-OldBackups {
-    <# Keep the newest $Keep folders in $BackupRoot; never removes $Protect. #>
+    <#
+      Keep the newest $Keep folders in $BackupRoot; never removes $Protect. Housekeeping
+      only: a folder that can't be removed (e.g. open in another program) is logged and
+      left, and never fails the deploy.
+    #>
     param(
         [Parameter(Mandatory)][string]$BackupRoot,
         [int]$Keep = $script:BackupsKept,
         [string]$Protect
     )
     if (-not (Test-Path -LiteralPath $BackupRoot)) { return }
-    $old = Get-ChildItem -LiteralPath $BackupRoot -Directory | Sort-Object Name -Descending |
-        Select-Object -Skip $Keep
+    $old = @(Get-ChildItem -LiteralPath $BackupRoot -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -Skip $Keep)
     foreach ($dir in $old) {
         if ($Protect -and ($dir.FullName -eq $Protect)) { continue }
-        Remove-Item -LiteralPath $dir.FullName -Recurse -Force
-        Write-DeployLog "Removed old copy $($dir.Name)"
+        try {
+            Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction Stop
+            Write-DeployLog "Removed old copy $($dir.Name)"
+        }
+        catch { Write-DeployLog "Could not remove old copy $($dir.Name): $($_.Exception.Message)" }
     }
 }
 
@@ -113,19 +120,24 @@ function Save-FailedDatabase {
 
 function Restore-StationData {
     <#
-      Put bloom.db and .env back from a Backup-StationData folder, removing stale journal
-      files first. Throws if a restored file doesn't match the backup.
+      Put bloom.db and .env back from a Backup-StationData folder. Stale journal files go
+      first and the backup's own come back last, after bloom.db is restored and checked, so
+      an old journal is never left next to the upgraded database. Throws if a restored
+      file doesn't match the backup.
     #>
     param([Parameter(Mandatory)][string]$BackupDir, [Parameter(Mandatory)][string]$ProfileDir)
     $paths = Get-StationDataPaths -ProfileDir $ProfileDir
     $savedDb = Join-Path $BackupDir 'bloom.db'
     if (Test-Path -LiteralPath $savedDb) {
         foreach ($suffix in $script:DatabaseSideFiles) {
-            Remove-Item -LiteralPath "$($paths.Database)$suffix" -Force -ErrorAction SilentlyContinue
+            $stale = "$($paths.Database)$suffix"
+            if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Force -ErrorAction Stop }
+        }
+        Copy-VerifiedFile -Source $savedDb -Destination $paths.Database
+        foreach ($suffix in $script:DatabaseSideFiles) {
             $savedSide = Join-Path $BackupDir "bloom.db$suffix"
             if (Test-Path -LiteralPath $savedSide) { Copy-VerifiedFile -Source $savedSide -Destination "$($paths.Database)$suffix" }
         }
-        Copy-VerifiedFile -Source $savedDb -Destination $paths.Database
         Write-DeployLog 'Restored bloom.db from the backup.'
     }
     $savedEnv = Join-Path $BackupDir '.env'

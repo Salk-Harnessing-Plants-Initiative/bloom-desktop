@@ -11,16 +11,23 @@
 # docs/STATION_SETUP.md). Changes must be copied to the station again by hand; the runner
 # never reads them from Git.
 
-Import-Module (Join-Path $PSScriptRoot 'RunnerJobCheck.psm1') -Force
-
-$jobEnv = @{
-    GITHUB_REPOSITORY   = $env:GITHUB_REPOSITORY
-    GITHUB_WORKFLOW_REF = $env:GITHUB_WORKFLOW_REF
-    GITHUB_EVENT_NAME   = $env:GITHUB_EVENT_NAME
+# Fail closed: if the check can't load or run, the job is refused.
+$ErrorActionPreference = 'Stop'
+try {
+    Import-Module (Join-Path $PSScriptRoot 'RunnerJobCheck.psm1') -Force
+    $jobEnv = @{
+        GITHUB_REPOSITORY   = $env:GITHUB_REPOSITORY
+        GITHUB_WORKFLOW_REF = $env:GITHUB_WORKFLOW_REF
+        GITHUB_EVENT_NAME   = $env:GITHUB_EVENT_NAME
+    }
+    $refusal = Get-DeployJobRefusal -JobEnv $jobEnv
 }
-$refusal = Get-DeployJobRefusal -JobEnv $jobEnv
+catch {
+    $refusal = "the job check failed to run ($($_.Exception.Message))"
+}
 if ($refusal) {
     Write-Host "Refused by the station's job hook: $refusal. Only the Deploy workflow from main may run on a station."
     exit 1
 }
 Write-Host 'Station job hook: Deploy workflow from main, allowed.'
+exit 0

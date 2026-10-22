@@ -1,9 +1,11 @@
-# StationChecks.psm1: the checks BloomDeploy.psm1 runs around an install on a Windows
-# CylinderScan station: camera and Bloom access before anything changes, the database
-# upgrade after installing, and the installed app's upload self-test.
+# StationChecks.psm1: what BloomDeploy.psm1 and StationData.psm1 share on a Windows
+# CylinderScan station: the deploy log (with station details redacted), version helpers,
+# reading .env, the checks before anything changes (settings, camera, Bloom access), the
+# database row counts and upgrade, and the installed app's upload self-test.
 #
 # Secrets from .env (Bloom password, anon key) are only sent to the station's own Bloom
-# URL and are never written to the log or the job summary.
+# URL. The log and the job summary are public, so Protect-DeployText replaces the station's
+# paths, account, camera address and Bloom details in everything written to them.
 #
 # Works on Windows PowerShell 5.1 (built into the stations) and PowerShell 7.
 
@@ -13,6 +15,9 @@ $script:CameraPingCount = 2
 $script:BloomRequestTimeoutSeconds = 30
 # The app's own time limit is 180 s; this is the backstop if the process hangs.
 $script:SelfTestTimeoutSeconds = 240
+# Electron's helper processes can outlive the main one by a moment after the self-test.
+$script:SelfTestExitWaitSeconds = 15
+$script:SelfTestPollMilliseconds = 500
 # The first release whose app has --deploy-self-test.
 $script:SelfTestMinVersion = [version]'0.2.1'
 # 0x80000003 (STATUS_BREAKPOINT) as a signed or unsigned exit code: Chromium couldn't start.
@@ -24,15 +29,51 @@ $script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'B
 # The log file path is kept in the process environment, not module state, so every module
 # that imports this one (BloomDeploy, StationData) writes to the same file.
 $script:LogFileVariable = 'BLOOM_DEPLOY_LOG_FILE'
+# Values shorter than this are left alone, so redaction can't mangle ordinary words.
+$script:MinRedactedLength = 3
+# Set by Set-DeployRedactions from .env; the paths and account are read when used.
+$script:StationRedactions = @{}
 
 function Set-DeployLogFile {
     param([string]$Path)
     [Environment]::SetEnvironmentVariable($script:LogFileVariable, $Path, 'Process')
 }
 
+function Set-DeployRedactions {
+    <# Remember the camera address and Bloom details from .env, to keep them out of the log. #>
+    param([Parameter(Mandatory)][hashtable]$Settings)
+    $script:StationRedactions = @{}
+    foreach ($key in 'CAMERA_IP_ADDRESS', 'BLOOM_SCANNER_USERNAME', 'BLOOM_SCANNER_PASSWORD', 'BLOOM_ANON_KEY') {
+        if ($Settings[$key]) { $script:StationRedactions[$Settings[$key]] = "<$key>" }
+    }
+    $apiUrl = $null
+    if ($Settings['BLOOM_API_URL'] -and [uri]::TryCreate($Settings['BLOOM_API_URL'], 'Absolute', [ref]$apiUrl)) {
+        $script:StationRedactions[$apiUrl.Host] = '<Bloom host>'
+    }
+}
+
+function Protect-DeployText {
+    <# $Text with the station's paths, account and .env details replaced, for the public log. #>
+    param([AllowEmptyString()][string]$Text)
+    if (-not $Text) { return $Text }
+    $replacements = @{}
+    foreach ($key in $script:StationRedactions.Keys) { $replacements[$key] = $script:StationRedactions[$key] }
+    # LOCALAPPDATA is inside USERPROFILE; longest values are replaced first.
+    foreach ($name in 'LOCALAPPDATA', 'USERPROFILE') {
+        $path = [Environment]::GetEnvironmentVariable($name)
+        if ($path) { $replacements[$path] = "%$name%"; $replacements[$path -replace '\\', '/'] = "%$name%" }
+    }
+    if ($env:USERNAME) { $replacements[$env:USERNAME] = '<lab account>' }
+    foreach ($value in $replacements.Keys | Sort-Object -Property Length -Descending) {
+        if ($value.Length -lt $script:MinRedactedLength) { continue }
+        $Text = [regex]::Replace($Text, [regex]::Escape($value), $replacements[$value].Replace('$', '$$'), 'IgnoreCase')
+    }
+    $Text
+}
+
 function Write-DeployLog {
     param([Parameter(Mandatory)][string]$Message)
-    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
+    $line = '{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), (Protect-DeployText -Text $Message)
     # Write-Host, not Write-Output, so log lines never mix into a function's return value.
     Write-Host $line
     $logFile = [Environment]::GetEnvironmentVariable($script:LogFileVariable, 'Process')
@@ -256,6 +297,28 @@ function Update-StationDatabase {
     }
 }
 
+function Wait-SelfTestProcessesExit {
+    <#
+      Wait for the self-test's helper processes (same exe as the app) to exit, then stop any
+      left, so the deploy never takes them for an operator opening Bloom Desktop.
+    #>
+    param(
+        [Parameter(Mandatory)][int]$ParentId,
+        [int]$TimeoutSeconds = $script:SelfTestExitWaitSeconds
+    )
+    $filter = "ParentProcessId = $ParentId AND Name = 'Bloom Desktop.exe'"
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ($true) {
+        $left = @(Get-CimInstance -ClassName Win32_Process -Filter $filter -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) { return }
+        if ((Get-Date) -ge $deadline) { break }
+        Start-Sleep -Milliseconds $script:SelfTestPollMilliseconds
+    }
+    Write-DeployLog "Stopping $($left.Count) self-test process(es) that did not exit."
+    foreach ($child in $left) { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue }
+    Wait-Process -Id ($left | ForEach-Object { $_.ProcessId }) -Timeout $TimeoutSeconds -ErrorAction SilentlyContinue
+}
+
 function Invoke-DeploySelfTest {
     <#
       Run the installed app's --deploy-self-test on a copy of bloom.db: it uploads a
@@ -286,8 +349,11 @@ function Invoke-DeploySelfTest {
         $null = $process.Handle
         if (-not $process.WaitForExit($script:SelfTestTimeoutSeconds * 1000)) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            $process.WaitForExit($script:SelfTestExitWaitSeconds * 1000) | Out-Null
+            Wait-SelfTestProcessesExit -ParentId $process.Id
             return [pscustomobject]@{ Status = 'failed'; Detail = 'timed out'; Problems = @("Self-test did not finish within $($script:SelfTestTimeoutSeconds) seconds.") }
         }
+        Wait-SelfTestProcessesExit -ParentId $process.Id
         if (-not (Test-Path -LiteralPath $resultFile)) {
             $problem = "Self-test wrote no result (exit code $($process.ExitCode))."
             if ($process.ExitCode -in $script:ChromiumStartupCrashCodes) {
@@ -307,6 +373,6 @@ function Invoke-DeploySelfTest {
     }
 }
 
-Export-ModuleMember -Function Set-DeployLogFile, Write-DeployLog, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
+Export-ModuleMember -Function Set-DeployLogFile, Set-DeployRedactions, Protect-DeployText, Write-DeployLog, Wait-SelfTestProcessesExit, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
     Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Get-UserEnvironmentVariable, Get-FreeDiskGB, Test-StationReady, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
     Compare-RowCounts, Update-StationDatabase, Invoke-DeploySelfTest

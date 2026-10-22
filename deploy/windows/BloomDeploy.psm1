@@ -5,10 +5,12 @@
 # small function so it can be tested with Pester on windows-latest using fakes.
 #
 # Order matters: nothing on the station changes until the release files verify, the app
-# is confirmed not running, Bloom accepts the station's login, the installed version's
-# files are staged for a rollback, and the backup is verified. A failed install, database
-# upgrade, check or upload self-test reinstalls the previous version and restores the
-# database and .env from the backup. The checks themselves are in StationChecks.psm1.
+# is confirmed not running, Bloom accepts the station's login, the station's settings are
+# ready, the installed version's files are staged for a rollback, the database can be
+# read, and the backup is verified. A failed install, database upgrade, check or upload
+# self-test restores the database and .env from the backup first, then reinstalls the
+# previous version. The checks are in StationChecks.psm1; backups and restores are in
+# StationData.psm1.
 #
 # Works on Windows PowerShell 5.1 (built into the stations) and PowerShell 7.
 
@@ -27,7 +29,7 @@ $script:SquirrelAppFolder = 'bloom_desktop'
 # the runner service doesn't start the app (and open the database) in a hidden session.
 $script:SkipFirstRunVariable = 'BLOOM_DEPLOY_SKIP_FIRSTRUN'
 
-# --- Small helpers (mocked in tests) ----------------------------------------------------
+# --- Small helpers ---------------------------------------------------------------------
 
 function Test-BloomRunning {
     [bool](Get-Process -Name $script:ProcessName -ErrorAction SilentlyContinue)
@@ -173,13 +175,16 @@ function Invoke-Rollback {
 
 function New-DeployResult {
     param([string]$Status, [string]$Version, [string]$Previous, [string[]]$Problems = @(), [System.Collections.IDictionary]$Checks = @{})
-    [pscustomobject]@{ Status = $Status; Version = $Version; Previous = $Previous; Problems = @($Problems); Checks = $Checks }
+    # Problems go to the public job summary.
+    $safe = @($Problems | ForEach-Object { Protect-DeployText -Text $_ })
+    [pscustomobject]@{ Status = $Status; Version = $Version; Previous = $Previous; Problems = $safe; Checks = $Checks }
 }
 
 function Invoke-StationDeploy {
     <#
       Deploy $Version to this station. Returns a result object whose Checks say what was
-      checked; throws only when the station may be left in an unexpected state.
+      checked. Throws only on an unexpected error, most often a download, checksum or
+      backup failure before anything changed; the log says how far it got.
     #>
     param(
         [Parameter(Mandatory)][string]$Version,
@@ -215,6 +220,7 @@ function Invoke-StationDeploy {
 
     # 3. Camera (reported; required only when asked) and Bloom access.
     $settings = Read-StationEnv -ProfileDir $ProfileDir
+    Set-DeployRedactions -Settings $settings
     $cameraOk = Test-CameraReachable -Address $settings['CAMERA_IP_ADDRESS']
     $checks['Camera'] = if ($cameraOk) { 'reachable' } elseif ($RequireCamera) { 'not reachable' } else { 'not reachable (not required)' }
     Write-DeployLog "Camera: $($checks['Camera'])."
@@ -269,7 +275,7 @@ function Invoke-StationDeploy {
     # Staging and the backup take minutes; make sure nobody opened the app meanwhile.
     if (Test-BloomRunning) {
         Write-DeployLog 'Bloom Desktop was opened during the deploy; nothing was changed. Run the deploy again when it is closed.'
-        return New-DeployResult 'skipped-app-running' $Version $previous @() $checks
+        return New-DeployResult 'skipped-app-running' $Version $previous @('Bloom Desktop was opened during the deploy; nothing was changed. Close it and run the deploy again.') $checks
     }
 
     # 6. Install, upgrade the database, check, self-test; any failure rolls back.
@@ -328,10 +334,14 @@ function Invoke-StationRecovery {
     $byHand = "The station's data from before the deploy is in $BackupDir; see 'Restoring a backup by hand' in docs/STATION_SETUP.md."
     if (Test-BloomRunning) {
         Write-DeployLog 'Bloom Desktop was opened during the deploy; its data was left as is.'
-        return New-RecoveryResult 'needs-attention' @('Bloom Desktop was opened during the deploy, so the data was not restored automatically.', $byHand)
+        return New-RecoveryResult 'needs-attention' @(
+            "Bloom Desktop was opened during the deploy, so nothing was put back: v$Version is installed and the database may be partly upgraded. Stop scanning on this station until it is restored by hand: scans saved now would be lost when the backup is restored.",
+            $byHand)
     }
+    # The failed copy is only for working out what went wrong: it must never stop the restore.
+    try { Save-FailedDatabase -ProfileDir $ProfileDir -FailedRoot (Join-Path $DeployRoot 'failed') -Version $Version | Out-Null }
+    catch { Write-DeployLog "Could not keep a copy of the failed database: $($_.Exception.Message)" }
     try {
-        Save-FailedDatabase -ProfileDir $ProfileDir -FailedRoot (Join-Path $DeployRoot 'failed') -Version $Version | Out-Null
         Restore-StationData -BackupDir $BackupDir -ProfileDir $ProfileDir
     }
     catch {

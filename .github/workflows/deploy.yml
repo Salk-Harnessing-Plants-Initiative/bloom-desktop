@@ -7,11 +7,11 @@ name: Deploy
 #   deploy (the station's self-hosted runner, in the station's environment, which needs
 #          approval): deploy/windows/deploy-station.ps1 stages and checks the files, stops
 #          if Bloom Desktop is running, reports the camera (required only with
-#          require_camera), checks the Bloom login, stages the installed version for a
-#          rollback, backs up the database and .env, installs, upgrades the database with
-#          the release's migrations, checks the settings, runs the installed app's upload
-#          self-test (a synthetic scan in DEPLOY-TEST <scanner>), and on any failure
-#          reinstalls the previous version and restores the backup.
+#          require_camera), checks the Bloom login and the station's settings, stages the
+#          installed version for a rollback, backs up the database and .env, installs,
+#          upgrades the database with the release's migrations, runs the installed app's
+#          upload self-test (a synthetic scan in DEPLOY-TEST <scanner>), and on any failure
+#          restores the backup and then reinstalls the previous version.
 # GitHub keeps each station's deployment history in its environment, linked to the release.
 # See docs/STATION_SETUP.md.
 on:
@@ -151,8 +151,11 @@ jobs:
       - name: Install and check the database tools
         shell: powershell
         run: |
+          # Exact versions and integrity hashes from the committed lockfile.
           $tools = "$env:RUNNER_TEMP\bloom-deploy-tools"
-          npm install --no-save --no-audit --no-fund --prefix $tools prisma@6.18.0 better-sqlite3@12.6.2
+          New-Item -ItemType Directory -Force $tools | Out-Null
+          Copy-Item deploy\windows\tools\package.json, deploy\windows\tools\package-lock.json $tools
+          npm ci --no-audit --no-fund --prefix $tools
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Fail here, before anything on the station changes, if either tool can't run.
           node "$tools\node_modules\prisma\build\index.js" --version
@@ -168,6 +171,7 @@ jobs:
           SCANNER_NAME: ${{ needs.plan.outputs.scanner_name }}
           RELEASE_BASE_URL: ${{ needs.plan.outputs.release_base_url }}
           REQUIRE_CAMERA: ${{ inputs.require_camera }}
+          DEPLOY_LOG_DIR: ${{ runner.temp }}\deploy-log
         run: |
           & .\deploy\windows\deploy-station.ps1 -Version $env:VERSION `
             -ScannerName $env:SCANNER_NAME -ReleaseBaseUrl $env:RELEASE_BASE_URL `
@@ -180,5 +184,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deploy-logs-${{ inputs.station }}
-          path: C:/BloomDeploy/logs/*.log
+          # Only this run's log, which deploy-station.ps1 copies here.
+          path: ${{ runner.temp }}/deploy-log/*.log
           retention-days: 30
