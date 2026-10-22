@@ -161,7 +161,7 @@ describe('deploy.yml', () => {
     // Warnings on stderr must not stop the deploy; exit codes do, and warnings are shown.
     expect(tools?.run).toContain("$ErrorActionPreference = 'Continue'");
     expect(tools?.run).toContain('::warning title=');
-    expect(tools?.run).toContain('exit $code');
+    expect(tools?.run).toContain('if ($code -ne 0) { exit $code }');
     expect(tools?.run).toContain('Push-Location $tools');
     expect(tools?.run).not.toMatch(/npm install/);
     expect(tools?.run).toContain('deploy\\windows\\tools\\package-lock.json');
