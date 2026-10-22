@@ -187,6 +187,7 @@ Describe 'Invoke-StationDeploy' {
         Mock -ModuleName BloomDeploy Test-CameraReachable { $true }
         Mock -ModuleName BloomDeploy Test-BloomAccess { $null }
         Mock -ModuleName BloomDeploy Test-StationReady { }
+        Mock -ModuleName BloomDeploy Get-ScansDriveHealth { '250 GB free' }
         Mock -ModuleName BloomDeploy Get-DatabaseRowCounts { @{ Scan = 5 } }
         Mock -ModuleName BloomDeploy Update-StationDatabase { }
         Mock -ModuleName BloomDeploy Install-Release { }
@@ -209,6 +210,7 @@ Describe 'Invoke-StationDeploy' {
         $result.Checks['Upload self-test'] | Should -Be 'passed: plant P'
         $result.Checks['Database'] | Should -Be 'upgraded, no rows lost'
         $result.Checks['Station settings'] | Should -Be 'ok'
+        $result.Checks['Scans drive (health only)'] | Should -Be '250 GB free'
         # Only the new release: the staged v0.1.0 verifies, so it isn't downloaded again.
         Should -Invoke -ModuleName BloomDeploy Save-ReleaseFiles -Times 1 -Exactly
     }

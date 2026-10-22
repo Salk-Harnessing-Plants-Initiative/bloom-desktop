@@ -236,6 +236,8 @@ function Invoke-StationDeploy {
 
     $notReady = @(Test-StationReady -ScannerName $ScannerName -ProfileDir $ProfileDir -DeployRoot $DeployRoot)
     $checks['Station settings'] = if ($notReady.Count -eq 0) { 'ok' } else { 'not ready' }
+    $checks['Scans drive (health only)'] = Get-ScansDriveHealth -ProfileDir $ProfileDir
+    Write-DeployLog "Scans drive: $($checks['Scans drive (health only)'])."
     if ($notReady.Count -gt 0) {
         foreach ($problem in $notReady) { Write-DeployLog "Not ready: $problem" }
         return New-DeployResult 'station-not-ready' $Version $previous $notReady $checks

@@ -83,23 +83,48 @@ Describe 'Test-StationReady' {
         $text | Should -Match 'SCANS_DIR'
     }
 
-    It 'checks free space on the scans drive and the deploy drive' {
+    It 'stops for low free space on the deploy drive, not on the scans drive' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { 3 } -ParameterFilter { $Path -eq $scans }
         Mock -ModuleName StationChecks Get-FreeDiskGB { 1 } -ParameterFilter { $Path -eq $TestDrive }
-        $text = @(Test-StationReady @ready) -join "`n"
-        $text | Should -Match 'Only 3 GB free for scans'
-        $text | Should -Match 'Only 1 GB free for installers and backups'
+        $problems = @(Test-StationReady @ready)
+        $problems | Should -HaveCount 1
+        $problems[0] | Should -Match 'Only 1 GB free for installers and backups'
     }
 
-    It 'reports free space it can''t measure as a problem, not an error' {
-        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'The drive cannot be found.' } -ParameterFilter { $Path -eq $scans }
-        $text = @(Test-StationReady @ready) -join "`n"
-        $text | Should -Match "Can't measure free space on the drive for scans"
+    It 'reports a deploy drive it can''t measure as a problem, not an error' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'The drive cannot be found.' } -ParameterFilter { $Path -eq $TestDrive }
+        (@(Test-StationReady @ready) -join "`n") | Should -Match "Can't measure free space for installers and backups"
+    }
+
+    It 'doesn''t stop for a scans drive it can''t measure' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'Could not find item.' } -ParameterFilter { $Path -eq $scans }
+        @(Test-StationReady @ready) | Should -HaveCount 0
     }
 
     It 'reports a missing .env' {
         Remove-Item -LiteralPath (Join-Path $userProfile '.bloom\.env')
         (@(Test-StationReady @ready) -join "`n") | Should -Match '.env is missing'
+    }
+}
+
+Describe 'Get-ScansDriveHealth' {
+    BeforeEach {
+        $userProfile = New-StationProfile -EnvLines @('SCANS_DIR=E:\bloom-scans')
+    }
+
+    It 'reports the free space' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { 250 }
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Be '250 GB free'
+    }
+
+    It 'warns when the drive is nearly full' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { 3 }
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match '^only 3 GB free; scans may fail'
+    }
+
+    It 'says so when it can''t measure, without throwing' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'Could not find item E:\bloom-scans.' }
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match "^couldn't measure"
     }
 }
 

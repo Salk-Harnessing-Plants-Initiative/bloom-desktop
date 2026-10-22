@@ -22,6 +22,7 @@ $script:SelfTestPollMilliseconds = 500
 $script:SelfTestMinVersion = [version]'0.2.1'
 # 0x80000003 (STATUS_BREAKPOINT) as a signed or unsigned exit code: Chromium couldn't start.
 $script:ChromiumStartupCrashCodes = @(-2147483645, 2147483651)
+# Below this, the scans drive is reported (health only; it doesn't stop a deploy).
 $script:MinFreeDiskGB = 20
 # Room for two releases' installers (about 0.7 GB each) and a backup of bloom.db.
 $script:MinDeployDiskGB = 5
@@ -156,20 +157,17 @@ function Get-FreeDiskGB {
     [math]::Floor((New-Object IO.DriveInfo $root).AvailableFreeSpace / 1GB)
 }
 
-function Add-FreeSpaceProblem {
-    <# Add a problem to $Problems when $Path's drive has less than $MinGB free or can't be measured. #>
-    param(
-        [Parameter(Mandatory)][System.Collections.Generic.List[string]]$Problems,
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][int]$MinGB,
-        [Parameter(Mandatory)][string]$What
-    )
-    try { $free = Get-FreeDiskGB -Path $Path }
-    catch {
-        $Problems.Add("Can't measure free space on the drive for ${What} ($Path): $($_.Exception.Message)")
-        return
-    }
-    if ($free -lt $MinGB) { $Problems.Add("Only $free GB free for ${What}; at least $MinGB GB is needed.") }
+}
+
+function Get-ScansDriveHealth {
+    <# Health only, never blocks a deploy: SCANS_DIR's free space, as a line for the job summary. #>
+    param([Parameter(Mandatory)][string]$ProfileDir)
+    $scansDir = (Read-StationEnv -ProfileDir $ProfileDir)['SCANS_DIR']
+    if (-not $scansDir) { return 'not checked (no SCANS_DIR in .env)' }
+    try { $free = Get-FreeDiskGB -Path $scansDir }
+    catch { return "couldn't measure: $($_.Exception.Message)" }
+    if ($free -lt $script:MinFreeDiskGB) { return "only $free GB free; scans may fail (at least $($script:MinFreeDiskGB) GB recommended)" }
+    "$free GB free"
 }
 
 function Test-StationReady {
@@ -207,10 +205,14 @@ function Test-StationReady {
     if (-not $scansDir -or -not (Test-Path -LiteralPath $scansDir)) {
         $problems.Add('SCANS_DIR in .env must be an existing folder.')
     }
-    else {
-        Add-FreeSpaceProblem -Problems $problems -Path $scansDir -MinGB $script:MinFreeDiskGB -What 'scans'
+    # Free space on the scans drive is a health check (Get-ScansDriveHealth), not a blocker.
+    try {
+        $deployFree = Get-FreeDiskGB -Path $DeployRoot
+        if ($deployFree -lt $script:MinDeployDiskGB) {
+            $problems.Add("Only $deployFree GB free for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
+        }
     }
-    Add-FreeSpaceProblem -Problems $problems -Path $DeployRoot -MinGB $script:MinDeployDiskGB -What 'installers and backups'
+    catch { $problems.Add("Can't measure free space for installers and backups ($DeployRoot): $($_.Exception.Message)") }
 
     # Plain values, so callers' @(...) gives an empty array when there are no problems.
     $problems.ToArray()
@@ -393,5 +395,5 @@ function Invoke-DeploySelfTest {
 }
 
 Export-ModuleMember -Function Set-DeployLogFile, Set-DeployRedactions, Protect-DeployText, Write-DeployLog, Wait-SelfTestProcessesExit, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
-    Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Get-UserEnvironmentVariable, Get-FreeDiskGB, Test-StationReady, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
+    Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Get-UserEnvironmentVariable, Get-FreeDiskGB, Get-ScansDriveHealth, Test-StationReady, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
     Compare-RowCounts, Update-StationDatabase, Invoke-DeploySelfTest
