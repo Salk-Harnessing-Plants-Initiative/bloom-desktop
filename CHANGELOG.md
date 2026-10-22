@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Station deploys: free space on the scans drive is now a health line in the job summary and no longer stops a deploy (PC1's first deploy stopped with `error` because the check couldn't read the scans folder). Free space on the deploy drive is still required, measured from the drive itself, and a drive it can't measure is reported as `station-not-ready`.
+- Station deploys: free disk space on the scans drive is now a health line in the job summary and no longer stops a deploy (PC1's first deploy stopped with `error` because the check couldn't read the scans folder). Free disk space on the deploy drive is still required, measured from the drive itself, and a drive it can't measure is reported as `station-not-ready`.
 
 ## [0.2.1] - 2026-10-22
 

@@ -160,14 +160,14 @@ function Get-FreeDiskGB {
 }
 
 function Get-ScansDriveHealth {
-    <# Health only, never blocks a deploy: SCANS_DIR's free space, as a line for the job summary. #>
+    <# Health only, never blocks a deploy: SCANS_DIR's free disk space, as a line for the job summary. #>
     param([Parameter(Mandatory)][string]$ProfileDir)
     $scansDir = (Read-StationEnv -ProfileDir $ProfileDir)['SCANS_DIR']
     if (-not $scansDir) { return 'not checked (no SCANS_DIR in .env)' }
     try { $free = Get-FreeDiskGB -Path $scansDir }
     catch { return "couldn't measure: $($_.Exception.Message)" }
-    if ($free -lt $script:MinFreeDiskGB) { return "only $free GB free; scans may fail (at least $($script:MinFreeDiskGB) GB recommended)" }
-    "$free GB free"
+    if ($free -lt $script:MinFreeDiskGB) { return "only $free GB of free disk space; scans may fail (at least $($script:MinFreeDiskGB) GB recommended)" }
+    "$free GB of free disk space"
 }
 
 function Test-StationReady {
@@ -205,14 +205,14 @@ function Test-StationReady {
     if (-not $scansDir -or -not (Test-Path -LiteralPath $scansDir)) {
         $problems.Add('SCANS_DIR in .env must be an existing folder.')
     }
-    # Free space on the scans drive is a health check (Get-ScansDriveHealth), not a blocker.
+    # Free disk space on the scans drive is a health check (Get-ScansDriveHealth), not a blocker.
     try {
         $deployFree = Get-FreeDiskGB -Path $DeployRoot
         if ($deployFree -lt $script:MinDeployDiskGB) {
-            $problems.Add("Only $deployFree GB free for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
+            $problems.Add("Only $deployFree GB of free disk space for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
         }
     }
-    catch { $problems.Add("Can't measure free space for installers and backups ($DeployRoot): $($_.Exception.Message)") }
+    catch { $problems.Add("Can't measure free disk space for installers and backups ($DeployRoot): $($_.Exception.Message)") }
 
     # Plain values, so callers' @(...) gives an empty array when there are no problems.
     $problems.ToArray()

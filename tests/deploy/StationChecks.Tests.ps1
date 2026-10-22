@@ -83,17 +83,17 @@ Describe 'Test-StationReady' {
         $text | Should -Match 'SCANS_DIR'
     }
 
-    It 'stops for low free space on the deploy drive, not on the scans drive' {
+    It 'stops for low free disk space on the deploy drive, not on the scans drive' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { 3 } -ParameterFilter { $Path -eq $scans }
         Mock -ModuleName StationChecks Get-FreeDiskGB { 1 } -ParameterFilter { $Path -eq $TestDrive }
         $problems = @(Test-StationReady @ready)
         $problems | Should -HaveCount 1
-        $problems[0] | Should -Match 'Only 1 GB free for installers and backups'
+        $problems[0] | Should -Match 'Only 1 GB of free disk space for installers and backups'
     }
 
     It 'reports a deploy drive it can''t measure as a problem, not an error' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'The drive cannot be found.' } -ParameterFilter { $Path -eq $TestDrive }
-        (@(Test-StationReady @ready) -join "`n") | Should -Match "Can't measure free space for installers and backups"
+        (@(Test-StationReady @ready) -join "`n") | Should -Match "Can't measure free disk space for installers and backups"
     }
 
     It 'doesn''t stop for a scans drive it can''t measure' {
@@ -112,14 +112,14 @@ Describe 'Get-ScansDriveHealth' {
         $userProfile = New-StationProfile -EnvLines @('SCANS_DIR=E:\bloom-scans')
     }
 
-    It 'reports the free space' {
+    It 'reports the free disk space' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { 250 }
-        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Be '250 GB free'
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Be '250 GB of free disk space'
     }
 
     It 'warns when the drive is nearly full' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { 3 }
-        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match '^only 3 GB free; scans may fail'
+        Get-ScansDriveHealth -ProfileDir $userProfile | Should -Match '^only 3 GB of free disk space; scans may fail'
     }
 
     It 'says so when it can''t measure, without throwing' {
