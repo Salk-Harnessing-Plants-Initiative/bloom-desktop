@@ -22,7 +22,8 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'
 Import-Module (Join-Path $PSScriptRoot 'BloomDeploy.psm1') -Force
-# Already loaded by BloomDeploy; imported here too for Protect-DeployText.
+# Already loaded by BloomDeploy; imported here too for Protect-DeployText. Without -Force, so
+# it is the same instance and has the redactions BloomDeploy set from .env.
 Import-Module (Join-Path $PSScriptRoot 'StationChecks.psm1')
 
 try {

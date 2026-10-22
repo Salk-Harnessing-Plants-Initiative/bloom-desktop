@@ -31,7 +31,9 @@ $script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'B
 $script:LogFileVariable = 'BLOOM_DEPLOY_LOG_FILE'
 # Values shorter than this are left alone, so redaction can't mangle ordinary words.
 $script:MinRedactedLength = 3
-# Set by Set-DeployRedactions from .env; the paths and account are read when used.
+# Set by Set-DeployRedactions from .env; the paths and account are read when used. Module
+# state: every caller must share this one instance, so StationData.psm1 and
+# deploy-station.ps1 import this module without -Force (BloomDeploy.psm1 loads it first).
 $script:StationRedactions = @{}
 
 function Set-DeployLogFile {
@@ -63,10 +65,15 @@ function Protect-DeployText {
         $path = [Environment]::GetEnvironmentVariable($name)
         if ($path) { $replacements[$path] = "%$name%"; $replacements[$path -replace '\\', '/'] = "%$name%" }
     }
-    if ($env:USERNAME) { $replacements[$env:USERNAME] = '<lab account>' }
     foreach ($value in $replacements.Keys | Sort-Object -Property Length -Descending) {
         if ($value.Length -lt $script:MinRedactedLength) { continue }
         $Text = [regex]::Replace($Text, [regex]::Escape($value), $replacements[$value].Replace('$', '$$'), 'IgnoreCase')
+    }
+    # The account name only as a whole word or path part, so a name like "bloom" can't
+    # mangle C:\BloomDeploy\... (the backup path an operator needs) or other words.
+    if ($env:USERNAME -and $env:USERNAME.Length -ge $script:MinRedactedLength) {
+        $pattern = '(?<![\w.-])' + [regex]::Escape($env:USERNAME) + '(?![\w.-])'
+        $Text = [regex]::Replace($Text, $pattern, '<lab account>', 'IgnoreCase')
     }
     $Text
 }

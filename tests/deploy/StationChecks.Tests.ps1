@@ -299,6 +299,16 @@ Describe 'Protect-DeployText' {
         $safe | Should -Match '%LOCALAPPDATA%'
     }
 
+    It 'replaces the account name only as a whole word, never inside the backup path' {
+        $savedUser = $env:USERNAME
+        try {
+            $env:USERNAME = 'bloom'
+            $safe = Protect-DeployText -Text 'Restored bloom.db from C:\BloomDeploy\backups\20261022_v0.2.0 (run by bloom)'
+            $safe | Should -Be 'Restored bloom.db from C:\BloomDeploy\backups\20261022_v0.2.0 (run by <lab account>)'
+        }
+        finally { $env:USERNAME = $savedUser }
+    }
+
     It 'is applied to every log line' {
         Set-DeployRedactions -Settings @{ CAMERA_IP_ADDRESS = '10.0.0.45' }
         $log = Join-Path $TestDrive ('log-' + [guid]::NewGuid() + '.log')

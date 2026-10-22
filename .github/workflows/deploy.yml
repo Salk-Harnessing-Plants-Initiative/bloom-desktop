@@ -151,18 +151,39 @@ jobs:
       - name: Install and check the database tools
         shell: powershell
         run: |
+          # npm and prisma print deprecation warnings on stderr, which Windows PowerShell
+          # 5.1 would turn into a failure under the runner's 'stop'. Only exit codes stop
+          # the deploy here; warnings are kept in the log and shown on the run page.
+          $ErrorActionPreference = 'Continue'
+          function Invoke-Tool {
+            param([string]$Label, [scriptblock]$Command)
+            $output = & $Command 2>&1
+            $code = $LASTEXITCODE
+            foreach ($line in $output) {
+              $text = "$line"
+              Write-Output $text
+              if ($line -is [System.Management.Automation.ErrorRecord] -and $text.Trim()) {
+                # Workflow commands need % escaped in the message; titles avoid : and ,.
+                Write-Output "::warning title=${Label}::$($text.Replace('%', '%25'))"
+              }
+            }
+            if ($code -ne 0) {
+              Write-Output "::error title=${Label}::exited with code $code"
+              exit $code
+            }
+          }
           # Exact versions and integrity hashes from the committed lockfile.
           $tools = "$env:RUNNER_TEMP\bloom-deploy-tools"
           New-Item -ItemType Directory -Force $tools | Out-Null
           Copy-Item deploy\windows\tools\package.json, deploy\windows\tools\package-lock.json $tools
-          npm ci --no-audit --no-fund --prefix $tools
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Invoke-Tool 'Database tools - npm ci' { npm ci --no-audit --no-fund --prefix $tools }
           # Fail here, before anything on the station changes, if either tool can't run.
-          node "$tools\node_modules\prisma\build\index.js" --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # From the tools folder, so prisma doesn't read the repository's package.json.
+          Push-Location $tools
+          Invoke-Tool 'Database tools - prisma' { node "$tools\node_modules\prisma\build\index.js" --version }
+          Pop-Location
           $env:NODE_PATH = "$tools\node_modules"
-          node -e "new (require('better-sqlite3'))(':memory:').close()"
-          exit $LASTEXITCODE
+          Invoke-Tool 'Database tools - better-sqlite3' { node -e "new (require('better-sqlite3'))(':memory:').close()" }
 
       - name: Install the release
         shell: powershell
