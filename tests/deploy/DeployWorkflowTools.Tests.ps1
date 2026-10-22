@@ -50,12 +50,15 @@ function node { cmd /c "echo warn prisma config is deprecated 1>&2 & echo node-r
         ([regex]::Matches($result.Output, 'node-ran')).Count | Should -Be 2
     }
 
-    It 'stops with the tool''s exit code when it fails, before the next check' {
+    It 'fails the step when a tool fails, with its exit code on the run, before the next check' {
         $result = Invoke-Step -Fakes @'
 function npm { cmd /c "exit 0" }
 function node { cmd /c "echo node-ran & exit 3" }
 '@
-        $result.ExitCode | Should -Be 3 -Because $result.Output
+        # Non-zero fails the step. Through `powershell -Command` (as the runner runs steps)
+        # Windows PowerShell reports any `exit N` from the script as 1, so the tool's own
+        # code is checked in the annotation instead.
+        $result.ExitCode | Should -Not -Be 0 -Because $result.Output
         $result.Output | Should -Match '::error title=Database tools - prisma::exited with code 3'
         ([regex]::Matches($result.Output, 'node-ran')).Count | Should -Be 1
     }

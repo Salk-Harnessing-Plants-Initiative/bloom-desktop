@@ -155,8 +155,8 @@ jobs:
           # 5.1 would turn into a failure under the runner's 'stop'. Only exit codes stop
           # the deploy here; warnings are kept in the log and shown on the run page.
           $ErrorActionPreference = 'Continue'
-          # Runs a tool and returns its exit code; the step exits at the top level, where
-          # Windows PowerShell keeps the code (an exit inside a function may not).
+          # Runs a tool and returns its exit code; a non-zero code fails the step, and the
+          # tool's own code is shown on the run as an error annotation.
           function Invoke-Tool {
             param([string]$Label, [scriptblock]$Command)
             $output = & $Command 2>&1
