@@ -158,6 +158,11 @@ describe('deploy.yml', () => {
   it('installs the database tools from the committed lockfile', () => {
     const tools = deploy.steps.find((s) => s.run?.includes('better-sqlite3'));
     expect(tools?.run).toContain('npm ci');
+    // Warnings on stderr must not stop the deploy; exit codes do, and warnings are shown.
+    expect(tools?.run).toContain("$ErrorActionPreference = 'Continue'");
+    expect(tools?.run).toContain('::warning title=');
+    expect(tools?.run).toContain('if ($code -ne 0) { exit $code }');
+    expect(tools?.run).toContain('Push-Location $tools');
     expect(tools?.run).not.toMatch(/npm install/);
     expect(tools?.run).toContain('deploy\\windows\\tools\\package-lock.json');
 
@@ -176,7 +181,10 @@ describe('deploy.yml', () => {
     const lock = JSON.parse(
       fs.readFileSync(path.join(toolsDir, 'package-lock.json'), 'utf8')
     ) as {
-      packages: Record<string, { version?: string; integrity?: string }>;
+      packages: Record<
+        string,
+        { version?: string; integrity?: string; resolved?: string }
+      >;
     };
     for (const [name, version] of Object.entries(manifest.dependencies)) {
       // Exact versions only, matching the lockfile.
@@ -184,7 +192,10 @@ describe('deploy.yml', () => {
       expect(lock.packages[`node_modules/${name}`]?.version).toBe(version);
     }
     for (const [key, entry] of Object.entries(lock.packages)) {
-      if (key !== '') expect(entry.integrity).toMatch(/^sha512-/);
+      if (key === '') continue;
+      expect(entry.integrity).toMatch(/^sha512-/);
+      // Only from the public npm registry, so the lockfile can't quietly point elsewhere.
+      expect(entry.resolved).toMatch(/^https:\/\/registry\.npmjs\.org\//);
     }
   });
 

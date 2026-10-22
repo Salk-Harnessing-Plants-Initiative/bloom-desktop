@@ -10,6 +10,7 @@
 
 Set-StrictMode -Version Latest
 
+# Without -Force: reuse the instance BloomDeploy.psm1 loaded, which holds the log redactions.
 Import-Module (Join-Path $PSScriptRoot 'StationChecks.psm1')
 
 $script:BackupsKept = 5
