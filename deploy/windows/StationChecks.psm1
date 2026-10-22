@@ -157,8 +157,6 @@ function Get-FreeDiskGB {
     [math]::Floor((New-Object IO.DriveInfo $root).AvailableFreeSpace / 1GB)
 }
 
-}
-
 function Get-ScansDriveHealth {
     <# Health only, never blocks a deploy: SCANS_DIR's free disk space, as a line for the job summary. #>
     param([Parameter(Mandatory)][string]$ProfileDir)
