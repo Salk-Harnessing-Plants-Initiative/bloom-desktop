@@ -22,8 +22,8 @@ $script:SelfTestPollMilliseconds = 500
 $script:SelfTestMinVersion = [version]'0.2.1'
 # 0x80000003 (STATUS_BREAKPOINT) as a signed or unsigned exit code: Chromium couldn't start.
 $script:ChromiumStartupCrashCodes = @(-2147483645, 2147483651)
-# Below this, the scans drive is reported (health only; it doesn't stop a deploy).
-$script:MinFreeDiskGB = 20
+# Below this, the scans drive's health line warns; it never stops a deploy.
+$script:MinScansDiskGB = 20
 # Room for two releases' installers (about 0.7 GB each) and a backup of bloom.db.
 $script:MinDeployDiskGB = 5
 $script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'BLOOM_USE_MOCK_DAQ')
@@ -166,7 +166,7 @@ function Get-ScansDriveHealth {
     if (-not $scansDir) { return 'not checked (no SCANS_DIR in .env)' }
     try { $free = Get-FreeDiskGB -Path $scansDir }
     catch { return "could not read: $($_.Exception.Message)" }
-    if ($free -lt $script:MinFreeDiskGB) { return "only $free GB of free disk space; scans may fail (at least $($script:MinFreeDiskGB) GB recommended)" }
+    if ($free -lt $script:MinScansDiskGB) { return "only $free GB of free disk space; scans may fail (at least $($script:MinScansDiskGB) GB recommended)" }
     "$free GB of free disk space"
 }
 
