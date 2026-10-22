@@ -43,7 +43,7 @@ Describe 'deploy.yml database tools step' {
 function npm { cmd /c "echo npm warn deprecated prebuild-install 1>&2 & exit 0" }
 function node { cmd /c "echo warn prisma config is deprecated 1>&2 & echo node-ran %* & exit 0" }
 '@
-        $result.ExitCode | Should -Be 0
+        $result.ExitCode | Should -Be 0 -Because $result.Output
         $result.Output | Should -Match '::warning title=Database tools - npm ci::npm warn deprecated prebuild-install'
         $result.Output | Should -Match '::warning title=Database tools - prisma::warn prisma config is deprecated'
         # All three checks ran.
@@ -55,7 +55,7 @@ function node { cmd /c "echo warn prisma config is deprecated 1>&2 & echo node-r
 function npm { cmd /c "exit 0" }
 function node { cmd /c "echo node-ran & exit 3" }
 '@
-        $result.ExitCode | Should -Be 3
+        $result.ExitCode | Should -Be 3 -Because $result.Output
         $result.Output | Should -Match '::error title=Database tools - prisma::exited with code 3'
         ([regex]::Matches($result.Output, 'node-ran')).Count | Should -Be 1
     }
