@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Station deploys: the free-space check no longer stops the deploy with `error` when the scans folder is hidden or a system folder; it measures the drive directly, and a drive it can't measure is reported as `station-not-ready`.
+
 ## [0.2.1] - 2026-10-22
 
 ### Added

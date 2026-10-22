@@ -150,9 +150,26 @@ function Get-UserEnvironmentVariable {
 }
 
 function Get-FreeDiskGB {
+    <# Free GB on $Path's drive, from its root (Get-Item can't see hidden or system folders). Throws if unmeasurable. #>
     param([Parameter(Mandatory)][string]$Path)
-    $drive = (Get-Item -LiteralPath $Path).PSDrive
-    [math]::Floor((Get-PSDrive -Name $drive.Name).Free / 1GB)
+    $root = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path))
+    [math]::Floor((New-Object IO.DriveInfo $root).AvailableFreeSpace / 1GB)
+}
+
+function Add-FreeSpaceProblem {
+    <# Add a problem to $Problems when $Path's drive has less than $MinGB free or can't be measured. #>
+    param(
+        [Parameter(Mandatory)][System.Collections.Generic.List[string]]$Problems,
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][int]$MinGB,
+        [Parameter(Mandatory)][string]$What
+    )
+    try { $free = Get-FreeDiskGB -Path $Path }
+    catch {
+        $Problems.Add("Can't measure free space on the drive for ${What} ($Path): $($_.Exception.Message)")
+        return
+    }
+    if ($free -lt $MinGB) { $Problems.Add("Only $free GB free for ${What}; at least $MinGB GB is needed.") }
 }
 
 function Test-StationReady {
@@ -191,15 +208,9 @@ function Test-StationReady {
         $problems.Add('SCANS_DIR in .env must be an existing folder.')
     }
     else {
-        $scansFree = Get-FreeDiskGB -Path $scansDir
-        if ($scansFree -lt $script:MinFreeDiskGB) {
-            $problems.Add("Only $scansFree GB free on the scans drive; at least $($script:MinFreeDiskGB) GB is needed.")
-        }
+        Add-FreeSpaceProblem -Problems $problems -Path $scansDir -MinGB $script:MinFreeDiskGB -What 'scans'
     }
-    $deployFree = Get-FreeDiskGB -Path $DeployRoot
-    if ($deployFree -lt $script:MinDeployDiskGB) {
-        $problems.Add("Only $deployFree GB free for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
-    }
+    Add-FreeSpaceProblem -Problems $problems -Path $DeployRoot -MinGB $script:MinDeployDiskGB -What 'installers and backups'
 
     # Plain values, so callers' @(...) gives an empty array when there are no problems.
     $problems.ToArray()

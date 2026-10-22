@@ -87,13 +87,27 @@ Describe 'Test-StationReady' {
         Mock -ModuleName StationChecks Get-FreeDiskGB { 3 } -ParameterFilter { $Path -eq $scans }
         Mock -ModuleName StationChecks Get-FreeDiskGB { 1 } -ParameterFilter { $Path -eq $TestDrive }
         $text = @(Test-StationReady @ready) -join "`n"
-        $text | Should -Match 'Only 3 GB free on the scans drive'
+        $text | Should -Match 'Only 3 GB free for scans'
         $text | Should -Match 'Only 1 GB free for installers and backups'
+    }
+
+    It 'reports free space it can''t measure as a problem, not an error' {
+        Mock -ModuleName StationChecks Get-FreeDiskGB { throw 'The drive cannot be found.' } -ParameterFilter { $Path -eq $scans }
+        $text = @(Test-StationReady @ready) -join "`n"
+        $text | Should -Match "Can't measure free space on the drive for scans"
     }
 
     It 'reports a missing .env' {
         Remove-Item -LiteralPath (Join-Path $userProfile '.bloom\.env')
         (@(Test-StationReady @ready) -join "`n") | Should -Match '.env is missing'
+    }
+}
+
+Describe 'Get-FreeDiskGB' {
+    It 'measures a hidden folder''s drive (Get-Item can''t see hidden folders)' {
+        $hidden = Join-Path $TestDrive ('hidden-' + [guid]::NewGuid())
+        (New-Item -ItemType Directory -Force -Path $hidden).Attributes = 'Hidden, Directory'
+        Get-FreeDiskGB -Path $hidden | Should -BeGreaterOrEqual 0
     }
 }
 
